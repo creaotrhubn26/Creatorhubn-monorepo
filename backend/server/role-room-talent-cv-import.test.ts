@@ -1,115 +1,159 @@
 /**
- * CV-import.
+ * CV-import — deterministisk uttrekk, ingen AI.
  *
- * Det som holdes fast: forslaget fra modellen er et FORSLAG, og det
- * normaliseres mot nøyaktig samme regler som skrive-endepunktene. En modell
- * skal aldri kunne foreslå en verdi brukeren ikke kunne lagret selv — og
- * aldri foreslå persondata som ikke hører hjemme i et casting-register.
+ * Testene holder på to ting:
+ *   1. Vanlige oppsett av norske og engelske skuespiller-CV-er gjenkjennes.
+ *   2. Persondata og overskrifter blir ALDRI krediteringer. En falsk rolle i
+ *      registeret er verre enn en manglende, fordi byrået tror på den.
  */
 
 import { describe, expect, it } from "vitest";
 
-import { normalizeSuggestion } from "./role-room-talent-cv-import.js";
+import {
+  parseCreditLine,
+  parseCvText,
+  stripPersonalNumbers,
+} from "./role-room-talent-cv-import.js";
 
-describe("normalisering av CV-forslag", () => {
-  it("beholder gyldige krediteringer", () => {
-    const result = normalizeSuggestion({
-      credits: [
-        {
-          category: "theatre",
-          title: "Hamlet",
-          role_name: "Horatio",
-          role_type: "supporting",
-          production_company: "Nationaltheatret",
-          director: "Eirik Stubø",
-          year: 2024,
-        },
-      ],
-      profile: {},
-    });
+describe("linjegjenkjenning", () => {
+  it("leser år, produksjon, selskap, regi og rolle fra en tabell-linje", () => {
+    const credit = parseCreditLine(
+      "2024 | Hamlet | Nationaltheatret | Regi: Eirik Stubø | Horatio",
+      "theatre",
+    );
 
-    expect(result.credits).toHaveLength(1);
-    expect(result.credits[0]).toMatchObject({
+    expect(credit).toMatchObject({
       category: "theatre",
       title: "Hamlet",
-      role_type: "supporting",
+      production_company: "Nationaltheatret",
+      director: "Eirik Stubø",
       year: 2024,
     });
+    expect(credit?.role_name).toBe("Horatio");
   });
 
-  it("forkaster krediteringer uten tittel", () => {
-    const result = normalizeSuggestion({
-      credits: [{ role_name: "Ukjent rolle", year: 2020 }],
-      profile: {},
+  it("takler engelsk oppsett med director og lead", () => {
+    const credit = parseCreditLine(
+      "The Hollow Sky · BBC · Director: Sarah Lane · Lead · 2023",
+      "film_tv",
+    );
+
+    expect(credit).toMatchObject({
+      title: "The Hollow Sky",
+      production_company: "BBC",
+      director: "Sarah Lane",
+      role_type: "lead",
+      year: 2023,
     });
-    expect(result.credits).toHaveLength(0);
   });
 
-  it("faller tilbake til other for ukjent kategori, og null for ukjent rolletype", () => {
-    const result = normalizeSuggestion({
-      credits: [{ title: "Noe", category: "musikkvideo", role_type: "hovedrolle" }],
-      profile: {},
-    });
+  it("gjetter ikke på årstall som ikke finnes", () => {
+    const credit = parseCreditLine("Ukjent produksjon | Teater Ibsen | Birolle", "theatre");
+    expect(credit?.year).toBeNull();
+    expect(credit?.role_type).toBe("supporting");
+  });
 
-    expect(result.credits[0].category).toBe("other");
-    expect(result.credits[0].role_type).toBeNull();
+  it("avviser løpende tekst uten årstall og uten struktur", () => {
+    expect(
+      parseCreditLine("Jeg er en engasjert skuespiller som liker å jobbe med mennesker", "film_tv"),
+    ).toBeNull();
+  });
+
+  it("avviser for korte linjer", () => {
+    expect(parseCreditLine("CV", "film_tv")).toBeNull();
   });
 
   it("forkaster årstall utenfor rimelig intervall", () => {
-    const result = normalizeSuggestion({
-      credits: [
-        { title: "Middelalderspill", year: 1350 },
-        { title: "Framtidsfilm", year: 2199 },
-      ],
-      profile: {},
-    });
+    const credit = parseCreditLine("Middelalderspillet | Teatret | 1350", "theatre");
+    expect(credit?.year).toBeNull();
+  });
+});
 
-    expect(result.credits[0].year).toBeNull();
-    expect(result.credits[1].year).toBeNull();
+describe("fødselsnummer", () => {
+  it("fjernes fra en enkeltverdi", () => {
+    expect(stripPersonalNumbers("Hamlet 01019012345")).toBe("Hamlet");
+    expect(stripPersonalNumbers("010190 12345 Nora")).toBe("Nora");
+    expect(stripPersonalNumbers("010190-12345")).toBe("");
   });
 
-  it("melder fra om persondata modellen tok med, uten å foreslå dem", () => {
-    const result = normalizeSuggestion({
-      credits: [],
-      profile: {
-        display_name: "Kari Nordmann",
-        email: "kari@eksempel.no",
-        phone: "+47 900 00 000",
-        birth_date: "1990-01-01",
-        city: "Oslo",
-      },
-    });
-
-    expect(result.profile.display_name).toBe("Kari Nordmann");
-    expect(result.profile.city).toBe("Oslo");
-    expect(result.skipped).toContain("email");
-    expect(result.skipped).toContain("phone");
-    expect(result.skipped).toContain("birth_date");
-    // Persondataene finnes ikke i forslaget som skal lagres.
-    expect(JSON.stringify(result.profile)).not.toContain("kari@eksempel.no");
-    expect(JSON.stringify(result.profile)).not.toContain("900 00 000");
+  it("havner aldri i en kreditering, selv midt i en gyldig linje", () => {
+    const credit = parseCreditLine(
+      "2024 | Hamlet 01019012345 | Nationaltheatret | Horatio",
+      "theatre",
+    );
+    expect(JSON.stringify(credit)).not.toContain("01019012345");
   });
 
-  it("kapper bio og begrenser lister", () => {
-    const result = normalizeSuggestion({
-      credits: [],
-      profile: {
-        bio: "a".repeat(2000),
-        skills: Array.from({ length: 80 }, (_, i) => `ferdighet ${i}`),
-      },
-    });
+  it("rører ikke årstall eller vanlige tall", () => {
+    const credit = parseCreditLine("2024 | Hamlet | Nationaltheatret | Horatio", "theatre");
+    expect(credit?.year).toBe(2024);
+    expect(credit?.title).toBe("Hamlet");
+  });
+});
 
-    expect(result.profile.bio?.length).toBe(600);
-    expect(result.profile.skills.length).toBe(25);
+describe("hele CV-en", () => {
+  const cv = `
+KARI NORDMANN
+Skuespiller
+kari@eksempel.no
+Tlf: +47 900 00 000
+Adresse: Storgata 1, Oslo
+
+UTDANNING
+Teaterhøgskolen, KHiO — 2018-2021
+
+FILM & TV
+2024 | Nattbussen | NRK | Regi: Ola Hansen | Hovedrolle
+2022 | Vinterlys | Maipo Film | Regi: Siri Berg | Birolle
+
+TEATER
+2023 | Et dukkehjem | Det Norske Teatret | Regi: Kjersti Horn | Nora
+2021 | Peer Gynt | Nationaltheatret | Ensemble
+`;
+
+  it("plukker krediteringer i riktig kategori", () => {
+    const result = parseCvText(cv);
+    const titles = result.credits.map((c) => c.title);
+
+    expect(titles).toContain("Nattbussen");
+    expect(titles).toContain("Et dukkehjem");
+
+    const nattbussen = result.credits.find((c) => c.title === "Nattbussen");
+    expect(nattbussen?.category).toBe("film_tv");
+    expect(nattbussen?.director).toBe("Ola Hansen");
+    expect(nattbussen?.role_type).toBe("lead");
+
+    const dukkehjem = result.credits.find((c) => c.title === "Et dukkehjem");
+    expect(dukkehjem?.category).toBe("theatre");
+    expect(dukkehjem?.production_company).toBe("Det Norske Teatret");
   });
 
-  it("takler at modellen returnerer tull i stedet for lister", () => {
-    const result = normalizeSuggestion({
-      credits: "ikke en liste",
-      profile: { skills: "scenekamp, sang" },
-    });
+  it("henter dramaskole uten å gjøre den til en kreditering", () => {
+    const result = parseCvText(cv);
+    expect(result.profile.drama_school).toContain("Teaterhøgskolen");
+    expect(result.credits.map((c) => c.title)).not.toContain("Teaterhøgskolen, KHiO");
+  });
 
-    expect(result.credits).toEqual([]);
-    expect(result.profile.skills).toEqual([]);
+  it("lagrer aldri persondata, men melder fra om dem", () => {
+    const result = parseCvText(cv);
+    const serialized = JSON.stringify(result.credits);
+
+    expect(serialized).not.toContain("kari@eksempel.no");
+    expect(serialized).not.toContain("900 00 000");
+    expect(serialized).not.toContain("Storgata");
+    expect(result.skipped).toContain("e-post");
+    expect(result.skipped).toContain("adresse");
+  });
+
+  it("gjør ikke seksjonsoverskrifter til krediteringer", () => {
+    const result = parseCvText(cv);
+    const titles = result.credits.map((c) => c.title.toLowerCase());
+    expect(titles).not.toContain("film & tv");
+    expect(titles).not.toContain("teater");
+    expect(titles).not.toContain("utdanning");
+  });
+
+  it("er deterministisk — samme fil gir samme resultat", () => {
+    expect(parseCvText(cv)).toEqual(parseCvText(cv));
   });
 });

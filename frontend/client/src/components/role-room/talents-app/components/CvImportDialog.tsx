@@ -3,10 +3,10 @@
  *
  * UX-valgene:
  *
- *   Gjennomgang er ikke valgfri. Modellen kan forveksle regissør og
- *   skuespiller, og en CV inneholder ofte persondata. Skuespilleren ser hver
- *   kreditering med avkrysning før noe lagres — det er også forskjellen
- *   mellom «systemet gjettet» og «jeg bekreftet» når byrået leser profilen.
+ *   Gjennomgang er ikke valgfri. Uttrekket er regelbasert og treffer godt på
+ *   ryddige oppsett, dårligere på rotete. Skuespilleren ser hver kreditering
+ *   med avkrysning før noe lagres — det er også forskjellen mellom «systemet
+ *   gjettet» og «jeg bekreftet» når byrået leser profilen.
  *
  *   Demonstrer verdien tidlig. Ett valg av fil, så ligger hele CV-en der.
  *   Dette er det som gjør registeret verdt å fylle ut i det hele tatt.
@@ -56,8 +56,6 @@ const ERROR_TEXT: Record<string, string> = {
   unsupported_type: 'Filen må være PDF eller Word (.docx).',
   empty_text:
     'Vi fant ingen tekst i filen. Er den skannet som bilde, må du bruke en versjon der teksten kan markeres.',
-  ai_unavailable: 'CV-tolkningen er ikke satt opp på serveren. Kontakt support@theroleroom.com.',
-  ai_failed: 'Vi klarte ikke å tolke CV-en. Prøv igjen, eller legg inn krediteringene manuelt.',
   import_failed: 'Noe gikk galt under importen. Prøv igjen.',
 };
 
@@ -188,8 +186,8 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
               }}
             />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', lineHeight: 1.5 }}>
-              Teksten i CV-en sendes til Anthropic for tolkning. Filen lagres ikke, og ingenting
-              legges inn i profilen din før du har godkjent det.
+              CV-en leses på vår egen server og sendes ikke videre til noen tredjepart. Filen
+              lagres ikke, og ingenting legges inn i profilen din før du har godkjent det.
             </Typography>
           </Stack>
         )}
@@ -212,7 +210,7 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
             />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.8rem' }}>
               {phase === 'reading'
-                ? 'Dette tar vanligvis under et halvt minutt.'
+                ? 'Dette tar noen sekunder.'
                 : 'Ikke lukk vinduet før dette er ferdig.'}
             </Typography>
           </Stack>
@@ -221,9 +219,10 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
         {phase === 'review' && suggestion && (
           <Stack spacing={1.6}>
             <Typography sx={{ color: palette.textSecondary, lineHeight: 1.6 }}>
-              Vi fant <strong>{suggestion.credits.length}</strong>{' '}
-              {suggestion.credits.length === 1 ? 'kreditering' : 'krediteringer'}. Fjern
-              avhukingen på det som ikke stemmer — ingenting lagres før du trykker legg til.
+              Vi kjente igjen <strong>{suggestion.credits.length}</strong>{' '}
+              {suggestion.credits.length === 1 ? 'kreditering' : 'krediteringer'}. Se gjennom dem
+              og fjern avhukingen på det som ikke stemmer — ingenting lagres før du trykker legg til.
+              Feltene kan rettes etterpå.
             </Typography>
 
             {suggestion.credits.length === 0 && (
@@ -274,8 +273,8 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
 
             {suggestion.skipped.length > 0 && (
               <Alert severity="info" sx={{ bgcolor: 'rgba(168,85,247,0.1)', color: palette.textSecondary }}>
-                Vi hoppet bevisst over persondata i CV-en ({suggestion.skipped.join(', ')}). Slikt
-                hører ikke hjemme i et casting-register.
+                Vi hoppet bevisst over linjer med persondata ({suggestion.skipped.join(', ')}).
+                Slikt hører ikke hjemme i et casting-register.
               </Alert>
             )}
           </Stack>

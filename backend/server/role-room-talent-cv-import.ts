@@ -3,16 +3,20 @@
  *
  * «Legg inn CV-en, så tar The Role Room seg av resten.»
  *
- * Tar imot en PDF eller Word-fil, henter ut teksten, og lar Claude strukturere
- * den som en skuespiller-CV: krediteringer med rolle, produksjon, regissør og
- * år, pluss profilfelt som bio, by, dramaskole, ferdigheter og språk.
+ * Tar imot en PDF eller Word-fil, henter ut teksten, og kjenner igjen
+ * krediteringer: rolle, produksjon, produksjonsselskap, regissør og år.
  *
- * 🔑 Denne modulen SKRIVER IKKE til databasen. Den returnerer et forslag som
- * skuespilleren må godkjenne først. To grunner:
- *   1. En språkmodell leser «Regissør: Kari Nordmann» i en plakat like gjerne
- *      som skuespillerens egen rolle. Feil i en casting-profil koster jobber.
- *   2. En CV inneholder ofte fødselsnummer, adresse og referansepersoner som
- *      ikke skal lagres. Skuespilleren må se hva som ble hentet ut.
+ * 🔑 INGEN AI. Uttrekket er rene regler — seksjonsoverskrifter, årstall,
+ * skilletegn og nøkkelord. Tre grunner til at det er riktig her:
+ *   1. CV-en er personopplysninger. Deterministisk parsing holder teksten
+ *      inne i vår egen backend; ingenting forlater huset.
+ *   2. Resultatet er forutsigbart. Samme fil gir samme forslag hver gang, og
+ *      en feil kan rettes i en regel i stedet for i en prompt.
+ *   3. Ingen kostnad per import, ingen API-nøkkel å drifte, ingen ventetid.
+ *
+ * Til gjengjeld treffer regler dårligere enn en modell på rotete oppsett.
+ * Derfor er gjennomgangssteget i UI-et ikke valgfritt: vi foreslår, og
+ * skuespilleren bekrefter.
  *
  * Tekst-uttrekket bruker samme biblioteker som kontrakt-importen
  * (contracts-upload-import-routes.ts): pdf-parse og mammoth.
@@ -31,11 +35,13 @@ export const CV_IMPORT_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
-/** Maks tekst vi sender videre. En CV på 40 sider er en portefølje, ikke en CV. */
-const MAX_TEXT_CHARS = 40_000;
+const MAX_LINES = 1500;
+const MAX_CREDITS = 200;
+
+export type CvCreditCategory = "film_tv" | "theatre" | "commercial" | "voice" | "other";
 
 export interface CvImportCredit {
-  category: "film_tv" | "theatre" | "commercial" | "voice" | "other";
+  category: CvCreditCategory;
   title: string;
   role_name: string | null;
   role_type: string | null;
@@ -47,21 +53,15 @@ export interface CvImportCredit {
 export interface CvImportSuggestion {
   credits: CvImportCredit[];
   profile: {
-    display_name: string | null;
-    city: string | null;
-    bio: string | null;
     drama_school: string | null;
-    skills: string[];
-    languages: string[];
-    dialects: string[];
   };
-  /** Felter modellen så, men som vi bevisst ikke foreslår (persondata). */
+  /** Linjer vi bevisst hoppet over, med grunn — vises i gjennomgangen. */
   skipped: string[];
 }
 
 export type CvImportResult =
   | { ok: true; suggestion: CvImportSuggestion; characters: number }
-  | { ok: false; reason: "unsupported_type" | "empty_text" | "ai_unavailable" | "ai_failed" };
+  | { ok: false; reason: "unsupported_type" | "empty_text" };
 
 /** PDF eller DOCX → ren tekst. */
 export async function extractCvText(
@@ -79,165 +79,198 @@ export async function extractCvText(
   return null;
 }
 
-const SYSTEM_PROMPT = `Du strukturerer skuespiller-CV-er for et norsk casting-register.
+// ── Gjenkjenning ──────────────────────────────────────────────────────
 
-Du får rå tekst fra en CV. Returner KUN gyldig JSON, uten forklaring og uten
-kodeblokk-markering, på dette formatet:
+/** Seksjonsoverskrifter, norsk og engelsk. Styrer kategorien på linjene under. */
+const SECTION_PATTERNS: Array<{ category: CvCreditCategory; pattern: RegExp }> = [
+  { category: "film_tv", pattern: /^(film|tv|film\s*&?\s*tv|film og tv|television|serier?|spillefilm|kortfilm)\b/i },
+  { category: "theatre", pattern: /^(teater|theatre|theater|scene|scenekunst|stage)\b/i },
+  { category: "commercial", pattern: /^(reklame|reklamefilm|commercials?|kampanjer?)\b/i },
+  { category: "voice", pattern: /^(stemme|voice|voice[- ]?over|dubbing|lydbok|audiobook)\b/i },
+];
 
-{
-  "credits": [
-    {
-      "category": "film_tv" | "theatre" | "commercial" | "voice" | "other",
-      "title": "produksjonens navn",
-      "role_name": "rollen skuespilleren spilte, eller null",
-      "role_type": "lead" | "supporting" | "featured" | "ensemble" | "voice" | "extra" | null,
-      "production_company": "teater eller produksjonsselskap, eller null",
-      "director": "regissør, eller null",
-      "year": 2024
-    }
-  ],
-  "profile": {
-    "display_name": "navn eller null",
-    "city": "by eller null",
-    "bio": "kort presentasjon på maks 600 tegn, eller null",
-    "drama_school": "skuespillerutdanning eller null",
-    "skills": ["ferdigheter, f.eks. scenekamp, sang"],
-    "languages": ["språk personen behersker"],
-    "dialects": ["dialekter"]
-  }
-}
+/** Linjer som aldri er krediteringer. Persondata skal ikke inn i registeret. */
+const PERSONAL_DATA_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: "e-post", pattern: /[\w.+-]+@[\w-]+\.[\w.]+/ },
+  { label: "telefon", pattern: /(\+\d{1,3}[\s-]?)?(\d[\s-]?){8,}/ },
+  { label: "fødselsdato", pattern: /\b(f\.|født|born|fødselsdato|date of birth)\b/i },
+  { label: "personnummer", pattern: /\b\d{6}\s?\d{5}\b/ },
+  { label: "adresse", pattern: /\b(gate|gata|veien|vei\b|adresse|address)\b/i },
+];
 
-Viktige regler:
-- Dette er en SKUESPILLER-CV, ikke en jobbsøknad. En kreditering er en rolle i
-  en produksjon — ikke en stilling hos en arbeidsgiver.
-- Er du i tvil om hvem som var regissør og hvem som var skuespiller, sett
-  "director" til null. Feil regissør er verre enn ingen regissør.
-- Gjett ALDRI på årstall, rolletype eller kategori. Bruk null når teksten ikke
-  sier det tydelig.
-- Ta ALDRI med fødselsdato, personnummer, adresse, telefonnummer, e-post eller
-  navn på referansepersoner. De hører ikke hjemme i et casting-register.
-- Skriv verdiene på det språket de står i CV-en.`;
+/** Utdanning — plukkes ut som dramaskole, ikke som kreditering. */
+const SCHOOL_PATTERN =
+  /\b(teaterh(ø|o)gskole[nt]?|skuespillerutdanning|drama\s*school|akademiet for scenekunst|nordisk institutt|khio|lamda|rada|guildhall|nski|b(å|a)rdar|nord universitet)\b/i;
+
+const DIRECTOR_PATTERN =
+  /\b(?:regiss(?:ø|o)r|instrukt(?:ø|o)r|director|regi|dir\.)\s*[:\-–]?\s*([^|·,;]+)/i;
+
+const ROLE_HINT_PATTERN = /\b(?:rolle|role|som|as)\s*[:\-–]\s*([^|·,;]+)/i;
+
+const ROLE_TYPE_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
+  { id: "lead", pattern: /\b(hovedrolle|lead|leading role|title role|tittelrolle)\b/i },
+  { id: "supporting", pattern: /\b(birolle|supporting)\b/i },
+  { id: "featured", pattern: /\b(medvirkende|featured)\b/i },
+  { id: "ensemble", pattern: /\b(ensemble)\b/i },
+  { id: "voice", pattern: /\b(stemme|voice)\b/i },
+  { id: "extra", pattern: /\b(statist|extra)\b/i },
+];
+
+/** Ord som gjør at en del av linjen sannsynligvis er produsent/teater. */
+const COMPANY_HINT =
+  /\b(teater|theatre|theater|nrk|tv\s?2|netflix|hbo|bbc|viaplay|film|produksjon|productions?|pictures|studios?|as\b|a\/s|ltd|inc|scene|operaen?)\b/i;
+
+const SEPARATOR = /\s*[|·•\t]\s*|\s+[–—]\s+|\s{3,}/;
 
 /**
- * Kaller Claude og tolker svaret. Returnerer null hvis modellen ikke er
- * konfigurert eller svaret ikke lot seg tolke — kallstedet bestemmer hva som
- * skjer da, i stedet for at vi gjetter oss til et tomt forslag.
+ * Fødselsnummer skal ALDRI lagres, uansett hvor i CV-en det står.
+ *
+ * Linjer som ser ut som persondata hoppes allerede over, men et fødselsnummer
+ * kan stå midt i en ellers gyldig krediteringslinje («Hamlet | 01019012345»).
+ * Derfor fjernes det også fra hver enkelt verdi før den forlater parseren —
+ * to uavhengige hindre, fordi ett hull her er et personvernbrudd og ikke en
+ * skjønnhetsfeil.
+ *
+ * Mønsteret dekker 11 siffer sammenhengende eller delt 6+5, med valgfri
+ * bindestrek eller mellomrom.
  */
-export async function parseCvWithClaude(
-  text: string,
-): Promise<CvImportSuggestion | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+const PERSONAL_NUMBER = /\b\d{6}[\s-]?\d{5}\b/g;
 
-  const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  const client = new Anthropic({ apiKey });
+export function stripPersonalNumbers(value: string): string {
+  return value.replace(PERSONAL_NUMBER, "").replace(/\s{2,}/g, " ").trim();
+}
 
-  const response = await client.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 16000,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: text.slice(0, MAX_TEXT_CHARS) }],
+function cleanPart(value: string): string {
+  return stripPersonalNumbers(value)
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[-–—:,.]+|[-–—:,.]+$/g, "")
+    .trim();
+}
+
+function findYear(line: string): { year: number | null; withoutYear: string } {
+  const currentYear = new Date().getFullYear();
+  // Tar første fireside­tall i et rimelig intervall. «2019–2021» gir 2019.
+  const match = line.match(/\b(18[8-9]\d|19\d{2}|20\d{2})\b/);
+  if (!match) return { year: null, withoutYear: line };
+  const year = Number(match[1]);
+  if (year < 1888 || year > currentYear + 5) return { year: null, withoutYear: line };
+  return {
+    year,
+    withoutYear: line.replace(/\b(18[8-9]\d|19\d{2}|20\d{2})\s*[–—-]?\s*(\d{2,4})?\b/, " "),
+  };
+}
+
+function detectRoleType(line: string): string | null {
+  for (const { id, pattern } of ROLE_TYPE_PATTERNS) {
+    if (pattern.test(line)) return id;
+  }
+  return null;
+}
+
+/**
+ * Én linje → én kreditering, eller null hvis linjen ikke ser ut som en.
+ *
+ * Kravet for å regnes som kreditering er bevisst strengt: enten et årstall,
+ * eller minst tre deler adskilt av skilletegn. Løsere regler gjør at
+ * overskrifter, adresser og løpende tekst havner i CV-en som falske roller,
+ * og det er verre å rydde opp i enn å legge inn en linje manuelt.
+ */
+export function parseCreditLine(
+  rawLine: string,
+  category: CvCreditCategory,
+): CvImportCredit | null {
+  const line = cleanPart(rawLine);
+  if (line.length < 4 || line.length > 300) return null;
+
+  const { year, withoutYear } = findYear(line);
+  const parts = withoutYear.split(SEPARATOR).map(cleanPart).filter(Boolean);
+  if (!year && parts.length < 3) return null;
+  if (parts.length === 0) return null;
+
+  let director: string | null = null;
+  const directorMatch = line.match(DIRECTOR_PATTERN);
+  if (directorMatch?.[1]) director = cleanPart(directorMatch[1]).slice(0, 255) || null;
+
+  let roleName: string | null = null;
+  const roleMatch = line.match(ROLE_HINT_PATTERN);
+  if (roleMatch) roleName = cleanPart(roleMatch[1]).slice(0, 255) || null;
+
+  // Deler som allerede er brukt til regi eller rolle skal ikke også bli tittel.
+  const remaining = parts.filter((part) => {
+    if (DIRECTOR_PATTERN.test(part)) return false;
+    if (roleName && part.toLowerCase().includes(roleName.toLowerCase())) return false;
+    return true;
   });
 
-  type ContentBlock = { type: string; text?: string };
-  const raw = (response.content as ContentBlock[])
-    .filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
+  const title = cleanPart(remaining[0] ?? parts[0] ?? "").slice(0, 255);
+  if (!title) return null;
 
-  const parsed = tryParseJson<Record<string, unknown>>(raw);
-  if (!parsed) return null;
-  return normalizeSuggestion(parsed);
-}
-
-/** Claude pakker av og til JSON i ```json-fences. Samme mønster som resume-routes. */
-function tryParseJson<T>(text: string): T | null {
-  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]) as T;
-    } catch {
-      return null;
+  let company: string | null = null;
+  for (const part of remaining.slice(1)) {
+    if (COMPANY_HINT.test(part)) {
+      company = part.slice(0, 255);
+      break;
     }
   }
-}
+  if (!company && remaining.length > 1) company = remaining[1].slice(0, 255);
 
-const CATEGORIES = new Set(["film_tv", "theatre", "commercial", "voice", "other"]);
-const ROLE_TYPES = new Set(["lead", "supporting", "featured", "ensemble", "voice", "extra"]);
-
-function str(value: unknown, max = 255): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, max) : null;
-}
-
-function strList(value: unknown, max = 25): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((v) => str(v, 80))
-    .filter((v): v is string => Boolean(v))
-    .slice(0, max);
-}
-
-/**
- * Modellens svar er et forslag, ikke et faktum. Alt normaliseres mot de samme
- * reglene som skrive-endepunktene bruker, slik at et forslag aldri kan bære
- * en verdi brukeren ikke kunne lagret selv.
- */
-export function normalizeSuggestion(parsed: Record<string, unknown>): CvImportSuggestion {
-  const skipped: string[] = [];
-  const rawCredits = Array.isArray(parsed.credits) ? parsed.credits : [];
-  const currentYear = new Date().getFullYear();
-
-  const credits: CvImportCredit[] = [];
-  for (const entry of rawCredits.slice(0, 200)) {
-    if (!entry || typeof entry !== "object") continue;
-    const row = entry as Record<string, unknown>;
-    const title = str(row.title);
-    if (!title) continue;
-
-    const category = str(row.category, 30);
-    const roleType = str(row.role_type, 40)?.toLowerCase() ?? null;
-    const yearRaw = Number(row.year);
-    const year =
-      Number.isFinite(yearRaw) && yearRaw >= 1888 && yearRaw <= currentYear + 5
-        ? Math.round(yearRaw)
-        : null;
-
-    credits.push({
-      category: category && CATEGORIES.has(category) ? (category as CvImportCredit["category"]) : "other",
-      title,
-      role_name: str(row.role_name),
-      role_type: roleType && ROLE_TYPES.has(roleType) ? roleType : null,
-      production_company: str(row.production_company),
-      director: str(row.director),
-      year,
-    });
+  // Ingen eksplisitt «rolle:»? Da er en tredje del oftest rollenavnet.
+  if (!roleName && remaining.length > 2) {
+    const candidate = remaining.find((part, index) => index > 1 && part !== company);
+    if (candidate) roleName = candidate.slice(0, 255);
   }
 
-  const profileRaw = (parsed.profile ?? {}) as Record<string, unknown>;
-  // Persondata modellen kan ha plukket opp, men som ikke skal foreslås.
-  for (const forbidden of ["email", "phone", "birth_date", "address", "personal_number", "references"]) {
-    if (profileRaw[forbidden]) skipped.push(forbidden);
+  return {
+    category,
+    title,
+    role_name: roleName,
+    role_type: detectRoleType(line),
+    production_company: company,
+    director,
+    year,
+  };
+}
+
+/** Hele teksten → forslag. Rene regler, ingen nettverkskall. */
+export function parseCvText(text: string): CvImportSuggestion {
+  const lines = text.split(/\r?\n/).slice(0, MAX_LINES);
+  const credits: CvImportCredit[] = [];
+  const skipped = new Set<string>();
+  let category: CvCreditCategory = "other";
+  let dramaSchool: string | null = null;
+
+  for (const rawLine of lines) {
+    const line = cleanPart(rawLine);
+    if (!line) continue;
+
+    const heading = SECTION_PATTERNS.find((s) => s.pattern.test(line) && line.length < 40);
+    if (heading) {
+      category = heading.category;
+      continue;
+    }
+
+    if (!dramaSchool && SCHOOL_PATTERN.test(line)) {
+      dramaSchool = line.slice(0, 255);
+      continue;
+    }
+
+    const personal = PERSONAL_DATA_PATTERNS.find((p) => p.pattern.test(line));
+    if (personal) {
+      // Meldes i gjennomgangen, men lagres aldri.
+      skipped.add(personal.label);
+      continue;
+    }
+
+    if (credits.length >= MAX_CREDITS) break;
+    const credit = parseCreditLine(line, category);
+    if (credit) credits.push(credit);
   }
 
   return {
     credits,
-    profile: {
-      display_name: str(profileRaw.display_name),
-      city: str(profileRaw.city, 120),
-      bio: str(profileRaw.bio, 600),
-      drama_school: str(profileRaw.drama_school),
-      skills: strList(profileRaw.skills),
-      languages: strList(profileRaw.languages),
-      dialects: strList(profileRaw.dialects),
-    },
-    skipped,
+    profile: { drama_school: dramaSchool },
+    skipped: Array.from(skipped),
   };
 }
 
@@ -257,14 +290,5 @@ export async function importCvFromFile(
     return { ok: false, reason: "empty_text" };
   }
 
-  let suggestion: CvImportSuggestion | null;
-  try {
-    suggestion = await parseCvWithClaude(text);
-  } catch (error) {
-    console.error("[talents/cv-import] Claude-kall feilet", error);
-    return { ok: false, reason: "ai_failed" };
-  }
-  if (!suggestion) return { ok: false, reason: "ai_unavailable" };
-
-  return { ok: true, suggestion, characters: text.length };
+  return { ok: true, suggestion: parseCvText(text), characters: text.length };
 }

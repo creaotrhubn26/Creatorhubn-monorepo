@@ -149,15 +149,9 @@ export interface CvImportSuggestion {
     year: number | null;
   }>;
   profile: {
-    display_name: string | null;
-    city: string | null;
-    bio: string | null;
     drama_school: string | null;
-    skills: string[];
-    languages: string[];
-    dialects: string[];
   };
-  /** Persondata modellen så, men som bevisst ikke foreslås. */
+  /** Linjer med persondata vi bevisst hoppet over. */
   skipped: string[];
 }
 
