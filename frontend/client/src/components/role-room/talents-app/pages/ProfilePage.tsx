@@ -114,10 +114,23 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
 
   useEffect(() => { void reload(); }, [reload]);
 
+  // Selvregistreringen oppretter en draft-rad med navn og e-post, så `talent`
+  // er IKKE null for en fersk skuespiller. Det som avgjør om hen trenger
+  // wizarden er om profilen har innhold — ellers møtte hen en profilside full
+  // av «Mangler» uten noen vei videre.
+  const harProfilInnhold = Boolean(
+    talent && (talent.bio || talent.headshot_url || talent.showreel_url || talent.city),
+  );
+
   // Kom hen hit fra «Sett opp profilen» på Hjem, skal wizarden åpne seg selv —
   // ellers måtte skuespilleren finne den samme knappen om igjen.
+  //
+  // Selvregistrering oppretter en draft-rad med navn og e-post, så `talent` er
+  // IKKE null for en fersk skuespiller. Vi ser på om profilen har innhold, ikke
+  // om raden finnes — ellers landet hen på en profilside full av «Mangler»
+  // uten noen vei videre.
   useEffect(() => {
-    if (loading || talent || demoMode) return;
+    if (loading || demoMode || harProfilInnhold) return;
     try {
       if (window.sessionStorage.getItem(OPEN_WIZARD_KEY) !== '1') return;
       window.sessionStorage.removeItem(OPEN_WIZARD_KEY);
@@ -125,7 +138,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
     } catch {
       // Ingen sessionStorage — knappen på siden fungerer fortsatt.
     }
-  }, [demoMode, loading, talent]);
+  }, [demoMode, harProfilInnhold, loading]);
 
   if (loading) {
     return (
@@ -152,7 +165,8 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
     );
   }
 
-  if (!talent) {
+  // `!talent` er med for at TypeScript skal smalne typen under.
+  if (!talent || !harProfilInnhold) {
     return (
       <Box sx={{ p: 3, maxWidth: 720, mx: 'auto' }}>
         <Box sx={cardSx}>
@@ -186,7 +200,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
         <OnboardingWizard
           open={wizardOpen}
           onClose={() => setWizardOpen(false)}
-          onDone={(t) => { setTalent(t); setWizardOpen(false); setSuccess('Profil opprettet! Du kan nå invitere partnere.'); }}
+          onDone={(t) => { setTalent(t); setWizardOpen(false); setSuccess('Profilen er lagret. Du er fortsatt usynlig for byråer til du deler den.'); }}
         />
       </Box>
     );
@@ -420,14 +434,12 @@ function OnboardingWizard({ open, onClose, onDone }: OnboardingWizardProps) {
     setSaving(true);
     setError(null);
     // Først opprett, så oppdater med all data
-    const created = await roleRoomTalentsService.createMyTalent({
+    // Selvregistreringen har allerede opprettet en draft-rad; da svarer
+    // create 409. Det er ikke en feil her — vi går rett videre til update og
+    // lar den avgjøre om noe faktisk gikk galt.
+    await roleRoomTalentsService.createMyTalent({
       display_name: form.display_name || undefined,
     });
-    if ('error' in created) {
-      setError(created.error);
-      setSaving(false);
-      return;
-    }
     const skills = form.skills.split(',').map((s) => ({ id: s.trim().toLowerCase().replace(/\s+/g, '_'), label: s.trim() })).filter((s) => s.label);
     const languages = form.languages.split(',').map((s) => {
       const [label, level] = s.split('|').map((p) => p.trim());
