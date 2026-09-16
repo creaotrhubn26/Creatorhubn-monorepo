@@ -1,0 +1,72 @@
+# AeroSpot — fastlane (speilet fra CaptureApp sitt oppsett).
+#
+#   fastlane ios beta        → archive + upload til TestFlight
+#   fastlane ios bump_build  → sett CFBundleVersion til epoch-sekunder
+#
+# Engangssteg som IKKE dekkes her: opprette appen i App Store Connect
+# (bundle id com.creatorhubn.aerospot) — se ../TESTFLIGHT.md.
+#
+# Credentials via env:
+#   APP_STORE_CONNECT_API_KEY_ID / _API_ISSUER_ID / _API_KEY_CONTENT (base64 .p8)
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.creatorhubn.aerospot"
+SCHEME         = "AeroSpot"
+PROJECT        = "AeroSpotApp.xcodeproj"
+
+def provisioning_xcargs
+  args = ["-allowProvisioningUpdates"]
+  if ENV["ASC_KEY_PATH"] && ENV["APP_STORE_CONNECT_API_KEY_ID"] && ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+    args << "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']}"
+    args << "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_ISSUER_ID']}"
+  end
+  args.join(" ")
+end
+
+platform :ios do
+  desc "Sett CFBundleVersion til epoch-sekunder (unikt + strengt økende)"
+  lane :bump_build do
+    # xcodegen resetter CURRENT_PROJECT_VERSION til "1" ved regenerering —
+    # epoch-sekunder er monotont og kolliderer aldri (samme grep som CaptureApp).
+    increment_build_number(build_number: Time.now.to_i.to_s, xcodeproj: PROJECT)
+  end
+
+  private_lane :setup_api_key do
+    if ENV["APP_STORE_CONNECT_API_KEY_ID"] && ENV["APP_STORE_CONNECT_API_ISSUER_ID"] && ENV["APP_STORE_CONNECT_API_KEY_CONTENT"]
+      app_store_connect_api_key(
+        key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+        issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
+        key_content: ENV["APP_STORE_CONNECT_API_KEY_CONTENT"],
+        is_key_content_base64: true,
+      )
+    end
+  end
+
+  desc "Archive + upload til TestFlight"
+  lane :beta do
+    setup_api_key
+    bump_build
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "build/",
+      output_name: "AeroSpot.ipa",
+      xcargs: provisioning_xcargs,
+      export_xcargs: "-allowProvisioningUpdates",
+    )
+
+    ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("Fant ingen IPA etter build_app") unless ipa_path && File.exist?(ipa_path)
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: File.exist?("changelog.txt") ? File.read("changelog.txt") : nil,
+    )
+  end
+end

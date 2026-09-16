@@ -81,6 +81,8 @@ docker/
 !ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
 !backend/gfpgan-runner/GPU_DEPLOY.md
 !apps/resolve-script-manager/RELEASE.md
+!apps/resolve-script-manager/docs/POST_AGENT_RESOLVE_MCP_TASKS.md
+!apps/resolve-script-manager/mcp/README.md
 # THE-ROLE-ROOM-strategi-dokumenter (produktdok, BankID, ENHETSOKONOMI, DPA, VERIFISERING)
 # Whitelistet 2026-06-07 — disse er kilden til sannhet for produkt-positionering og
 # må følges med i versjonkontroll for å holde landing-/pitch-/blog-arbeid i sync.
@@ -105,6 +107,8 @@ docs/
 !docs/post-agent/*.md
 !docs/leadgrid/
 !docs/leadgrid/*.md
+!docs/leadgrid/manual/
+!docs/leadgrid/manual/*.md
 !docs/dance/
 !docs/dance/*.md
 !docs/specs/
@@ -114,6 +118,7 @@ docs/
 !apps/resolve-script-manager/src/docs/
 !apps/resolve-script-manager/src/docs/*.md
 !apps/creatorhub-one-desk/docs/
+!apps/post-agent-premiere-plugin/README.md
 !apps/creatorhub-one-desk/docs/*.md
 !apps/creatorhub-one-desk/docs/legal/
 !apps/creatorhub-one-desk/docs/legal/*.md
@@ -240,3 +245,6 @@ ipad/CaptureApp/fastlane/report.xml
 ipad/CaptureApp/fastlane/README.md
 **/.tiktok-dev-playwright-state/
 ipad/StoryboardStudio/StoryboardStudio.xcodeproj
+ipad/AeroSpotApp/AeroSpotApp.xcodeproj
+ipad/AeroSpotApp/AeroSpot/Generated
+ipad/AeroSpotApp/screenshot-*.png
