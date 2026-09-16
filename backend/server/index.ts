@@ -494,6 +494,7 @@ import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
+import { registerRoleRoomAccessMatrixRoutes } from "./role-room-access-matrix-routes.js";
 import {
   readRoleRoomContinuityS3Config,
   roleRoomS3Client,
@@ -2721,6 +2722,7 @@ registerB2CompanyArchiveRoutes({
     return { bucketName: config.bucket, client };
   },
 });
+registerRoleRoomAccessMatrixRoutes({ app, requireAdminSession });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
 registerB2ArchiveCronRoutes({ app, pool });
 
