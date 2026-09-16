@@ -295,6 +295,20 @@ export function setupRoleRoomAgenciesRoutes(deps: RoleRoomAgenciesRoutesDeps): v
   });
 }
 
+const PUBLIC_LINK_KEYS = ["website", "imdb", "wikipedia", "facebook", "instagram", "additional"];
+const AGENCY_LINK_KEYS = ["agency_website", "agency_profile"];
+
+/** Plukk ut et delsett av profile_links. Speiler role-room-agency-search-routes. */
+function pickLinks(value: unknown, keys: string[]): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    if (typeof input[key] === "string") out[key] = input[key] as string;
+  }
+  return out;
+}
+
 /**
  * Maskér felter talenten ikke har gitt scope for. full_profile låser opp alt.
  * basic_profile (default) gir kun navn + by + land + bio + represented.
@@ -313,18 +327,25 @@ function maskTalentByScopes(row: Record<string, unknown>): Record<string, unknow
     bio: row.bio,
     represented: row.represented,
     profile_status: row.profile_status,
+    drama_school: row.drama_school,
+    // Byrå-lenkene ligger IKKE her — de følger contact_info, som resten av
+    // representasjonsinfoen.
+    profile_links: pickLinks(row.profile_links, PUBLIC_LINK_KEYS),
     granted_scopes: Array.from(scopes),
   };
 
   if (has("media_portfolio")) {
     masked.headshot_url = row.headshot_url;
     masked.showreel_url = row.showreel_url;
+    masked.showreel_url_2 = row.showreel_url_2;
+    masked.about_video_url = row.about_video_url;
     masked.resume_url = row.resume_url;
   }
   if (has("contact_info")) {
     masked.email = row.email;
     masked.phone = row.phone;
     masked.agency_name = row.agency_name;
+    masked.agency_links = pickLinks(row.profile_links, AGENCY_LINK_KEYS);
   }
   if (has("demographics")) {
     masked.age_range = row.age_range;

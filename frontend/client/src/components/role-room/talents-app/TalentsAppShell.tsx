@@ -38,6 +38,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DashboardIcon from '@mui/icons-material/Home';
 import GroupIcon from '@mui/icons-material/Group';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
@@ -52,6 +53,7 @@ export type TalentsAppPage =
   | 'dashboard'
   | 'registry'
   | 'profiles'
+  | 'cv'
   | 'selftapes'
   | 'auditions'
   | 'partners'
@@ -76,6 +78,7 @@ const MENU: Array<{ id: TalentsAppPage; label: string; Icon: React.ComponentType
   { id: 'dashboard', label: 'Hjem', Icon: DashboardIcon, ready: true },
   { id: 'registry', label: 'Talent Registry', Icon: GroupIcon, ready: true },
   { id: 'profiles', label: 'Min profil', Icon: PersonOutlineIcon, ready: true },
+  { id: 'cv', label: 'CV', Icon: DescriptionOutlinedIcon, ready: true },
   { id: 'partners', label: 'Partnere', Icon: HandshakeOutlinedIcon, ready: true },
   { id: 'partnerships', label: 'Partnerships', Icon: BusinessCenterOutlinedIcon, ready: true },
   { id: 'audit', label: 'Hvem har sett meg?', Icon: VisibilityIcon, ready: true },
