@@ -35,6 +35,7 @@ import type express from "express";
 import type { Pool } from "pg";
 import crypto from "node:crypto";
 import { sendTransactionalEmail } from "./transactional-email-service";
+import { recordConsent, resolveAuthMethod, sha256 } from "./consent-ledger-service.js";
 
 interface SessionLike {
   userId: string;
@@ -383,6 +384,38 @@ The Role Room Talents
             JSON.stringify({ via: "agency_proposal", proposal_id: proposal.id }),
           ],
         );
+      }
+
+      // Steg 3b: skriv samtykket i den append-only loggen.
+      //
+      // talent_consent_registry over er en TILSTAND som endres når scope
+      // trekkes. Loggen er beviset: denne personen sa ja til akkurat disse
+      // scopene for akkurat dette byrået på dette tidspunktet. Uten den har
+      // vi ingenting å vise til den dagen samtykket bestrides.
+      //
+      // Dokument-hashen dekker det talenten faktisk godtok — byrå, type og
+      // scope-liste — ikke en beskrivelse av det.
+      const consentStatement = [
+        `Samtykke til deling av profil`,
+        `Byrå: ${agency.name} (${agency.type}, id ${agency.id})`,
+        `Scopes: ${[...scopes].sort().join(", ")}`,
+        `Forslag: ${proposal.id}`,
+      ].join("\n");
+
+      try {
+        await recordConsent(pool, {
+          userId: session.userId,
+          subjectType: "agency_share",
+          subjectRef: String(agency.id),
+          documentHash: sha256(consentStatement),
+          action: "granted",
+          authMethod: await resolveAuthMethod(pool, session.userId),
+        });
+      } catch (ledgerError) {
+        // Samtykket er allerede gitt i registeret; en feilet logg skal ikke
+        // rulle det tilbake. Men den skal ikke være stille — et samtykke uten
+        // logg er et samtykke vi ikke kan bevise.
+        console.error("[talent-proposals accept] samtykke-logg feilet", ledgerError);
       }
 
       // Steg 4: marker akseptert

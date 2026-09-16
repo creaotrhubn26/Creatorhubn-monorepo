@@ -594,6 +594,7 @@ import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-ro
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
 import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
+import { setupRoleRoomEidRoutes } from "./role-room-eid-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
@@ -25689,6 +25690,15 @@ setupRoleRoomTalentCreditsRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
+});
+// Norsk eID (BankID) — identitetsverifisering for talents (migrasjon 0614).
+// Rutene svarer «ikke konfigurert» når EID_*-variablene mangler, slik at
+// flaten kan vise det i stedet for å feile.
+setupRoleRoomEidRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  getPublicOrigin: getDefaultRoleRoomPublicOrigin,
 });
 // B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
 // Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.

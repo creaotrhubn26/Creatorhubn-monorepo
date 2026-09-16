@@ -18,6 +18,13 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import multer from "multer";
+
+import {
+  CV_IMPORT_MAX_BYTES,
+  CV_IMPORT_MIME_TYPES,
+  importCvFromFile,
+} from "./role-room-talent-cv-import.js";
 
 interface SessionLike {
   userId: string;
@@ -203,6 +210,44 @@ export function setupRoleRoomTalentCreditsRoutes(
       return res.status(500).json({ error: "Klarte ikke å slette krediteringen" });
     }
   });
+
+  // ── POST /me/cv-import — PDF/Word → forslag ─────────────────────────
+  //
+  // Returnerer KUN et forslag. Ingenting lagres før skuespilleren har sett
+  // hva som ble hentet ut og trykket bekreft: en modell kan forveksle
+  // regissør og skuespiller, og en CV inneholder ofte persondata som ikke
+  // skal inn i et casting-register.
+  const cvUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: CV_IMPORT_MAX_BYTES },
+  });
+
+  app.post(
+    "/api/role-room/talents/me/cv-import",
+    cvUpload.single("file"),
+    async (req, res) => {
+      const talentId = await ownTalentId(req);
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      if (!file) return res.status(400).json({ error: "Ingen fil mottatt" });
+      if (!CV_IMPORT_MIME_TYPES.includes(file.mimetype)) {
+        return res.status(400).json({ error: "unsupported_type" });
+      }
+
+      try {
+        const result = await importCvFromFile(file.buffer, file.mimetype);
+        if (!result.ok) return res.status(422).json({ error: result.reason });
+        return res.json({
+          suggestion: result.suggestion,
+          characters: result.characters,
+        });
+      } catch (err) {
+        console.error("[talents/cv-import] failed", err);
+        return res.status(500).json({ error: "import_failed" });
+      }
+    },
+  );
 
   // ── GET /credits/suggest — autocomplete fra eksisterende data ───────
   //

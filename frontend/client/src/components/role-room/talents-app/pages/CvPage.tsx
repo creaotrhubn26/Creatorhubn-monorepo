@@ -29,6 +29,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import UploadFileIcon from '@mui/icons-material/UploadFileOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import MovieOutlinedIcon from '@mui/icons-material/MovieOutlined';
@@ -43,6 +44,7 @@ import roleRoomTalentsService, {
   type TalentCreditDraft,
 } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
+import CvImportDialog from '../components/CvImportDialog';
 
 interface CvPageProps {
   demoMode: boolean;
@@ -201,6 +203,7 @@ export default function CvPage({ demoMode }: CvPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string | null; draft: TalentCreditDraft } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -278,10 +281,27 @@ export default function CvPage({ demoMode }: CvPageProps) {
             Rollene dine, gruppert slik casting leser dem. Byråer ser CV-en kun hvis du har delt profilen.
           </Typography>
         </Box>
-        <Chip
-          label={`${credits.length} krediteringer`}
-          sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright, fontWeight: 600 }}
-        />
+        <Stack direction="row" spacing={1.2} alignItems="center">
+          <Chip
+            label={`${credits.length} krediteringer`}
+            sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright, fontWeight: 600 }}
+          />
+          <Button
+            startIcon={<UploadFileIcon />}
+            disabled={demoMode}
+            onClick={() => setImportOpen(true)}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              px: 2,
+              borderRadius: radius.sm,
+              background: palette.accentGradient,
+              color: '#fff',
+            }}
+          >
+            Importer CV
+          </Button>
+        </Stack>
       </Stack>
 
       {demoMode && (
@@ -321,6 +341,9 @@ export default function CvPage({ demoMode }: CvPageProps) {
               {rows.length === 0 ? (
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.88rem' }}>
                   Ingen ennå — {section.hint.toLowerCase()}.
+                  {credits.length === 0 && section.id === 'film_tv' ? (
+                    <> Har du CV-en som fil, er <strong>Importer CV</strong> raskeste vei.</>
+                  ) : null}
                 </Typography>
               ) : (
                 rows.map((credit) => (
@@ -336,6 +359,12 @@ export default function CvPage({ demoMode }: CvPageProps) {
           );
         })}
       </Stack>
+
+      <CvImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => void reload()}
+      />
 
       <Dialog
         open={Boolean(editing)}
