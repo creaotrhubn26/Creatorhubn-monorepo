@@ -64,8 +64,6 @@ export interface RoleRoomTalent {
   /** Satt av BankID-verifisering. Selve identiteten ligger i eid_identities. */
   identity_verified: boolean | null;
   identity_verified_at: string | null;
-  },
-
   physical_attributes: Record<string, string | number | boolean> | null;
   casting_photos: Partial<Record<'face_front' | 'face_profile' | 'full_body_front', string>> | null;
   /** Eget samtykke for etnisk opprinnelse — særlig kategori (GDPR art. 9). */
