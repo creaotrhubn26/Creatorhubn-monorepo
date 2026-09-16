@@ -6,6 +6,9 @@
  * kjeden ikke kan grene.
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 
@@ -61,6 +64,33 @@ describe("hashing", () => {
     const a = canonicalRow({ ...baseRow, subject_type: "ab", subject_ref: "c" });
     const b = canonicalRow({ ...baseRow, subject_type: "a", subject_ref: "bc" });
     expect(a).not.toBe(b);
+  });
+});
+
+/**
+ * Tidspunktet er den delen av raden som ikke kommer fra oss ved lesing: pg
+ * gir en Date tilbake, og Postgres lagrer mikrosekunder. Begge deler kan
+ * gjøre at en urørt kjede meldes brutt. Disse to testene dekker hver sin.
+ */
+describe("tidspunkt", () => {
+  it("hasher likt om created_at kommer tilbake som Date eller streng", () => {
+    const somString = computeRowHash(GENESIS_HASH, baseRow);
+    const somDate = computeRowHash(GENESIS_HASH, {
+      ...baseRow,
+      created_at: new Date(baseRow.created_at) as unknown as string,
+    });
+    expect(somDate).toBe(somString);
+  });
+
+  it("holder kolonnen på millisekundpresisjon i migrasjonen", () => {
+    const sql = readFileSync(
+      path.join(__dirname, "..", "migrations", "0615_consent_ledger.sql"),
+      "utf8",
+    );
+    // Uten (3) lagrer Postgres mikrosekunder. En rad skrevet med DEFAULT
+    // now() ville da hatt et tidspunkt ISO-strengen ikke kan gjenskape, og
+    // verifyChain ville meldt hash_mismatch på en kjede ingen hadde rørt.
+    expect(sql).toMatch(/created_at TIMESTAMPTZ\(3\) NOT NULL/);
   });
 });
 

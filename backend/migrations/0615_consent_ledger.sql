@@ -62,7 +62,12 @@ CREATE TABLE IF NOT EXISTS consent_ledger (
   auth_method VARCHAR(30) NOT NULL,
   auth_event_id UUID REFERENCES eid_auth_events(id),
 
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- (3) = millisekunder, med vilje. Postgres lagrer mikrosekunder, mens
+  -- tidspunktet som hashes er en ISO-streng med millisekunder. Uten
+  -- presisjonsgrensen ville en rad skrevet med DEFAULT now() fått et
+  -- tidspunkt som ikke kan gjenskapes fra JavaScript-siden, og verifyChain
+  -- ville meldt kjeden brutt uten at noen hadde rørt den.
+  created_at TIMESTAMPTZ(3) NOT NULL DEFAULT now(),
 
   -- Kjeden
   prev_hash CHAR(64) NOT NULL,
