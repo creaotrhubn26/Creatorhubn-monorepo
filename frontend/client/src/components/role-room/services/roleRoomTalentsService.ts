@@ -138,6 +138,29 @@ export interface RoleRoomMaskedTalent extends Partial<RoleRoomTalent> {
   granted_scopes: RoleRoomTalentConsentScope[];
 }
 
+export interface CvImportSuggestion {
+  credits: Array<{
+    category: TalentCreditCategory;
+    title: string;
+    role_name: string | null;
+    role_type: string | null;
+    production_company: string | null;
+    director: string | null;
+    year: number | null;
+  }>;
+  profile: {
+    display_name: string | null;
+    city: string | null;
+    bio: string | null;
+    drama_school: string | null;
+    skills: string[];
+    languages: string[];
+    dialects: string[];
+  };
+  /** Persondata modellen så, men som bevisst ikke foreslås. */
+  skipped: string[];
+}
+
 export type TalentCreditCategory = 'film_tv' | 'theatre' | 'commercial' | 'voice' | 'other';
 
 /** Én kreditering i skuespiller-CV-en (migrasjon 0611). */
@@ -197,6 +220,16 @@ const roleRoomTalentsService = {
     const payload = await r.json().catch(() => null);
     if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre samtykket' };
     return payload.talent as RoleRoomTalent;
+  },
+
+  /** Laster opp en CV (PDF/DOCX) og får et FORSLAG tilbake. Lagrer ingenting. */
+  async importCv(file: File): Promise<CvImportSuggestion | { error: string }> {
+    const body = new FormData();
+    body.append('file', file);
+    const r = await authFetch(`${BASE}/me/cv-import`, { method: 'POST', body });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'import_failed' };
+    return payload.suggestion as CvImportSuggestion;
   },
 
   async fetchMyCredits(): Promise<TalentCredit[]> {
