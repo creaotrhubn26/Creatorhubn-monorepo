@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Box } from '@mui/material';
-import { useViewport } from 'reactflow';
+import { useViewport } from '@xyflow/react';
 import type { Peer } from './presenceReducer';
 
 export interface CursorLayerProps {

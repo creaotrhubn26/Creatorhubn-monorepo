@@ -157,6 +157,10 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
   forgreninger/jumpere/notater, vedlegg variabler + komponenter, sidetall. `GET …/export.pdf?locale=`
   → 402 på Solo; knappen er låst med forklarende banner før man trykker (forebygg fremfor forklar).
 - Felles traversering `narrative-format/traverse.ts` (Markdown, CSV, PDF).
+- **`@xyflow/react` 12.11.6** erstatter `reactflow` 11 fullstendig (også admin/CustomerJourneyBuilder)
+  — samme globale `.react-flow__*`-CSS i begge gjør side-om-side utrygt. Typet lerret
+  (`NarrativeFlowNode`), `colorMode="dark"`. Evidence: `docs/evidence/2026-09-narrative-canvas-xyflow-12.yaml`.
+- Ikke gjort (bevisst): realtime-gating.
 
 
 ## Researchprogram

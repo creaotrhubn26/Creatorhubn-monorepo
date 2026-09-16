@@ -38,7 +38,7 @@ import {
   ReportProblemOutlined as WarningIcon,
 } from '@mui/icons-material';
 import { SnackbarProvider } from 'notistack';
-import type { Viewport } from 'reactflow';
+import type { Viewport } from '@xyflow/react';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import useBrandingSettings from '../hooks/useBrandingSettings';
 import { ProfessionModeChip } from '../shared/ProfessionModeChip';

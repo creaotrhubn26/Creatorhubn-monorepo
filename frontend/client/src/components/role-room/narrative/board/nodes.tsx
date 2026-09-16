@@ -1,5 +1,5 @@
 /**
- * reactflow-nodetyper for Story Graph.
+ * @xyflow/react (v12)-nodetyper for Story Graph.
  *
  * Kobling-regler (Arcweave):
  *  - element: ubegrenset ut/inn (én kilde-handle 'default')
@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Handle, Position, type NodeProps } from 'reactflow';
+import { Handle, Position, type Node, type NodeProps, type NodeTypes } from '@xyflow/react';
 import { Box, Chip, Typography } from '@mui/material';
 import {
   CallSplit as BranchIcon,
@@ -21,7 +21,8 @@ import { hasScript } from '@shared/narrative-script';
 import { htmlToText, type NarrativeElement } from '../narrativeTypes';
 import { narrativeColors, themeColors } from '../narrativeTheme';
 
-export interface NarrativeNodeData {
+// `type` (ikke `interface`) så den tilfredsstiller v12s `Record<string, unknown>`-krav til nodedata.
+export type NarrativeNodeData = {
   element: NarrativeElement;
   isStart: boolean;
   /** Tittel på jumper-målet (kun for kind=jumper). */
@@ -30,7 +31,10 @@ export interface NarrativeNodeData {
   componentNames?: string[];
   /** Sanntid: farger på andre brukere som har valgt elementet. */
   peerColors?: string[];
-}
+};
+
+/** Typet flow-node: nodetypen er elementets kind. */
+export type NarrativeFlowNode = Node<NarrativeNodeData, 'element' | 'branch' | 'jumper' | 'note'>;
 
 const HANDLE_STYLE: React.CSSProperties = {
   width: 12,
@@ -105,7 +109,7 @@ function ComponentChips({ names }: { names?: string[] }) {
   );
 }
 
-export const ElementNode = React.memo(function ElementNode({ data, selected }: NodeProps<NarrativeNodeData>) {
+export const ElementNode = React.memo(function ElementNode({ data, selected }: NodeProps<NarrativeFlowNode>) {
   return (
     <NodeFrame data={data} selected={!!selected}>
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
@@ -119,7 +123,7 @@ export const ElementNode = React.memo(function ElementNode({ data, selected }: N
   );
 });
 
-export const BranchNode = React.memo(function BranchNode({ data, selected }: NodeProps<NarrativeNodeData>) {
+export const BranchNode = React.memo(function BranchNode({ data, selected }: NodeProps<NarrativeFlowNode>) {
   const conditions = data.element.branchConditions;
   const count = Math.max(conditions.length, 1);
   return (
@@ -155,7 +159,7 @@ export const BranchNode = React.memo(function BranchNode({ data, selected }: Nod
   );
 });
 
-export const JumperNode = React.memo(function JumperNode({ data, selected }: NodeProps<NarrativeNodeData>) {
+export const JumperNode = React.memo(function JumperNode({ data, selected }: NodeProps<NarrativeFlowNode>) {
   return (
     <NodeFrame data={data} selected={!!selected} icon={<JumperIcon sx={{ fontSize: 16, color: '#60a5fa' }} />}>
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
@@ -166,7 +170,7 @@ export const JumperNode = React.memo(function JumperNode({ data, selected }: Nod
   );
 });
 
-export const NoteNode = React.memo(function NoteNode({ data, selected }: NodeProps<NarrativeNodeData>) {
+export const NoteNode = React.memo(function NoteNode({ data, selected }: NodeProps<NarrativeFlowNode>) {
   const colors = themeColors(data.element.theme === 'default' ? 'amber' : data.element.theme);
   return (
     <Box
@@ -197,4 +201,4 @@ export const NARRATIVE_NODE_TYPES = {
   branch: BranchNode,
   jumper: JumperNode,
   note: NoteNode,
-};
+} satisfies NodeTypes;

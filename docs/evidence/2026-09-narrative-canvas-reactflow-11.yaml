@@ -10,7 +10,7 @@ product: reactflow / @xyflow/react
 version_scope: "reactflow 11.11.4 (installed); @xyflow/react 12.x (migration target)"
 publication_date: "2026-09-14"
 valid_from: "2026-09"
-valid_to: "until the narrative canvas migrates to @xyflow/react v12"
+valid_to: "2026-09-16 — superseded by 2026-09-narrative-canvas-xyflow-12.yaml (migrated to @xyflow/react 12.11.6, reactflow 11 removed)"
 evidence_summary: >
   reactflow 11 is installed and bundled; its global CSS (reactflow/dist/style.css) is
   already imported by CustomerJourneyBuilder. v12 renames the package to @xyflow/react,

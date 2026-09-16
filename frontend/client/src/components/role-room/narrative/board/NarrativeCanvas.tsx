@@ -1,5 +1,5 @@
 /**
- * NarrativeCanvas — reactflow 11-lerret for ett brett.
+ * NarrativeCanvas — @xyflow/react (v12)-lerret for ett brett.
  *
  * Elementer → noder (kind = nodetype), koblinger → kanter (sourceHandle =
  * connection.sourceOutputKey). Dra → batch-flytting via storen (debounced).
@@ -7,26 +7,27 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   Controls,
   MiniMap,
   ReactFlowProvider,
   applyNodeChanges,
   useReactFlow,
-  type Connection,
   type Edge,
-  type Node,
+  type IsValidConnection,
   type NodeChange,
   type NodeMouseHandler,
   type OnConnect,
   type OnEdgesDelete,
+  type OnNodeDrag,
   type OnNodesDelete,
   type Viewport,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { Box } from '@mui/material';
-import { NARRATIVE_NODE_TYPES, type NarrativeNodeData } from './nodes';
+import { NARRATIVE_NODE_TYPES, type NarrativeFlowNode, type NarrativeNodeData } from './nodes';
 import { CursorLayer } from '../realtime/CursorLayer';
 import type { Peer } from '../realtime/presenceReducer';
 import { canConnect } from '../state/graphOps';
@@ -60,7 +61,7 @@ export interface NarrativeCanvasProps {
 function toNodes(
   graph: NarrativeGraph, elements: NarrativeElement[], selectedElementId: string | null,
   peerSelectionColors: Record<string, string[]> = {},
-): Node<NarrativeNodeData>[] {
+): NarrativeFlowNode[] {
   const titleById = new Map(graph.elements.map((e) => [e.id, htmlToText(e.titleHtml) || 'Uten tittel']));
   const componentName = new Map(graph.components.map((c) => [c.id, c.name]));
   const componentsByElement = new Map<string, string[]>();
@@ -114,10 +115,10 @@ function CanvasInner(props: NarrativeCanvasProps) {
     peers, peerSelectionColors, onCursorMove,
   } = props;
 
-  const flow = useReactFlow();
+  const flow = useReactFlow<NarrativeFlowNode, Edge>();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const [nodes, setNodes] = useState<Node<NarrativeNodeData>[]>(() => toNodes(graph, elements, selectedElementId, peerSelectionColors));
+  const [nodes, setNodes] = useState<NarrativeFlowNode[]>(() => toNodes(graph, elements, selectedElementId, peerSelectionColors));
   const dragging = useRef(false);
 
   // Synk fra graf → noder, men ikke midt i et drag (ellers hopper noden tilbake).
@@ -145,14 +146,15 @@ function CanvasInner(props: NarrativeCanvasProps) {
   }, [flow, registerCenterResolver]);
 
   useEffect(() => {
-    if (initialViewport) flow.setViewport(initialViewport, { duration: 0 });
-    else flow.fitView({ padding: 0.2, duration: 0 });
+    // v12: setViewport/fitView returnerer Promise — vi trenger ikke vente.
+    if (initialViewport) void flow.setViewport(initialViewport, { duration: 0 });
+    else void flow.fitView({ padding: 0.2, duration: 0 });
     // Kun ved bytte av brett.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((nds) => applyNodeChanges(changes, nds) as Node<NarrativeNodeData>[]);
+  const onNodesChange = useCallback((changes: NodeChange<NarrativeFlowNode>[]) => {
+    setNodes((nds) => applyNodeChanges(changes, nds));
     for (const ch of changes) {
       if (ch.type === 'select') {
         if (ch.selected) onSelectElement(ch.id);
@@ -161,7 +163,7 @@ function CanvasInner(props: NarrativeCanvasProps) {
   }, [onSelectElement]);
 
   const onNodeDragStart = useCallback(() => { dragging.current = true; }, []);
-  const onNodeDragStop = useCallback((_e: React.MouseEvent, _node: Node, draggedNodes: Node[]) => {
+  const onNodeDragStop: OnNodeDrag<NarrativeFlowNode> = useCallback((_e, _node, draggedNodes) => {
     dragging.current = false;
     const moved = (draggedNodes.length ? draggedNodes : [_node]).map((n) => ({
       id: n.id, x: Math.round(n.position.x), y: Math.round(n.position.y),
@@ -171,16 +173,16 @@ function CanvasInner(props: NarrativeCanvasProps) {
 
   const elementById = useMemo(() => new Map(elements.map((e) => [e.id, e])), [elements]);
 
-  const isValidConnection = useCallback((c: Connection) =>
-    canConnect(elementById.get(c.source ?? ''), elementById.get(c.target ?? '')), [elementById]);
+  // v12: kalles med Connection | Edge; source/target er alltid strenger.
+  const isValidConnection: IsValidConnection<Edge> = useCallback((c) =>
+    canConnect(elementById.get(c.source), elementById.get(c.target)), [elementById]);
 
   const handleConnect: OnConnect = useCallback((c) => {
-    if (!c.source || !c.target) return;
     if (!isValidConnection(c)) return;
     onConnect({ sourceId: c.source, targetId: c.target, sourceOutputKey: c.sourceHandle ?? 'default' });
   }, [isValidConnection, onConnect]);
 
-  const handleNodesDelete: OnNodesDelete = useCallback((deleted) => {
+  const handleNodesDelete: OnNodesDelete<NarrativeFlowNode> = useCallback((deleted) => {
     onDeleteElements(deleted.map((n) => n.id));
   }, [onDeleteElements]);
 
@@ -188,7 +190,7 @@ function CanvasInner(props: NarrativeCanvasProps) {
     onDeleteConnections(deleted.map((e) => e.id));
   }, [onDeleteConnections]);
 
-  const handleNodeDoubleClick: NodeMouseHandler = useCallback((_e, node) => onOpenElement(node.id), [onOpenElement]);
+  const handleNodeDoubleClick: NodeMouseHandler<NarrativeFlowNode> = useCallback((_e, node) => onOpenElement(node.id), [onOpenElement]);
 
   return (
     <Box
@@ -213,10 +215,11 @@ function CanvasInner(props: NarrativeCanvasProps) {
           </marker>
         </defs>
       </svg>
-      <ReactFlow
+      <ReactFlow<NarrativeFlowNode, Edge>
         nodes={nodes}
         edges={edges}
         nodeTypes={NARRATIVE_NODE_TYPES}
+        colorMode="dark"
         onNodesChange={onNodesChange}
         onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}

@@ -34,14 +34,16 @@ test.describe('Story Graph — sanntid', () => {
     ws.serverSend({ type: 'narrative:selection', clientId: 'c-kari', userId: 'u-kari', payload: { elementIds: ['nel_start'] } });
     await expect.poll(async () => page.getByTestId('narrative-node-nel_start').evaluate((el) => getComputedStyle(el).borderColor)).toBe('rgb(251, 191, 36)');
 
-    // Kari endrer grafen (server-push) → klienten laster på nytt og ser det nye elementet
+    // Kari endrer grafen (server-push) → klienten laster på nytt og ser det nye elementet.
+    // Posisjonen ligger innenfor synlig viewport: v12 rendrer ikke noder utenfor skjermen
+    // (onlyRenderVisibleElements), så en node ved y=400 ville vært hentet, men ikke i DOM.
     const g = getMockGraph(page)!;
-    g.elements.push({ id: 'nel_remote', projectId: 'proj-game-2026', boardId: 'nbd_1', kind: 'element', titleHtml: '<p>Fra Kari</p>', contentHtml: '', x: 40, y: 400, width: 260, height: 120, theme: 'blue', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [], version: 1, sortOrder: 9, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), i18n: {} });
+    g.elements.push({ id: 'nel_remote', projectId: 'proj-game-2026', boardId: 'nbd_1', kind: 'element', titleHtml: '<p>Fra Kari</p>', contentHtml: '', x: 40, y: 250, width: 260, height: 120, theme: 'blue', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [], version: 1, sortOrder: 9, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), i18n: {} });
     ws.serverSend({ type: 'narrative:graph_changed', payload: { kind: 'element', ids: ['nel_remote'], actorUserId: 'u-kari', at: new Date().toISOString() } });
     await expect(page.getByTestId('narrative-node-nel_remote')).toBeVisible();
 
     // Egen endring (actor = meg) trigger ikke reload: legg til et element i mocken uten å pushe det
-    g.elements.push({ ...g.elements[g.elements.length - 1], id: 'nel_silent', titleHtml: '<p>Stille</p>', y: 600 });
+    g.elements.push({ ...g.elements[g.elements.length - 1], id: 'nel_silent', titleHtml: '<p>Stille</p>', x: 400, y: 250 });
     ws.serverSend({ type: 'narrative:graph_changed', payload: { kind: 'element', ids: ['nel_silent'], actorUserId: 'u-e2e', at: new Date().toISOString() } });
     await page.waitForTimeout(700);
     await expect(page.getByTestId('narrative-node-nel_silent')).toHaveCount(0);
