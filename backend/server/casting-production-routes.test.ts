@@ -77,6 +77,119 @@ function createApp(
   return app;
 }
 
+describe('production day change impact', () => {
+  const PATH = `/api/role-room/projects/${PROJECT_ID}/production-days/day-6/impact`;
+
+  const impactQuery = (counts: Record<string, number>, dayDate: string | null = '2026-09-20') =>
+    vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
+        return { rows: dayDate ? [{ id: 'day-6', date: dayDate }] : [], rowCount: dayDate ? 1 : 0 };
+      }
+      const table = Object.keys(counts).find((name) => text.includes(name));
+      return { rows: [{ count: table ? counts[table] : 0 }], rowCount: 1 };
+    });
+
+  it('lists what breaks and flags the blocking one', async () => {
+    const app = createApp(impactQuery({ role_room_call_sheet_deliveries: 1, equipment_bookings: 2 }));
+
+    const response = await request(app)
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.from).toBe('2026-09-20');
+    expect(response.body.to).toBe('2026-09-24');
+    expect(response.body.blocking).toBe(true);
+    expect(response.body.impacts.map((i: { area: string }) => i.area)).toContain('call_sheet');
+  });
+
+  it('says nothing changes when the date is the same', async () => {
+    const app = createApp(impactQuery({ role_room_call_sheet_deliveries: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?date=2026-09-20`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ unchanged: true, impacts: [], blocking: false });
+  });
+
+  it('rejects a date it cannot parse instead of guessing', async () => {
+    const app = createApp(impactQuery({}));
+
+    const response = await request(app)
+      .get(`${PATH}?date=torsdag`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(400);
+  });
+
+  it('hides a day that does not belong to the project', async () => {
+    const app = createApp(impactQuery({}, null));
+
+    const response = await request(app)
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('fails loudly rather than reporting an empty impact list', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
+        return { rows: [{ id: 'day-6', date: '2026-09-20' }], rowCount: 1 };
+      }
+      throw new Error('database unavailable');
+    });
+
+    const response = await request(createApp(query))
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('impact_unavailable');
+  });
+
+  it('requires the same grant as moving the day', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: false, member_role: 'viewer', member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await request(createApp(query))
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+  });
+});
+
 describe('project access endpoint', () => {
   const accessQuery = (row: Record<string, unknown> | null) => vi.fn(async (text: string) => {
     if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) {
