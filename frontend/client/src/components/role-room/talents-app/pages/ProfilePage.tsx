@@ -23,6 +23,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  Link as MuiLink,
   MenuItem,
   Stack,
   Step,
@@ -38,7 +39,8 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useCallback, useEffect, useState } from 'react';
 
-import roleRoomTalentsService, { type RoleRoomTalent, type TalentAvailabilityWindow } from '../../services/roleRoomTalentsService';
+import roleRoomTalentsService, {
+  type TalentProfileLinkKey, type RoleRoomTalent, type TalentAvailabilityWindow } from '../../services/roleRoomTalentsService';
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import { OPEN_WIZARD_KEY } from '../components/TalentsHowItWorksCard';
@@ -253,8 +255,48 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
         <Stack spacing={1.2}>
           <MediaRow label="Headshot" url={talent.headshot_url} />
           <MediaRow label="Showreel" url={talent.showreel_url} />
+          <MediaRow label="Showreel 2" url={talent.showreel_url_2} />
+          <MediaRow label="«Om meg»-video" url={talent.about_video_url} />
           <MediaRow label="CV" url={talent.resume_url} />
         </Stack>
+      </Box>
+
+      {/* Lenkene casting-byråer spør om */}
+      <Box sx={{ ...cardSx, mb: 2 }}>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, mb: 1.4 }}>Lenker</Typography>
+        {talent.drama_school ? (
+          <Stack direction="row" justifyContent="space-between" sx={{ py: 0.9, borderBottom: `1px solid ${palette.borderSubtle}` }}>
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem' }}>Dramaskole</Typography>
+            <Typography sx={{ color: palette.textPrimary, fontSize: '0.9rem' }}>{talent.drama_school}</Typography>
+          </Stack>
+        ) : null}
+        {LINK_FIELDS.map((field) => {
+          const url = talent.profile_links?.[field.key];
+          return (
+            <Stack
+              key={field.key}
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+              spacing={2}
+              sx={{ py: 0.9, borderBottom: `1px solid ${palette.borderSubtle}`, '&:last-of-type': { borderBottom: 'none' } }}
+            >
+              <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem' }}>{field.label}</Typography>
+              {url ? (
+                <MuiLink
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ color: palette.accentBright, fontSize: '0.88rem', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {url.replace(/^https?:\/\//, '')}
+                </MuiLink>
+              ) : (
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem', fontStyle: 'italic' }}>Mangler</Typography>
+              )}
+            </Stack>
+          );
+        })}
       </Box>
 
       {/* Ferdigheter & språk */}
@@ -600,6 +642,18 @@ interface ProfileEditDialogProps {
   onError: (msg: string) => void;
 }
 
+/** Lenkene casting-byråer ber om, i den rekkefølgen skjemaene deres bruker. */
+const LINK_FIELDS: Array<{ key: TalentProfileLinkKey; label: string; placeholder: string }> = [
+  { key: 'agency_website', label: 'Byråets nettside', placeholder: 'https://…' },
+  { key: 'agency_profile', label: 'Byrå-profil (lenke til deg hos byrået)', placeholder: 'https://…' },
+  { key: 'website', label: 'Egen nettside', placeholder: 'https://…' },
+  { key: 'imdb', label: 'IMDb (eller annen CV-lenke)', placeholder: 'https://imdb.com/name/…' },
+  { key: 'wikipedia', label: 'Wikipedia', placeholder: 'https://no.wikipedia.org/…' },
+  { key: 'facebook', label: 'Facebook', placeholder: 'https://facebook.com/…' },
+  { key: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/…' },
+  { key: 'additional', label: 'Annen lenke', placeholder: 'https://…' },
+];
+
 function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileEditDialogProps) {
   const [form, setForm] = useState({
     display_name: talent.display_name,
@@ -610,6 +664,10 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
     headshot_url: talent.headshot_url ?? '',
     showreel_url: talent.showreel_url ?? '',
     resume_url: talent.resume_url ?? '',
+    showreel_url_2: talent.showreel_url_2 ?? '',
+    about_video_url: talent.about_video_url ?? '',
+    drama_school: talent.drama_school ?? '',
+    links: { ...(talent.profile_links ?? {}) } as Record<string, string>,
     availability_status: talent.availability_status,
     windows: (talent.availability_windows ?? []) as TalentAvailabilityWindow[],
     skills: (talent.skills ?? []).map((s) => (typeof s === 'string' ? s : s.label)).join(', '),
@@ -638,6 +696,14 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
       headshot_url: form.headshot_url || undefined,
       showreel_url: form.showreel_url || undefined,
       resume_url: form.resume_url || undefined,
+      showreel_url_2: form.showreel_url_2 || undefined,
+      about_video_url: form.about_video_url || undefined,
+      drama_school: form.drama_school || undefined,
+      // Tomme felter sendes ikke — serveren dropper dem uansett, men da
+      // slipper vi å overskrive en lenke med tom streng ved et uhell.
+      profile_links: Object.fromEntries(
+        Object.entries(form.links).filter(([, url]) => url.trim()),
+      ) as Record<string, string>,
       availability_status: form.availability_status,
       // Behold kun gyldige vinduer (begge datoer satt, start ≤ slutt).
       availability_windows: form.windows
@@ -686,6 +752,31 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
             value={form.resume_url}
             onChange={(url) => setForm({ ...form, resume_url: url ?? '' })}
           />
+          {/* Feltene casting-byråer spør om. Rekkefølgen følger skjemaene
+              deres, så det er lett å fylle ut fra en byrå-forespørsel. */}
+          <TextField label="Showreel 2 (lenke)" value={form.showreel_url_2} onChange={(e) => setForm({ ...form, showreel_url_2: e.target.value })} fullWidth size="small" placeholder="https://vimeo.com/…" />
+          <TextField label="«Om meg»-video (lenke)" value={form.about_video_url} onChange={(e) => setForm({ ...form, about_video_url: e.target.value })} fullWidth size="small" placeholder="https://…" />
+          <TextField label="Dramaskole" value={form.drama_school} onChange={(e) => setForm({ ...form, drama_school: e.target.value })} fullWidth size="small" placeholder="Teaterhøgskolen, LAMDA …" />
+
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 0.8 }}>Lenker</Typography>
+            <Stack spacing={1.4}>
+              {LINK_FIELDS.map((field) => (
+                <TextField
+                  key={field.key}
+                  label={field.label}
+                  value={form.links[field.key] ?? ''}
+                  onChange={(e) => setForm({ ...form, links: { ...form.links, [field.key]: e.target.value } })}
+                  fullWidth
+                  size="small"
+                  placeholder={field.placeholder}
+                />
+              ))}
+            </Stack>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 1 }}>
+              Byrå-lenkene deles kun med partnere du har gitt kontaktinfo-tilgang. De øvrige følger profilen din.
+            </Typography>
+          </Box>
           <TextField select label="Tilgjengelighet" value={form.availability_status} onChange={(e) => setForm({ ...form, availability_status: e.target.value as RoleRoomTalent['availability_status'] })} fullWidth size="small">
             <MenuItem value="open">Tilgjengelig</MenuItem>
             <MenuItem value="limited">Begrenset</MenuItem>
