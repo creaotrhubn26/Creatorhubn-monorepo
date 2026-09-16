@@ -1,6 +1,6 @@
 # Leadgrid Markedssjef-modus — Role Room-agentens markedsplan i Leadgrid-skall
 
-**Status:** Fase 0 + fase 1 (chat-agent) levert. **Modul:** `leadgrid:marketing` (opt-in).
+**Status:** Fase 0 + fase 1 (chat-agent) + UX-rework av siden levert. **Modul:** `leadgrid:marketing` (opt-in).
 **Eier:** Leadgrid. **Sist oppdatert:** 2026-09-16.
 
 ## Hva det er
@@ -82,7 +82,8 @@ Miljø: `ANTHROPIC_API_KEY` (bootstrap + plan), valgfritt `ROLE_ROOM_BOOTSTRAP_O
 
 ## Verifisering
 
-- `cd backend && npm run test:unit -- server/leadgrid-marketing-bridge.test.ts`
+- `cd backend && npm run test:unit -- server/leadgrid-marketing-bridge.test.ts server/leadgrid-marketing-routes.stream.test.ts`
+- `cd frontend && npx vitest run client/src/components/leadgrid/marketingFlowState.test.ts`
 - Manuelt: sett entitlement-raden; logg inn som markedssjef; åpne
   `/leadgrid/markedsforing`; kjør «Kartlegg organisasjonen» → rad i
   `role_room_research_versions` med `project_id = 'lg-…'`; «Generer markedsplan» →
@@ -121,6 +122,103 @@ antall leads per status og forfalte oppfølginger. Kun aggregater, ingen navn.
 iPad: `/threads/:id/messages` sender nå klientens `context` og `surface` videre (ble kastet
 før). `context.leads` tas imot men rendres ikke i prompten ennå, og `leadgrid_*`-verktøyene
 appen forventer har ingen server-side skjema — begge er fase 1b.
+
+## UX-kontrakt for siden (brukersentrert)
+
+Siden `pages/leadgrid-markedsforing.tsx` er en **tilstandsmaskin**
+(`components/leadgrid/marketingFlowState.ts`, ren og testet): rå input (modul, prosjekt,
+status, kjørende mutasjoner, postfremdrift) → én tilstand med **én primærhandling**.
+Sekundære handlinger ligger i en overflow-meny. Oppsett er en vertikal stepper
+Kartlegg → Plan → Poster der bare aktivt steg er utfoldet; steady-state (aktiv plan
+med poster) viser arbeidsflaten øverst, oppsettet som én linje og chatten kollapsbar.
+
+| Tilstand | Når | Primærhandling | Sekundært |
+|---|---|---|---|
+| `locked` | modul av / `module_locked` | — (salgskort med CTA `/leadgrid/priser`) | — |
+| `no_project` | ingen prosjekt valgt | — | — |
+| `loading` | modul/prosjekter/status hentes | — | — |
+| `access_denied` | `mangler_tillatelse` / `ikke_medlem_av_org` / annet | — | — |
+| `org_incomplete` | org uten nettsted og org.nr. | `edit_org_profile` (inline-skjema når `can_edit_profile`; ellers «kopier forespørsel») | — |
+| `ready_to_map` | ingen kartlegging | `map` | — |
+| `mapping` | SSE-stream kjører (ekte steg) | — | — |
+| `map_failed` | handshake-/streamfeil | `retry_map` | — |
+| `mapped_incomplete` | `readiness.ready = false` | `remap` (+ `extraContext`-felt) | — |
+| `ready_to_plan` | kartlagt, ingen plan | `generate_plan` | `remap` |
+| `planning` | generate/activate kjører | — | — |
+| `plan_failed` | generate feilet | `retry_plan` | `remap` |
+| `plan_draft` | plan i `draft` | `activate_plan` | `new_plan`, `remap` |
+| `generating_posts` | aktiv plan, poster ikke `complete` | — («n av 30», polles hvert 4. s) | `open_chat` |
+| `active` | aktiv plan med poster (steady-state) | `open_chat` | `new_plan`, `remap` |
+
+Ærlig fremdrift: kartlegging via `POST /api/leadgrid/marketing/bootstrap/stream` (SSE
+`start`/`stage`/`done`/`error`, samme kontrakt som Role Rooms producer-bootstrap-stream;
+`useResearchProgress({ endpoint, persistSnapshot: false })`), plan/poster via
+`MarketingGenerationProgress`, poster via `GET /marketing-plan/:planId/posts/progress`
+(lg-eier-erstatning i `role-room-marketing-plan-routes.ts`). Toast på hver ferdig/feilet
+operasjon, `aria-live="polite"` på fremdriftsområdene.
+
+Forebygg feil: status gir `organization.can_edit_profile` (rolle `admin`) og
+`org_number_editable` (admin **og** org-eier) så inline-skjemaet bare vises når
+`PATCH /api/admin-room/lead-map/organizations/:id/profile` faktisk vil lykkes; lagring
+starter kartleggingen direkte. Manglende readiness-felter oversettes
+(`MISSING_FIELD_LABELS`) og kan fylles i et tekstfelt som sendes som `extraContext`.
+«Ny plan» krever bekreftelse (ny plan = utkast ved siden av den aktive; poster slettes ikke).
+
+Konsistens: `LeadgridProjectSelect` (delt prosjektvelger, `rr_lead_map_active_project`),
+`AiConsentGate` `copy`-prop og `RoleRoomAgentChatPanel` `consentCopy`/`emptyStateText`
+(markedssjef-kopi; Role Room-default uendret), `--role-cyan: #a78bfa` på wrapperen.
+
+### Måling: tid til første aktive plan
+
+Ingen ny instrumentering — måles fra eksisterende tidsstempler per `lg-`-nøkkel:
+
+```sql
+WITH first_map AS (
+  SELECT project_id, MIN(generated_at) AS mapped_at
+    FROM role_room_research_versions
+   WHERE project_id LIKE 'lg-%'
+   GROUP BY project_id
+), first_plan AS (
+  SELECT p.project_id, MIN(p.generated_at) AS planned_at,
+         MIN(po.created_at) AS first_post_at
+    FROM role_room_marketing_plans p
+    LEFT JOIN role_room_marketing_plan_posts po ON po.plan_id = p.id
+   WHERE p.project_id LIKE 'lg-%' AND p.status IN ('active', 'draft')
+   GROUP BY p.project_id
+)
+SELECT lp.organization_id,
+       m.project_id,
+       m.mapped_at,
+       f.planned_at,
+       f.first_post_at,
+       f.planned_at   - m.mapped_at AS map_to_plan,
+       f.first_post_at - m.mapped_at AS map_to_first_post
+  FROM first_map m
+  JOIN first_plan f USING (project_id)
+  JOIN leadgrid_projects lp ON lp.id = substr(m.project_id, 4)
+ ORDER BY m.mapped_at DESC;
+```
+
+Ukentlig aktive orger (planer eller poster rørt siste 7 dager):
+
+```sql
+SELECT lp.organization_id, COUNT(DISTINCT p.id) AS plans_touched
+  FROM role_room_marketing_plans p
+  JOIN leadgrid_projects lp ON lp.id = substr(p.project_id, 4)
+ WHERE p.project_id LIKE 'lg-%' AND p.updated_at > now() - interval '7 days'
+ GROUP BY lp.organization_id;
+```
+
+Mål for demoen: kartlegging + plan under 3 minutter (`map_to_plan`), uten at brukeren
+må forlate siden for å rette org-profilen.
+
+### Oppfølginger fra UX-reworken
+
+- De fire andre Leadgrid-sidene (deals, workflows, import, connectors) kopierer fortsatt
+  prosjektvelgeren; bytt til `LeadgridProjectSelect` når de likevel røres.
+- `RoleRoomAgentChatPanel` har ~78 hardkodede farger; kun de tre `var(--role-cyan)`-
+  stedene følger Leadgrid-paletten. Egen refaktor.
+- Kanban-PATCH i Leadgrid går utenom `applyStageChange` (observert, ikke rørt).
 
 ## Kjente hull (fase 1b–2)
 

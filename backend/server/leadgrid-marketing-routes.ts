@@ -41,7 +41,10 @@ import {
   loadAccessibleLeadgridProject,
   type LeadgridSession,
 } from "./leadgrid-project-access.js";
-import { generateRoleRoomAgentProducerBootstrap } from "./role-room-agent.js";
+import {
+  generateRoleRoomAgentProducerBootstrap,
+  type RoleRoomAgentProgressSink,
+} from "./role-room-agent.js";
 import {
   loadApprovedNaceBusinessModelOverrides,
   loadApprovedNaceChannelPriorityOverrides,
@@ -70,7 +73,15 @@ interface OrganizationProfileRow {
   nace_code: string | null;
   nace_description: string | null;
   city: string | null;
+  owner_user_id: string | null;
 }
+
+/**
+ * Speiler reglene i lead-map-profile-routes.ts (PATCH /organizations/:id/profile):
+ * kun org-rollen `admin` kan endre profilen, og `org_number` kun org-eier.
+ * Brukes så UI-et kan vise inline-skjema bare for dem som faktisk får lagre.
+ */
+const ORG_PROFILE_EDIT_ROLES = new Set(["admin"]);
 
 function requestedProjectId(req: Request): string | null {
   const raw =
@@ -105,7 +116,8 @@ async function loadOrganizationProfile(
   organizationId: string,
 ): Promise<OrganizationProfileRow | null> {
   const r = await pool.query<OrganizationProfileRow>(
-    `SELECT id::text, name, website, org_number, industry, nace_code, nace_description, city
+    `SELECT id::text, name, website, org_number, industry, nace_code, nace_description, city,
+            owner_user_id
        FROM organizations
       WHERE id = $1::uuid
       LIMIT 1`,
@@ -223,6 +235,11 @@ export function registerLeadgridMarketingRoutes(deps: Deps): void {
                 nace_description: org.nace_description,
                 city: org.city,
                 can_bootstrap: Boolean(normalizeWebsite(org.website) || org.org_number),
+                // Feilforebygging i UI: vis inline-skjema kun når lagring vil lykkes.
+                can_edit_profile: ORG_PROFILE_EDIT_ROLES.has(access.role),
+                org_number_editable:
+                  ORG_PROFILE_EDIT_ROLES.has(access.role)
+                  && org.owner_user_id === access.session.userId,
               }
             : null,
           bootstrap: latest
@@ -251,7 +268,106 @@ export function registerLeadgridMarketingRoutes(deps: Deps): void {
     },
   );
 
-  // POST /api/leadgrid/marketing/bootstrap { projectId }
+  type BootstrapPrep =
+    | { ok: true; org: OrganizationProfileRow; websiteUrl: string | null; organizationNumber: string | null }
+    | { ok: false; status: 404 | 409; body: Record<string, unknown> };
+
+  async function prepareBootstrap(access: LeadgridMarketingAccess): Promise<BootstrapPrep> {
+    const org = await loadOrganizationProfile(pool, access.organizationId);
+    if (!org) return { ok: false, status: 404, body: { error: "organization_not_found" } };
+    const websiteUrl = normalizeWebsite(org.website);
+    const organizationNumber = (org.org_number ?? "").trim() || null;
+    if (!websiteUrl && !organizationNumber) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: "org_profile_incomplete",
+          missing: ["website", "org_number"],
+          detail:
+            "Legg inn nettsted eller organisasjonsnummer på organisasjonen før markedsplanen kan bygges.",
+        },
+      };
+    }
+    return { ok: true, org, websiteUrl, organizationNumber };
+  }
+
+  /** Brukerens egne stikkord (f.eks. målgruppe) når kartleggingen manglet felter. */
+  function readExtraContext(req: Request): string | null {
+    const raw = (req.body as Record<string, unknown> | undefined)?.extraContext;
+    if (typeof raw !== "string") return null;
+    const trimmed = raw.trim();
+    return trimmed ? trimmed.slice(0, 2000) : null;
+  }
+
+  async function runBootstrap(
+    access: LeadgridMarketingAccess,
+    prep: Extract<BootstrapPrep, { ok: true }>,
+    opts: {
+      researchId: string;
+      userExtraContext: string | null;
+      onProgress?: RoleRoomAgentProgressSink;
+    },
+  ) {
+    const [learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides] =
+      await Promise.all([
+        loadApprovedNaceBusinessModelOverrides(pool),
+        loadApprovedNaceChannelPriorityOverrides(pool),
+      ]);
+    const extraContext = [
+      buildOrgExtraContext(prep.org, access.projectName),
+      opts.userExtraContext ? `Fra markedssjefen: ${opts.userExtraContext}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const result = await withAIQuota("claude", access.organizationId, () =>
+      generateRoleRoomAgentProducerBootstrap(
+        {
+          projectId: access.projectKey,
+          projectName: access.projectName,
+          websiteUrl: prep.websiteUrl ?? undefined,
+          organizationNumber: prep.organizationNumber ?? undefined,
+          companyName: (prep.org.name ?? "").trim() || undefined,
+          extraContext,
+        },
+        {
+          researchId: opts.researchId,
+          learnedNaceBusinessModelOverrides,
+          learnedChannelPriorityOverrides,
+          ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
+        },
+      ),
+    );
+
+    const version = result.researchId
+      ? await persistResearchVersion(pool, {
+          projectId: access.projectKey,
+          researchId: result.researchId,
+          generatedBy: access.session.email ?? access.session.userId,
+          serializedResult: result,
+          serviceLatencies: result.serviceLatencies ?? null,
+          fallbacksUsed: result.fallbacksUsed ?? [],
+          totalMs: result.serviceLatencies?.totalMs ?? null,
+          provider: result.provider ?? null,
+          model: result.model ?? null,
+        })
+      : null;
+
+    const readiness = checkMarketingPlanReadiness(
+      result as Parameters<typeof checkMarketingPlanReadiness>[0],
+      false,
+    );
+    return {
+      project_key: access.projectKey,
+      research_id: result.researchId ?? opts.researchId,
+      version_number: version?.versionNumber ?? null,
+      readiness,
+      bootstrap: result,
+    };
+  }
+
+  // POST /api/leadgrid/marketing/bootstrap { projectId, extraContext? }
   app.post(
     "/api/leadgrid/marketing/bootstrap",
     perm,
@@ -260,76 +376,87 @@ export function registerLeadgridMarketingRoutes(deps: Deps): void {
       const access = await authorize(req, res);
       if (!access) return;
       try {
-        const org = await loadOrganizationProfile(pool, access.organizationId);
-        if (!org) {
-          res.status(404).json({ error: "organization_not_found" });
+        const prep = await prepareBootstrap(access);
+        if (!prep.ok) {
+          res.status(prep.status).json(prep.body);
           return;
         }
-        const websiteUrl = normalizeWebsite(org.website);
-        const organizationNumber = (org.org_number ?? "").trim() || null;
-        if (!websiteUrl && !organizationNumber) {
-          res.status(409).json({
-            error: "org_profile_incomplete",
-            missing: ["website", "org_number"],
-            detail:
-              "Legg inn nettsted eller organisasjonsnummer på organisasjonen før markedsplanen kan bygges.",
-          });
-          return;
-        }
-
-        const researchId = crypto.randomUUID();
-        const [learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides] =
-          await Promise.all([
-            loadApprovedNaceBusinessModelOverrides(pool),
-            loadApprovedNaceChannelPriorityOverrides(pool),
-          ]);
-
-        const result = await withAIQuota("claude", access.organizationId, () =>
-          generateRoleRoomAgentProducerBootstrap(
-            {
-              projectId: access.projectKey,
-              projectName: access.projectName,
-              websiteUrl: websiteUrl ?? undefined,
-              organizationNumber: organizationNumber ?? undefined,
-              companyName: (org.name ?? "").trim() || undefined,
-              extraContext: buildOrgExtraContext(org, access.projectName),
-            },
-            {
-              researchId,
-              learnedNaceBusinessModelOverrides,
-              learnedChannelPriorityOverrides,
-            },
-          ),
-        );
-
-        const version = result.researchId
-          ? await persistResearchVersion(pool, {
-              projectId: access.projectKey,
-              researchId: result.researchId,
-              generatedBy: access.session.email ?? access.session.userId,
-              serializedResult: result,
-              serviceLatencies: result.serviceLatencies ?? null,
-              fallbacksUsed: result.fallbacksUsed ?? [],
-              totalMs: result.serviceLatencies?.totalMs ?? null,
-              provider: result.provider ?? null,
-              model: result.model ?? null,
-            })
-          : null;
-
-        const readiness = checkMarketingPlanReadiness(
-          result as Parameters<typeof checkMarketingPlanReadiness>[0],
-          false,
-        );
-        res.json({
-          project_key: access.projectKey,
-          research_id: result.researchId ?? researchId,
-          version_number: version?.versionNumber ?? null,
-          readiness,
-          bootstrap: result,
+        const payload = await runBootstrap(access, prep, {
+          researchId: crypto.randomUUID(),
+          userExtraContext: readExtraContext(req),
         });
+        res.json(payload);
       } catch (err) {
         console.error("[leadgrid-marketing] bootstrap failed", err);
         res.status(500).json({ error: "bootstrap_failed" });
+      }
+    },
+  );
+
+  // POST /api/leadgrid/marketing/bootstrap/stream { projectId, extraContext? }
+  //
+  // SSE-variant med ekte fremdrift per steg (Brreg, nettsted, Google Places,
+  // konkurrenter, syntese) — speiler /api/role-room/agent/producer-bootstrap-
+  // stream, men med Leadgrid-autorisasjon og AI-kvote. Hendelser:
+  //   start  { projectKey, researchId, startedAt }
+  //   stage  { type: 'stage_start'|'stage_done'|'stage_error', stage, ms?, … }
+  //   done   { success: true, ...samme payload som ikke-stream-ruten }
+  //   error  { success: false, error }
+  // Autorisasjons-/valideringsfeil svares som vanlig JSON FØR streamen åpnes,
+  // så klienten kan håndtere 401/403/409 uten å parse SSE.
+  app.post(
+    "/api/leadgrid/marketing/bootstrap/stream",
+    perm,
+    bootstrapLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      const access = await authorize(req, res);
+      if (!access) return;
+      let prep: BootstrapPrep;
+      try {
+        prep = await prepareBootstrap(access);
+      } catch (err) {
+        console.error("[leadgrid-marketing] bootstrap/stream prep failed", err);
+        res.status(500).json({ error: "bootstrap_failed" });
+        return;
+      }
+      if (!prep.ok) {
+        res.status(prep.status).json(prep.body);
+        return;
+      }
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+      const writeEvent = (event: string, data: unknown): void => {
+        try {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        } catch {
+          // socket kan være revet ned; ignorer
+        }
+      };
+
+      const researchId = crypto.randomUUID();
+      writeEvent("start", {
+        projectKey: access.projectKey,
+        researchId,
+        startedAt: new Date().toISOString(),
+      });
+      try {
+        const payload = await runBootstrap(access, prep, {
+          researchId,
+          userExtraContext: readExtraContext(req),
+          onProgress: (evt) => writeEvent("stage", evt),
+        });
+        // `result` = alias for `bootstrap` så frontend-hooken useResearchProgress
+        // (som leser payload.result) kan gjenbrukes uendret.
+        writeEvent("done", { success: true, ...payload, result: payload.bootstrap });
+      } catch (err) {
+        console.error("[leadgrid-marketing] bootstrap/stream failed", err);
+        writeEvent("error", { success: false, error: "bootstrap_failed" });
+      } finally {
+        res.end();
       }
     },
   );

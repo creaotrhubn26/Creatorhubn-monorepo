@@ -37,7 +37,7 @@ import {
   Send as SendIcon,
 } from '@mui/icons-material';
 
-import AiConsentGate from './AiConsentGate';
+import AiConsentGate, { type AiConsentGateCopy } from './AiConsentGate';
 import AiTransparencyBanner from './AiTransparencyBanner';
 import AgentThreadList from './AgentThreadList';
 import AgentPaywallDialog from './AgentPaywallDialog';
@@ -69,6 +69,10 @@ interface RoleRoomAgentChatPanelProps {
    *  ikke av Role Rooms agent-abonnement — hopp over entitlement-fetch,
    *  paywall og prøveperiode-banner. */
   entitlementExempt?: boolean;
+  /** Kopi-overstyring for samtykke-gaten (se AiConsentGateCopy). */
+  consentCopy?: AiConsentGateCopy;
+  /** Tekst i tom-tilstanden før første melding (default: casting-tekst). */
+  emptyStateText?: string;
 }
 
 /** Per-tool execution feedback rendered inline in the message thread. */
@@ -91,6 +95,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   onConfirmToolUse,
   suggestedPrompts,
   entitlementExempt = false,
+  consentCopy,
+  emptyStateText,
 }) => {
   const [input, setInput] = useState('');
   const [pendingTool, setPendingTool] = useState<RoleRoomAgentToolUse | null>(null);
@@ -286,9 +292,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             '& .MuiAlert-icon': { color: '#a5f3fc' },
           }}
         >
-          Spør The Role Room Agent om prosjektet. Alle svar kommer fra CI via
-          en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew
-          før kallet.
+          {emptyStateText
+            ?? 'Spør The Role Room Agent om prosjektet. Alle svar kommer fra CI via en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew før kallet.'}
         </Alert>
       ) : null}
 
@@ -455,7 +460,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
       {/* Scroll anchor — keeps the latest message/streaming delta in view. */}
       <Box ref={endRef} sx={{ height: 0 }} />
     </Stack>
-  ), [messages, pending, awaitingFirstToken, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback, suggestedPrompts]);
+  ), [messages, pending, awaitingFirstToken, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback, suggestedPrompts, emptyStateText]);
 
   const composer = (
     <Box
@@ -541,7 +546,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   }
 
   return (
-    <AiConsentGate projectId={projectId} currentUserId={currentUserId}>
+    <AiConsentGate projectId={projectId} currentUserId={currentUserId} copy={consentCopy}>
       <Box
         sx={{
           display: 'flex',

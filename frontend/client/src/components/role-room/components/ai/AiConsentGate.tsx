@@ -38,6 +38,25 @@ import {
   revokeProjectConsent,
 } from '../../services/aiConsentService';
 
+/**
+ * Kopi-overstyring for flater der Role Rooms casting-vokabular («brief»,
+ * «kandidater/crew») er feil — f.eks. Leadgrid Markedssjef-modus. Alt er
+ * valgfritt; utelatte felt beholder dagens tekst, så Role Room er uendret.
+ */
+export interface AiConsentGateCopy {
+  /** Tekst i fallback-varselet når samtykke mangler. */
+  prompt?: string;
+  /** Knappetekst i fallback-varselet. */
+  promptCta?: string;
+  title?: string;
+  body?: string;
+  scopeLabels?: Partial<Record<AiConsentScope, string>>;
+  /** Varsel om pseudonymisering/maskering. */
+  warning?: string;
+  /** Forhåndsvalgt omfang. */
+  defaultScope?: AiConsentScope;
+}
+
 interface AiConsentGateProps {
   projectId: string;
   currentUserId: string;
@@ -45,6 +64,7 @@ interface AiConsentGateProps {
   children: React.ReactNode;
   /** Rendered when consent is missing. Defaults to a consent prompt. */
   fallback?: React.ReactNode;
+  copy?: AiConsentGateCopy;
 }
 
 const SCOPE_LABELS: Record<AiConsentScope, string> = {
@@ -58,10 +78,12 @@ export const AiConsentGate: React.FC<AiConsentGateProps> = ({
   currentUserId,
   children,
   fallback,
+  copy,
 }) => {
+  const scopeLabels: Record<AiConsentScope, string> = { ...SCOPE_LABELS, ...(copy?.scopeLabels ?? {}) };
   const [record, setRecord] = useState(() => getProjectConsent(projectId));
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [scope, setScope] = useState<AiConsentScope>('brief_only');
+  const [scope, setScope] = useState<AiConsentScope>(copy?.defaultScope ?? 'brief_only');
   const [note, setNote] = useState('');
   const [acknowledgedProcessor, setAcknowledgedProcessor] = useState(false);
   const [acknowledgedRights, setAcknowledgedRights] = useState(false);
@@ -122,12 +144,12 @@ export const AiConsentGate: React.FC<AiConsentGateProps> = ({
       variant="outlined"
       action={
         <Button size="small" onClick={() => setDialogOpen(true)}>
-          Vurder samtykke
+          {copy?.promptCta ?? 'Vurder samtykke'}
         </Button>
       }
     >
-      AI-assistenten (Role Room Agent) er slått av for dette prosjektet. Du må gi et tydelig
-      samtykke før data sendes til en ekstern databehandler.
+      {copy?.prompt
+        ?? 'AI-assistenten (Role Room Agent) er slått av for dette prosjektet. Du må gi et tydelig samtykke før data sendes til en ekstern databehandler.'}
     </Alert>
   );
 
@@ -135,11 +157,11 @@ export const AiConsentGate: React.FC<AiConsentGateProps> = ({
     <>
       {fallback ?? defaultFallback}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>AI-samtykke for prosjekt</DialogTitle>
+        <DialogTitle>{copy?.title ?? 'AI-samtykke for prosjekt'}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Role Room Agent analyserer prosjektdata for å foreslå neste steg. Ingenting sendes til
-            AI før du gir et uttrykkelig samtykke. Du kan trekke samtykket tilbake når som helst.
+            {copy?.body
+              ?? 'Role Room Agent analyserer prosjektdata for å foreslå neste steg. Ingenting sendes til AI før du gir et uttrykkelig samtykke. Du kan trekke samtykket tilbake når som helst.'}
           </DialogContentText>
 
           <Stack spacing={2}>
@@ -150,7 +172,7 @@ export const AiConsentGate: React.FC<AiConsentGateProps> = ({
               onChange={(event) => setScope(event.target.value as AiConsentScope)}
               fullWidth
             >
-              {Object.entries(SCOPE_LABELS).map(([value, label]) => (
+              {Object.entries(scopeLabels).map(([value, label]) => (
                 <MenuItem key={value} value={value}>{label}</MenuItem>
               ))}
             </TextField>
@@ -195,8 +217,8 @@ export const AiConsentGate: React.FC<AiConsentGateProps> = ({
             />
 
             <Alert severity="warning" variant="outlined">
-              Kandidat- og crew-navn, e-post og telefon pseudonymiseres automatisk før de sendes.
-              Originaldata forlater aldri vår server uten denne maskeringen.
+              {copy?.warning
+                ?? 'Kandidat- og crew-navn, e-post og telefon pseudonymiseres automatisk før de sendes. Originaldata forlater aldri vår server uten denne maskeringen.'}
             </Alert>
 
             {errorMsg ? <Alert severity="error">{errorMsg}</Alert> : null}

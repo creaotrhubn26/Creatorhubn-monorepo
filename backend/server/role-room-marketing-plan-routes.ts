@@ -1537,7 +1537,19 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         [planId],
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke planen." });
-      if (r.rows[0].owner !== session.userId) {
+      // Leadgrid: alle i orgen med markedsførings-permission «eier» planen
+      // (bro-middlewaren har autorisert lg-nøkkelen for denne requesten).
+      const planProjectId = await pool
+        .query<{ project_id: string }>(
+          `SELECT project_id FROM role_room_marketing_plans WHERE id = $1`,
+          [planId],
+        )
+        .then((q) => q.rows[0]?.project_id ?? "")
+        .catch(() => "");
+      if (
+        r.rows[0].owner !== session.userId
+        && !leadgridMarketingAuthorizedFor(req, planProjectId)
+      ) {
         return res.status(403).json({ success: false, error: "Du eier ikke planen." });
       }
       const generated = Number(r.rows[0].count);
