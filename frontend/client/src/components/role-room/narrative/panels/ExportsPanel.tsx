@@ -13,17 +13,20 @@ import {
   InputLabel, List, ListItem, ListItemText, MenuItem, Select, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import {
+  Code as EmbedIcon,
   ContentCopy as CopyIcon,
   DataObject as JsonIcon,
   Description as MarkdownIcon,
   Language as HtmlIcon,
   LinkOff as RevokeIcon,
+  PictureAsPdf as PdfIcon,
   Share as ShareIcon,
+  TableChart as CsvIcon,
   UploadFile as ImportIcon,
 } from '@mui/icons-material';
 import {
   ArcweaveImportError, InkImportError, TweeImportError, IMPORT_FORMAT_LABELS, buildStandaloneHtml, exportFileStem,
-  fromArcweaveProject, fromInk, fromTwee, sniffImportFormat, toArcweaveProject, toMarkdown, SUGGESTED_LOCALES, type ImportFormat,
+  fromArcweaveProject, fromInk, fromTwee, sniffImportFormat, toArcweaveProject, toCsv, toMarkdown, SUGGESTED_LOCALES, type ImportFormat,
 } from '@shared/narrative-format';
 import * as api from '../narrativeService';
 import {
@@ -50,8 +53,7 @@ const fieldSx = {
   '& .MuiSvgIcon-root': { color: narrativeColors.textDim },
 };
 
-function downloadText(text: string, filename: string, mime: string): void {
-  const blob = new Blob([text], { type: mime });
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement('a');
@@ -63,6 +65,10 @@ function downloadText(text: string, filename: string, mime: string): void {
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+}
+
+function downloadText(text: string, filename: string, mime: string): void {
+  downloadBlob(new Blob([text], { type: mime }), filename);
 }
 
 function formatDate(iso: string | null): string {
@@ -108,11 +114,14 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
   const [mode, setMode] = useState<NarrativeShareMode>('play_only');
   const [expiry, setExpiry] = useState<'never' | '7' | '30' | '90'>('never');
   const [freshLink, setFreshLink] = useState<{ url: string; mode: NarrativeShareMode } | null>(null);
+  const [embedOpen, setEmbedOpen] = useState(false);
+  const [embedCopied, setEmbedCopied] = useState(false);
   const locales = graph.settings.locales?.length ? graph.settings.locales : ['nb'];
   const [exportLocale, setExportLocale] = useState<string>('nb');
   // Plan-gating (Fase 4d): serveren gater med 402; UI låser knappene og viser banner.
   const gate = useGamePlanGate();
   const canHtml = gate.has('export_html');
+  const canPdf = gate.has('export_pdf');
   const canShare = gate.has('share_links');
   const canTextImport = gate.has('import_twine_ink');
   const localeSuffix = exportLocale !== 'nb' ? `-${exportLocale}` : '';
@@ -138,6 +147,26 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
   const exportMarkdown = () => {
     downloadText(toMarkdown(graph, { locale: exportLocale }), `${fileStem}${localeSuffix}.md`, 'text/markdown;charset=utf-8');
     onNotice('Markdown lastet ned.', 'success');
+  };
+  const exportCsv = () => {
+    downloadText(toCsv(graph, { locale: exportLocale }), `${fileStem}${localeSuffix}.csv`, 'text/csv;charset=utf-8');
+    onNotice('CSV lastet ned — åpnes rett i Excel/Numbers (skilletegn «;»).', 'success');
+  };
+  const exportPdf = async () => {
+    setBusy('pdf');
+    try {
+      const { blob, filename } = await api.exportPdf(projectId, exportLocale);
+      downloadBlob(blob, filename ?? `${fileStem}${localeSuffix}.pdf`);
+      onNotice('PDF lastet ned.', 'success');
+    } catch (err) {
+      if (err instanceof api.NarrativeApiError && err.code === 'plan_required') {
+        onNotice('PDF-eksport krever Pro eller Studio — se «Pris»-fanen.', 'warning');
+      } else {
+        onNotice(err instanceof Error ? err.message : 'PDF-eksport feilet.', 'error');
+      }
+    } finally {
+      setBusy(null);
+    }
   };
   const exportHtml = async () => {
     setBusy('html');
@@ -240,6 +269,21 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
     }
   };
 
+  // Embed-snutt: iframe mot /story/:token?embed=1 (uten toppstripe). Råtokenet finnes
+  // bare rett etter opprettelse (kun hash lagres), derfor kun for freshLink.
+  const embedCode = freshLink
+    ? `<iframe src="${freshLink.url}?embed=1${exportLocale !== 'nb' ? `&locale=${encodeURIComponent(exportLocale)}` : ''}" style="width:100%;max-width:720px;height:640px;border:0;border-radius:12px;background:#050505" title="${(graph.settings.title || 'Story Graph').replace(/"/g, '&quot;')}" loading="lazy" allowfullscreen></iframe>`
+    : '';
+  const copyEmbed = async () => {
+    try {
+      await navigator.clipboard.writeText(embedCode);
+      setEmbedCopied(true);
+      setTimeout(() => setEmbedCopied(false), 1800);
+    } catch {
+      onNotice('Kunne ikke kopiere — marker og kopier koden manuelt.', 'warning');
+    }
+  };
+
   const revoke = async (link: NarrativeShareLink) => {
     setBusy(`revoke-${link.id}`);
     try {
@@ -261,7 +305,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
         <Section
           testId="narrative-exports-download"
           title="Last ned"
-          hint="Arcweave-kompatibel JSON virker rett i Arcweaves Unity-, Godot- og Unreal-plugins. HTML-fila er en spillbar versjon som åpnes lokalt."
+          hint="Arcweave-kompatibel JSON virker rett i Arcweaves Unity-, Godot- og Unreal-plugins. CSV gir én rad per element for regneark. HTML-fila er en spillbar versjon som åpnes lokalt. PDF er et lesbart manus (Pro/Studio)."
         >
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
             {locales.length > 1 ? (
@@ -278,11 +322,18 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
             <Button variant="outlined" startIcon={<MarkdownIcon />} onClick={exportMarkdown} disabled={empty} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-markdown">
               Markdown
             </Button>
+            <Button variant="outlined" startIcon={<CsvIcon />} onClick={exportCsv} disabled={empty} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-csv">
+              CSV (regneark)
+            </Button>
             <Button variant="outlined" startIcon={<HtmlIcon />} onClick={() => void exportHtml()} disabled={empty || busy === 'html' || !canHtml} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-html" data-locked={canHtml ? undefined : 'plan'}>
               Spillbar HTML
             </Button>
+            <Button variant="outlined" startIcon={<PdfIcon />} onClick={() => void exportPdf()} disabled={empty || busy === 'pdf' || !canPdf} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-pdf" data-locked={canPdf ? undefined : 'plan'}>
+              {busy === 'pdf' ? 'Lager PDF…' : 'PDF (manus)'}
+            </Button>
           </Stack>
           <Box sx={{ mt: 1.5 }}><PlanGateBanner feature="export_html" compact /></Box>
+          <Box><PlanGateBanner feature="export_pdf" compact /></Box>
           {empty ? <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mt: 1 }}>Grafen er tom — legg til elementer før du eksporterer.</Typography> : null}
         </Section>
 
@@ -341,15 +392,37 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
           {freshLink ? (
             <Alert severity="success" sx={{ mb: 1.5 }} data-testid="narrative-share-fresh"
               action={(
-                <Tooltip title="Kopier lenke">
-                  <IconButton size="small" onClick={() => void copyFresh()} aria-label="Kopier lenke" data-testid="narrative-share-copy"><CopyIcon fontSize="small" /></IconButton>
-                </Tooltip>
+                <Stack direction="row" spacing={0.5}>
+                  <Tooltip title="Kopier lenke">
+                    <IconButton size="small" onClick={() => void copyFresh()} aria-label="Kopier lenke" data-testid="narrative-share-copy"><CopyIcon fontSize="small" /></IconButton>
+                  </Tooltip>
+                  <Tooltip title="Embed-kode (iframe til egen nettside)">
+                    <IconButton size="small" onClick={() => setEmbedOpen(true)} aria-label="Embed-kode" data-testid="narrative-share-embed"><EmbedIcon fontSize="small" /></IconButton>
+                  </Tooltip>
+                </Stack>
               )}
             >
               <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Ny lenke ({SHARE_MODE_LABELS[freshLink.mode]}) — kopier den nå:</Typography>
               <TextField value={freshLink.url} size="small" fullWidth InputProps={{ readOnly: true }} sx={{ mt: 0.5, '& input': { fontFamily: 'monospace', fontSize: 12 } }} inputProps={{ 'data-testid': 'narrative-share-url' }} onFocus={(e) => e.target.select()} />
+              <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, mt: 0.5 }}>Lenka og embed-koden vises bare nå — vi lagrer kun en hash av den.</Typography>
             </Alert>
           ) : null}
+
+          <Dialog open={embedOpen && !!freshLink} onClose={() => setEmbedOpen(false)} maxWidth="sm" fullWidth PaperProps={{ 'data-testid': 'narrative-share-embed-dialog', sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` } } as never}>
+            <DialogTitle sx={{ fontSize: 16 }}>Bygg inn spilleren på egen nettside</DialogTitle>
+            <DialogContent>
+              <Typography sx={{ fontSize: 13, color: narrativeColors.textDim, mb: 1.5 }}>
+                Lim koden inn der spilleren skal vises. Rammen er 640 px høy — juster <code>height</code> etter behov. Tilbakekaller du lenka, slutter innbyggingen å virke.
+              </Typography>
+              <TextField value={embedCode} multiline minRows={4} fullWidth InputProps={{ readOnly: true }} sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 12 } }} inputProps={{ 'data-testid': 'narrative-share-embed-code' }} onFocus={(e) => e.target.select()} />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEmbedOpen(false)} sx={{ color: narrativeColors.textDim }}>Lukk</Button>
+              <Button variant="contained" startIcon={<CopyIcon />} onClick={() => void copyEmbed()} sx={{ bgcolor: embedCopied ? narrativeColors.accentDark : narrativeColors.accent, color: '#04140a', fontWeight: 700 }} data-testid="narrative-share-embed-copy">
+                {embedCopied ? 'Kopiert!' : 'Kopier koden'}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
           <Divider sx={{ borderColor: narrativeColors.borderStrong, mb: 1 }} />
           {linksLoading ? <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>Laster lenker…</Typography> : null}

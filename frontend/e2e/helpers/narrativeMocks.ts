@@ -227,7 +227,8 @@ export type MockGamePlanSlug = 'solo' | 'pro' | 'studio';
 
 export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean; gamePlan?: MockGamePlanSlug } = {}): Promise<void> {
   const projectId = opts.projectId ?? 'proj-game-2026';
-  await installGameBillingMocks(page, opts.gamePlan ?? 'studio');
+  const gamePlan = opts.gamePlan ?? 'studio';
+  await installGameBillingMocks(page, gamePlan);
   const g: MockGraph = opts.empty
     ? { settings: { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null }, boards: [], elements: [], connections: [], components: [], elementComponents: [], attributes: [], variables: [], assets: [] }
     : seedGraph(projectId);
@@ -251,6 +252,11 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     const m = (re: RegExp) => path.match(re);
 
     if (m(/\/projects\/[^/]+\/graph$/) && method === 'GET') return route.fulfill(ok(g));
+    if (m(/\/projects\/[^/]+\/export\.pdf$/) && method === 'GET') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'export_pdf', planSlug: 'solo' }) });
+      const locale = url.searchParams.get('locale');
+      return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'content-disposition': `attachment; filename="demo-spill${locale ? `-${locale}` : ''}.pdf"` }, body: Buffer.from('%PDF-1.4\n%mock\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n') });
+    }
 
     if (m(/\/projects\/[^/]+\/settings$/) && method === 'PUT') {
       g.settings = { ...g.settings, ...body, updatedAt: now() };

@@ -84,6 +84,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     : (json as T);
 }
 
+/** Binær nedlasting (PDF). 402 → NarrativeApiError med code 'plan_required'. */
+async function requestBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { credentials: 'include', headers: narrativeAuthHeaders() });
+  } catch {
+    throw new NarrativeNetworkError();
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+  }
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const m = /filename="([^"]+)"/.exec(disposition);
+  return { blob: await res.blob(), filename: m ? m[1] : null };
+}
+
 const p = (projectId: string, rest = ''): string => `/projects/${encodeURIComponent(projectId)}${rest}`;
 const id = (value: string): string => encodeURIComponent(value);
 const json = (body: unknown): string => JSON.stringify(body);
@@ -363,4 +380,11 @@ export async function getPublicStory(token: string): Promise<NarrativePublicStor
   if (!res.ok) throw new NarrativeApiError(`HTTP ${res.status}`, res.status);
   const body = (await res.json()) as Envelope<NarrativePublicStory>;
   return body.data;
+}
+
+// ─── Fase 5c: PDF-eksport (server-side, Pro/Studio) ──────────────────────
+
+export function exportPdf(projectId: string, locale: string | null): Promise<{ blob: Blob; filename: string | null }> {
+  const q = locale && locale !== 'nb' ? `?locale=${encodeURIComponent(locale)}` : '';
+  return requestBlob(p(projectId, `/export.pdf${q}`));
 }

@@ -10,6 +10,8 @@ export { htmlToPlainText, htmlToTitle, contentHtmlToMarkdown, plainTextToHtml } 
 export { toArcweaveProject, type ToArcweaveOptions } from './export';
 export { fromArcweaveProject, ArcweaveImportError, type FromArcweaveOptions, type FromArcweaveResult } from './import';
 export { toMarkdown } from './markdown';
+export { toCsv, csvCell, csvRow, CSV_BOM, CSV_DELIMITER } from './csv';
+export { bySort, elementLabel, indexGraph, type GraphIndex } from './traverse';
 export {
   buildStandaloneHtml, toRuntimeSubset, jsonForScriptTag, exportFileStem, STANDALONE_CSS, type StandaloneHtmlOptions,
 } from './standalone';

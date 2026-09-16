@@ -25,9 +25,10 @@ import * as svc from './role-room-narrative-service.js';
 import { validateStoryGraph } from '../../frontend/shared/narrative-runtime/validate.ts';
 // Delt format-lag (Fase 3): Arcweave JSON, Markdown, filnavn.
 import {
-  ArcweaveImportError, InkImportError, TweeImportError, LOCALE_CODE_RE, exportFileStem, toArcweaveProject, toMarkdown,
+  ArcweaveImportError, InkImportError, TweeImportError, LOCALE_CODE_RE, exportFileStem, toArcweaveProject, toCsv, toMarkdown,
 } from '../../frontend/shared/narrative-format/index.ts';
 import { MAX_TRANSLATE_SEGMENTS, translateSegments } from './narrative-translate.js';
+import { renderStoryGraphPdf, storyGraphPdfFilename } from './narrative-pdf.js';
 import { broadcastEventToRoom, narrativeRoomKey } from './websocket-chat.js';
 import {
   PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
@@ -523,17 +524,48 @@ export function createRoleRoomNarrativeRouter(
   // Arcweave-kompatibel project.json — lastes rett inn i Arcweaves
   // Unity/Godot/Unreal-plugins. Frontend bygger samme fil klient-side fra
   // det delte format-laget; dette endepunktet er for API-/verktøy-bruk.
+  /** `?locale=en` → oversettelser brukes i eksporten (nb = kilde). Ugyldig kode ignoreres. */
+  const exportLocale = (req: Request): string | null => {
+    const raw = typeof req.query.locale === 'string' ? req.query.locale.trim() : '';
+    return raw && raw !== 'nb' && LOCALE_CODE_RE.test(raw) ? raw : null;
+  };
+  const exportName = (title: string | null | undefined, locale: string | null, ext: string) =>
+    `${exportFileStem(title)}${locale ? `-${locale}` : ''}.${ext}`;
+
   router.get('/projects/:projectId/export.json', ...guard, wrap(async (req, res) => {
     const graph = await svc.getGraph(pool, req.projectId);
-    res.setHeader('Content-Disposition', `attachment; filename="${exportFileStem(graph.settings.title)}.json"`);
-    res.json(toArcweaveProject(graph));
+    const locale = exportLocale(req);
+    res.setHeader('Content-Disposition', `attachment; filename="${exportName(graph.settings.title, locale, 'json')}"`);
+    res.json(toArcweaveProject(graph, { locale }));
   }));
 
   router.get('/projects/:projectId/export.md', ...guard, wrap(async (req, res) => {
     const graph = await svc.getGraph(pool, req.projectId);
+    const locale = exportLocale(req);
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${exportFileStem(graph.settings.title)}.md"`);
-    res.send(toMarkdown(graph));
+    res.setHeader('Content-Disposition', `attachment; filename="${exportName(graph.settings.title, locale, 'md')}"`);
+    res.send(toMarkdown(graph, { locale }));
+  }));
+
+  // Fase 5a: regneark-eksport (én rad per element; norsk Excel-profil med «;» og BOM).
+  router.get('/projects/:projectId/export.csv', ...guard, wrap(async (req, res) => {
+    const graph = await svc.getGraph(pool, req.projectId);
+    const locale = exportLocale(req);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${exportName(graph.settings.title, locale, 'csv')}"`);
+    res.send(toCsv(graph, { locale }));
+  }));
+
+  // Fase 5c: lesbart manus som PDF (Pro/Studio). Binært → ikke i MCP.
+  router.get('/projects/:projectId/export.pdf', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'export_pdf');
+    const graph = await svc.getGraph(pool, req.projectId);
+    const locale = exportLocale(req);
+    const pdf = await renderStoryGraphPdf(graph, { locale });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${storyGraphPdfFilename(graph, locale)}"`);
+    res.setHeader('Content-Length', String(pdf.length));
+    res.send(pdf);
   }));
 
   // Import erstatter hele grafen; nåværende graf lagres først som revisjon.

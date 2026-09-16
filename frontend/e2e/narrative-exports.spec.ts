@@ -57,12 +57,21 @@ test.describe('Story Graph — Eksport-fanen', () => {
 
     const md = await downloadVia(page, 'narrative-export-markdown');
     expect(md.download.suggestedFilename()).toBe('demo-spill.md');
+
+    const csv = await downloadVia(page, 'narrative-export-csv');
+    expect(csv.download.suggestedFilename()).toBe('demo-spill.csv');
+    expect(csv.text.startsWith('\uFEFFBrett;Mappe;ElementId;')).toBe(true);
+    expect(csv.text).toContain('Landsbyen');
     expect(md.text).toContain('# Demo-spill');
     expect(md.text).toContain('- «Gå til markedet» → Har du gull?');
     expect(md.text).toContain('- if `gold >= 10`');
 
     const html = await downloadVia(page, 'narrative-export-html');
     expect(html.download.suggestedFilename()).toBe('demo-spill.html');
+
+    const pdf = await downloadVia(page, 'narrative-export-pdf');
+    expect(pdf.download.suggestedFilename()).toBe('demo-spill.pdf');
+    expect(pdf.text.startsWith('%PDF-')).toBe(true);
     expect(html.text).toContain('StoryGraphPlayer.mount(');
     expect(html.text).toContain('window.__STORY_GRAPH__=');
     expect(html.text).toContain('Du våkner i en stille landsby.');
@@ -113,6 +122,18 @@ test.describe('Story Graph — Eksport-fanen', () => {
     const url = page.getByTestId('narrative-share-url');
     await expect(url).toHaveValue(/\/story\/sgs_e2e_nsl_\d+$/);
     await expect(page.getByTestId('narrative-share-fresh')).toContainText('Spill + debugger');
+
+    // Embed-kode: iframe mot /story/<token>?embed=1
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByTestId('narrative-share-embed').click();
+    await expect(page.getByTestId('narrative-share-embed-dialog')).toBeVisible();
+    const embed = await page.getByTestId('narrative-share-embed-code').inputValue();
+    expect(embed).toMatch(/^<iframe src="http:\/\/[^"]+\/story\/sgs_e2e_[^"?]+\?embed=1"/);
+    expect(embed).toContain('allowfullscreen');
+    await page.getByTestId('narrative-share-embed-copy').click();
+    await expect(page.getByTestId('narrative-share-embed-copy')).toHaveText('Kopiert!');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('narrative-share-embed-dialog')).toHaveCount(0);
 
     const list = page.getByTestId('narrative-share-list');
     await expect(list.locator('[data-testid^="narrative-share-link-"]')).toHaveCount(1);

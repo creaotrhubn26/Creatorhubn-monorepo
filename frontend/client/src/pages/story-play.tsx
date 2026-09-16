@@ -21,7 +21,14 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; story: NarrativePublicStory };
 
-export function StoryPlayView({ token, locale = null }: { token: string; locale?: string | null }) {
+export interface StoryPlayViewProps {
+  token: string;
+  locale?: string | null;
+  /** Innbygging (iframe): ingen toppstripe, spilleren fyller hele rammen. */
+  embed?: boolean;
+}
+
+export function StoryPlayView({ token, locale = null, embed = false }: StoryPlayViewProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
   useEffect(() => {
@@ -44,14 +51,16 @@ export function StoryPlayView({ token, locale = null }: { token: string; locale?
   }, [state]);
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#050505', color: narrativeColors.text, display: 'flex', flexDirection: 'column' }} data-testid="story-play-page">
-      <Box sx={{ px: 2, py: 1, borderBottom: `1px solid rgba(34,197,94,0.18)`, bgcolor: 'rgba(10,10,10,0.95)', display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography sx={{ fontSize: 11, letterSpacing: 2, color: narrativeColors.accent, fontWeight: 700 }}>STORY GRAPH</Typography>
-        <Typography sx={{ fontSize: 13, color: narrativeColors.textDim, flex: 1 }} data-testid="story-play-title">
-          {state.kind === 'ready' ? state.story.title : ''}
-        </Typography>
-        <Typography sx={{ fontSize: 10, color: narrativeColors.textDim }}>The Role Room</Typography>
-      </Box>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#050505', color: narrativeColors.text, display: 'flex', flexDirection: 'column' }} data-testid="story-play-page" data-embed={embed ? '1' : undefined}>
+      {!embed ? (
+        <Box sx={{ px: 2, py: 1, borderBottom: `1px solid rgba(34,197,94,0.18)`, bgcolor: 'rgba(10,10,10,0.95)', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography sx={{ fontSize: 11, letterSpacing: 2, color: narrativeColors.accent, fontWeight: 700 }}>STORY GRAPH</Typography>
+          <Typography sx={{ fontSize: 13, color: narrativeColors.textDim, flex: 1 }} data-testid="story-play-title">
+            {state.kind === 'ready' ? state.story.title : ''}
+          </Typography>
+          <Typography sx={{ fontSize: 10, color: narrativeColors.textDim }}>The Role Room</Typography>
+        </Box>
+      ) : null}
 
       {state.kind === 'loading' ? (
         <Box sx={{ p: 6, display: 'flex', justifyContent: 'center' }}><CircularProgress size={28} sx={{ color: narrativeColors.accent }} /></Box>
@@ -69,7 +78,7 @@ export function StoryPlayView({ token, locale = null }: { token: string; locale?
         </Box>
       ) : null}
       {state.kind === 'ready' ? (
-        <StoryPlayer graph={state.story.graph} showDebugger={state.story.mode === 'view_play'} minHeight="calc(100vh - 42px)" initialLocale={locale} />
+        <StoryPlayer graph={state.story.graph} showDebugger={state.story.mode === 'view_play'} minHeight={embed ? '100vh' : 'calc(100vh - 42px)'} initialLocale={locale} />
       ) : null}
     </Box>
   );
@@ -79,6 +88,11 @@ export default function StoryPlayPage() {
   const [, params] = useRoute('/story/:token');
   const token = (params as { token?: string } | null)?.token ?? '';
   let locale: string | null = null;
-  try { locale = new URLSearchParams(window.location.search).get('locale'); } catch { /* ignore */ }
-  return <StoryPlayView token={token} locale={locale} />;
+  let embed = false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    locale = params.get('locale');
+    embed = params.get('embed') === '1';
+  } catch { /* ignore */ }
+  return <StoryPlayView token={token} locale={locale} embed={embed} />;
 }

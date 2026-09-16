@@ -31,7 +31,7 @@ import {
 } from "./role-room-narrative-service.js";
 import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
 // Fase 3: Arcweave-kompatibel eksport + Markdown fra det delte format-laget.
-import { plainTextToHtml, toArcweaveProject, toMarkdown } from "../../frontend/shared/narrative-format/index.ts";
+import { plainTextToHtml, toArcweaveProject, toCsv, toMarkdown } from "../../frontend/shared/narrative-format/index.ts";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
@@ -615,17 +615,19 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
 
   {
     name: "rr_export_story_graph",
-    description: "Eksporter Story Graph-prosjektet. format=arcweave (default) gir Arcweave-kompatibel project.json (brett, elementer, koblinger, forgreninger/betingelser, jumpere, komponenter, attributter, variabler, ressurser) som lastes rett inn i Arcweaves Unity/Godot/Unreal-plugins; format=markdown gir en lesbar gjennomgang per brett. Read-only.",
+    description: "Eksporter Story Graph-prosjektet. format=arcweave (default) gir Arcweave-kompatibel project.json (brett, elementer, koblinger, forgreninger/betingelser, jumpere, komponenter, attributter, variabler, ressurser) som lastes rett inn i Arcweaves Unity/Godot/Unreal-plugins; format=markdown gir en lesbar gjennomgang per brett; format=csv gir én rad per element for regneark. (PDF finnes kun som nedlasting i UI.) Read-only.",
     scope: "projects.read", modes: GAME_MODES, projectScoped: true,
     inputSchema: OBJ({
       projectId: STR("Prosjekt-ID"),
-      format: { type: "string", description: "arcweave (default) | markdown" },
+      format: { type: "string", description: "arcweave (default) | markdown | csv" },
     }, ["projectId"]),
     handler: async (pool, ctx, args) => {
       const projectId = await requireProject(pool, ctx, args);
-      const format = typeof args.format === "string" && args.format.trim().toLowerCase() === "markdown" ? "markdown" : "arcweave";
+      const requested = typeof args.format === "string" ? args.format.trim().toLowerCase() : "";
+      const format = requested === "markdown" || requested === "csv" ? requested : "arcweave";
       const graph = await getNarrativeGraph(pool, projectId);
       if (format === "markdown") return { format, markdown: toMarkdown(graph) };
+      if (format === "csv") return { format, csv: toCsv(graph) };
       return { format, project: toArcweaveProject(graph) };
     },
   },

@@ -189,6 +189,12 @@ describe("Fase 3 Story Graph-verktøy (eksport + utkast-element)", () => {
     expect(out.project.startingElement).toBe(eid);
     expect(out.project.elements[eid].title).toBe("<p>Start</p>");
   });
+  it("rr_export_story_graph format=csv", async () => {
+    const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1", format: "csv" }) as { format: string; csv: string };
+    expect(out.format).toBe("csv");
+    expect(out.csv.startsWith("\uFEFFBrett;")).toBe(true);
+  });
+
   it("rr_export_story_graph format=markdown", async () => {
     const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1", format: "markdown" }) as { format: string; markdown: string };
     expect(out.format).toBe("markdown");

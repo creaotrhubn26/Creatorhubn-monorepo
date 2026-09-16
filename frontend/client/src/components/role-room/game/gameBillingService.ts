@@ -27,7 +27,7 @@ export type BillingPeriod = 'monthly' | 'yearly' | 'tester' | 'comp';
 /** Feature-nøkler Story Graph gater på (speiler backend game-billing-service). */
 export type GameFeature =
   | 'play' | 'export_json' | 'export_md' | 'share_links' | 'export_html'
-  | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages';
+  | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages' | 'export_pdf';
 
 export const GAME_FEATURE_LABEL: Record<GameFeature, string> = {
   play: 'Play Mode med debugger',
@@ -39,6 +39,7 @@ export const GAME_FEATURE_LABEL: Record<GameFeature, string> = {
   translations: 'Oversettelser med KI',
   import_twine_ink: 'Import fra Twine og Ink',
   runtime_packages: 'Runtime-pakker for Unity og Godot',
+  export_pdf: 'PDF-eksport (lesbart manus)',
 };
 
 export interface GamePlan {

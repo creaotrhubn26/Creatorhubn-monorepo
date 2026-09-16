@@ -5,39 +5,13 @@
 
 import { applyLocaleToGraph } from './locale';
 import { contentHtmlToMarkdown, htmlToPlainText, htmlToTitle } from './text';
-import type { ExportElement, ExportGraph } from './types';
-
-function bySort<T extends { sortOrder?: number }>(list: T[]): T[] {
-  return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-}
-
-function elementLabel(e: ExportElement | undefined): string {
-  if (!e) return '(mangler)';
-  const title = htmlToTitle(e.titleHtml);
-  if (title) return title;
-  if (e.kind === 'branch') return 'Forgrening';
-  if (e.kind === 'jumper') return 'Jumper';
-  return e.customId ? `#${e.customId}` : 'Uten tittel';
-}
+import { bySort, elementLabel, indexGraph } from './traverse';
+import type { ExportGraph } from './types';
 
 export function toMarkdown(input: ExportGraph, options: { locale?: string | null } = {}): string {
   const graph = applyLocaleToGraph(input, options.locale);
   const out: string[] = [];
-  const elementById = new Map(graph.elements.map((e) => [e.id, e]));
-  const componentById = new Map(graph.components.map((c) => [c.id, c]));
-  const connectionsBySource = new Map<string, ExportGraph['connections']>();
-  for (const c of bySort(graph.connections)) {
-    const list = connectionsBySource.get(c.sourceId) ?? [];
-    list.push(c);
-    connectionsBySource.set(c.sourceId, list);
-  }
-  const componentsByElement = new Map<string, string[]>();
-  for (const ec of bySort(graph.elementComponents)) {
-    const list = componentsByElement.get(ec.elementId) ?? [];
-    const name = componentById.get(ec.componentId)?.name;
-    if (name) list.push(name);
-    componentsByElement.set(ec.elementId, list);
-  }
+  const { elementById, connectionsBySource, componentsByElement } = indexGraph(graph);
 
   out.push(`# ${graph.settings.title?.trim() || 'Story Graph'}`);
   const start = graph.settings.startingElementId ? elementById.get(graph.settings.startingElementId) : undefined;

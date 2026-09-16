@@ -25,7 +25,7 @@ function makePool(handlers: Handler[] = []) {
 /** Testplaner: `studio` (alt) som standard så eksisterende tester er upåvirket; `solo` for gating-tester. */
 const TEST_PLANS = {
   solo: { slug: 'solo', features: ['play', 'export_json', 'export_md'], limits: { maxProjects: 3, maxElements: 200 } },
-  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages'], limits: {} },
+  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf'], limits: {} },
 } as const;
 
 function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number; plan?: keyof typeof TEST_PLANS } = {}) {
@@ -292,6 +292,19 @@ describe('narrative routes — Fase 3: eksport, import, deling', () => {
     expect(Object.keys(res.body.notes)).toEqual(['note']);
   });
 
+  it('GET export.csv → BOM + header-rad, «;»-skilletegn, locale i filnavn', async () => {
+    const app = createApp(makePool(graphRows));
+    const res = await request(app)
+      .get(`/api/role-room/narrative/projects/${PROJECT_ID}/export.csv?locale=en`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-disposition']).toMatch(/\.csv"$/);
+    expect(res.headers['content-disposition']).toContain('-en.csv');
+    expect(res.text.startsWith('\uFEFFBrett;Mappe;ElementId;')).toBe(true);
+    expect(res.text).toContain('\r\n');
+  });
+
   it('GET export.md → Markdown', async () => {
     const res = await request(createApp(makePool(graphRows)))
       .get(`/api/role-room/narrative/projects/${PROJECT_ID}/export.md`)
@@ -530,6 +543,20 @@ describe('narrative routes — Fase 4d: plan-gating (prosjekteierens game_plan)'
     const studio = createApp(pool, { plan: 'studio' });
     const ok = await auth(request(studio).post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links`)).send({ mode: 'play_only' });
     expect(ok.status).toBe(201);
+  });
+
+  it('solo: GET export.pdf → 402 export_pdf; studio → application/pdf med vedleggsnavn', async () => {
+    const solo = createApp(makePool(), { plan: 'solo' });
+    const res = await auth(request(solo).get(`/api/role-room/narrative/projects/${PROJECT_ID}/export.pdf`));
+    expect(res.status).toBe(402);
+    expect(res.body).toMatchObject({ error: 'plan_required', feature: 'export_pdf' });
+
+    const studio = createApp(makePool(), { plan: 'studio' });
+    const ok = await auth(request(studio).get(`/api/role-room/narrative/projects/${PROJECT_ID}/export.pdf?locale=en`).buffer(true).parse((r, cb) => { const chunks: Buffer[] = []; r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks))); }));
+    expect(ok.status).toBe(200);
+    expect(ok.headers['content-type']).toMatch(/application\/pdf/);
+    expect(ok.headers['content-disposition']).toMatch(/-en\.pdf"$/);
+    expect((ok.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
   it('solo: POST import format=twee → 402 import_twine_ink; format=arcweave gates ikke', async () => {

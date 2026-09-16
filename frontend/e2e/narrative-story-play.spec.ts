@@ -44,4 +44,14 @@ test.describe('Story Graph — offentlig spill-lenke', () => {
     await openStory(page, 'sgs_finnes_ikke');
     await expect(page.getByTestId('story-play-missing')).toContainText('Lenken er ugyldig, utløpt eller tilbakekalt.');
   });
+
+  test('embed-modus (?embed=1): ingen toppstripe, spilleren fyller rammen', async ({ page }) => {
+    await installNarrativeMocks(page);
+    seedPlayScenario(getMockGraph(page)!);
+    await page.goto('/e2e-test.html?harness=story_play&harness-token=sgs_e2e_public&harness-embed=1');
+    await expect(page.getByTestId('story-play-page')).toHaveAttribute('data-embed', '1', { timeout: 15_000 });
+    await expect(page.getByTestId('story-play-title')).toHaveCount(0);
+    await expect(page.getByTestId('narrative-play-title')).toHaveText('Landsbyen');
+    await expect(page.getByTestId('narrative-play-debugger')).toHaveCount(0);
+  });
 });

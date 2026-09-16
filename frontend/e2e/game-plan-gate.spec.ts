@@ -38,7 +38,10 @@ test.describe('Story Graph — plan-gating', () => {
     await expect(page.getByTestId('narrative-share-create')).toHaveAttribute('data-locked', 'plan');
     await expect(page.getByTestId('narrative-share-create')).toBeDisabled();
     await expect(page.getByTestId('narrative-export-html')).toHaveAttribute('data-locked', 'plan');
+    await expect(page.getByTestId('narrative-export-pdf')).toHaveAttribute('data-locked', 'plan');
+    await expect(page.getByTestId('narrative-plan-gate-export_pdf')).toBeVisible();
     await expect(page.getByTestId('narrative-export-json')).toBeEnabled();
+    await expect(page.getByTestId('narrative-export-csv')).toBeEnabled();
     await page.getByTestId('narrative-plan-gate-upgrade').first().click();
     await expect(page.getByTestId('game-pricing-page')).toBeVisible();
   });
@@ -55,6 +58,8 @@ test.describe('Story Graph — plan-gating', () => {
     await expect(page.getByTestId('narrative-share-create')).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByTestId('narrative-plan-gate-share_links')).toHaveCount(0);
     await expect(page.getByTestId('narrative-export-html')).not.toHaveAttribute('data-locked', 'plan');
+    await expect(page.getByTestId('narrative-export-pdf')).toBeEnabled();
+    await expect(page.getByTestId('narrative-plan-gate-export_pdf')).toHaveCount(0);
   });
 
   test('Abonnement-fanen og Admin · Planer for admin', async ({ page }) => {

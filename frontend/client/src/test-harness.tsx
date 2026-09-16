@@ -79,7 +79,7 @@ function TestHarness() {
     );
   } else if (harnessMode === 'story_play') {
     // Offentlig spill-side (/story/:token) uten wouter/App-bootstrap.
-    panel = <StoryPlayView token={readUrlFlag('harness-token') ?? 'sgs_e2e_public'} locale={readUrlFlag('harness-locale')} />;
+    panel = <StoryPlayView token={readUrlFlag('harness-token') ?? 'sgs_e2e_public'} locale={readUrlFlag('harness-locale')} embed={readUrlFlag('harness-embed') === '1'} />;
   } else if (harnessMode === 'content_producer') {
     panel = (
       <RoleRoomDashboardPanel userId="e2e-test-user" profession="content_producer" />

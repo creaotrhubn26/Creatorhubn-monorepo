@@ -140,8 +140,24 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
 - **Runtime-pakker** (`packages/story-graph-runtime/`): JS-pakke med full motor (bygget fra
   `shared/narrative-runtime-pkg`, paritetstest), Unity C# og Godot 4 GDScript for et dokumentert
   arcscript-delsett, felles transkript-format + fixture for manuell paritetssjekk (CHECKLIST.md).
-- Ikke gjort (bevisst): `@xyflow/react` v12 (bruker valgte «kun runtime-pakker»), realtime-gating,
-  PDF/CSV-eksport, embed-kode.
+- Ikke gjort i Fase 4 (bevisst): `@xyflow/react` v12, realtime-gating, PDF/CSV-eksport, embed-kode —
+  alle unntatt realtime-gating levert i Fase 5.
+
+### Fase 5 — Resten av benchmarken (LEVERT)
+- **CSV-eksport** (`narrative-format/csv.ts`, alle planer): én rad per element (brett, mappe, id,
+  customId, type, tittel, innhold, komponenter, valg, betingelser, jumper-mål, skript, start) +
+  vedlegg for variabler og komponenter. Norsk Excel-profil: `;`, CRLF, BOM, formel-prefiks
+  nøytraliseres. Klient-side nedlasting, `GET …/export.csv?locale=`, MCP `format: csv`.
+  `?locale=` støttes nå også på `export.json`/`export.md`.
+- **Embed-kode**: `/story/:token?embed=1` skjuler toppstripa; «Embed-kode»-knapp ved ny delingslenke
+  gir en `<iframe>`-snutt (kopier med umiddelbar «Kopiert!»-tilbakemelding). Vises kun rett etter
+  opprettelse fordi bare token-hashen lagres.
+- **PDF-eksport** (`backend/server/narrative-pdf.ts`, Pro/Studio via migrasjon 0609 `export_pdf`):
+  pdfkit med innebygd DejaVu Sans (æøå), tittelside, per brett elementer med innhold/skript/valg/
+  forgreninger/jumpere/notater, vedlegg variabler + komponenter, sidetall. `GET …/export.pdf?locale=`
+  → 402 på Solo; knappen er låst med forklarende banner før man trykker (forebygg fremfor forklar).
+- Felles traversering `narrative-format/traverse.ts` (Markdown, CSV, PDF).
+
 
 ## Researchprogram
 
