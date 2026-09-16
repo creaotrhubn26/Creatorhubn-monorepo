@@ -17,6 +17,18 @@ import type express from "express";
 import type { Pool } from "pg";
 import { recordConsent, resolveAuthMethod, sha256 } from "./consent-ledger-service.js";
 
+import {
+  ETHNICITY_OPTIONS,
+  EYE_COLOR_OPTIONS,
+  FIGURE_OPTIONS,
+  HAIR_COLOR_OPTIONS,
+  JEANS_LENGTHS,
+  JEANS_WIDTHS,
+  PHYSICAL_ATTRIBUTE_KEYS,
+  REQUIRED_PHOTO_KINDS,
+  isValidVocabularyId,
+} from "../../frontend/shared/talent-physical-vocabulary.ts";
+
 interface SessionLike {
   userId: string;
   email?: string;
@@ -52,6 +64,8 @@ const EDITABLE_FIELDS = [
   "resume_url",
   "drama_school",
   "profile_links",
+  "physical_attributes",
+  "casting_photos",
   "age_range",
   "playing_age_min",
   "playing_age_max",
@@ -71,7 +85,7 @@ const EDITABLE_FIELDS = [
 ] as const;
 
 // JSONB-felter må stringifyes før de skrives til talents.
-const JSONB_FIELDS = ["headshot_alt_urls", "skills", "languages", "dialects", "external_links", "availability_windows", "profile_links"];
+const JSONB_FIELDS = ["headshot_alt_urls", "skills", "languages", "dialects", "external_links", "availability_windows", "profile_links", "physical_attributes", "casting_photos"];
 // Felter som utgjør «tilgjengelighet» — når noen av disse skrives regner vi
 // tilgjengeligheten som (re-)bekreftet og bumper availability_confirmed_at.
 const AVAILABILITY_FIELDS = new Set(["availability_status", "availability_notes", "availability_windows"]);
@@ -124,12 +138,78 @@ function sanitizeProfileLinks(value: unknown): Record<string, string> {
   return out;
 }
 
+/** Mål og fysiske trekk. Ukjente nøkler forkastes, tall må være rimelige. */
+function sanitizePhysicalAttributes(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const key of PHYSICAL_ATTRIBUTE_KEYS) {
+    const raw = input[key];
+    if (raw === undefined || raw === null || raw === "") continue;
+
+    if (key === "figure") {
+      if (isValidVocabularyId(FIGURE_OPTIONS, raw)) out[key] = raw;
+    } else if (key === "jeans_width") {
+      const n = Number(raw);
+      if (JEANS_WIDTHS.includes(n)) out[key] = n;
+    } else if (key === "jeans_length") {
+      const n = Number(raw);
+      if (JEANS_LENGTHS.includes(n)) out[key] = n;
+    } else if (key.endsWith("_cm")) {
+      const n = Number(raw);
+      // Et menneskelig kroppsmål ligger mellom 10 og 250 cm. Utenfor er det
+      // en tastefeil, og en tastefeil i et castingsøk er verre enn tomt.
+      if (Number.isFinite(n) && n >= 10 && n <= 250) out[key] = Math.round(n);
+    } else if (key === "tattoos") {
+      if (typeof raw === "boolean") out[key] = raw;
+    } else if (key === "measured_at") {
+      const text = String(raw).slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) out[key] = text;
+    } else {
+      // clothing_size, shoe_size, own_equipment — fritekst med regionsuffiks
+      // («42 (EU)»), så de kan ikke normaliseres til tall.
+      const text = String(raw).trim();
+      if (text) out[key] = text.slice(0, key === "own_equipment" ? 1000 : 60);
+    }
+  }
+  return out;
+}
+
+/** De tre påkrevde bildene. Kun kjente typer og http(s). */
+function sanitizeCastingPhotos(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const kind of REQUIRED_PHOTO_KINDS) {
+    const raw = input[kind.id];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed || !/^https?:\/\//i.test(trimmed)) continue;
+    out[kind.id] = trimmed.slice(0, 2000);
+  }
+  return out;
+}
+
 function pickEditable(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of EDITABLE_FIELDS) {
     if (!(field in body)) continue;
+    const raw = body[field];
     out[field as EditableField] =
-      field === "profile_links" ? sanitizeProfileLinks(body[field]) : body[field];
+      field === "profile_links"
+        ? sanitizeProfileLinks(raw)
+        : field === "physical_attributes"
+          ? sanitizePhysicalAttributes(raw)
+          : field === "casting_photos"
+            ? sanitizeCastingPhotos(raw)
+            : field === "hair_color"
+              ? (isValidVocabularyId(HAIR_COLOR_OPTIONS, raw) ? raw : null)
+              : field === "eye_color"
+                ? (isValidVocabularyId(EYE_COLOR_OPTIONS, raw) ? raw : null)
+                : field === "ethnicity"
+                  ? (isValidVocabularyId(ETHNICITY_OPTIONS, raw) ? raw : null)
+                  : raw;
   }
   return out;
 }
@@ -264,6 +344,42 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
     } catch (err) {
       console.error("[talents/me/availability/confirm] failed", err);
       return res.status(500).json({ error: "Klarte ikke å bekrefte tilgjengelighet" });
+    }
+  });
+
+  // ── POST /me/ethnicity-consent ──────────────────────────────────────
+  //
+  // Etnisk opprinnelse er en særlig kategori etter GDPR art. 9. Den kan ikke
+  // ligge bak det generelle demographics-scopet sammen med høyde og
+  // skostørrelse — den krever et eget, eksplisitt ja, og må kunne trekkes
+  // tilbake uten at resten av demografien forsvinner.
+  app.post("/api/role-room/talents/me/ethnicity-consent", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const granted = (req.body as Record<string, unknown> | undefined)?.granted;
+    if (typeof granted !== "boolean") {
+      return res.status(400).json({ error: "granted må være true eller false" });
+    }
+
+    try {
+      const existing = await fetchTalentForUser(pool, session.userId);
+      if (!existing) return res.status(404).json({ error: "Ingen profil ennå" });
+      const r = await pool.query(
+        `UPDATE talents
+            SET ethnicity_consent = $2,
+                ethnicity_consent_at = CASE WHEN $2 THEN now() ELSE NULL END,
+                -- Trekkes samtykket, slettes verdien. Å beholde den ville
+                -- lagret en særlig kategori uten grunnlag.
+                ethnicity = CASE WHEN $2 THEN ethnicity ELSE NULL END
+          WHERE id = $1
+          RETURNING *`,
+        [existing.id, granted],
+      );
+      return res.json({ talent: r.rows[0] });
+    } catch (err) {
+      console.error("[talents/me/ethnicity-consent] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å lagre samtykket" });
     }
   });
 

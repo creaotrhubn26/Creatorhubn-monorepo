@@ -64,6 +64,12 @@ export interface RoleRoomTalent {
   /** Satt av BankID-verifisering. Selve identiteten ligger i eid_identities. */
   identity_verified: boolean | null;
   identity_verified_at: string | null;
+  },
+
+  physical_attributes: Record<string, string | number | boolean> | null;
+  casting_photos: Partial<Record<'face_front' | 'face_profile' | 'full_body_front', string>> | null;
+  /** Eget samtykke for etnisk opprinnelse — særlig kategori (GDPR art. 9). */
+  ethnicity_consent: boolean | null;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
   badges: string[];
   metadata: Record<string, unknown>;
@@ -137,6 +143,23 @@ export interface RoleRoomMaskedTalent extends Partial<RoleRoomTalent> {
   granted_scopes: RoleRoomTalentConsentScope[];
 }
 
+export interface CvImportSuggestion {
+  credits: Array<{
+    category: TalentCreditCategory;
+    title: string;
+    role_name: string | null;
+    role_type: string | null;
+    production_company: string | null;
+    director: string | null;
+    year: number | null;
+  }>;
+  profile: {
+    drama_school: string | null;
+  };
+  /** Linjer med persondata vi bevisst hoppet over. */
+  skipped: string[];
+}
+
 export type TalentCreditCategory = 'film_tv' | 'theatre' | 'commercial' | 'voice' | 'other';
 
 /** Én kreditering i skuespiller-CV-en (migrasjon 0611). */
@@ -203,6 +226,28 @@ const roleRoomTalentsService = {
     const payload = await r.json().catch(() => null);
     if (!r.ok) return { error: payload?.error || 'start_failed' };
     return { authorizeUrl: payload.authorizeUrl as string };
+  },
+
+  /** Eget ja/nei for etnisk opprinnelse. Trekkes det, slettes verdien. */
+  async setEthnicityConsent(granted: boolean): Promise<RoleRoomTalent | { error: string }> {
+    const r = await authFetch(`${BASE}/me/ethnicity-consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ granted }),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre samtykket' };
+    return payload.talent as RoleRoomTalent;
+  },
+
+  /** Laster opp en CV (PDF/DOCX) og får et FORSLAG tilbake. Lagrer ingenting. */
+  async importCv(file: File): Promise<CvImportSuggestion | { error: string }> {
+    const body = new FormData();
+    body.append('file', file);
+    const r = await authFetch(`${BASE}/me/cv-import`, { method: 'POST', body });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'import_failed' };
+    return payload.suggestion as CvImportSuggestion;
   },
 
   async fetchMyCredits(): Promise<TalentCredit[]> {
@@ -821,6 +866,11 @@ export interface TalentSearchHit {
   about_video_url?: string | null;
   drama_school?: string | null;
   profile_links?: Partial<Record<TalentProfileLinkKey, string>>;
+  physical_attributes?: Record<string, string | number | boolean>;
+  casting_photos?: Record<string, string>;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  ethnicity?: string | null;
   has_showreel?: boolean;
   playing_age_min?: number | null;
   playing_age_max?: number | null;
