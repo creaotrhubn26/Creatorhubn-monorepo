@@ -258,7 +258,8 @@ export function buildSearchSql(
     SELECT
       t.id, t.display_name, t.city, t.country, t.bio,
       t.headshot_url, t.showreel_url, t.showreel_url_2, t.about_video_url, t.resume_url,
-      t.drama_school, t.profile_links,
+      t.drama_school, t.profile_links, t.physical_attributes, t.casting_photos,
+      t.hair_color, t.eye_color, t.height_cm, t.ethnicity, t.ethnicity_consent,
       t.playing_age_min, t.playing_age_max, t.gender,
       t.skills, t.languages, t.dialects,
       t.availability_status, t.availability_notes,
@@ -343,12 +344,22 @@ const agencyProfileLinks = (value: unknown) => pickLinks(value, AGENCY_LINK_KEYS
     masked.showreel_url = row.showreel_url;
     masked.showreel_url_2 = row.showreel_url_2;
     masked.about_video_url = row.about_video_url;
+    masked.casting_photos = row.casting_photos ?? {};
     masked.has_showreel = Boolean(row.showreel_url);
   }
   if (has("demographics")) {
     masked.playing_age_min = row.playing_age_min;
     masked.playing_age_max = row.playing_age_max;
     masked.gender = row.gender;
+    masked.height_cm = row.height_cm;
+    masked.hair_color = row.hair_color;
+    masked.eye_color = row.eye_color;
+    masked.physical_attributes = row.physical_attributes ?? {};
+    // 🔑 Etnisk opprinnelse er en særlig kategori (GDPR art. 9) og følger
+    // IKKE demographics. Den krever et eget, eksplisitt samtykke — uten det
+    // er feltet borte selv for en partner som har full demografi-tilgang.
+    masked.ethnicity = row.ethnicity_consent === true ? row.ethnicity : null;
+    masked.ethnicity_shared = row.ethnicity_consent === true;
   }
   // availability_visible gjøres ALLTID eksplisitt slik at UI kan vise «skjult
   // (ikke delt)» i stedet for stille å utelate feltet — samtykke-transparens.
