@@ -79,6 +79,11 @@ import { listInstagramConnections } from "./role-room-instagram-oauth.js";
 import { loadFeedPlan, saveFeedPlan } from "./role-room-feed-plan.js";
 import { buildChannelScorecard } from "./role-room-marketing-scorecard.js";
 import { aiRateLimit } from "./ai-rate-limiter.js";
+import {
+  getLeadgridMarketingAccess,
+  isLeadgridMarketingProjectKey,
+  leadgridMarketingAuthorizedFor,
+} from "./leadgrid-marketing-bridge.js";
 
 interface AdminSession {
   userId: string;
@@ -101,7 +106,29 @@ export interface RoleRoomMarketingPlanRoutesDeps {
 export function setupRoleRoomMarketingPlanRoutes(
   deps: RoleRoomMarketingPlanRoutesDeps,
 ): void {
-  const { app, pool, requireAdminSession, isCompatAdminFeatureEnabled } = deps;
+  const { app, pool, requireAdminSession: requireAdminSessionDep, isCompatAdminFeatureEnabled } = deps;
+
+  // Leadgrid Markedssjef-modus (leadgrid-marketing-bridge.ts): for `lg-`-
+  // prosjekt-nøkler har bro-middlewaren allerede autorisert kalleren via
+  // Leadgrids egne regler (prosjekt-medlemskap + marketing.content.brief +
+  // modul leadgrid:marketing). Da er admin-sesjon ikke et krav. For alle
+  // andre nøkler er oppførselen nøyaktig som før.
+  const requireAdminSession = (
+    req: express.Request,
+    res: express.Response,
+  ): AdminSession | null => {
+    const lg = getLeadgridMarketingAccess(req);
+    if (lg) {
+      return {
+        userId: lg.session.userId,
+        email: lg.session.email ?? "",
+        name: lg.session.name ?? "",
+        role: lg.session.role ?? lg.role,
+        loginAt: lg.session.loginAt ?? "",
+      };
+    }
+    return requireAdminSessionDep(req, res);
+  };
 
   // Per-caller throttle on the generative endpoints (bearer-token keyed).
   // Admin-gated, but caps unbounded Claude/DALL-E spend from an admin loop
@@ -116,7 +143,16 @@ export function setupRoleRoomMarketingPlanRoutes(
   // nøyaktig samme grense som resolvePostEditor bruker for post-redigering.
   // Uten dette kan en vilkårlig innlogget admin lese/endre andre produsenters
   // planer ved å gjette/iterere projectId/planId.
-  const userIsProjectMember = async (projectId: string, userId: string): Promise<boolean> => {
+  const userIsProjectMember = async (
+    projectId: string,
+    userId: string,
+    req?: express.Request,
+  ): Promise<boolean> => {
+    // Leadgrid-nøkkel: «medlem» = autorisert av bro-middlewaren for akkurat
+    // denne nøkkelen (org-medlem med markedsførings-permission).
+    if (isLeadgridMarketingProjectKey(projectId)) {
+      return leadgridMarketingAuthorizedFor(req, projectId);
+    }
     try {
       const r = await pool.query(
         `SELECT 1 FROM casting_user_roles
@@ -134,15 +170,22 @@ export function setupRoleRoomMarketingPlanRoutes(
   // PROSJEKT-nøklede endepunktene (generate, scorecard) som må autorisere FØR
   // de leser/skriver prosjekt-data, og der det ennå ikke finnes en plan-rad å
   // utlede eierskap fra (userIsProjectMember dekker kun medlemskap, ikke eier).
-  const userCanAccessProject = async (projectId: string, userId: string): Promise<boolean> => {
+  const userCanAccessProject = async (
+    projectId: string,
+    userId: string,
+    req?: express.Request,
+  ): Promise<boolean> => {
     if (!projectId || !userId) return false;
+    if (isLeadgridMarketingProjectKey(projectId)) {
+      return leadgridMarketingAuthorizedFor(req, projectId);
+    }
     try {
       const owner = await pool.query(
         `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2 LIMIT 1`,
         [projectId, userId],
       );
       if (owner.rows[0]) return true;
-      return await userIsProjectMember(projectId, userId);
+      return await userIsProjectMember(projectId, userId, req);
     } catch {
       return false;
     }
@@ -181,7 +224,10 @@ export function setupRoleRoomMarketingPlanRoutes(
 
   app.post("/api/role-room/marketing-plan/generate", genLimit, async (req, res) => {
     const featureId = "role-room-agent-producer";
-    if (!isCompatAdminFeatureEnabled(featureId)) {
+    // Leadgrid-prosjekter (lg-nøkkel) gates av modulen leadgrid:marketing i
+    // bro-middlewaren — ikke av Role Rooms produsent-feature-flag.
+    const leadgridAccess = getLeadgridMarketingAccess(req);
+    if (!leadgridAccess && !isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
     const session = requireAdminSession(req, res);
@@ -197,7 +243,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     // aktive plan + KPI-snapshots inn i previousPlanKpiContext og (b) persistere en
     // ny plan festet til offerets prosjekt (som via /activate kan skygge offerets
     // aktive-plan-slot). Krev eier/medlem FØR vi leser eller skriver prosjekt-data.
-    if (!(await userCanAccessProject(projectId, session.userId))) {
+    if (!(await userCanAccessProject(projectId, session.userId, req))) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
     }
     if (!body.bootstrap || typeof body.bootstrap !== "object") {
@@ -208,14 +254,17 @@ export function setupRoleRoomMarketingPlanRoutes(
       : undefined;
 
     // Entitlement gate — marketing-plan generation counts against the
-    // same AI quota as other Claude-powered features.
-    const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
-    if (!entitlement.allowed) {
-      return res.status(402).json({
-        success: false,
-        error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
-        entitlement,
-      });
+    // same AI quota as other Claude-powered features. Leadgrid-prosjekter
+    // er allerede gatet av modul-entitlementen (leadgrid:marketing).
+    if (!leadgridAccess) {
+      const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+      if (!entitlement.allowed) {
+        return res.status(402).json({
+          success: false,
+          error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
+          entitlement,
+        });
+      }
     }
 
     const connections = await listInstagramConnections(pool, session.userId);
@@ -294,6 +343,14 @@ export function setupRoleRoomMarketingPlanRoutes(
       hasInstagramConnection: connections.length > 0,
       horizonDays,
       previousPlanKpiContext,
+      // Leadgrid Markedssjef-modus: strategien formes av beslutnings-
+      // psykologi (Kahneman) som standard. Kan skrus av eksplisitt.
+      strategyLens:
+        body.strategyLens === "none"
+          ? undefined
+          : body.strategyLens === "beslutningspsykologi" || leadgridAccess
+            ? "beslutningspsykologi"
+            : undefined,
     });
     if (!generated) {
       return res.status(503).json({
@@ -326,7 +383,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     // eier. Er kalleren hverken eier eller prosjekt-medlem, nekt. (plan === null
     // lekker ingen data, så da slipper vi sjekken.)
     if (plan && plan.ownerUserId !== session.userId
-        && !(await userIsProjectMember(projectId, session.userId))) {
+        && !(await userIsProjectMember(projectId, session.userId, req))) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
     }
     return res.json({ success: true, plan });
@@ -347,7 +404,7 @@ export function setupRoleRoomMarketingPlanRoutes(
       return res.status(404).json({ success: false, error: "Fant ikke planen." });
     }
     if (planMeta.ownerUserId !== session.userId
-        && !(await userIsProjectMember(planMeta.projectId, session.userId))) {
+        && !(await userIsProjectMember(planMeta.projectId, session.userId, req))) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne planen." });
     }
     // ?since=ISO returnerer kun rader med updated_at > since.
@@ -362,7 +419,8 @@ export function setupRoleRoomMarketingPlanRoutes(
 
   app.post("/api/role-room/marketing-plan/:planId/generate-posts", genLimit, async (req, res) => {
     const featureId = "role-room-agent-producer";
-    if (!isCompatAdminFeatureEnabled(featureId)) {
+    const leadgridAccess = getLeadgridMarketingAccess(req);
+    if (!leadgridAccess && !isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
     const session = requireAdminSession(req, res);
@@ -376,21 +434,28 @@ export function setupRoleRoomMarketingPlanRoutes(
     }
 
     // Entitlement — 30-post Claude-gen counts against the AI quota.
-    const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
-    if (!entitlement.allowed) {
-      return res.status(402).json({
-        success: false,
-        error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
-        entitlement,
-      });
+    // (Leadgrid-prosjekter: modul-gatet i bro-middlewaren.)
+    if (!leadgridAccess) {
+      const entitlement = await checkAgentEntitlement(pool, session.userId, session.role);
+      if (!entitlement.allowed) {
+        return res.status(402).json({
+          success: false,
+          error: entitlement.reason || "Markedsplan-generering krever aktiv plan eller add-on.",
+          entitlement,
+        });
+      }
     }
 
     // Load the plan + pillars so we can hand Claude the full strategy
     // context. Ownership gate: plan must belong to the session user's
     // project (fetchActiveMarketingPlan only returns draft/active; we
     // also verify owner_user_id to prevent cross-project generation).
+    // Leadgrid: alle i orgen med markedsførings-permission «eier» planen.
     const plan = await fetchActiveMarketingPlan(pool, projectId);
-    if (!plan || plan.id !== planId || plan.ownerUserId !== session.userId) {
+    const ownsPlan = plan
+      ? plan.ownerUserId === session.userId || leadgridMarketingAuthorizedFor(req, projectId)
+      : false;
+    if (!plan || plan.id !== planId || !ownsPlan) {
       return res.status(404).json({ success: false, error: "Fant ingen aktiv markedsplan for dette prosjektet." });
     }
 
@@ -468,7 +533,7 @@ export function setupRoleRoomMarketingPlanRoutes(
         WHERE project_id = $1 AND owner_user_id = $2 LIMIT 1`,
       [projectId, session.userId],
     );
-    if (!ownsPlanOnProject.rows[0] && !(await userIsProjectMember(projectId, session.userId))) {
+    if (!ownsPlanOnProject.rows[0] && !(await userIsProjectMember(projectId, session.userId, req))) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
     }
     try {
@@ -500,7 +565,10 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!activateMeta || activateMeta.projectId !== projectId) {
       return res.status(404).json({ success: false, error: "Fant ikke planen." });
     }
-    if (activateMeta.ownerUserId !== session.userId) {
+    if (
+      activateMeta.ownerUserId !== session.userId
+      && !leadgridMarketingAuthorizedFor(req, projectId)
+    ) {
       return res.status(403).json({ success: false, error: "Du eier ikke planen." });
     }
     const ok = await activateMarketingPlan(pool, planId, projectId);
@@ -1371,7 +1439,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
     // finnes. Den gamle gaten (plan.ownerUserId !== session.userId) hoppet over når
     // plan === null → et offer med research men uten aktiv plan lekket. Krev eier/
     // medlem opp front slik at read-en aldri skjer for en fremmed.
-    if (!(await userCanAccessProject(projectId, session.userId))) {
+    if (!(await userCanAccessProject(projectId, session.userId, req))) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til dette prosjektet." });
     }
 
@@ -1469,7 +1537,19 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         [planId],
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke planen." });
-      if (r.rows[0].owner !== session.userId) {
+      // Leadgrid: alle i orgen med markedsførings-permission «eier» planen
+      // (bro-middlewaren har autorisert lg-nøkkelen for denne requesten).
+      const planProjectId = await pool
+        .query<{ project_id: string }>(
+          `SELECT project_id FROM role_room_marketing_plans WHERE id = $1`,
+          [planId],
+        )
+        .then((q) => q.rows[0]?.project_id ?? "")
+        .catch(() => "");
+      if (
+        r.rows[0].owner !== session.userId
+        && !leadgridMarketingAuthorizedFor(req, planProjectId)
+      ) {
         return res.status(403).json({ success: false, error: "Du eier ikke planen." });
       }
       const generated = Number(r.rows[0].count);
@@ -1625,7 +1705,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
    * typen så frontend kan vise farget badge ("Klient"/"Team").
    */
   const resolvePostEditor = async (
-    postId: string, userId: string,
+    postId: string, userId: string, req?: express.Request,
   ): Promise<{ canEdit: boolean; editorKind: 'team' | 'client' | null; planId: string | null }> => {
     try {
       const r = await pool.query<{
@@ -1644,6 +1724,12 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
       // Eier = team
       if (row.ownerUserId === userId) {
         return { canEdit: true, editorKind: 'team', planId: row.planId };
+      }
+      // Leadgrid-prosjekt: bro-middlewaren har autorisert org-medlemmet.
+      if (isLeadgridMarketingProjectKey(row.projectId)) {
+        return leadgridMarketingAuthorizedFor(req, row.projectId)
+          ? { canEdit: true, editorKind: 'team', planId: row.planId }
+          : { canEdit: false, editorKind: null, planId: row.planId };
       }
       // Sjekk medlemsrolle
       const m = await pool.query<{ role: string }>(
@@ -1758,7 +1844,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
     if (!postId) {
       return res.status(400).json({ success: false, error: "postId er påkrevd." });
     }
-    const editor = await resolvePostEditor(postId, session.userId);
+    const editor = await resolvePostEditor(postId, session.userId, req);
     if (!editor.canEdit) {
       return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne posten." });
     }

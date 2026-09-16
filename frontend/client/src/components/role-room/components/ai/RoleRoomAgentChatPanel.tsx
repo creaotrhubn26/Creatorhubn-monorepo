@@ -37,7 +37,7 @@ import {
   Send as SendIcon,
 } from '@mui/icons-material';
 
-import AiConsentGate from './AiConsentGate';
+import AiConsentGate, { type AiConsentGateCopy } from './AiConsentGate';
 import AiTransparencyBanner from './AiTransparencyBanner';
 import AgentThreadList from './AgentThreadList';
 import AgentPaywallDialog from './AgentPaywallDialog';
@@ -62,6 +62,17 @@ interface RoleRoomAgentChatPanelProps {
    *  brief field). Return a string to render an inline success message
    *  in the chat thread. Throw to render an inline error. */
   onConfirmToolUse?: (tool: RoleRoomAgentToolUse) => Promise<string | void> | string | void;
+  /** Egne forslags-chips (default: casting-forslagene). Leadgrid-flatene
+   *  sender markedsførings-/salgsspørsmål. */
+  suggestedPrompts?: string[];
+  /** Leadgrid-vertikalen: prosjektet er gatet av modul-entitlement i backend,
+   *  ikke av Role Rooms agent-abonnement — hopp over entitlement-fetch,
+   *  paywall og prøveperiode-banner. */
+  entitlementExempt?: boolean;
+  /** Kopi-overstyring for samtykke-gaten (se AiConsentGateCopy). */
+  consentCopy?: AiConsentGateCopy;
+  /** Tekst i tom-tilstanden før første melding (default: casting-tekst). */
+  emptyStateText?: string;
 }
 
 /** Per-tool execution feedback rendered inline in the message thread. */
@@ -82,6 +93,10 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   currentUserId,
   context,
   onConfirmToolUse,
+  suggestedPrompts,
+  entitlementExempt = false,
+  consentCopy,
+  emptyStateText,
 }) => {
   const [input, setInput] = useState('');
   const [pendingTool, setPendingTool] = useState<RoleRoomAgentToolUse | null>(null);
@@ -97,7 +112,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   // Pre-flight entitlement fetch so we can skip the 402 round-trip and
   // show the paywall immediately for users who don't have access.
   React.useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || entitlementExempt) return;
     let cancelled = false;
     fetchAgentEntitlement().then((data) => {
       if (!cancelled) setEntitlementBundle(data);
@@ -105,7 +120,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, entitlementExempt]);
 
   // Surface a paywall when a send call comes back with
   // entitlement_required (HTTP 402). The hook stores the code+detail in
@@ -119,7 +134,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   }, [lastError]);
 
   const needsPaywall =
-    entitlementBundle != null && !entitlementBundle.entitlement.allowed;
+    !entitlementExempt && entitlementBundle != null && !entitlementBundle.entitlement.allowed;
 
   // Soft trial-expiry banner — shown when user has 3 or fewer days left
   // on an active trial. No email today; this is the in-app nudge.
@@ -243,7 +258,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
       </Stack>
 
       <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-        {SUGGESTED_PROMPTS.map((prompt) => (
+        {(suggestedPrompts ?? SUGGESTED_PROMPTS).map((prompt) => (
           <Chip
             key={prompt}
             label={prompt}
@@ -277,9 +292,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             '& .MuiAlert-icon': { color: '#a5f3fc' },
           }}
         >
-          Spør The Role Room Agent om prosjektet. Alle svar kommer fra CI via
-          en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew
-          før kallet.
+          {emptyStateText
+            ?? 'Spør The Role Room Agent om prosjektet. Alle svar kommer fra CI via en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew før kallet.'}
         </Alert>
       ) : null}
 
@@ -446,7 +460,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
       {/* Scroll anchor — keeps the latest message/streaming delta in view. */}
       <Box ref={endRef} sx={{ height: 0 }} />
     </Stack>
-  ), [messages, pending, awaitingFirstToken, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback]);
+  ), [messages, pending, awaitingFirstToken, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback, suggestedPrompts, emptyStateText]);
 
   const composer = (
     <Box
@@ -532,7 +546,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
   }
 
   return (
-    <AiConsentGate projectId={projectId} currentUserId={currentUserId}>
+    <AiConsentGate projectId={projectId} currentUserId={currentUserId} copy={consentCopy}>
       <Box
         sx={{
           display: 'flex',

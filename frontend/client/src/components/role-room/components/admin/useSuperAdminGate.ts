@@ -57,26 +57,25 @@ function readLocalEmail(): string | null {
 }
 
 export interface SuperAdminGateResult {
-  /** True kun hvis email == daniel@creatorhubn.com (uavhengig av kilde). */
+  /** True kun hvis serveren bekrefter email == daniel@creatorhubn.com. */
   isSuperAdmin: boolean;
   /** Normalisert (lowercase) email — null hvis ingen session funnet. */
   email: string | null;
-  /** True når begge sjekker (localStorage + server-fallback) er ferdige. */
+  /** True når serversjekken er ferdig. Vent på denne før noe rendres. */
   ready: boolean;
 }
 
 export function useSuperAdminGate(): SuperAdminGateResult {
   const [localEmail] = useState<string | null>(() => readLocalEmail());
   const [serverEmail, setServerEmail] = useState<string | null>(null);
-  const [ready, setReady] = useState<boolean>(() => readLocalEmail() !== null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Hvis localStorage allerede ga oss en email, trenger vi ikke server-sjekk.
-    if (localEmail) {
-      setReady(true);
-      return;
-    }
-
+    // Serveren avgjør, alltid. localStorage overlever utlogging og kontobytte:
+    // en gammel produkteier-email lokalt åpnet Admin Room-linsen for en helt
+    // annen sesjon, som AdminRoom-skallet deretter nektet. En tom flate med et
+    // avslag er verre enn ingen flate. localStorage er nå bare en verdi vi
+    // viser hvis serveren ikke svarer i det hele tatt.
     let cancelled = false;
     const controller = new AbortController();
 
@@ -114,10 +113,11 @@ export function useSuperAdminGate(): SuperAdminGateResult {
       cancelled = true;
       controller.abort();
     };
-  }, [localEmail]);
+  }, []);
 
-  const email = localEmail || serverEmail;
-  const isSuperAdmin = email === SUPER_ADMIN_EMAIL;
+  const email = serverEmail ?? localEmail;
+  // Kun serverens svar gir tilgang. Uten svar er porten lukket.
+  const isSuperAdmin = serverEmail !== null && serverEmail === SUPER_ADMIN_EMAIL;
 
   return { isSuperAdmin, email, ready };
 }

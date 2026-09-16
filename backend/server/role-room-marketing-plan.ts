@@ -188,7 +188,45 @@ function computeClaudeCostNok(
 const DEFAULT_MODEL = 'claude-sonnet-4-5';
 const HORIZON_DAYS_DEFAULT = 30;
 
-function buildSystemPrompt(): string {
+/**
+ * Strategi-linser: valgfrie prinsipp-rammer som former planen uten å endre
+ * output-skjemaet. `beslutningspsykologi` = Kahneman («Tenke, fort og
+ * langsomt») anvendt på markedsføring — standard for Leadgrid
+ * Markedssjef-modus, aldri på for Role Room-prosjekter med mindre kalleren
+ * ber om det.
+ */
+export type MarketingPlanStrategyLens = 'beslutningspsykologi';
+
+export function buildStrategyLensBlock(lens: MarketingPlanStrategyLens | undefined): string | null {
+  if (lens !== 'beslutningspsykologi') return null;
+  return [
+    '## Strategy lens: decision psychology (Kahneman, "Thinking, Fast and Slow")',
+    'Shape the plan so it works WITH how buyers actually decide. Apply these',
+    'principles explicitly and name the one you used in each pillar rationale',
+    'as a prefix "Prinsipp: <name> — ":',
+    '- Kognitiv letthet (System 1): hooks and captions must be instantly',
+    '  readable; one idea per post; concrete nouns over abstractions.',
+    '- Tapsaversjon: frame the cost of NOT solving the audience problem',
+    '  (what they lose today) before the gain — honestly, never invented.',
+    '- Forankring: lead with the reference point (a number, a before-state)',
+    '  the audience should compare against; pricing content anchors on value',
+    '  delivered, not on discounts.',
+    '- Tilgjengelighet: make the brand the example that comes to mind — the',
+    '  same distinctive proof shown repeatedly, not a new claim every post.',
+    '- Sosialt bevis og utside-blikk: prefer base rates and named outcomes',
+    '  ("N of our customers…") over adjectives; never fabricate statistics —',
+    '  if no verified number exists, ask for one in the rationale instead.',
+    '- Peak-end: the customer journey content should design the peak moment',
+    '  and the last impression (onboarding, delivery, follow-up).',
+    '- Small numbers: KPI targets must state a minimum sample size before a',
+    '  conclusion is drawn (no strategy change on fewer than ~20 observations).',
+    'Never use manipulative tactics: no false scarcity, no fake countdowns, no',
+    'invented testimonials. The lens is about clarity and honest framing.',
+  ].join('\n');
+}
+
+function buildSystemPrompt(lens?: MarketingPlanStrategyLens): string {
+  const lensBlock = buildStrategyLensBlock(lens);
   return [
     'You are The Role Room marketing strategist.',
     'Your job is to turn a producer\'s company-profile + story logic into a concrete',
@@ -235,6 +273,7 @@ function buildSystemPrompt(): string {
     '  wording, cadence and KPI targets — never the channel/model foundation.',
     '- Language matches the bootstrap — if the company is Norwegian, output',
     '  everything in Norwegian (bokmål). English if the bootstrap is in English.',
+    ...(lensBlock ? ['', lensBlock] : []),
     '',
     'Return ONLY the JSON object. No markdown, no prose, no backticks.',
   ].join('\n');
@@ -388,6 +427,9 @@ export async function generateMarketingPlan(input: {
     missedTargets?: Array<{ metric: string; target: number; actual: number; ratio: number }>;
     totalSnapshots?: number;
   };
+  /** Valgfri prinsipp-ramme (se buildStrategyLensBlock). Uten verdi:
+   *  nøyaktig samme prompt som før. */
+  strategyLens?: MarketingPlanStrategyLens;
 }): Promise<GeneratedMarketingPlan | null> {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error('[marketing-plan] ANTHROPIC_API_KEY missing — cannot generate');
@@ -409,7 +451,7 @@ export async function generateMarketingPlan(input: {
     return null;
   }
 
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = buildSystemPrompt(input.strategyLens);
   let userMessage = buildUserMessage(input.bootstrap, horizonDays, input.hasInstagramConnection);
 
   // Item #194 — KPI-feedback-loop: legg til "what worked / what didn't"
