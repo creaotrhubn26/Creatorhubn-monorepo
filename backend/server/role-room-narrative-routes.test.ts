@@ -25,7 +25,7 @@ function makePool(handlers: Handler[] = []) {
 /** Testplaner: `studio` (alt) som standard så eksisterende tester er upåvirket; `solo` for gating-tester. */
 const TEST_PLANS = {
   solo: { slug: 'solo', features: ['play', 'export_json', 'export_md'], limits: { maxProjects: 3, maxElements: 200 } },
-  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf'], limits: {} },
+  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf', 'scene_review'], limits: {} },
 } as const;
 
 function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number; plan?: keyof typeof TEST_PLANS } = {}) {
@@ -588,5 +588,189 @@ describe('narrative routes — Fase 4d: plan-gating (prosjekteierens game_plan)'
     ]), { plan: 'solo' });
     const ok = await auth(request(room).post(`/api/role-room/narrative/projects/${PROJECT_ID}/elements`)).send({ boardId: 'nbd_1', kind: 'element', titleHtml: '<p>X</p>' });
     expect(ok.status).toBe(201);
+  });
+});
+
+describe('narrative routes — Fase 6: scener, oppgaver, review', () => {
+  const auth = (r: request.Test) => r.set('Authorization', `Bearer ${SESSION_TOKEN}`);
+  const base = `/api/role-room/narrative/projects/${PROJECT_ID}`;
+  const sceneRow = (over: Record<string, unknown> = {}) => ({
+    id: 'nsc_1', project_id: PROJECT_ID, code: 'S1', title: 'Skogpassasjen', subtitle: '', location: 'Skogen',
+    challenge: '', gameplay_mechanic: '', environment: '', status: 'idea', assignee_user_id: 'u2', due_at: null,
+    hero_asset_id: null, sort_order: 0, created_by: 'u1', created_at: new Date('2026-09-16T08:00:00Z'), updated_at: new Date('2026-09-16T08:00:00Z'),
+    ...over,
+  });
+  const reviewRow = (over: Record<string, unknown> = {}) => ({
+    id: 'nsr_1', scene_id: 'nsc_1', project_id: PROJECT_ID, round: 1, status: 'in_review', requested_by: 'u3',
+    requested_at: new Date('2026-09-16T09:00:00Z'), request_note: null, decided_by_user_id: null, decided_by_label: null,
+    decided_at: null, decision_note: null, snapshot: {}, snapshot_hash: 'a'.repeat(64), created_at: new Date(), updated_at: new Date(),
+    ...over,
+  });
+
+  it('GET scenes → liste med siste runde, oppgavetelling og neste ledige kode', async () => {
+    const pool = makePool([
+      { match: /FROM narrative_scenes WHERE project_id = \$1 ORDER BY/, rows: [sceneRow(), sceneRow({ id: 'nsc_2', code: 'S4', title: 'Torget' })] },
+      { match: /DISTINCT ON \(scene_id\)/, rows: [{ id: 'nsr_1', scene_id: 'nsc_1', round: 2, status: 'approved', requested_at: new Date(), decided_at: new Date() }] },
+      { match: /FILTER \(WHERE status = 'done'\)/, rows: [{ scene_id: 'nsc_1', total: 3, done: 1 }] },
+    ]);
+    const res = await auth(request(createApp(pool)).get(`${base}/scenes`));
+    expect(res.status).toBe(200);
+    expect(res.body.data.nextCode).toBe('S5');
+    expect(res.body.data.scenes[0]).toMatchObject({ id: 'nsc_1', code: 'S1', latestReview: { round: 2, status: 'approved' }, taskCounts: { total: 3, done: 1 } });
+    expect(res.body.data.scenes[1]).toMatchObject({ latestReview: null, taskCounts: { total: 0, done: 0 } });
+  });
+
+  it('POST scenes uten kode → auto «S{n}» + 201; ugyldig kode → 400; duplikat → 409 duplicate_code', async () => {
+    const pool = makePool([
+      { match: /SELECT code FROM narrative_scenes/, rows: [{ code: 'S1' }, { code: 'S2' }, { code: 'B9' }] },
+      { match: /INSERT INTO narrative_scenes/, rows: (p) => [sceneRow({ id: p[0], code: p[2], title: p[3] })] },
+    ]);
+    const res = await auth(request(createApp(pool)).post(`${base}/scenes`)).send({ title: 'Ny' });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ code: 'S3', title: 'Ny', status: 'idea' });
+
+    const bad = await auth(request(createApp(pool)).post(`${base}/scenes`)).send({ code: 'scene 12' });
+    expect(bad.status).toBe(400);
+
+    const dupPool = makePool([
+      { match: /SELECT code FROM narrative_scenes/, rows: [] },
+      { match: /INSERT INTO narrative_scenes/, rows: () => { throw Object.assign(new Error('dup'), { code: '23505' }); } },
+    ]);
+    const dup = await auth(request(createApp(dupPool)).post(`${base}/scenes`)).send({ code: 's1' });
+    expect(dup.status).toBe(409);
+    expect(dup.body).toMatchObject({ error: 'duplicate_code', code: 'S1' });
+  });
+
+  it('PATCH scenes/:id → 200 og sanntids-push kind=scene med scene-id; ukjent → 404', async () => {
+    const broadcast = vi.fn(() => 1);
+    const pool = makePool([{ match: /UPDATE narrative_scenes SET\s+code = COALESCE/, rows: [sceneRow({ location: 'Grotten' })] }]);
+    const res = await auth(request(createApp(pool, { broadcast })).patch(`${base}/scenes/nsc_1`)).send({ location: 'Grotten', dueAt: '2026-10-01T00:00:00Z' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.location).toBe('Grotten');
+    expect(broadcast).toHaveBeenCalledWith(`narrative:${PROJECT_ID}`, expect.objectContaining({ type: 'narrative:graph_changed', payload: expect.objectContaining({ kind: 'scene', ids: ['nsc_1'] }) }));
+
+    const missing = await auth(request(createApp(makePool())).patch(`${base}/scenes/nsc_x`)).send({ title: 'x' });
+    expect(missing.status).toBe(404);
+  });
+
+  it('PUT scenes/:id/links → kun eiere som finnes i prosjektet lagres', async () => {
+    const pool = makePool([
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow()] },
+      { match: /SELECT id FROM narrative_elements WHERE project_id = \$1 AND id = ANY/, rows: [{ id: 'nel_1' }] },
+      { match: /SELECT id FROM narrative_boards WHERE project_id = \$1 AND id = ANY/, rows: [] },
+    ]);
+    const res = await auth(request(createApp(pool)).put(`${base}/scenes/nsc_1/links`))
+      .send({ links: [{ ownerKind: 'element', ownerId: 'nel_1' }, { ownerKind: 'element', ownerId: 'nel_fremmed' }, { ownerKind: 'board', ownerId: 'nbd_x' }] });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ sceneId: 'nsc_1', ownerKind: 'element', ownerId: 'nel_1', sortOrder: 0 }]);
+    const inserts = pool.query.mock.calls.filter(([sql]) => /INSERT INTO narrative_scene_links/.test(String(sql)));
+    expect(inserts).toHaveLength(1);
+  });
+
+  it('POST scenes/:id/frames → XOR asset/url (400 ved begge/ingen), 201 med URL', async () => {
+    const pool = makePool([
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow()] },
+      { match: /MAX\(sort_order\), -1\) \+ 1 AS next FROM narrative_scene_frames/, rows: [{ next: 2 }] },
+      { match: /INSERT INTO narrative_scene_frames/, rows: (p) => [{ id: p[0], scene_id: p[1], project_id: p[2], asset_id: p[3], external_url: p[4], caption: p[5], sort_order: p[6], created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const both = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/frames`)).send({ assetId: 'nas_1', externalUrl: 'https://x.test/a.png' });
+    expect(both.status).toBe(400);
+    const none = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/frames`)).send({ caption: 'x' });
+    expect(none.status).toBe(400);
+    const ok = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/frames`)).send({ externalUrl: 'https://x.test/a.png', caption: 'Åpning' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.data).toMatchObject({ externalUrl: 'https://x.test/a.png', assetId: null, caption: 'Åpning', sortOrder: 2 });
+  });
+
+  it('oppgaver: POST → 201 todo; PATCH status=done → completed_at settes i SQL', async () => {
+    const pool = makePool([
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow()] },
+      { match: /INSERT INTO narrative_scene_tasks/, rows: (p) => [{ id: p[0], scene_id: p[1], project_id: p[2], title: p[3], status: p[4], assignee_user_id: p[5], due_at: p[6], completed_at: null, sort_order: 0, created_by: 'u1', created_at: new Date(), updated_at: new Date() }] },
+      { match: /UPDATE narrative_scene_tasks SET/, rows: (p) => [{ id: p[0], scene_id: p[1], project_id: p[2], title: 'Lys-pass', status: p[4], assignee_user_id: null, due_at: null, completed_at: new Date(), sort_order: 0, created_by: 'u1', created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const created = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/tasks`)).send({ title: 'Lys-pass', assigneeUserId: 'u2' });
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({ title: 'Lys-pass', status: 'todo', assigneeUserId: 'u2' });
+    const empty = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/tasks`)).send({ title: '   ' });
+    expect(empty.status).toBe(400);
+    const done = await auth(request(createApp(pool)).patch(`${base}/scenes/nsc_1/tasks/nst_1`)).send({ status: 'done' });
+    expect(done.status).toBe(200);
+    expect(done.body.data.status).toBe('done');
+    expect(done.body.data.completedAt).toBeTruthy();
+    const sql = String(pool.query.mock.calls.find(([s]) => /UPDATE narrative_scene_tasks SET/.test(String(s)))?.[0]);
+    expect(sql).toMatch(/completed_at = CASE/);
+  });
+
+  it('POST reviews: studio → 201 in_review, åpen runde superseders, scene → in_review, varsel til ansvarlig; solo → 402 scene_review', async () => {
+    const notify = vi.fn(async () => undefined);
+    const pool = makePool([
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow()] },
+      { match: /MAX\(round\), 0\)::int AS max_round/, rows: [{ max_round: 1 }] },
+      { match: /INSERT INTO narrative_scene_reviews/, rows: (p) => [reviewRow({ id: p[0], round: p[3], requested_by: p[4], request_note: p[5], snapshot_hash: p[7] })] },
+    ]);
+    const app = express();
+    app.use(express.json());
+    app.use('/api/role-room/narrative', createRoleRoomNarrativeRouter(pool, {
+      activeSessions: new Map([[SESSION_TOKEN, { userId: 'u1', email: 'u1@example.com', name: 'U1', role: 'user', loginAt: '' }]]),
+      canAccessProject: async () => true, broadcast: () => 0, notify,
+      resolveProjectPlan: async () => ({ ownerUserId: 'u1', active: true, plan: { slug: 'studio', name: 'Studio', description: null, monthlyPriceKr: 0, yearlyPriceKr: 0, stripeMonthlyPriceId: null, stripeYearlyPriceId: null, features: ['scene_review'], limits: {}, trialDays: 0, isActive: true, isFeatured: false, displayOrder: 0, createdAt: '', updatedAt: '' } }),
+    }));
+    const res = await auth(request(app).post(`${base}/scenes/nsc_1/reviews`)).send({ note: 'Klar for gjennomgang' });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ round: 2, status: 'in_review', requestedBy: 'u1', requestNote: 'Klar for gjennomgang' });
+    expect(res.body.data.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
+    const sqls = pool.query.mock.calls.map(([s]) => String(s));
+    expect(sqls.some((s) => /SET status = 'superseded'/.test(s))).toBe(true);
+    expect(sqls.some((s) => /UPDATE narrative_scenes SET status = 'in_review'/.test(s))).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(notify).toHaveBeenCalledWith(pool, expect.objectContaining({ event: 'narrative_scene_review_requested', recipientUserIds: ['u2'] }));
+
+    const solo = await auth(request(createApp(makePool(), { plan: 'solo' })).post(`${base}/scenes/nsc_1/reviews`)).send({});
+    expect(solo.status).toBe(402);
+    expect(solo.body.feature).toBe('scene_review');
+  });
+
+  it('POST reviews/:id/decision: uendret snapshot → 200 approved + scene approved; endret → 409 snapshot_stale; lukket → 409 review_closed', async () => {
+    const { hashSceneSnapshot } = await import('./role-room-narrative-service.js');
+    const scene = sceneRow();
+    const liveHash = hashSceneSnapshot({
+      code: 'S1', title: 'Skogpassasjen', subtitle: '', location: 'Skogen', challenge: '', gameplayMechanic: '', environment: '',
+      heroAssetId: null, frames: [], links: [],
+    });
+    const mk = (reviewOver: Record<string, unknown>) => makePool([
+      { match: /FROM narrative_scene_reviews WHERE id = \$1 AND scene_id = \$2/, rows: [reviewRow(reviewOver)] },
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [scene] },
+      { match: /UPDATE narrative_scene_reviews SET\s+status = \$4/, rows: (p) => [reviewRow({ ...reviewOver, status: p[3], decided_by_user_id: p[4], decided_by_label: p[5], decision_note: p[6], decided_at: new Date() })] },
+    ]);
+
+    const okPool = mk({ snapshot_hash: liveHash });
+    const ok = await auth(request(createApp(okPool)).post(`${base}/scenes/nsc_1/reviews/nsr_1/decision`)).send({ decision: 'approved', note: 'Fint', expectedSnapshotHash: liveHash });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data).toMatchObject({ status: 'approved', decidedByUserId: 'u1', decidedByLabel: 'U1', decisionNote: 'Fint' });
+    expect(okPool.query.mock.calls.some(([s, p]) => /UPDATE narrative_scenes SET status = \$3/.test(String(s)) && (p as unknown[])[2] === 'approved')).toBe(true);
+
+    const stale = await auth(request(createApp(mk({ snapshot_hash: 'b'.repeat(64) }))).post(`${base}/scenes/nsc_1/reviews/nsr_1/decision`)).send({ decision: 'approved' });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: 'snapshot_stale', currentHash: liveHash });
+
+    const closed = await auth(request(createApp(mk({ snapshot_hash: liveHash, status: 'approved' }))).post(`${base}/scenes/nsc_1/reviews/nsr_1/decision`)).send({ decision: 'changes_requested' });
+    expect(closed.status).toBe(409);
+    expect(closed.body.error).toBe('review_closed');
+
+    const solo = await auth(request(createApp(makePool(), { plan: 'solo' })).post(`${base}/scenes/nsc_1/reviews/nsr_1/decision`)).send({ decision: 'approved' });
+    expect(solo.status).toBe(402);
+  });
+
+  it('GET members-lite → eier først, visningsnavn med fallback til e-post', async () => {
+    const pool = makePool([{ match: /LEFT JOIN role_room_member_profiles/, rows: [
+      { user_id: 'u1', is_owner: true, display_name: 'Daniel', profile_image_url: 'https://x.test/d.png', full_name: null, email: 'd@x.test' },
+      { user_id: 'u2', is_owner: false, display_name: null, profile_image_url: null, full_name: null, email: 'kari@x.test' },
+    ] }]);
+    const res = await auth(request(createApp(pool)).get(`${base}/members-lite`));
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      { userId: 'u1', displayName: 'Daniel', profileImageUrl: 'https://x.test/d.png', isOwner: true },
+      { userId: 'u2', displayName: 'kari@x.test', profileImageUrl: null, isOwner: false },
+    ]);
   });
 });

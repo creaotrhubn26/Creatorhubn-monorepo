@@ -63,7 +63,8 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   });
   it("modus-filter «game_studio» → Story Graph-verktøy + globale, ikke casting/dans", () => {
     const names = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
-    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_projects"]));
+    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_game_scenes", "rr_game_scene_review_status", "rr_list_projects"]));
+    expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_list_game_scenes");
     expect(names).not.toContain("rr_list_auditions");
     expect(names).not.toContain("rr_list_dance_pieces");
     expect(names).not.toContain("rr_list_cohorts");
@@ -220,5 +221,30 @@ describe("Fase 3 Story Graph-verktøy (eksport + utkast-element)", () => {
   });
   it("rr_draft_element uten title → -32602", async () => {
     await expect(findCapability("rr_draft_element")!.handler(makePool([access]), WRITE_CTX, { projectId: "p1" })).rejects.toMatchObject({ code: -32602 });
+  });
+});
+
+describe("Fase 6: scene-verktøy (game_studio)", () => {
+  const access = { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] };
+  const sceneRow = { id: "nsc_1", project_id: "p1", code: "S1", title: "Skogpassasjen", subtitle: "", location: "Skogen", challenge: "", gameplay_mechanic: "", environment: "", status: "in_review", assignee_user_id: "u2", due_at: null, hero_asset_id: null, sort_order: 0, created_by: "u1", created_at: new Date(), updated_at: new Date() };
+  it("rr_list_game_scenes → kode/status/siste runde, filtrerbar på status", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE project_id = \$1 ORDER BY/, rows: [sceneRow, { ...sceneRow, id: "nsc_2", code: "S2", status: "idea" }] },
+      { match: /DISTINCT ON \(scene_id\)/, rows: [{ id: "nsr_1", scene_id: "nsc_1", round: 1, status: "in_review", requested_at: new Date(), decided_at: null }] },
+    ]);
+    const all = await findCapability("rr_list_game_scenes")!.handler(pool, CTX, { projectId: "p1" }) as { scenes: Array<{ code: string; latestReview: { round: number } | null }> };
+    expect(all.scenes.map((s) => s.code)).toEqual(["S1", "S2"]);
+    expect(all.scenes[0].latestReview).toMatchObject({ round: 1 });
+    const filtered = await findCapability("rr_list_game_scenes")!.handler(pool, CTX, { projectId: "p1", status: "idea" }) as { scenes: unknown[] };
+    expect(filtered.scenes).toHaveLength(1);
+  });
+  it("rr_game_scene_review_status → åpen runde markeres stale når hash avviker", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow] },
+      { match: /FROM narrative_scene_reviews WHERE scene_id/, rows: [{ id: "nsr_1", scene_id: "nsc_1", project_id: "p1", round: 1, status: "in_review", requested_by: "u1", requested_at: new Date(), request_note: null, decided_by_user_id: null, decided_by_label: null, decided_at: null, decision_note: null, snapshot_hash: "f".repeat(64) }] },
+    ]);
+    const out = await findCapability("rr_game_scene_review_status")!.handler(pool, CTX, { projectId: "p1", sceneId: "nsc_1" }) as { openRound: { round: number; stale: boolean } | null; rounds: unknown[] };
+    expect(out.openRound).toMatchObject({ round: 1, stale: true });
+    expect(out.rounds).toHaveLength(1);
   });
 });

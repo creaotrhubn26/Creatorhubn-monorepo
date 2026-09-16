@@ -514,6 +514,12 @@ export async function deleteBoard(db: Queryable, projectId: string, id: string):
         AND owner_id IN (SELECT id FROM narrative_elements WHERE project_id = $1 AND board_id = $2)`,
     [projectId, id],
   );
+  await db.query(`DELETE FROM narrative_scene_links WHERE project_id = $1 AND owner_kind = 'board' AND owner_id = $2`, [projectId, id]);
+  await db.query(
+    `DELETE FROM narrative_scene_links WHERE project_id = $1 AND owner_kind = 'element'
+        AND owner_id IN (SELECT id FROM narrative_elements WHERE project_id = $1 AND board_id = $2)`,
+    [projectId, id],
+  );
   const r = await db.query(`DELETE FROM narrative_boards WHERE id = $1 AND project_id = $2`, [id, projectId]);
   return (r.rowCount ?? 0) > 0;
 }
@@ -638,6 +644,7 @@ export async function deleteElement(db: Queryable, projectId: string, id: string
   await db.query(`DELETE FROM narrative_attributes WHERE project_id = $1 AND owner_kind = 'element' AND owner_id = $2`, [projectId, id]);
   await db.query(`UPDATE narrative_elements SET jumper_target_id = NULL WHERE project_id = $1 AND jumper_target_id = $2`, [projectId, id]);
   await db.query(`UPDATE narrative_settings SET starting_element_id = NULL WHERE project_id = $1 AND starting_element_id = $2`, [projectId, id]);
+  await db.query(`DELETE FROM narrative_scene_links WHERE project_id = $1 AND owner_kind = 'element' AND owner_id = $2`, [projectId, id]);
   const r = await db.query(`DELETE FROM narrative_elements WHERE id = $1 AND project_id = $2`, [id, projectId]);
   return (r.rowCount ?? 0) > 0;
 }
@@ -929,6 +936,9 @@ export async function patchAsset(db: Queryable, projectId: string, id: string, p
 }
 
 export async function deleteAsset(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  // Fase 6: myke referanser fra scener/rammer nulles; rammer uten kilde slettes (XOR-CHECK).
+  await db.query(`UPDATE narrative_scenes SET hero_asset_id = NULL WHERE project_id = $1 AND hero_asset_id = $2`, [projectId, id]);
+  await db.query(`DELETE FROM narrative_scene_frames WHERE project_id = $1 AND asset_id = $2`, [projectId, id]);
   const r = await db.query(`DELETE FROM narrative_assets WHERE id = $1 AND project_id = $2`, [id, projectId]);
   return (r.rowCount ?? 0) > 0;
 }
@@ -1334,4 +1344,710 @@ export async function getPublicStory(db: Queryable, rawToken: string): Promise<P
   const graph = await getGraph(db, link.projectId);
   bumpShareViewCount(db, link.id);
   return { title: graph.settings.title?.trim() || 'Story Graph', mode: link.mode, graph: toPublicGraph(graph) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Fase 6: Scener & gameplay + Review & Godkjenning
+//  (tabeller i 0610_narrative_scenes_and_reviews.sql)
+// ═══════════════════════════════════════════════════════════════════════
+
+export type NarrativeSceneStatus = 'idea' | 'in_progress' | 'in_review' | 'changes_requested' | 'approved' | 'implemented';
+export type NarrativeSceneTaskStatus = 'todo' | 'doing' | 'done';
+export type NarrativeSceneReviewStatus = 'in_review' | 'changes_requested' | 'approved' | 'superseded';
+export type NarrativeSceneLinkKind = 'element' | 'board';
+
+export const NARRATIVE_SCENE_STATUSES: readonly NarrativeSceneStatus[] =
+  ['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented'];
+export const NARRATIVE_SCENE_TASK_STATUSES: readonly NarrativeSceneTaskStatus[] = ['todo', 'doing', 'done'];
+/** Scenekode: 1–3 bokstaver + 1–4 sifre (speiler CHECK-en i 0610). */
+export const NARRATIVE_SCENE_CODE_RE = /^[A-Za-z]{1,3}[0-9]{1,4}$/;
+
+export interface NarrativeScene {
+  id: string;
+  projectId: string;
+  code: string;
+  title: string;
+  subtitle: string;
+  location: string;
+  challenge: string;
+  gameplayMechanic: string;
+  environment: string;
+  status: NarrativeSceneStatus;
+  assigneeUserId: string | null;
+  dueAt: string | null;
+  heroAssetId: string | null;
+  sortOrder: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSceneLink {
+  sceneId: string;
+  ownerKind: NarrativeSceneLinkKind;
+  ownerId: string;
+  sortOrder: number;
+}
+
+export interface NarrativeSceneFrame {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  assetId: string | null;
+  externalUrl: string | null;
+  caption: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSceneTask {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  title: string;
+  status: NarrativeSceneTaskStatus;
+  assigneeUserId: string | null;
+  dueAt: string | null;
+  completedAt: string | null;
+  sortOrder: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSceneReview {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  round: number;
+  status: NarrativeSceneReviewStatus;
+  requestedBy: string | null;
+  requestedAt: string;
+  requestNote: string | null;
+  decidedByUserId: string | null;
+  decidedByLabel: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  snapshotHash: string;
+}
+
+/** Scene i lista: + siste runde og oppgavetelling (én spørring per liste, ikke per scene). */
+export interface NarrativeSceneSummary extends NarrativeScene {
+  latestReview: Pick<NarrativeSceneReview, 'id' | 'round' | 'status' | 'requestedAt' | 'decidedAt'> | null;
+  taskCounts: { total: number; done: number };
+}
+
+export interface NarrativeSceneDetail {
+  scene: NarrativeScene;
+  links: NarrativeSceneLink[];
+  frames: NarrativeSceneFrame[];
+  tasks: NarrativeSceneTask[];
+  reviews: NarrativeSceneReview[];
+  /** Hash av scenen slik den er nå — klienten sammenligner med åpen rundes hash. */
+  currentSnapshotHash: string;
+}
+
+export interface NarrativeMemberLite {
+  userId: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  isOwner: boolean;
+}
+
+export class SceneDuplicateCodeError extends Error {
+  readonly code = 'duplicate_code';
+  constructor(readonly sceneCode: string) { super(`Scenekoden «${sceneCode}» er allerede i bruk.`); }
+}
+export class SceneReviewStaleError extends Error {
+  readonly code = 'snapshot_stale';
+  constructor(readonly currentHash: string, readonly reviewHash: string) {
+    super('Scenen er endret siden runden ble sendt — send ny runde.');
+  }
+}
+export class SceneReviewClosedError extends Error {
+  readonly code = 'review_closed';
+  constructor(readonly status: NarrativeSceneReviewStatus) { super('Runden er allerede avgjort.'); }
+}
+
+function mapSceneRow(row: Row): NarrativeScene {
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id),
+    code: String(row.code),
+    title: String(row.title ?? ''),
+    subtitle: String(row.subtitle ?? ''),
+    location: String(row.location ?? ''),
+    challenge: String(row.challenge ?? ''),
+    gameplayMechanic: String(row.gameplay_mechanic ?? ''),
+    environment: String(row.environment ?? ''),
+    status: String(row.status ?? 'idea') as NarrativeSceneStatus,
+    assigneeUserId: strOrNull(row.assignee_user_id),
+    dueAt: isoTsOrNull(row.due_at),
+    heroAssetId: strOrNull(row.hero_asset_id),
+    sortOrder: num(row.sort_order),
+    createdBy: strOrNull(row.created_by),
+    createdAt: isoTs(row.created_at),
+    updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapSceneLinkRow(row: Row): NarrativeSceneLink {
+  return {
+    sceneId: String(row.scene_id),
+    ownerKind: String(row.owner_kind) as NarrativeSceneLinkKind,
+    ownerId: String(row.owner_id),
+    sortOrder: num(row.sort_order),
+  };
+}
+
+function mapSceneFrameRow(row: Row): NarrativeSceneFrame {
+  return {
+    id: String(row.id),
+    sceneId: String(row.scene_id),
+    projectId: String(row.project_id),
+    assetId: strOrNull(row.asset_id),
+    externalUrl: strOrNull(row.external_url),
+    caption: String(row.caption ?? ''),
+    sortOrder: num(row.sort_order),
+    createdAt: isoTs(row.created_at),
+    updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapSceneTaskRow(row: Row): NarrativeSceneTask {
+  return {
+    id: String(row.id),
+    sceneId: String(row.scene_id),
+    projectId: String(row.project_id),
+    title: String(row.title ?? ''),
+    status: String(row.status ?? 'todo') as NarrativeSceneTaskStatus,
+    assigneeUserId: strOrNull(row.assignee_user_id),
+    dueAt: isoTsOrNull(row.due_at),
+    completedAt: isoTsOrNull(row.completed_at),
+    sortOrder: num(row.sort_order),
+    createdBy: strOrNull(row.created_by),
+    createdAt: isoTs(row.created_at),
+    updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapSceneReviewRow(row: Row): NarrativeSceneReview {
+  return {
+    id: String(row.id),
+    sceneId: String(row.scene_id),
+    projectId: String(row.project_id),
+    round: num(row.round, 1),
+    status: String(row.status ?? 'in_review') as NarrativeSceneReviewStatus,
+    requestedBy: strOrNull(row.requested_by),
+    requestedAt: isoTs(row.requested_at),
+    requestNote: strOrNull(row.request_note),
+    decidedByUserId: strOrNull(row.decided_by_user_id),
+    decidedByLabel: strOrNull(row.decided_by_label),
+    decidedAt: isoTsOrNull(row.decided_at),
+    decisionNote: strOrNull(row.decision_note),
+    snapshotHash: String(row.snapshot_hash ?? ''),
+  };
+}
+
+/**
+ * Neste ledige S-kode gitt eksisterende koder («S1», «S2», «B7» → «S3»).
+ * Ren funksjon — speiles i frontendens sceneOps for forhåndsutfylling.
+ */
+export function nextSceneCode(existingCodes: readonly string[]): string {
+  let max = 0;
+  for (const code of existingCodes) {
+    const m = /^S(\d{1,4})$/i.exec(code.trim());
+    if (m) max = Math.max(max, Number.parseInt(m[1], 10));
+  }
+  return `S${Math.min(max + 1, 9999)}`;
+}
+
+// ─── Scener ──────────────────────────────────────────────────────────
+
+export async function listScenes(db: Queryable, projectId: string): Promise<NarrativeSceneSummary[]> {
+  const [scenes, reviews, tasks] = await Promise.all([
+    db.query(`SELECT * FROM narrative_scenes WHERE project_id = $1 ORDER BY sort_order, code, created_at`, [projectId]),
+    db.query(
+      `SELECT DISTINCT ON (scene_id) id, scene_id, round, status, requested_at, decided_at
+         FROM narrative_scene_reviews WHERE project_id = $1
+        ORDER BY scene_id, round DESC`,
+      [projectId],
+    ),
+    db.query(
+      `SELECT scene_id, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'done')::int AS done
+         FROM narrative_scene_tasks WHERE project_id = $1 GROUP BY scene_id`,
+      [projectId],
+    ),
+  ]);
+  const latestBy = new Map<string, NarrativeSceneSummary['latestReview']>();
+  for (const r of reviews.rows as Row[]) {
+    latestBy.set(String(r.scene_id), {
+      id: String(r.id), round: num(r.round, 1), status: String(r.status) as NarrativeSceneReviewStatus,
+      requestedAt: isoTs(r.requested_at), decidedAt: isoTsOrNull(r.decided_at),
+    });
+  }
+  const countsBy = new Map<string, { total: number; done: number }>();
+  for (const t of tasks.rows as Row[]) countsBy.set(String(t.scene_id), { total: num(t.total), done: num(t.done) });
+  return (scenes.rows as Row[]).map((row) => {
+    const scene = mapSceneRow(row);
+    return { ...scene, latestReview: latestBy.get(scene.id) ?? null, taskCounts: countsBy.get(scene.id) ?? { total: 0, done: 0 } };
+  });
+}
+
+export async function listSceneCodes(db: Queryable, projectId: string): Promise<string[]> {
+  const { rows } = await db.query(`SELECT code FROM narrative_scenes WHERE project_id = $1`, [projectId]);
+  return (rows as Row[]).map((r) => String(r.code));
+}
+
+export async function getScene(db: Queryable, projectId: string, id: string): Promise<NarrativeScene | null> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scenes WHERE id = $1 AND project_id = $2 LIMIT 1`, [id, projectId]);
+  return rows[0] ? mapSceneRow(rows[0] as Row) : null;
+}
+
+export async function getSceneDetail(db: Queryable, projectId: string, id: string): Promise<NarrativeSceneDetail | null> {
+  const scene = await getScene(db, projectId, id);
+  if (!scene) return null;
+  const [links, frames, tasks, reviews] = await Promise.all([
+    db.query(`SELECT * FROM narrative_scene_links WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, owner_kind, owner_id`, [id, projectId]),
+    db.query(`SELECT * FROM narrative_scene_frames WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, created_at`, [id, projectId]),
+    db.query(`SELECT * FROM narrative_scene_tasks WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, created_at`, [id, projectId]),
+    db.query(`SELECT * FROM narrative_scene_reviews WHERE scene_id = $1 AND project_id = $2 ORDER BY round DESC`, [id, projectId]),
+  ]);
+  const mappedLinks = (links.rows as Row[]).map(mapSceneLinkRow);
+  const mappedFrames = (frames.rows as Row[]).map(mapSceneFrameRow);
+  const snapshot = await buildSceneSnapshot(db, projectId, scene, mappedFrames, mappedLinks);
+  return {
+    scene,
+    links: mappedLinks,
+    frames: mappedFrames,
+    tasks: (tasks.rows as Row[]).map(mapSceneTaskRow),
+    reviews: (reviews.rows as Row[]).map(mapSceneReviewRow),
+    currentSnapshotHash: hashSceneSnapshot(snapshot),
+  };
+}
+
+export interface SceneInput {
+  code?: string | null;
+  title?: string;
+  subtitle?: string;
+  location?: string;
+  challenge?: string;
+  gameplayMechanic?: string;
+  environment?: string;
+  status?: NarrativeSceneStatus;
+  assigneeUserId?: string | null;
+  dueAt?: string | null;
+  heroAssetId?: string | null;
+  sortOrder?: number;
+}
+export type ScenePatch = SceneInput;
+
+function isUniqueViolation(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { code?: unknown }).code === '23505';
+}
+
+/** Oppretter scene; tom kode → neste ledige «S{n}». Duplikat → SceneDuplicateCodeError. */
+export async function createScene(db: Queryable, projectId: string, userId: string, input: SceneInput): Promise<NarrativeScene> {
+  const requested = typeof input.code === 'string' ? input.code.trim().toUpperCase() : '';
+  const code = requested || nextSceneCode(await listSceneCodes(db, projectId));
+  const sortOrder = input.sortOrder ?? (await listSceneCodes(db, projectId)).length;
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO narrative_scenes
+         (id, project_id, code, title, subtitle, location, challenge, gameplay_mechanic, environment,
+          status, assignee_user_id, due_at, hero_asset_id, sort_order, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+      [
+        generateId('nsc'), projectId, code, input.title ?? '', input.subtitle ?? '', input.location ?? '',
+        input.challenge ?? '', input.gameplayMechanic ?? '', input.environment ?? '',
+        input.status ?? 'idea', input.assigneeUserId ?? null, input.dueAt ?? null, input.heroAssetId ?? null,
+        sortOrder, userId,
+      ],
+    );
+    return mapSceneRow(rows[0] as Row);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new SceneDuplicateCodeError(code);
+    throw err;
+  }
+}
+
+export async function patchScene(db: Queryable, projectId: string, id: string, patch: ScenePatch): Promise<NarrativeScene | null> {
+  const code = typeof patch.code === 'string' && patch.code.trim() ? patch.code.trim().toUpperCase() : null;
+  try {
+    const { rows } = await db.query(
+      `UPDATE narrative_scenes SET
+         code = COALESCE($3, code),
+         title = COALESCE($4, title),
+         subtitle = COALESCE($5, subtitle),
+         location = COALESCE($6, location),
+         challenge = COALESCE($7, challenge),
+         gameplay_mechanic = COALESCE($8, gameplay_mechanic),
+         environment = COALESCE($9, environment),
+         status = COALESCE($10, status),
+         assignee_user_id = CASE WHEN $11::boolean THEN $12 ELSE assignee_user_id END,
+         due_at = CASE WHEN $13::boolean THEN $14::timestamptz ELSE due_at END,
+         hero_asset_id = CASE WHEN $15::boolean THEN $16 ELSE hero_asset_id END,
+         sort_order = COALESCE($17, sort_order),
+         updated_at = now()
+       WHERE id = $1 AND project_id = $2 RETURNING *`,
+      [
+        id, projectId, code, patch.title ?? null, patch.subtitle ?? null, patch.location ?? null,
+        patch.challenge ?? null, patch.gameplayMechanic ?? null, patch.environment ?? null, patch.status ?? null,
+        patch.assigneeUserId !== undefined, patch.assigneeUserId ?? null,
+        patch.dueAt !== undefined, patch.dueAt ?? null,
+        patch.heroAssetId !== undefined, patch.heroAssetId ?? null,
+        patch.sortOrder ?? null,
+      ],
+    );
+    return rows[0] ? mapSceneRow(rows[0] as Row) : null;
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new SceneDuplicateCodeError(code ?? '');
+    throw err;
+  }
+}
+
+export async function deleteScene(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_scenes WHERE id = $1 AND project_id = $2`, [id, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function reorderScenes(db: Queryable, projectId: string, orderedIds: string[]): Promise<void> {
+  for (let i = 0; i < orderedIds.length; i += 1) {
+    await db.query(`UPDATE narrative_scenes SET sort_order = $3, updated_at = now() WHERE id = $1 AND project_id = $2`, [orderedIds[i], projectId, i]);
+  }
+}
+
+// ─── Lenker til Story Graph ──────────────────────────────────────────
+
+export interface SceneLinkInput { ownerKind: NarrativeSceneLinkKind; ownerId: string }
+
+/**
+ * Erstatter scenens lenker. Eiere som ikke finnes i prosjektet forkastes
+ * stille (forebygger lenker på tvers av prosjekter); returnerer det som ble lagret.
+ */
+export async function setSceneLinks(db: Queryable, projectId: string, sceneId: string, links: SceneLinkInput[]): Promise<NarrativeSceneLink[] | null> {
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  const elementIds = links.filter((l) => l.ownerKind === 'element').map((l) => l.ownerId);
+  const boardIds = links.filter((l) => l.ownerKind === 'board').map((l) => l.ownerId);
+  const valid = new Set<string>();
+  if (elementIds.length) {
+    const { rows } = await db.query(`SELECT id FROM narrative_elements WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, elementIds]);
+    for (const r of rows as Row[]) valid.add(`element:${String(r.id)}`);
+  }
+  if (boardIds.length) {
+    const { rows } = await db.query(`SELECT id FROM narrative_boards WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, boardIds]);
+    for (const r of rows as Row[]) valid.add(`board:${String(r.id)}`);
+  }
+  await db.query(`DELETE FROM narrative_scene_links WHERE scene_id = $1 AND project_id = $2`, [sceneId, projectId]);
+  const out: NarrativeSceneLink[] = [];
+  const seen = new Set<string>();
+  let i = 0;
+  for (const l of links) {
+    const key = `${l.ownerKind}:${l.ownerId}`;
+    if (!valid.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    await db.query(
+      `INSERT INTO narrative_scene_links (scene_id, project_id, owner_kind, owner_id, sort_order) VALUES ($1, $2, $3, $4, $5)`,
+      [sceneId, projectId, l.ownerKind, l.ownerId, i],
+    );
+    out.push({ sceneId, ownerKind: l.ownerKind, ownerId: l.ownerId, sortOrder: i });
+    i += 1;
+  }
+  await db.query(`UPDATE narrative_scenes SET updated_at = now() WHERE id = $1 AND project_id = $2`, [sceneId, projectId]);
+  return out;
+}
+
+/** Reverse-oppslag for Story Graph-UI: scener som peker på et element. */
+export async function listScenesForOwner(db: Queryable, projectId: string, ownerKind: NarrativeSceneLinkKind, ownerId: string): Promise<Array<Pick<NarrativeScene, 'id' | 'code' | 'title' | 'status'>>> {
+  const { rows } = await db.query(
+    `SELECT s.id, s.code, s.title, s.status FROM narrative_scene_links l
+       JOIN narrative_scenes s ON s.id = l.scene_id
+      WHERE l.project_id = $1 AND l.owner_kind = $2 AND l.owner_id = $3
+      ORDER BY s.sort_order, s.code`,
+    [projectId, ownerKind, ownerId],
+  );
+  return (rows as Row[]).map((r) => ({ id: String(r.id), code: String(r.code), title: String(r.title ?? ''), status: String(r.status) as NarrativeSceneStatus }));
+}
+
+// ─── Storyboard-rammer ───────────────────────────────────────────────
+
+export interface SceneFrameInput {
+  assetId?: string | null;
+  externalUrl?: string | null;
+  caption?: string;
+  sortOrder?: number;
+}
+
+export async function createSceneFrame(db: Queryable, projectId: string, sceneId: string, userId: string, input: SceneFrameInput): Promise<NarrativeSceneFrame | null> {
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  let assetId = input.assetId ?? null;
+  const externalUrl = input.externalUrl ?? null;
+  if (assetId) {
+    // Asset må tilhøre prosjektet — ellers behandles det som «ikke funnet».
+    const { rows } = await db.query(`SELECT id FROM narrative_assets WHERE id = $1 AND project_id = $2 LIMIT 1`, [assetId, projectId]);
+    if (!rows[0]) assetId = null;
+  }
+  if (!assetId && !externalUrl) return null;
+  const sortOrder = input.sortOrder ?? num((await db.query(
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM narrative_scene_frames WHERE scene_id = $1`, [sceneId],
+  )).rows[0]?.next);
+  const { rows } = await db.query(
+    `INSERT INTO narrative_scene_frames (id, scene_id, project_id, asset_id, external_url, caption, sort_order, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [generateId('nsf'), sceneId, projectId, assetId, assetId ? null : externalUrl, input.caption ?? '', sortOrder, userId],
+  );
+  await db.query(`UPDATE narrative_scenes SET updated_at = now() WHERE id = $1 AND project_id = $2`, [sceneId, projectId]);
+  return mapSceneFrameRow(rows[0] as Row);
+}
+
+export async function patchSceneFrame(db: Queryable, projectId: string, sceneId: string, frameId: string, patch: Pick<SceneFrameInput, 'caption' | 'sortOrder'>): Promise<NarrativeSceneFrame | null> {
+  const { rows } = await db.query(
+    `UPDATE narrative_scene_frames SET caption = COALESCE($4, caption), sort_order = COALESCE($5, sort_order), updated_at = now()
+      WHERE id = $1 AND scene_id = $2 AND project_id = $3 RETURNING *`,
+    [frameId, sceneId, projectId, patch.caption ?? null, patch.sortOrder ?? null],
+  );
+  return rows[0] ? mapSceneFrameRow(rows[0] as Row) : null;
+}
+
+export async function deleteSceneFrame(db: Queryable, projectId: string, sceneId: string, frameId: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_scene_frames WHERE id = $1 AND scene_id = $2 AND project_id = $3`, [frameId, sceneId, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function reorderSceneFrames(db: Queryable, projectId: string, sceneId: string, orderedIds: string[]): Promise<void> {
+  for (let i = 0; i < orderedIds.length; i += 1) {
+    await db.query(
+      `UPDATE narrative_scene_frames SET sort_order = $4, updated_at = now() WHERE id = $1 AND scene_id = $2 AND project_id = $3`,
+      [orderedIds[i], sceneId, projectId, i],
+    );
+  }
+}
+
+// ─── Oppgaver ────────────────────────────────────────────────────────
+
+export interface SceneTaskInput {
+  title: string;
+  status?: NarrativeSceneTaskStatus;
+  assigneeUserId?: string | null;
+  dueAt?: string | null;
+  sortOrder?: number;
+}
+export type SceneTaskPatch = Partial<SceneTaskInput>;
+
+export async function createSceneTask(db: Queryable, projectId: string, sceneId: string, userId: string, input: SceneTaskInput): Promise<NarrativeSceneTask | null> {
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  const status = input.status ?? 'todo';
+  const { rows } = await db.query(
+    `INSERT INTO narrative_scene_tasks (id, scene_id, project_id, title, status, assignee_user_id, due_at, completed_at, sort_order, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $5 = 'done' THEN now() ELSE NULL END, $8, $9) RETURNING *`,
+    [generateId('nst'), sceneId, projectId, input.title, status, input.assigneeUserId ?? null, input.dueAt ?? null, input.sortOrder ?? 0, userId],
+  );
+  return mapSceneTaskRow(rows[0] as Row);
+}
+
+export async function patchSceneTask(db: Queryable, projectId: string, sceneId: string, taskId: string, patch: SceneTaskPatch): Promise<NarrativeSceneTask | null> {
+  const { rows } = await db.query(
+    `UPDATE narrative_scene_tasks SET
+       title = COALESCE($4, title),
+       status = COALESCE($5, status),
+       completed_at = CASE
+         WHEN $5 = 'done' THEN COALESCE(completed_at, now())
+         WHEN $5 IS NOT NULL THEN NULL
+         ELSE completed_at END,
+       assignee_user_id = CASE WHEN $6::boolean THEN $7 ELSE assignee_user_id END,
+       due_at = CASE WHEN $8::boolean THEN $9::timestamptz ELSE due_at END,
+       sort_order = COALESCE($10, sort_order),
+       updated_at = now()
+     WHERE id = $1 AND scene_id = $2 AND project_id = $3 RETURNING *`,
+    [
+      taskId, sceneId, projectId, patch.title ?? null, patch.status ?? null,
+      patch.assigneeUserId !== undefined, patch.assigneeUserId ?? null,
+      patch.dueAt !== undefined, patch.dueAt ?? null,
+      patch.sortOrder ?? null,
+    ],
+  );
+  return rows[0] ? mapSceneTaskRow(rows[0] as Row) : null;
+}
+
+export async function deleteSceneTask(db: Queryable, projectId: string, sceneId: string, taskId: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_scene_tasks WHERE id = $1 AND scene_id = $2 AND project_id = $3`, [taskId, sceneId, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+// ─── Review-runder ───────────────────────────────────────────────────
+
+export interface SceneSnapshot {
+  code: string;
+  title: string;
+  subtitle: string;
+  location: string;
+  challenge: string;
+  gameplayMechanic: string;
+  environment: string;
+  heroAssetId: string | null;
+  frames: Array<{ assetId: string | null; externalUrl: string | null; caption: string }>;
+  links: Array<{ ownerKind: NarrativeSceneLinkKind; ownerId: string; title: string }>;
+}
+
+/** Stabil JSON (sorterte nøkler) → sha256. Samme input gir alltid samme hash. */
+export function hashSceneSnapshot(snapshot: SceneSnapshot): string {
+  const stable = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(Object.keys(v as Record<string, unknown>).sort().map((k) => [k, stable((v as Record<string, unknown>)[k])]));
+    }
+    return v;
+  };
+  return createHash('sha256').update(JSON.stringify(stable(snapshot))).digest('hex');
+}
+
+/** Snapshot = felter + rammer + lenkede elementers/bretts titler (slettet mål → «(slettet)»). */
+export async function buildSceneSnapshot(
+  db: Queryable, projectId: string, scene: NarrativeScene, frames: NarrativeSceneFrame[], links: NarrativeSceneLink[],
+): Promise<SceneSnapshot> {
+  const elementIds = links.filter((l) => l.ownerKind === 'element').map((l) => l.ownerId);
+  const boardIds = links.filter((l) => l.ownerKind === 'board').map((l) => l.ownerId);
+  const titles = new Map<string, string>();
+  if (elementIds.length) {
+    const { rows } = await db.query(`SELECT id, title_html FROM narrative_elements WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, elementIds]);
+    for (const r of rows as Row[]) titles.set(`element:${String(r.id)}`, String(r.title_html ?? ''));
+  }
+  if (boardIds.length) {
+    const { rows } = await db.query(`SELECT id, name FROM narrative_boards WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, boardIds]);
+    for (const r of rows as Row[]) titles.set(`board:${String(r.id)}`, String(r.name ?? ''));
+  }
+  return {
+    code: scene.code,
+    title: scene.title,
+    subtitle: scene.subtitle,
+    location: scene.location,
+    challenge: scene.challenge,
+    gameplayMechanic: scene.gameplayMechanic,
+    environment: scene.environment,
+    heroAssetId: scene.heroAssetId,
+    frames: frames.map((f) => ({ assetId: f.assetId, externalUrl: f.externalUrl, caption: f.caption })),
+    links: links.map((l) => ({ ownerKind: l.ownerKind, ownerId: l.ownerId, title: titles.get(`${l.ownerKind}:${l.ownerId}`) ?? '(slettet)' })),
+  };
+}
+
+async function currentSceneSnapshot(db: Queryable, projectId: string, scene: NarrativeScene): Promise<SceneSnapshot> {
+  const [links, frames] = await Promise.all([
+    db.query(`SELECT * FROM narrative_scene_links WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, owner_kind, owner_id`, [scene.id, projectId]),
+    db.query(`SELECT * FROM narrative_scene_frames WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, created_at`, [scene.id, projectId]),
+  ]);
+  return buildSceneSnapshot(db, projectId, scene, (frames.rows as Row[]).map(mapSceneFrameRow), (links.rows as Row[]).map(mapSceneLinkRow));
+}
+
+export async function listSceneReviews(db: Queryable, projectId: string, sceneId: string): Promise<NarrativeSceneReview[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_reviews WHERE scene_id = $1 AND project_id = $2 ORDER BY round DESC`, [sceneId, projectId]);
+  return (rows as Row[]).map(mapSceneReviewRow);
+}
+
+/**
+ * Ny review-runde: åpen runde superseders (så «send ny runde» etter 409
+ * alltid virker), runde = maks+1, snapshot fryses, scene.status → in_review.
+ */
+export async function requestSceneReview(
+  db: Queryable, projectId: string, sceneId: string, userId: string, note: string | null,
+): Promise<NarrativeSceneReview | null> {
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  const snapshot = await currentSceneSnapshot(db, projectId, scene);
+  const hash = hashSceneSnapshot(snapshot);
+  await db.query(
+    `UPDATE narrative_scene_reviews SET status = 'superseded', updated_at = now() WHERE scene_id = $1 AND project_id = $2 AND status = 'in_review'`,
+    [sceneId, projectId],
+  );
+  const { rows: maxRows } = await db.query(`SELECT COALESCE(MAX(round), 0)::int AS max_round FROM narrative_scene_reviews WHERE scene_id = $1`, [sceneId]);
+  const round = num(maxRows[0]?.max_round) + 1;
+  const { rows } = await db.query(
+    `INSERT INTO narrative_scene_reviews (id, scene_id, project_id, round, status, requested_by, request_note, snapshot, snapshot_hash)
+       VALUES ($1, $2, $3, $4, 'in_review', $5, $6, $7::jsonb, $8) RETURNING *`,
+    [generateId('nsr'), sceneId, projectId, round, userId, note, JSON.stringify(snapshot), hash],
+  );
+  await db.query(`UPDATE narrative_scenes SET status = 'in_review', updated_at = now() WHERE id = $1 AND project_id = $2`, [sceneId, projectId]);
+  return mapSceneReviewRow(rows[0] as Row);
+}
+
+export interface SceneReviewDecisionInput {
+  decision: 'approved' | 'changes_requested';
+  note?: string | null;
+  /** Hash klienten så da den viste runden; avvik → SceneReviewStaleError. */
+  expectedSnapshotHash?: string | null;
+  userId: string;
+  userLabel: string | null;
+}
+
+/**
+ * Beslutning på en åpen runde. 409-tilfeller: runden er lukket
+ * (SceneReviewClosedError) eller scenen er endret siden runden ble sendt
+ * (SceneReviewStaleError med gjeldende hash). Scene.status følger beslutningen.
+ */
+export async function decideSceneReview(
+  db: Queryable, projectId: string, sceneId: string, reviewId: string, input: SceneReviewDecisionInput,
+): Promise<NarrativeSceneReview | null> {
+  const { rows } = await db.query(
+    `SELECT * FROM narrative_scene_reviews WHERE id = $1 AND scene_id = $2 AND project_id = $3 LIMIT 1`,
+    [reviewId, sceneId, projectId],
+  );
+  if (!rows[0]) return null;
+  const review = mapSceneReviewRow(rows[0] as Row);
+  if (review.status !== 'in_review') throw new SceneReviewClosedError(review.status);
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  const currentHash = hashSceneSnapshot(await currentSceneSnapshot(db, projectId, scene));
+  if (currentHash !== review.snapshotHash) throw new SceneReviewStaleError(currentHash, review.snapshotHash);
+  if (input.expectedSnapshotHash && input.expectedSnapshotHash !== review.snapshotHash) {
+    throw new SceneReviewStaleError(currentHash, review.snapshotHash);
+  }
+  const { rows: updated } = await db.query(
+    `UPDATE narrative_scene_reviews SET
+       status = $4, decided_by_user_id = $5, decided_by_label = $6, decided_at = now(), decision_note = $7, updated_at = now()
+     WHERE id = $1 AND scene_id = $2 AND project_id = $3 AND status = 'in_review' RETURNING *`,
+    [reviewId, sceneId, projectId, input.decision, input.userId, input.userLabel, input.note ?? null],
+  );
+  if (!updated[0]) throw new SceneReviewClosedError('superseded');
+  await db.query(
+    `UPDATE narrative_scenes SET status = $3, updated_at = now() WHERE id = $1 AND project_id = $2`,
+    [sceneId, projectId, input.decision === 'approved' ? 'approved' : 'changes_requested'],
+  );
+  return mapSceneReviewRow(updated[0] as Row);
+}
+
+// ─── Medlemmer (lettvekt, for «Ansvarlig»-velgeren) ──────────────────
+
+/**
+ * Eier + aktive casting_user_roles-medlemmer med visningsnavn/avatar.
+ * Tilgjengelig for alle med prosjekt-tilgang (members-ruten i Role Room er
+ * eier-only) — leads må kunne sette ansvarlig uten å være eier.
+ */
+export async function listMembersLite(db: Queryable, projectId: string): Promise<NarrativeMemberLite[]> {
+  const { rows } = await db.query(
+    `WITH ids AS (
+       SELECT created_by AS user_id, TRUE AS is_owner FROM casting_projects WHERE id = $1
+       UNION
+       SELECT user_id, FALSE FROM casting_user_roles WHERE project_id = $1 AND deactivated_at IS NULL
+     )
+     SELECT ids.user_id, BOOL_OR(ids.is_owner) AS is_owner,
+            MAX(p.display_name) AS display_name, MAX(p.profile_image_url) AS profile_image_url,
+            MAX(NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), '')) AS full_name,
+            MAX(u.email) AS email
+       FROM ids
+       LEFT JOIN role_room_member_profiles p ON p.user_id = ids.user_id
+       LEFT JOIN users u ON u.id = ids.user_id
+      WHERE ids.user_id IS NOT NULL
+      GROUP BY ids.user_id
+      ORDER BY is_owner DESC, display_name NULLS LAST`,
+    [projectId],
+  );
+  return (rows as Row[]).map((r) => ({
+    userId: String(r.user_id),
+    displayName: String(r.display_name || r.full_name || r.email || r.user_id),
+    profileImageUrl: strOrNull(r.profile_image_url),
+    isOwner: r.is_owner === true,
+  }));
 }

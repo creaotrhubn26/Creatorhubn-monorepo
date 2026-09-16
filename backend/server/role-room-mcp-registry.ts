@@ -27,6 +27,8 @@ import {
 import {
   getGraph as getNarrativeGraph,
   createBoard as createNarrativeBoard,
+  listScenes as listNarrativeScenes,
+  getSceneDetail as getNarrativeSceneDetail,
   createElement as createNarrativeElement,
 } from "./role-room-narrative-service.js";
 import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
@@ -629,6 +631,49 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       if (format === "markdown") return { format, markdown: toMarkdown(graph) };
       if (format === "csv") return { format, csv: toCsv(graph) };
       return { format, project: toArcweaveProject(graph) };
+    },
+  },
+
+  {
+    name: "rr_list_game_scenes",
+    description: "List scenene i Story Graph-prosjektet (Scener & gameplay): kode, tittel, lokasjon, status, ansvarlig, frist, siste review-runde og oppgavetelling. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      status: { type: "string", description: "Valgfritt statusfilter: idea | in_progress | in_review | changes_requested | approved | implemented" },
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const status = typeof args.status === "string" ? args.status.trim() : "";
+      const scenes = (await listNarrativeScenes(pool, projectId)).filter((s) => !status || s.status === status);
+      return {
+        scenes: scenes.map((s) => ({
+          id: s.id, code: s.code, title: s.title, location: s.location, status: s.status,
+          assigneeUserId: s.assigneeUserId, dueAt: s.dueAt, latestReview: s.latestReview, taskCounts: s.taskCounts,
+        })),
+      };
+    },
+  },
+  {
+    name: "rr_game_scene_review_status",
+    description: "Review-status for én scene i Story Graph: alle runder (runde, status, hvem/når, notat) og om scenen er endret siden siste åpne runde (stale). Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID"), sceneId: STR("Scene-ID (nsc_…)") }, ["projectId", "sceneId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const sceneId = typeof args.sceneId === "string" ? args.sceneId.trim() : "";
+      if (!sceneId) throw new McpToolError(-32602, "sceneId er påkrevd.");
+      const detail = await getNarrativeSceneDetail(pool, projectId, sceneId);
+      if (!detail) throw new McpToolError(-32602, "Scenen finnes ikke i prosjektet.");
+      const open = detail.reviews.find((r) => r.status === "in_review") ?? null;
+      return {
+        scene: { id: detail.scene.id, code: detail.scene.code, title: detail.scene.title, status: detail.scene.status },
+        openRound: open ? { id: open.id, round: open.round, requestedAt: open.requestedAt, stale: open.snapshotHash !== detail.currentSnapshotHash } : null,
+        rounds: detail.reviews.map((r) => ({
+          id: r.id, round: r.round, status: r.status, requestedBy: r.requestedBy, requestedAt: r.requestedAt, requestNote: r.requestNote,
+          decidedByLabel: r.decidedByLabel, decidedAt: r.decidedAt, decisionNote: r.decisionNote,
+        })),
+      };
     },
   },
 

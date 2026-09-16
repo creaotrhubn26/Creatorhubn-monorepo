@@ -34,6 +34,7 @@ import {
   PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
   type ResolveProjectPlan,
 } from './game-plan-gate.js';
+import { notifyUsersByEmail, upsertProducerProjectNotification } from './role-room-producer-notifications.js';
 
 interface SessionData {
   userId: string;
@@ -73,10 +74,51 @@ export interface CreateRoleRoomNarrativeRouterDeps {
   broadcast?: (room: string, message: unknown) => number;
   /** Overstyrbar for tester. Default: prosjekteierens game_plan (solo uten abonnement). */
   resolveProjectPlan?: ResolveProjectPlan;
+  /** Overstyrbar for tester. Default: inbox-varsel + e-post (best-effort). */
+  notify?: SceneNotifier;
+}
+
+/** Fase 6: varsel når en review-runde bes om / avgjøres (inbox + e-post, best-effort). */
+export interface SceneNotification {
+  event: 'narrative_scene_review_requested' | 'narrative_scene_review_decided';
+  projectId: string;
+  actorUserId: string;
+  scene: svc.NarrativeScene;
+  review: svc.NarrativeSceneReview;
+  /** Mottakere utenom aktøren (ansvarlig, forespørrer). */
+  recipientUserIds: string[];
+}
+export type SceneNotifier = (pool: Pool, n: SceneNotification) => Promise<void>;
+
+export const defaultSceneNotifier: SceneNotifier = async (pool, n) => {
+  const label = `${n.scene.code} – ${n.scene.title || 'Uten tittel'}`;
+  const requested = n.event === 'narrative_scene_review_requested';
+  const decision = n.review.status === 'approved' ? 'godkjent' : n.review.status === 'changes_requested' ? 'bedt om endringer' : n.review.status;
+  const title = requested ? `Review ønsket: ${label} (runde ${n.review.round})` : `Review ${decision}: ${label} (runde ${n.review.round})`;
+  const note = requested ? n.review.requestNote : n.review.decisionNote;
+  const message = note ? note.slice(0, 500) : null;
+  await upsertProducerProjectNotification(pool, {
+    projectId: n.projectId, audience: 'producer_team', eventType: n.event, title, message,
+    linkedEntityType: 'narrative_scene', linkedEntityId: n.scene.id,
+    metadata: { inboxType: 'review', sceneCode: n.scene.code, reviewId: n.review.id, round: n.review.round, status: n.review.status },
+    createdByUserId: n.actorUserId, assignedToUserId: n.scene.assigneeUserId ?? null, initiallyReadByUserId: n.actorUserId,
+    mentionUserIds: n.recipientUserIds,
+  });
+  if (n.recipientUserIds.length) {
+    const text = `${title}${message ? `\n\n${message}` : ''}\n\nÅpne prosjektet i The Role Room (Scener & gameplay) for å se runden.`;
+    await notifyUsersByEmail(pool, {
+      projectId: n.projectId, userIds: n.recipientUserIds, subject: title, kind: n.event,
+      text, html: `<p>${escapeHtml(title)}</p>${message ? `<p>${escapeHtml(message)}</p>` : ''}<p>Åpne prosjektet i The Role Room (Scener &amp; gameplay) for å se runden.</p>`,
+    });
+  }
+};
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
 export type GraphChangeKind =
-  | 'settings' | 'board' | 'element' | 'connection' | 'component' | 'attribute' | 'variable' | 'asset' | 'graph' | 'translation';
+  | 'settings' | 'board' | 'element' | 'connection' | 'component' | 'attribute' | 'variable' | 'asset' | 'graph' | 'translation' | 'scene';
 
 const idSchema = z.string().min(1).max(200);
 const nullableStr = (max: number) => z.string().max(max).nullable().optional();
@@ -223,6 +265,49 @@ const shareLinkBody = z.object({
   expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
 });
 
+// ─── Fase 6: scener, rammer, oppgaver, review ──────────────────────────
+const isoDate = z.string().datetime({ offset: true }).nullable().optional();
+const sceneStatus = z.enum(['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented']);
+const sceneBody = z.object({
+  code: z.string().trim().regex(svc.NARRATIVE_SCENE_CODE_RE, 'Kode: 1–3 bokstaver + 1–4 sifre, f.eks. S12').nullable().optional(),
+  title: z.string().max(300).optional(),
+  subtitle: z.string().max(300).optional(),
+  location: z.string().max(2000).optional(),
+  challenge: z.string().max(5000).optional(),
+  gameplayMechanic: z.string().max(5000).optional(),
+  environment: z.string().max(5000).optional(),
+  status: sceneStatus.optional(),
+  assigneeUserId: nullableStr(200),
+  dueAt: isoDate,
+  heroAssetId: nullableStr(200),
+  sortOrder: z.number().int().optional(),
+});
+const sceneLinksBody = z.object({
+  links: z.array(z.object({ ownerKind: z.enum(['element', 'board']), ownerId: idSchema })).max(200),
+});
+const sceneFrameBody = z.object({
+  assetId: nullableStr(200),
+  externalUrl: z.string().url().max(2000).nullable().optional(),
+  caption: z.string().max(1000).optional(),
+  sortOrder: z.number().int().optional(),
+}).refine((v) => !!v.assetId !== !!v.externalUrl, { message: 'Oppgi enten assetId eller externalUrl (ikke begge).' });
+const sceneFramePatch = z.object({ caption: z.string().max(1000).optional(), sortOrder: z.number().int().optional() });
+const orderBody = z.object({ orderedIds: z.array(idSchema).max(500) });
+const sceneTaskBody = z.object({
+  title: z.string().trim().min(1).max(300),
+  status: z.enum(['todo', 'doing', 'done']).optional(),
+  assigneeUserId: nullableStr(200),
+  dueAt: isoDate,
+  sortOrder: z.number().int().optional(),
+});
+const sceneTaskPatch = sceneTaskBody.partial();
+const reviewRequestBody = z.object({ note: z.string().max(5000).nullable().optional() });
+const reviewDecisionBody = z.object({
+  decision: z.enum(['approved', 'changes_requested']),
+  note: z.string().max(5000).nullable().optional(),
+  expectedSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
+});
+
 function readExpectedVersion(req: Request): number | null {
   const header = req.headers['if-match'];
   const raw = Array.isArray(header) ? header[0] : header;
@@ -260,6 +345,7 @@ export function createRoleRoomNarrativeRouter(
   const resolvePlan = deps.resolveProjectPlan ?? resolveGamePlanForProject;
   // Plan-gating (Fase 4d): 402 { error: 'plan_required' | 'plan_limit' } fra game-plan-gate.
   const feature = (projectId: string, f: Parameters<typeof assertGameFeature>[2]) => assertGameFeature(pool, projectId, f, resolvePlan);
+  const notify = deps.notify ?? defaultSceneNotifier;
   const limit = (projectId: string, key: string, current: number) => assertGameLimit(pool, projectId, key, current, resolvePlan);
   /**
    * Push «grafen er endret» til alle i prosjektets sanntidsrom (inkl. aktøren —
@@ -291,6 +377,7 @@ export function createRoleRoomNarrativeRouter(
       case 'import': return 'graph';
       case 'translations': return 'translation';
       case 'revisions': return seg[4] === 'restore' ? 'graph' : null;
+      case 'scenes': return 'scene';
       default: return null;
     }
   };
@@ -301,7 +388,7 @@ export function createRoleRoomNarrativeRouter(
         // Sanntid: vellykket mutasjon → push til prosjektets rom (best-effort).
         const kind = changeKindFor(req);
         if (kind && res.statusCode < 400 && (req as AuthedRequest).projectId) {
-          const id = typeof req.params.id === 'string' ? [req.params.id] : [];
+          const id = typeof req.params.id === 'string' ? [req.params.id] : typeof req.params.sceneId === 'string' ? [req.params.sceneId] : [];
           notifyGraphChanged(req as AuthedRequest, kind, id);
         }
       } catch (err) {
@@ -627,6 +714,159 @@ export function createRoleRoomNarrativeRouter(
       if (/disabled|ANTHROPIC_API_KEY/i.test(message)) { res.status(503).json({ error: 'ai_unavailable', message: 'KI-oversettelse er ikke aktivert på denne serveren.' }); return; }
       throw err;
     }
+  }));
+
+  // ─── Fase 6: Scener & gameplay + Review & Godkjenning ──────────────
+  // Scener og oppgaver er ugatet; review-runder krever `scene_review` (Pro/Studio).
+  router.get('/projects/:projectId/scenes', ...guard, wrap(async (req, res) => {
+    const scenes = await svc.listScenes(pool, req.projectId);
+    res.json({ success: true, data: { scenes, nextCode: svc.nextSceneCode(scenes.map((s) => s.code)) } });
+  }));
+  router.post('/projects/:projectId/scenes', ...guard, wrap(async (req, res) => {
+    const parsed = sceneBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const scene = await svc.createScene(pool, req.projectId, req.userId, parsed.data);
+      res.status(201).json({ success: true, data: scene });
+    } catch (err) {
+      if (err instanceof svc.SceneDuplicateCodeError) { res.status(409).json({ error: 'duplicate_code', code: err.sceneCode, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.get('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
+    const detail = await svc.getSceneDetail(pool, req.projectId, req.params.sceneId);
+    if (!detail) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: detail });
+  }));
+  router.patch('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
+    const parsed = sceneBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const scene = await svc.patchScene(pool, req.projectId, req.params.sceneId, parsed.data);
+      if (!scene) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: scene });
+    } catch (err) {
+      if (err instanceof svc.SceneDuplicateCodeError) { res.status(409).json({ error: 'duplicate_code', code: err.sceneCode, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.delete('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteScene(pool, req.projectId, req.params.sceneId);
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+  router.put('/projects/:projectId/scenes/order', ...guard, wrap(async (req, res) => {
+    const parsed = orderBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await svc.reorderScenes(pool, req.projectId, parsed.data.orderedIds);
+    res.json({ success: true });
+  }));
+  router.put('/projects/:projectId/scenes/:sceneId/links', ...guard, wrap(async (req, res) => {
+    const parsed = sceneLinksBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const links = await svc.setSceneLinks(pool, req.projectId, req.params.sceneId, parsed.data.links);
+    if (!links) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: links });
+  }));
+
+  router.post('/projects/:projectId/scenes/:sceneId/frames', ...guard, wrap(async (req, res) => {
+    const parsed = sceneFrameBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const frame = await svc.createSceneFrame(pool, req.projectId, req.params.sceneId, req.userId, parsed.data);
+    if (!frame) { res.status(404).json({ error: 'not_found', message: 'Scenen eller ressursen finnes ikke i prosjektet.' }); return; }
+    res.status(201).json({ success: true, data: frame });
+  }));
+  router.put('/projects/:projectId/scenes/:sceneId/frames/order', ...guard, wrap(async (req, res) => {
+    const parsed = orderBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await svc.reorderSceneFrames(pool, req.projectId, req.params.sceneId, parsed.data.orderedIds);
+    res.json({ success: true });
+  }));
+  router.patch('/projects/:projectId/scenes/:sceneId/frames/:frameId', ...guard, wrap(async (req, res) => {
+    const parsed = sceneFramePatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const frame = await svc.patchSceneFrame(pool, req.projectId, req.params.sceneId, req.params.frameId, parsed.data);
+    if (!frame) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: frame });
+  }));
+  router.delete('/projects/:projectId/scenes/:sceneId/frames/:frameId', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteSceneFrame(pool, req.projectId, req.params.sceneId, req.params.frameId);
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  router.post('/projects/:projectId/scenes/:sceneId/tasks', ...guard, wrap(async (req, res) => {
+    const parsed = sceneTaskBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const task = await svc.createSceneTask(pool, req.projectId, req.params.sceneId, req.userId, parsed.data);
+    if (!task) { res.status(404).json({ error: 'not_found' }); return; }
+    res.status(201).json({ success: true, data: task });
+  }));
+  router.patch('/projects/:projectId/scenes/:sceneId/tasks/:taskId', ...guard, wrap(async (req, res) => {
+    const parsed = sceneTaskPatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const task = await svc.patchSceneTask(pool, req.projectId, req.params.sceneId, req.params.taskId, parsed.data);
+    if (!task) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: task });
+  }));
+  router.delete('/projects/:projectId/scenes/:sceneId/tasks/:taskId', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteSceneTask(pool, req.projectId, req.params.sceneId, req.params.taskId);
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  router.get('/projects/:projectId/scenes/:sceneId/reviews', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listSceneReviews(pool, req.projectId, req.params.sceneId) });
+  }));
+  router.post('/projects/:projectId/scenes/:sceneId/reviews', ...guard, wrap(async (req, res) => {
+    const parsed = reviewRequestBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'scene_review');
+    const review = await svc.requestSceneReview(pool, req.projectId, req.params.sceneId, req.userId, parsed.data.note ?? null);
+    if (!review) { res.status(404).json({ error: 'not_found' }); return; }
+    res.status(201).json({ success: true, data: review });
+    const scene = await svc.getScene(pool, req.projectId, req.params.sceneId);
+    if (scene) {
+      const recipients = [scene.assigneeUserId].filter((id): id is string => !!id && id !== req.userId);
+      notify(pool, { event: 'narrative_scene_review_requested', projectId: req.projectId, actorUserId: req.userId, scene, review, recipientUserIds: recipients })
+        .catch((err) => console.warn('[narrative] review notify failed', err));
+    }
+  }));
+  router.post('/projects/:projectId/scenes/:sceneId/reviews/:reviewId/decision', ...guard, wrap(async (req, res) => {
+    const parsed = reviewDecisionBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'scene_review');
+    const session = deps.activeSessions?.get((req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim());
+    const userLabel = (session && (session.name || session.email)) || null;
+    try {
+      const review = await svc.decideSceneReview(pool, req.projectId, req.params.sceneId, req.params.reviewId, {
+        decision: parsed.data.decision, note: parsed.data.note ?? null, expectedSnapshotHash: parsed.data.expectedSnapshotHash ?? null,
+        userId: req.userId, userLabel,
+      });
+      if (!review) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: review });
+      const scene = await svc.getScene(pool, req.projectId, req.params.sceneId);
+      if (scene) {
+        const recipients = Array.from(new Set([scene.assigneeUserId, review.requestedBy].filter((id): id is string => !!id && id !== req.userId)));
+        notify(pool, { event: 'narrative_scene_review_decided', projectId: req.projectId, actorUserId: req.userId, scene, review, recipientUserIds: recipients })
+          .catch((err) => console.warn('[narrative] review notify failed', err));
+      }
+    } catch (err) {
+      if (err instanceof svc.SceneReviewStaleError) {
+        res.status(409).json({ error: 'snapshot_stale', message: err.message, currentHash: err.currentHash, reviewHash: err.reviewHash });
+        return;
+      }
+      if (err instanceof svc.SceneReviewClosedError) {
+        res.status(409).json({ error: 'review_closed', message: err.message, status: err.status });
+        return;
+      }
+      throw err;
+    }
+  }));
+
+  // Lettvekts medlemsliste (eier + aktive medlemmer) for «Ansvarlig»-velgeren.
+  router.get('/projects/:projectId/members-lite', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listMembersLite(pool, req.projectId) });
   }));
 
   // Offentlig (uten innlogging): spill-grafen bak et delingstoken. Ugyldig,
