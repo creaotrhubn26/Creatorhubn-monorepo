@@ -14,6 +14,10 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import {
+  isLeadgridMarketingProjectKey,
+  resolveLeadgridMarketingAccess,
+} from "./leadgrid-marketing-bridge.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -37,6 +41,14 @@ function getUserIdFromRequest(
 async function viewerCanAccessProject(
   pool: Pool, projectId: string, viewerId: string,
 ): Promise<boolean> {
+  // Leadgrid Markedssjef-modus (`lg-`-nøkkel): Leadgrids egne regler.
+  if (isLeadgridMarketingProjectKey(projectId)) {
+    const access = await resolveLeadgridMarketingAccess(pool, {
+      projectKey: projectId,
+      session: { userId: viewerId },
+    });
+    return access.ok;
+  }
   const { rows } = await pool.query<{ owns: boolean; member: boolean }>(
     `SELECT
        EXISTS(SELECT 1 FROM casting_projects
@@ -65,6 +77,11 @@ export async function snapshotPlanVersion(
   const { projectId, generatedByUserId } = args;
   const kind = args.generatedByKind ?? 'agent';
   const label = args.label ?? null;
+  // role_room_marketing_plans_versions.project_id har FK til casting_projects
+  // (mig 206/0490). Leadgrid-nøkler (`lg-…`) kan derfor ikke versjoneres
+  // ennå — hopp over stille i stedet for å produsere FK-feil i loggen.
+  // (Fase 2 i docs/leadgrid/markedssjef-modus.md.)
+  if (isLeadgridMarketingProjectKey(projectId)) return null;
   try {
     // Hent aktiv plan
     const { rows: planRows } = await pool.query<{

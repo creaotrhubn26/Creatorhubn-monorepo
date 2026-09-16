@@ -342,6 +342,14 @@ export default function MediaUploader({
         <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.95rem' }}>
           {label}
         </Typography>
+        {/* Kravene står FØR opplasting, ikke som en feilmelding etterpå: et
+            avvist bilde koster brukeren en ny fotosesjon, en linje her koster
+            ingenting. */}
+        {helperText ? (
+          <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', mt: 0.5, maxWidth: 420, mx: 'auto', lineHeight: 1.45 }}>
+            {helperText}
+          </Typography>
+        ) : null}
         <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mt: 0.4 }}>
           Dra og slipp en fil her, eller klikk for å velge
         </Typography>

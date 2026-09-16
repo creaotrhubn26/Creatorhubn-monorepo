@@ -41,6 +41,10 @@ interface Deps {
 const MODULE_FEATURE_DEFAULTS: Record<string, EntitlementState> = {
   "leadgrid:core": "included",
   "market_intelligence:core": "included",
+  // Markedssjef-modus (Role Room-agentens markedsplan i Leadgrid-skall).
+  // Opt-in per org — en vertikal oppå Leadgrid, endrer ingenting for
+  // orger som ikke har raden. Se leadgrid-marketing-bridge.ts.
+  "leadgrid:marketing": "locked",
 };
 
 function defaultStateFor(moduleKey: string, featureKey: string): EntitlementState {

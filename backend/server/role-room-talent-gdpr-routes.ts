@@ -27,6 +27,7 @@ import {
   ListObjectsV2Command,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { verifyChain } from "./consent-ledger-service.js";
 
 interface SessionLike {
   userId: string;
@@ -81,12 +82,23 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       const talent = await fetchTalentForUser(pool, session.userId);
       if (!talent) return res.status(404).json({ error: "Ingen profil å eksportere" });
 
-      const [consents, invites, audit, streamUploads] = await Promise.all([
+      const [consents, invites, audit, streamUploads, ledger] = await Promise.all([
         pool.query(`SELECT * FROM talent_consent_registry WHERE talent_id = $1 ORDER BY granted_at DESC`, [talent.id]),
         pool.query(`SELECT * FROM talent_partner_invites WHERE talent_id = $1 ORDER BY created_at DESC`, [talent.id]),
         pool.query(`SELECT * FROM talent_access_audit WHERE talent_id = $1 ORDER BY accessed_at DESC LIMIT 5000`, [talent.id]),
         pool.query(`SELECT * FROM talent_stream_uploads WHERE talent_id = $1 ORDER BY created_at DESC`, [talent.id]).catch(() => ({ rows: [] })),
+        // Samtykke-loggen er personens eget bevis, ikke bare vårt. Den hører
+        // hjemme i en dataportabilitets-eksport.
+        pool.query(
+          `SELECT seq, subject_type, subject_ref, document_hash, action, auth_method,
+                  created_at, prev_hash, row_hash
+             FROM consent_ledger WHERE user_id = $1 ORDER BY seq ASC`,
+          [session.userId],
+        ).catch(() => ({ rows: [] })),
       ]);
+
+      // Kjedesjekken tas med i eksporten: uten den er radene bare rader.
+      const chain = await verifyChain(pool).catch(() => null);
 
       const exportPayload = {
         meta: {
@@ -102,6 +114,14 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
         partner_invites: invites.rows,
         access_audit_log: audit.rows,
         stream_uploads: streamUploads.rows,
+        consent_ledger: {
+          forklaring:
+            "Append-only logg over samtykker du har gitt og trukket. Hver rad er hashet " +
+            "sammen med den forrige (row_hash = sha256(prev_hash + radens innhold)), slik at " +
+            "en endring i en gammel rad bryter alle radene etter den.",
+          rader: ledger.rows,
+          kjede_verifisert: chain,
+        },
       };
 
       res.setHeader("Content-Type", "application/json");
@@ -193,13 +213,35 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
         session.userId,
       ]);
 
+      // Steg 3b: samtykke-loggen slettes IKKE, og det skal stå i svaret.
+      //
+      // Loggen er beviset for hva du sa ja til og når. Slettes den sammen med
+      // profilen, mister både du og vi muligheten til å vise hva som faktisk
+      // ble delt — og det er nettopp i en tvist om sletting man trenger det.
+      // GDPR art. 17 nr. 3 bokstav e åpner for å beholde data som trengs for
+      // å fastsette eller forsvare rettskrav. Radene inneholder ingen
+      // profilopplysninger: bruker-id, hva samtykket gjaldt, hasher, tidspunkt.
+      const ledgerRows = await pool.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM consent_ledger WHERE user_id = $1`,
+        [session.userId],
+      ).catch(() => ({ rows: [{ n: "0" }] }));
+
       // Steg 4: Logg sletting i en compliance-tabell (vi har ikke en, så bare console)
       console.log(`[gdpr/delete] talent ${talent.id} (user ${session.userId}) slettet:`, cleanupSummary);
 
       return res.json({
         ok: true,
         deleted: true,
-        message: "Profilen din er slettet. All data er fjernet fra våre systemer.",
+        message:
+          "Profilen din er slettet: opplysninger, bilder og video er fjernet, og " +
+          "byråer har ikke lenger tilgang til noe av det.",
+        beholdt: {
+          samtykke_logg_rader: Number(ledgerRows.rows[0]?.n ?? 0),
+          hva: "Hvilke samtykker du ga og trakk, med tidspunkt og hasher — ingen profilopplysninger.",
+          hvorfor:
+            "Beviset for hva som ble delt, og for at du trakk det. GDPR art. 17 nr. 3 bokstav e " +
+            "(fastsette eller forsvare rettskrav).",
+        },
         summary: cleanupSummary,
       });
     } catch (err) {

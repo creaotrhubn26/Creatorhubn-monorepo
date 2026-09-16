@@ -22,8 +22,13 @@
  *          — soft-delete (archived_at = now())
  *
  *   POST   /api/role-room/agent/threads/:id/messages
- *          body: { content: string, required_scope?: ConsentScope }
+ *          body: { content: string, required_scope?: ConsentScope,
+ *                  context?: object, surface?: string }
  *          — start ny SSE-stream som svar (reuses handleAgentStream)
+ *
+ * Leadgrid-vertikalen: prosjekt-nøkler som er Leadgrid-prosjekter (lg-… eller
+ * ren Leadgrid-id) autoriseres via leadgrid-agent-access.ts når casting-
+ * sjekken feiler — både her (POST /threads) og i handleAgentStream.
  *
  * Streaming-endepunktet gjenbruker `handleAgentStream` fullstendig —
  * vi mapper kun project_id fra thread og setter req.body.threadId før
@@ -46,6 +51,7 @@ import {
   updateThreadTitle,
 } from "./role-room-agent-threads.js";
 import { handleAgentStream } from "./role-room-agent-stream.js";
+import { resolveLeadgridAgentProject } from "./leadgrid-agent-access.js";
 import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
 
 type SessionData = {
@@ -170,7 +176,13 @@ export function registerRoleRoomAgentThreadsRoutes(
       // (eid av seg selv) mot et fremmed prosjekt-UUID og deretter drive
       // agent-streamen mot det (BOLA). handleAgentStream har nå samme gate,
       // men vi avviser her også så en fremmed-bundet tråd aldri opprettes.
-      if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+      // Leadgrid-vertikalen: et Leadgrid-prosjekt (lg-nøkkel eller ren
+      // Leadgrid-id, slik iPad-appen sender) autoriseres via Leadgrids egne
+      // regler når casting-sjekken feiler. Casting-oppførsel er uendret.
+      if (
+        !(await canAccessRoleRoomProject(pool, session.userId, projectId))
+        && (await resolveLeadgridAgentProject(pool, { projectId, userId: session.userId })) === null
+      ) {
         res.status(403).json({ error: "project_access_denied" });
         return;
       }
@@ -336,6 +348,10 @@ export function registerRoleRoomAgentThreadsRoutes(
         userMessage?: string;
         required_scope?: string;
         requiredScope?: string;
+        /** Prosjektkontekst fra klienten (pseudonymiseres i handleAgentStream). */
+        context?: unknown;
+        /** Klientflate, f.eks. 'leadgrid_ipad' — kun informativ i dag. */
+        surface?: unknown;
       };
       const userMessage = body.content ?? body.message ?? body.userMessage ?? "";
       if (typeof userMessage !== "string" || userMessage.trim().length === 0) {
@@ -343,12 +359,18 @@ export function registerRoleRoomAgentThreadsRoutes(
         return;
       }
       // Shimme req.body til formatet handleAgentStream forventer + sett
-      // params.projectId (handleAgentStream leser fra req.params).
+      // params.projectId (handleAgentStream leser fra req.params). Klientens
+      // `context` sendes videre (tidligere ble den kastet, så iPad-appens
+      // kontekst aldri nådde agenten); ukjente nøkler droppes fortsatt.
       req.body = {
         userMessage: userMessage.trim(),
         requiredScope: body.required_scope ?? body.requiredScope ?? "brief_only",
         threadId: req.params.id,
         persistThread: true,
+        ...(body.context && typeof body.context === "object" && !Array.isArray(body.context)
+          ? { context: body.context }
+          : {}),
+        ...(typeof body.surface === "string" ? { surface: body.surface.slice(0, 40) } : {}),
       };
       (req.params as Record<string, string>).projectId = owner.projectId;
       try {

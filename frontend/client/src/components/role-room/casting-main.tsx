@@ -24,6 +24,7 @@ import LeadgridImportPage from '@/pages/leadgrid-import';
 import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
 import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
 import LeadgridDealsPage from '@/pages/leadgrid-deals';
+import LeadgridMarkedsforingPage from '@/pages/leadgrid-markedsforing';
 import LeadgridSkaffeLeadsGuidePage from '@/pages/leadgrid-skaffe-leads-guide';
 import LeadgridFeltsalgSalgsteamPage from '@/pages/leadgrid-feltsalg-salgsteam';
 import LeadgridAkademiPage from '@/pages/leadgrid-akademi';
@@ -422,6 +423,12 @@ function CastingStandaloneAppContent() {
   if (leadgridPath === '/leadgrid/deals' ||
       leadgridPath === '/leadgrid/deals/') {
     return <LeadgridDealsPage />;
+  }
+  // Markedssjef-modus (vertikal, opt-in modul leadgrid:marketing) — Role
+  // Room-agentens markedsplan i Leadgrid-skall for egen org.
+  if (leadgridPath === '/leadgrid/markedsforing' ||
+      leadgridPath === '/leadgrid/markedsforing/') {
+    return <LeadgridMarkedsforingPage />;
   }
   // Developer-docs (public)
   if (leadgridPath === '/leadgrid/utviklere' ||
