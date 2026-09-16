@@ -42,6 +42,7 @@ import roleRoomTalentsService, { type RoleRoomTalent, type TalentAvailabilityWin
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import { OPEN_WIZARD_KEY } from '../components/TalentsHowItWorksCard';
+import TalentProfileHero from '../components/TalentProfileHero';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
 
 interface ProfilePageProps {
@@ -113,6 +114,13 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  // Krediteringer teller med i profilstyrken, så hero-en trenger antallet.
+  const [creditCount, setCreditCount] = useState(0);
+  useEffect(() => {
+    if (demoMode) return;
+    void roleRoomTalentsService.fetchMyCredits().then((rows) => setCreditCount(rows.length));
+  }, [demoMode]);
 
   // Selvregistreringen oppretter en draft-rad med navn og e-post, så `talent`
   // er IKKE null for en fersk skuespiller. Det som avgjør om hen trenger
@@ -232,31 +240,12 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
       {success ? <Alert severity="success" onClose={() => setSuccess(null)} sx={{ mb: 2 }}>{success}</Alert> : null}
       {error ? <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>{error}</Alert> : null}
 
-      {/* Hero — headshot + navn */}
-      <Box sx={{ ...cardSx, mb: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ md: 'center' }}>
-          <Avatar
-            src={talent.headshot_url ?? undefined}
-            sx={{ width: 120, height: 120, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright }}
-          >
-            {talent.headshot_url ? null : <PersonOutlineIcon sx={{ fontSize: 56 }} />}
-          </Avatar>
-          <Stack spacing={0.6} sx={{ flexGrow: 1 }}>
-            <Typography sx={{ color: palette.textPrimary, fontSize: '1.6rem', fontWeight: 800 }}>
-              {talent.display_name}
-            </Typography>
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.95rem' }}>
-              {talent.city ? `${talent.city}, ${talent.country ?? 'NO'}` : 'By ikke satt'}
-              {talent.playing_age_min && talent.playing_age_max
-                ? ` · spille-alder ${talent.playing_age_min}–${talent.playing_age_max}`
-                : ''}
-            </Typography>
-            {talent.bio ? (
-              <Typography sx={{ color: palette.textSecondary, mt: 1, lineHeight: 1.5 }}>{talent.bio}</Typography>
-            ) : null}
-          </Stack>
-        </Stack>
-      </Box>
+      <TalentProfileHero
+        talent={talent}
+        creditCount={creditCount}
+        onEdit={() => setEditing(true)}
+        onShare={() => { window.location.href = '/talents/partners'; }}
+      />
 
       {/* Media */}
       <Box sx={{ ...cardSx, mb: 2 }}>
