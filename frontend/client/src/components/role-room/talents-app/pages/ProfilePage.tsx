@@ -23,6 +23,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  Link as MuiLink,
   MenuItem,
   Stack,
   Step,
@@ -38,10 +39,12 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useCallback, useEffect, useState } from 'react';
 
-import roleRoomTalentsService, { type RoleRoomTalent, type TalentAvailabilityWindow } from '../../services/roleRoomTalentsService';
+import roleRoomTalentsService, {
+  type TalentProfileLinkKey, type RoleRoomTalent, type TalentAvailabilityWindow } from '../../services/roleRoomTalentsService';
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import { OPEN_WIZARD_KEY } from '../components/TalentsHowItWorksCard';
+import TalentProfileHero from '../components/TalentProfileHero';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
 
 interface ProfilePageProps {
@@ -114,10 +117,30 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
 
   useEffect(() => { void reload(); }, [reload]);
 
+  // Krediteringer teller med i profilstyrken, så hero-en trenger antallet.
+  const [creditCount, setCreditCount] = useState(0);
+  useEffect(() => {
+    if (demoMode) return;
+    void roleRoomTalentsService.fetchMyCredits().then((rows) => setCreditCount(rows.length));
+  }, [demoMode]);
+
+  // Selvregistreringen oppretter en draft-rad med navn og e-post, så `talent`
+  // er IKKE null for en fersk skuespiller. Det som avgjør om hen trenger
+  // wizarden er om profilen har innhold — ellers møtte hen en profilside full
+  // av «Mangler» uten noen vei videre.
+  const harProfilInnhold = Boolean(
+    talent && (talent.bio || talent.headshot_url || talent.showreel_url || talent.city),
+  );
+
   // Kom hen hit fra «Sett opp profilen» på Hjem, skal wizarden åpne seg selv —
   // ellers måtte skuespilleren finne den samme knappen om igjen.
+  //
+  // Selvregistrering oppretter en draft-rad med navn og e-post, så `talent` er
+  // IKKE null for en fersk skuespiller. Vi ser på om profilen har innhold, ikke
+  // om raden finnes — ellers landet hen på en profilside full av «Mangler»
+  // uten noen vei videre.
   useEffect(() => {
-    if (loading || talent || demoMode) return;
+    if (loading || demoMode || harProfilInnhold) return;
     try {
       if (window.sessionStorage.getItem(OPEN_WIZARD_KEY) !== '1') return;
       window.sessionStorage.removeItem(OPEN_WIZARD_KEY);
@@ -125,7 +148,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
     } catch {
       // Ingen sessionStorage — knappen på siden fungerer fortsatt.
     }
-  }, [demoMode, loading, talent]);
+  }, [demoMode, harProfilInnhold, loading]);
 
   if (loading) {
     return (
@@ -152,7 +175,8 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
     );
   }
 
-  if (!talent) {
+  // `!talent` er med for at TypeScript skal smalne typen under.
+  if (!talent || !harProfilInnhold) {
     return (
       <Box sx={{ p: 3, maxWidth: 720, mx: 'auto' }}>
         <Box sx={cardSx}>
@@ -186,7 +210,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
         <OnboardingWizard
           open={wizardOpen}
           onClose={() => setWizardOpen(false)}
-          onDone={(t) => { setTalent(t); setWizardOpen(false); setSuccess('Profil opprettet! Du kan nå invitere partnere.'); }}
+          onDone={(t) => { setTalent(t); setWizardOpen(false); setSuccess('Profilen er lagret. Du er fortsatt usynlig for byråer til du deler den.'); }}
         />
       </Box>
     );
@@ -218,31 +242,12 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
       {success ? <Alert severity="success" onClose={() => setSuccess(null)} sx={{ mb: 2 }}>{success}</Alert> : null}
       {error ? <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>{error}</Alert> : null}
 
-      {/* Hero — headshot + navn */}
-      <Box sx={{ ...cardSx, mb: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ md: 'center' }}>
-          <Avatar
-            src={talent.headshot_url ?? undefined}
-            sx={{ width: 120, height: 120, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright }}
-          >
-            {talent.headshot_url ? null : <PersonOutlineIcon sx={{ fontSize: 56 }} />}
-          </Avatar>
-          <Stack spacing={0.6} sx={{ flexGrow: 1 }}>
-            <Typography sx={{ color: palette.textPrimary, fontSize: '1.6rem', fontWeight: 800 }}>
-              {talent.display_name}
-            </Typography>
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.95rem' }}>
-              {talent.city ? `${talent.city}, ${talent.country ?? 'NO'}` : 'By ikke satt'}
-              {talent.playing_age_min && talent.playing_age_max
-                ? ` · spille-alder ${talent.playing_age_min}–${talent.playing_age_max}`
-                : ''}
-            </Typography>
-            {talent.bio ? (
-              <Typography sx={{ color: palette.textSecondary, mt: 1, lineHeight: 1.5 }}>{talent.bio}</Typography>
-            ) : null}
-          </Stack>
-        </Stack>
-      </Box>
+      <TalentProfileHero
+        talent={talent}
+        creditCount={creditCount}
+        onEdit={() => setEditing(true)}
+        onShare={() => { window.location.href = '/talents/partners'; }}
+      />
 
       {/* Media */}
       <Box sx={{ ...cardSx, mb: 2 }}>
@@ -250,8 +255,48 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
         <Stack spacing={1.2}>
           <MediaRow label="Headshot" url={talent.headshot_url} />
           <MediaRow label="Showreel" url={talent.showreel_url} />
+          <MediaRow label="Showreel 2" url={talent.showreel_url_2} />
+          <MediaRow label="«Om meg»-video" url={talent.about_video_url} />
           <MediaRow label="CV" url={talent.resume_url} />
         </Stack>
+      </Box>
+
+      {/* Lenkene casting-byråer spør om */}
+      <Box sx={{ ...cardSx, mb: 2 }}>
+        <Typography sx={{ color: palette.textPrimary, fontWeight: 700, mb: 1.4 }}>Lenker</Typography>
+        {talent.drama_school ? (
+          <Stack direction="row" justifyContent="space-between" sx={{ py: 0.9, borderBottom: `1px solid ${palette.borderSubtle}` }}>
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem' }}>Dramaskole</Typography>
+            <Typography sx={{ color: palette.textPrimary, fontSize: '0.9rem' }}>{talent.drama_school}</Typography>
+          </Stack>
+        ) : null}
+        {LINK_FIELDS.map((field) => {
+          const url = talent.profile_links?.[field.key];
+          return (
+            <Stack
+              key={field.key}
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+              spacing={2}
+              sx={{ py: 0.9, borderBottom: `1px solid ${palette.borderSubtle}`, '&:last-of-type': { borderBottom: 'none' } }}
+            >
+              <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem' }}>{field.label}</Typography>
+              {url ? (
+                <MuiLink
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ color: palette.accentBright, fontSize: '0.88rem', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {url.replace(/^https?:\/\//, '')}
+                </MuiLink>
+              ) : (
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem', fontStyle: 'italic' }}>Mangler</Typography>
+              )}
+            </Stack>
+          );
+        })}
       </Box>
 
       {/* Ferdigheter & språk */}
@@ -420,14 +465,12 @@ function OnboardingWizard({ open, onClose, onDone }: OnboardingWizardProps) {
     setSaving(true);
     setError(null);
     // Først opprett, så oppdater med all data
-    const created = await roleRoomTalentsService.createMyTalent({
+    // Selvregistreringen har allerede opprettet en draft-rad; da svarer
+    // create 409. Det er ikke en feil her — vi går rett videre til update og
+    // lar den avgjøre om noe faktisk gikk galt.
+    await roleRoomTalentsService.createMyTalent({
       display_name: form.display_name || undefined,
     });
-    if ('error' in created) {
-      setError(created.error);
-      setSaving(false);
-      return;
-    }
     const skills = form.skills.split(',').map((s) => ({ id: s.trim().toLowerCase().replace(/\s+/g, '_'), label: s.trim() })).filter((s) => s.label);
     const languages = form.languages.split(',').map((s) => {
       const [label, level] = s.split('|').map((p) => p.trim());
@@ -599,6 +642,18 @@ interface ProfileEditDialogProps {
   onError: (msg: string) => void;
 }
 
+/** Lenkene casting-byråer ber om, i den rekkefølgen skjemaene deres bruker. */
+const LINK_FIELDS: Array<{ key: TalentProfileLinkKey; label: string; placeholder: string }> = [
+  { key: 'agency_website', label: 'Byråets nettside', placeholder: 'https://…' },
+  { key: 'agency_profile', label: 'Byrå-profil (lenke til deg hos byrået)', placeholder: 'https://…' },
+  { key: 'website', label: 'Egen nettside', placeholder: 'https://…' },
+  { key: 'imdb', label: 'IMDb (eller annen CV-lenke)', placeholder: 'https://imdb.com/name/…' },
+  { key: 'wikipedia', label: 'Wikipedia', placeholder: 'https://no.wikipedia.org/…' },
+  { key: 'facebook', label: 'Facebook', placeholder: 'https://facebook.com/…' },
+  { key: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/…' },
+  { key: 'additional', label: 'Annen lenke', placeholder: 'https://…' },
+];
+
 function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileEditDialogProps) {
   const [form, setForm] = useState({
     display_name: talent.display_name,
@@ -609,6 +664,10 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
     headshot_url: talent.headshot_url ?? '',
     showreel_url: talent.showreel_url ?? '',
     resume_url: talent.resume_url ?? '',
+    showreel_url_2: talent.showreel_url_2 ?? '',
+    about_video_url: talent.about_video_url ?? '',
+    drama_school: talent.drama_school ?? '',
+    links: { ...(talent.profile_links ?? {}) } as Record<string, string>,
     availability_status: talent.availability_status,
     windows: (talent.availability_windows ?? []) as TalentAvailabilityWindow[],
     skills: (talent.skills ?? []).map((s) => (typeof s === 'string' ? s : s.label)).join(', '),
@@ -637,6 +696,14 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
       headshot_url: form.headshot_url || undefined,
       showreel_url: form.showreel_url || undefined,
       resume_url: form.resume_url || undefined,
+      showreel_url_2: form.showreel_url_2 || undefined,
+      about_video_url: form.about_video_url || undefined,
+      drama_school: form.drama_school || undefined,
+      // Tomme felter sendes ikke — serveren dropper dem uansett, men da
+      // slipper vi å overskrive en lenke med tom streng ved et uhell.
+      profile_links: Object.fromEntries(
+        Object.entries(form.links).filter(([, url]) => url.trim()),
+      ) as Record<string, string>,
       availability_status: form.availability_status,
       // Behold kun gyldige vinduer (begge datoer satt, start ≤ slutt).
       availability_windows: form.windows
@@ -685,6 +752,31 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
             value={form.resume_url}
             onChange={(url) => setForm({ ...form, resume_url: url ?? '' })}
           />
+          {/* Feltene casting-byråer spør om. Rekkefølgen følger skjemaene
+              deres, så det er lett å fylle ut fra en byrå-forespørsel. */}
+          <TextField label="Showreel 2 (lenke)" value={form.showreel_url_2} onChange={(e) => setForm({ ...form, showreel_url_2: e.target.value })} fullWidth size="small" placeholder="https://vimeo.com/…" />
+          <TextField label="«Om meg»-video (lenke)" value={form.about_video_url} onChange={(e) => setForm({ ...form, about_video_url: e.target.value })} fullWidth size="small" placeholder="https://…" />
+          <TextField label="Dramaskole" value={form.drama_school} onChange={(e) => setForm({ ...form, drama_school: e.target.value })} fullWidth size="small" placeholder="Teaterhøgskolen, LAMDA …" />
+
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 0.8 }}>Lenker</Typography>
+            <Stack spacing={1.4}>
+              {LINK_FIELDS.map((field) => (
+                <TextField
+                  key={field.key}
+                  label={field.label}
+                  value={form.links[field.key] ?? ''}
+                  onChange={(e) => setForm({ ...form, links: { ...form.links, [field.key]: e.target.value } })}
+                  fullWidth
+                  size="small"
+                  placeholder={field.placeholder}
+                />
+              ))}
+            </Stack>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 1 }}>
+              Byrå-lenkene deles kun med partnere du har gitt kontaktinfo-tilgang. De øvrige følger profilen din.
+            </Typography>
+          </Box>
           <TextField select label="Tilgjengelighet" value={form.availability_status} onChange={(e) => setForm({ ...form, availability_status: e.target.value as RoleRoomTalent['availability_status'] })} fullWidth size="small">
             <MenuItem value="open">Tilgjengelig</MenuItem>
             <MenuItem value="limited">Begrenset</MenuItem>

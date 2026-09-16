@@ -46,7 +46,11 @@ const EDITABLE_FIELDS = [
   "headshot_url",
   "headshot_alt_urls",
   "showreel_url",
+  "showreel_url_2",
+  "about_video_url",
   "resume_url",
+  "drama_school",
+  "profile_links",
   "age_range",
   "playing_age_min",
   "playing_age_max",
@@ -66,7 +70,7 @@ const EDITABLE_FIELDS = [
 ] as const;
 
 // JSONB-felter må stringifyes før de skrives til talents.
-const JSONB_FIELDS = ["headshot_alt_urls", "skills", "languages", "dialects", "external_links", "availability_windows"];
+const JSONB_FIELDS = ["headshot_alt_urls", "skills", "languages", "dialects", "external_links", "availability_windows", "profile_links"];
 // Felter som utgjør «tilgjengelighet» — når noen av disse skrives regner vi
 // tilgjengeligheten som (re-)bekreftet og bumper availability_confirmed_at.
 const AVAILABILITY_FIELDS = new Set(["availability_status", "availability_notes", "availability_windows"]);
@@ -91,10 +95,40 @@ const VALID_PARTNER_TYPES = new Set([
   "workshop_provider",
 ]);
 
+/** Lenkene casting-byråer spør om. Ukjente nøkler forkastes, og alt må være
+ *  http(s) — ellers kunne en javascript:-URL havne i en byrå-visning. */
+const PROFILE_LINK_KEYS = [
+  "website",
+  "imdb",
+  "wikipedia",
+  "facebook",
+  "instagram",
+  "additional",
+  "agency_website",
+  "agency_profile",
+] as const;
+
+function sanitizeProfileLinks(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of PROFILE_LINK_KEYS) {
+    const raw = input[key];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (!/^https?:\/\//i.test(trimmed)) continue;
+    out[key] = trimmed.slice(0, 2000);
+  }
+  return out;
+}
+
 function pickEditable(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of EDITABLE_FIELDS) {
-    if (field in body) out[field as EditableField] = body[field];
+    if (!(field in body)) continue;
+    out[field as EditableField] =
+      field === "profile_links" ? sanitizeProfileLinks(body[field]) : body[field];
   }
   return out;
 }

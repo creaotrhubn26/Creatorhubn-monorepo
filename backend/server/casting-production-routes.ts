@@ -38,6 +38,10 @@ import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
+  collectProductionDayChangeImpact,
+  hasBlockingImpact,
+} from './production-day-change-impact.js';
+import {
   resolveCastingProjectAccess,
   userOwnsCastingProject,
   type CastingGrant,
@@ -1325,6 +1329,61 @@ export function createCastingProductionRouter(
     version: Number(row.version ?? 0),
     updatedBy: row.updated_by ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+  });
+
+  // ────────────── CHANGE IMPACT ──────────────
+  /**
+   * Hva som brekker hvis denne dagen flyttes. Ren lesning — den endrer
+   * ingenting, og finnes for at brukeren skal se konsekvensen før valget
+   * tas i stedet for å få den forklart etterpå.
+   */
+  router.get('/projects/:projectId/production-days/:dayId/impact', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      const dayId = String(req.params.dayId || '').trim();
+      const toDate = String(req.query.date || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato som YYYY-MM-DD.' });
+        return;
+      }
+      // Forhåndsvisningen avslører produksjonsdata, så den krever samme
+      // rettighet som selve flyttingen.
+      if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
+
+      const dayResult = await pool.query(
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date
+           FROM casting_production_days
+          WHERE id = $1 AND project_id = $2
+          LIMIT 1`,
+        [dayId, projectId],
+      );
+      const day = dayResult.rows[0] as { date?: string } | undefined;
+      if (!day) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      const fromDate = String(day.date ?? '');
+      if (fromDate === toDate) {
+        res.json({ from: fromDate, to: toDate, impacts: [], blocking: false, unchanged: true });
+        return;
+      }
+
+      const impacts = await collectProductionDayChangeImpact(pool, {
+        projectId, dayId, fromDate, toDate,
+      });
+      res.json({
+        from: fromDate,
+        to: toDate,
+        impacts,
+        blocking: hasBlockingImpact(impacts),
+        unchanged: false,
+      });
+    } catch {
+      // En ufullstendig liste er verre enn ingen liste: klienten skal ikke
+      // kunne presentere «ingen påvirkning» når spørringen feilet.
+      res.status(500).json({ error: 'impact_unavailable', message: 'Kunne ikke beregne konsekvensen.' });
+    }
   });
 
   // ────────────── PROJECT ACCESS ──────────────

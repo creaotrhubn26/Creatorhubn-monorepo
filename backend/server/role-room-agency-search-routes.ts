@@ -257,7 +257,8 @@ export function buildSearchSql(
   const sql = `
     SELECT
       t.id, t.display_name, t.city, t.country, t.bio,
-      t.headshot_url, t.showreel_url, t.resume_url,
+      t.headshot_url, t.showreel_url, t.showreel_url_2, t.about_video_url, t.resume_url,
+      t.drama_school, t.profile_links,
       t.playing_age_min, t.playing_age_max, t.gender,
       t.skills, t.languages, t.dialects,
       t.availability_status, t.availability_notes,
@@ -293,6 +294,26 @@ export function maskByScopes(row: Record<string, unknown>): Record<string, unkno
     granted_scopes: Array.from(scopes),
     last_consent_at: row.last_consent_at,
   };
+// Speilet i role-room-agencies-routes.ts — de to må ikke skli fra hverandre.
+const PUBLIC_LINK_KEYS = ["website", "imdb", "wikipedia", "facebook", "instagram", "additional"];
+const AGENCY_LINK_KEYS = ["agency_website", "agency_profile"];
+
+function pickLinks(value: unknown, keys: string[]): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    if (typeof input[key] === "string") out[key] = input[key] as string;
+  }
+  return out;
+}
+
+/** Lenker som følger identiteten (basic_profile). */
+const publicProfileLinks = (value: unknown) => pickLinks(value, PUBLIC_LINK_KEYS);
+
+/** Byrå-lenker hører til representasjon (contact_info). */
+const agencyProfileLinks = (value: unknown) => pickLinks(value, AGENCY_LINK_KEYS);
+
   // Identity + profile fields require basic_profile (or full_profile). The
   // search query's HAVING already guarantees this for search results; this is
   // defense-in-depth so any other caller can't leak identity on a narrow scope.
@@ -311,10 +332,17 @@ export function maskByScopes(row: Record<string, unknown>): Record<string, unkno
     masked.nsf_member = badges.includes("nsf_member");
     const edu = (row.metadata as { education?: { institution?: string | null; program?: string | null; year?: number | null } } | null)?.education;
     if (edu) masked.education = { institution: edu.institution ?? null, program: edu.program ?? null, year: edu.year ?? null };
+    masked.drama_school = row.drama_school;
+    // Offentlige lenker (nettside, IMDb, Wikipedia, sosiale medier) følger
+    // identiteten. Byrå-lenkene holdes utenfor — de hører til representasjon
+    // og ligger bak contact_info sammen med agency_name.
+    masked.profile_links = publicProfileLinks(row.profile_links);
   }
   if (has("media_portfolio")) {
     masked.headshot_url = row.headshot_url;
     masked.showreel_url = row.showreel_url;
+    masked.showreel_url_2 = row.showreel_url_2;
+    masked.about_video_url = row.about_video_url;
     masked.has_showreel = Boolean(row.showreel_url);
   }
   if (has("demographics")) {
@@ -334,6 +362,7 @@ export function maskByScopes(row: Record<string, unknown>): Record<string, unkno
   }
   if (has("contact_info")) {
     masked.agency_name = row.agency_name;
+    masked.agency_links = agencyProfileLinks(row.profile_links);
   }
   return masked;
 }

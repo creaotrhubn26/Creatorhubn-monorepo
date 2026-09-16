@@ -494,6 +494,7 @@ import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
+import { registerRoleRoomAccessMatrixRoutes } from "./role-room-access-matrix-routes.js";
 import {
   readRoleRoomContinuityS3Config,
   roleRoomS3Client,
@@ -592,6 +593,7 @@ import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-r
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
+import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
@@ -2722,6 +2724,7 @@ registerB2CompanyArchiveRoutes({
     return { bucketName: config.bucket, client };
   },
 });
+registerRoleRoomAccessMatrixRoutes({ app, requireAdminSession });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
 registerB2ArchiveCronRoutes({ app, pool });
 
@@ -25679,6 +25682,13 @@ setupRoleRoomTalentSignupRoutes({
   activeSessions,
   normalizeMailConfigValue,
   getDefaultRoleRoomPublicOrigin,
+});
+// Skuespiller-CV: krediteringer (migrasjon 0611). Rolle, produksjon,
+// regissør og år — strukturen resume_url aldri ga oss.
+setupRoleRoomTalentCreditsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
 });
 // B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
 // Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
