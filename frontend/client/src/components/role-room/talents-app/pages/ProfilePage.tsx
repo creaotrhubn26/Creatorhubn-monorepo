@@ -45,6 +45,7 @@ import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import { OPEN_WIZARD_KEY } from '../components/TalentsHowItWorksCard';
 import TalentProfileHero from '../components/TalentProfileHero';
+import IdentityVerificationCard from '../components/IdentityVerificationCard';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
 
 interface ProfilePageProps {
@@ -247,6 +248,12 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
         creditCount={creditCount}
         onEdit={() => setEditing(true)}
         onShare={() => { window.location.href = '/talents/partners'; }}
+      />
+
+      <IdentityVerificationCard
+        verified={talent.identity_verified === true}
+        verifiedAt={talent.identity_verified_at}
+        demoMode={demoMode}
       />
 
       {/* Media */}
