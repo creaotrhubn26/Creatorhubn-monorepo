@@ -56,6 +56,11 @@ export interface RoleRoomTalent {
   availability_confirmed_at: string | null;
   willing_to_travel: boolean;
   external_links: Array<{ label: string; url: string }>;
+  showreel_url_2: string | null;
+  about_video_url: string | null;
+  drama_school: string | null;
+  /** Lenkene casting-byråer spør om. Byrå-nøklene deles kun under contact_info. */
+  profile_links: Partial<Record<TalentProfileLinkKey, string>> | null;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
   badges: string[];
   metadata: Record<string, unknown>;
@@ -129,6 +134,38 @@ export interface RoleRoomMaskedTalent extends Partial<RoleRoomTalent> {
   granted_scopes: RoleRoomTalentConsentScope[];
 }
 
+export type TalentCreditCategory = 'film_tv' | 'theatre' | 'commercial' | 'voice' | 'other';
+
+/** Én kreditering i skuespiller-CV-en (migrasjon 0611). */
+export interface TalentCredit {
+  id: string;
+  talent_id: string;
+  category: TalentCreditCategory;
+  title: string;
+  role_name: string | null;
+  role_type: string | null;
+  production_company: string | null;
+  production_org_number: string | null;
+  director: string | null;
+  format: string | null;
+  year: number | null;
+  sort_order: number | null;
+  notes: string | null;
+  external_url: string | null;
+}
+
+export type TalentCreditDraft = Partial<Omit<TalentCredit, 'id' | 'talent_id'>> & { title: string };
+
+export type TalentProfileLinkKey =
+  | 'website'
+  | 'imdb'
+  | 'wikipedia'
+  | 'facebook'
+  | 'instagram'
+  | 'additional'
+  | 'agency_website'
+  | 'agency_profile';
+
 const BASE = '/api/role-room/talents';
 const AGENCY_BASE = '/api/role-room';
 
@@ -146,6 +183,53 @@ async function authFetch(path: string, init?: RequestInit) {
 }
 
 const roleRoomTalentsService = {
+  async fetchMyCredits(): Promise<TalentCredit[]> {
+    const r = await authFetch(`${BASE}/me/credits`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return (payload?.credits as TalentCredit[]) ?? [];
+  },
+
+  async createCredit(draft: TalentCreditDraft): Promise<TalentCredit | { error: string }> {
+    const r = await authFetch(`${BASE}/me/credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre krediteringen' };
+    return payload.credit as TalentCredit;
+  },
+
+  async updateCredit(id: string, patch: Partial<TalentCreditDraft>): Promise<TalentCredit | { error: string }> {
+    const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å oppdatere krediteringen' };
+    return payload.credit as TalentCredit;
+  },
+
+  async deleteCredit(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Klarte ikke å slette' };
+    }
+    return { ok: true };
+  },
+
+  /** Autocomplete fra krediteringer som allerede finnes i registeret. */
+  async suggestCreditValues(field: 'title' | 'production_company' | 'director', q: string): Promise<string[]> {
+    if (q.trim().length < 2) return [];
+    const r = await authFetch(`${BASE}/credits/suggest?field=${field}&q=${encodeURIComponent(q.trim())}`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return (payload?.suggestions as string[]) ?? [];
+  },
+
   async fetchMyTalent(): Promise<RoleRoomTalent | null> {
     const r = await authFetch(`${BASE}/me`);
     if (!r.ok) return null;
@@ -711,6 +795,10 @@ export interface TalentSearchHit {
   // maskerte felter (kun hvis scope er gitt):
   headshot_url?: string | null;
   showreel_url?: string | null;
+  showreel_url_2?: string | null;
+  about_video_url?: string | null;
+  drama_school?: string | null;
+  profile_links?: Partial<Record<TalentProfileLinkKey, string>>;
   has_showreel?: boolean;
   playing_age_min?: number | null;
   playing_age_max?: number | null;
