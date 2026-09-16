@@ -20,6 +20,7 @@ import PartnersCollaborationPage from './pages/PartnersCollaborationPage';
 import PartnerInviteAcceptPage from './pages/PartnerInviteAcceptPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
+import CvPage from './pages/CvPage';
 import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
 import TalentRegistryPage from './pages/TalentRegistryPage';
@@ -36,6 +37,7 @@ const ROUTE_TO_PAGE: Record<string, TalentsAppPage> = {
   'registry': 'registry',
   'profiles': 'profiles',
   'profil': 'profiles',
+  'cv': 'cv',
   'selftapes': 'selftapes',
   'self-tapes': 'selftapes',
   'auditions': 'auditions',
@@ -55,6 +57,7 @@ const PAGE_TO_ROUTE: Record<TalentsAppPage, string> = {
   dashboard: '',
   registry: 'registry',
   profiles: 'profiles',
+  cv: 'cv',
   selftapes: 'self-tapes',
   auditions: 'auditions',
   partners: 'partners',
@@ -202,6 +205,8 @@ export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
         <TalentRegistryPage demoMode={demoMode} />
       ) : page === 'partners' ? (
         <PartnersCollaborationPage />
+      ) : page === 'cv' ? (
+        <CvPage demoMode={demoMode} />
       ) : page === 'profiles' ? (
         <ProfilePage demoMode={demoMode} />
       ) : page === 'audit' || page === 'permissions' ? (
@@ -224,6 +229,7 @@ function ComingSoonPage({ page }: { page: TalentsAppPage }) {
     dashboard: 'Hjem',
     registry: 'Talent Registry',
     profiles: 'Min profil',
+    cv: 'CV',
     selftapes: 'Self-Tape Studio',
     auditions: 'Auditions',
     partners: 'Partnere',

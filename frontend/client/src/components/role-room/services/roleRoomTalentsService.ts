@@ -129,6 +129,28 @@ export interface RoleRoomMaskedTalent extends Partial<RoleRoomTalent> {
   granted_scopes: RoleRoomTalentConsentScope[];
 }
 
+export type TalentCreditCategory = 'film_tv' | 'theatre' | 'commercial' | 'voice' | 'other';
+
+/** Én kreditering i skuespiller-CV-en (migrasjon 0611). */
+export interface TalentCredit {
+  id: string;
+  talent_id: string;
+  category: TalentCreditCategory;
+  title: string;
+  role_name: string | null;
+  role_type: string | null;
+  production_company: string | null;
+  production_org_number: string | null;
+  director: string | null;
+  format: string | null;
+  year: number | null;
+  sort_order: number | null;
+  notes: string | null;
+  external_url: string | null;
+}
+
+export type TalentCreditDraft = Partial<Omit<TalentCredit, 'id' | 'talent_id'>> & { title: string };
+
 const BASE = '/api/role-room/talents';
 const AGENCY_BASE = '/api/role-room';
 
@@ -146,6 +168,53 @@ async function authFetch(path: string, init?: RequestInit) {
 }
 
 const roleRoomTalentsService = {
+  async fetchMyCredits(): Promise<TalentCredit[]> {
+    const r = await authFetch(`${BASE}/me/credits`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return (payload?.credits as TalentCredit[]) ?? [];
+  },
+
+  async createCredit(draft: TalentCreditDraft): Promise<TalentCredit | { error: string }> {
+    const r = await authFetch(`${BASE}/me/credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre krediteringen' };
+    return payload.credit as TalentCredit;
+  },
+
+  async updateCredit(id: string, patch: Partial<TalentCreditDraft>): Promise<TalentCredit | { error: string }> {
+    const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å oppdatere krediteringen' };
+    return payload.credit as TalentCredit;
+  },
+
+  async deleteCredit(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Klarte ikke å slette' };
+    }
+    return { ok: true };
+  },
+
+  /** Autocomplete fra krediteringer som allerede finnes i registeret. */
+  async suggestCreditValues(field: 'title' | 'production_company' | 'director', q: string): Promise<string[]> {
+    if (q.trim().length < 2) return [];
+    const r = await authFetch(`${BASE}/credits/suggest?field=${field}&q=${encodeURIComponent(q.trim())}`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return (payload?.suggestions as string[]) ?? [];
+  },
+
   async fetchMyTalent(): Promise<RoleRoomTalent | null> {
     const r = await authFetch(`${BASE}/me`);
     if (!r.ok) return null;
