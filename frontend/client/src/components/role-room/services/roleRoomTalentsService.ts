@@ -61,6 +61,9 @@ export interface RoleRoomTalent {
   drama_school: string | null;
   /** Lenkene casting-byråer spør om. Byrå-nøklene deles kun under contact_info. */
   profile_links: Partial<Record<TalentProfileLinkKey, string>> | null;
+  /** Satt av BankID-verifisering. Selve identiteten ligger i eid_identities. */
+  identity_verified: boolean | null;
+  identity_verified_at: string | null;
   physical_attributes: Record<string, string | number | boolean> | null;
   casting_photos: Partial<Record<'face_front' | 'face_profile' | 'full_body_front', string>> | null;
   /** Eget samtykke for etnisk opprinnelse — særlig kategori (GDPR art. 9). */
@@ -204,6 +207,25 @@ async function authFetch(path: string, init?: RequestInit) {
 }
 
 const roleRoomTalentsService = {
+  /** Er eID satt opp i dette miljøet? Svarer aldri med hemmeligheter. */
+  async fetchEidConfig(): Promise<{ configured: boolean; providers: string[] }> {
+    const r = await authFetch('/api/role-room/eid/config');
+    if (!r.ok) return { configured: false, providers: [] };
+    return (await r.json().catch(() => null)) ?? { configured: false, providers: [] };
+  },
+
+  /** Starter verifisering og returnerer URL-en brukeren skal sendes til. */
+  async startIdentityVerification(returnPath: string): Promise<{ authorizeUrl: string } | { error: string }> {
+    const r = await authFetch(`${BASE}/me/verify/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'bankid', returnPath }),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'start_failed' };
+    return { authorizeUrl: payload.authorizeUrl as string };
+  },
+
   /** Eget ja/nei for etnisk opprinnelse. Trekkes det, slettes verdien. */
   async setEthnicityConsent(granted: boolean): Promise<RoleRoomTalent | { error: string }> {
     const r = await authFetch(`${BASE}/me/ethnicity-consent`, {

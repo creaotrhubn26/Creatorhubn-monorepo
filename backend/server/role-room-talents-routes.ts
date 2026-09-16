@@ -15,6 +15,7 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { recordConsent, resolveAuthMethod, sha256 } from "./consent-ledger-service.js";
 
 import {
   ETHNICITY_OPTIONS,
@@ -403,6 +404,42 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
   });
 
   // ── POST /me/consents — gi en partner tilgang ───────────────────────
+  /**
+   * Skriver samtykket i den append-only loggen ved siden av registeret.
+   *
+   * Registeret sier hva som er delt NÅ; loggen sier hva personen sa ja til,
+   * når, og med hvilken autentisering. Uten den andre har vi ingen bevis den
+   * dagen noen bestrider delingen — og en tilbaketrekking som ikke logges er
+   * like alvorlig som et samtykke som ikke logges.
+   *
+   * Feiler loggen, ruller vi ikke tilbake tilstandsendringen brukeren ba om,
+   * men vi lar den heller ikke gå stille.
+   */
+  async function logConsentToLedger(
+    userId: string,
+    action: "granted" | "withdrawn",
+    consent: { partner_type: string; partner_ref: string; partner_display_name?: string | null; scope: string },
+  ): Promise<void> {
+    try {
+      const statement = [
+        action === "granted" ? "Samtykke til deling av profil" : "Tilbaketrekking av samtykke",
+        `Partner: ${consent.partner_display_name ?? consent.partner_ref} (${consent.partner_type}, ref ${consent.partner_ref})`,
+        `Scope: ${consent.scope}`,
+      ].join("\n");
+
+      await recordConsent(pool, {
+        userId,
+        subjectType: `${consent.partner_type}_share`,
+        subjectRef: consent.partner_ref,
+        documentHash: sha256(statement),
+        action,
+        authMethod: await resolveAuthMethod(pool, userId),
+      });
+    } catch (ledgerError) {
+      console.error("[talents/me/consents] samtykke-logg feilet", ledgerError);
+    }
+  }
+
   app.post("/api/role-room/talents/me/consents", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -450,6 +487,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
           typeof notes === "string" ? notes : null,
         ],
       );
+      await logConsentToLedger(session.userId, "granted", r.rows[0]);
       return res.status(201).json({ consent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me/consents POST] failed", err);
@@ -505,6 +543,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
         [id, talent.id, session.userId],
       );
       if (!r.rowCount) return res.status(404).json({ error: "Samtykke ikke funnet" });
+      await logConsentToLedger(session.userId, "withdrawn", r.rows[0]);
       return res.json({ consent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me/consents DELETE] failed", err);
