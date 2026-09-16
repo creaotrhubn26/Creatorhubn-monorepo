@@ -56,6 +56,11 @@ export interface RoleRoomTalent {
   availability_confirmed_at: string | null;
   willing_to_travel: boolean;
   external_links: Array<{ label: string; url: string }>;
+  showreel_url_2: string | null;
+  about_video_url: string | null;
+  drama_school: string | null;
+  /** Lenkene casting-byråer spør om. Byrå-nøklene deles kun under contact_info. */
+  profile_links: Partial<Record<TalentProfileLinkKey, string>> | null;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
   badges: string[];
   metadata: Record<string, unknown>;
@@ -150,6 +155,16 @@ export interface TalentCredit {
 }
 
 export type TalentCreditDraft = Partial<Omit<TalentCredit, 'id' | 'talent_id'>> & { title: string };
+
+export type TalentProfileLinkKey =
+  | 'website'
+  | 'imdb'
+  | 'wikipedia'
+  | 'facebook'
+  | 'instagram'
+  | 'additional'
+  | 'agency_website'
+  | 'agency_profile';
 
 const BASE = '/api/role-room/talents';
 const AGENCY_BASE = '/api/role-room';
@@ -780,6 +795,10 @@ export interface TalentSearchHit {
   // maskerte felter (kun hvis scope er gitt):
   headshot_url?: string | null;
   showreel_url?: string | null;
+  showreel_url_2?: string | null;
+  about_video_url?: string | null;
+  drama_school?: string | null;
+  profile_links?: Partial<Record<TalentProfileLinkKey, string>>;
   has_showreel?: boolean;
   playing_age_min?: number | null;
   playing_age_max?: number | null;
