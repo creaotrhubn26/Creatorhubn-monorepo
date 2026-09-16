@@ -282,6 +282,7 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Billing | Solo (gratis) / Pro / Studio via Stripe; gating av deling, HTML, KI, oversettelser, import, elementgrense; tester-invites; admin-redigerbare planer | ✅ Fase 4 |
 | Runtime-pakker | `packages/story-graph-runtime`: JS (full motor), Unity C# og Godot 4 GDScript (dokumentert delsett) | ✅ Fase 4 (C#/GD manuelt verifisert) |
 | CSV + PDF + embed | CSV (én rad per element, norsk Excel-profil) alle planer; PDF «lesbart manus» (Pro/Studio); embed-kode (iframe mot `/story/:token?embed=1`) | ✅ Fase 5 |
+| Scener & review | Scenekort (kode, lokasjon, utfordring, spillmekanikk, miljø, status, ansvarlig, frist) koblet til Story Graph-elementer; storyboard-rammer, oppgaver, review-runder med frosset snapshot, godkjenning og stale-vern, kommentartråd og varsler; MCP `rr_list_game_scenes` | ✅ Fase 6 (review Pro/Studio) |
 
 **Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
 login-persona. Priser er plassholdere satt i migrasjon 0608 og redigeres i «Admin · Planer».

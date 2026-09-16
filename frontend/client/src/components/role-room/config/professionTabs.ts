@@ -98,6 +98,7 @@ export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
 
 export const GAME_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'boards',     labelToken: 'gameTabBoards',     descriptionToken: 'gameTabBoardsDescription',     requiresProject: true, feature: 'core' },
+  { id: 'scenes',     labelToken: 'gameTabScenes',     descriptionToken: 'gameTabScenesDescription',     requiresProject: true, feature: 'core' },
   { id: 'components', labelToken: 'gameTabComponents', descriptionToken: 'gameTabComponentsDescription', requiresProject: true, feature: 'core' },
   { id: 'variables',  labelToken: 'gameTabVariables',  descriptionToken: 'gameTabVariablesDescription',  requiresProject: true, feature: 'core' },
   { id: 'assets',     labelToken: 'gameTabAssets',     descriptionToken: 'gameTabAssetsDescription',     requiresProject: true, feature: 'resources' },

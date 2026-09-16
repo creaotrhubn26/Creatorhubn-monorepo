@@ -22,7 +22,9 @@ export type CommentAnchorType =
   | 'content_post' | 'marketing_plan_post' | 'feed_plan_post'
   | 'gallery_image' | 'storyboard_frame' | 'timestamp'
   // Screenplay/manus-anker (matcher VALID_ANCHOR_TYPES i backend):
-  | 'manuscript' | 'manuscript_scene' | 'screenplay_line' | 'beat';
+  | 'manuscript' | 'manuscript_scene' | 'screenplay_line' | 'beat'
+  // Story Graph (spillstudio): review-tråd per scene / storyboard-ramme.
+  | 'narrative_scene' | 'narrative_scene_frame';
 
 export type CommentStatus = 'open' | 'in_progress' | 'resolved' | 'wontfix';
 export type CommentPriority = 'low' | 'normal' | 'high' | 'urgent';

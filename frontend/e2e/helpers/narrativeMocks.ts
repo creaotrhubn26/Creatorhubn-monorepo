@@ -114,6 +114,7 @@ interface MockGraph {
 }
 
 const STATE = new WeakMap<Page, MockGraph>();
+const SCENES = new WeakMap<Page, Rec[]>();
 let seq = 0;
 const nextId = (prefix: string) => `${prefix}_${++seq}`;
 const now = () => new Date().toISOString();
@@ -237,6 +238,57 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   const shareLinks: Rec[] = [];
   const tokens = new Map<string, Rec>();
   const publicFixed: Record<string, string> = { sgs_e2e_public: 'play_only', sgs_e2e_debug: 'view_play' };
+  // Fase 6: scener, rammer, lenker, oppgaver, review-runder (in-memory) + medlemmer.
+  const scenes: Rec[] = [];
+  SCENES.set(page, scenes);
+  const frames: Rec[] = [];
+  const links: Rec[] = [];
+  const tasks: Rec[] = [];
+  const reviews: Rec[] = [];
+  const members = [
+    { userId: 'u-e2e', displayName: 'Meg Selv', profileImageUrl: null, isOwner: true },
+    { userId: 'u-kari', displayName: 'Kari Nordmann', profileImageUrl: null, isOwner: false },
+  ];
+  const sceneSnapshotHash = (sceneId: string): string => {
+    const sc = scenes.find((x) => x.id === sceneId);
+    const snap = JSON.stringify({
+      code: sc?.code, title: sc?.title, subtitle: sc?.subtitle, location: sc?.location, challenge: sc?.challenge, gameplayMechanic: sc?.gameplayMechanic, environment: sc?.environment, heroAssetId: sc?.heroAssetId,
+      frames: frames.filter((f) => f.sceneId === sceneId).map((f) => [f.assetId, f.externalUrl, f.caption]),
+      links: links.filter((l) => l.sceneId === sceneId).map((l) => [l.ownerKind, l.ownerId]),
+    });
+    let h = 5381;
+    for (let i = 0; i < snap.length; i += 1) h = ((h * 33) ^ snap.charCodeAt(i)) >>> 0;
+    return h.toString(16).padStart(8, '0').repeat(8);
+  };
+  const sceneSummary = (sc: Rec) => {
+    const latest = reviews.filter((r) => r.sceneId === sc.id).sort((a, b) => (b.round as number) - (a.round as number))[0];
+    const t = tasks.filter((x) => x.sceneId === sc.id);
+    return { ...sc, latestReview: latest ? { id: latest.id, round: latest.round, status: latest.status, requestedAt: latest.requestedAt, decidedAt: latest.decidedAt } : null, taskCounts: { total: t.length, done: t.filter((x) => x.status === 'done').length } };
+  };
+  const nextSceneCode = () => { let max = 0; for (const sc of scenes) { const mm = /^S(\d+)$/.exec(String(sc.code)); if (mm) max = Math.max(max, Number(mm[1])); } return `S${max + 1}`; };
+  const comments: Rec[] = [];
+  await page.route('**/api/role-room/editor-comments**', async (route: Route) => {
+    const req = route.request();
+    const method = req.method();
+    const url = new URL(req.url());
+    if (method === 'GET') {
+      const pid = url.searchParams.get('projectId');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ comments: comments.filter((c) => c.projectId === pid), serverTime: now() }) });
+    }
+    if (method === 'POST') {
+      const b = (req.postDataJSON() as Rec | null) ?? {};
+      const c = { id: nextId('cmt'), projectId: b.projectId, anchorType: b.anchorType, anchorRef: b.anchorRef ?? null, timestampSec: null, commentText: b.commentText, parentId: b.parentId ?? null, status: 'open', priority: b.priority ?? 'normal', authorDisplayName: b.authorDisplayName ?? 'Meg Selv', authorId: 'u-e2e', createdAt: now(), updatedAt: now(), replyCount: 0 };
+      comments.push(c);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: c.id, createdAt: c.createdAt }) });
+    }
+    if (method === 'PATCH') {
+      const id = url.pathname.split('/').pop();
+      const c = comments.find((x) => x.id === id);
+      if (c) Object.assign(c, (req.postDataJSON() as Rec | null) ?? {}, { updatedAt: now() });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+  });
 
   await page.route('**/api/casting/projects', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify({ projects: [{ id: projectId, name: 'Demo-spill' }] }),
@@ -491,9 +543,112 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       return route.fulfill(ok({ title: g.settings.title ?? 'Story Graph', mode, graph }));
     }
 
+    // ── Fase 6: scener & gameplay + review ─────────────────────────────
+    if (m(/\/projects\/[^/]+\/members-lite$/) && method === 'GET') return route.fulfill(ok(members));
+    if (m(/\/projects\/[^/]+\/scenes$/) && method === 'GET') return route.fulfill(ok({ scenes: scenes.map(sceneSummary), nextCode: nextSceneCode() }));
+    if (m(/\/projects\/[^/]+\/scenes$/) && method === 'POST') {
+      const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().toUpperCase() : nextSceneCode();
+      if (scenes.some((sc) => sc.code === code)) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_code', code }) });
+      const sc = { id: nextId('nsc'), projectId, code, title: body.title ?? '', subtitle: body.subtitle ?? '', location: body.location ?? '', challenge: body.challenge ?? '', gameplayMechanic: body.gameplayMechanic ?? '', environment: body.environment ?? '', status: body.status ?? 'idea', assigneeUserId: body.assigneeUserId ?? null, dueAt: body.dueAt ?? null, heroAssetId: body.heroAssetId ?? null, sortOrder: scenes.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() };
+      scenes.push(sc);
+      return route.fulfill(ok(sc, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)$/);
+    if (mm) {
+      const sc = scenes.find((x) => x.id === mm![1]);
+      if (!sc) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      if (method === 'GET') {
+        return route.fulfill(ok({
+          scene: sc,
+          links: links.filter((l) => l.sceneId === sc.id),
+          frames: frames.filter((f) => f.sceneId === sc.id).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)),
+          tasks: tasks.filter((t) => t.sceneId === sc.id),
+          reviews: reviews.filter((r) => r.sceneId === sc.id).sort((a, b) => (b.round as number) - (a.round as number)),
+          currentSnapshotHash: sceneSnapshotHash(sc.id),
+        }));
+      }
+      if (method === 'PATCH') {
+        if (typeof body.code === 'string' && body.code && scenes.some((x) => x.id !== sc.id && x.code === String(body.code).toUpperCase())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_code', code: body.code }) });
+        Object.assign(sc, body, typeof body.code === 'string' && body.code ? { code: String(body.code).toUpperCase() } : {}, { updatedAt: now() });
+        return route.fulfill(ok(sc));
+      }
+      if (method === 'DELETE') {
+        scenes.splice(scenes.indexOf(sc), 1);
+        return route.fulfill(ok(null));
+      }
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/links$/);
+    if (mm && method === 'PUT') {
+      const sid = mm[1];
+      for (let i = links.length - 1; i >= 0; i -= 1) if (links[i].sceneId === sid) links.splice(i, 1);
+      const out = ((body.links as Rec[]) ?? []).filter((l) => (l.ownerKind === 'element' ? g.elements : g.boards).some((x) => x.id === l.ownerId)).map((l, sortOrder) => ({ sceneId: sid, ownerKind: l.ownerKind, ownerId: l.ownerId, sortOrder }));
+      links.push(...out);
+      return route.fulfill(ok(out));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/frames$/);
+    if (mm && method === 'POST') {
+      const f = { id: nextId('nsf'), sceneId: mm[1], projectId, assetId: body.assetId ?? null, externalUrl: body.assetId ? null : body.externalUrl ?? null, caption: body.caption ?? '', sortOrder: frames.filter((x) => x.sceneId === mm![1]).length, createdAt: now(), updatedAt: now() };
+      frames.push(f);
+      return route.fulfill(ok(f, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/frames\/order$/);
+    if (mm && method === 'PUT') {
+      ((body.orderedIds as string[]) ?? []).forEach((id, i) => { const f = frames.find((x) => x.id === id); if (f) f.sortOrder = i; });
+      return route.fulfill(ok(null));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/frames\/([^/]+)$/);
+    if (mm && method === 'PATCH') { const f = frames.find((x) => x.id === mm![2]); if (!f) return route.fulfill({ status: 404, body: '{"error":"not_found"}' }); Object.assign(f, body, { updatedAt: now() }); return route.fulfill(ok(f)); }
+    if (mm && method === 'DELETE') { const i = frames.findIndex((x) => x.id === mm![2]); if (i >= 0) frames.splice(i, 1); return route.fulfill(ok(null)); }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/tasks$/);
+    if (mm && method === 'POST') {
+      const t = { id: nextId('nst'), sceneId: mm[1], projectId, title: body.title, status: body.status ?? 'todo', assigneeUserId: body.assigneeUserId ?? null, dueAt: body.dueAt ?? null, completedAt: null, sortOrder: tasks.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() };
+      tasks.push(t);
+      return route.fulfill(ok(t, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/tasks\/([^/]+)$/);
+    if (mm && method === 'PATCH') {
+      const t = tasks.find((x) => x.id === mm![2]);
+      if (!t) return route.fulfill({ status: 404, body: '{"error":"not_found"}' });
+      Object.assign(t, body, { updatedAt: now() });
+      if (body.status === 'done') t.completedAt = t.completedAt ?? now(); else if (body.status) t.completedAt = null;
+      return route.fulfill(ok(t));
+    }
+    if (mm && method === 'DELETE') { const i = tasks.findIndex((x) => x.id === mm![2]); if (i >= 0) tasks.splice(i, 1); return route.fulfill(ok(null)); }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/reviews$/);
+    if (mm && method === 'GET') return route.fulfill(ok(reviews.filter((r) => r.sceneId === mm![1])));
+    if (mm && method === 'POST') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'scene_review', planSlug: 'solo' }) });
+      const sc = scenes.find((x) => x.id === mm![1]);
+      if (!sc) return route.fulfill({ status: 404, body: '{"error":"not_found"}' });
+      for (const r of reviews) if (r.sceneId === sc.id && r.status === 'in_review') r.status = 'superseded';
+      const round = reviews.filter((r) => r.sceneId === sc.id).length + 1;
+      const r = { id: nextId('nsr'), sceneId: sc.id, projectId, round, status: 'in_review', requestedBy: 'u-e2e', requestedAt: now(), requestNote: body.note ?? null, decidedByUserId: null, decidedByLabel: null, decidedAt: null, decisionNote: null, snapshotHash: sceneSnapshotHash(sc.id) };
+      reviews.push(r);
+      sc.status = 'in_review';
+      return route.fulfill(ok(r, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/reviews\/([^/]+)\/decision$/);
+    if (mm && method === 'POST') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'scene_review', planSlug: 'solo' }) });
+      const r = reviews.find((x) => x.id === mm![2]);
+      const sc = scenes.find((x) => x.id === mm![1]);
+      if (!r || !sc) return route.fulfill({ status: 404, body: '{"error":"not_found"}' });
+      if (r.status !== 'in_review') return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'review_closed', status: r.status }) });
+      const current = sceneSnapshotHash(sc.id);
+      if (current !== r.snapshotHash || (body.expectedSnapshotHash && body.expectedSnapshotHash !== r.snapshotHash)) {
+        return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'snapshot_stale', message: 'Scenen er endret siden runden ble sendt — send ny runde.', currentHash: current, reviewHash: r.snapshotHash }) });
+      }
+      Object.assign(r, { status: body.decision, decidedByUserId: 'u-e2e', decidedByLabel: 'Meg Selv', decidedAt: now(), decisionNote: body.note ?? null });
+      sc.status = body.decision === 'approved' ? 'approved' : 'changes_requested';
+      return route.fulfill(ok(r));
+    }
+
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
   });
 }
+
+/** Fase 6: direkte tilgang til mock-scenene (for «endre bak ryggen»-tester). */
+export function getMockScenes(page: Page): Rec[] | undefined { return SCENES.get(page); }
 
 /**
  * Fase 4c: falsk /ws-server for Story Graph-rommet. Svarer med

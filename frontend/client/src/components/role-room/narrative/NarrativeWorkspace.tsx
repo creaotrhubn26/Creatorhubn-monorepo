@@ -56,6 +56,7 @@ import { AssetsPanel } from './panels/AssetsPanel';
 import { HistoryPanel } from './panels/HistoryPanel';
 import { ExportsPanel } from './panels/ExportsPanel';
 import { TranslationsPanel } from './panels/TranslationsPanel';
+import { ScenesPanel } from './scenes/ScenesPanel';
 import { ComingSoonCard } from './panels/ComingSoonCard';
 import { NarrativePlayPanel } from './play/NarrativePlayPanel';
 import { useNarrativeRealtime } from './realtime/narrativeRealtimeClient';
@@ -229,10 +230,16 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
   const session = authSessionService.getSessionSync();
   const selfUserId = session.currentUserId ?? (session.adminUser?.id != null ? String(session.adminUser.id) : null);
   const selfName = session.adminUser?.name ?? session.adminUser?.display_name ?? session.adminUser?.email?.split('@')[0] ?? 'Du';
+  // Fase 6: scene-endringer fra andre (kind = 'scene') trigger refetch av
+  // scenelista i stedet for graf-reload.
+  const [scenesTick, setScenesTick] = useState(0);
   const realtime = useNarrativeRealtime({
     projectId, userId: selfUserId, name: selfName, boardId: activeBoardId,
     enabled: !!projectId && !!selfUserId,
-    onGraphChanged: (evt) => store.applyRemoteChange(evt, selfUserId),
+    onGraphChanged: (evt) => {
+      if (evt.kind === 'scene') { if (evt.actorUserId !== selfUserId) setScenesTick((t) => t + 1); return; }
+      store.applyRemoteChange(evt, selfUserId);
+    },
   });
   const peersOnBoard = useMemo(() => (activeBoardId ? cursorsOnBoard(realtime.presence, activeBoardId) : []), [realtime.presence, activeBoardId]);
   const peerSelectionColors = useMemo(() => selectionColors(realtime.presence), [realtime.presence]);
@@ -385,6 +392,16 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
               </Box>
             </Box>
           </Box>
+        );
+      case 'scenes':
+        return (
+          <ScenesPanel
+            projectId={projectId}
+            graph={graph}
+            refreshKey={scenesTick}
+            onJumpToElement={jumpToElement}
+            onNotice={(message, severity) => setNotice({ message, severity })}
+          />
         );
       case 'components':
         return <ComponentsPanel graph={graph} store={store} />;

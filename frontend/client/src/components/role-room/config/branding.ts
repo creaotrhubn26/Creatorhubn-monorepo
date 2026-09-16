@@ -1360,6 +1360,8 @@ export type BrandingTextTokenKey =
   // professionTabs.ts GAME_STUDIO_TABS.
   | 'gameTabBoards'               // 'Brett'
   | 'gameTabBoardsDescription'
+  | 'gameTabScenes'               // 'Scener & gameplay'
+  | 'gameTabScenesDescription'
   | 'gameTabComponents'           // 'Komponenter'
   | 'gameTabComponentsDescription'
   | 'gameTabVariables'            // 'Variabler'
@@ -3021,6 +3023,8 @@ const DEFAULT_TOKENS: BrandingTokens = {
 
     gameTabBoards: 'Brett',
     gameTabBoardsDescription: 'Tegn historien som noder og koblinger: elementer, forgreninger, jumpere og notater på et fritt lerret.',
+    gameTabScenes: 'Scener & gameplay',
+    gameTabScenesDescription: 'Produksjonsenheter rundt historien: scenekort med lokasjon, utfordring, spillmekanikk, storyboard, oppgaver og review-runder med godkjenning.',
     gameTabComponents: 'Komponenter',
     gameTabComponentsDescription: 'Karakterer, steder og gjenstander med egne attributter som kan festes på elementer.',
     gameTabVariables: 'Variabler',

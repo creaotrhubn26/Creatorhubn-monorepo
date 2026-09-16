@@ -22,7 +22,18 @@ import type {
   NarrativeElementKind,
   NarrativeGraph,
   NarrativeImportWarning,
+  NarrativeMemberLite,
   NarrativePublicStory,
+  NarrativeScene,
+  NarrativeSceneDetail,
+  NarrativeSceneFrame,
+  NarrativeSceneLink,
+  NarrativeSceneLinkKind,
+  NarrativeSceneReview,
+  NarrativeSceneStatus,
+  NarrativeSceneSummary,
+  NarrativeSceneTask,
+  NarrativeSceneTaskStatus,
   NarrativeRevisionMeta,
   NarrativeShareLink,
   NarrativeShareMode,
@@ -44,6 +55,14 @@ export class NarrativeConflictError extends NarrativeApiError {
   constructor(public readonly current: NarrativeElement) {
     super('Elementet ble endret av noen andre.', 409, 'conflict');
     this.name = 'NarrativeConflictError';
+  }
+}
+
+/** 409 ved review-beslutning: scenen er endret siden runden ble sendt. */
+export class NarrativeStaleReviewError extends NarrativeApiError {
+  constructor(public readonly currentHash: string | null) {
+    super('Scenen er endret siden runden ble sendt — send ny runde.', 409, 'snapshot_stale');
+    this.name = 'NarrativeStaleReviewError';
   }
 }
 
@@ -74,6 +93,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; data?: unknown };
     if (res.status === 409 && body.error === 'conflict' && body.data) {
       throw new NarrativeConflictError(body.data as NarrativeElement);
+    }
+    if (res.status === 409 && body.error === 'snapshot_stale') {
+      throw new NarrativeStaleReviewError(typeof (body as { currentHash?: unknown }).currentHash === 'string' ? (body as { currentHash: string }).currentHash : null);
     }
     throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
   }
@@ -387,4 +409,78 @@ export async function getPublicStory(token: string): Promise<NarrativePublicStor
 export function exportPdf(projectId: string, locale: string | null): Promise<{ blob: Blob; filename: string | null }> {
   const q = locale && locale !== 'nb' ? `?locale=${encodeURIComponent(locale)}` : '';
   return requestBlob(p(projectId, `/export.pdf${q}`));
+}
+
+// ─── Fase 6: scener, rammer, oppgaver, review ──────────────────────────
+
+export interface SceneInput {
+  code?: string | null;
+  title?: string;
+  subtitle?: string;
+  location?: string;
+  challenge?: string;
+  gameplayMechanic?: string;
+  environment?: string;
+  status?: NarrativeSceneStatus;
+  assigneeUserId?: string | null;
+  dueAt?: string | null;
+  heroAssetId?: string | null;
+  sortOrder?: number;
+}
+
+export function listScenes(projectId: string): Promise<{ scenes: NarrativeSceneSummary[]; nextCode: string }> {
+  return request(p(projectId, '/scenes'));
+}
+export function createScene(projectId: string, input: SceneInput): Promise<NarrativeScene> {
+  return request(p(projectId, '/scenes'), { method: 'POST', body: json(input) });
+}
+export function getSceneDetail(projectId: string, sceneId: string): Promise<NarrativeSceneDetail> {
+  return request(p(projectId, `/scenes/${id(sceneId)}`));
+}
+export function patchScene(projectId: string, sceneId: string, patch: SceneInput): Promise<NarrativeScene> {
+  return request(p(projectId, `/scenes/${id(sceneId)}`), { method: 'PATCH', body: json(patch) });
+}
+export function deleteScene(projectId: string, sceneId: string): Promise<void> {
+  return request(p(projectId, `/scenes/${id(sceneId)}`), { method: 'DELETE' });
+}
+export function setSceneLinks(projectId: string, sceneId: string, links: Array<{ ownerKind: NarrativeSceneLinkKind; ownerId: string }>): Promise<NarrativeSceneLink[]> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/links`), { method: 'PUT', body: json({ links }) });
+}
+export function createSceneFrame(projectId: string, sceneId: string, input: { assetId?: string | null; externalUrl?: string | null; caption?: string }): Promise<NarrativeSceneFrame> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/frames`), { method: 'POST', body: json(input) });
+}
+export function patchSceneFrame(projectId: string, sceneId: string, frameId: string, patch: { caption?: string }): Promise<NarrativeSceneFrame> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/frames/${id(frameId)}`), { method: 'PATCH', body: json(patch) });
+}
+export function deleteSceneFrame(projectId: string, sceneId: string, frameId: string): Promise<void> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/frames/${id(frameId)}`), { method: 'DELETE' });
+}
+export function reorderSceneFrames(projectId: string, sceneId: string, orderedIds: string[]): Promise<void> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/frames/order`), { method: 'PUT', body: json({ orderedIds }) });
+}
+export function createSceneTask(projectId: string, sceneId: string, input: { title: string; assigneeUserId?: string | null; dueAt?: string | null }): Promise<NarrativeSceneTask> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/tasks`), { method: 'POST', body: json(input) });
+}
+export function patchSceneTask(projectId: string, sceneId: string, taskId: string, patch: { title?: string; status?: NarrativeSceneTaskStatus; assigneeUserId?: string | null; dueAt?: string | null }): Promise<NarrativeSceneTask> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/tasks/${id(taskId)}`), { method: 'PATCH', body: json(patch) });
+}
+export function deleteSceneTask(projectId: string, sceneId: string, taskId: string): Promise<void> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/tasks/${id(taskId)}`), { method: 'DELETE' });
+}
+export function listSceneReviews(projectId: string, sceneId: string): Promise<NarrativeSceneReview[]> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/reviews`));
+}
+/** 402 → NarrativeApiError code 'plan_required' (scene_review). */
+export function requestSceneReview(projectId: string, sceneId: string, note: string | null): Promise<NarrativeSceneReview> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/reviews`), { method: 'POST', body: json({ note }) });
+}
+/** 409 snapshot_stale → NarrativeStaleReviewError; 409 review_closed → NarrativeApiError code 'review_closed'. */
+export function decideSceneReview(
+  projectId: string, sceneId: string, reviewId: string,
+  input: { decision: 'approved' | 'changes_requested'; note?: string | null; expectedSnapshotHash?: string | null },
+): Promise<NarrativeSceneReview> {
+  return request(p(projectId, `/scenes/${id(sceneId)}/reviews/${id(reviewId)}/decision`), { method: 'POST', body: json(input) });
+}
+export function listMembersLite(projectId: string): Promise<NarrativeMemberLite[]> {
+  return request(p(projectId, '/members-lite'));
 }

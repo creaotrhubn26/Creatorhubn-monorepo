@@ -162,6 +162,33 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
   (`NarrativeFlowNode`), `colorMode="dark"`. Evidence: `docs/evidence/2026-09-narrative-canvas-xyflow-12.yaml`.
 - Ikke gjort (bevisst): realtime-gating.
 
+### Fase 6 — Produksjons-OS del 1: «Scener & gameplay» + «Review & Godkjenning» (LEVERT)
+Fokus valgt 2026-09-16: kjøper = mellomstore studio (10–50), der statuseierskap og review-runder
+per scene er daglig smerte. UX-prinsipper: progressive disclosure (liste → kort → faner), alle
+states designet (tom/laster/feil/låst/lagret/stale), umiddelbar feedback (autosave ved blur med
+«Lagret HH:MM», optimistisk avkryssing), forebygg fremfor forklar (kode foreslås og valideres
+unik før lagring; review-knappen deaktivert med forklaring når en runde er åpen; stale-banner
+før noen rekker å trykke «Godkjenn»).
+- **Datamodell** (`0610_narrative_scenes_and_reviews.sql`): `narrative_scenes` (kode `^[A-Za-z]{1,3}[0-9]{1,4}$`
+  unik per prosjekt, tittel/undertittel/lokasjon/utfordring/spillmekanikk/miljø, status, ansvarlig,
+  frist, hero-asset), `narrative_scene_links` (scene ⇄ element/brett, reverse-indeks),
+  `narrative_scene_frames` (asset XOR URL), `narrative_scene_tasks`, `narrative_scene_reviews`
+  (runde, immutabelt snapshot + sha256-hash via trigger, én åpen runde per scene). Kommentarer
+  gjenbruker `role_room_editor_comments` med ankerne `narrative_scene`/`narrative_scene_frame`
+  (prosjekt-sjekk i ruten). Feature `scene_review` på Pro/Studio; scener og oppgaver ugatet.
+- **Backend**: service-seksjon «Fase 6: Scener» (auto-kode «S{n}», 409 `duplicate_code`,
+  `requestSceneReview` superseder åpen runde, `decideSceneReview` → 409 `snapshot_stale` m/ gjeldende
+  hash eller `review_closed`), ruter under `/projects/:id/scenes…` + `members-lite` (eier + aktive
+  medlemmer; leads kan sette ansvarlig uten å være eier), sanntids-push `kind: 'scene'`, inbox- og
+  e-postvarsel til ansvarlig/forespørrer (injiserbar `deps.notify`). MCP: `rr_list_game_scenes`,
+  `rr_game_scene_review_status` (kun game_studio; `rr_list_scenes` er filmens).
+- **Frontend**: fane «Scener & gameplay» (liste 320 px m/ søk + statuschips | scenekort «S12 – Tittel»
+  med faner Oversikt/Storyboard/Gameplay/Assets/Oppgaver/Review), `MemberPicker` (avatar + navn,
+  fallback «Deg selv»), `sceneOps.ts` (rene regler, vitest), «Åpne i Story Graph» hopper til noden.
+  e2e `game-scenes.spec.ts` (flyt + stale-vern + storyboard) og plan-gate-tilfelle for Solo.
+- Fase 7 (skisse): venstre-sidebar-skall, prosjekt-hjem/dashbord, Karakterer/Lokasjoner, produksjons-
+  plan (Gantt) med `narrative_milestones`, team/roller/seter for game_studio, gjeste-reviewere, ⌘K + bjelle.
+
 
 ## Researchprogram
 

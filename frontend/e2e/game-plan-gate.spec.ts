@@ -62,6 +62,25 @@ test.describe('Story Graph — plan-gating', () => {
     await expect(page.getByTestId('narrative-plan-gate-export_pdf')).toHaveCount(0);
   });
 
+  test('Solo: review-runder låst med banner og låst knapp; scener og oppgaver åpne', async ({ page }) => {
+    await withSession(page, 'user');
+    await installNarrativeMocks(page, { gamePlan: 'solo' });
+    await page.goto(`${HARNESS}&tab=scenes`);
+    await expect(page.getByTestId('narrative-scenes-panel')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('narrative-scene-new').click();
+    await page.getByTestId('narrative-scene-new-title').fill('Solo-scene');
+    await page.getByTestId('narrative-scene-new-submit').click();
+    await expect(page.getByTestId('narrative-scene-title')).toContainText('S1 – Solo-scene');
+    await page.getByTestId('narrative-scene-tab-tasks').click();
+    await page.getByTestId('narrative-scene-task-title').fill('Åpen oppgave');
+    await page.getByTestId('narrative-scene-task-add').click();
+    await expect(page.locator('[data-testid^="narrative-scene-task-nst_"]')).toHaveCount(1);
+    await page.getByTestId('narrative-scene-tab-review').click();
+    await expect(page.getByTestId('narrative-plan-gate-scene_review')).toBeVisible();
+    await expect(page.getByTestId('narrative-scene-review-request')).toHaveAttribute('data-locked', 'plan');
+    await expect(page.getByTestId('narrative-scene-review-request')).toBeDisabled();
+  });
+
   test('Abonnement-fanen og Admin · Planer for admin', async ({ page }) => {
     await withSession(page, 'admin');
     await installNarrativeMocks(page, { gamePlan: 'pro' });

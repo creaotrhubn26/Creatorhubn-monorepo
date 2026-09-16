@@ -253,3 +253,104 @@ export interface NarrativePublicStory {
   mode: NarrativeShareMode;
   graph: NarrativeGraph;
 }
+
+// ─── Fase 6: Scener & gameplay + Review & Godkjenning ──────────────────
+
+export type NarrativeSceneStatus = 'idea' | 'in_progress' | 'in_review' | 'changes_requested' | 'approved' | 'implemented';
+export type NarrativeSceneTaskStatus = 'todo' | 'doing' | 'done';
+export type NarrativeSceneReviewStatus = 'in_review' | 'changes_requested' | 'approved' | 'superseded';
+export type NarrativeSceneLinkKind = 'element' | 'board';
+
+export const NARRATIVE_SCENE_STATUSES: readonly NarrativeSceneStatus[] =
+  ['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented'];
+
+export interface NarrativeScene {
+  id: string;
+  projectId: string;
+  code: string;
+  title: string;
+  subtitle: string;
+  location: string;
+  challenge: string;
+  gameplayMechanic: string;
+  environment: string;
+  status: NarrativeSceneStatus;
+  assigneeUserId: string | null;
+  dueAt: string | null;
+  heroAssetId: string | null;
+  sortOrder: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSceneLink {
+  sceneId: string;
+  ownerKind: NarrativeSceneLinkKind;
+  ownerId: string;
+  sortOrder: number;
+}
+
+export interface NarrativeSceneFrame {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  assetId: string | null;
+  externalUrl: string | null;
+  caption: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSceneTask {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  title: string;
+  status: NarrativeSceneTaskStatus;
+  assigneeUserId: string | null;
+  dueAt: string | null;
+  completedAt: string | null;
+  sortOrder: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSceneReview {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  round: number;
+  status: NarrativeSceneReviewStatus;
+  requestedBy: string | null;
+  requestedAt: string;
+  requestNote: string | null;
+  decidedByUserId: string | null;
+  decidedByLabel: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  snapshotHash: string;
+}
+
+export interface NarrativeSceneSummary extends NarrativeScene {
+  latestReview: Pick<NarrativeSceneReview, 'id' | 'round' | 'status' | 'requestedAt' | 'decidedAt'> | null;
+  taskCounts: { total: number; done: number };
+}
+
+export interface NarrativeSceneDetail {
+  scene: NarrativeScene;
+  links: NarrativeSceneLink[];
+  frames: NarrativeSceneFrame[];
+  tasks: NarrativeSceneTask[];
+  reviews: NarrativeSceneReview[];
+  currentSnapshotHash: string;
+}
+
+export interface NarrativeMemberLite {
+  userId: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  isOwner: boolean;
+}

@@ -18,6 +18,8 @@ on:
       - 'frontend/e2e/narrative-translations.spec.ts'
       - 'frontend/e2e/narrative-realtime.spec.ts'
       - 'frontend/e2e/game-plan-gate.spec.ts'
+      - 'frontend/e2e/game-scenes.spec.ts'
+      - 'frontend/client/src/components/role-room/components/PostCommentLayer.tsx'
       - 'frontend/e2e/game-login-persona.spec.ts'
       - 'frontend/e2e/fixtures/game/**'
       - 'frontend/client/src/components/role-room/game/**'
