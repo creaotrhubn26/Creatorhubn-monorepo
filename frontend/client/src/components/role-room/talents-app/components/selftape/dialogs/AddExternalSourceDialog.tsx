@@ -115,7 +115,7 @@ export default function AddExternalSourceDialog({
           <Alert
             severity="info"
             sx={{
-              bgcolor: 'rgba(99, 102, 241,0.10)',
+              bgcolor: 'rgba(98, 73, 223,0.10)',
               color: palette.textSecondary,
               border: `1px solid ${palette.borderSubtle}`,
               '& .MuiAlert-icon': { color: palette.accentBright },
@@ -148,8 +148,8 @@ export default function AddExternalSourceDialog({
             textTransform: 'none',
             fontWeight: 700,
             px: 2.4,
-            '&:hover': { background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)' },
-            '&.Mui-disabled': { background: 'rgba(99, 102, 241,0.32)', color: 'rgba(255,255,255,0.6)' },
+            '&:hover': { background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)' },
+            '&.Mui-disabled': { background: 'rgba(98, 73, 223,0.32)', color: 'rgba(255,255,255,0.6)' },
           }}
         >
           {saving ? 'Lagrer …' : 'Bruk denne videoen'}

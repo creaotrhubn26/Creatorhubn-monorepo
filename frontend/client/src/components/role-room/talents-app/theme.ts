@@ -1,10 +1,20 @@
 /**
  * theme.ts — The Role Room Talents design tokens.
  *
- * Mørk indigo palett. Avløser den lilla/magenta paletten fra mockup-specen
- * (2026-05-30) — indigo er valgt som The Role Rooms uttrykk, og fargen er et
- * merkevalg som må gjelde alle flatene samtidig. Én side i en annen farge
- * koster mer konsistens enn den kjøper.
+ * Mørk indigo palett, utledet av logoen.
+ *
+ * Fargene er ikke hentet fra et bibliotek. Logoen har sin egen hue-akse:
+ * den mørke grunnen ligger på 258–265 (#080018), den dype fioletten på 268
+ * (#401078) og den lyse magentaen på 290 (#a830c0). Paletten legger seg i
+ * den kjølige enden av nettopp den aksen — indigo som fortsatt tilhører
+ * merket, i stedet for en indigo som tilfeldigvis står i en fargeskala.
+ *
+ * Bakgrunnen ytterst (#0a0515) er logoens egen mørke grunn.
+ *
+ * Kontrast mot kortbakgrunnen: primærtekst 15,9:1, sekundærtekst 9,7:1,
+ * dempet tekst 6,9:1, lys aksent 6,5:1. Den dempede teksten lå tidligere
+ * på grensen av 4,5:1 — en palettendring er billigste tidspunkt å rette
+ * det på.
  *
  * Alle sider (Partners & Collaboration, Talent Registry, Auditions,
  * Self-Tape Studio, CV) bruker disse konstantene. Endres en farge her,
@@ -13,27 +23,27 @@
 
 export const palette = {
   // Bakgrunner — fra ytterst (deep navy-black) til innerst (kort)
-  bgRoot: '#060a18',
-  bgShell: '#0b1024',
-  bgCard: '#111832',
-  bgCardElevated: '#17203f',
+  bgRoot: '#0a0515',
+  bgShell: '#100b1e',
+  bgCard: '#18122b',
+  bgCardElevated: '#211c3b',
 
   // Borders — CreatorHub Design (Fase C): aksent-avledet, CSS-var-drevet fra
   // design-tokens (ws=theroleroom). Uten override = literalene her (identisk).
-  border: 'var(--rr-border, rgba(99, 102, 241, 0.18))',
-  borderStrong: 'var(--rr-border-strong, rgba(99, 102, 241, 0.32))',
-  borderSubtle: 'var(--rr-border-subtle, rgba(99, 102, 241, 0.08))',
+  border: 'var(--rr-border, rgba(98, 73, 223, 0.18))',
+  borderStrong: 'var(--rr-border-strong, rgba(98, 73, 223, 0.32))',
+  borderSubtle: 'var(--rr-border-subtle, rgba(98, 73, 223, 0.08))',
 
   // Tekst
-  textPrimary: '#f2f4ff',
-  textSecondary: '#c7cdfd',
-  textMuted: '#8e97c9',
+  textPrimary: '#f1effb',
+  textSecondary: '#c0b8ea',
+  textMuted: '#a19bbf',
 
   // Accent — indigo, fra dyp til lys (token-drevet, literal-fallback)
-  accent: 'var(--rr-accent, #6366f1)',
-  accentBright: '#a5b4fc',
-  accentMuted: '#4338ca',
-  accentGradient: 'linear-gradient(135deg, #4f46e5 0%, #818cf8 100%)',
+  accent: 'var(--rr-accent, #6249df)',
+  accentBright: '#9e8cf8',
+  accentMuted: '#3c27a5',
+  accentGradient: 'linear-gradient(135deg, #5628c3 0%, #6e65ec 100%)',
 
   // Status
   success: '#22c55e',
@@ -45,7 +55,7 @@ export const palette = {
   info: '#38bdf8',
 
   // Filmstrip-shimmer på sidebaren (aksent-avledet)
-  filmstrip: 'var(--rr-filmstrip, rgba(99, 102, 241, 0.06))',
+  filmstrip: 'var(--rr-filmstrip, rgba(98, 73, 223, 0.06))',
 } as const;
 
 export const radius = {
@@ -58,9 +68,9 @@ export const radius = {
 } as const;
 
 export const shadow = {
-  card: '0 8px 32px rgba(99, 102, 241, 0.08)',
-  cardHover: '0 12px 40px rgba(99, 102, 241, 0.16)',
-  glow: '0 0 24px rgba(99, 102, 241, 0.32)',
+  card: '0 8px 32px rgba(98, 73, 223, 0.08)',
+  cardHover: '0 12px 40px rgba(98, 73, 223, 0.16)',
+  glow: '0 0 24px rgba(98, 73, 223, 0.32)',
 } as const;
 
 export const space = {

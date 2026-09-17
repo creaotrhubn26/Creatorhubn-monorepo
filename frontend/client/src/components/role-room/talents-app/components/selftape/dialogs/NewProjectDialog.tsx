@@ -146,8 +146,8 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
             textTransform: 'none',
             fontWeight: 700,
             px: 2.4,
-            '&:hover': { background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)' },
-            '&.Mui-disabled': { background: 'rgba(99, 102, 241,0.32)', color: 'rgba(255,255,255,0.6)' },
+            '&:hover': { background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)' },
+            '&.Mui-disabled': { background: 'rgba(98, 73, 223,0.32)', color: 'rgba(255,255,255,0.6)' },
           }}
         >
           {saving ? 'Oppretter …' : 'Opprett prosjekt'}

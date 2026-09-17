@@ -231,7 +231,7 @@ export default function SelfTapeSharedList() {
                     px: 0.6,
                     py: 0.2,
                     minWidth: 0,
-                    '&:hover': { bgcolor: 'rgba(99, 102, 241,0.08)' },
+                    '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
                   }}
                 >
                   {expandedId === s.id ? 'Skjul produsent-kommentarer' : 'Vis produsent-kommentarer'}
@@ -275,7 +275,7 @@ export default function SelfTapeSharedList() {
                               <Box
                                 key={e.id}
                                 sx={{
-                                  bgcolor: 'rgba(99, 102, 241,0.08)',
+                                  bgcolor: 'rgba(98, 73, 223,0.08)',
                                   border: `1px solid ${palette.borderSubtle}`,
                                   borderRadius: radius.sm,
                                   px: 1.2,
@@ -372,8 +372,8 @@ function labelFor(s: SelftapeSharedItem): string {
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
     draft:       { bg: 'rgba(255,255,255,0.08)', fg: '#94a3b8', label: 'Kladd' },
-    ready:       { bg: 'rgba(99, 102, 241,0.18)', fg: '#a5b4fc', label: 'Klar' },
-    submitted:   { bg: 'rgba(99, 102, 241,0.18)', fg: '#a5b4fc', label: 'Sendt' },
+    ready:       { bg: 'rgba(98, 73, 223,0.18)', fg: '#9e8cf8', label: 'Klar' },
+    submitted:   { bg: 'rgba(98, 73, 223,0.18)', fg: '#9e8cf8', label: 'Sendt' },
     viewed:      { bg: 'rgba(96,165,250,0.18)', fg: '#60a5fa', label: 'Sett' },
     shortlisted: { bg: 'rgba(251,191,36,0.18)', fg: '#fbbf24', label: 'Shortlistet' },
     passed:      { bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8', label: 'Forbigått' },

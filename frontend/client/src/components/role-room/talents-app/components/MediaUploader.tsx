@@ -214,7 +214,7 @@ export default function MediaUploader({
               sx={{ width: 72, height: 72, borderRadius: radius.sm, objectFit: 'cover', border: `1px solid ${palette.borderSubtle}` }}
             />
           ) : (
-            <Box sx={{ width: 72, height: 72, borderRadius: radius.sm, bgcolor: 'rgba(99, 102, 241,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ width: 72, height: 72, borderRadius: radius.sm, bgcolor: 'rgba(98, 73, 223,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {(() => { const Ico = KIND_ICON[kind]; return <Ico sx={{ fontSize: 32, color: palette.accentBright }} />; })()}
             </Box>
           )}
@@ -255,7 +255,7 @@ export default function MediaUploader({
   // ── Render: opplastning pågår ─────────────────────────────────────
   if (uploading) {
     return (
-      <Box sx={{ p: 2.4, borderRadius: radius.md, border: `1px solid ${palette.borderStrong}`, bgcolor: 'rgba(99, 102, 241,0.08)' }}>
+      <Box sx={{ p: 2.4, borderRadius: radius.md, border: `1px solid ${palette.borderStrong}`, bgcolor: 'rgba(98, 73, 223,0.08)' }}>
         <Stack spacing={1.4}>
           <Stack direction="row" spacing={1.4} alignItems="center">
             <CircularProgress size={20} sx={{ color: palette.accentBright }} />
@@ -272,7 +272,7 @@ export default function MediaUploader({
             sx={{
               height: 6,
               borderRadius: 3,
-              bgcolor: 'rgba(99, 102, 241,0.12)',
+              bgcolor: 'rgba(98, 73, 223,0.12)',
               '& .MuiLinearProgress-bar': { background: palette.accentGradient },
             }}
           />
@@ -331,11 +331,11 @@ export default function MediaUploader({
           p: 3,
           borderRadius: radius.md,
           border: `2px dashed ${dragActive ? palette.accent : palette.borderStrong}`,
-          bgcolor: dragActive ? 'rgba(99, 102, 241,0.12)' : 'rgba(99, 102, 241,0.04)',
+          bgcolor: dragActive ? 'rgba(98, 73, 223,0.12)' : 'rgba(98, 73, 223,0.04)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           textAlign: 'center',
-          '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(99, 102, 241,0.08)' },
+          '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(98, 73, 223,0.08)' },
         }}
       >
         <CloudUploadIcon sx={{ color: palette.accentBright, fontSize: 36, mb: 1 }} />

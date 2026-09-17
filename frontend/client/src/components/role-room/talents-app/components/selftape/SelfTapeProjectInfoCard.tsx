@@ -27,7 +27,7 @@ export default function SelfTapeProjectInfoCard({ project, onBriefClick }: Props
             width: 64,
             height: 80,
             borderRadius: 1,
-            bgcolor: project.poster_color ?? '#171c3d',
+            bgcolor: project.poster_color ?? '#1c1733',
             backgroundImage: project.poster_url ? `url(${project.poster_url})` : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
@@ -96,7 +96,7 @@ export default function SelfTapeProjectInfoCard({ project, onBriefClick }: Props
             borderRadius: radius.sm,
             px: 1.6,
             py: 0.8,
-            '&:hover': { bgcolor: 'rgba(99, 102, 241,0.08)' },
+            '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
           }}
         >
           Se brief

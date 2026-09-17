@@ -204,7 +204,7 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
               sx={{
                 height: 6,
                 borderRadius: 3,
-                bgcolor: 'rgba(99, 102, 241,0.12)',
+                bgcolor: 'rgba(98, 73, 223,0.12)',
                 '& .MuiLinearProgress-bar': { background: palette.accentGradient },
               }}
             />
@@ -255,7 +255,7 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
                       <Chip
                         size="small"
                         label={CATEGORY_LABEL[credit.category] ?? credit.category}
-                        sx={{ bgcolor: 'rgba(99, 102, 241,0.14)', color: palette.accentBright, height: 20 }}
+                        sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright, height: 20 }}
                       />
                       {credit.year ? (
                         <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem' }}>{credit.year}</Typography>
@@ -272,7 +272,7 @@ export default function CvImportDialog({ open, onClose, onImported }: Props) {
             </Stack>
 
             {suggestion.skipped.length > 0 && (
-              <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241,0.1)', color: palette.textSecondary }}>
+              <Alert severity="info" sx={{ bgcolor: 'rgba(98, 73, 223,0.1)', color: palette.textSecondary }}>
                 Vi hoppet bevisst over linjer med persondata ({suggestion.skipped.join(', ')}).
                 Slikt hører ikke hjemme i et casting-register.
               </Alert>

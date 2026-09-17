@@ -94,7 +94,7 @@ export default function CastingPhotosSection({ locale, value, onChange }: Props)
           icon={complete ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : undefined}
           label={complete ? t(locale, 'Komplett', 'Complete') : `${done}/${total}`}
           sx={{
-            bgcolor: complete ? 'rgba(34,197,94,0.14)' : 'rgba(99, 102, 241,0.14)',
+            bgcolor: complete ? 'rgba(34,197,94,0.14)' : 'rgba(98, 73, 223,0.14)',
             color: complete ? palette.success : palette.accentBright,
             fontWeight: 700,
             '& .MuiChip-icon': { color: palette.success },

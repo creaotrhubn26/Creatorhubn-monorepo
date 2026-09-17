@@ -250,8 +250,8 @@ export default function AgencyPartnershipsPage() {
             mb: 2.4,
             p: 1.4,
             borderRadius: radius.sm,
-            border: '1px solid rgba(99, 102, 241,0.42)',
-            bgcolor: 'rgba(99, 102, 241,0.10)',
+            border: '1px solid rgba(98, 73, 223,0.42)',
+            bgcolor: 'rgba(98, 73, 223,0.10)',
             display: 'flex',
             alignItems: 'center',
             gap: 1.4,
@@ -592,8 +592,8 @@ function OverviewTab(props: {
           sx={{
             ...cardSx,
             cursor: 'pointer',
-            border: '1px solid rgba(99, 102, 241,0.42)',
-            background: 'linear-gradient(135deg, rgba(99, 102, 241,0.10) 0%, rgba(129, 140, 248,0.06) 100%)',
+            border: '1px solid rgba(98, 73, 223,0.42)',
+            background: 'linear-gradient(135deg, rgba(98, 73, 223,0.10) 0%, rgba(110, 101, 236,0.06) 100%)',
             display: 'flex',
             alignItems: 'center',
             gap: 2,
@@ -609,7 +609,7 @@ function OverviewTab(props: {
               width: 44,
               height: 44,
               borderRadius: '50%',
-              bgcolor: 'rgba(99, 102, 241,0.18)',
+              bgcolor: 'rgba(98, 73, 223,0.18)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -634,9 +634,9 @@ function OverviewTab(props: {
               background: palette.accentGradient,
               color: '#fff',
               px: 2,
-              boxShadow: '0 4px 14px rgba(99, 102, 241,0.38)',
+              boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
               '&:hover': {
-                background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)',
               },
             }}
           >
@@ -845,7 +845,7 @@ function OverviewTab(props: {
                     <Box
                       sx={{
                         height: 6,
-                        bgcolor: 'rgba(99, 102, 241,0.15)',
+                        bgcolor: 'rgba(98, 73, 223,0.15)',
                         borderRadius: 999,
                         overflow: 'hidden',
                       }}
@@ -1134,7 +1134,7 @@ function MinePartnershipsTab(props: {
             width: 64,
             height: 64,
             borderRadius: '50%',
-            bgcolor: 'rgba(99, 102, 241,0.12)',
+            bgcolor: 'rgba(98, 73, 223,0.12)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1269,7 +1269,7 @@ function IncomingInvitationsTab(props: {
             width: 64,
             height: 64,
             borderRadius: '50%',
-            bgcolor: 'rgba(99, 102, 241,0.12)',
+            bgcolor: 'rgba(98, 73, 223,0.12)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1434,7 +1434,7 @@ const secondaryBtnSx = {
   borderRadius: radius.sm,
   color: palette.textPrimary,
   border: `1px solid ${palette.borderStrong}`,
-  '&:hover': { bgcolor: 'rgba(99, 102, 241,0.08)' },
+  '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
 };
 const dangerBtnSx = {
   textTransform: 'none' as const,

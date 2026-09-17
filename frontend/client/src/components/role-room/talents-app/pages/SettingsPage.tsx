@@ -129,7 +129,7 @@ export default function SettingsPage() {
               sx={{
                 textTransform: 'none', fontWeight: 600, px: 2, py: 1,
                 borderRadius: radius.sm, color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`,
-                '&:hover': { bgcolor: 'rgba(99, 102, 241,0.08)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
               }}
             >
               Last ned mine data (JSON)
@@ -174,7 +174,7 @@ export default function SettingsPage() {
               <li>All audit-historikk</li>
             </Box>
             <Typography sx={{ color: palette.textPrimary, fontWeight: 600 }}>
-              Skriv <code style={{ background: 'rgba(99, 102, 241,0.18)', padding: '2px 6px', borderRadius: 4 }}>SLETT MIN PROFIL</code> for å bekrefte:
+              Skriv <code style={{ background: 'rgba(98, 73, 223,0.18)', padding: '2px 6px', borderRadius: 4 }}>SLETT MIN PROFIL</code> for å bekrefte:
             </Typography>
             <TextField
               fullWidth size="small" value={deleteText} onChange={(e) => setDeleteText(e.target.value)}

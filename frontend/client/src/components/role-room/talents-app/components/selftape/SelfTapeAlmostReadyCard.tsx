@@ -26,13 +26,13 @@ export default function SelfTapeAlmostReadyCard({ checklist, onSubmit }: Props) 
   return (
     <Box
       sx={{
-        background: 'linear-gradient(135deg, #4338ca 0%, #6366f1 60%, #818cf8 100%)',
+        background: 'linear-gradient(135deg, #3c27a5 0%, #6249df 60%, #6e65ec 100%)',
         borderRadius: radius.lg,
         p: 2.4,
         color: '#fff',
         position: 'relative',
         overflow: 'hidden',
-        boxShadow: '0 10px 30px rgba(99, 102, 241,0.32)',
+        boxShadow: '0 10px 30px rgba(98, 73, 223,0.32)',
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
@@ -66,7 +66,7 @@ export default function SelfTapeAlmostReadyCard({ checklist, onSubmit }: Props) 
         sx={{
           width: '100%',
           bgcolor: allDone ? '#fff' : 'rgba(255,255,255,0.32)',
-          color: allDone ? '#4338ca' : 'rgba(255,255,255,0.8)',
+          color: allDone ? '#3c27a5' : 'rgba(255,255,255,0.8)',
           border: 'none',
           cursor: allDone ? 'pointer' : 'not-allowed',
           py: 1.2,

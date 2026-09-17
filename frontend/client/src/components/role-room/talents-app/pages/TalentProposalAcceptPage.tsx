@@ -178,7 +178,7 @@ export default function TalentProposalAcceptPage() {
               <Chip
                 label={PARTNER_TYPE_LABELS[proposal.agency_type] ?? proposal.agency_type}
                 size="small"
-                sx={{ bgcolor: 'rgba(99, 102, 241,0.16)', color: palette.accentBright, fontWeight: 600 }}
+                sx={{ bgcolor: 'rgba(98, 73, 223,0.16)', color: palette.accentBright, fontWeight: 600 }}
               />
               {proposal.agency_about ? (
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem', mt: 1.4, lineHeight: 1.55 }}>
@@ -191,7 +191,7 @@ export default function TalentProposalAcceptPage() {
               severity="info"
               icon={<ShieldIcon />}
               sx={{
-                bgcolor: 'rgba(99, 102, 241,0.10)',
+                bgcolor: 'rgba(98, 73, 223,0.10)',
                 color: palette.textPrimary,
                 border: `1px solid ${palette.borderStrong}`,
                 '& .MuiAlert-icon': { color: palette.accentBright },

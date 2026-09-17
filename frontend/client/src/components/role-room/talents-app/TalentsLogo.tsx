@@ -1,13 +1,19 @@
 /**
  * TalentsLogo.tsx — "The Role Room" logo + "TALENTS" under.
  *
- * Bruker /theroleroom-app-icon-1024-transparent.png (lilla ikon-fil
- * logo med teater-masker + clapperboard + person-ikon).
+ * Bruker /theroleroom-app-icon-1024-transparent.png — teater-masker,
+ * clapperboard og person-ikon.
  *
- * Branding: ikon-filen er fortsatt i den gamle lilla paletten. Den hvite
- * card-bakgrunnen gir kontrast mot den mørke indigo-sidebaren og gjør
- * avviket usynlig i praksis — men logoen bør tegnes om i indigo før
- * merket er helt samstemt.
+ * 🔑 Filen FANTES ikke. Den var referert to steder her, men lå ikke i
+ * public/, så serveren svarte med SPA-fallback-HTML der nettleseren ventet
+ * et bilde — logoen var et brutt bilde i sidebaren. Den er nå generert fra
+ * theroleroom-app-icon-1024.png: hvit bakgrunn fjernet, og fiolett/magenta
+ * dreid inn i indigo (hue 250–300 → 238–262), slik at merket følger
+ * paletten i theme.ts i stedet for å motsi den.
+ *
+ * Den hvite card-bakgrunnen beholdes: et indigo merke på en mørk indigo
+ * sidebar har for lite kontrast alene, og de hvite konturlinjene inne i
+ * maskene hører til tegningen.
  */
 
 import { Box, Typography } from '@mui/material';
@@ -18,10 +24,7 @@ interface TalentsLogoProps {
   variant?: 'large' | 'compact';
 }
 
-// Hvit card-bakgrunn gir logoen kontrast mot mørk sidebar. ⚠️ Selve
-// PNG-en er fortsatt lilla fra den gamle paletten; den må tegnes om i
-// indigo før merket er helt samstemt. Den hvite flaten skjuler avviket,
-// den fjerner det ikke.
+// Hvit card-bakgrunn gir logoen kontrast mot den mørke sidebaren.
 const LIGHT_CARD_BG = '#ffffff';
 
 export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
@@ -73,7 +76,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
           borderRadius: radius.md,
           p: 1.4,
           display: 'inline-flex',
-          boxShadow: '0 4px 16px rgba(99, 102, 241,0.18), 0 1px 3px rgba(0,0,0,0.4)',
+          boxShadow: '0 4px 16px rgba(98, 73, 223,0.18), 0 1px 3px rgba(0,0,0,0.4)',
           // Subtil hvit-glow så card-en pop'er mot mørk sidebar
         }}
       >
