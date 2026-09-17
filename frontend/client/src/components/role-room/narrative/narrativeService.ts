@@ -23,6 +23,30 @@ import type {
   NarrativeGraph,
   NarrativeImportWarning,
   NarrativeMemberLite,
+  NarrativeSceneKnowledge,
+  NarrativeSceneEra,
+  NarrativeSourceRef,
+  NarrativeGateKey,
+  NarrativeGateStatus,
+  NarrativeSceneGate,
+  NarrativeSceneLine,
+  NarrativeLineSourceType,
+  NarrativeLineRecordingStatus,
+  NarrativeEpisode,
+  NarrativeEpisodeStatus,
+  NarrativeOpenQuestion,
+  NarrativeQuestionKind,
+  NarrativeQuestionStatus,
+  NarrativeSource,
+  NarrativeSourceKind,
+  NarrativeMilestone,
+  NarrativeMilestoneLane,
+  NarrativeMilestoneStatus,
+  NarrativePlatform,
+  NarrativePlatformRequirement,
+  NarrativePlatformTarget,
+  NarrativeProjectOverview,
+  NarrativeInboxItem,
   NarrativePublicStory,
   NarrativeScene,
   NarrativeSceneDetail,
@@ -426,6 +450,21 @@ export interface SceneInput {
   dueAt?: string | null;
   heroAssetId?: string | null;
   sortOrder?: number;
+  // Fase 7
+  beforeState?: string;
+  action?: string;
+  control?: string;
+  afterState?: string;
+  audio?: string;
+  changeNote?: string;
+  bridge?: string;
+  timeNote?: string;
+  knowledge?: NarrativeSceneKnowledge;
+  era?: NarrativeSceneEra;
+  episodeId?: string | null;
+  startAt?: string | null;
+  sourceRefs?: NarrativeSourceRef[];
+  workingId?: string | null;
 }
 
 export function listScenes(projectId: string): Promise<{ scenes: NarrativeSceneSummary[]; nextCode: string }> {
@@ -484,3 +523,79 @@ export function decideSceneReview(
 export function listMembersLite(projectId: string): Promise<NarrativeMemberLite[]> {
   return request(p(projectId, '/members-lite'));
 }
+
+// ─── Fase 7: produksjons-OS ────────────────────────────────────────────
+
+export function setSceneGate(projectId: string, sceneId: string, gateKey: NarrativeGateKey, input: { status: NarrativeGateStatus; evidence?: string; evidenceRefs?: string[] }): Promise<NarrativeSceneGate> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/gates/${gateKey}`), { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export interface SceneLineInput {
+  cueId: string;
+  speakerComponentId?: string | null;
+  speakerLabel?: string;
+  perspective?: string;
+  textEn?: string;
+  textNb?: string;
+  sourceType?: NarrativeLineSourceType;
+  recordingStatus?: NarrativeLineRecordingStatus;
+  note?: string;
+  sortOrder?: number;
+}
+export function listSceneLines(projectId: string, sceneId: string): Promise<NarrativeSceneLine[]> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/lines`));
+}
+export function createSceneLine(projectId: string, sceneId: string, input: SceneLineInput): Promise<NarrativeSceneLine> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/lines`), { method: 'POST', body: JSON.stringify(input) });
+}
+export function patchSceneLine(projectId: string, sceneId: string, lineId: string, patch: Partial<SceneLineInput>): Promise<NarrativeSceneLine> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/lines/${encodeURIComponent(lineId)}`), { method: 'PATCH', body: JSON.stringify(patch) });
+}
+export function deleteSceneLine(projectId: string, sceneId: string, lineId: string): Promise<void> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/lines/${encodeURIComponent(lineId)}`), { method: 'DELETE' });
+}
+export function reorderSceneLines(projectId: string, sceneId: string, orderedIds: string[]): Promise<NarrativeSceneLine[]> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/lines/order`), { method: 'PUT', body: JSON.stringify({ orderedIds }) });
+}
+export function listLinesBySpeaker(projectId: string, speakerComponentId: string): Promise<Array<NarrativeSceneLine & { sceneCode: string; sceneTitle: string }>> {
+  return request(p(projectId, `/lines?speakerComponentId=${encodeURIComponent(speakerComponentId)}`));
+}
+export function listScenesForComponent(projectId: string, componentId: string): Promise<Array<Pick<NarrativeScene, 'id' | 'code' | 'title' | 'status'>>> {
+  return request(p(projectId, `/components/${encodeURIComponent(componentId)}/scenes`));
+}
+
+export interface EpisodeInput { code: string; title?: string; summary?: string; playersLearn?: string; sourceNote?: string; status?: NarrativeEpisodeStatus; sortOrder?: number }
+export function listEpisodes(projectId: string): Promise<NarrativeEpisode[]> { return request(p(projectId, '/episodes')); }
+export function createEpisode(projectId: string, input: EpisodeInput): Promise<NarrativeEpisode> { return request(p(projectId, '/episodes'), { method: 'POST', body: JSON.stringify(input) }); }
+export function patchEpisode(projectId: string, id: string, patch: Partial<EpisodeInput>): Promise<NarrativeEpisode> { return request(p(projectId, `/episodes/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(patch) }); }
+export function deleteEpisode(projectId: string, id: string): Promise<void> { return request(p(projectId, `/episodes/${encodeURIComponent(id)}`), { method: 'DELETE' }); }
+
+export interface OpenQuestionInput { code: string; kind?: NarrativeQuestionKind; question: string; context?: string; status?: NarrativeQuestionStatus; decision?: string; sourceRefs?: NarrativeSourceRef[]; sortOrder?: number }
+export function listOpenQuestions(projectId: string): Promise<NarrativeOpenQuestion[]> { return request(p(projectId, '/open-questions')); }
+export function createOpenQuestion(projectId: string, input: OpenQuestionInput): Promise<NarrativeOpenQuestion> { return request(p(projectId, '/open-questions'), { method: 'POST', body: JSON.stringify(input) }); }
+export function patchOpenQuestion(projectId: string, id: string, patch: Partial<OpenQuestionInput>): Promise<NarrativeOpenQuestion> { return request(p(projectId, `/open-questions/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(patch) }); }
+export function deleteOpenQuestion(projectId: string, id: string): Promise<void> { return request(p(projectId, `/open-questions/${encodeURIComponent(id)}`), { method: 'DELETE' }); }
+
+export interface SourceInput { code: string; label: string; kind?: NarrativeSourceKind; sha256?: string | null; pathHint?: string; notes?: string; sortOrder?: number }
+export function listSources(projectId: string): Promise<NarrativeSource[]> { return request(p(projectId, '/sources')); }
+export function createSource(projectId: string, input: SourceInput): Promise<NarrativeSource> { return request(p(projectId, '/sources'), { method: 'POST', body: JSON.stringify(input) }); }
+export function patchSource(projectId: string, id: string, patch: Partial<SourceInput> & { verified?: boolean }): Promise<NarrativeSource> { return request(p(projectId, `/sources/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(patch) }); }
+export function deleteSource(projectId: string, id: string): Promise<void> { return request(p(projectId, `/sources/${encodeURIComponent(id)}`), { method: 'DELETE' }); }
+
+export interface MilestoneInput { title: string; lane?: NarrativeMilestoneLane; startAt?: string | null; dueAt?: string | null; status?: NarrativeMilestoneStatus; ownerUserId?: string | null; description?: string; acceptance?: string; evidence?: string; sortOrder?: number }
+export function listMilestones(projectId: string): Promise<NarrativeMilestone[]> { return request(p(projectId, '/milestones')); }
+export function createMilestone(projectId: string, input: MilestoneInput): Promise<NarrativeMilestone> { return request(p(projectId, '/milestones'), { method: 'POST', body: JSON.stringify(input) }); }
+export function patchMilestone(projectId: string, id: string, patch: Partial<MilestoneInput>): Promise<NarrativeMilestone> { return request(p(projectId, `/milestones/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(patch) }); }
+export function deleteMilestone(projectId: string, id: string): Promise<void> { return request(p(projectId, `/milestones/${encodeURIComponent(id)}`), { method: 'DELETE' }); }
+export function setMilestoneScenes(projectId: string, id: string, sceneIds: string[]): Promise<{ sceneIds: string[] }> { return request(p(projectId, `/milestones/${encodeURIComponent(id)}/scenes`), { method: 'PUT', body: JSON.stringify({ sceneIds }) }); }
+
+export interface PlatformTargetInput { name: string; platform?: NarrativePlatform; isPrimary?: boolean; engine?: string; osMin?: string; deviceMin?: string; inputModel?: string; budgets?: Record<string, unknown>; requirements?: NarrativePlatformRequirement[]; visualDirection?: Record<string, unknown>; notes?: string; sortOrder?: number }
+export function listPlatformTargets(projectId: string): Promise<NarrativePlatformTarget[]> { return request(p(projectId, '/platform-targets')); }
+export function createPlatformTarget(projectId: string, input: PlatformTargetInput): Promise<NarrativePlatformTarget> { return request(p(projectId, '/platform-targets'), { method: 'POST', body: JSON.stringify(input) }); }
+export function patchPlatformTarget(projectId: string, id: string, patch: Partial<PlatformTargetInput>): Promise<NarrativePlatformTarget> { return request(p(projectId, `/platform-targets/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(patch) }); }
+export function deletePlatformTarget(projectId: string, id: string): Promise<void> { return request(p(projectId, `/platform-targets/${encodeURIComponent(id)}`), { method: 'DELETE' }); }
+
+export function getProjectOverview(projectId: string): Promise<NarrativeProjectOverview> { return request(p(projectId, '/overview')); }
+export function listInbox(projectId: string): Promise<NarrativeInboxItem[]> { return request(p(projectId, '/inbox')); }
+export function markInboxRead(projectId: string, id: string): Promise<void> { return request(p(projectId, `/inbox/${encodeURIComponent(id)}/read`), { method: 'POST' }); }
+export function markAllInboxRead(projectId: string): Promise<{ marked: number }> { return request(p(projectId, '/inbox/read-all'), { method: 'POST' }); }

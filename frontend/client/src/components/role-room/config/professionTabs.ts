@@ -97,16 +97,24 @@ export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
 // faner rendrer et ærlig «kommer»-kort i NarrativeWorkspace.
 
 export const GAME_STUDIO_TABS: readonly TabConfig[] = [
-  { id: 'boards',     labelToken: 'gameTabBoards',     descriptionToken: 'gameTabBoardsDescription',     requiresProject: true, feature: 'core' },
+  // Fase 7b — «home» først = standard landing i skallet (sidebar-seksjoner via feature).
+  { id: 'home',       labelToken: 'gameTabHome',       descriptionToken: 'gameTabHomeDescription',       requiresProject: true, feature: 'core' },
+  { id: 'story',      labelToken: 'gameTabStory',      descriptionToken: 'gameTabStoryDescription',      requiresProject: true, feature: 'core' },
   { id: 'scenes',     labelToken: 'gameTabScenes',     descriptionToken: 'gameTabScenesDescription',     requiresProject: true, feature: 'core' },
+  { id: 'characters', labelToken: 'gameTabCharacters', descriptionToken: 'gameTabCharactersDescription', requiresProject: true, feature: 'core' },
+  { id: 'locations',  labelToken: 'gameTabLocations',  descriptionToken: 'gameTabLocationsDescription',  requiresProject: true, feature: 'core' },
+  { id: 'platform',   labelToken: 'gameTabPlatform',   descriptionToken: 'gameTabPlatformDescription',   requiresProject: true, feature: 'core' },
+  { id: 'boards',     labelToken: 'gameTabBoards',     descriptionToken: 'gameTabBoardsDescription',     requiresProject: true, feature: 'core' },
   { id: 'components', labelToken: 'gameTabComponents', descriptionToken: 'gameTabComponentsDescription', requiresProject: true, feature: 'core' },
   { id: 'variables',  labelToken: 'gameTabVariables',  descriptionToken: 'gameTabVariablesDescription',  requiresProject: true, feature: 'core' },
-  { id: 'assets',     labelToken: 'gameTabAssets',     descriptionToken: 'gameTabAssetsDescription',     requiresProject: true, feature: 'resources' },
+  { id: 'plan',       labelToken: 'gameTabPlan',       descriptionToken: 'gameTabPlanDescription',       requiresProject: true, feature: 'production' },
   { id: 'play',       labelToken: 'gameTabPlay',       descriptionToken: 'gameTabPlayDescription',       requiresProject: true, feature: 'production' },
   { id: 'translations', labelToken: 'gameTabTranslations', descriptionToken: 'gameTabTranslationsDescription', requiresProject: true, feature: 'production' },
   { id: 'exports',    labelToken: 'gameTabExports',    descriptionToken: 'gameTabExportsDescription',    requiresProject: true, feature: 'production' },
+  { id: 'assets',     labelToken: 'gameTabAssets',     descriptionToken: 'gameTabAssetsDescription',     requiresProject: true, feature: 'resources' },
   { id: 'history',    labelToken: 'gameTabHistory',    descriptionToken: 'gameTabHistoryDescription',    requiresProject: true, feature: 'resources' },
-  // Fase 4d — billing (ikke prosjekt-avhengige; admin_plans skjules for ikke-admin i NarrativeWorkspace)
+  // Fase 4d/7e — team og billing (ikke prosjekt-avhengige; admin_plans skjules for ikke-admin i NarrativeWorkspace)
+  { id: 'team',        labelToken: 'gameTabTeam',        descriptionToken: 'gameTabTeamDescription',        feature: 'finance' },
   { id: 'pricing',     labelToken: 'gameTabPricing',     descriptionToken: 'gameTabPricingDescription',     feature: 'finance' },
   { id: 'billing',     labelToken: 'gameTabBilling',     descriptionToken: 'gameTabBillingDescription',     feature: 'finance' },
   { id: 'admin_plans', labelToken: 'gameTabAdminPlans',  descriptionToken: 'gameTabAdminPlansDescription',  feature: 'finance' },

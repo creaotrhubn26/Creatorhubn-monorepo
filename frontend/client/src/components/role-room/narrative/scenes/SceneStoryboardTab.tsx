@@ -21,6 +21,12 @@ export function bearerToken(): string {
   return (h.Authorization ?? '').replace(/^Bearer\s+/i, '').trim();
 }
 
+/** Story Graph-farger for kommentartråder (Post Agent-lilla passer ikke i spillstudio). */
+export const NARRATIVE_COMMENT_THEME = {
+  accent: narrativeColors.accent, accentSoft: narrativeColors.accentSoft, accentText: '#86efac',
+  surface: narrativeColors.bgPanel, border: narrativeColors.borderStrong, title: narrativeColors.text,
+} as const;
+
 export function selfDisplayName(): string {
   const s = authSessionService.getSessionSync();
   return s.adminUser?.name ?? s.adminUser?.display_name ?? s.adminUser?.email ?? 'Meg';
@@ -90,7 +96,7 @@ export function SceneStoryboardTab({ projectId, graph, detail, scenes, onNotice 
                   </Stack>
                   {commentsOpen && token ? (
                     <Box sx={{ mt: 1, borderTop: `1px solid ${narrativeColors.borderStrong}`, pt: 1 }} data-testid={`narrative-scene-frame-thread-${i + 1}`}>
-                      <PostCommentLayer projectId={projectId} anchorType="narrative_scene_frame" anchorRef={f.id} auth={{ kind: 'bearer', token }} authorDisplayName={selfDisplayName()} composerPlaceholder="Kommenter rammen…" pollingIntervalMs={0} />
+                      <PostCommentLayer projectId={projectId} anchorType="narrative_scene_frame" anchorRef={f.id} auth={{ kind: 'bearer', token }} authorDisplayName={selfDisplayName()} composerPlaceholder="Kommenter rammen…" pollingIntervalMs={0} theme={NARRATIVE_COMMENT_THEME} />
                     </Box>
                   ) : null}
                 </Box>

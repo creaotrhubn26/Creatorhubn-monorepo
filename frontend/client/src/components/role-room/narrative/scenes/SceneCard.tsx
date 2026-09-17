@@ -70,6 +70,7 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
     .map((l) => linkOptions.find((o) => o.ownerKind === l.ownerKind && o.ownerId === l.ownerId) ?? { key: `${l.ownerKind}:${l.ownerId}`, ownerKind: l.ownerKind, ownerId: l.ownerId, label: '(slettet)', sub: '' })
   , [detail.links, linkOptions]);
 
+  const [heroBroken, setHeroBroken] = useState<string | null>(null);
   const heroUrl = useMemo(() => {
     if (scene.heroAssetId) { const a = graph.assets.find((x) => x.id === scene.heroAssetId); if (a?.externalUrl) return a.externalUrl; }
     for (const f of detail.frames) { const u = frameImageUrl(f, graph.assets); if (u) return u; }
@@ -105,8 +106,8 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
         return (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 300px' }, gap: 3 }}>
             <Stack spacing={2.5}>
-              {heroUrl ? (
-                <Box component="img" src={heroUrl} alt={sceneLabel(scene)} sx={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 2, border: `1px solid ${narrativeColors.borderStrong}`, display: 'block' }} data-testid="narrative-scene-hero" />
+              {heroUrl && heroBroken !== heroUrl ? (
+                <Box component="img" src={heroUrl} alt={sceneLabel(scene)} onError={() => setHeroBroken(heroUrl)} sx={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 2, border: `1px solid ${narrativeColors.borderStrong}`, display: 'block' }} data-testid="narrative-scene-hero" />
               ) : (
                 <EmptyHint title="Ingen bilde ennå" body="Første storyboard-ramme brukes som scenebilde." testId="narrative-scene-hero-empty"
                   action={<Button size="small" variant="outlined" onClick={() => setTab('storyboard')} sx={{ color: narrativeColors.accent, borderColor: narrativeColors.accent }}>Legg til ramme</Button>} />

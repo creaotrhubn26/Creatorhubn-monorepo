@@ -203,10 +203,10 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ArcweaveImportError('Fila er ikke et JSON-objekt.');
         const project = parsed as Record<string, unknown>;
         body = { format, project };
-        local = fromArcweaveProject(project, { projectId }) as typeof local;
+        local = fromArcweaveProject(project, { projectId }) as unknown as typeof local;
       } else {
         body = { format, source: text, title };
-        local = (format === 'twee' ? fromTwee(text, { projectId, title }) : fromInk(text, { projectId, title })) as typeof local;
+        local = (format === 'twee' ? fromTwee(text, { projectId, title }) : fromInk(text, { projectId, title })) as unknown as typeof local;
       }
       setPreview({
         fileName: file.name,

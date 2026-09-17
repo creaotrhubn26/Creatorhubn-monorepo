@@ -20,7 +20,8 @@ import { REVIEW_STATUS_LABELS, canRequestReview, formatShortDate, formatTime, op
 import { PlanGateBanner } from '../../game/GameBillingPanels';
 import { useGamePlanGate } from '../../game/useGamePlanGate';
 import { PostCommentLayer } from '../../components/PostCommentLayer';
-import { bearerToken, selfDisplayName } from './SceneStoryboardTab';
+import { bearerToken, selfDisplayName, NARRATIVE_COMMENT_THEME } from './SceneStoryboardTab';
+import { useMembersLite } from '../components/MemberPicker';
 
 const STATUS_COLOR: Record<NarrativeSceneReview['status'], string> = {
   in_review: narrativeColors.warning,
@@ -43,6 +44,8 @@ export function SceneReviewTab({ projectId, detail, scenes, onNotice }: {
   const stale = snapshotIsStale(detail);
   const request = canRequestReview(detail);
   const token = bearerToken();
+  const { members } = useMembersLite(projectId);
+  const memberName = (userId: string) => members.find((mm) => mm.userId === userId)?.displayName ?? userId;
 
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestNote, setRequestNote] = useState('');
@@ -117,7 +120,7 @@ export function SceneReviewTab({ projectId, detail, scenes, onNotice }: {
           <Stack spacing={1}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontSize: 14, fontWeight: 800, color: STATUS_COLOR.in_review }}>Runde {open.round} · Til review</Typography>
-              <Typography sx={{ fontSize: 11, color: narrativeColors.textDim }}>sendt {when(open.requestedAt)}{open.requestedBy ? ` av ${open.requestedBy}` : ''}</Typography>
+              <Typography sx={{ fontSize: 11, color: narrativeColors.textDim }}>sendt {when(open.requestedAt)}{open.requestedBy ? ` av ${memberName(open.requestedBy)}` : ''}</Typography>
             </Stack>
             {open.requestNote ? <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{open.requestNote}</Typography> : null}
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
@@ -163,7 +166,7 @@ export function SceneReviewTab({ projectId, detail, scenes, onNotice }: {
       <Box>
         <SectionTitle>Diskusjon</SectionTitle>
         {token ? (
-          <PostCommentLayer projectId={projectId} anchorType="narrative_scene" anchorRef={detail.scene.id} auth={{ kind: 'bearer', token }} authorDisplayName={selfDisplayName()} composerPlaceholder="Skriv en kommentar til scenen…" pollingIntervalMs={15_000} defaultVisibleCount={5} />
+          <PostCommentLayer projectId={projectId} anchorType="narrative_scene" anchorRef={detail.scene.id} auth={{ kind: 'bearer', token }} authorDisplayName={selfDisplayName()} composerPlaceholder="Skriv en kommentar til scenen…" pollingIntervalMs={15_000} defaultVisibleCount={5} theme={NARRATIVE_COMMENT_THEME} />
         ) : (
           <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>Logg inn for å kommentere.</Typography>
         )}

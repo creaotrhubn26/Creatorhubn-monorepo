@@ -16,7 +16,7 @@
  * for klient (magic-link). Backend (resolveActor) skiller mellom dem.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type CommentAnchorType =
   | 'content_post' | 'marketing_plan_post' | 'feed_plan_post'
@@ -90,6 +90,29 @@ interface Props {
   /** Focus the composer when a newly selected annotation opens. */
   autoFocusComposer?: boolean;
   composerPlaceholder?: string;
+  /** Valgfritt fargetema (Story Graph bruker grønn aksent i stedet for Post Agent-lilla). */
+  theme?: PostCommentTheme;
+}
+
+export interface PostCommentTheme {
+  accent: string;        // knapper, forfatternavn
+  accentSoft: string;    // badge-bakgrunn (rgba)
+  accentText: string;    // badge-/lenketekst
+  surface: string;       // bakgrunn
+  border: string;        // ramme
+  title?: string;
+}
+
+function themedStyles(theme?: PostCommentTheme) {
+  if (!theme) return { base: baseSx, title: titleSx, badge: badgeSx, primaryBtn: primaryBtnSx, author: authorSx, replyBtn: replyBtnSx };
+  return {
+    base: { ...baseSx, background: theme.surface, border: `1px solid ${theme.border}` },
+    title: { ...titleSx, color: theme.title ?? theme.accentText },
+    badge: { ...badgeSx, background: theme.accentSoft, color: theme.accentText },
+    primaryBtn: { ...primaryBtnSx, background: theme.accent },
+    author: { ...authorSx, color: theme.accent },
+    replyBtn: { ...replyBtnSx, color: theme.accentText },
+  };
 }
 
 function buildAuthHeaders(auth: PostCommentAuth): Record<string, string> {
@@ -106,7 +129,9 @@ export function PostCommentLayer({
   apiBase = '/api/role-room',
   currentTimeSec, onSeek, onTimestampCommentsChanged,
   onChanged, autoFocusComposer = false, composerPlaceholder,
+  theme,
 }: Props) {
+  const T = useMemo(() => themedStyles(theme), [theme]);
   const [attachToTimestamp, setAttachToTimestamp] = useState(false);
   const [comments, setComments] = useState<PostCommentItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -269,15 +294,15 @@ export function PostCommentLayer({
     c => c.status === 'open' || c.status === 'in_progress').length;
 
   return (
-    <div className={className} style={baseSx}>
+    <div className={className} style={T.base}>
       <div style={headerSx}>
-        <span style={titleSx}>
+        <span style={T.title}>
           {topLevelComments.length === 0
             ? 'Ingen kommentarer enda'
             : `${topLevelComments.length} ${topLevelComments.length === 1 ? 'tråd' : 'tråder'}`}
         </span>
         {unresolvedCount > 0 && (
-          <span style={badgeSx}>{unresolvedCount} uløst</span>
+          <span style={T.badge}>{unresolvedCount} uløst</span>
         )}
       </div>
 
@@ -292,6 +317,7 @@ export function PostCommentLayer({
             return (
               <div key={c.id} style={threadSx}>
                 <CommentRow
+                  styles={T}
                   comment={c}
                   onStatus={(status) => void handleStatus(c.id, status)}
                   onReply={() => {
@@ -301,7 +327,7 @@ export function PostCommentLayer({
                   onSeek={onSeek}
                 />
                 {replies.map((reply) => (
-                  <CommentRow key={reply.id} comment={reply} reply />
+                  <CommentRow key={reply.id} comment={reply} reply styles={T} />
                 ))}
                 {replyingTo === c.id && !readOnly && (
                   <div style={replyComposerSx}>
@@ -329,7 +355,7 @@ export function PostCommentLayer({
                       <button
                         onClick={() => void handlePost(c.id)}
                         disabled={posting || !replyDraft.trim()}
-                        style={{ ...primaryBtnSx, opacity: posting || !replyDraft.trim() ? 0.4 : 1 }}
+                        style={{ ...T.primaryBtn, opacity: posting || !replyDraft.trim() ? 0.4 : 1 }}
                       >Svar</button>
                     </div>
                   </div>
@@ -389,7 +415,7 @@ export function PostCommentLayer({
             <button onClick={() => void handlePost()}
                     disabled={posting || !draft.trim()}
                     style={{
-                      ...primaryBtnSx,
+                      ...T.primaryBtn,
                       opacity: posting || !draft.trim() ? 0.4 : 1,
                       cursor: posting || !draft.trim() ? 'not-allowed' : 'pointer',
                     }}>
@@ -402,7 +428,8 @@ export function PostCommentLayer({
   );
 }
 
-function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
+function CommentRow({ comment, onStatus, onReply, onSeek, reply = false, styles }: {
+  styles?: { author: React.CSSProperties; replyBtn: React.CSSProperties };
   comment: PostCommentItem;
   onStatus?: (status: 'open' | 'resolved') => void;
   onReply?: () => void;
@@ -420,7 +447,7 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
       borderColor: isResolved ? 'rgba(74,212,138,0.15)' : 'rgba(160,48,192,0.15)',
     }}>
       <div style={rowHeaderSx}>
-        <span style={authorSx}>{comment.authorDisplayName}</span>
+        <span style={styles?.author ?? authorSx}>{comment.authorDisplayName}</span>
         {isTimestamp && (
           <button onClick={() => onSeek?.(comment.timestampSec as number)}
                   disabled={!onSeek}
@@ -470,7 +497,7 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
       </div>
       <div style={textSx}>{comment.commentText}</div>
       {!reply && onReply && (
-        <button onClick={onReply} style={replyBtnSx}>
+        <button onClick={onReply} style={styles?.replyBtn ?? replyBtnSx}>
           Svar{comment.replyCount > 0 ? ` (${comment.replyCount})` : ''}
         </button>
       )}

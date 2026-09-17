@@ -90,6 +90,36 @@ export interface NarrativeConnection {
   i18n: Record<string, { labelHtml?: string }>;
 }
 
+export type NarrativeComponentKind = 'character' | 'location' | 'item' | 'faction' | 'other';
+export const NARRATIVE_COMPONENT_KINDS: readonly NarrativeComponentKind[] = ['character', 'location', 'item', 'faction', 'other'];
+
+/** Fase 7: typet profil per komponent-kind (lagres som fri JSONB). */
+export interface NarrativeMemoryTrack { code: string; title: string; image?: string; knownAfter?: string }
+export interface NarrativeCharacterProfile {
+  drive?: string;
+  changeAction?: string;
+  establishNow?: string;
+  firstPersonalScene?: string;
+  revealLater?: string;
+  sourceStatus?: string;
+  /** Forfatterfasit — intern, aldri i spillerflater. */
+  authorTruth?: string;
+  observable?: string;
+  ages?: Partial<Record<'1797' | '1802' | '1817', string>>;
+  voiceCast?: { child?: string; adult?: string };
+  memoryTrack?: NarrativeMemoryTrack[];
+  powers?: { mental?: string[]; active?: { name: string; tier: 0 | 1 | 2 | 3 } };
+  notes?: string;
+}
+export interface NarrativeLocationProfile {
+  eras?: Array<'pre' | '1797' | '1802' | '1817'>;
+  continuity?: string;
+  geometryStatus?: string;
+  props?: string[];
+  notes?: string;
+}
+export type NarrativeComponentProfile = (NarrativeCharacterProfile & NarrativeLocationProfile & { summary?: string; rules?: string[] }) & Record<string, unknown>;
+
 export interface NarrativeComponent {
   id: string;
   projectId: string;
@@ -98,6 +128,8 @@ export interface NarrativeComponent {
   coverAssetId: string | null;
   customId: string | null;
   sortOrder: number;
+  kind: NarrativeComponentKind;
+  profile: NarrativeComponentProfile;
   createdAt: string;
   updatedAt: string;
 }
@@ -259,7 +291,7 @@ export interface NarrativePublicStory {
 export type NarrativeSceneStatus = 'idea' | 'in_progress' | 'in_review' | 'changes_requested' | 'approved' | 'implemented';
 export type NarrativeSceneTaskStatus = 'todo' | 'doing' | 'done';
 export type NarrativeSceneReviewStatus = 'in_review' | 'changes_requested' | 'approved' | 'superseded';
-export type NarrativeSceneLinkKind = 'element' | 'board';
+export type NarrativeSceneLinkKind = 'element' | 'board' | 'component';
 
 export const NARRATIVE_SCENE_STATUSES: readonly NarrativeSceneStatus[] =
   ['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented'];
@@ -282,7 +314,36 @@ export interface NarrativeScene {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  // Fase 7: scenekort v2
+  beforeState: string;
+  action: string;
+  control: string;
+  afterState: string;
+  audio: string;
+  changeNote: string;
+  bridge: string;
+  timeNote: string;
+  knowledge: NarrativeSceneKnowledge;
+  era: NarrativeSceneEra;
+  episodeId: string | null;
+  startAt: string | null;
+  sourceRefs: NarrativeSourceRef[];
+  workingId: string | null;
 }
+
+export type NarrativeSceneEra = 'pre' | '1797' | '1802' | '1817' | 'other';
+export const NARRATIVE_SCENE_ERAS: readonly NarrativeSceneEra[] = ['pre', '1797', '1802', '1817', 'other'];
+export const NARRATIVE_SCENE_ERA_LABELS: Record<NarrativeSceneEra, string> = { pre: 'Før 1797', '1797': '1797 · barndom', '1802': '1802 · ungdom', '1817': '1817 · voksen', other: 'Annet' };
+export type NarrativeSourceTag = 'W' | 'K' | 'U' | 'A' | 'E' | 'T';
+export const NARRATIVE_SOURCE_TAGS: readonly NarrativeSourceTag[] = ['W', 'K', 'U', 'A', 'E', 'T'];
+export const NARRATIVE_SOURCE_TAG_LABELS: Record<NarrativeSourceTag, string> = {
+  W: 'Word-manus (kildehendelse)', K: 'Kult-PDF (kildehendelse)', U: 'Brukertillegg', A: 'Iscenesettelsesforslag', E: 'Bevart engelsk', T: 'Ny oversettelse',
+};
+export interface NarrativeSourceRef { tag: NarrativeSourceTag; ref: string; field?: string; note?: string }
+export interface NarrativeSceneKnowledge { actualPast?: string; recollection?: string; ownerPerspective?: string; othersObserve?: string; audienceKnows?: string; saidAloud?: string }
+export const NARRATIVE_KNOWLEDGE_LABELS: Record<keyof NarrativeSceneKnowledge, string> = {
+  actualPast: 'Faktisk fortid', recollection: 'Slik det huskes', ownerPerspective: 'Eierens perspektiv', othersObserve: 'Hva andre ser', audienceKnows: 'Hva publikum vet', saidAloud: 'Hva som sies høyt',
+};
 
 export interface NarrativeSceneLink {
   sceneId: string;
@@ -345,7 +406,188 @@ export interface NarrativeSceneDetail {
   frames: NarrativeSceneFrame[];
   tasks: NarrativeSceneTask[];
   reviews: NarrativeSceneReview[];
+  gates: NarrativeSceneGate[];
+  lines: NarrativeSceneLine[];
   currentSnapshotHash: string;
+}
+
+// ─── Fase 7: produksjons-OS ────────────────────────────────────────────
+
+export type NarrativeGateKey = 'script_coverage' | 'greybox' | 'characters_animation' | 'playthrough' | 'picture' | 'audio';
+export const NARRATIVE_GATE_KEYS: readonly NarrativeGateKey[] = ['script_coverage', 'greybox', 'characters_animation', 'playthrough', 'picture', 'audio'];
+export const NARRATIVE_GATE_LABELS: Record<NarrativeGateKey, string> = {
+  script_coverage: 'Manusdekning', greybox: 'Gråboks / regelprøve', characters_animation: 'Karakterer og animasjon',
+  playthrough: 'iPad-gjennomspilling', picture: 'Bilde', audio: 'Foley / dialog / miks',
+};
+export type NarrativeGateStatus = 'not_started' | 'in_progress' | 'passed' | 'failed';
+export const NARRATIVE_GATE_STATUS_LABELS: Record<NarrativeGateStatus, string> = { not_started: 'Ikke startet', in_progress: 'Pågår', passed: 'Bestått', failed: 'Feilet' };
+export interface NarrativeSceneGate {
+  sceneId: string;
+  projectId: string;
+  gateKey: NarrativeGateKey;
+  status: NarrativeGateStatus;
+  evidence: string;
+  evidenceRefs: string[];
+  checkedBy: string | null;
+  checkedAt: string | null;
+  updatedAt: string | null;
+}
+
+export type NarrativeLineSourceType = 'E' | 'T' | 'E+T' | 'U' | 'A';
+export const NARRATIVE_LINE_SOURCE_TYPES: readonly NarrativeLineSourceType[] = ['E', 'T', 'E+T', 'U', 'A'];
+export type NarrativeLineRecordingStatus = 'none' | 'needs_take' | 'recorded' | 'approved';
+export const NARRATIVE_RECORDING_LABELS: Record<NarrativeLineRecordingStatus, string> = { none: 'Ikke bestilt', needs_take: 'Trenger take', recorded: 'Innspilt', approved: 'Godkjent' };
+export interface NarrativeSceneLine {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  cueId: string;
+  speakerComponentId: string | null;
+  speakerLabel: string;
+  perspective: string;
+  textEn: string;
+  textNb: string;
+  sourceType: NarrativeLineSourceType;
+  recordingStatus: NarrativeLineRecordingStatus;
+  note: string;
+  sortOrder: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export const NARRATIVE_CUE_ID_RE = /^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?(\.[0-9]{1,3})?$/;
+
+export type NarrativeEpisodeStatus = 'draft' | 'locked';
+export interface NarrativeEpisode {
+  id: string;
+  projectId: string;
+  code: string;
+  title: string;
+  summary: string;
+  playersLearn: string;
+  sourceNote: string;
+  status: NarrativeEpisodeStatus;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NarrativeQuestionKind = 'question' | 'check';
+export type NarrativeQuestionStatus = 'open' | 'done' | 'dropped';
+export interface NarrativeOpenQuestion {
+  id: string;
+  projectId: string;
+  code: string;
+  kind: NarrativeQuestionKind;
+  question: string;
+  context: string;
+  status: NarrativeQuestionStatus;
+  decision: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  sourceRefs: NarrativeSourceRef[];
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NarrativeSourceKind = 'docx' | 'pdf' | 'md' | 'txt' | 'other';
+export interface NarrativeSource {
+  id: string;
+  projectId: string;
+  code: string;
+  label: string;
+  kind: NarrativeSourceKind;
+  sha256: string | null;
+  pathHint: string;
+  notes: string;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NarrativeMilestoneLane = 'story' | 'greybox' | 'characters' | 'playtest' | 'picture_audio' | 'engineering' | 'other';
+export const NARRATIVE_MILESTONE_LANES: readonly NarrativeMilestoneLane[] = ['story', 'greybox', 'characters', 'playtest', 'picture_audio', 'engineering', 'other'];
+export const NARRATIVE_LANE_LABELS: Record<NarrativeMilestoneLane, string> = {
+  story: 'Manus', greybox: 'Gråboks', characters: 'Karakterer', playtest: 'Gjennomspilling', picture_audio: 'Bilde & lyd', engineering: 'Teknikk', other: 'Annet',
+};
+export type NarrativeMilestoneStatus = 'planned' | 'in_progress' | 'done' | 'blocked';
+export const NARRATIVE_MILESTONE_STATUS_LABELS: Record<NarrativeMilestoneStatus, string> = { planned: 'Planlagt', in_progress: 'Pågår', done: 'Ferdig', blocked: 'Blokkert' };
+export interface NarrativeMilestone {
+  id: string;
+  projectId: string;
+  title: string;
+  lane: NarrativeMilestoneLane;
+  startAt: string | null;
+  dueAt: string | null;
+  status: NarrativeMilestoneStatus;
+  ownerUserId: string | null;
+  description: string;
+  acceptance: string;
+  evidence: string;
+  sortOrder: number;
+  sceneIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NarrativePlatform = 'ipad' | 'iphone' | 'mac' | 'pc' | 'console' | 'web' | 'other';
+export const NARRATIVE_PLATFORMS: readonly NarrativePlatform[] = ['ipad', 'iphone', 'mac', 'pc', 'console', 'web', 'other'];
+export const NARRATIVE_PLATFORM_LABELS: Record<NarrativePlatform, string> = { ipad: 'iPad', iphone: 'iPhone', mac: 'Mac', pc: 'PC', console: 'Konsoll', web: 'Nett', other: 'Annet' };
+export interface NarrativePlatformRequirement { code: string; text: string; status: 'unverified' | 'verified' | 'failed'; evidence?: string; source?: string }
+export interface NarrativePlatformTarget {
+  id: string;
+  projectId: string;
+  name: string;
+  platform: NarrativePlatform;
+  isPrimary: boolean;
+  engine: string;
+  osMin: string;
+  deviceMin: string;
+  inputModel: string;
+  budgets: Record<string, unknown>;
+  requirements: NarrativePlatformRequirement[];
+  visualDirection: Record<string, unknown>;
+  notes: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeActivityItem {
+  kind: 'scene' | 'review' | 'task' | 'gate' | 'milestone' | 'revision';
+  id: string;
+  title: string;
+  detail: string;
+  at: string;
+  sceneId: string | null;
+}
+export interface NarrativeProjectOverview {
+  scenes: { total: number; byStatus: Record<NarrativeSceneStatus, number>; byEra: Record<string, number>; withoutDates: number };
+  gates: { total: number; passed: number; failed: number; byKey: Record<NarrativeGateKey, { passed: number; total: number }> };
+  tasks: { open: number; overdue: number; done: number };
+  reviews: { open: number };
+  lines: { total: number; approved: number };
+  questions: { open: number; checksOpen: number };
+  platform: { requirements: number; verified: number; primaryName: string | null };
+  milestones: NarrativeMilestone[];
+  episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;
+  activity: NarrativeActivityItem[];
+  unreadInbox: number;
+}
+export interface NarrativeInboxItem {
+  id: string;
+  eventType: string;
+  title: string;
+  message: string | null;
+  linkedEntityType: string | null;
+  linkedEntityId: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
 }
 
 export interface NarrativeMemberLite {

@@ -1358,6 +1358,20 @@ export type BrandingTextTokenKey =
 
   // Spillstudio — Story Graph (narrativ design). Faner definert i
   // professionTabs.ts GAME_STUDIO_TABS.
+  | 'gameTabHome'                 // 'Hjem'
+  | 'gameTabHomeDescription'
+  | 'gameTabStory'                // 'Historie'
+  | 'gameTabStoryDescription'
+  | 'gameTabCharacters'           // 'Karakterer'
+  | 'gameTabCharactersDescription'
+  | 'gameTabLocations'            // 'Lokasjoner'
+  | 'gameTabLocationsDescription'
+  | 'gameTabPlatform'             // 'Plattform'
+  | 'gameTabPlatformDescription'
+  | 'gameTabPlan'                 // 'Produksjonsplan'
+  | 'gameTabPlanDescription'
+  | 'gameTabTeam'                 // 'Team'
+  | 'gameTabTeamDescription'
   | 'gameTabBoards'               // 'Brett'
   | 'gameTabBoardsDescription'
   | 'gameTabScenes'               // 'Scener & gameplay'
@@ -3021,6 +3035,20 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabGrantsDescription: 'Søknadsmaler for Kulturrådet, Fond for lyd og bilde, og kommunale midler.',
     danceTabUnionDescription: 'Status i Skuda/NoDa, tariff-anvendelse og automatisk arbeidsdags-loggføring.',
 
+    gameTabHome: 'Hjem',
+    gameTabHomeDescription: 'Prosjektets puls: scener per status, gater bestått, oppgaver, åpne runder, neste milepæler og siste aktivitet.',
+    gameTabStory: 'Historie',
+    gameTabStoryDescription: 'Episoder og beats med «hva spillerne lærer», tidslinje med låste beslutninger, åpne spørsmål og kilderegister med sjekksummer.',
+    gameTabCharacters: 'Karakterer',
+    gameTabCharactersDescription: 'Karakterarkivet: drivkraft, forfatterfasit vs. det spillerne kan observere, stemmecast, minnespor, kraftprogresjon og replikker.',
+    gameTabLocations: 'Lokasjoner',
+    gameTabLocationsDescription: 'Steder med epoke, kontinuitetskrav, geometri-status og scenene de brukes i.',
+    gameTabPlatform: 'Plattform',
+    gameTabPlatformDescription: 'Målplattform (iPad, iPhone, PC …), ytelsesbudsjett, krav med status og bevis, og hvordan spillet skal se ut.',
+    gameTabPlan: 'Produksjonsplan',
+    gameTabPlanDescription: 'Milepæler per bane (manus, gråboks, karakterer, gjennomspilling, bilde/lyd, teknikk) i Gantt og liste, koblet til scener.',
+    gameTabTeam: 'Team',
+    gameTabTeamDescription: 'Roller, kapabiliteter, invitasjoner og seter for studioet.',
     gameTabBoards: 'Brett',
     gameTabBoardsDescription: 'Tegn historien som noder og koblinger: elementer, forgreninger, jumpere og notater på et fritt lerret.',
     gameTabScenes: 'Scener & gameplay',

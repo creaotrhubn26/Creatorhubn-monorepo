@@ -22,8 +22,6 @@ import {
   ListItemText,
   Snackbar,
   Stack,
-  Tab,
-  Tabs,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -63,6 +61,11 @@ import { useNarrativeRealtime } from './realtime/narrativeRealtimeClient';
 import { cursorsOnBoard, selectionColors, uniquePeersByUser } from './realtime/presenceReducer';
 import { PresenceAvatars } from './realtime/PresenceAvatars';
 import { GameAdminPanel, GamePricingPage, GameSubscriptionPanel, NARRATIVE_OPEN_TAB_EVENT } from '../game/GameBillingPanels';
+import { GameShell } from '../game/GameShell';
+import { ProjectHomePanel } from './home/ProjectHomePanel';
+import { NarrativeInboxBell } from './home/NarrativeInboxBell';
+import { CommandPalette, type Command } from '../shared/CommandPalette';
+import { gameTabIcon } from '../game/gameShellIcons';
 import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
 import { htmlToText, type NarrativeElementKind } from './narrativeTypes';
@@ -210,6 +213,16 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [notice, setNotice] = useState<{ message: string; severity: 'error' | 'warning' | 'success' } | null>(null);
+  // Snackbaren beholder siste melding under lukke-transisjonen (ellers blinker den tom).
+  const lastNotice = useRef<{ message: string; severity: 'error' | 'warning' | 'success' } | null>(null);
+  if (notice) lastNotice.current = notice;
+  const shownNotice = notice ?? lastNotice.current;
+  // Fase 7: produksjons-endringer (episoder/spørsmål/kilder/milepæler/plattform) fra andre → refetch i hjem/historie/plan.
+  const [productionTick, setProductionTick] = useState(0);
+  const navigateTo = useCallback((tab: string, extra?: { sceneId?: string }) => {
+    if (extra?.sceneId) writeUrlParam('scene', extra.sceneId);
+    React.startTransition(() => setActiveTabId(tab));
+  }, []);
   const centerResolver = useRef<() => { x: number; y: number }>(() => ({ x: 0, y: 0 }));
   const viewportByBoard = useRef<Map<string, Viewport>>(new Map());
 
@@ -237,7 +250,8 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
     projectId, userId: selfUserId, name: selfName, boardId: activeBoardId,
     enabled: !!projectId && !!selfUserId,
     onGraphChanged: (evt) => {
-      if (evt.kind === 'scene') { if (evt.actorUserId !== selfUserId) setScenesTick((t) => t + 1); return; }
+      if (evt.kind === 'scene') { if (evt.actorUserId !== selfUserId) { setScenesTick((t) => t + 1); setProductionTick((t) => t + 1); } return; }
+      if (evt.kind === 'production') { if (evt.actorUserId !== selfUserId) setProductionTick((t) => t + 1); return; }
       store.applyRemoteChange(evt, selfUserId);
     },
   });
@@ -314,6 +328,15 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
   const renderTabBody = (tab: TabConfig): React.ReactElement => {
     if (!projectId) return <ProjectPicker onPick={pickProject} />;
     switch (tab.id) {
+      case 'home':
+        return (
+          <ProjectHomePanel
+            projectId={projectId}
+            projectTitle={graph.settings.title || projectName || projectId}
+            refreshKey={scenesTick + productionTick}
+            onNavigate={navigateTo}
+          />
+        );
       case 'boards':
         return (
           <Box sx={{ display: 'flex', height: '100%', minHeight: 'calc(100vh - 150px)', position: 'relative' }}>
@@ -456,10 +479,30 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
     }
   };
 
+  const commands: Command[] = [
+    ...tabs.filter((t) => !t.requiresProject || !!projectId).map((t) => ({
+      id: `tab:${t.id}`, label: labels[t.labelToken] ?? t.id, description: t.descriptionToken ? labels[t.descriptionToken] : undefined, category: 'Hopp til' as const,
+      icon: gameTabIcon(t.id, 16), keywords: [t.id], onSelect: () => selectTab(t.id),
+    })),
+    ...(projectId ? [
+      { id: 'act:new-scene', label: 'Ny scene', description: 'Åpner Scener & gameplay klar for ny scene', category: 'Handling' as const, keywords: ['scene', 'opprett'], onSelect: () => selectTab('scenes') },
+      { id: 'act:new-element', label: 'Nytt element på brettet', description: 'Legger et element på aktivt brett', category: 'Handling' as const, keywords: ['element', 'node'], onSelect: () => { selectTab('boards'); void addElement('element'); } },
+      { id: 'act:home', label: 'Hjem', description: 'Prosjektoversikt', category: 'Hopp til' as const, keywords: ['oversikt', 'dashboard'], onSelect: () => selectTab('home') },
+    ] : []),
+  ];
+  const openPalette = () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+  };
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#050505', color: narrativeColors.text }} data-testid="narrative-workspace">
-      <Box sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: 'rgba(10,10,10,0.95)', backdropFilter: 'blur(8px)', borderBottom: `1px solid rgba(34,197,94,0.18)` }}>
-        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+    <>
+      <GameShell
+        tabs={tabs}
+        activeTabId={activeTab.id}
+        onSelectTab={selectTab}
+        labels={labels}
+        onOpenSearch={openPalette}
+        header={(
           <ProfessionModeChip
             mode={mode}
             onSwitch={(newMode) => {
@@ -468,61 +511,47 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
               window.location.href = url.toString();
             }}
           />
-          <Typography sx={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.3 }}>Story Graph</Typography>
-          <Chip size="small" label="Beta" sx={{ height: 20, fontSize: 10, bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent, fontWeight: 700 }} />
-          <Box sx={{ flex: 1 }} />
-          {projectId && selfUserId ? <PresenceAvatars peers={uniquePeers} boardNameById={boardNameById} connected={realtime.connected} /> : null}
-          {projectId ? (
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }} data-testid="narrative-project-label">
-                {graph.settings.title || projectName || projectId}
-              </Typography>
-              {!projectIdProp ? (
-                <Tooltip title="Bytt prosjekt">
-                  <IconButton size="small" onClick={() => { setProjectId(null); writeUrlParam('projectId', null); }} sx={{ color: narrativeColors.textDim }} aria-label="Bytt prosjekt">
-                    <SwitchProjectIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              ) : null}
-            </Stack>
-          ) : null}
+        )}
+        headerActions={(
+          <>
+            {projectId && selfUserId ? <PresenceAvatars peers={uniquePeers} boardNameById={boardNameById} connected={realtime.connected} /> : null}
+            {projectId ? <NarrativeInboxBell projectId={projectId} refreshKey={scenesTick + productionTick} onOpenScene={(sceneId) => navigateTo('scenes', { sceneId })} /> : null}
+            {projectId ? (
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }} data-testid="narrative-project-label">
+                  {graph.settings.title || projectName || projectId}
+                </Typography>
+                {!projectIdProp ? (
+                  <Tooltip title="Bytt prosjekt">
+                    <IconButton size="small" onClick={() => { setProjectId(null); writeUrlParam('projectId', null); }} sx={{ color: narrativeColors.textDim }} aria-label="Bytt prosjekt">
+                      <SwitchProjectIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                ) : null}
+              </Stack>
+            ) : null}
+          </>
+        )}
+      >
+        <Box data-testid="narrative-workspace" sx={{ minHeight: '100%' }}>
+          <ErrorBoundary
+            key={activeTab.id}
+            componentName={`narrative-tab:${activeTab.id}`}
+            context={{ tab: activeTab.id }}
+            fallback={
+              <Box data-testid="narrative-tab-error" sx={{ p: 4, textAlign: 'center', color: narrativeColors.textDim }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Denne fanen kunne ikke vises</Typography>
+                <Typography sx={{ fontSize: 12, opacity: 0.7 }}>Feilen er isolert til dette panelet. Bytt fane og prøv igjen.</Typography>
+              </Box>
+            }
+          >
+            <React.Suspense fallback={<Box sx={{ p: 4, color: narrativeColors.textDim, fontSize: 12, letterSpacing: 1.5, fontWeight: 700 }}>LASTER…</Box>}>
+              {renderTabBody(activeTab)}
+            </React.Suspense>
+          </ErrorBoundary>
         </Box>
-        <Tabs
-          value={activeTab.id}
-          onChange={(_, value) => selectTab(value)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{
-            minHeight: 44, px: 1,
-            '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 44, fontSize: '0.85rem' },
-            '& .Mui-selected': { color: '#fff' },
-            '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent, height: 3, borderRadius: 1.5 },
-          }}
-        >
-          {tabs.map((tab) => (
-            <Tab key={tab.id} value={tab.id} label={labels[tab.labelToken] ?? tab.id} data-testid={`narrative-tab-${tab.id}`} />
-          ))}
-        </Tabs>
-      </Box>
-
-      <Box role="tabpanel" sx={{ flex: 1, minHeight: 0 }}>
-        <ErrorBoundary
-          key={activeTab.id}
-          componentName={`narrative-tab:${activeTab.id}`}
-          context={{ tab: activeTab.id }}
-          fallback={
-            <Box data-testid="narrative-tab-error" sx={{ p: 4, textAlign: 'center', color: narrativeColors.textDim }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Denne fanen kunne ikke vises</Typography>
-              <Typography sx={{ fontSize: 12, opacity: 0.7 }}>Feilen er isolert til dette panelet. Bytt fane og prøv igjen.</Typography>
-            </Box>
-          }
-        >
-          <React.Suspense fallback={<Box sx={{ p: 4, color: narrativeColors.textDim, fontSize: 12, letterSpacing: 1.5, fontWeight: 700 }}>LASTER…</Box>}>
-            {renderTabBody(activeTab)}
-          </React.Suspense>
-        </ErrorBoundary>
-      </Box>
+      </GameShell>
+      <CommandPalette commands={commands} />
 
       <Snackbar
         open={!!notice}
@@ -530,11 +559,11 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         onClose={() => setNotice(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity={notice?.severity ?? 'info'} onClose={() => setNotice(null)} variant="filled" sx={{ maxWidth: 560 }} data-testid="narrative-notice">
-          {notice?.message}
+        <Alert severity={shownNotice?.severity ?? 'info'} onClose={() => setNotice(null)} variant="filled" sx={{ maxWidth: 560 }} data-testid="narrative-notice">
+          {shownNotice?.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </>
   );
 };
 

@@ -9,7 +9,7 @@ import { installNarrativeMocks, getMockGraph } from './helpers/narrativeMocks';
 
 async function openWorkspace(page: Page, opts: { tab?: string; empty?: boolean } = {}) {
   await installNarrativeMocks(page, { empty: opts.empty });
-  const tab = opts.tab ? `&tab=${opts.tab}` : '';
+  const tab = `&tab=${opts.tab ?? 'boards'}`; // Fase 7b: «home» er standard landing
   await page.goto(`/e2e-test.html?harness=game_studio&harness-project=proj-game-2026${tab}`);
   await expect(page.getByTestId('narrative-workspace')).toBeVisible({ timeout: 15_000 });
 }
