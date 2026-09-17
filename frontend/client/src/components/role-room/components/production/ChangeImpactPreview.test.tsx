@@ -138,4 +138,86 @@ describe('ChangeImpactPreview', () => {
     await waitFor(() => expect(screen.getByText(/av noen andre/)).toBeInTheDocument());
     expect(screen.queryByText('Call sheet er publisert.')).toBeNull();
   });
+
+  it('asks about a location change even when the date stays put', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        from: '2026-09-20', to: '2026-09-20', impacts: [], blocking: false, unchanged: false,
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ChangeImpactPreview
+        {...base}
+        targetDate="2026-09-20"
+        currentLocationId="loc-old"
+        targetLocationId="loc-new"
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('locationId=loc-new');
+    expect(url).not.toContain('date=');
+  });
+
+  it('says nothing hangs on the old location when a location move is clean', async () => {
+    respondWith({ from: '2026-09-20', to: '2026-09-20', impacts: [], blocking: false, unchanged: false });
+
+    render(
+      <ChangeImpactPreview
+        {...base}
+        targetDate="2026-09-20"
+        currentLocationId="loc-old"
+        targetLocationId="loc-new"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText(/gamle lokasjonen/)).toBeInTheDocument());
+  });
+
+  it('does not report a stale day for a pure location change', async () => {
+    // Serveren svarer med en annen dato enn skjemaet, men datoen er ikke det
+    // brukeren endrer — da er ikke skjemaet foreldet på den måten.
+    respondWith({ from: '2026-09-22', to: '2026-09-22', impacts: [], blocking: false, unchanged: false });
+
+    render(
+      <ChangeImpactPreview
+        {...base}
+        targetDate="2026-09-20"
+        currentLocationId="loc-old"
+        targetLocationId="loc-new"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText(/gamle lokasjonen/)).toBeInTheDocument());
+    expect(screen.queryByText(/av noen andre/)).toBeNull();
+  });
+
+  it('asks once for both when date and location change together', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        from: '2026-09-20', to: '2026-09-24', blocking: false, unchanged: false,
+        impacts: [{ area: 'location_readiness', severity: 'warning', summary: 'Ingen tillatelse registrert.', count: 0 }],
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ChangeImpactPreview
+        {...base}
+        currentLocationId="loc-old"
+        targetLocationId="loc-new"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText(/Ny dato og ny lokasjon påvirker/)).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('date=2026-09-24');
+    expect(url).toContain('locationId=loc-new');
+  });
 });
