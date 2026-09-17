@@ -41,9 +41,7 @@ import roleRoomAgentService, {
   type MarketingPlanLinkedInPublishOptions,
   type MarketingPlanPost,
 } from "@/components/role-room/services/roleRoomAgentService";
-import { buildPublishQueue, defaultCaptionFor } from "./nextPostToPublish";
-
-const PROFILE_SENDER = "__profile__";
+import { PROFILE_SENDER, buildPublishQueue, defaultCaptionFor, pickDefaultSender } from "./nextPostToPublish";
 
 interface Props {
   projectKey: string;
@@ -72,12 +70,28 @@ export function LinkedInPublishCard({ projectKey, planId, reloadSignal, onPublis
   const [publishError, setPublishError] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const captionForPostRef = useRef<string | null>(null);
+  const senderInitialisedRef = useRef(false);
 
   const loadOptions = useCallback(async () => {
     const next = await roleRoomAgentService.getMarketingPlanLinkedInPublishOptions(projectKey);
-    setOptions(
-      next ?? { connected: false, state: "unknown", memberName: null, scopeMissing: false, companies: [], captionMax: 3000 },
-    );
+    const resolved = next ?? {
+      connected: false,
+      state: "unknown",
+      memberName: null,
+      scopeMissing: false,
+      orgScopesGranted: false,
+      companies: [],
+      defaultSender: PROFILE_SENDER,
+      captionMax: 3000,
+    };
+    setOptions(resolved);
+    // Bedriftssiden er standard avsender (eneste LinkedIn lar oss lese tall
+    // for). Velges én gang per last, så brukerens eget valg ikke overskrives
+    // når options lastes på nytt etter en re-tilkobling.
+    if (!senderInitialisedRef.current && resolved.connected) {
+      senderInitialisedRef.current = true;
+      setSender(pickDefaultSender(resolved.defaultSender, resolved.companies));
+    }
   }, [projectKey]);
 
   const loadPosts = useCallback(async () => {
@@ -316,6 +330,11 @@ export function LinkedInPublishCard({ projectKey, planId, reloadSignal, onPublis
                 ))}
               </TextField>
             )}
+            {options?.connected && !options.orgScopesGranted && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                Publiseres som din profil. Bedriftssiden gir tall på rekkevidde — koble til på nytt fra menyen.
+              </Typography>
+            )}
             {publishError && (
               <Alert severity="error" sx={{ mt: 1.5 }}>
                 {publishError}
@@ -342,6 +361,16 @@ export function LinkedInPublishCard({ projectKey, planId, reloadSignal, onPublis
               </IconButton>
               <Menu open={Boolean(menuAnchor)} anchorEl={menuAnchor} onClose={() => setMenuAnchor(null)}>
                 <MenuItem onClick={skip}>Hopp over denne posten</MenuItem>
+                {options?.connected && !options.orgScopesGranted && (
+                  <MenuItem
+                    onClick={() => {
+                      setMenuAnchor(null);
+                      void startConnect();
+                    }}
+                  >
+                    Koble til på nytt for bedriftsside
+                  </MenuItem>
+                )}
               </Menu>
               {state.post.externalPermalink && (
                 <Link href={state.post.externalPermalink} target="_blank" rel="noreferrer" variant="body2">

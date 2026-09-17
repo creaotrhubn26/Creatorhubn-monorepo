@@ -128,6 +128,7 @@ function makeApp(opts: { row?: Record<string, unknown> | null; connection?: Reco
                 caption_draft: args[4],
                 published_by_user_id: args[1],
                 published_platform: "linkedin",
+                published_author_urn: args[5],
               }),
             ],
           };
@@ -200,13 +201,25 @@ describe("POST /api/role-room/marketing-plan/posts/:postId/publish", () => {
     });
     expect(updates).toHaveLength(1);
     expect(updates[0].sql).toContain("status = 'published'");
+    expect(updates[0].sql).toContain("published_author_urn = $6");
     expect(updates[0].args).toEqual([
       "post-1",
       "markedssjef-1",
       "7470001",
       "https://www.linkedin.com/feed/update/urn:li:ugcPost:7470001/",
       "Egen tekst fra markedssjefen",
+      null, // ingen tilkoblingsrad i denne testen → ukjent avsender
     ]);
+  });
+
+  it("records the person URN from the connection when publishing as a profile", async () => {
+    const { app, updates } = makeApp({ connection: { linkedin_member_id: "m1", connection_state: "connected", scopes: [] } });
+    const res = await request(app)
+      .post("/api/role-room/marketing-plan/posts/post-1/publish")
+      .set("x-user", "owner-1")
+      .send({ projectId: PLAN_PROJECT });
+    expect(res.status).toBe(200);
+    expect(updates[0].args[5]).toBe("urn:li:person:m1");
   });
 
   it("uses caption draft + CTA when no caption is sent, and passes the organisation URN through", async () => {
@@ -219,6 +232,7 @@ describe("POST /api/role-room/marketing-plan/posts/:postId/publish", () => {
     const [, input] = mocks.dispatchPublish.mock.calls[0];
     expect(input.caption).toBe("Slik får vi det ned til fire dager.\n\nBook en prat");
     expect(input.extras).toEqual({ linkedInOrganizationUrn: "urn:li:organization:42" });
+    expect(res.body.post.publishedAuthorUrn).toBe("urn:li:organization:42");
   });
 
   it("refuses a stranger (403) and never calls LinkedIn", async () => {
@@ -307,7 +321,13 @@ describe("GET /api/role-room/marketing-plan/linkedin/publish-options", () => {
       .get(`/api/role-room/marketing-plan/linkedin/publish-options?projectId=${PLAN_PROJECT}`)
       .set("x-lg-project", PLAN_PROJECT);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ connected: false, state: "disconnected", companies: [] });
+    expect(res.body).toMatchObject({
+      connected: false,
+      state: "disconnected",
+      companies: [],
+      orgScopesGranted: false,
+      defaultSender: "__profile__",
+    });
     expect(mocks.listManagedCompaniesForUser).not.toHaveBeenCalled();
   });
 
@@ -326,7 +346,7 @@ describe("GET /api/role-room/marketing-plan/linkedin/publish-options", () => {
     expect(res.body).toMatchObject({ connected: false, state: "expired", memberName: "Kari" });
   });
 
-  it("lists company pages when the connection is active and has the scope", async () => {
+  it("lists company pages and makes the first one the default sender when the org scopes were granted", async () => {
     mocks.listManagedCompaniesForUser.mockResolvedValue({
       scopeMissing: false,
       companies: [{ urn: "urn:li:organization:42", id: "42", name: "Nordvest Bygg AS", vanityName: null, logoUrl: null, role: "ADMINISTRATOR" }],
@@ -337,6 +357,7 @@ describe("GET /api/role-room/marketing-plan/linkedin/publish-options", () => {
         linkedin_member_id: "m1",
         connection_state: "connected",
         expiry_date: new Date(Date.now() + 3_600_000),
+        scopes: ["openid", "w_member_social", "w_organization_social", "r_organization_social", "r_organization_admin"],
       },
     });
     const res = await request(app)
@@ -346,8 +367,34 @@ describe("GET /api/role-room/marketing-plan/linkedin/publish-options", () => {
       connected: true,
       state: "connected",
       scopeMissing: false,
+      orgScopesGranted: true,
       companies: [{ urn: "urn:li:organization:42", name: "Nordvest Bygg AS" }],
+      defaultSender: "urn:li:organization:42",
       captionMax: 3000,
     });
+  });
+
+  it("flags scopeMissing (reconnect needed) for an active connection made before the org scopes existed", async () => {
+    const { app } = makeApp({
+      connection: {
+        linkedin_name: "Kari",
+        linkedin_member_id: "m1",
+        connection_state: "connected",
+        expiry_date: new Date(Date.now() + 3_600_000),
+        scopes: ["openid", "profile", "email", "w_member_social"],
+      },
+    });
+    const res = await request(app)
+      .get(`/api/role-room/marketing-plan/linkedin/publish-options?projectId=${PLAN_PROJECT}`)
+      .set("x-user", "owner-1");
+    expect(res.body).toMatchObject({
+      connected: true,
+      orgScopesGranted: false,
+      scopeMissing: true,
+      companies: [],
+      defaultSender: "__profile__",
+    });
+    // Ingen unødvendig LinkedIn-kall når vi allerede vet at scopet mangler.
+    expect(mocks.listManagedCompaniesForUser).not.toHaveBeenCalled();
   });
 });

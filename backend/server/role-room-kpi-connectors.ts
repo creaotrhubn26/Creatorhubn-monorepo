@@ -18,6 +18,10 @@ import { ensureFreshTikTokConnection } from "./role-room-tiktok-oauth.js";
 import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 import { fetchTikTokVideoMetrics } from "./role-room-tiktok-insights.js";
 import { fetchLinkedInSocialActions } from "./social-linkedin-social-actions.js";
+import {
+  LINKEDIN_SHARE_STATS_BATCH,
+  fetchOrganizationShareStatistics,
+} from "./social-linkedin-org-share-stats.js";
 import { decryptLinkedInToken } from "./social-publisher-linkedin.js";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -236,11 +240,16 @@ export async function fetchTikTokKpisForPosts(
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Henter likes + kommentarer for LinkedIn-poster som ble publisert direkte
- * fra markedsplanen (Markedssjef-modus fase 1b): posten har external_post_id
- * og published_by_user_id, og tokenet er den brukerens globale LinkedIn-
- * tilkobling (project_id IS NULL). Impressions krever Page-statistikk med
- * egen scope og hentes ikke — vi rapporterer bare det vi faktisk kan lese.
+ * KPI for LinkedIn-poster publisert direkte fra markedsplanen (Markedssjef-
+ * modus fase 1b/1c): posten har external_post_id og published_by_user_id,
+ * og tokenet er den brukerens globale LinkedIn-tilkobling (project_id IS NULL).
+ *
+ * To veier, valgt av published_author_urn:
+ *   - urn:li:organization:… → organizationalEntityShareStatistics (ett kall per
+ *     organisasjon): impressions, unike visninger, klikk, likes, kommentarer,
+ *     delinger, engasjementsrate. Krever r_organization_social.
+ *   - urn:li:person:… / ukjent → socialActions (likes + kommentarer). Gir bare
+ *     tall hvis LinkedIn en dag åpner r_member_social igjen; inntil da 403 → tomt.
  *
  * Poster uten external_post_id (feed-planner-veien) hoppes over: der
  * finnes ingen kobling til LinkedIn-posten i denne tabellen.
@@ -255,6 +264,7 @@ export async function fetchLinkedInKpisForPosts(
     primaryPlatform: string | null;
     externalPostId?: string | null;
     publishedByUserId?: string | null;
+    publishedAuthorUrn?: string | null;
   }>,
   deps: { fetchImpl?: typeof fetch; now?: () => Date } = {},
 ): Promise<KpiSnapshotInput[]> {
@@ -270,11 +280,75 @@ export async function fetchLinkedInKpisForPosts(
     }
     return tokenByUser.get(userId) ?? null;
   };
+  let planOwner: string | null | undefined;
+  const userFor = async (post: { publishedByUserId?: string | null }): Promise<string | null> => {
+    if (post.publishedByUserId) return post.publishedByUserId;
+    if (planOwner === undefined) planOwner = await loadPlanOwnerUserId(pool, planId);
+    return planOwner;
+  };
 
   const capturedAt = deps.now ? deps.now() : new Date();
   const snapshots: KpiSnapshotInput[] = [];
-  for (const post of liPosts) {
-    const userId = post.publishedByUserId ?? (await loadPlanOwnerUserId(pool, planId));
+  const base = (postId: string) => ({
+    postId,
+    planId,
+    platform: "linkedin" as const,
+    capturedAt,
+    source: "linkedin_pages" as const,
+  });
+
+  // ── Bedriftsposter: batch per organisasjon ────────────────────────────
+  const orgPosts = liPosts.filter((p) => p.publishedAuthorUrn?.startsWith("urn:li:organization:"));
+  const byOrg = new Map<string, typeof orgPosts>();
+  for (const post of orgPosts) {
+    const urn = post.publishedAuthorUrn as string;
+    byOrg.set(urn, [...(byOrg.get(urn) ?? []), post]);
+  }
+  for (const [orgUrn, group] of byOrg) {
+    // Alle poster i gruppen er publisert av samme org; tokenet tas fra den
+    // første med kjent bruker (alle admin-brukere av siden kan lese stats).
+    let token: string | null = null;
+    for (const post of group) {
+      const userId = await userFor(post);
+      token = userId ? await tokenFor(userId) : null;
+      if (token) break;
+    }
+    if (!token) continue;
+    for (let i = 0; i < group.length; i += LINKEDIN_SHARE_STATS_BATCH) {
+      const chunk = group.slice(i, i + LINKEDIN_SHARE_STATS_BATCH);
+      const stats = await fetchOrganizationShareStatistics(
+        orgUrn,
+        chunk.map((p) => p.externalPostId as string),
+        token,
+        deps.fetchImpl,
+      );
+      if (!stats) continue;
+      const byExternalId = new Map(stats.map((s) => [s.postId, s]));
+      for (const post of chunk) {
+        const s = byExternalId.get(String(post.externalPostId));
+        if (!s) continue;
+        const b = base(post.id);
+        const push = (metric: string, value: number | null) => {
+          if (value !== null) snapshots.push({ ...b, metric, value });
+        };
+        push("impressions", s.impressions);
+        push("unique_impressions", s.uniqueImpressions);
+        push("clicks", s.clicks);
+        push("likes", s.likes);
+        push("comments", s.comments);
+        push("shares", s.shares);
+        push("engagement_rate", s.engagementRate);
+        if (s.likes !== null || s.comments !== null) {
+          push("engagement", (s.likes ?? 0) + (s.comments ?? 0) + (s.shares ?? 0));
+        }
+      }
+    }
+  }
+
+  // ── Personposter (og ukjent avsender): socialActions ──────────────────
+  const memberPosts = liPosts.filter((p) => !p.publishedAuthorUrn?.startsWith("urn:li:organization:"));
+  for (const post of memberPosts) {
+    const userId = await userFor(post);
     if (!userId) continue;
     const token = await tokenFor(userId);
     if (!token) continue;
@@ -282,11 +356,11 @@ export async function fetchLinkedInKpisForPosts(
     if (!actions) continue;
     const likes = actions.likes ?? 0;
     const comments = actions.comments ?? 0;
-    const base = { postId: post.id, planId, platform: "linkedin" as const, capturedAt, source: "linkedin_pages" as const };
-    if (actions.likes !== null) snapshots.push({ ...base, metric: "likes", value: likes });
-    if (actions.comments !== null) snapshots.push({ ...base, metric: "comments", value: comments });
+    const b = base(post.id);
+    if (actions.likes !== null) snapshots.push({ ...b, metric: "likes", value: likes });
+    if (actions.comments !== null) snapshots.push({ ...b, metric: "comments", value: comments });
     if (actions.likes !== null || actions.comments !== null) {
-      snapshots.push({ ...base, metric: "engagement", value: likes + comments });
+      snapshots.push({ ...b, metric: "engagement", value: likes + comments });
     }
   }
   return snapshots;
@@ -334,6 +408,7 @@ export async function fetchAllPlatformKpis(
       primaryPlatform: string | null;
       externalPostId?: string | null;
       publishedByUserId?: string | null;
+      publishedAuthorUrn?: string | null;
     }>;
   },
 ): Promise<{

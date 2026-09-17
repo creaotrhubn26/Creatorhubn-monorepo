@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPublishQueue, defaultCaptionFor, isLinkedInPost } from "./nextPostToPublish";
+import { PROFILE_SENDER, buildPublishQueue, defaultCaptionFor, isLinkedInPost, pickDefaultSender } from "./nextPostToPublish";
 import type { MarketingPlanPost } from "@/components/role-room/services/roleRoomAgentService";
 
 const post = (over: Partial<MarketingPlanPost> = {}): MarketingPlanPost => ({
@@ -70,5 +70,17 @@ describe("defaultCaptionFor", () => {
   it("joins caption draft and CTA, falling back to the hook", () => {
     expect(defaultCaptionFor(post())).toBe("Utkast\n\nBook en prat");
     expect(defaultCaptionFor(post({ captionDraft: null, callToAction: "  " }))).toBe("Hook");
+  });
+});
+
+describe("pickDefaultSender", () => {
+  const companies = [{ urn: "urn:li:organization:42" }, { urn: "urn:li:organization:7" }];
+  it("uses the backend's suggestion when it is one of the manageable pages", () => {
+    expect(pickDefaultSender("urn:li:organization:7", companies)).toBe("urn:li:organization:7");
+  });
+  it("falls back to the first page, then to the profile", () => {
+    expect(pickDefaultSender("urn:li:organization:999", companies)).toBe("urn:li:organization:42");
+    expect(pickDefaultSender(PROFILE_SENDER, companies)).toBe("urn:li:organization:42");
+    expect(pickDefaultSender(null, [])).toBe(PROFILE_SENDER);
   });
 });

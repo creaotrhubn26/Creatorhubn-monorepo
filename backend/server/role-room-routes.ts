@@ -28,7 +28,7 @@ import {
   type RoleRoomGoogleNativeClient,
 } from './role-room-native-google-oauth.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
-import { ROLE_ROOM_LINKEDIN_OAUTH_SCOPES } from './role-room-linkedin-oauth-scopes.js';
+import { buildRoleRoomLinkedInOauthScopes } from './role-room-linkedin-oauth-scopes.js';
 import { resolveOrgIdForUser, invalidateOrgCache } from './leadgrid-org-resolver.js';
 import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
 import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
@@ -10148,7 +10148,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           response_type: 'code',
           client_id: config.clientId,
           redirect_uri: config.redirectUri,
-          scope: [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES].join(' '),
+          scope: buildRoleRoomLinkedInOauthScopes().join(' '),
           state: stateId,
         }).toString()
       }`;
@@ -10204,7 +10204,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           response_type: 'code',
           client_id: config.clientId,
           redirect_uri: config.redirectUri,
-          scope: [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES].join(' '),
+          scope: buildRoleRoomLinkedInOauthScopes().join(' '),
           state: stateId,
         }).toString()
       }`;
@@ -10331,7 +10331,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             expiryDate,
             scopes: rawScopes
               ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-              : [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES],
+              : buildRoleRoomLinkedInOauthScopes(),
           },
           oauthState.projectId ?? null,
         );
@@ -10367,7 +10367,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           expiryDate,
           scopes: rawScopes
             ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-            : [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES],
+            : buildRoleRoomLinkedInOauthScopes(),
         },
       });
 

@@ -20,6 +20,7 @@ interface Props {
 }
 
 interface Totals {
+  impressions: number | null;
   likes: number;
   comments: number;
   posts: number;
@@ -41,7 +42,9 @@ export function MarketingResultsLine({ planId, refreshKey, sinceDays = 30 }: Pro
         setTotals(null);
         return;
       }
+      const impressions = linkedin.sumByMetric.impressions;
       setTotals({
+        impressions: typeof impressions === "number" && impressions > 0 ? Math.round(impressions) : null,
         likes: Math.round(linkedin.sumByMetric.likes ?? 0),
         comments: Math.round(linkedin.sumByMetric.comments ?? 0),
         posts: linkedin.postCount,
@@ -57,7 +60,9 @@ export function MarketingResultsLine({ planId, refreshKey, sinceDays = 30 }: Pro
     <Stack direction="row" spacing={0.75} alignItems="center" data-testid="marketing-results-line">
       <InsightsIcon sx={{ fontSize: 16, color: "#0a66c2" }} />
       <Typography variant="body2" color="text.secondary">
-        LinkedIn siste {sinceDays} dager: {totals.likes} likes · {totals.comments} kommentarer på {totals.posts}{" "}
+        LinkedIn siste {sinceDays} dager:{" "}
+        {totals.impressions !== null ? `${totals.impressions.toLocaleString("nb-NO")} visninger · ` : ""}
+        {totals.likes} likes · {totals.comments} kommentarer på {totals.posts}{" "}
         {totals.posts === 1 ? "post" : "poster"}
       </Typography>
     </Stack>

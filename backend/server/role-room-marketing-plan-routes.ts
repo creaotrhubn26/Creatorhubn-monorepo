@@ -54,6 +54,7 @@ import {
 import { fetchAllPlatformKpis } from "./role-room-kpi-connectors.js";
 import { dispatchPublish } from "./social-publisher.js";
 import { listManagedCompaniesForUser } from "./social-publisher-linkedin.js";
+import { hasLinkedInOrgScopes } from "./role-room-linkedin-oauth-scopes.js";
 import { RateLimitExceededError, checkEndpointRateLimit } from "./role-room-agent-ratelimit.js";
 import { logAIUsage } from "./ai-usage-tracker.js";
 import {
@@ -1305,6 +1306,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
       primaryPlatform: string | null;
       externalPostId: string | null;
       publishedByUserId: string | null;
+      publishedAuthorUrn: string | null;
     }>;
     try {
       const r = await pool.query<{
@@ -1313,8 +1315,10 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         primary_platform: string | null;
         external_post_id: string | null;
         published_by_user_id: string | null;
+        published_author_urn: string | null;
       }>(
-        `SELECT id, feed_plan_post_id, primary_platform, external_post_id, published_by_user_id
+        `SELECT id, feed_plan_post_id, primary_platform, external_post_id, published_by_user_id,
+                published_author_urn
            FROM role_room_marketing_plan_posts
           WHERE plan_id = $1
             AND (feed_plan_post_id IS NOT NULL OR external_post_id IS NOT NULL)`,
@@ -1326,6 +1330,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         primaryPlatform: row.primary_platform,
         externalPostId: row.external_post_id,
         publishedByUserId: row.published_by_user_id,
+        publishedAuthorUrn: row.published_author_urn,
       }));
     } catch (error) {
       console.error("[marketing-plan-routes] kpi-sync: posts lookup failed", error);
@@ -1622,6 +1627,19 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
     linkedin_member_id: string | null;
     connection_state: string | null;
     expiry_date: Date | null;
+    scopes: unknown;
+  }
+  const PROFILE_SENDER = "__profile__";
+
+  async function loadLinkedInPublishConnection(userId: string): Promise<LinkedInPublishOptionRow | null> {
+    const r = await pool.query<LinkedInPublishOptionRow>(
+      `SELECT linkedin_name, linkedin_member_id, connection_state, expiry_date, scopes
+         FROM role_room_linkedin_connections
+        WHERE user_id = $1 AND project_id IS NULL
+        LIMIT 1`,
+      [userId],
+    );
+    return r.rows[0] ?? null;
   }
 
   // GET /api/role-room/marketing-plan/linkedin/publish-options?projectId=…
@@ -1631,14 +1649,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
     const session = requireAdminSession(req, res);
     if (!session) return;
     try {
-      const r = await pool.query<LinkedInPublishOptionRow>(
-        `SELECT linkedin_name, linkedin_member_id, connection_state, expiry_date
-           FROM role_room_linkedin_connections
-          WHERE user_id = $1 AND project_id IS NULL
-          LIMIT 1`,
-        [session.userId],
-      );
-      const row = r.rows[0];
+      const row = await loadLinkedInPublishConnection(session.userId);
       const expired =
         row?.expiry_date instanceof Date && Number.isFinite(row.expiry_date.getTime())
           ? row.expiry_date.getTime() <= Date.now()
@@ -1648,16 +1659,22 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         && (row?.connection_state === "connected" || row?.connection_state === "active")
         && !expired;
       const state = !row ? "disconnected" : expired ? "expired" : (row.connection_state ?? "disconnected");
-      const companies = connected
+      const orgScopesGranted = connected && hasLinkedInOrgScopes(row?.scopes);
+      const companies = orgScopesGranted
         ? await listManagedCompaniesForUser(pool, session.userId)
-        : { companies: [], scopeMissing: false };
+        : { companies: [], scopeMissing: connected };
+      const companyList = companies.companies.map((c) => ({ urn: c.urn, name: c.name ?? c.vanityName ?? c.id }));
       return res.json({
         success: true,
         connected,
         state,
         memberName: row?.linkedin_name ?? null,
         scopeMissing: companies.scopeMissing,
-        companies: companies.companies.map((c) => ({ urn: c.urn, name: c.name ?? c.vanityName ?? c.id })),
+        orgScopesGranted,
+        companies: companyList,
+        // Bedriftssiden er standard: det er den eneste avsenderen LinkedIn lar
+        // oss lese tall for (r_member_social er stengt).
+        defaultSender: companyList[0]?.urn ?? PROFILE_SENDER,
         captionMax: LINKEDIN_CAPTION_MAX,
       });
     } catch (error) {
@@ -1756,6 +1773,13 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
       });
     }
 
+    // Avsender lagres på posten: avgjør hvilken statistikk-vei KPI-connectoren
+    // kan bruke etterpå (bedriftsposter kan leses, personposter ikke).
+    const connection = await loadLinkedInPublishConnection(session.userId).catch(() => null);
+    const authorUrn =
+      organizationUrn
+      ?? (connection?.linkedin_member_id ? `urn:li:person:${connection.linkedin_member_id}` : null);
+
     const result = await dispatchPublish("linkedin", {
       connectionId: session.userId,
       userId: session.userId,
@@ -1791,12 +1815,13 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
                 external_permalink = $4,
                 publish_error = NULL,
                 caption_draft = $5,
+                published_author_urn = $6,
                 last_edited_at = now(),
                 last_edited_by_user_id = $2,
                 updated_at = now()
           WHERE id = $1
           RETURNING *`,
-        [postId, session.userId, result.externalPostId, result.permalink ?? null, caption],
+        [postId, session.userId, result.externalPostId, result.permalink ?? null, caption, authorUrn],
       );
       const planPost = updated.rows[0] ? mapPostRow(updated.rows[0] as Record<string, unknown>) : post;
       return res.json({ success: true, post: planPost, permalink: result.permalink ?? null });

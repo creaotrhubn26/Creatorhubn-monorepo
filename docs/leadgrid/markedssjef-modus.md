@@ -1,6 +1,6 @@
 # Leadgrid Markedssjef-modus — Role Room-agentens markedsplan i Leadgrid-skall
 
-**Status:** Fase 0 + fase 1 (chat-agent) + UX-rework + fase 1b (LinkedIn-publisering) levert. **Modul:** `leadgrid:marketing` (opt-in).
+**Status:** Fase 0 + fase 1 (chat-agent) + UX-rework + fase 1b/1c (LinkedIn-publisering som bedriftsside med resultattall) levert. **Modul:** `leadgrid:marketing` (opt-in).
 **Eier:** Leadgrid. **Sist oppdatert:** 2026-09-16.
 
 ## Hva det er
@@ -247,27 +247,38 @@ Migrasjon `0616_marketing_plan_posts_publish_state.sql` (additiv). `fetchLinkedI
 `social-linkedin-social-actions.ts` (delt med `social-linkedin-insights-worker.ts`), token fra
 `published_by_user_id` (fallback plan-eier). Role Room-flyten accept → feed-planner er urørt.
 
-**Avsender:** profil som standard. Bedriftsside vises i velgeren bare når tilkoblingen har
-`w_organization_social`. Dagens OAuth-app ber om `openid profile email w_member_social`
-(`role-room-linkedin-oauth-scopes.ts`), så bedriftsside blir tilgjengelig først når LinkedIn-appen
-får Community Management-godkjenning og scopet legges til der. Koden trenger ingen endring da.
+**Avsender (fase 1c):** bedriftssiden er standard når markedssjefen administrerer én; profil er
+fallback. Grunn: `r_member_social` (lese egne profilposter) er stengt for nye søkere, mens
+bedriftsposter kan leses via `organizationalEntityShareStatistics` (`r_organization_social`).
+Medlemsflyten ber nå om `w_organization_social`, `r_organization_social` og `r_organization_admin`
+i tillegg (`buildRoleRoomLinkedInOauthScopes`, `role-room-linkedin-oauth-scopes.ts`), styrt av
+`ROLE_ROOM_LINKEDIN_ORG_SCOPES` (default på; `off` fjerner dem uten deploy). Eksisterende
+tilkoblinger må kobles til på nytt for å få scopene — kortet tilbyr «Koble til på nytt for
+bedriftsside» i overflow-menyen så lenge `publish-options.orgScopesGranted` er false.
+`published_author_urn` (migrasjon 0617) lagrer hvem posten ble publisert som.
+
+**Tall:** bedriftsposter → `social-linkedin-org-share-stats.ts` (ett batch-kall per organisasjon;
+snapshots `impressions`, `unique_impressions`, `clicks`, `likes`, `comments`, `shares`,
+`engagement_rate`, `engagement`). Personposter → `socialActions` (likes/kommentarer), som gir 403
+uten `r_member_social` → stille tomt. Resultatlinjen viser visninger når de finnes.
+Evidens: `docs/evidence/2026-09-linkedin-scopes-and-stats.yaml`.
 
 **Begrensninger (ærlig):** kun tekstposter (bilde/video er fase 2); ingen planlagt publisering
-(LinkedIn UGC støtter det ikke; `scheduled_for` er informativ); ingen impressions (krever Page-
-stats); lesing av likes/kommentarer på egne poster forutsetter at LinkedIn gir `r_member_social`
-til appen — inntil da skriver `kpi-sync` ingenting for LinkedIn og resultatlinjen forblir skjult.
+(LinkedIn UGC støtter det ikke; `scheduled_for` er informativ); profilposter gir ingen tall;
+`/v2/ugcPosts` er legacy — Posts API (`/rest/posts`) er oppfølging for hele publisher-en.
 
 Tester: `role-room-marketing-plan-routes.publish.test.ts`, `role-room-kpi-connectors.linkedin.test.ts`,
+`social-linkedin-org-share-stats.test.ts`, `role-room-linkedin-oauth-scopes.test.ts`,
 `components/leadgrid/nextPostToPublish.test.ts`.
 
 ## Kjente hull (fase 2)
 
 1. **iPad-verktøy** (`leadgrid_find_duplicates`, `_enrich_company`, `_log_visit`, …) mangler
    Anthropic-verktøyskjema og server-side kjøring; `context.leads` rendres ikke i prompten.
-2. **LinkedIn: media, planlagt publisering og impressions.** Publisering er tekst-only og
+2. **LinkedIn: media, planlagt publisering og Posts API.** Publisering er tekst-only og
    umiddelbar; en kø-worker (mønster: `role-room-instagram-publish.ts`) trengs for
-   `scheduled_for`, og bilde/video krever media-generering per post. Impressions og
-   bedriftsside krever nye LinkedIn-scopes (`r_member_social`, `w_organization_social`).
+   `scheduled_for`, og bilde/video krever media-generering per post. Publisher-en bruker
+   legacy `/v2/ugcPosts` — migrer til `/rest/posts` (gjelder også `cockpit-b2b-routes.ts`).
 3. **Versjonshistorikk** for lg-planer (FK på versjonstabellen).
 4. **Tenant-hardening**: `organization_id` på `brand_kits`, `role_room_marketing_plans`,
    `role_room_feed_plans`, `role_room_ai_consent` (0530-presedens) i stedet for syntetisk

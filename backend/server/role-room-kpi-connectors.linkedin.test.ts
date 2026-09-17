@@ -54,6 +54,75 @@ const now = () => new Date("2026-09-17T10:00:00Z");
 
 beforeEach(() => vi.clearAllMocks());
 
+function makeOrgStatsFetch(byPostId: Record<string, Record<string, number>>) {
+  const calls: string[] = [];
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push(`${url}|${(init?.headers as Record<string, string>)?.["LinkedIn-Version"] ?? ""}`);
+    if (!url.includes("/rest/organizationalEntityShareStatistics")) {
+      return { ok: false, status: 403, json: async () => ({}) } as unknown as Response;
+    }
+    const elements = Object.entries(byPostId).map(([id, t]) => ({
+      ugcPost: `urn:li:ugcPost:${id}`,
+      totalShareStatistics: t,
+    }));
+    return { ok: true, status: 200, json: async () => ({ elements }) } as unknown as Response;
+  });
+  return { fetchImpl: fetchImpl as unknown as typeof fetch, calls };
+}
+
+describe("fetchLinkedInKpisForPosts — bedriftsposter", () => {
+  it("reads organization share statistics in one batched call per organisation", async () => {
+    const pool = makePool({ "markedssjef-1": "enc-a" });
+    const { fetchImpl, calls } = makeOrgStatsFetch({
+      "111": { impressionCount: 1200, uniqueImpressionsCount: 900, clickCount: 40, likeCount: 12, commentCount: 3, shareCount: 1, engagement: 0.0467 },
+      "112": { impressionCount: 300, clickCount: 5, likeCount: 2, commentCount: 0, shareCount: 0, engagement: 0.0233 },
+    });
+    const snapshots = await fetchLinkedInKpisForPosts(
+      pool,
+      "lg-x",
+      "plan-1",
+      [
+        { id: "a", feedPlanPostId: null, primaryPlatform: "linkedin", externalPostId: "111", publishedByUserId: "markedssjef-1", publishedAuthorUrn: "urn:li:organization:42" },
+        { id: "b", feedPlanPostId: null, primaryPlatform: "linkedin", externalPostId: "112", publishedByUserId: "markedssjef-1", publishedAuthorUrn: "urn:li:organization:42" },
+      ],
+      { fetchImpl, now },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("organizationalEntity=urn%3Ali%3Aorganization%3A42");
+    expect(calls[0]).toContain("urn%3Ali%3AugcPost%3A111");
+    expect(calls[0]).toContain("urn%3Ali%3AugcPost%3A112");
+    expect(calls[0].split("|")[1]).toMatch(/^\d{6}$/); // LinkedIn-Version header satt
+    const a = snapshots.filter((s) => s.postId === "a");
+    expect(Object.fromEntries(a.map((s) => [s.metric, s.value]))).toEqual({
+      impressions: 1200,
+      unique_impressions: 900,
+      clicks: 40,
+      likes: 12,
+      comments: 3,
+      shares: 1,
+      engagement_rate: 0.0467,
+      engagement: 16,
+    });
+    const b = snapshots.filter((s) => s.postId === "b");
+    expect(b.find((s) => s.metric === "unique_impressions")).toBeUndefined();
+    expect(b.find((s) => s.metric === "impressions")?.value).toBe(300);
+    expect(snapshots.every((s) => s.source === "linkedin_pages" && s.platform === "linkedin")).toBe(true);
+  });
+
+  it("stays silent (no snapshots) when LinkedIn refuses the statistics call", async () => {
+    const pool = makePool({ "owner-1": "enc" });
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 403, json: async () => ({}) })) as unknown as typeof fetch;
+    const snapshots = await fetchLinkedInKpisForPosts(
+      pool,
+      "lg-x",
+      "plan-1",
+      [{ id: "a", feedPlanPostId: null, primaryPlatform: "linkedin", externalPostId: "1", publishedByUserId: null, publishedAuthorUrn: "urn:li:organization:42" }],
+      { fetchImpl, now },
+    );
+    expect(snapshots).toEqual([]);
+  });
+});
+
 describe("fetchLinkedInKpisForPosts", () => {
   it("writes likes, comments and engagement for posts with an external id, using the publisher's token", async () => {
     const pool = makePool({ "markedssjef-1": "enc-a" });

@@ -70,6 +70,8 @@ export interface PersistedPlanPost extends GeneratedPlanPost {
   externalPostId: string | null;
   externalPermalink: string | null;
   publishedPlatform: string | null;
+  /** urn:li:person:… eller urn:li:organization:… — hvem posten ble publisert som. */
+  publishedAuthorUrn: string | null;
   publishError: string | null;
 }
 
@@ -331,6 +333,7 @@ export function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
     externalPostId: (row.external_post_id as string | null) ?? null,
     externalPermalink: (row.external_permalink as string | null) ?? null,
     publishedPlatform: (row.published_platform as string | null) ?? null,
+    publishedAuthorUrn: (row.published_author_urn as string | null) ?? null,
     publishError: (row.publish_error as string | null) ?? null,
     pillarIndex: 0, // unused after persistence
   } as unknown as PersistedPlanPost;
@@ -565,7 +568,7 @@ export async function listPlanPosts(
               p.last_edited_at, p.last_edited_by_user_id,
               p.last_edited_by_kind,
               p.external_post_id, p.external_permalink, p.published_platform,
-              p.publish_error,
+              p.published_author_urn, p.publish_error,
               u.email AS last_edited_by_name
          FROM role_room_marketing_plan_posts p
          LEFT JOIN users u ON u.id = p.last_edited_by_user_id

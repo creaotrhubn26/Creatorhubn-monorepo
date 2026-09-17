@@ -3588,7 +3588,9 @@ export const roleRoomAgentService = {
       state: payload.state ?? 'disconnected',
       memberName: payload.memberName ?? null,
       scopeMissing: Boolean(payload.scopeMissing),
+      orgScopesGranted: Boolean(payload.orgScopesGranted),
       companies: Array.isArray(payload.companies) ? payload.companies : [],
+      defaultSender: payload.defaultSender ?? '__profile__',
       captionMax: payload.captionMax ?? 3000,
     };
   },
@@ -4113,6 +4115,8 @@ export interface MarketingPlanPost {
   externalPostId?: string | null;
   externalPermalink?: string | null;
   publishedPlatform?: string | null;
+  /** urn:li:person:… eller urn:li:organization:… */
+  publishedAuthorUrn?: string | null;
   publishError?: string | null;
 }
 
@@ -4120,8 +4124,12 @@ export interface MarketingPlanLinkedInPublishOptions {
   connected: boolean;
   state: string;
   memberName: string | null;
+  /** Tilkoblingen mangler organisasjons-scopene (koble til på nytt gir dem). */
   scopeMissing: boolean;
+  orgScopesGranted: boolean;
   companies: Array<{ urn: string; name: string }>;
+  /** Bedriftsside-URN når markedssjefen administrerer én, ellers '__profile__'. */
+  defaultSender: string;
   captionMax: number;
 }
 

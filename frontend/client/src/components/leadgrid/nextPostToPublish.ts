@@ -55,3 +55,18 @@ export function defaultCaptionFor(post: MarketingPlanPost): string {
   const parts = [post.captionDraft?.trim(), post.callToAction?.trim()].filter(Boolean);
   return parts.length > 0 ? parts.join("\n\n") : post.hook.trim();
 }
+
+export const PROFILE_SENDER = "__profile__";
+
+/**
+ * Avsender som forhåndsvelges i kortet. Backend foreslår bedriftssiden når
+ * markedssjefen administrerer én (eneste avsender LinkedIn lar oss lese tall
+ * for); forslaget må finnes i listen, ellers profil.
+ */
+export function pickDefaultSender(
+  defaultSender: string | null | undefined,
+  companies: Array<{ urn: string }>,
+): string {
+  if (defaultSender && companies.some((c) => c.urn === defaultSender)) return defaultSender;
+  return companies[0]?.urn ?? PROFILE_SENDER;
+}
