@@ -538,6 +538,18 @@ function CastingStandaloneRuntimeContent() {
   // aldri sendt inn herfra, så en innlogget talent hadde ingen vei ut av
   // appen — hverken for å bytte konto eller for å logge av på delt maskin.
   const auth = useAuth();
+  // useAuth.logout rydder creatorhub_*-nøklene, men Role Room har sin egen
+  // sesjon i role_room_auth_token/-session. Uten denne overlever den
+  // utloggingen: serveren svarer 200, siden laster på nytt, og appen tegner
+  // seg fortsatt som innlogget på kontoen du nettopp forlot.
+  const handleLogout = useCallback(async () => {
+    try {
+      await authSessionService.clearSession();
+    } catch {
+      // Utlogging skal skje uansett om opprydningen feiler.
+    }
+    await auth.logout();
+  }, [auth]);
   const adminLensRequested = isSuperAdminSession
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search || '').get('lens') === 'admin';
@@ -904,7 +916,7 @@ function CastingStandaloneRuntimeContent() {
           <ToastProvider position="bottom-right">
             <TalentsApp
               initialPage={talentsAppPage ?? undefined}
-              onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
+              onLogout={() => { void handleLogout(); }}
             />
           </ToastProvider>
         ) : (
