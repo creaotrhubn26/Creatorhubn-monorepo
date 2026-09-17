@@ -69,6 +69,7 @@ import { gameTabIcon } from '../game/gameShellIcons';
 import { StoryPanel } from './story/StoryPanel';
 import { ComponentGalleryPanel } from './characters/ComponentGalleryPanel';
 import { PlatformPanel } from './platform/PlatformPanel';
+import { PlanPanel } from './plan/PlanPanel';
 import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
 import { htmlToText, type NarrativeElementKind } from './narrativeTypes';
@@ -346,6 +347,8 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         return <ComponentGalleryPanel projectId={projectId} kind="character" graph={graph} store={store} refreshKey={scenesTick} onOpenScene={(sceneId) => navigateTo('scenes', { sceneId })} onNotice={(message, severity) => setNotice({ message, severity })} />;
       case 'locations':
         return <ComponentGalleryPanel projectId={projectId} kind="location" graph={graph} store={store} refreshKey={scenesTick} onOpenScene={(sceneId) => navigateTo('scenes', { sceneId })} onNotice={(message, severity) => setNotice({ message, severity })} />;
+      case 'plan':
+        return <PlanPanel projectId={projectId} refreshKey={scenesTick + productionTick} onOpenScene={(sceneId) => navigateTo('scenes', { sceneId })} onNotice={(message, severity) => setNotice({ message, severity })} />;
       case 'platform':
         return <PlatformPanel projectId={projectId} refreshKey={productionTick} onNotice={(message, severity) => setNotice({ message, severity })} />;
       case 'boards':
