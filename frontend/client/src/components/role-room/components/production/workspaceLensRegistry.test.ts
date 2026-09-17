@@ -5,6 +5,7 @@ import {
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
   matchesLensProjectRole,
+  isLensDecisionPending,
   resolveLensUrlState,
   resolveWorkspaceLens,
   type RoleWorkspaceLens,
@@ -212,5 +213,21 @@ describe('admin lens', () => {
       plannerSurface: 'roles',
       scenes: {},
     })).toEqual({ lens: 'admin', surface: '', scene: '' });
+  });
+});
+
+describe('isLensDecisionPending', () => {
+  it('holds the admin lens while the server has not answered', () => {
+    expect(isLensDecisionPending('admin', false)).toBe(true);
+  });
+
+  it('releases it once the gate has settled, allowed or not', () => {
+    expect(isLensDecisionPending('admin', true)).toBe(false);
+  });
+
+  it('never holds a lens that is decided locally', () => {
+    expect(isLensDecisionPending('director', false)).toBe(false);
+    expect(isLensDecisionPending('full', false)).toBe(false);
+    expect(isLensDecisionPending(null, false)).toBe(false);
   });
 });
