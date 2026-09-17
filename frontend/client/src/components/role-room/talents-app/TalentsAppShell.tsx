@@ -48,6 +48,7 @@ import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 
 import TalentsLogo from './TalentsLogo';
 import { palette, radius } from './theme';
+import SurfaceSwitcher from '../shared/SurfaceSwitcher';
 
 export type TalentsAppPage =
   | 'dashboard'
@@ -276,6 +277,11 @@ export default function TalentsAppShell({
           </Box>
 
           <Box sx={{ flexGrow: 1 }} />
+
+          {/* Talents-appen er en søskengren til RoleRoomUXLayer, så
+              flatevelgeren der nådde aldri hit — og det var nettopp her en
+              talent satt fast uten vei ut. */}
+          <SurfaceSwitcher />
 
           <IconButton sx={{ color: palette.textMuted }}>
             <NotificationsNoneIcon />
