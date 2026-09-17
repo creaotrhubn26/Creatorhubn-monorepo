@@ -235,7 +235,7 @@ export default function ClientEconomyPanel({
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Samlet avkastning (ROAS)
               </Typography>
-              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c6bdf4,#c6bdf4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
+              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c6bdf4,#9e8cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
                 {results.totals.roas.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '13px', mt: 0.6, maxWidth: 360 }}>

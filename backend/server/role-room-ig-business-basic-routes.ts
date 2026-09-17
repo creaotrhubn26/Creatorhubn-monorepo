@@ -122,24 +122,24 @@ export function setupIgBusinessBasicRoutes(deps: SetupIgBusinessBasicRoutesDeps)
   h3{margin:24px 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
   label{display:block;font-size:13px;font-weight:600;color:#cbd5e1;margin:12px 0 6px}
   input{width:100%;padding:12px;border-radius:8px;border:1px solid #475569;background:#0f1729;color:#f1f5f9;font-size:14px;font-family:inherit}
-  button{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:14px;transition:transform .12s}
+  button{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#8875eb,#ec4899);color:#fff;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:14px;transition:transform .12s}
   button:hover{transform:translateY(-1px);filter:brightness(1.1)}
   button:disabled{opacity:.5;cursor:wait}
   button.connect{background:linear-gradient(135deg,#1877F2,#3b5998)}
   pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#fbcfe8;margin-top:8px;max-height:380px}
   .status-ok{color:#22c55e} .status-err{color:#f87171}
-  .badge{display:inline-block;background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(236,72,153,.2));color:#c4b5fd;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .badge{display:inline-block;background:linear-gradient(135deg,rgba(136, 117, 235,.2),rgba(236,72,153,.2));color:#c4b5fd;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .hint{color:#94a3b8;font-size:12px;margin-top:6px}
   .step-note{background:#0f1729;border:1px dashed #475569;border-radius:10px;padding:16px;margin-top:14px;color:#cbd5e1;font-size:13px;line-height:1.6}
   .profile-card{display:flex;gap:18px;align-items:center;background:#0f1729;border:1px solid #334155;border-radius:12px;padding:18px;margin-top:8px}
-  .profile-card img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:2px solid #8b5cf6;background:#1e293b}
+  .profile-card img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:2px solid #8875eb;background:#1e293b}
   .profile-meta{flex:1;min-width:0}
   .profile-username{color:#fce7f3;font-weight:800;font-size:18px}
   .profile-name{color:#cbd5e1;font-size:14px;margin-top:2px}
   .profile-stats{display:flex;gap:18px;margin-top:10px;font-size:12px;color:#94a3b8;flex-wrap:wrap}
   .profile-stats b{color:#c4b5fd}
-  .acct-pill{display:inline-block;background:rgba(139,92,246,.18);color:#c4b5fd;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;margin-top:8px}
+  .acct-pill{display:inline-block;background:rgba(136, 117, 235,.18);color:#c4b5fd;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;margin-top:8px}
 </style></head>
 <body>
 <div class="card" data-testid="ig-basic-demo-root">
@@ -204,7 +204,7 @@ function renderProfile(payload) {
   const p = payload.profile || {};
   const img = p.profilePictureUrl
     ? '<img data-testid="profile-pic" src="' + esc(p.profilePictureUrl) + '" alt="profile" />'
-    : '<div style="width:84px;height:84px;border-radius:50%;background:#1e293b;border:2px solid #8b5cf6"></div>';
+    : '<div style="width:84px;height:84px;border-radius:50%;background:#1e293b;border:2px solid #8875eb"></div>';
   const card = '<div class="profile-card" data-testid="profile-card">'
     + img
     + '<div class="profile-meta">'

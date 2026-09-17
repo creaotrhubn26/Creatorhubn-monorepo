@@ -169,9 +169,9 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
             fontWeight: 700,
             borderRadius: 2.5,
             textTransform: 'none',
-            background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+            background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+              background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
             },
           }}
         >

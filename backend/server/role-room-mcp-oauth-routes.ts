@@ -108,7 +108,7 @@ export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
 <form method="post" action="${OAUTH_BASE}/authorize">
   ${["client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope"].map((k) => `<input type="hidden" name="${k}" value="${esc(q[k] || "")}">`).join("")}
   <input name="rr_session" type="password" placeholder="Role Room økt-token" required style="width:100%;padding:10px;margin:8px 0;border:1px solid #ccc;border-radius:8px">
-  <button name="decision" value="approve" style="background:#8B5CF6;color:#fff;border:0;padding:12px 18px;border-radius:8px;font-weight:700;cursor:pointer">Godkjenn</button>
+  <button name="decision" value="approve" style="background:#8875eb;color:#fff;border:0;padding:12px 18px;border-radius:8px;font-weight:700;cursor:pointer">Godkjenn</button>
   <button name="decision" value="deny" style="background:#eee;border:0;padding:12px 18px;border-radius:8px;margin-left:8px;cursor:pointer">Avslå</button>
 </form></body>`);
   });

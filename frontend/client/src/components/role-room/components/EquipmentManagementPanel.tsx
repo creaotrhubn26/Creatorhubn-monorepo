@@ -448,7 +448,7 @@ const ROLE_ROOM_DIALOG_ACCENTS: Record<RoleRoomDialogAccent, {
 }> = {
   primary: {
     headerGradient: 'linear-gradient(135deg, rgba(98, 73, 223,0.15) 0%, rgba(71, 43, 212,0.1) 100%)',
-    iconGradient: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+    iconGradient: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
     iconBorder: '1px solid rgba(224, 219, 250,0.34)',
     iconShadow: '0 8px 20px rgba(98, 73, 223,0.3)',
   },
@@ -478,7 +478,7 @@ const ROLE_ROOM_DIALOG_ACCENTS: Record<RoleRoomDialogAccent, {
   },
   violet: {
     headerGradient: 'linear-gradient(135deg, rgba(60, 39, 165,0.15) 0%, rgba(60, 39, 165,0.1) 100%)',
-    iconGradient: 'linear-gradient(135deg, #3c27a5 0%, #3c27a5 100%)',
+    iconGradient: 'linear-gradient(135deg, #3c27a5 0%, #301f84 100%)',
     iconBorder: '1px solid rgba(224, 219, 250,0.32)',
     iconShadow: '0 8px 20px rgba(60, 39, 165,0.3)',
   },
@@ -3947,7 +3947,7 @@ export function EquipmentManagementPanel({
             width: 48,
             height: 48,
             borderRadius: 2,
-            background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+            background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -4051,7 +4051,7 @@ export function EquipmentManagementPanel({
             startIcon={<AddIcon />}
             onClick={handleOpenCreateTypeDialog}
             sx={{
-              background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+              background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
               color: '#fff',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
@@ -7954,7 +7954,7 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Kamera', 'https://www.foto.no/foto/kamera')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
@@ -7971,7 +7971,7 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Lys', 'https://www.foto.no/foto/foto-tilbehor/belysning')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
@@ -7988,7 +7988,7 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Video', 'https://www.foto.no/video')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
@@ -8005,7 +8005,7 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Lyd', 'https://www.foto.no/lyd')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)',
+                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,

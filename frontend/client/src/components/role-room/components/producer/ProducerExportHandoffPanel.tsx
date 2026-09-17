@@ -1025,9 +1025,9 @@ export default function ProducerExportHandoffPanel({
               sx={{
                 textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
                 px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
-                background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+                background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
                 color: '#fff', boxShadow: '0 8px 24px rgba(136, 117, 235,0.35)',
-                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #6249df 100%)' },
+                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                 '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
               }}
             >

@@ -597,7 +597,7 @@ const inputSx: React.CSSProperties = {
 };
 
 const primaryBtnSx: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #472bd4, #472bd4)',
+  background: 'linear-gradient(135deg, #472bd4, #3c27a5)',
   border: 0, color: '#fff',
   padding: '5px 12px', fontSize: 11, fontWeight: 600,
   borderRadius: 3,

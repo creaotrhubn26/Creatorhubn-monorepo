@@ -78,7 +78,7 @@ function LandingHeroImpl({ introShowing }: LandingHeroProps) {
     textTransform: 'uppercase' as const,
     mb: 2,
     minHeight: '1.4em',
-    background: 'linear-gradient(90deg, #fff 0%, #8875eb 55%, #8875eb 100%)',
+    background: 'linear-gradient(90deg, #fff 0%, #8875eb 55%, #6249df 100%)',
     backgroundClip: 'text',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',

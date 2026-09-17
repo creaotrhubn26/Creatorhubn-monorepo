@@ -2023,7 +2023,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     .summary-number { font-size: 36px; font-weight: 800; color: #3c27a5; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg, #3c27a5 0%, #3c27a5 100%); border-radius: 10px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #3c27a5 0%, #301f84 100%); border-radius: 10px; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
     .section-title { font-size: 24px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 12px; letter-spacing: -0.4px; }
@@ -2032,7 +2032,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #3c27a5 0%, #3c27a5 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #3c27a5 0%, #301f84 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -3449,7 +3449,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       left: 0,
                                       right: 0,
                                       height: '3px',
-                                      background: 'linear-gradient(90deg, #3c27a5 0%, #3c27a5 50%, #3c27a5 100%)',
+                                      background: 'linear-gradient(90deg, #3c27a5 0%, #3c27a5 50%, #301f84 100%)',
                                     },
                                   }}
                                 >
@@ -3464,7 +3464,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       minWidth: { xs: 70, sm: 85, md: 95 },
                                       height: { xs: 70, sm: 85, md: 95 },
                                       borderRadius: 3,
-                                      background: 'linear-gradient(135deg, #3c27a5 0%, #3c27a5 100%)',
+                                      background: 'linear-gradient(135deg, #3c27a5 0%, #301f84 100%)',
                                       border: '3px solid rgba(255,255,255,0.3)',
                                       boxShadow: '0 4px 16px rgba(60, 39, 165,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
                                       overflow: 'hidden',

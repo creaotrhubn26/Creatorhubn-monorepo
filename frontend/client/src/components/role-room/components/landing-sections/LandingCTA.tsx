@@ -49,10 +49,10 @@ function LandingCTAImpl({ onStartClick, onGuestEnter }: LandingCTAProps) {
             fontWeight: 600,
             borderRadius: 3,
             minHeight: 56,
-            background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+            background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
             boxShadow: '0 8px 32px rgba(136, 117, 235,0.4)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+              background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
               boxShadow: '0 12px 40px rgba(136, 117, 235,0.55)',
               transform: 'translateY(-2px)',
             },

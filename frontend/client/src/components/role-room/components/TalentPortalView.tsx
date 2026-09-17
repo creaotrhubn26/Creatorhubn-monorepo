@@ -738,7 +738,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
           py: { xs: 3, md: 4 },
           color: TEXT_PRIMARY,
           background:
-            'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 28%), radial-gradient(circle at top right, rgba(136, 117, 235,0.15), transparent 26%), linear-gradient(180deg, #0a0515 0%, #0a0515 46%, #0a0515 100%)',
+            'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 28%), radial-gradient(circle at top right, rgba(136, 117, 235,0.15), transparent 26%), linear-gradient(180deg, #0a0515 0%, #0a0515 46%, #100b1e 100%)',
         }}
       >
         <Box sx={{ ...cardSx, maxWidth: 820, mx: 'auto', p: { xs: 3, md: 4 } }}>
@@ -806,7 +806,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
         py: { xs: 2.25, md: 3.5 },
         color: TEXT_PRIMARY,
         background:
-          'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 24%), radial-gradient(circle at top right, rgba(136, 117, 235,0.16), transparent 26%), radial-gradient(circle at bottom left, rgba(52,211,153,0.12), transparent 22%), linear-gradient(180deg, #0a0515 0%, #0a0515 42%, #0a0515 100%)',
+          'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 24%), radial-gradient(circle at top right, rgba(136, 117, 235,0.16), transparent 26%), radial-gradient(circle at bottom left, rgba(52,211,153,0.12), transparent 22%), linear-gradient(180deg, #0a0515 0%, #0a0515 42%, #100b1e 100%)',
       }}
     >
       <Box
