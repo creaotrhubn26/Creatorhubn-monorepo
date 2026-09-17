@@ -187,7 +187,7 @@ const CrewRow: React.FC<CrewRowProps> = ({ member }) => {
       }}
     >
       <Stack direction="row" spacing={1.5} alignItems="center">
-        <Avatar sx={{ width: 40, height: 40, bgcolor: '#6366f1', fontSize: 14, fontWeight: 700 }}>
+        <Avatar sx={{ width: 40, height: 40, bgcolor: '#8875eb', fontSize: 14, fontWeight: 700 }}>
           {initialsOf(member.name)}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -227,7 +227,7 @@ const CrewRow: React.FC<CrewRowProps> = ({ member }) => {
             size="small"
             label={member.__synced ? member.availability : `Tilgjengelig: ${member.availability}`}
             variant="outlined"
-            sx={member.__synced ? { borderColor: '#a030c0', color: '#c07fe0' } : undefined}
+            sx={member.__synced ? { borderColor: '#472bd4', color: '#8875eb' } : undefined}
           />
           {member.__synced ? (
             <Tooltip title="Synket fra medlemmets egen kalender" arrow>
@@ -236,8 +236,8 @@ const CrewRow: React.FC<CrewRowProps> = ({ member }) => {
                   width: 7,
                   height: 7,
                   borderRadius: '50%',
-                  bgcolor: '#a030c0',
-                  boxShadow: '0 0 4px rgba(160,48,192,0.9)',
+                  bgcolor: '#472bd4',
+                  boxShadow: '0 0 4px rgba(71, 43, 212,0.9)',
                   flexShrink: 0,
                 }}
               />

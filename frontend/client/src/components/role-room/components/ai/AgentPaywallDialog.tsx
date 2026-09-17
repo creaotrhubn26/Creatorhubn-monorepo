@@ -211,12 +211,12 @@ const Option: React.FC<OptionProps> = ({ icon, title, detail, cta, onClick, disa
       p: 2,
       borderRadius: 2,
       border: '1px solid',
-      borderColor: emphasis ? '#6366f1' : 'divider',
-      bgcolor: emphasis ? 'rgba(99,102,241,0.06)' : 'background.paper',
+      borderColor: emphasis ? '#8875eb' : 'divider',
+      bgcolor: emphasis ? 'rgba(136, 117, 235,0.06)' : 'background.paper',
     }}
   >
     <Stack direction="row" spacing={1.5} alignItems="flex-start">
-      <Box sx={{ color: emphasis ? '#6366f1' : 'text.secondary', mt: 0.5 }}>{icon}</Box>
+      <Box sx={{ color: emphasis ? '#8875eb' : 'text.secondary', mt: 0.5 }}>{icon}</Box>
       <Box sx={{ flex: 1 }}>
         <Typography variant="subtitle2" fontWeight={700}>
           {title}

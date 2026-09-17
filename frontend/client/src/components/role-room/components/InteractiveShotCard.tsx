@@ -29,8 +29,8 @@ const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: 
   },
   in_progress: { 
     label: 'Pågår', 
-    color: '#9333ea', 
-    bgColor: 'rgba(147,51,234,0.15)',
+    color: '#6249df', 
+    bgColor: 'rgba(98, 73, 223,0.15)',
     icon: <PlayArrow sx={{ fontSize: 18 }} />
   },
   completed: { 
@@ -43,14 +43,14 @@ const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: 
 
 const priorityConfig: Record<ShotPriority, { label: string; color: string; weight: number }> = {
   critical: { label: 'Kritisk', color: '#f44336', weight: 3 },
-  important: { label: 'Viktig', color: '#9333ea', weight: 2 },
+  important: { label: 'Viktig', color: '#6249df', weight: 2 },
   nice_to_have: { label: 'Bonus', color: '#9e9e9e', weight: 1 },
 };
 
 const mediaTypeConfig: Record<MediaType, { label: string; icon: ReactNode; color: string }> = {
   photo: { label: 'Foto', icon: <PhotoCamera sx={{ fontSize: 16 }} />, color: '#2196f3' },
   video: { label: 'Video', icon: <Videocam sx={{ fontSize: 16 }} />, color: '#e91e63' },
-  hybrid: { label: 'Hybrid', icon: <CameraRoll sx={{ fontSize: 16 }} />, color: '#9c27b0' },
+  hybrid: { label: 'Hybrid', icon: <CameraRoll sx={{ fontSize: 16 }} />, color: '#3c27a5' },
 };
 
 export const InteractiveShotCard: FC<InteractiveShotCardProps> = ({
@@ -358,8 +358,8 @@ export const InteractiveShotCard: FC<InteractiveShotCardProps> = ({
                 )}
                 {shot.lightingSetup && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Lightbulb sx={{ fontSize: 14, color: '#c084fc' }} />
-                    <Typography variant="caption" sx={{ color: '#c084fc', fontSize: 11 }}>
+                    <Lightbulb sx={{ fontSize: 14, color: '#9e8cf8' }} />
+                    <Typography variant="caption" sx={{ color: '#9e8cf8', fontSize: 11 }}>
                       {shot.lightingSetup}
                     </Typography>
                   </Box>
@@ -422,9 +422,9 @@ export const InteractiveShotCard: FC<InteractiveShotCardProps> = ({
               left: 0,
               right: 0,
               height: 2,
-              bgcolor: 'rgba(147,51,234,0.2)',
+              bgcolor: 'rgba(98, 73, 223,0.2)',
               '& .MuiLinearProgress-bar': {
-                bgcolor: '#9333ea',
+                bgcolor: '#6249df',
               },
             }}
           />

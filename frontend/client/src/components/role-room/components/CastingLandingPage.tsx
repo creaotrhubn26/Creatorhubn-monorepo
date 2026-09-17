@@ -156,7 +156,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   if (cmsBlocks) {
     return (
       <Box
-        sx={{ width: '100%', minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0' }}
+        sx={{ width: '100%', minHeight: '100vh', bgcolor: '#0a0515', color: '#e2e8f0' }}
         data-testid="role-room-landing-cms"
       >
         <BlockRenderer blocks={cmsBlocks} locale={locale} />
@@ -177,7 +177,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
       sx={{
         width: '100%',
         minHeight: '100vh',
-        bgcolor: '#0a0a0f',
+        bgcolor: '#0a0515',
         overflowX: loginDialogOpen ? 'visible' : 'hidden',
         overflowY: loginDialogOpen ? 'visible' : 'auto',
         position: 'relative',

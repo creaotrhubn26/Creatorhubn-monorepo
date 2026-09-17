@@ -170,19 +170,19 @@ interface LocationProMetrics {
 }
 
 const ROLE_ROOM_COLORS = {
-  accent: '#a855f7',
-  accentStrong: '#9333ea',
-  accentSoft: 'rgba(168,85,247,0.18)',
-  accentBorder: 'rgba(168,85,247,0.4)',
+  accent: '#8875eb',
+  accentStrong: '#6249df',
+  accentSoft: 'rgba(136, 117, 235,0.18)',
+  accentBorder: 'rgba(136, 117, 235,0.4)',
   secondary: 'var(--role-cyan, #22d3ee)',
   secondarySoft: 'rgba(34,211,238,0.18)',
   mutedText: 'rgba(255,255,255,0.74)',
-  panel: 'rgba(20,16,46,0.72)',
-  panelBorder: 'rgba(168,85,247,0.22)',
+  panel: 'rgba(24, 18, 43,0.72)',
+  panelBorder: 'rgba(136, 117, 235,0.22)',
 };
 
 const LOCATION_PRO_VIEWS_NAMESPACE = 'roleRoom_locationProViews';
-const APPROVED_ANNOTATION_COLORS = new Set(['#a855f7', 'var(--role-cyan, #22d3ee)', '#34d399', '#f59e0b', '#ef4444', '#c084fc', '#8b5cf6']);
+const APPROVED_ANNOTATION_COLORS = new Set(['#8875eb', 'var(--role-cyan, #22d3ee)', '#34d399', '#f59e0b', '#ef4444', '#9e8cf8', '#8875eb']);
 
 const PRO_PRESET_LABELS: Record<ProPresetId, string> = {
   all: 'Alle',
@@ -972,10 +972,10 @@ export function LocationManagementPanel({
 
   const getTypeColor = (type: Location['type']): string => {
     const colors: Record<NonNullable<Location['type']>, string> = {
-      studio: '#c084fc',
+      studio: '#9e8cf8',
       outdoor: '#34d399',
       indoor: 'var(--role-cyan, #22d3ee)',
-      virtual: '#a855f7',
+      virtual: '#8875eb',
       other: '#94a3b8',
     };
     return colors[getLocationTypeValue(type)] || '#94a3b8';
@@ -2105,7 +2105,7 @@ export function LocationManagementPanel({
     const totalLocations = locations.length;
     const locationsWithScenes = locations.filter(loc => loc.assignedScenes.length > 0).length;
 
-    const locationIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const locationIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8875eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
       <circle cx="12" cy="10" r="3"/>
     </svg>`;
@@ -2120,16 +2120,16 @@ export function LocationManagementPanel({
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
     .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #a855f7; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #a855f7; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #8875eb; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #8875eb; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
     .title svg { flex-shrink: 0; }
     .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #a855f7; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #a855f7; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #8875eb; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #8875eb; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
     .summary-title svg { flex-shrink: 0; }
     .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
     .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #a855f7; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #8875eb; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
@@ -2139,7 +2139,7 @@ export function LocationManagementPanel({
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #a855f7 0%, #6d28d9 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #8875eb 0%, #472bd4 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -3123,16 +3123,16 @@ export function LocationManagementPanel({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.28) 0%, rgba(34, 211, 238, 0.2) 100%)',
+              background: 'linear-gradient(135deg, rgba(136, 117, 235, 0.28) 0%, rgba(34, 211, 238, 0.2) 100%)',
               border: `2px solid ${ROLE_ROOM_COLORS.accentBorder}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(168,85,247,0.26)',
+              boxShadow: '0 4px 14px rgba(136, 117, 235,0.26)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 18px rgba(168,85,247,0.35)',
+                boxShadow: '0 6px 18px rgba(136, 117, 235,0.35)',
               },
               '@media (min-width: 2048px)': { width: 78, height: 78, borderRadius: 3.2 },
               '@media (min-width: 3840px)': { width: 92, height: 92, borderRadius: 3.6 },
@@ -3141,7 +3141,7 @@ export function LocationManagementPanel({
           >
             <PlaceIcon
               sx={{
-                color: '#c4b5fd',
+                color: '#c6bdf4',
                 fontSize: { xs: 26, sm: 32, md: 30, lg: 36, xl: 42 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                 '@media (min-width: 2048px)': { fontSize: 48 },
@@ -3162,7 +3162,7 @@ export function LocationManagementPanel({
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #c4b5fd 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #c6bdf4 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -3293,7 +3293,7 @@ export function LocationManagementPanel({
               aria-label="Ny lokasjon"
               startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
-                bgcolor: '#6d28d9 !important',
+                bgcolor: '#472bd4 !important',
                 color: '#fff !important',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3302,7 +3302,7 @@ export function LocationManagementPanel({
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                 flex: { xs: 1, sm: 'none' },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: '#5b21b6 !important' },
+                '&:hover': { bgcolor: '#3c27a5 !important' },
               }}
             >
               {isMobile ? '' : 'Ny lokasjon'}
@@ -3343,9 +3343,9 @@ export function LocationManagementPanel({
         >
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <LocationIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#a855f7' }} />
+              <LocationIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#8875eb' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#a855f7', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: '#8875eb', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.total}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
@@ -3361,9 +3361,9 @@ export function LocationManagementPanel({
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <MapIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9333ea' }} />
+              <MapIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#6249df' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: '#6249df', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.withCoordinates}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Med koordinater</Typography>
@@ -3683,7 +3683,7 @@ export function LocationManagementPanel({
               }}
               aria-label="Tøm alle aktive filtre og sortering"
               sx={{
-                color: '#9333ea',
+                color: '#6249df',
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
@@ -3704,9 +3704,9 @@ export function LocationManagementPanel({
           severity="info"
           sx={{
             mb: 2,
-            bgcolor: 'rgba(168,85,247,0.1)',
+            bgcolor: 'rgba(136, 117, 235,0.1)',
             color: '#fff',
-            '& .MuiAlert-icon': { color: '#a855f7' },
+            '& .MuiAlert-icon': { color: '#8875eb' },
           }}
         >
           Viser {filteredAndSortedLocations.length} av {locations.length} lokasjoner
@@ -3719,7 +3719,7 @@ export function LocationManagementPanel({
           iconSrc={locationPng}
           title="Ingen lokasjoner ennå"
           subtitle="Legg til lokasjoner for å organisere produksjonslokasjoner"
-          color="#a855f7"
+          color="#8875eb"
         />
       ) : filteredAndSortedLocations.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
@@ -3760,7 +3760,7 @@ export function LocationManagementPanel({
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedLocations.length}
                     onChange={handleSelectAll}
                     aria-label="Velg alle lokasjoner"
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#8875eb' } }}
                   />
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3768,7 +3768,7 @@ export function LocationManagementPanel({
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#8875eb' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -3778,7 +3778,7 @@ export function LocationManagementPanel({
                     active={sortField === 'type'}
                     direction={sortField === 'type' ? sortDirection : 'asc'}
                     onClick={() => handleSort('type')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#8875eb' } }}
                   >
                     Type
                   </TableSortLabel>
@@ -3789,7 +3789,7 @@ export function LocationManagementPanel({
                     active={sortField === 'capacity'}
                     direction={sortField === 'capacity' ? sortDirection : 'asc'}
                     onClick={() => handleSort('capacity')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#8875eb' } }}
                   >
                     Kapasitet
                   </TableSortLabel>
@@ -3799,7 +3799,7 @@ export function LocationManagementPanel({
                     active={sortField === 'scenes'}
                     direction={sortField === 'scenes' ? sortDirection : 'asc'}
                     onClick={() => handleSort('scenes')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#8875eb' } }}
                   >
                     Scener
                   </TableSortLabel>
@@ -3812,7 +3812,7 @@ export function LocationManagementPanel({
                 <TableRow
                   key={location.id}
                   sx={{
-                    bgcolor: selectedIds.has(location.id) ? 'rgba(168,85,247,0.1)' : 'transparent',
+                    bgcolor: selectedIds.has(location.id) ? 'rgba(136, 117, 235,0.1)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
@@ -3821,7 +3821,7 @@ export function LocationManagementPanel({
                       checked={selectedIds.has(location.id)}
                       onChange={() => handleToggleSelect(location.id)}
                       inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#8875eb' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3853,7 +3853,7 @@ export function LocationManagementPanel({
                             size="small"
                             onClick={() => handleCopyAddress(location.address ?? '', location.id)}
                             aria-label={`Kopier adresse for ${location.name}`}
-                            sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                            sx={{ color: copiedId === location.id ? '#8875eb' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                           >
                             {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} /> : <CopyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
                           </IconButton>
@@ -3895,7 +3895,7 @@ export function LocationManagementPanel({
                         <IconButton
                           onClick={() => handleOpenDialog(location)}
                           aria-label={`Rediger ${location.name}`}
-                          sx={{ color: '#a855f7', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                          sx={{ color: '#8875eb', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
@@ -3981,7 +3981,7 @@ export function LocationManagementPanel({
               { key: 'high_risk', label: 'Høy risiko', value: operationalStats.highRisk, color: '#f87171' },
               { key: 'over_budget', label: 'Over budsjett', value: operationalStats.overBudget, color: '#fb7185' },
               { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: 'var(--role-cyan, #22d3ee)' },
-              { key: 'all', label: 'Totalt i visning', value: operationalStats.total, color: '#c084fc' },
+              { key: 'all', label: 'Totalt i visning', value: operationalStats.total, color: '#9e8cf8' },
             ] as Array<{ key: OperationalFilterKey; label: string; value: number; color: string }>).map((item) => (
               <Button
                 key={item.key}
@@ -4202,7 +4202,7 @@ export function LocationManagementPanel({
           </Card>
 
           {selectedIds.size > 0 && (
-            <Card sx={{ bgcolor: 'rgba(20,16,46,0.82)', border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+            <Card sx={{ bgcolor: 'rgba(24, 18, 43,0.82)', border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
               <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                 <Box
                   sx={{
@@ -4341,7 +4341,7 @@ export function LocationManagementPanel({
                         borderRadius: 2,
                         minHeight: proMapMinHeight,
                         border: '1px solid rgba(255,255,255,0.16)',
-                        background: 'rgba(10,8,27,0.9)',
+                        background: 'rgba(16, 11, 30,0.9)',
                         overflow: 'hidden',
                         '& .leaflet-container': {
                           width: '100%',
@@ -4408,11 +4408,11 @@ export function LocationManagementPanel({
                                   textTransform: 'none',
                                   minHeight: 30,
                                   fontSize: '0.75rem',
-                                  bgcolor: 'rgba(10,8,27,0.65)',
+                                  bgcolor: 'rgba(16, 11, 30,0.65)',
                                   borderColor: 'rgba(255,255,255,0.35)',
                                   color: '#fff',
                                   '&:hover': {
-                                    bgcolor: 'rgba(10,8,27,0.82)',
+                                    bgcolor: 'rgba(16, 11, 30,0.82)',
                                     borderColor: 'rgba(255,255,255,0.55)',
                                   },
                                 }}
@@ -4430,7 +4430,7 @@ export function LocationManagementPanel({
                                 px: 1,
                                 py: 0.5,
                                 borderRadius: 1,
-                                bgcolor: 'rgba(10,8,27,0.72)',
+                                bgcolor: 'rgba(16, 11, 30,0.72)',
                                 border: '1px solid rgba(255,255,255,0.2)',
                                 zIndex: 800,
                               }}
@@ -4556,7 +4556,7 @@ export function LocationManagementPanel({
                           ? (loadFlowStatusRaw as LoadFlowStatus)
                           : 'planned';
                       const loadFlowStatusMeta: Record<LoadFlowStatus, { label: string; color: string }> = {
-                        planned: { label: 'Planlagt', color: '#c084fc' },
+                        planned: { label: 'Planlagt', color: '#9e8cf8' },
                         ready: { label: 'Klar', color: '#34d399' },
                         in_progress: { label: 'Pågår', color: 'var(--role-cyan, #22d3ee)' },
                         completed: { label: 'Ferdig', color: '#86efac' },
@@ -5018,14 +5018,14 @@ export function LocationManagementPanel({
                                 mt: 1.1,
                                 p: 1,
                                 borderRadius: 1.5,
-                                bgcolor: 'rgba(192,132,252,0.08)',
-                                border: '1px solid rgba(192,132,252,0.26)',
+                                bgcolor: 'rgba(158, 140, 248,0.08)',
+                                border: '1px solid rgba(158, 140, 248,0.26)',
                               }}
                             >
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                                  <LinkIcon sx={{ fontSize: 16, color: '#d8b4fe' }} />
-                                  <Typography sx={{ color: '#e9d5ff', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                  <LinkIcon sx={{ fontSize: 16, color: '#c6bdf4' }} />
+                                  <Typography sx={{ color: '#e0dbfa', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
                                     Scene-kobling (crew/callback/shot/utstyr/storyboard)
                                   </Typography>
                                   {consistencySection === 'sceneLinks' ? (
@@ -5071,7 +5071,7 @@ export function LocationManagementPanel({
                                   <Chip size="small" icon={<CallbackIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.callbacks} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
                                   <Chip size="small" icon={<CrewLinkIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.crew} crew-touchpoints`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
                                   <Chip size="small" icon={<EquipmentIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.equipment} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
-                                  <Chip size="small" icon={<StoryboardIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.storyboard} storyboard`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                  <Chip size="small" icon={<StoryboardIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.storyboard} storyboard`} sx={{ bgcolor: 'rgba(158, 140, 248,0.2)', color: '#c6bdf4' }} />
                                 </Box>
 
                                 {isEditingSceneLinks ? (
@@ -5095,8 +5095,8 @@ export function LocationManagementPanel({
                                               sx={{
                                                 p: 0.8,
                                                 borderRadius: 1.25,
-                                                bgcolor: selected ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.04)',
-                                                border: `1px solid ${selected ? 'rgba(168,85,247,0.38)' : 'rgba(255,255,255,0.16)'}`,
+                                                bgcolor: selected ? 'rgba(136, 117, 235,0.2)' : 'rgba(255,255,255,0.04)',
+                                                border: `1px solid ${selected ? 'rgba(136, 117, 235,0.38)' : 'rgba(255,255,255,0.16)'}`,
                                               }}
                                             >
                                               <FormControlLabel
@@ -5116,7 +5116,7 @@ export function LocationManagementPanel({
                                                       <Chip size="small" label={`${insight?.shotCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
                                                       <Chip size="small" label={`${insight?.callbackCount ?? 0} callback`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
                                                       <Chip size="small" label={`${insight?.equipment.length ?? 0} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
-                                                      <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                                      <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(158, 140, 248,0.2)', color: '#c6bdf4' }} />
                                                     </Box>
                                                   </Box>
                                                 }
@@ -5180,7 +5180,7 @@ export function LocationManagementPanel({
                                                 <Chip size="small" label={`${scene.shotListCount} shotlists`} sx={{ bgcolor: 'rgba(34,211,238,0.15)', color: '#67e8f9' }} />
                                                 <Chip size="small" label={`${scene.callbackCount} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
                                                 <Chip size="small" label={`${scene.crewTouchpoints} crew`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
-                                                <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                                <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(158, 140, 248,0.2)', color: '#c6bdf4' }} />
                                               </Box>
                                               {scene.equipment.length > 0 ? (
                                                 <Box sx={{ mt: 0.5, display: 'flex', gap: 0.45, flexWrap: 'wrap' }}>
@@ -5288,7 +5288,7 @@ export function LocationManagementPanel({
                                   size="small"
                                   icon={<StoryboardIcon sx={{ fontSize: 15 }} />}
                                   label={`${storyboardMediaImages.length} storyboard-bilder`}
-                                  sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }}
+                                  sx={{ bgcolor: 'rgba(158, 140, 248,0.2)', color: '#c6bdf4' }}
                                 />
                                 {mediaDraft.storyboardSceneIds.length > 0 ? (
                                   <Chip
@@ -5531,7 +5531,7 @@ export function LocationManagementPanel({
                                       Koble bilder til relevante scener for crew, callback, shotlist og utstyr.
                                     </Typography>
                                     <Box sx={{ mt: 0.7 }}>
-                                      <Typography sx={{ color: '#d8b4fe', fontSize: '0.7rem', fontWeight: 700 }}>
+                                      <Typography sx={{ color: '#c6bdf4', fontSize: '0.7rem', fontWeight: 700 }}>
                                         Scener for neste storyboard-bilde
                                       </Typography>
                                       {mediaSceneOptions.length === 0 ? (
@@ -5552,10 +5552,10 @@ export function LocationManagementPanel({
                                                 }
                                                 label={scene.label}
                                                 sx={{
-                                                  bgcolor: selected ? 'rgba(168,85,247,0.24)' : 'rgba(255,255,255,0.08)',
-                                                  color: selected ? '#e9d5ff' : 'rgba(255,255,255,0.78)',
+                                                  bgcolor: selected ? 'rgba(136, 117, 235,0.24)' : 'rgba(255,255,255,0.08)',
+                                                  color: selected ? '#e0dbfa' : 'rgba(255,255,255,0.78)',
                                                   border: `1px solid ${
-                                                    selected ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.18)'
+                                                    selected ? 'rgba(136, 117, 235,0.5)' : 'rgba(255,255,255,0.18)'
                                                   }`,
                                                 }}
                                               />
@@ -5631,7 +5631,7 @@ export function LocationManagementPanel({
                                           variant="outlined"
                                           startIcon={<AddPhotoIcon sx={{ fontSize: 15 }} />}
                                           onClick={() => handleAddMediaFromUrl(location.id, 'storyboard')}
-                                          sx={{ textTransform: 'none', color: '#d8b4fe', borderColor: 'rgba(168,85,247,0.45)' }}
+                                          sx={{ textTransform: 'none', color: '#c6bdf4', borderColor: 'rgba(136, 117, 235,0.45)' }}
                                         >
                                           Legg til URL
                                         </Button>
@@ -5640,7 +5640,7 @@ export function LocationManagementPanel({
                                           variant="outlined"
                                           component="label"
                                           startIcon={<UploadFileIcon sx={{ fontSize: 15 }} />}
-                                          sx={{ textTransform: 'none', color: '#d8b4fe', borderColor: 'rgba(168,85,247,0.45)' }}
+                                          sx={{ textTransform: 'none', color: '#c6bdf4', borderColor: 'rgba(136, 117, 235,0.45)' }}
                                         >
                                           Last opp bilde
                                           <input
@@ -5696,7 +5696,7 @@ export function LocationManagementPanel({
                                                   display: 'block',
                                                   borderRadius: 1,
                                                   overflow: 'hidden',
-                                                  border: '1px solid rgba(168,85,247,0.35)',
+                                                  border: '1px solid rgba(136, 117, 235,0.35)',
                                                 }}
                                               >
                                                 <Box
@@ -5760,14 +5760,14 @@ export function LocationManagementPanel({
                                                         label={scene.label}
                                                         sx={{
                                                           bgcolor: selected
-                                                            ? 'rgba(168,85,247,0.24)'
+                                                            ? 'rgba(136, 117, 235,0.24)'
                                                             : 'rgba(255,255,255,0.08)',
                                                           color: selected
-                                                            ? '#e9d5ff'
+                                                            ? '#e0dbfa'
                                                             : 'rgba(255,255,255,0.76)',
                                                           border: `1px solid ${
                                                             selected
-                                                              ? 'rgba(168,85,247,0.5)'
+                                                              ? 'rgba(136, 117, 235,0.5)'
                                                               : 'rgba(255,255,255,0.16)'
                                                           }`,
                                                         }}
@@ -5913,7 +5913,7 @@ export function LocationManagementPanel({
                                                   height: 52,
                                                   borderRadius: 1,
                                                   overflow: 'hidden',
-                                                  border: '1px solid rgba(168,85,247,0.4)',
+                                                  border: '1px solid rgba(136, 117, 235,0.4)',
                                                   display: 'block',
                                                   flexShrink: 0,
                                                 }}
@@ -5950,8 +5950,8 @@ export function LocationManagementPanel({
                                                         size="small"
                                                         label={label}
                                                         sx={{
-                                                          bgcolor: 'rgba(168,85,247,0.2)',
-                                                          color: '#e9d5ff',
+                                                          bgcolor: 'rgba(136, 117, 235,0.2)',
+                                                          color: '#e0dbfa',
                                                         }}
                                                       />
                                                     ))
@@ -5990,12 +5990,12 @@ export function LocationManagementPanel({
                                 mt: 1.1,
                                 p: 1,
                                 borderRadius: 1.5,
-                                bgcolor: 'rgba(168,85,247,0.08)',
-                                border: '1px solid rgba(168,85,247,0.24)',
+                                bgcolor: 'rgba(136, 117, 235,0.08)',
+                                border: '1px solid rgba(136, 117, 235,0.24)',
                               }}
                             >
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <Typography sx={{ color: '#e9d5ff', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                <Typography sx={{ color: '#e0dbfa', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
                                   Kontaktinfo
                                 </Typography>
                                 {consistencySection === 'contact' ? (
@@ -6121,7 +6121,7 @@ export function LocationManagementPanel({
                                       size="small"
                                       icon={<PhoneIcon sx={{ fontSize: 15 }} />}
                                       label={proContactPhone}
-                                      sx={{ bgcolor: 'rgba(192,132,252,0.22)', color: '#e9d5ff' }}
+                                      sx={{ bgcolor: 'rgba(158, 140, 248,0.22)', color: '#e0dbfa' }}
                                     />
                                   ) : null}
                                   {proContactEmail ? (
@@ -6199,9 +6199,9 @@ export function LocationManagementPanel({
                           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Teknisk crew tilgjengelig</Typography>
                           <Typography sx={{ color: '#67e8f9', fontWeight: 800, fontSize: '1.1rem' }}>{technicalCrewPool.length}</Typography>
                         </Box>
-                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)' }}>
+                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(136, 117, 235,0.12)', border: '1px solid rgba(136, 117, 235,0.25)' }}>
                           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Shots koblet til lokasjoner</Typography>
-                          <Typography sx={{ color: '#d8b4fe', fontWeight: 800, fontSize: '1.1rem' }}>{allShots.filter((shot) => shot.locationId).length}</Typography>
+                          <Typography sx={{ color: '#c6bdf4', fontWeight: 800, fontSize: '1.1rem' }}>{allShots.filter((shot) => shot.locationId).length}</Typography>
                         </Box>
                         <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)' }}>
                           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Lokasjoner med tekniske hull</Typography>
@@ -6302,7 +6302,7 @@ export function LocationManagementPanel({
           sx={{
             border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`,
             borderRadius: 2.5,
-            bgcolor: 'rgba(16, 12, 36, 0.52)',
+            bgcolor: 'rgba(16, 11, 30, 0.52)',
             backdropFilter: 'blur(6px)',
             p: { xs: 0.25, sm: 0.5, md: 0.75, lg: 0.875, xl: 1 },
             maxWidth: { xs: '100%', xl: 1880 },
@@ -6373,19 +6373,19 @@ export function LocationManagementPanel({
                   alignSelf: 'flex-start',
                   flexDirection: 'column',
                   background: selectedIds.has(location.id)
-                    ? 'linear-gradient(165deg, rgba(33,24,59,0.96) 0%, rgba(20,16,43,0.94) 100%)'
-                    : 'linear-gradient(165deg, rgba(18,15,40,0.9) 0%, rgba(12,10,30,0.9) 100%)',
-                  border: selectedIds.has(location.id) ? '1px solid rgba(168,85,247,0.7)' : '1px solid rgba(168,85,247,0.28)',
+                    ? 'linear-gradient(165deg, rgba(33, 28, 59,0.96) 0%, rgba(24, 18, 43,0.94) 100%)'
+                    : 'linear-gradient(165deg, rgba(24, 18, 43,0.9) 0%, rgba(16, 11, 30,0.9) 100%)',
+                  border: selectedIds.has(location.id) ? '1px solid rgba(136, 117, 235,0.7)' : '1px solid rgba(136, 117, 235,0.28)',
                   borderRadius: 2.5,
                   overflow: 'hidden',
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   boxShadow: selectedIds.has(location.id)
-                    ? '0 10px 26px rgba(88,28,135,0.32)'
-                    : '0 8px 22px rgba(5,8,20,0.35)',
+                    ? '0 10px 26px rgba(48, 31, 132,0.32)'
+                    : '0 8px 22px rgba(10, 5, 21,0.35)',
                   ...focusVisibleStyles,
                   '&:hover': {
-                    borderColor: 'rgba(168,85,247,0.72)',
-                    boxShadow: '0 14px 32px rgba(88,28,135,0.35)',
+                    borderColor: 'rgba(136, 117, 235,0.72)',
+                    boxShadow: '0 14px 32px rgba(48, 31, 132,0.35)',
                     transform: 'translateY(-3px)',
                   },
                   '@media (min-width: 2048px)': {
@@ -6402,7 +6402,7 @@ export function LocationManagementPanel({
                 {/* Gradient Header */}
                 <Box
                   sx={{
-                    background: `linear-gradient(135deg, ${typeColor}25 0%, rgba(168,85,247,0.15) 100%)`,
+                    background: `linear-gradient(135deg, ${typeColor}25 0%, rgba(136, 117, 235,0.15) 100%)`,
                     borderBottom: `1px solid ${typeColor}40`,
                     p: { xs: 1.5, sm: 1.75, md: 1.875, lg: 2, xl: 2.25 },
                     '@media (min-width: 2048px)': { p: 2.4 },
@@ -6419,7 +6419,7 @@ export function LocationManagementPanel({
                         sx={{
                           p: 0.25,
                           color: 'rgba(255,255,255,0.87)',
-                          '&.Mui-checked': { color: '#a855f7' },
+                          '&.Mui-checked': { color: '#8875eb' },
                         }}
                       />
                       <Box
@@ -6508,9 +6508,9 @@ export function LocationManagementPanel({
                                         width: 26,
                                         height: 22,
                                         borderRadius: 1,
-                                        bgcolor: 'rgba(147,51,234,0.18)',
-                                        color: '#c4b5fd',
-                                        border: '1px solid rgba(147,51,234,0.32)',
+                                        bgcolor: 'rgba(98, 73, 223,0.18)',
+                                        color: '#c6bdf4',
+                                        border: '1px solid rgba(98, 73, 223,0.32)',
                                       }}
                                     >
                                       {entry.icon}
@@ -6564,14 +6564,14 @@ export function LocationManagementPanel({
                             }}
                             aria-label={`Verifiser ${location.name} mot Kartverket`}
                             sx={{
-                              color: 'rgba(168,85,247,0.7)',
+                              color: 'rgba(136, 117, 235,0.7)',
                               bgcolor: 'transparent',
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
                               borderRadius: 1.75,
                               '&:hover': {
-                                bgcolor: 'rgba(168,85,247,0.12)',
-                                color: '#c4b5fd',
+                                bgcolor: 'rgba(136, 117, 235,0.12)',
+                                color: '#c6bdf4',
                               },
                               ...focusVisibleStyles,
                             }}
@@ -6623,8 +6623,8 @@ export function LocationManagementPanel({
                         p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                         mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                         borderRadius: 2,
-                        bgcolor: 'rgba(168,85,247,0.1)',
-                        border: '1px solid rgba(168,85,247,0.25)',
+                        bgcolor: 'rgba(136, 117, 235,0.1)',
+                        border: '1px solid rgba(136, 117, 235,0.25)',
                       }}
                     >
                       {/* Map-thumbnail erstatter den abstrakte LocationIcon-boksen
@@ -6642,13 +6642,13 @@ export function LocationManagementPanel({
                             width: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
                             height: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
                             borderRadius: 1.5,
-                            bgcolor: 'rgba(168,85,247,0.25)',
+                            bgcolor: 'rgba(136, 117, 235,0.25)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c4b5fd' }} />
+                          <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c6bdf4' }} />
                         </Box>
                       )}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -6682,7 +6682,7 @@ export function LocationManagementPanel({
                         <IconButton
                           size="small"
                           onClick={() => handleCopyAddress(location.address ?? '', location.id)}
-                          sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                          sx={{ color: copiedId === location.id ? '#8875eb' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <CopyIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         </IconButton>
@@ -6704,14 +6704,14 @@ export function LocationManagementPanel({
                         p: 1,
                         mb: 1.5,
                         borderRadius: 1.5,
-                        bgcolor: 'rgba(139,92,246,0.1)',
-                        border: '1px solid rgba(139,92,246,0.3)',
+                        bgcolor: 'rgba(136, 117, 235,0.1)',
+                        border: '1px solid rgba(136, 117, 235,0.3)',
                         textDecoration: 'none',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease',
                         '&:hover': {
-                          bgcolor: 'rgba(139,92,246,0.2)',
-                          borderColor: 'rgba(139,92,246,0.5)',
+                          bgcolor: 'rgba(136, 117, 235,0.2)',
+                          borderColor: 'rgba(136, 117, 235,0.5)',
                           transform: 'translateY(-1px)',
                         },
                       }}
@@ -6721,18 +6721,18 @@ export function LocationManagementPanel({
                           width: { xs: 28, sm: 32, md: 30, lg: 36, xl: 42 },
                           height: { xs: 28, sm: 32, md: 30, lg: 36, xl: 42 },
                           borderRadius: 1,
-                          bgcolor: 'rgba(139,92,246,0.25)',
+                          bgcolor: 'rgba(136, 117, 235,0.25)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           flexShrink: 0,
                         }}
                       >
-                        <LocationIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#a78bfa' }} />
+                        <LocationIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#9e8cf8' }} />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ 
-                          color: '#a78bfa', 
+                          color: '#9e8cf8', 
                           fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, 
                           fontWeight: 600,
                           overflow: 'hidden',
@@ -6742,7 +6742,7 @@ export function LocationManagementPanel({
                           {location.address || 'Adresse validert'}
                         </Typography>
                         <Typography sx={{ 
-                          color: 'rgba(167,139,250,0.6)', 
+                          color: 'rgba(158, 140, 248,0.6)', 
                           fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' },
                         }}>
                           Klikk for å åpne i kart
@@ -6787,12 +6787,12 @@ export function LocationManagementPanel({
                             label={`+${location.facilities.length - 4}`}
                             size="small"
                             sx={{
-                              bgcolor: 'rgba(168,85,247,0.2)',
-                              color: '#c4b5fd',
+                              bgcolor: 'rgba(136, 117, 235,0.2)',
+                              color: '#c6bdf4',
                               fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
                               height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
                               fontWeight: 600,
-                              border: '1px solid rgba(168,85,247,0.4)',
+                              border: '1px solid rgba(136, 117, 235,0.4)',
                             }}
                           />
                         )}
@@ -6810,8 +6810,8 @@ export function LocationManagementPanel({
                         p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                         mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                         borderRadius: 1.5,
-                        bgcolor: 'rgba(168,85,247,0.1)',
-                        border: '1px solid rgba(168,85,247,0.3)',
+                        bgcolor: 'rgba(136, 117, 235,0.1)',
+                        border: '1px solid rgba(136, 117, 235,0.3)',
                       }}
                     >
                       <Box
@@ -6819,15 +6819,15 @@ export function LocationManagementPanel({
                           width: { xs: 28, sm: 32, md: 30, lg: 36, xl: 42 },
                           height: { xs: 28, sm: 32, md: 30, lg: 36, xl: 42 },
                           borderRadius: 1,
-                          bgcolor: 'rgba(168,85,247,0.25)',
+                          bgcolor: 'rgba(136, 117, 235,0.25)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
                       >
-                        <AssessmentIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#c4b5fd' }} />
+                        <AssessmentIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#c6bdf4' }} />
                       </Box>
-                      <Typography sx={{ color: '#c4b5fd', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, fontWeight: 600 }}>
+                      <Typography sx={{ color: '#c6bdf4', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, fontWeight: 600 }}>
                         {normalizeSceneIds(location.assignedScenes).length} scene{normalizeSceneIds(location.assignedScenes).length !== 1 ? 'r' : ''} tildelt
                       </Typography>
                     </Box>
@@ -6835,7 +6835,7 @@ export function LocationManagementPanel({
 
                   {/* Expandable section */}
                   <Collapse in={expandedCards.has(location.id)}>
-                    <Box sx={{ mt: { xs: 0.75, sm: 1, md: 1.125, lg: 1.25, xl: 1.5 }, pt: { xs: 1.5, sm: 1.75, md: 1.875, lg: 2, xl: 2.25 }, borderTop: '1px solid rgba(168,85,247,0.22)' }}>
+                    <Box sx={{ mt: { xs: 0.75, sm: 1, md: 1.125, lg: 1.25, xl: 1.5 }, pt: { xs: 1.5, sm: 1.75, md: 1.875, lg: 2, xl: 2.25 }, borderTop: '1px solid rgba(136, 117, 235,0.22)' }}>
                       {location.notes && (
                         <Box
                           sx={{
@@ -6929,8 +6929,8 @@ export function LocationManagementPanel({
                                 gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                                 p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                                 borderRadius: 2,
-                                bgcolor: 'rgba(139,92,246,0.1)',
-                                border: '1px solid rgba(139,92,246,0.25)',
+                                bgcolor: 'rgba(136, 117, 235,0.1)',
+                                border: '1px solid rgba(136, 117, 235,0.25)',
                               }}
                             >
                               <Box
@@ -6938,13 +6938,13 @@ export function LocationManagementPanel({
                                   width: 36,
                                   height: 36,
                                   borderRadius: 1.5,
-                                  bgcolor: 'rgba(139,92,246,0.25)',
+                                  bgcolor: 'rgba(136, 117, 235,0.25)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                 }}
                               >
-                                <PhoneIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 }, color: '#a78bfa' }} />
+                                <PhoneIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 }, color: '#9e8cf8' }} />
                               </Box>
                               <Box>
                                 <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, fontWeight: 600, textTransform: 'uppercase' }}>
@@ -6953,7 +6953,7 @@ export function LocationManagementPanel({
                                 <Typography
                                   component="a"
                                   href={`tel:${location.contactInfo.phone}`}
-                                  sx={{ color: '#a78bfa', fontSize: { xs: '0.95rem', sm: '1rem', md: '0.975rem', lg: '1.05rem', xl: '1.125rem' }, fontWeight: 700, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                                  sx={{ color: '#9e8cf8', fontSize: { xs: '0.95rem', sm: '1rem', md: '0.975rem', lg: '1.05rem', xl: '1.125rem' }, fontWeight: 700, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
                                 >
                                   {location.contactInfo.phone}
                                 </Typography>
@@ -6975,7 +6975,7 @@ export function LocationManagementPanel({
                       gap: { xs: 1.75, sm: 2, md: 2.1, lg: 2.25, xl: 2.5 },
                       pt: { xs: 2, sm: 2.25 },
                       mt: 'auto',
-                      borderTop: '1px solid rgba(168,85,247,0.24)',
+                      borderTop: '1px solid rgba(136, 117, 235,0.24)',
                     }}
                   >
                     <Button
@@ -6986,7 +6986,7 @@ export function LocationManagementPanel({
                       aria-expanded={expandedCards.has(location.id)}
                       aria-label={expandedCards.has(location.id) ? 'Skjul info' : 'Vis info'}
                       sx={{
-                        bgcolor: expandedCards.has(location.id) ? '#6d28d9 !important' : '#7c3aed !important',
+                        bgcolor: expandedCards.has(location.id) ? '#472bd4 !important' : '#6249df !important',
                         color: '#fff !important',
                         fontSize: { xs: '0.8rem', sm: '0.84rem', md: '0.88rem', lg: '0.92rem', xl: '0.98rem' },
                         fontWeight: 600,
@@ -6996,19 +6996,19 @@ export function LocationManagementPanel({
                         px: { xs: 2.1, sm: 2.4, md: 2.6, lg: 2.8, xl: 3.1 },
                         py: { xs: 0.7, sm: 0.75, md: 0.8, lg: 0.85, xl: 0.9 },
                         border: expandedCards.has(location.id)
-                          ? '1px solid rgba(216,180,254,0.45)'
-                          : '1px solid rgba(192,132,252,0.32)',
+                          ? '1px solid rgba(198, 189, 244,0.45)'
+                          : '1px solid rgba(158, 140, 248,0.32)',
                         borderRadius: 2,
                         textTransform: 'none',
                         boxShadow: expandedCards.has(location.id) 
-                          ? '0 2px 8px rgba(168,85,247,0.22)' 
-                          : '0 1px 4px rgba(168,85,247,0.12)',
+                          ? '0 2px 8px rgba(136, 117, 235,0.22)' 
+                          : '0 1px 4px rgba(136, 117, 235,0.12)',
                         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                         '&:hover': {
-                          bgcolor: expandedCards.has(location.id) ? '#5b21b6 !important' : '#6d28d9 !important',
-                          borderColor: 'rgba(216,180,254,0.5)',
+                          bgcolor: expandedCards.has(location.id) ? '#3c27a5 !important' : '#472bd4 !important',
+                          borderColor: 'rgba(198, 189, 244,0.5)',
                           transform: 'translateY(-1px)',
-                          boxShadow: '0 4px 10px rgba(168,85,247,0.3)',
+                          boxShadow: '0 4px 10px rgba(136, 117, 235,0.3)',
                         },
                         '&:active': {
                           transform: 'translateY(0px)',
@@ -7100,16 +7100,16 @@ export function LocationManagementPanel({
                             minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             p: { xs: 1, sm: 1.05, md: 1.1, lg: 1.15, xl: 1.2 },
-                            color: '#c4b5fd',
-                            bgcolor: 'rgba(168,85,247,0.12)',
-                            border: '1px solid rgba(168,85,247,0.24)',
+                            color: '#c6bdf4',
+                            bgcolor: 'rgba(136, 117, 235,0.12)',
+                            border: '1px solid rgba(136, 117, 235,0.24)',
                             borderRadius: 1.75,
                             '@media (min-width: 2048px) and (max-width: 3839px)': {
                               minWidth: 50,
                               minHeight: 50,
                               p: 1.1,
                             },
-                            '&:hover': { bgcolor: 'rgba(168,85,247,0.2)', transform: 'translateY(-1px)' },
+                            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.2)', transform: 'translateY(-1px)' },
                             ...focusVisibleStyles,
                           }}
                         >
@@ -7174,7 +7174,7 @@ export function LocationManagementPanel({
         onClose={() => setUndoSnackbarOpen(false)}
         message={`"\${deletedLocation?.name}" slettet`}
         action={
-          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#a855f7' }}>
+          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#8875eb' }}>
             Angre
           </Button>
         }
@@ -7208,14 +7208,14 @@ export function LocationManagementPanel({
             sx: {
               color: '#fff',
               background:
-                'radial-gradient(120% 140% at 0% 0%, rgba(34,211,238,0.14) 0%, rgba(17,24,39,0) 48%), linear-gradient(165deg, rgba(17,12,36,0.98) 0%, rgba(10,8,23,0.98) 100%)',
+                'radial-gradient(120% 140% at 0% 0%, rgba(34,211,238,0.14) 0%, rgba(17,24,39,0) 48%), linear-gradient(165deg, rgba(16, 11, 30,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
               maxHeight: { xs: '100%', sm: '90vh' },
               maxWidth: { xs: '95vw', sm: '85vw', md: '80vw', lg: '75vw', xl: '70vw' },
               m: { xs: 0, sm: 2, md: 2.5, lg: 3, xl: 4 },
               borderRadius: { xs: 0, sm: 3 },
-              border: '1px solid rgba(168,85,247,0.45)',
+              border: '1px solid rgba(136, 117, 235,0.45)',
               boxShadow:
-                '0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(168,85,247,0.24)',
+                '0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(136, 117, 235,0.24)',
               willChange: 'transform, opacity',
               transformOrigin: 'center center',
               zIndex: 100000,
@@ -7227,7 +7227,7 @@ export function LocationManagementPanel({
           zIndex: 100000,
           '& .MuiBackdrop-root': {
             zIndex: 99998,
-            bgcolor: 'rgba(3,2,10,0.82)',
+            bgcolor: 'rgba(10, 5, 21,0.82)',
             backdropFilter: 'blur(5px)',
             willChange: 'opacity',
           },
@@ -7242,9 +7242,9 @@ export function LocationManagementPanel({
             py: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             px: { xs: 2, sm: 3, md: 2.75, lg: 3, xl: 3.5 },
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
-            borderBottom: '1px solid rgba(168,85,247,0.34)',
+            borderBottom: '1px solid rgba(136, 117, 235,0.34)',
             background:
-              'linear-gradient(120deg, rgba(139,92,246,0.28) 0%, rgba(14,20,42,0.95) 55%, rgba(34,211,238,0.2) 100%)',
+              'linear-gradient(120deg, rgba(136, 117, 235,0.28) 0%, rgba(14,20,42,0.95) 55%, rgba(34,211,238,0.2) 100%)',
           }}
         >
           <Stack direction="row" spacing={1.5} alignItems="center">
@@ -7255,9 +7255,9 @@ export function LocationManagementPanel({
                 borderRadius: 2,
                 display: 'grid',
                 placeItems: 'center',
-                background: 'linear-gradient(135deg, rgba(168,85,247,0.92), rgba(124,58,237,0.88))',
-                border: '1px solid rgba(216,180,254,0.42)',
-                boxShadow: '0 10px 22px rgba(124,58,237,0.36)',
+                background: 'linear-gradient(135deg, rgba(136, 117, 235,0.92), rgba(98, 73, 223,0.88))',
+                border: '1px solid rgba(198, 189, 244,0.42)',
+                boxShadow: '0 10px 22px rgba(98, 73, 223,0.36)',
               }}
             >
               <LocationIcon sx={{ color: '#ffffff', fontSize: { xs: 20, sm: 22, md: 21, lg: 23, xl: 26 } }} />
@@ -7281,7 +7281,7 @@ export function LocationManagementPanel({
               minHeight: TOUCH_TARGET_SIZE,
               border: '1px solid rgba(148,163,184,0.35)',
               bgcolor: 'rgba(15,23,42,0.55)',
-              '&:hover': { bgcolor: 'rgba(30,41,59,0.85)', borderColor: 'rgba(168,85,247,0.55)' },
+              '&:hover': { bgcolor: 'rgba(30,41,59,0.85)', borderColor: 'rgba(136, 117, 235,0.55)' },
             }}
           >
             <CloseIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
@@ -7295,7 +7295,7 @@ export function LocationManagementPanel({
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
             background:
-              'linear-gradient(180deg, rgba(15,23,42,0.38) 0%, rgba(8,10,24,0.22) 100%)',
+              'linear-gradient(180deg, rgba(15,23,42,0.38) 0%, rgba(10, 5, 21,0.22) 100%)',
           }}
         >
           <Typography
@@ -7333,7 +7333,7 @@ export function LocationManagementPanel({
                   minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused fieldset': { borderColor: '#a855f7' },
+                  '&.Mui-focused fieldset': { borderColor: '#8875eb' },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -7342,7 +7342,7 @@ export function LocationManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#a855f7' },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#8875eb' },
               }}
             />
 
@@ -7458,7 +7458,7 @@ export function LocationManagementPanel({
                       endAdornment: (
                         <>
                           {addressSuggestionsLoading && (
-                            <CircularProgress size={16} sx={{ color: '#a855f7', mr: 1 }} />
+                            <CircularProgress size={16} sx={{ color: '#8875eb', mr: 1 }} />
                           )}
                           {params.InputProps.endAdornment}
                         </>
@@ -7486,7 +7486,7 @@ export function LocationManagementPanel({
                   paper: {
                     sx: {
                       bgcolor: 'rgba(15,23,42,0.98)',
-                      border: '1px solid rgba(168,85,247,0.3)',
+                      border: '1px solid rgba(136, 117, 235,0.3)',
                       backdropFilter: 'blur(8px)',
                     },
                   },
@@ -7498,13 +7498,13 @@ export function LocationManagementPanel({
                 disabled={validatingAddress || !formData.address?.trim()}
                 size="small"
                 sx={{
-                  color: '#a855f7',
-                  borderColor: 'rgba(168,85,247,0.5)',
+                  color: '#8875eb',
+                  borderColor: 'rgba(136, 117, 235,0.5)',
                   minHeight: TOUCH_TARGET_SIZE,
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                   py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                  '&:hover': { borderColor: '#a855f7', bgcolor: 'rgba(168,85,247,0.1)' },
+                  '&:hover': { borderColor: '#8875eb', bgcolor: 'rgba(136, 117, 235,0.1)' },
                 }}
               >
                 {validatingAddress ? 'Validerer...' : 'Valider adresse'}
@@ -7554,8 +7554,8 @@ export function LocationManagementPanel({
                         color: '#fff',
                         maxHeight: 300,
                         '& .MuiMenuItem-root': {
-                          '&:hover': { bgcolor: 'rgba(168,85,247,0.1)' },
-                          '&.Mui-selected': { bgcolor: 'rgba(168,85,247,0.2)' },
+                          '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)' },
+                          '&.Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.2)' },
                         },
                       },
                     },
@@ -7621,7 +7621,7 @@ export function LocationManagementPanel({
                       <Checkbox
                         checked={(formData.facilities || []).includes(facility)}
                         onChange={() => handleFacilityToggle(facility)}
-                        sx={{ color: '#a855f7', '&.Mui-checked': { color: '#a855f7' } }}
+                        sx={{ color: '#8875eb', '&.Mui-checked': { color: '#8875eb' } }}
                       />
                     }
                     label={getFacilityLabel(facility)}
@@ -7761,13 +7761,13 @@ export function LocationManagementPanel({
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(168,85,247,0.28)',
+            borderTop: '1px solid rgba(136, 117, 235,0.28)',
             p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             flexDirection: { xs: 'column-reverse', sm: 'row' },
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
             position: { xs: 'sticky', sm: 'relative' },
             bottom: 0,
-            bgcolor: 'rgba(8,10,24,0.82)',
+            bgcolor: 'rgba(10, 5, 21,0.82)',
             backdropFilter: 'blur(8px)',
           }}
         >
@@ -7784,7 +7784,7 @@ export function LocationManagementPanel({
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(168,85,247,0.48)' },
+              '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(136, 117, 235,0.48)' },
             }}
           >
             Avbryt
@@ -7795,7 +7795,7 @@ export function LocationManagementPanel({
             startIcon={<SaveIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#a855f7',
+              bgcolor: '#8875eb',
               color: '#fff',
               fontWeight: 700,
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
@@ -7803,10 +7803,10 @@ export function LocationManagementPanel({
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,
-              border: '1px solid rgba(216,180,254,0.45)',
-              boxShadow: '0 10px 24px rgba(124,58,237,0.45)',
-              backgroundImage: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
-              '&:hover': { backgroundImage: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)' },
+              border: '1px solid rgba(198, 189, 244,0.45)',
+              boxShadow: '0 10px 24px rgba(98, 73, 223,0.45)',
+              backgroundImage: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+              '&:hover': { backgroundImage: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             {editingLocation ? 'Lagre' : 'Opprett'}

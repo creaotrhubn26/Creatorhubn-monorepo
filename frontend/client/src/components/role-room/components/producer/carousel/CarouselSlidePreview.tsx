@@ -145,7 +145,7 @@ export default function CarouselSlidePreview({
         position: 'relative',
         width,
         height,
-        bgcolor: '#0a0617',
+        bgcolor: '#0a0515',
         borderRadius: 1.5,
         overflow: 'hidden',
         color: '#fff',

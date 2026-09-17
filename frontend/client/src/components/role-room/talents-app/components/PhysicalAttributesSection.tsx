@@ -245,7 +245,7 @@ export default function PhysicalAttributesSection({ locale, form, onChange }: Pr
           />
           <Alert
             severity="info"
-            sx={{ mt: 0.8, mb: 1.4, bgcolor: 'rgba(168,85,247,0.1)', color: palette.textSecondary, fontSize: '0.82rem' }}
+            sx={{ mt: 0.8, mb: 1.4, bgcolor: 'rgba(98, 73, 223,0.1)', color: palette.textSecondary, fontSize: '0.82rem' }}
           >
             {t(
               locale,

@@ -23,7 +23,7 @@ const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
   image: 'var(--role-cyan, #22d3ee)',
-  story: '#a855f7',
+  story: '#8875eb',
   tiktok: '#ec4899',
   linkedin_post: '#3b82f6',
   youtube_short: '#ef4444',
@@ -186,7 +186,7 @@ const gridSx = {
 };
 
 const cellSx = {
-  bgcolor: 'rgba(2,6,23,0.6)',
+  bgcolor: 'rgba(10, 5, 21,0.6)',
   border: '1px solid rgba(148,163,184,0.12)',
   borderRadius: 1,
   p: 0.8,

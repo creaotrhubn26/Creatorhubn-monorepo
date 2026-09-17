@@ -31,7 +31,7 @@ describe("buildReviewHtml — rik lenke-preview (OG)", () => {
     expect(d.title).toBe("Sommerkampanje – Edit 2");
     expect(d.org).toBe("Nordic Films");
     expect(d.meta).toBe("3 klipp til gjennomgang");
-    expect(d.accent).toBe("#a030c0");
+    expect(d.accent).toBe("#472bd4");
     expect(d.brand).toBe("Role Room");
   });
 

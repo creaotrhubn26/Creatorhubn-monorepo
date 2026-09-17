@@ -144,7 +144,7 @@ export function ChangeImpactPreview({
   if (loading && !data) {
     return (
       <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 1 }}>
-        <CircularProgress size={14} sx={{ color: '#ce93d8' }} />
+        <CircularProgress size={14} sx={{ color: '#8875eb' }} />
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
           Sjekker hva flyttingen påvirker…
         </Typography>

@@ -239,7 +239,7 @@ export default function B2BAcquisitionPanel() {
   if (loading) {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
-        <CircularProgress size={22} sx={{ color: '#c084fc' }} />
+        <CircularProgress size={22} sx={{ color: '#9e8cf8' }} />
       </Box>
     );
   }
@@ -271,7 +271,7 @@ export default function B2BAcquisitionPanel() {
           gap: 1.4,
         }}
       >
-        <StatBox label="Totalt leads" value={String(totalLeads)} color="#c084fc" />
+        <StatBox label="Totalt leads" value={String(totalLeads)} color="#9e8cf8" />
         <StatBox label="Siste 30d" value={String(funnel.last_30d.new_30d)} color="#60a5fa" />
         <StatBox label="Kunder" value={String(funnel.funnel.customer ?? 0)} color="#34d399" />
         <StatBox label="Konvertering" value={`${conversionRate}%`} color="#fbbf24" />
@@ -299,8 +299,8 @@ export default function B2BAcquisitionPanel() {
                 sx={{
                   flex: 1,
                   minWidth: 120,
-                  bgcolor: 'rgba(168,85,247,0.06)',
-                  border: '1px solid rgba(168,85,247,0.18)',
+                  bgcolor: 'rgba(136, 117, 235,0.06)',
+                  border: '1px solid rgba(136, 117, 235,0.18)',
                   borderRadius: 1.2,
                   p: 1.2,
                 }}
@@ -322,7 +322,7 @@ export default function B2BAcquisitionPanel() {
         {Object.keys(tierCounts).length ? (
           <Stack direction="row" spacing={1.2} sx={{ mt: 2, flexWrap: 'wrap' }}>
             {Object.entries(tierCounts).map(([tier, n]) => {
-              const color = TIER_COLORS[tier] ?? { bg: 'rgba(168,85,247,0.18)', fg: '#c4b5fd' };
+              const color = TIER_COLORS[tier] ?? { bg: 'rgba(136, 117, 235,0.18)', fg: '#c4b5fd' };
               return (
                 <Chip
                   key={tier}
@@ -480,7 +480,7 @@ export default function B2BAcquisitionPanel() {
                 gap: 1.2,
                 alignItems: 'center',
                 bgcolor: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(168,85,247,0.10)',
+                border: '1px solid rgba(136, 117, 235,0.10)',
                 borderRadius: 1,
                 p: 1.4,
               }}
@@ -497,14 +497,14 @@ export default function B2BAcquisitionPanel() {
                 <Chip
                   label={STATUS_LABELS[lead.status] ?? lead.status}
                   size="small"
-                  sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#c4b5fd', fontSize: '0.72rem' }}
+                  sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#c4b5fd', fontSize: '0.72rem' }}
                 />
                 {lead.score_tier ? (
                   <Chip
                     label={`${lead.score_tier.toUpperCase()} ${lead.score_total ?? '–'}`}
                     size="small"
                     sx={{
-                      bgcolor: TIER_COLORS[lead.score_tier]?.bg ?? 'rgba(168,85,247,0.18)',
+                      bgcolor: TIER_COLORS[lead.score_tier]?.bg ?? 'rgba(136, 117, 235,0.18)',
                       color: TIER_COLORS[lead.score_tier]?.fg ?? '#c4b5fd',
                       fontWeight: 700,
                       fontSize: '0.72rem',
@@ -517,15 +517,15 @@ export default function B2BAcquisitionPanel() {
                 onClick={() => handleScoreLead(lead.id)}
                 disabled={scoringLeadId === lead.id}
                 startIcon={scoringLeadId === lead.id
-                  ? <CircularProgress size={12} sx={{ color: '#c084fc' }} />
+                  ? <CircularProgress size={12} sx={{ color: '#9e8cf8' }} />
                   : <AutoAwesomeOutlinedIcon sx={{ fontSize: 14 }} />}
                 sx={{
                   textTransform: 'none',
                   fontSize: '0.78rem',
                   fontWeight: 700,
-                  color: '#c084fc',
-                  border: '1px solid rgba(168,85,247,0.32)',
-                  '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+                  color: '#9e8cf8',
+                  border: '1px solid rgba(136, 117, 235,0.32)',
+                  '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)' },
                 }}
               >
                 Score
@@ -607,7 +607,7 @@ function StatBox({ label, value, color }: { label: string; value: string; color:
     <Box
       sx={{
         bgcolor: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(168,85,247,0.18)',
+        border: '1px solid rgba(136, 117, 235,0.18)',
         borderRadius: 1.4,
         p: 1.6,
       }}
@@ -635,8 +635,8 @@ function Section({
   return (
     <Box
       sx={{
-        bgcolor: 'rgba(15,7,33,0.6)',
-        border: '1px solid rgba(168,85,247,0.18)',
+        bgcolor: 'rgba(16, 11, 30,0.6)',
+        border: '1px solid rgba(136, 117, 235,0.18)',
         borderRadius: 1.6,
         overflow: 'hidden',
       }}
@@ -649,10 +649,10 @@ function Section({
           gap: 1.2,
           p: 1.8,
           cursor: 'pointer',
-          '&:hover': { bgcolor: 'rgba(168,85,247,0.06)' },
+          '&:hover': { bgcolor: 'rgba(136, 117, 235,0.06)' },
         }}
       >
-        <Icon sx={{ color: '#c084fc' }} />
+        <Icon sx={{ color: '#9e8cf8' }} />
         <Typography sx={{ flex: 1, color: '#f5f3ff', fontWeight: 700, fontSize: '0.96rem' }}>
           {title}
         </Typography>
@@ -660,7 +660,7 @@ function Section({
         {open ? <ExpandLessIcon sx={{ color: 'rgba(203,213,225,0.6)' }} /> : <ExpandMoreIcon sx={{ color: 'rgba(203,213,225,0.6)' }} />}
       </Box>
       <Collapse in={open} unmountOnExit>
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.10)' }} />
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.10)' }} />
         <Box sx={{ p: 1.8 }}>
           {children}
         </Box>
@@ -723,12 +723,12 @@ function PRSection() {
         disabled={busy || !milestone.trim()}
         startIcon={busy ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AutoAwesomeOutlinedIcon />}
         sx={{
-          background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+          background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
           color: '#fff',
           textTransform: 'none',
           fontWeight: 700,
           alignSelf: 'flex-start',
-          '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+          '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
         }}
       >
         Generer pressemelding med Claude
@@ -771,7 +771,7 @@ function WebinarsAndReferralsSection() {
 
   return (
     <Stack spacing={2}>
-      <Typography sx={{ color: '#c084fc', fontWeight: 700, fontSize: '0.86rem' }}>
+      <Typography sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '0.86rem' }}>
         Lag referral-link
       </Typography>
       <TextField
@@ -794,7 +794,7 @@ function WebinarsAndReferralsSection() {
         onClick={createReferral}
         disabled={busy || !referrerEmail.trim()}
         sx={{
-          background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+          background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
           color: '#fff',
           textTransform: 'none',
           fontWeight: 700,
@@ -877,7 +877,7 @@ function CaseStudiesSection() {
         disabled={busy || !agencyName.trim()}
         startIcon={busy ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AutoAwesomeOutlinedIcon />}
         sx={{
-          background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+          background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
           color: '#fff',
           textTransform: 'none',
           fontWeight: 700,
@@ -1004,7 +1004,7 @@ function LinkedInPublishSection() {
   };
 
   if (loading) {
-    return <CircularProgress size={20} sx={{ color: '#c084fc' }} />;
+    return <CircularProgress size={20} sx={{ color: '#9e8cf8' }} />;
   }
 
   return (
@@ -1020,7 +1020,7 @@ function LinkedInPublishSection() {
             Sett <code>LINKEDIN_CLIENT_ID</code> + <code>LINKEDIN_CLIENT_SECRET</code> på Render.
             Lag en app i{' '}
             <a href="https://developer.linkedin.com/" target="_blank" rel="noreferrer"
-               style={{ color: '#c084fc' }}>
+               style={{ color: '#9e8cf8' }}>
               LinkedIn Developer Portal
             </a>
             {' '}med scopes: <code>r_organization_admin</code>, <code>w_organization_social</code>,
@@ -1064,8 +1064,8 @@ function LinkedInPublishSection() {
               <Box
                 key={conn.id}
                 sx={{
-                  bgcolor: conn.is_default ? 'rgba(168,85,247,0.10)' : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${conn.is_default ? 'rgba(168,85,247,0.45)' : 'rgba(168,85,247,0.18)'}`,
+                  bgcolor: conn.is_default ? 'rgba(136, 117, 235,0.10)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${conn.is_default ? 'rgba(136, 117, 235,0.45)' : 'rgba(136, 117, 235,0.18)'}`,
                   borderRadius: 1.4,
                   p: 1.8,
                 }}
@@ -1081,8 +1081,8 @@ function LinkedInPublishSection() {
                         size="small"
                         sx={{
                           bgcolor: conn.org_type === 'showcase'
-                            ? 'rgba(217,70,239,0.20)' : 'rgba(96,165,250,0.20)',
-                          color: conn.org_type === 'showcase' ? '#e879f9' : '#60a5fa',
+                            ? 'rgba(98, 73, 223,0.20)' : 'rgba(96,165,250,0.20)',
+                          color: conn.org_type === 'showcase' ? '#9e8cf8' : '#60a5fa',
                           fontWeight: 700, fontSize: '0.7rem', height: 20,
                         }}
                       />
@@ -1112,7 +1112,7 @@ function LinkedInPublishSection() {
                         onClick={() => setDefault(conn.id)}
                         size="small"
                         sx={{ textTransform: 'none', fontSize: '0.78rem',
-                              color: '#c084fc', minWidth: 0 }}
+                              color: '#9e8cf8', minWidth: 0 }}
                       >
                         Sett default
                       </Button>
@@ -1162,7 +1162,7 @@ function LinkedInPublishSection() {
 const fieldSx = {
   '& .MuiInputBase-input': { color: '#f5f3ff', fontSize: '0.86rem' },
   '& .MuiInputLabel-root': { color: 'rgba(148,163,184,0.85)', fontSize: '0.84rem' },
-  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(168,85,247,0.18)' },
-  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(168,85,247,0.40)' },
-  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#c084fc' },
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.18)' },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.40)' },
+  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9e8cf8' },
 } as const;

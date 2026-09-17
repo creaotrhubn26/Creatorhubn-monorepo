@@ -44,9 +44,9 @@ const MODE_CONFIGS: Record<WorkspaceMode, ModeConfig> = {
     label: 'Innholdsprodusent',
     shortLabel: 'Producer',
     icon: ProducerIcon,
-    bg: 'rgba(184,107,255,0.18)',
-    color: '#e9d5ff',
-    border: '1px solid rgba(184,107,255,0.42)',
+    bg: 'rgba(136, 117, 235,0.18)',
+    color: '#e0dbfa',
+    border: '1px solid rgba(136, 117, 235,0.42)',
   },
   production_team: {
     label: 'Produksjonsteam',

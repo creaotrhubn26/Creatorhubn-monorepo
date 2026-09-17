@@ -1444,7 +1444,7 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ projectId, o
               justifyContent: 'space-between',
               alignItems: 'center',
               p: 2,
-              bgcolor: '#1a1a2e',
+              bgcolor: '#18122b',
               borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
             }}
           >
@@ -1540,7 +1540,7 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ projectId, o
               sx={{
                 width: 450,
                 maxWidth: '90vw',
-                bgcolor: '#1a1a2e',
+                bgcolor: '#18122b',
                 color: '#fff',
                 p: 3,
                 borderRadius: 2,

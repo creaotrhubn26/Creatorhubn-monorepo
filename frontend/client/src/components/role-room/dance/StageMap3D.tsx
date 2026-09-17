@@ -161,10 +161,10 @@ const StageFloor: React.FC = () => (
       args={[STAGE_WIDTH_M, STAGE_DEPTH_M]}
       cellSize={1}
       cellThickness={0.5}
-      cellColor="rgba(167,139,250,0.18)"
+      cellColor="rgba(158, 140, 248,0.18)"
       sectionSize={4}
       sectionThickness={1}
-      sectionColor="rgba(167,139,250,0.4)"
+      sectionColor="rgba(158, 140, 248,0.4)"
       position={[0, 0.001, 0]}
       infiniteGrid={false}
     />
@@ -173,25 +173,25 @@ const StageFloor: React.FC = () => (
       text="UPSTAGE"
       position={[0, 0.2, -STAGE_DEPTH_M / 2 - 0.4]}
       fontSize={0.32}
-      color="#a78bfa"
+      color="#9e8cf8"
     />
     <CanvasLabel
       text="DOWNSTAGE"
       position={[0, 0.2, STAGE_DEPTH_M / 2 + 0.4]}
       fontSize={0.32}
-      color="#a78bfa"
+      color="#9e8cf8"
     />
     <CanvasLabel
       text="LEFT"
       position={[-STAGE_WIDTH_M / 2 - 0.6, 0.05, 0]}
       fontSize={0.28}
-      color="#a78bfa"
+      color="#9e8cf8"
     />
     <CanvasLabel
       text="RIGHT"
       position={[STAGE_WIDTH_M / 2 + 0.6, 0.05, 0]}
       fontSize={0.28}
-      color="#a78bfa"
+      color="#9e8cf8"
     />
   </>
 );
@@ -245,7 +245,7 @@ export function StageMap3D({
             shadow-camera-top={10}
             shadow-camera-bottom={-10}
           />
-          <pointLight position={[-4, 5, -4]} intensity={0.25} color="#8b5cf6" />
+          <pointLight position={[-4, 5, -4]} intensity={0.25} color="#8875eb" />
           <StageFloor />
           {visiblePositions.map((p) => {
             const dancer = dancersById.get(p.dancerId);

@@ -29,7 +29,7 @@ export function FeideLoginButton({ compact = false }: { compact?: boolean }) {
         textTransform: 'none', fontSize: { xs: '0.76rem', sm: '0.8rem' }, fontWeight: 500,
         borderRadius: '14px', minHeight: 48, py: { xs: 0.95, sm: 1.1 }, px: { xs: 1, sm: 1.5 },
         bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-        color: 'rgba(240,235,255,0.85)', backdropFilter: 'blur(10px)', gap: 0.7, justifyContent: 'center',
+        color: 'rgba(235, 231, 253,0.85)', backdropFilter: 'blur(10px)', gap: 0.7, justifyContent: 'center',
         transition: 'all 0.25s ease',
         '&:hover': { bgcolor: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.22)', transform: 'translateY(-1px)' },
         '& .MuiButton-startIcon': { marginRight: 0.7, marginLeft: 0 },

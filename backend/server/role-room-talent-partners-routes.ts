@@ -619,26 +619,26 @@ Mvh
 The Role Room Talents
 `;
       const html = `<!doctype html>
-<html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 20px; background: #0a0118; color: #f5f3ff;">
-  <div style="background: #150b2e; border: 1px solid rgba(168,85,247,0.18); border-radius: 16px; padding: 32px;">
-    <div style="color: #c084fc; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 12px;">
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 20px; background: #0a0515; color: #f5f3ff;">
+  <div style="background: #18122b; border: 1px solid rgba(136, 117, 235,0.18); border-radius: 16px; padding: 32px;">
+    <div style="color: #9e8cf8; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 12px;">
       Invitasjon fra The Role Room Talents
     </div>
     <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
       ${(talent.display_name as string).replace(/[<>&"']/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c] || c))} inviterer deg
     </h1>
-    ${message ? `<div style="margin: 20px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
+    ${message ? `<div style="margin: 20px 0; padding: 14px 18px; background: #18122b; border-left: 3px solid #8875eb; border-radius: 0 8px 8px 0;">
       <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Personlig melding:</div>
       <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${String(message).replace(/[<>&"']/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c] || c))}"</div>
     </div>` : ""}
     <p style="color: #c4b5fd; line-height: 1.6; margin: 16px 0;">
       Logg inn for å akseptere — du får tilgangen umiddelbart og kan organisere talent-data i ditt agency-dashbord.
     </p>
-    <a href="${acceptUrl.replace(/"/g, "&quot;")}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #a855f7 0%, #d946ef 100%); color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 16px; margin: 12px 0;">
+    <a href="${acceptUrl.replace(/"/g, "&quot;")}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #8875eb 0%, #6249df 100%); color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 16px; margin: 12px 0;">
       Aksepter invitasjonen
     </a>
     <p style="color: #8b7ec4; font-size: 12px; margin-top: 32px;">
-      Invitasjonen utløper om 30 dager. The Role Room Talents · Creatorhub AS · <a href="https://theroleroom.com/privacy" style="color: #c084fc;">Personvern</a>
+      Invitasjonen utløper om 30 dager. The Role Room Talents · Creatorhub AS · <a href="https://theroleroom.com/privacy" style="color: #9e8cf8;">Personvern</a>
     </p>
   </div>
 </body></html>`;

@@ -346,7 +346,7 @@ export function StoryboardReviewMarkupCanvas({
       data-testid={`storyboard-review-markup-canvas-${frame.id}`}
       sx={{
         position: 'relative', width: '100%', aspectRatio: '16 / 9', height,
-        bgcolor: '#08080d', borderRadius: 1.5, overflow: 'hidden',
+        bgcolor: '#0a0515', borderRadius: 1.5, overflow: 'hidden',
         border: '1px solid rgba(255,255,255,.16)',
       }}
     >

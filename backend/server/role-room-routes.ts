@@ -26019,7 +26019,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             userId,
             slideId: req.params.slideId,
             prompt,
-            brandColors: brandColors ?? { primary: '#0a0617', secondary: '#1a1133', accent: '#a855f7' },
+            brandColors: brandColors ?? { primary: '#0a0617', secondary: '#18122b', accent: '#8875eb' },
             aspectRatio: aspectRatio ?? '1:1',
             enrichWithBrand: enrichWithBrand !== false,
           },

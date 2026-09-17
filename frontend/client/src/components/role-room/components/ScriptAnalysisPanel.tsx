@@ -106,7 +106,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#1a1a2e',
+        bgcolor: '#18122b',
         overflow: 'hidden',
         // WCAG 2.2 - 2.5.5: 44x44 min touch target for alle IconButtons
         '& .MuiIconButton-root': {
@@ -121,7 +121,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         sx={{
           p: 2,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(30,30,50,0.9)',
+          bgcolor: 'rgba(33, 28, 59,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={2}>
@@ -187,7 +187,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'stats'}
           onChange={handleAccordionChange('stats')}
           sx={{
-            bgcolor: 'rgba(30,30,50,0.5)',
+            bgcolor: 'rgba(33, 28, 59,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -276,7 +276,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'conflicts'}
           onChange={handleAccordionChange('conflicts')}
           sx={{
-            bgcolor: 'rgba(30,30,50,0.5)',
+            bgcolor: 'rgba(33, 28, 59,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -372,7 +372,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'consistency'}
           onChange={handleAccordionChange('consistency')}
           sx={{
-            bgcolor: 'rgba(30,30,50,0.5)',
+            bgcolor: 'rgba(33, 28, 59,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -468,7 +468,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'scenes'}
           onChange={handleAccordionChange('scenes')}
           sx={{
-            bgcolor: 'rgba(30,30,50,0.5)',
+            bgcolor: 'rgba(33, 28, 59,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}

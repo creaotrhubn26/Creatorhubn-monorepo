@@ -166,7 +166,7 @@ function getLuminance(r: number, g: number, b: number): number {
 // =============================================================================
 
 const EyedropperContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: 'rgba(16, 11, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -233,7 +233,7 @@ const EyedropperMagnifier: React.FC<EyedropperCursorProps> = ({
     const sourceSize = size / zoom;
     
     // Clear
-    ctx.fillStyle = '#1a1a2e';
+    ctx.fillStyle = '#18122b';
     ctx.fillRect(0, 0, size, size);
     
     // Draw zoomed portion of canvas

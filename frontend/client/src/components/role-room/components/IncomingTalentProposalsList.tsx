@@ -42,7 +42,7 @@ interface Props {
 }
 
 const COLORS = {
-  cardBg: 'rgba(2,6,23,0.72)',
+  cardBg: 'rgba(10, 5, 21,0.72)',
   cardBorder: 'rgba(56,189,248,0.28)',
   accent: '#38bdf8',
   accentBg: 'rgba(56,189,248,0.14)',
@@ -176,7 +176,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                 p: 1.4,
                 borderRadius: 2,
                 border: '1px solid rgba(56,189,248,0.22)',
-                bgcolor: 'rgba(2,6,23,0.5)',
+                bgcolor: 'rgba(10, 5, 21,0.5)',
               }}
             >
               <Stack direction="row" alignItems="center" spacing={1.4} sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -207,7 +207,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                       <Chip
                         size="small"
                         label={`Rolle: ${p.role_name}`}
-                        sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#c4b5fd', fontWeight: 600, fontSize: '0.7rem', height: 22 }}
+                        sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', fontWeight: 600, fontSize: '0.7rem', height: 22 }}
                       />
                     ) : null}
                   </Stack>
@@ -230,7 +230,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                 </Typography>
               ) : null}
               {p.production_notes ? (
-                <Typography sx={{ color: '#c4b5fd', fontSize: '0.78rem', mt: 0.6, pl: 7 }}>
+                <Typography sx={{ color: '#c6bdf4', fontSize: '0.78rem', mt: 0.6, pl: 7 }}>
                   Din tilbakemelding: «{p.production_notes}»
                 </Typography>
               ) : null}
@@ -279,7 +279,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
           onClose={() => !busy && setResponseTarget(null)}
           maxWidth="sm"
           fullWidth
-          PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.95)', color: '#e0f2fe', border: `1px solid ${responseTarget.accept ? COLORS.success : COLORS.danger}` } }}
+          PaperProps={{ sx: { bgcolor: 'rgba(10, 5, 21,0.95)', color: '#e0f2fe', border: `1px solid ${responseTarget.accept ? COLORS.success : COLORS.danger}` } }}
         >
           <DialogTitle sx={{ fontWeight: 800 }}>
             {responseTarget.accept ? 'Aksepter' : 'Avslå'} {responseTarget.proposal.display_name}

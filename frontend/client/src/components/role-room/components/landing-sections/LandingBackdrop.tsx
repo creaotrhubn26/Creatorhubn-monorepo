@@ -93,7 +93,7 @@ function LandingBackdropImpl() {
           zIndex: 1,
           pointerEvents: 'none',
           background:
-            'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.4) 40%, rgba(10,10,15,0.75) 100%)',
+            'linear-gradient(180deg, rgba(10, 5, 21,0.55) 0%, rgba(10, 5, 21,0.4) 40%, rgba(10, 5, 21,0.75) 100%)',
         }}
       />
     </>

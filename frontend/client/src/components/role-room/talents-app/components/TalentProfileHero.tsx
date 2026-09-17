@@ -48,7 +48,7 @@ function StrengthRing({ score }: { score: number }) {
         value={100}
         size={78}
         thickness={3.5}
-        sx={{ color: 'rgba(168,85,247,0.16)' }}
+        sx={{ color: 'rgba(98, 73, 223,0.16)' }}
       />
       <CircularProgress
         variant="determinate"
@@ -106,7 +106,7 @@ export default function TalentProfileHero({
             width: { xs: 96, md: 132 },
             height: { xs: 96, md: 132 },
             borderRadius: radius.md,
-            bgcolor: 'rgba(168,85,247,0.18)',
+            bgcolor: 'rgba(98, 73, 223,0.18)',
             color: palette.accentBright,
           }}
           variant="rounded"
@@ -152,7 +152,7 @@ export default function TalentProfileHero({
             <Chip
               size="small"
               label={`${creditCount} ${creditCount === 1 ? 'kreditering' : 'krediteringer'}`}
-              sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright, fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright, fontWeight: 600 }}
             />
           </Stack>
 

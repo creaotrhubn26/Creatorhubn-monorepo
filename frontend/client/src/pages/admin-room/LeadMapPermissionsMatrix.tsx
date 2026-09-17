@@ -60,8 +60,8 @@ function RoleSummaryHeader({
       icon={false}
       sx={{
         mb: 2,
-        bgcolor: `${roleMeta?.color ?? '#c084fc'}15`,
-        border: `1px solid ${roleMeta?.color ?? '#c084fc'}66`,
+        bgcolor: `${roleMeta?.color ?? '#9e8cf8'}15`,
+        border: `1px solid ${roleMeta?.color ?? '#9e8cf8'}66`,
       }}
     >
       <Stack spacing={1}>
@@ -107,12 +107,12 @@ function RoleSummaryHeader({
 }
 
 const ROLE_COLUMNS = [
-  { key: 'admin', label: 'Admin', color: '#c084fc' },
+  { key: 'admin', label: 'Admin', color: '#9e8cf8' },
   { key: 'salgssjef', label: 'Salgssjef', color: '#f97316' },
   { key: 'teamleder', label: 'Teamleder', color: '#fbbf24' },
   { key: 'salgskonsulent', label: 'Salgskonsulent', color: '#34d399' },
   { key: 'promotor', label: 'Promotør', color: '#60a5fa' },
-  { key: 'member', label: 'Medlem', color: '#a78bfa' },
+  { key: 'member', label: 'Medlem', color: '#9e8cf8' },
   { key: 'viewer', label: 'Leser', color: '#9ca3af' },
 ];
 
@@ -238,9 +238,9 @@ export default function LeadMapPermissionsMatrix({ open, onClose, highlightRole 
                   <TableCell
                     colSpan={ROLE_COLUMNS.length + 1}
                     sx={{
-                      bgcolor: 'rgba(192,132,252,0.08)',
+                      bgcolor: 'rgba(158, 140, 248,0.08)',
                       fontWeight: 700,
-                      color: '#c084fc',
+                      color: '#9e8cf8',
                       py: 0.5,
                     }}
                   >
@@ -290,7 +290,7 @@ export default function LeadMapPermissionsMatrix({ open, onClose, highlightRole 
           </TableBody>
         </Table>
 
-        <Stack direction="row" spacing={3} sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(192,132,252,0.06)', borderRadius: 1 }}>
+        <Stack direction="row" spacing={3} sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(158, 140, 248,0.06)', borderRadius: 1 }}>
           <Stack direction="row" alignItems="center" spacing={0.5}>
             <CheckCircleOutlinedIcon sx={{ color: '#34d399', fontSize: 18 }} />
             <Typography variant="caption" color="text.secondary">Har tilgang</Typography>

@@ -9,7 +9,7 @@
  * kobles widget'ene til faktiske backend-spørringer (eller — for
  * studio-MVP — til en lett ny tabell).
  *
- * Design-konvensjon: følger samme dark-theme + #8b5cf6-accent som
+ * Design-konvensjon: følger samme dark-theme + #8875eb-accent som
  * resten av Role Room (PMV / LiveSetMode), så studio-eier kjenner
  * igjen layout-en hvis de bytter mellom moder.
  */
@@ -314,7 +314,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           <Button
             startIcon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
             size="small"
-            sx={{ textTransform: 'none', color: danceFlowColors.lavenderLight, borderColor: 'rgba(139,92,246,0.4)' }}
+            sx={{ textTransform: 'none', color: danceFlowColors.lavenderLight, borderColor: 'rgba(136, 117, 235,0.4)' }}
             variant="outlined"
             data-testid="dance-dashboard-ai-summary"
           >
@@ -355,7 +355,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           icon={<UnionIcon />}
           label={labels.danceUnionMembershipStatus}
           value={isStudio ? 'NoDa-arbeidsgiver' : 'Skuda-ansatt'}
-          accent="#a78bfa"
+          accent="#9e8cf8"
         />
       </Box>
 
@@ -385,7 +385,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                     p: 1.25,
                     borderRadius: 1.5,
                     border: '1px solid #1e2536',
-                    bgcolor: 'rgba(139,92,246,0.04)',
+                    bgcolor: 'rgba(136, 117, 235,0.04)',
                     display: 'grid',
                     gridTemplateColumns: { xs: '1fr', sm: '1fr auto' },
                     gap: 1,
@@ -549,9 +549,9 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                         sx={{
                           height: 20,
                           fontSize: 10,
-                          bgcolor: a.applied ? 'rgba(52,211,153,0.18)' : 'rgba(139,92,246,0.18)',
+                          bgcolor: a.applied ? 'rgba(52,211,153,0.18)' : 'rgba(136, 117, 235,0.18)',
                           color: a.applied ? danceFlowColors.successPrimary : danceFlowColors.lavenderLight,
-                          border: `1px solid ${a.applied ? 'rgba(52,211,153,0.4)' : 'rgba(139,92,246,0.4)'}`,
+                          border: `1px solid ${a.applied ? 'rgba(52,211,153,0.4)' : 'rgba(136, 117, 235,0.4)'}`,
                         }}
                       />
                     </Stack>
@@ -706,8 +706,8 @@ const SectionCard: React.FC<SectionCardProps> = ({ title, icon, actionLabel, act
   <Card
     data-testid={testId}
     sx={{
-      bgcolor: tinted ? 'rgba(139,92,246,0.06)' : danceFlowColors.bgPanel,
-      border: `1px solid ${tinted ? 'rgba(139,92,246,0.25)' : danceFlowColors.borderStrong}`,
+      bgcolor: tinted ? 'rgba(136, 117, 235,0.06)' : danceFlowColors.bgPanel,
+      border: `1px solid ${tinted ? 'rgba(136, 117, 235,0.25)' : danceFlowColors.borderStrong}`,
       borderRadius: 2,
       boxShadow: 'none',
     }}
@@ -744,8 +744,8 @@ const AiHint: React.FC<{ title: string; body: string }> = ({ title, body }) => (
     sx={{
       p: 1.25,
       borderRadius: 1.5,
-      border: '1px solid rgba(139,92,246,0.25)',
-      bgcolor: 'rgba(139,92,246,0.06)',
+      border: '1px solid rgba(136, 117, 235,0.25)',
+      bgcolor: 'rgba(136, 117, 235,0.06)',
     }}
   >
     <Typography sx={{ fontSize: 12, fontWeight: 600, color: danceFlowColors.lavenderLight }}>

@@ -45,7 +45,7 @@ const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
 const BG = danceFlowColors.bgBase;
 const CARD = danceFlowColors.bgCard;
-const BORDER = 'rgba(139,92,246,0.25)';
+const BORDER = 'rgba(136, 117, 235,0.25)';
 
 const FEATURE_LABEL: Record<string, string> = {
   reel_basic: 'Reel (basis, 5GB)',
@@ -162,7 +162,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
             clickable={!!subscription.stripeCustomerId}
             sx={{
               mt: 1,
-              bgcolor: subscription.status === 'active' ? 'rgba(16,185,129,0.18)' : 'rgba(167,139,250,0.18)',
+              bgcolor: subscription.status === 'active' ? 'rgba(16,185,129,0.18)' : 'rgba(158, 140, 248,0.18)',
               color: subscription.status === 'active' ? danceFlowColors.successDark : PURPLE_LIGHT,
               fontWeight: 700,
             }}
@@ -180,7 +180,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
                 px: 2, py: 0.5, textTransform: 'none', fontSize: 12, fontWeight: 700,
                 color: billingPeriod === p ? '#fff' : 'rgba(229,231,235,0.5)',
                 bgcolor: billingPeriod === p ? PURPLE : 'transparent',
-                '&:hover': { bgcolor: billingPeriod === p ? danceFlowColors.lavenderDeep : 'rgba(139,92,246,0.08)' },
+                '&:hover': { bgcolor: billingPeriod === p ? danceFlowColors.lavenderDeep : 'rgba(136, 117, 235,0.08)' },
               }}
             >
               {p === 'monthly' ? 'Månedlig' : 'Årlig (2 mnd gratis)'}
@@ -291,7 +291,7 @@ export function DancePricingPage({ persona }: DancePricingPageProps): React.Reac
                   bgcolor: plan.isFeatured ? PURPLE : 'transparent',
                   color: plan.isFeatured ? '#fff' : PURPLE_LIGHT,
                   borderColor: PURPLE,
-                  '&:hover': { bgcolor: plan.isFeatured ? danceFlowColors.lavenderDeep : 'rgba(139,92,246,0.08)' },
+                  '&:hover': { bgcolor: plan.isFeatured ? danceFlowColors.lavenderDeep : 'rgba(136, 117, 235,0.08)' },
                 }}
               >
                 {isCurrent ? 'Aktiv' :
@@ -363,7 +363,7 @@ export function PlanAdminPanel(): React.ReactElement {
                     {plan.name}
                   </Typography>
                   <Chip size="small" label={plan.slug} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(229,231,235,0.06)' }} />
-                  {plan.isFeatured ? <Chip size="small" label="Anbefalt" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT }} /> : null}
+                  {plan.isFeatured ? <Chip size="small" label="Anbefalt" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT }} /> : null}
                   {!plan.isActive ? <Chip size="small" label="Inaktiv" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorSoft }} /> : null}
                 </Stack>
                 <Typography sx={{ fontSize: 11, color: 'rgba(229,231,235,0.6)', mt: 0.5 }}>
@@ -656,7 +656,7 @@ export function TesterAdminPanel(): React.ReactElement {
                     <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
                       {inv.invitedName || inv.invitedEmail || '(uten navn)'}
                     </Typography>
-                    <Chip size="small" label={inv.planSlug} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT }} />
+                    <Chip size="small" label={inv.planSlug} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT }} />
                     <Chip size="small" label={`${inv.trialDays}d`} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(229,231,235,0.06)' }} />
                     <Chip
                       size="small"
@@ -901,7 +901,7 @@ export function TrialBanner(): React.ReactElement | null {
     <Box
       data-testid="dance-trial-banner"
       sx={{
-        bgcolor: isComp ? 'rgba(139,92,246,0.18)' : 'rgba(251,191,36,0.18)',
+        bgcolor: isComp ? 'rgba(136, 117, 235,0.18)' : 'rgba(251,191,36,0.18)',
         color: isComp ? PURPLE_LIGHT : danceFlowColors.gold,
         px: 2, py: 0.75, borderRadius: 1, fontSize: 12, fontWeight: 700,
         display: 'flex', alignItems: 'center', gap: 1,

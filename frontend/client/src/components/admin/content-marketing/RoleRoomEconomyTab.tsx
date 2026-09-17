@@ -81,7 +81,7 @@ const STATUS_COLORS: Record<string, string> = {
   past_due: '#f97316',
   canceled: '#94a3b8',
   unpaid: '#ef4444',
-  paused: '#a78bfa',
+  paused: '#9e8cf8',
   incomplete: '#64748b',
   incomplete_expired: '#475569',
   no_subscription: '#64748b',
@@ -202,7 +202,7 @@ export function RoleRoomEconomyTab() {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(6, 1fr)' }, gap: 1.5, mb: 3 }}>
         <Kpi label="MRR" valueMain={aggregate ? usd(aggregate.mrrUsd) : '—'} valueSub={aggregate ? nok(aggregate.mrrNok) : ''} accent="#22c55e" />
         <Kpi label="ARR" valueMain={aggregate ? usd(aggregate.arrUsd) : '—'} valueSub={aggregate ? nok(aggregate.arrNok) : ''} accent="#06b6d4" />
-        <Kpi label="Aktive" valueMain={String(aggregate?.activeCount ?? 0)} valueSub={`+${aggregate?.trialingCount ?? 0} trial`} accent="#a78bfa" />
+        <Kpi label="Aktive" valueMain={String(aggregate?.activeCount ?? 0)} valueSub={`+${aggregate?.trialingCount ?? 0} trial`} accent="#9e8cf8" />
         <Kpi label="Churn 30d" valueMain={pct(aggregate?.churnRatePct, 1)} valueSub={`${aggregate?.canceledLast30d ?? 0} kansellert`} accent={(aggregate?.churnRatePct ?? 0) > 5 ? '#ef4444' : '#fbbf24'} />
         <Kpi label="Total kost 30d" valueMain={aggregate ? usd(aggregate.totalCostUsd30d) : '—'} valueSub={aggregate ? `AI ${usdCents(aggregate.aiCostUsd30d)} + Plf ${usdCents(aggregate.platformFixedCostsUsd30d)}` : ''} accent="#f97316" />
         <Kpi label="Margin" valueMain={pct(aggregate?.marginPct, 1)} valueSub={aggregate ? usd(aggregate.marginUsd30d) : ''} accent={(aggregate?.marginPct ?? 0) >= 50 ? '#22c55e' : (aggregate?.marginPct ?? 0) >= 0 ? '#fbbf24' : '#ef4444'} />
@@ -328,11 +328,11 @@ export function RoleRoomEconomyTab() {
                   setError((err as Error).message);
                 }
               }}
-              sx={{ textTransform: 'none', fontWeight: 700, color: '#c4b5fd', borderColor: 'rgba(167,139,250,0.5)' }}
+              sx={{ textTransform: 'none', fontWeight: 700, color: '#c4b5fd', borderColor: 'rgba(158, 140, 248,0.5)' }}
             >
               Seed standard-rader
             </Button>
-            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setCostDialog({ open: true, initial: null })} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setCostDialog({ open: true, initial: null })} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
               Ny kostnad
             </Button>
           </Stack>
@@ -343,7 +343,7 @@ export function RoleRoomEconomyTab() {
             <Chip label={`Allokert Role Room: ${usd(aggregate.platformFixedCostsUsd30d)}/mnd`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontWeight: 700 }} />
             <Chip label={`Total plattform: ${usd(aggregate.platformFixedCostsTotalMonthlyUsd)}/mnd`} size="small" sx={{ bgcolor: 'rgba(148,163,184,0.2)', color: '#cbd5e1', fontWeight: 700 }} />
             {Object.entries(aggregate.fixedCostsByCategoryUsd).map(([cat, amount]) => (
-              <Chip key={cat} label={`${PLATFORM_COST_CATEGORY_LABELS[cat as PlatformCostCategory] ?? cat}: ${usd(amount)}`} size="small" sx={{ bgcolor: 'rgba(167,139,250,0.15)', color: '#c4b5fd', fontWeight: 600, fontSize: '0.72rem' }} />
+              <Chip key={cat} label={`${PLATFORM_COST_CATEGORY_LABELS[cat as PlatformCostCategory] ?? cat}: ${usd(amount)}`} size="small" sx={{ bgcolor: 'rgba(158, 140, 248,0.15)', color: '#c4b5fd', fontWeight: 600, fontSize: '0.72rem' }} />
             ))}
           </Stack>
         ) : null}
@@ -785,7 +785,7 @@ function PlatformCostDialog({ open, initial, onClose, onSaved }: { open: boolean
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none' }}>Avbryt</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
           {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett'}
         </Button>
       </DialogActions>

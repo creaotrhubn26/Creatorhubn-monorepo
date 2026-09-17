@@ -83,7 +83,7 @@ interface LoadState {
 
 const PALETTE = [
   danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, danceFlowColors.pinkAccent,
-  '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
+  '#06b6d4', '#f97316', '#84cc16', '#8875eb', '#f43f5e',
 ];
 
 function profilesToDancers(profiles: DancerProfile[]): Dancer[] {
@@ -444,7 +444,7 @@ export function FormationViewConnected({
               icon={<SavingIcon sx={{ fontSize: 16 }} />}
               label="Lagrer…"
               size="small"
-              sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: danceFlowColors.lavender, fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: danceFlowColors.lavender, fontWeight: 600 }}
             />
           ) : null}
           {saveStatus === 'saved' ? (

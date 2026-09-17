@@ -32,7 +32,7 @@ const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; c
 type Stage = 'svart' | 'booket' | 'kunde' | 'tapt';
 const STAGES: { key: Stage; label: string; color: string }[] = [
   { key: 'svart', label: 'Svarte', color: '#38bdf8' },
-  { key: 'booket', label: 'Booket møte', color: '#a78bfa' },
+  { key: 'booket', label: 'Booket møte', color: '#9e8cf8' },
   { key: 'kunde', label: 'Ble kunde', color: '#22c55e' },
   { key: 'tapt', label: 'Tapt', color: '#94a3b8' },
 ];
@@ -391,7 +391,7 @@ export default function LeadsPanel() {
                         size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 16 }} />}
                         onClick={() => autoSegment.mutate()}
                         disabled={leads.length === 0 || autoSegment.isPending}
-                        sx={{ bgcolor: 'rgba(168,85,247,0.9)', '&:hover': { bgcolor: 'rgb(147,51,234)' } }}
+                        sx={{ bgcolor: 'rgba(136, 117, 235,0.9)', '&:hover': { bgcolor: 'rgb(98, 73, 223)' } }}
                       >
                         {autoSegment.isPending ? 'Segmenterer…' : 'AI-segmentér'}
                       </Button>
@@ -403,7 +403,7 @@ export default function LeadsPanel() {
                   {autoSegment.data && autoSegment.data.success === false ? (
                     <Alert severity="warning" sx={{ py: 0 }}>{autoSegment.data.error}</Alert>
                   ) : autoSegment.data?.success ? (
-                    <Typography sx={{ fontSize: '0.78rem', color: '#d8b4fe' }}>
+                    <Typography sx={{ fontSize: '0.78rem', color: '#c6bdf4' }}>
                       AI segmenterte {autoSegment.data.applied?.length ?? 0} nye leads. Hold over et segment for å se begrunnelsen.
                     </Typography>
                   ) : null}
@@ -437,7 +437,7 @@ export default function LeadsPanel() {
                         size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 15 }} />}
                         onClick={() => retargetingCopy.mutate(activeSegment.key)}
                         disabled={retargetingCopy.isPending}
-                        sx={{ mt: 1, bgcolor: 'rgba(168,85,247,0.9)', '&:hover': { bgcolor: 'rgb(147,51,234)' } }}
+                        sx={{ mt: 1, bgcolor: 'rgba(136, 117, 235,0.9)', '&:hover': { bgcolor: 'rgb(98, 73, 223)' } }}
                       >
                         {retargetingCopy.isPending ? 'Skriver…' : 'AI: skriv annonsetekst'}
                       </Button>
@@ -447,13 +447,13 @@ export default function LeadsPanel() {
                       {retargetingCopy.data?.success && retargetingCopy.isIdle === false ? (
                         <Stack spacing={1} sx={{ mt: 1.2 }}>
                           {(retargetingCopy.data.variants || []).map((v, i) => (
-                            <Box key={i} sx={{ bgcolor: 'rgba(2,6,23,0.4)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 1.5, p: 1.2 }}>
+                            <Box key={i} sx={{ bgcolor: 'rgba(10, 5, 21,0.4)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 1.5, p: 1.2 }}>
                               <Typography sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.9rem' }}>{v.headline}</Typography>
                               <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{v.primaryText}</Typography>
                               {v.description ? <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem', mt: 0.4 }}>{v.description}</Typography> : null}
                               <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.6 }}>
-                                <Chip size="small" label={v.cta} sx={{ height: 20, fontSize: '0.66rem', bgcolor: 'rgba(168,85,247,0.2)', color: '#d8b4fe' }} />
-                                <Button size="small" sx={{ minWidth: 0, fontSize: '0.72rem', textTransform: 'none', color: '#c084fc' }}
+                                <Chip size="small" label={v.cta} sx={{ height: 20, fontSize: '0.66rem', bgcolor: 'rgba(136, 117, 235,0.2)', color: '#c6bdf4' }} />
+                                <Button size="small" sx={{ minWidth: 0, fontSize: '0.72rem', textTransform: 'none', color: '#9e8cf8' }}
                                   onClick={() => { try { navigator.clipboard?.writeText(`${v.headline}\n\n${v.primaryText}\n\n${v.description}`); } catch { /* ignore */ } }}>
                                   Kopier
                                 </Button>
@@ -488,7 +488,7 @@ export default function LeadsPanel() {
                         { label: 'Leads inn', value: String(summary?.totalLeads ?? 0), color: 'var(--role-cyan, #22d3ee)' },
                         { label: 'Pris per lead', value: kr(summary?.costPerLeadKr ?? 0), color: '#e2e8f0' },
                         { label: 'Svarte', value: String(summary?.answered ?? 0), color: '#38bdf8' },
-                        { label: 'Booket møte', value: String(summary?.booked ?? 0), color: '#a78bfa' },
+                        { label: 'Booket møte', value: String(summary?.booked ?? 0), color: '#9e8cf8' },
                         { label: 'Ble kunder', value: String(summary?.customers ?? 0), color: '#22c55e' },
                         { label: 'Omsetning', value: kr(summary?.revenueKr ?? 0), color: '#22c55e' },
                       ].map((cell) => (
@@ -579,13 +579,13 @@ export default function LeadsPanel() {
                                 placeholder="kunde@bedrift.no"
                               />
                             </Stack>
-                            <Box sx={{ border: '1px solid rgba(168,85,247,0.3)', bgcolor: 'rgba(168,85,247,0.06)', borderRadius: 1.5, px: 1.4, py: 0.6 }}>
+                            <Box sx={{ border: '1px solid rgba(136, 117, 235,0.3)', bgcolor: 'rgba(136, 117, 235,0.06)', borderRadius: 1.5, px: 1.4, py: 0.6 }}>
                               <FormControlLabel
                                 control={<Switch checked={cfg.aiPersonalize} onChange={(e) => setCfg({ ...cfg, aiPersonalize: e.target.checked })} />}
                                 label={
                                   <Box>
                                     <Typography sx={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                      <AiIcon sx={{ fontSize: 16, color: '#c084fc' }} /> La AI skrive en personlig melding til hver lead
+                                      <AiIcon sx={{ fontSize: 16, color: '#9e8cf8' }} /> La AI skrive en personlig melding til hver lead
                                     </Typography>
                                     <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }}>Claude tilpasser meldingen ut fra hva hver lead spurte om. Malene over brukes som tone — og som reserve hvis AI feiler.</Typography>
                                   </Box>
@@ -714,7 +714,7 @@ export default function LeadsPanel() {
                                   </Select>
                                   {l.segmentReason ? (
                                     <Tooltip title={`AI: ${l.segmentReason}`} arrow>
-                                      <AiIcon sx={{ fontSize: 14, color: '#c084fc', flexShrink: 0 }} />
+                                      <AiIcon sx={{ fontSize: 14, color: '#9e8cf8', flexShrink: 0 }} />
                                     </Tooltip>
                                   ) : null}
                                 </Stack>

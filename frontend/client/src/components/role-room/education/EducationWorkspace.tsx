@@ -80,7 +80,7 @@ const EDUCATION_TABS: EducationTabDef[] = [
   { id: 'faculty', label: 'Fakultet', icon: <FacultyIcon fontSize="small" />, blurb: 'Stab-seter, lærer-roller og hvem som veileder hvilket kull.' },
 ];
 
-const ACCENT = '#8B5CF6';
+const ACCENT = '#8875eb';
 
 interface EducationWorkspaceProps {
   projectId?: string;
@@ -88,12 +88,12 @@ interface EducationWorkspaceProps {
 
 function EmptyState({ tab }: { tab: EducationTabDef }) {
   return (
-    <Card sx={{ bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.24)', borderRadius: 3 }}>
+    <Card sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: '1px solid rgba(136, 117, 235,0.24)', borderRadius: 3 }}>
       <CardContent sx={{ p: 4, textAlign: 'center' }}>
         <Box sx={{ color: ACCENT, mb: 1.5, '& svg': { fontSize: 40 } }}>{tab.icon}</Box>
         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>{tab.label}</Typography>
         <Typography sx={{ color: 'rgba(255,255,255,0.72)', maxWidth: 520, mx: 'auto', fontSize: 14 }}>{tab.blurb}</Typography>
-        <Chip label="Kommer i neste skive" size="small" sx={{ mt: 2, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 600 }} />
+        <Chip label="Kommer i neste skive" size="small" sx={{ mt: 2, bgcolor: 'rgba(136, 117, 235,0.22)', color: '#e0dbfa', fontWeight: 600 }} />
       </CardContent>
     </Card>
   );
@@ -109,10 +109,10 @@ function NavItems({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavi
           <Box key={t.id} onClick={() => onNavigate(t.id)} data-edit-id={`edu-nav-${t.id}`} sx={{
             display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.05, borderRadius: 2, cursor: 'pointer',
             color: active ? '#fff' : 'rgba(255,255,255,0.76)',
-            bgcolor: active ? 'rgba(139,92,246,0.16)' : 'transparent',
-            boxShadow: active ? 'inset 3px 0 0 #8B5CF6' : 'none',
+            bgcolor: active ? 'rgba(136, 117, 235,0.16)' : 'transparent',
+            boxShadow: active ? 'inset 3px 0 0 #8875eb' : 'none',
             transition: 'background .15s, color .15s',
-            '&:hover': { bgcolor: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', color: '#fff' },
+            '&:hover': { bgcolor: active ? 'rgba(136, 117, 235,0.2)' : 'rgba(255,255,255,0.05)', color: '#fff' },
             '& svg': { fontSize: 20, color: active ? ACCENT : 'inherit' },
           }}>
             {t.icon}
@@ -131,7 +131,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
       borderRight: '1px solid rgba(255,255,255,0.07)',
       // Kinematisk The Role Room-backdrop (klaffbrett + lilla lys) med mørk
       // gradient-overlegg så nav-teksten holder seg lesbar.
-      background: 'linear-gradient(180deg, rgba(10,10,10,0.5) 0%, rgba(12,8,22,0.86) 100%), url(/trr-edu-sidebar-bg.png)',
+      background: 'linear-gradient(180deg, rgba(10,10,10,0.5) 0%, rgba(10, 5, 21,0.86) 100%), url(/trr-edu-sidebar-bg.png)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       display: { xs: 'none', md: 'flex' }, flexDirection: 'column', p: 1.75,
@@ -156,7 +156,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
 
       {/* Konto */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1, py: 1, mt: 0.5, borderTop: '1px solid rgba(255,255,255,0.07)', pt: 1.25 }}>
-        <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff', fontSize: 12, fontWeight: 700 }}>TRR</Avatar>
+        <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa', fontSize: 12, fontWeight: 700 }}>TRR</Avatar>
         <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1 }}>The Role Room</Typography>
         <CaretIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.75)' }} />
       </Box>
@@ -181,7 +181,7 @@ function TopBar({ onHelp, onMenu }: { onHelp: () => void; onMenu: () => void }) 
       </IconButton>
 
       {/* Modus-velger */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', bgcolor: 'rgba(139,92,246,0.1)', flexShrink: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', bgcolor: 'rgba(136, 117, 235,0.1)', flexShrink: 0 }}>
         <SchoolIcon sx={{ fontSize: 17, color: ACCENT }} />
         <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Utdannings-modus</Typography>
         <SwitchIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.72)' }} />
@@ -205,7 +205,7 @@ function TopBar({ onHelp, onMenu }: { onHelp: () => void; onMenu: () => void }) 
             <Typography sx={{ fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>{dateLabel}</Typography>
             <Typography sx={{ fontSize: 11, color: ACCENT, lineHeight: 1.2 }}>Faglærer</Typography>
           </Box>
-          <Avatar sx={{ width: 34, height: 34, bgcolor: 'rgba(139,92,246,0.35)', color: '#e9d5ff', fontSize: 13, fontWeight: 700 }}>F</Avatar>
+          <Avatar sx={{ width: 34, height: 34, bgcolor: 'rgba(136, 117, 235,0.35)', color: '#e0dbfa', fontSize: 13, fontWeight: 700 }}>F</Avatar>
         </Stack>
       </Stack>
     </Box>
@@ -260,7 +260,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
           under md). Lukkes når man velger en fane. */}
       <Drawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)}
         ModalProps={{ keepMounted: true }}
-        sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: 272, boxSizing: 'border-box', p: 1.75, bgcolor: '#0c0816', color: '#fff', borderRight: '1px solid rgba(255,255,255,0.08)' } }}>
+        sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: 272, boxSizing: 'border-box', p: 1.75, bgcolor: '#0a0515', color: '#fff', borderRight: '1px solid rgba(255,255,255,0.08)' } }}>
         <Box sx={{ px: 0.75, pt: 0.5, pb: 1, mb: 0.5 }}>
           <RoleRoomEduLogo markSize={44} />
         </Box>
