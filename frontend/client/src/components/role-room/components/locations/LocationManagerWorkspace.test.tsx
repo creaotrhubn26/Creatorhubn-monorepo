@@ -121,7 +121,10 @@ describe('LocationManagerWorkspace', () => {
     expect(screen.getByText(/62 dBA ved nordport/)).toBeInTheDocument();
     expect(screen.getAllByText('Verifisert').length).toBeGreaterThan(0);
     expect(screen.getByText('Ulagrede endringer')).toBeInTheDocument();
-  }, 10_000);
+  // Fire interaksjoner mot hele feltarbeidsflaten koster ~9 s i jsdom, og den
+  // gamle grensen på 10 s lot testen falle på maskinlast alene. Grensen er her
+  // for å fange en hengende test, ikke for å måle ytelse.
+  }, 30_000);
 
   it('submits a signer decision through the role-derived decision endpoint', async () => {
     const initial = buildLocationManagerOperations(project.locations![0], project);
