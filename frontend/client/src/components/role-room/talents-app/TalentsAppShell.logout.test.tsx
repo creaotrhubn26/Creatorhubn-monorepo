@@ -32,4 +32,17 @@ describe('TalentsAppShell account menu', () => {
 
     expect(screen.queryByText('Logg ut')).toBeNull();
   });
+
+  it('offers a way out of the Talents app itself, not just out of the account', async () => {
+    // Flatevelgeren bodde i RoleRoomUXLayer, som Talents-appen ikke bruker.
+    // Den viste seg derfor overalt unntatt der en talent faktisk satt fast.
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ user: { email: 'talent@example.test' } }),
+    })));
+
+    render(<TalentsAppShell {...baseProps}><div /></TalentsAppShell>);
+
+    expect(screen.getByRole('button', { name: 'Bytt flate' })).toBeInTheDocument();
+  });
 });
