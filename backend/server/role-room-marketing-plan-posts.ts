@@ -65,6 +65,12 @@ export interface PersistedPlanPost extends GeneratedPlanPost {
   lastEditedByUserId: string | null;
   lastEditedByName: string | null;
   lastEditedByKind: 'team' | 'client' | null;
+  // Direkte publisering (fase 1b, Markedssjef-modus) — null for poster som
+  // gikk via feed-planneren eller ikke er publisert.
+  externalPostId: string | null;
+  externalPermalink: string | null;
+  publishedPlatform: string | null;
+  publishError: string | null;
 }
 
 // ── Claude generation ───────────────────────────────────────────────────
@@ -284,7 +290,7 @@ export async function generatePlanPosts(input: {
 
 // ── Persistence ─────────────────────────────────────────────────────────
 
-function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
+export function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
   const crossPostPlan = Array.isArray(row.cross_post_plan) ? (row.cross_post_plan as GeneratedPlanPost['crossPostPlan']) : [];
   const goalKpi = (row.goal_kpi as GeneratedPlanPost['goalKpi']) ?? null;
   return {
@@ -322,6 +328,10 @@ function mapPostRow(row: Record<string, unknown>): PersistedPlanPost {
     lastEditedByUserId: (row.last_edited_by_user_id as string | null) ?? null,
     lastEditedByName: (row.last_edited_by_name as string | null) ?? null,
     lastEditedByKind: (row.last_edited_by_kind as 'team' | 'client' | null) ?? null,
+    externalPostId: (row.external_post_id as string | null) ?? null,
+    externalPermalink: (row.external_permalink as string | null) ?? null,
+    publishedPlatform: (row.published_platform as string | null) ?? null,
+    publishError: (row.publish_error as string | null) ?? null,
     pillarIndex: 0, // unused after persistence
   } as unknown as PersistedPlanPost;
 }
@@ -554,6 +564,8 @@ export async function listPlanPosts(
               p.client_review_status, p.client_review_at, p.client_review_note,
               p.last_edited_at, p.last_edited_by_user_id,
               p.last_edited_by_kind,
+              p.external_post_id, p.external_permalink, p.published_platform,
+              p.publish_error,
               u.email AS last_edited_by_name
          FROM role_room_marketing_plan_posts p
          LEFT JOIN users u ON u.id = p.last_edited_by_user_id

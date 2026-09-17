@@ -3570,6 +3570,65 @@ export const roleRoomAgentService = {
     };
   },
 
+  /** Markedssjef-modus fase 1b — LinkedIn-tilstand for publiseringskortet. */
+  async getMarketingPlanLinkedInPublishOptions(
+    projectId: string,
+  ): Promise<MarketingPlanLinkedInPublishOptions | null> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/linkedin/publish-options?projectId=${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    if (!response.ok) return null;
+    const payload = (await response.json().catch(() => null)) as
+      | (Partial<MarketingPlanLinkedInPublishOptions> & { success?: boolean })
+      | null;
+    if (!payload?.success) return null;
+    return {
+      connected: Boolean(payload.connected),
+      state: payload.state ?? 'disconnected',
+      memberName: payload.memberName ?? null,
+      scopeMissing: Boolean(payload.scopeMissing),
+      companies: Array.isArray(payload.companies) ? payload.companies : [],
+      captionMax: payload.captionMax ?? 3000,
+    };
+  },
+
+  /** Markedssjef-modus fase 1b — publiser én plan-post direkte til LinkedIn.
+   *  Kaster MarketingPlanPublishError med norsk tekst fra backend ved feil. */
+  async publishMarketingPlanPost(input: {
+    postId: string;
+    projectId: string;
+    platform: 'linkedin';
+    caption: string;
+    organizationUrn?: string | null;
+  }): Promise<{ post: MarketingPlanPost; permalink: string | null }> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/posts/${encodeURIComponent(input.postId)}/publish`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+        body: JSON.stringify({
+          projectId: input.projectId,
+          platform: input.platform,
+          caption: input.caption,
+          ...(input.organizationUrn ? { organizationUrn: input.organizationUrn } : {}),
+        }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; post?: MarketingPlanPost; permalink?: string | null; reason?: string; error?: string }
+      | null;
+    if (!response.ok || !payload?.success || !payload.post) {
+      throw new MarketingPlanPublishError(
+        response.status,
+        payload?.reason ?? (response.status === 429 ? 'rate_limited' : 'unknown'),
+        payload?.error ?? 'Kunne ikke publisere posten.',
+        payload?.permalink ?? null,
+      );
+    }
+    return { post: payload.post, permalink: payload.permalink ?? null };
+  },
+
   /** Item #157 — regenerér én post med valgfri tone-hint. */
   async regenerateMarketingPlanPost(input: {
     postId: string;
@@ -4049,6 +4108,34 @@ export interface MarketingPlanPost {
   previewStreamPlaybackUrl?: string | null;
   previewStreamReady?: boolean;
   previewVideoR2Url?: string | null;
+  /** Direkte publisering (Markedssjef-modus fase 1b). null når posten gikk
+   *  via feed-planneren eller ikke er publisert. */
+  externalPostId?: string | null;
+  externalPermalink?: string | null;
+  publishedPlatform?: string | null;
+  publishError?: string | null;
+}
+
+export interface MarketingPlanLinkedInPublishOptions {
+  connected: boolean;
+  state: string;
+  memberName: string | null;
+  scopeMissing: boolean;
+  companies: Array<{ urn: string; name: string }>;
+  captionMax: number;
+}
+
+export class MarketingPlanPublishError extends Error {
+  readonly reason: string;
+  readonly status: number;
+  readonly permalink: string | null;
+  constructor(status: number, reason: string, message: string, permalink: string | null = null) {
+    super(message);
+    this.name = 'MarketingPlanPublishError';
+    this.status = status;
+    this.reason = reason;
+    this.permalink = permalink;
+  }
 }
 
 export default roleRoomAgentService;

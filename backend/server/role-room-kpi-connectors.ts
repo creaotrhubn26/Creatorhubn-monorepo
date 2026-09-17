@@ -6,13 +6,10 @@
  * Insights-API, og returnerer KpiSnapshotInput[]-array. persistKpi-
  * SnapshotBatch skriver dem til DB.
  *
- * Meta-connector er fullt implementert (vi har eksisterende IG-token-
- * infrastruktur). TikTok og LinkedIn er stubs som returnerer tomt
- * array + honest log-melding inntil OAuth-flows er klare:
- *   - TikTok Business API krever app-review (godkjenning kan ta uker)
- *   - LinkedIn krever Page Admin-rolle + r_organization_social-scope
- *
- * Når enten flow er klar, byttes stub-funksjonen til ekte fetch.
+ * Meta og TikTok leser via feed_plan_post_id. LinkedIn leser via
+ * external_post_id (direkte publisering fra markedsplanen) og henter kun
+ * likes/kommentarer fra socialActions — impressions krever Page-stats og
+ * rapporteres ikke.
  */
 
 import type { Pool } from "pg";
@@ -20,6 +17,8 @@ import type { KpiSnapshotInput } from "./role-room-kpi-tracking.js";
 import { ensureFreshTikTokConnection } from "./role-room-tiktok-oauth.js";
 import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 import { fetchTikTokVideoMetrics } from "./role-room-tiktok-insights.js";
+import { fetchLinkedInSocialActions } from "./social-linkedin-social-actions.js";
+import { decryptLinkedInToken } from "./social-publisher-linkedin.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // #177 — Meta Graph API connector (IG Business + Facebook Pages)
@@ -233,20 +232,91 @@ export async function fetchTikTokKpisForPosts(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// #179 — LinkedIn Pages Stats connector (stub — krever Page Admin OAuth)
+// #179 — LinkedIn connector (member-/organisasjonsposter via socialActions)
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Henter likes + kommentarer for LinkedIn-poster som ble publisert direkte
+ * fra markedsplanen (Markedssjef-modus fase 1b): posten har external_post_id
+ * og published_by_user_id, og tokenet er den brukerens globale LinkedIn-
+ * tilkobling (project_id IS NULL). Impressions krever Page-statistikk med
+ * egen scope og hentes ikke — vi rapporterer bare det vi faktisk kan lese.
+ *
+ * Poster uten external_post_id (feed-planner-veien) hoppes over: der
+ * finnes ingen kobling til LinkedIn-posten i denne tabellen.
+ */
 export async function fetchLinkedInKpisForPosts(
   pool: Pool,
   _projectId: string,
-  _planId: string,
-  posts: Array<{ id: string; feedPlanPostId: string | null; primaryPlatform: string | null }>,
+  planId: string,
+  posts: Array<{
+    id: string;
+    feedPlanPostId: string | null;
+    primaryPlatform: string | null;
+    externalPostId?: string | null;
+    publishedByUserId?: string | null;
+  }>,
+  deps: { fetchImpl?: typeof fetch; now?: () => Date } = {},
 ): Promise<KpiSnapshotInput[]> {
-  void pool;
-  const liPosts = posts.filter((p) => p.feedPlanPostId && p.primaryPlatform === "linkedin");
+  const liPosts = posts.filter(
+    (p) => p.externalPostId && (p.primaryPlatform === "linkedin" || p.primaryPlatform === null),
+  );
   if (liPosts.length === 0) return [];
-  console.log("[role-room-kpi-connectors] LinkedIn stub: ville hentet KPI for", liPosts.length, "posts — trenger r_organization_social + Page Admin-tilgang. Returnerer tomt.");
-  return [];
+
+  const tokenByUser = new Map<string, string | null>();
+  const tokenFor = async (userId: string): Promise<string | null> => {
+    if (!tokenByUser.has(userId)) {
+      tokenByUser.set(userId, await loadLinkedInAccessTokenForUser(pool, userId));
+    }
+    return tokenByUser.get(userId) ?? null;
+  };
+
+  const capturedAt = deps.now ? deps.now() : new Date();
+  const snapshots: KpiSnapshotInput[] = [];
+  for (const post of liPosts) {
+    const userId = post.publishedByUserId ?? (await loadPlanOwnerUserId(pool, planId));
+    if (!userId) continue;
+    const token = await tokenFor(userId);
+    if (!token) continue;
+    const actions = await fetchLinkedInSocialActions(post.externalPostId as string, token, deps.fetchImpl);
+    if (!actions) continue;
+    const likes = actions.likes ?? 0;
+    const comments = actions.comments ?? 0;
+    const base = { postId: post.id, planId, platform: "linkedin" as const, capturedAt, source: "linkedin_pages" as const };
+    if (actions.likes !== null) snapshots.push({ ...base, metric: "likes", value: likes });
+    if (actions.comments !== null) snapshots.push({ ...base, metric: "comments", value: comments });
+    if (actions.likes !== null || actions.comments !== null) {
+      snapshots.push({ ...base, metric: "engagement", value: likes + comments });
+    }
+  }
+  return snapshots;
+}
+
+async function loadLinkedInAccessTokenForUser(pool: Pool, userId: string): Promise<string | null> {
+  try {
+    const r = await pool.query<{ access_token_encrypted: string | null }>(
+      `SELECT access_token_encrypted
+         FROM role_room_linkedin_connections
+        WHERE user_id = $1 AND project_id IS NULL AND connection_state IN ('connected', 'active')
+        LIMIT 1`,
+      [userId],
+    );
+    return decryptLinkedInToken(r.rows[0]?.access_token_encrypted ?? null);
+  } catch {
+    return null;
+  }
+}
+
+async function loadPlanOwnerUserId(pool: Pool, planId: string): Promise<string | null> {
+  try {
+    const r = await pool.query<{ owner_user_id: string | null }>(
+      `SELECT owner_user_id FROM role_room_marketing_plans WHERE id = $1`,
+      [planId],
+    );
+    return r.rows[0]?.owner_user_id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -258,7 +328,13 @@ export async function fetchAllPlatformKpis(
   input: {
     projectId: string;
     planId: string;
-    posts: Array<{ id: string; feedPlanPostId: string | null; primaryPlatform: string | null }>;
+    posts: Array<{
+      id: string;
+      feedPlanPostId: string | null;
+      primaryPlatform: string | null;
+      externalPostId?: string | null;
+      publishedByUserId?: string | null;
+    }>;
   },
 ): Promise<{
   snapshots: KpiSnapshotInput[];

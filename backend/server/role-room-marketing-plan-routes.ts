@@ -52,6 +52,9 @@ import {
   summarizeKpis,
 } from "./role-room-kpi-tracking.js";
 import { fetchAllPlatformKpis } from "./role-room-kpi-connectors.js";
+import { dispatchPublish } from "./social-publisher.js";
+import { listManagedCompaniesForUser } from "./social-publisher-linkedin.js";
+import { RateLimitExceededError, checkEndpointRateLimit } from "./role-room-agent-ratelimit.js";
 import { logAIUsage } from "./ai-usage-tracker.js";
 import {
   aggregateByPillar,
@@ -74,6 +77,7 @@ import {
   generatePlanPosts,
   listPlanPosts,
   persistPlanPosts,
+  mapPostRow,
 } from "./role-room-marketing-plan-posts.js";
 import { listInstagramConnections } from "./role-room-instagram-oauth.js";
 import { loadFeedPlan, saveFeedPlan } from "./role-room-feed-plan.js";
@@ -1229,15 +1233,19 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
     // Hent plan_id via post + sjekk eierskap
     let planId: string;
     try {
-      const r = await pool.query<{ plan_id: string; owner_user_id: string }>(
-        `SELECT pp.plan_id, p.owner_user_id
+      const r = await pool.query<{ plan_id: string; owner_user_id: string; plan_project_id: string }>(
+        `SELECT pp.plan_id, p.owner_user_id, p.project_id AS plan_project_id
            FROM role_room_marketing_plan_posts pp
            JOIN role_room_marketing_plans p ON p.id = pp.plan_id
           WHERE pp.id = $1`,
         [postId],
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke posten." });
-      if (r.rows[0].owner_user_id !== session.userId) {
+      // Leadgrid: alle i orgen med markedsførings-permission «eier» planen.
+      if (
+        r.rows[0].owner_user_id !== session.userId
+        && !leadgridMarketingAuthorizedFor(req, r.rows[0].plan_project_id)
+      ) {
         return res.status(403).json({ success: false, error: "Du eier ikke planen." });
       }
       planId = r.rows[0].plan_id;
@@ -1277,7 +1285,10 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
         [planId],
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke planen." });
-      if (r.rows[0].owner_user_id !== session.userId) {
+      if (
+        r.rows[0].owner_user_id !== session.userId
+        && !leadgridMarketingAuthorizedFor(req, r.rows[0].project_id)
+      ) {
         return res.status(403).json({ success: false, error: "Du eier ikke planen." });
       }
       projectId = r.rows[0].project_id;
@@ -1286,19 +1297,35 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
       return res.status(500).json({ success: false, error: "Kunne ikke laste planen." });
     }
 
-    // Hent posts som er aksepterte (feed_plan_post_id != null)
-    let posts: Array<{ id: string; feedPlanPostId: string | null; primaryPlatform: string | null }>;
+    // Hent posts som er aksepterte (feed_plan_post_id != null) eller publisert
+    // direkte til LinkedIn fra markedsplanen (external_post_id != null).
+    let posts: Array<{
+      id: string;
+      feedPlanPostId: string | null;
+      primaryPlatform: string | null;
+      externalPostId: string | null;
+      publishedByUserId: string | null;
+    }>;
     try {
-      const r = await pool.query<{ id: string; feed_plan_post_id: string | null; primary_platform: string | null }>(
-        `SELECT id, feed_plan_post_id, primary_platform
+      const r = await pool.query<{
+        id: string;
+        feed_plan_post_id: string | null;
+        primary_platform: string | null;
+        external_post_id: string | null;
+        published_by_user_id: string | null;
+      }>(
+        `SELECT id, feed_plan_post_id, primary_platform, external_post_id, published_by_user_id
            FROM role_room_marketing_plan_posts
-          WHERE plan_id = $1 AND feed_plan_post_id IS NOT NULL`,
+          WHERE plan_id = $1
+            AND (feed_plan_post_id IS NOT NULL OR external_post_id IS NOT NULL)`,
         [planId],
       );
       posts = r.rows.map((row) => ({
         id: row.id,
         feedPlanPostId: row.feed_plan_post_id,
         primaryPlatform: row.primary_platform,
+        externalPostId: row.external_post_id,
+        publishedByUserId: row.published_by_user_id,
       }));
     } catch (error) {
       console.error("[marketing-plan-routes] kpi-sync: posts lookup failed", error);
@@ -1336,12 +1363,15 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
 
     // Eierskap-sjekk via planen
     try {
-      const r = await pool.query<{ owner_user_id: string }>(
-        `SELECT owner_user_id FROM role_room_marketing_plans WHERE id = $1`,
+      const r = await pool.query<{ owner_user_id: string; project_id: string }>(
+        `SELECT owner_user_id, project_id FROM role_room_marketing_plans WHERE id = $1`,
         [planId],
       );
       if (!r.rows[0]) return res.status(404).json({ success: false, error: "Fant ikke planen." });
-      if (r.rows[0].owner_user_id !== session.userId) {
+      if (
+        r.rows[0].owner_user_id !== session.userId
+        && !leadgridMarketingAuthorizedFor(req, r.rows[0].project_id)
+      ) {
         return res.status(403).json({ success: false, error: "Du eier ikke planen." });
       }
     } catch (error) {
@@ -1569,6 +1599,220 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // Item #157 — regenerér én post med valgfri prompt-hint
   // ("gjør den mer ironisk", "kort den ned til 50 ord", etc.).
   // Bruker Claude Haiku for hastighet (single-post er liten payload).
+  // ── Markedssjef-modus fase 1b: direkte LinkedIn-publisering ──────────
+  //
+  // Ligger under /marketing-plan så bro-middlewaren autoriserer lg-nøkler
+  // (org-medlem med marketing.content.brief + modul). Role Room-eiere kan
+  // også bruke ruten, men deres eksisterende accept → feed-planner-flyt er
+  // uendret. LinkedIn-tilkoblingen er brukerens egen (user_id, project_id
+  // IS NULL) — samme som social/publish bruker for LinkedIn.
+
+  const LINKEDIN_CAPTION_MAX = 3000;
+  const PUBLISH_REASON_TEXT: Record<string, string> = {
+    connection_not_found: "LinkedIn er ikke koblet til for brukeren din. Koble til og prøv igjen.",
+    scope_missing: "LinkedIn-tilkoblingen mangler tilgang til å publisere som bedrift. Koble til på nytt og godkjenn bedriftssider.",
+    auth_failed: "LinkedIn avviste tilkoblingen. Koble til på nytt.",
+    rate_limited: "LinkedIn har midlertidig stoppet flere poster fra denne kontoen. Prøv igjen om en stund.",
+    validation_failed: "Posten kunne ikke valideres for LinkedIn.",
+    linkedin_api_error: "LinkedIn svarte med en feil. Ingenting er publisert — prøv igjen.",
+  };
+
+  interface LinkedInPublishOptionRow {
+    linkedin_name: string | null;
+    linkedin_member_id: string | null;
+    connection_state: string | null;
+    expiry_date: Date | null;
+  }
+
+  // GET /api/role-room/marketing-plan/linkedin/publish-options?projectId=…
+  // Tilstanden Leadgrid-siden trenger for å vise riktig neste handling:
+  // koble til / koble til på nytt / publiser (+ bedriftssider når scope finnes).
+  app.get("/api/role-room/marketing-plan/linkedin/publish-options", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    try {
+      const r = await pool.query<LinkedInPublishOptionRow>(
+        `SELECT linkedin_name, linkedin_member_id, connection_state, expiry_date
+           FROM role_room_linkedin_connections
+          WHERE user_id = $1 AND project_id IS NULL
+          LIMIT 1`,
+        [session.userId],
+      );
+      const row = r.rows[0];
+      const expired =
+        row?.expiry_date instanceof Date && Number.isFinite(row.expiry_date.getTime())
+          ? row.expiry_date.getTime() <= Date.now()
+          : false;
+      const connected =
+        Boolean(row?.linkedin_member_id)
+        && (row?.connection_state === "connected" || row?.connection_state === "active")
+        && !expired;
+      const state = !row ? "disconnected" : expired ? "expired" : (row.connection_state ?? "disconnected");
+      const companies = connected
+        ? await listManagedCompaniesForUser(pool, session.userId)
+        : { companies: [], scopeMissing: false };
+      return res.json({
+        success: true,
+        connected,
+        state,
+        memberName: row?.linkedin_name ?? null,
+        scopeMissing: companies.scopeMissing,
+        companies: companies.companies.map((c) => ({ urn: c.urn, name: c.name ?? c.vanityName ?? c.id })),
+        captionMax: LINKEDIN_CAPTION_MAX,
+      });
+    } catch (error) {
+      console.error("[marketing-plan-routes] linkedin publish-options failed", error);
+      return res.status(500).json({ success: false, error: "Kunne ikke hente LinkedIn-status." });
+    }
+  });
+
+  // POST /api/role-room/marketing-plan/posts/:postId/publish
+  //   { projectId, platform: 'linkedin', caption?, organizationUrn? }
+  // Publiserer tekstposten nå (LinkedIn har ingen planlagt publisering for
+  // UGC), og skriver publiseringstilstand tilbake på plan-posten slik at
+  // KPI-connectoren kan hente likes/kommentarer senere.
+  app.post("/api/role-room/marketing-plan/posts/:postId/publish", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const postId = String(req.params.postId || "").trim();
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    const platform = typeof body.platform === "string" ? body.platform.trim() : "linkedin";
+    const organizationUrn =
+      typeof body.organizationUrn === "string" && body.organizationUrn.trim()
+        ? body.organizationUrn.trim()
+        : null;
+    if (!postId || !projectId) {
+      return res.status(400).json({ success: false, error: "postId og projectId er påkrevd." });
+    }
+    if (platform !== "linkedin") {
+      return res.status(400).json({ success: false, error: "Kun LinkedIn støttes for direkte publisering foreløpig." });
+    }
+    if (organizationUrn && !organizationUrn.startsWith("urn:li:organization:")) {
+      return res.status(400).json({ success: false, error: "organizationUrn må være en LinkedIn-organisasjons-URN." });
+    }
+
+    // Forebygg feil før LinkedIn kalles: publisering koster kvote og kan ikke angres.
+    try {
+      checkEndpointRateLimit(session.userId, "marketing_plan_publish", 10);
+    } catch (rlErr) {
+      if (rlErr instanceof RateLimitExceededError) {
+        res.setHeader("Retry-After", String(rlErr.retryAfterSeconds));
+        return res.status(429).json({ success: false, error: "For mange publiseringer på kort tid. Vent litt og prøv igjen." });
+      }
+      throw rlErr;
+    }
+
+    let row: Record<string, unknown> | undefined;
+    try {
+      const r = await pool.query(
+        `SELECT p.*, mp.owner_user_id, mp.project_id AS plan_project_id
+           FROM role_room_marketing_plan_posts p
+           JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
+          WHERE p.id = $1
+          LIMIT 1`,
+        [postId],
+      );
+      row = r.rows[0] as Record<string, unknown> | undefined;
+    } catch (error) {
+      console.error("[marketing-plan-routes] publish: lookup failed", error);
+      return res.status(500).json({ success: false, error: "Kunne ikke laste posten." });
+    }
+    if (!row) return res.status(404).json({ success: false, error: "Fant ikke posten." });
+    const planProjectId = String(row.plan_project_id ?? "");
+    if (planProjectId !== projectId) {
+      return res.status(403).json({ success: false, error: "Posten tilhører ikke dette prosjektet." });
+    }
+    if (row.owner_user_id !== session.userId && !leadgridMarketingAuthorizedFor(req, planProjectId)) {
+      return res.status(403).json({ success: false, error: "Du har ikke tilgang til denne planen." });
+    }
+    const post = mapPostRow(row);
+    if (post.status === "published" || post.externalPostId) {
+      return res.status(409).json({
+        success: false,
+        error: "Posten er allerede publisert.",
+        permalink: post.externalPermalink,
+      });
+    }
+    if (post.primaryPlatform && post.primaryPlatform !== "linkedin") {
+      return res.status(400).json({
+        success: false,
+        error: `Posten er planlagt for ${post.primaryPlatform}, ikke LinkedIn. Endre kanal på posten først.`,
+      });
+    }
+
+    const caption =
+      typeof body.caption === "string" && body.caption.trim()
+        ? body.caption.trim()
+        : [post.captionDraft?.trim(), post.callToAction?.trim()].filter(Boolean).join("\n\n")
+          || post.hook.trim();
+    if (!caption) {
+      return res.status(400).json({ success: false, error: "Posten mangler tekst. Skriv inn teksten før du publiserer." });
+    }
+    if (caption.length > LINKEDIN_CAPTION_MAX) {
+      return res.status(400).json({
+        success: false,
+        error: `Teksten er ${caption.length} tegn; LinkedIn tillater ${LINKEDIN_CAPTION_MAX}.`,
+      });
+    }
+
+    const result = await dispatchPublish("linkedin", {
+      connectionId: session.userId,
+      userId: session.userId,
+      projectId,
+      mediaKind: "text",
+      caption,
+      extras: organizationUrn ? { linkedInOrganizationUrn: organizationUrn } : {},
+    });
+
+    if (!result.ok || !result.externalPostId) {
+      const reason = result.reason ?? "linkedin_api_error";
+      const message = PUBLISH_REASON_TEXT[reason] ?? PUBLISH_REASON_TEXT.linkedin_api_error;
+      await pool
+        .query(
+          `UPDATE role_room_marketing_plan_posts
+              SET publish_error = $2, updated_at = now()
+            WHERE id = $1`,
+          [postId, `${reason}: ${(result.error ?? "").slice(0, 300)}`],
+        )
+        .catch((error) => console.warn("[marketing-plan-routes] publish: could not store error", error));
+      console.warn("[marketing-plan-routes] publish failed", { postId, reason, error: result.error });
+      return res.status(502).json({ success: false, reason, error: message });
+    }
+
+    try {
+      const updated = await pool.query(
+        `UPDATE role_room_marketing_plan_posts
+            SET status = 'published',
+                published_at = now(),
+                published_platform = 'linkedin',
+                published_by_user_id = $2,
+                external_post_id = $3,
+                external_permalink = $4,
+                publish_error = NULL,
+                caption_draft = $5,
+                last_edited_at = now(),
+                last_edited_by_user_id = $2,
+                updated_at = now()
+          WHERE id = $1
+          RETURNING *`,
+        [postId, session.userId, result.externalPostId, result.permalink ?? null, caption],
+      );
+      const planPost = updated.rows[0] ? mapPostRow(updated.rows[0] as Record<string, unknown>) : post;
+      return res.json({ success: true, post: planPost, permalink: result.permalink ?? null });
+    } catch (error) {
+      // Posten ER publisert hos LinkedIn — si det ærlig i stedet for å late som
+      // ingenting skjedde, så brukeren ikke publiserer dobbelt.
+      console.error("[marketing-plan-routes] publish: could not persist state", error);
+      return res.status(500).json({
+        success: false,
+        reason: "persist_failed",
+        error: "Posten ble publisert på LinkedIn, men statusen kunne ikke lagres. Last siden på nytt før du publiserer igjen.",
+        permalink: result.permalink ?? null,
+      });
+    }
+  });
+
   app.post("/api/role-room/marketing-plan/posts/:postId/regenerate", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;

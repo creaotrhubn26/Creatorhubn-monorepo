@@ -16,11 +16,12 @@
 import crypto from 'node:crypto';
 import type { Pool } from 'pg';
 import { persistSocialEvent } from './social-events.js';
+import { fetchLinkedInSocialActions } from './social-linkedin-social-actions.js';
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 time
+const LINKEDIN_SOCIAL_ACTIONS_BASE = 'https://api.linkedin.com/v2/socialActions';
 const MAX_POSTS_PER_SWEEP = 50;
 const POLL_WINDOW_DAYS = 14;
-const LINKEDIN_SOCIAL_ACTIONS_BASE = 'https://api.linkedin.com/v2/socialActions';
 
 function deriveLinkedInEncryptionKey(): Buffer | null {
   const secret =
@@ -112,45 +113,9 @@ async function getAccessTokenForUser(pool: Pool, userId: string): Promise<string
   }
 }
 
-async function fetchSocialActions(
-  shareUrn: string,
-  accessToken: string,
-): Promise<{
-  likes: number | null;
-  comments: number | null;
-} | null> {
-  try {
-    const url = `${LINKEDIN_SOCIAL_ACTIONS_BASE}/${encodeURIComponent(`urn:li:ugcPost:${shareUrn}`)}`;
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'X-Restli-Protocol-Version': '2.0.0',
-      },
-    });
-    if (!response.ok) {
-      // 404 betyr posten finnes ikke (kanskje slettet) — ikke en feil vi
-      // skal rope om. Andre statuser logges på debug.
-      return null;
-    }
-    const body = (await response.json()) as {
-      likesSummary?: { totalLikes?: number };
-      commentsSummary?: { totalFirstLevelComments?: number };
-    };
-    return {
-      likes:
-        typeof body.likesSummary?.totalLikes === 'number'
-          ? body.likesSummary.totalLikes
-          : null,
-      comments:
-        typeof body.commentsSummary?.totalFirstLevelComments === 'number'
-          ? body.commentsSummary.totalFirstLevelComments
-          : null,
-    };
-  } catch (error) {
-    console.warn('[linkedin-insights] fetchSocialActions threw', error);
-    return null;
-  }
-}
+// fetchSocialActions bor nå i social-linkedin-social-actions.ts (delt med
+// KPI-connectoren for markedsplaner). Samme kontrakt: null ved 404/feil.
+const fetchSocialActions = fetchLinkedInSocialActions;
 
 interface LinkedInCommentItem {
   id: string; // urn:li:comment:(urn:li:ugcPost:xxx,123)
