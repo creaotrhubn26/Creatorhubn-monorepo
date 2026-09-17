@@ -162,7 +162,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
               severity="info"
               icon={<ShieldOutlinedIcon />}
               sx={{
-                bgcolor: 'rgba(168,85,247,0.10)',
+                bgcolor: 'rgba(99, 102, 241,0.10)',
                 color: palette.textPrimary,
                 border: `1px solid ${palette.borderStrong}`,
                 '& .MuiAlert-icon': { color: palette.accentBright },
@@ -222,7 +222,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
                           });
                         }}
                         sx={{
-                          bgcolor: selected ? 'rgba(168,85,247,0.24)' : 'rgba(168,85,247,0.08)',
+                          bgcolor: selected ? 'rgba(99, 102, 241,0.24)' : 'rgba(99, 102, 241,0.08)',
                           color: selected ? palette.accentBright : palette.textSecondary,
                           border: selected ? `1px solid ${palette.borderStrong}` : `1px solid ${palette.borderSubtle}`,
                           fontWeight: 600, cursor: 'pointer',

@@ -282,7 +282,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                       p: 1.4,
                       borderRadius: 2,
                       border: `1px solid ${palette.accentBright}`,
-                      bgcolor: 'rgba(168,85,247,0.12)',
+                      bgcolor: 'rgba(99, 102, 241,0.12)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
@@ -310,10 +310,10 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                           fontWeight: 700,
                           background: palette.accentGradient,
                           color: '#fff',
-                          boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                          boxShadow: '0 4px 14px rgba(99, 102, 241,0.38)',
                           '&:hover': {
-                            background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
-                            boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                            background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                            boxShadow: '0 6px 18px rgba(99, 102, 241,0.52)',
                           },
                         }}
                       >
@@ -332,7 +332,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                           p: 1.4,
                           borderRadius: 2,
                           border: `1px solid ${isSelected ? palette.accentBright : palette.border}`,
-                          bgcolor: isSelected ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.18)',
+                          bgcolor: isSelected ? 'rgba(99, 102, 241,0.08)' : 'rgba(0,0,0,0.18)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 1.4,
@@ -393,10 +393,10 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                               fontWeight: 700,
                               background: palette.accentGradient,
                               color: '#fff',
-                              boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                              boxShadow: '0 4px 14px rgba(99, 102, 241,0.38)',
                               '&:hover': {
-                                background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
-                                boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                                background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                                boxShadow: '0 6px 18px rgba(99, 102, 241,0.52)',
                               },
                             }}
                           >
@@ -466,7 +466,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                       </Typography>
                     ) : null}
                     {p.production_notes ? (
-                      <Typography sx={{ color: '#c4b5fd', fontSize: '0.78rem', mt: 0.8, pl: 7 }}>
+                      <Typography sx={{ color: '#c7cdfd', fontSize: '0.78rem', mt: 0.8, pl: 7 }}>
                         Produksjon: «{p.production_notes}»
                       </Typography>
                     ) : null}
@@ -531,10 +531,10 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                   fontWeight: 700,
                   background: palette.accentGradient,
                   color: '#fff',
-                  boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                  boxShadow: '0 4px 14px rgba(99, 102, 241,0.38)',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
-                    boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                    background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                    boxShadow: '0 6px 18px rgba(99, 102, 241,0.52)',
                   },
                 }}
               >
@@ -579,10 +579,10 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                   fontWeight: 700,
                   background: palette.accentGradient,
                   color: '#fff',
-                  boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                  boxShadow: '0 4px 14px rgba(99, 102, 241,0.38)',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
-                    boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                    background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                    boxShadow: '0 6px 18px rgba(99, 102, 241,0.52)',
                   },
                 }}
               >

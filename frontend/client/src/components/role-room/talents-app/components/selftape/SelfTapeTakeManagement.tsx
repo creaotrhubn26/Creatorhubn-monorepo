@@ -57,12 +57,12 @@ export default function SelfTapeTakeManagement({ takes, currentTakeId, onSelect 
                 py: 1,
                 borderRadius: radius.sm,
                 cursor: isCurrent ? 'default' : 'pointer',
-                bgcolor: isCurrent ? 'rgba(168,85,247,0.12)' : 'transparent',
+                bgcolor: isCurrent ? 'rgba(99, 102, 241,0.12)' : 'transparent',
                 border: `1px solid ${isCurrent ? palette.accentBright : 'transparent'}`,
                 transition: 'background-color 0.18s, border-color 0.18s',
                 '&:hover': isCurrent
                   ? undefined
-                  : { bgcolor: 'rgba(168,85,247,0.06)' },
+                  : { bgcolor: 'rgba(99, 102, 241,0.06)' },
               }}
             >
               <Radio
@@ -86,7 +86,7 @@ export default function SelfTapeTakeManagement({ takes, currentTakeId, onSelect 
                   alignItems="center"
                   spacing={0.4}
                   sx={{
-                    bgcolor: 'rgba(168,85,247,0.22)',
+                    bgcolor: 'rgba(99, 102, 241,0.22)',
                     color: palette.accentBright,
                     fontWeight: 700,
                     fontSize: '0.7rem',

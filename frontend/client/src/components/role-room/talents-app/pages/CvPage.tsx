@@ -489,7 +489,7 @@ export default function CvPage({ demoMode }: CvPageProps) {
           {!isEmpty && (
             <Chip
               label={`${credits.length} krediteringer`}
-              sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright, fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(99, 102, 241,0.14)', color: palette.accentBright, fontWeight: 600 }}
             />
           )}
           <Button
@@ -533,7 +533,7 @@ export default function CvPage({ demoMode }: CvPageProps) {
       </Stack>
 
       {demoMode && (
-        <Alert severity="info" sx={{ mb: 2.4, bgcolor: 'rgba(168,85,247,0.12)', color: palette.textPrimary }}>
+        <Alert severity="info" sx={{ mb: 2.4, bgcolor: 'rgba(99, 102, 241,0.12)', color: palette.textPrimary }}>
           Demo-modus viser ingen krediteringer. Logg inn for å bygge din egen CV.
         </Alert>
       )}

@@ -79,7 +79,7 @@ import { palette, radius } from '../theme';
 // Helpers
 // ──────────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = ['#a855f7', '#ec4899', '#8b5cf6', '#f59e0b', '#10b981', 'var(--role-cyan, #7dd3fc)', '#fb7185'];
+const AVATAR_COLORS = ['#6366f1', '#ec4899', '#6366f1', '#f59e0b', '#10b981', 'var(--role-cyan, #7dd3fc)', '#fb7185'];
 const colorForKey = (key: string) => AVATAR_COLORS[hashString(key) % AVATAR_COLORS.length];
 function hashString(s: string): number {
   let h = 0;
@@ -106,7 +106,7 @@ function accessChip(access: PartnerOverviewRow['access_level']) {
   const map: Record<PartnerOverviewRow['access_level'], { label: string; fg: string; Icon: React.ComponentType<{ sx?: object }> }> = {
     full:      { label: 'Full tilgang',     fg: '#4ade80', Icon: CheckCircleIcon },
     limited:   { label: 'Begrenset',        fg: '#fbbf24', Icon: HourglassEmptyIcon },
-    custom:    { label: 'Tilpasset',        fg: '#c084fc', Icon: ShieldIcon },
+    custom:    { label: 'Tilpasset',        fg: '#a5b4fc', Icon: ShieldIcon },
     view_only: { label: 'Kun visning',      fg: 'var(--role-cyan, #7dd3fc)', Icon: VisibilityOutlinedIcon },
   };
   const { label, fg, Icon } = map[access];
@@ -249,7 +249,7 @@ export default function PartnersCollaborationPage() {
               px: 2,
               py: 1.2,
               borderRadius: radius.sm,
-              background: 'linear-gradient(90deg, rgba(168,85,247,0.18), rgba(217,70,239,0.12))',
+              background: 'linear-gradient(90deg, rgba(99, 102, 241,0.18), rgba(129, 140, 248,0.12))',
               border: `1px solid ${palette.borderStrong}`,
               display: 'flex',
               alignItems: 'center',
@@ -310,7 +310,7 @@ export default function PartnersCollaborationPage() {
               background: palette.accentGradient,
               color: '#fff',
               '&:hover': { filter: 'brightness(1.08)' },
-              boxShadow: '0 8px 24px rgba(168, 85, 247, 0.28)',
+              boxShadow: '0 8px 24px rgba(99, 102, 241, 0.28)',
               '&.Mui-disabled': { opacity: 0.55, color: '#fff' },
             }}
           >
@@ -398,9 +398,9 @@ export default function PartnersCollaborationPage() {
                       alignItems: 'center',
                       cursor: 'pointer',
                       borderBottom: `1px solid ${palette.borderSubtle}`,
-                      bgcolor: isSel ? 'rgba(168, 85, 247, 0.08)' : 'transparent',
+                      bgcolor: isSel ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
                       transition: 'background 0.12s',
-                      '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.05)' },
+                      '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.05)' },
                       '&:last-child': { borderBottom: 'none' },
                     }}
                   >
@@ -418,7 +418,7 @@ export default function PartnersCollaborationPage() {
                     </Stack>
                     <Box>
                       <Tooltip title={p.role_label === 'Casting Partner' ? 'Caster roller for film/TV/teater' : 'Tilbyr workshops, etterutdanning eller catalog'}>
-                        <Chip label={p.role_label === 'Casting Partner' ? 'Casting' : 'Senter'} size="small" sx={{ bgcolor: 'rgba(168, 85, 247, 0.12)', color: palette.accentBright, fontWeight: 600, fontSize: '0.72rem', height: 22, cursor: 'help' }} />
+                        <Chip label={p.role_label === 'Casting Partner' ? 'Casting' : 'Senter'} size="small" sx={{ bgcolor: 'rgba(99, 102, 241, 0.12)', color: palette.accentBright, fontWeight: 600, fontSize: '0.72rem', height: 22, cursor: 'help' }} />
                       </Tooltip>
                     </Box>
                     <Box>{accessChip(p.access_level)}</Box>
@@ -579,7 +579,7 @@ function StatCard({ label, value, desc, Icon }: StatCardProps) {
           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', fontWeight: 500, mb: 0.6 }}>{label}</Typography>
           <Typography sx={{ color: palette.textPrimary, fontSize: '2.2rem', fontWeight: 800, lineHeight: 1 }}>{value}</Typography>
         </Box>
-        <Box sx={{ width: 38, height: 38, borderRadius: radius.sm, bgcolor: 'rgba(168, 85, 247, 0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ width: 38, height: 38, borderRadius: radius.sm, bgcolor: 'rgba(99, 102, 241, 0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon sx={{ color: palette.accentBright, fontSize: 20 }} />
         </Box>
       </Stack>
@@ -614,7 +614,7 @@ function MatrixCell({ on, busy, onToggle }: { on: boolean; busy: boolean; onTogg
 
 function PageBtn({ children, active = false }: { children: React.ReactNode; active?: boolean }) {
   return (
-    <Box sx={{ minWidth: 28, height: 28, px: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: radius.xs, bgcolor: active ? palette.accent : 'transparent', color: active ? '#fff' : palette.textMuted, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', '&:hover': { bgcolor: active ? palette.accent : 'rgba(168, 85, 247, 0.12)' } }}>
+    <Box sx={{ minWidth: 28, height: 28, px: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: radius.xs, bgcolor: active ? palette.accent : 'transparent', color: active ? '#fff' : palette.textMuted, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', '&:hover': { bgcolor: active ? palette.accent : 'rgba(99, 102, 241, 0.12)' } }}>
       {children}
     </Box>
   );
@@ -639,7 +639,7 @@ function FeedCard({ event }: { event: FeedEvent }) {
     <Box sx={{ p: 1.4, borderRadius: radius.md, bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`, display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Stack direction="row" spacing={1} alignItems="flex-start">
         {event.kind === 'invite' && !event.display_name ? (
-          <Box sx={{ width: 32, height: 32, borderRadius: radius.sm, bgcolor: 'rgba(168, 85, 247, 0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Box sx={{ width: 32, height: 32, borderRadius: radius.sm, bgcolor: 'rgba(99, 102, 241, 0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <InventoryOutlinedIcon sx={{ color: palette.accentBright, fontSize: 18 }} />
           </Box>
         ) : (
@@ -680,7 +680,7 @@ function SelectedPartnerSidebar({ partner, onInvite, onEdit }: { partner: Partne
         </Avatar>
         <Box>
           <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.05rem', lineHeight: 1.2 }}>{partner.display_name}</Typography>
-          <Chip label={partner.role_label} size="small" sx={{ mt: 0.4, bgcolor: 'rgba(168, 85, 247, 0.12)', color: palette.accentBright, fontWeight: 600, fontSize: '0.7rem', height: 20 }} />
+          <Chip label={partner.role_label} size="small" sx={{ mt: 0.4, bgcolor: 'rgba(99, 102, 241, 0.12)', color: palette.accentBright, fontWeight: 600, fontSize: '0.7rem', height: 20 }} />
         </Box>
       </Stack>
 
@@ -703,10 +703,10 @@ function SelectedPartnerSidebar({ partner, onInvite, onEdit }: { partner: Partne
       </Stack>
 
       <Stack spacing={1}>
-        <Button startIcon={<LockOutlinedIcon />} onClick={onEdit} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.88rem', py: 1.2, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff', '&:hover': { filter: 'brightness(1.08)' }, boxShadow: '0 6px 18px rgba(168, 85, 247, 0.32)' }}>
+        <Button startIcon={<LockOutlinedIcon />} onClick={onEdit} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.88rem', py: 1.2, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff', '&:hover': { filter: 'brightness(1.08)' }, boxShadow: '0 6px 18px rgba(99, 102, 241, 0.32)' }}>
           Endre tilgang
         </Button>
-        <Button startIcon={<PersonAddAltOutlinedIcon />} onClick={onInvite} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.85rem', py: 1.1, borderRadius: radius.sm, color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.08)' } }}>
+        <Button startIcon={<PersonAddAltOutlinedIcon />} onClick={onInvite} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.85rem', py: 1.1, borderRadius: radius.sm, color: palette.textPrimary, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.08)' } }}>
           Inviter ny partner
         </Button>
       </Stack>
@@ -876,8 +876,8 @@ function EditAccessDialog({ partner, onClose, onSaved }: {
                 display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 1.4, alignItems: 'center',
                 p: 1.4, borderRadius: radius.sm, cursor: 'pointer',
                 border: `1px solid ${perms[key] ? palette.borderStrong : palette.borderSubtle}`,
-                bgcolor: perms[key] ? 'rgba(168,85,247,0.08)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.05)' },
+                bgcolor: perms[key] ? 'rgba(99, 102, 241,0.08)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(99, 102, 241,0.05)' },
               }}
             >
               <Icon sx={{ color: perms[key] ? palette.accentBright : palette.textMuted, fontSize: 22 }} />
@@ -1166,7 +1166,7 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
                         label={label}
                         onClick={() => setForm({ ...form, scopes: selected ? form.scopes.filter((s) => s !== scope) : [...form.scopes, scope] })}
                         sx={{
-                          bgcolor: selected ? 'rgba(168, 85, 247, 0.24)' : 'rgba(168, 85, 247, 0.08)',
+                          bgcolor: selected ? 'rgba(99, 102, 241, 0.24)' : 'rgba(99, 102, 241, 0.08)',
                           color: selected ? palette.accentBright : palette.textSecondary,
                           border: selected ? `1px solid ${palette.borderStrong}` : `1px solid ${palette.borderSubtle}`,
                           fontWeight: 600, cursor: 'pointer',
@@ -1247,7 +1247,7 @@ function AgencySearchPicker({ currentEmail, onPick }: {
         renderOption={(props, option) => (
           <Box component="li" {...props} key={option.id}>
             <Stack direction="row" spacing={1.2} alignItems="center" sx={{ width: '100%' }}>
-              <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright, fontSize: '0.7rem', fontWeight: 700 }}>
+              <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(99, 102, 241,0.18)', color: palette.accentBright, fontSize: '0.7rem', fontWeight: 700 }}>
                 {option.name.slice(0, 2).toUpperCase()}
               </Avatar>
               <Stack spacing={0} sx={{ flexGrow: 1 }}>
@@ -1281,13 +1281,13 @@ function ScopePresetChip({ label, scopes, currentScopes, onSet }: {
       label={label}
       onClick={() => onSet(scopes)}
       sx={{
-        bgcolor: matches ? palette.accent : 'rgba(168,85,247,0.08)',
+        bgcolor: matches ? palette.accent : 'rgba(99, 102, 241,0.08)',
         color: matches ? '#fff' : palette.accentBright,
         border: `1px solid ${matches ? palette.accent : palette.borderStrong}`,
         fontWeight: 700,
         fontSize: '0.78rem',
         cursor: 'pointer',
-        '&:hover': { bgcolor: matches ? palette.accent : 'rgba(168,85,247,0.18)' },
+        '&:hover': { bgcolor: matches ? palette.accent : 'rgba(99, 102, 241,0.18)' },
       }}
     />
   );

@@ -107,7 +107,7 @@ export default function AuditPage({ demoMode }: AuditPageProps) {
       </Stack>
 
       {demoMode ? (
-        <Alert severity="info" sx={{ mb: 3, bgcolor: 'rgba(168,85,247,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.accentBright } }}>
+        <Alert severity="info" sx={{ mb: 3, bgcolor: 'rgba(99, 102, 241,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.accentBright } }}>
           Demo-modus: ingen ekte aktivitet vises. Logg inn med din konto for å se din egen audit-logg.
         </Alert>
       ) : null}
@@ -136,7 +136,7 @@ export default function AuditPage({ demoMode }: AuditPageProps) {
                 alignItems: 'center',
               }}
             >
-              <Avatar sx={{ width: 40, height: 40, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright }}>
+              <Avatar sx={{ width: 40, height: 40, bgcolor: 'rgba(99, 102, 241,0.18)', color: palette.accentBright }}>
                 <VisibilityIcon fontSize="small" />
               </Avatar>
               <Stack spacing={0.4}>
@@ -150,7 +150,7 @@ export default function AuditPage({ demoMode }: AuditPageProps) {
               <Chip
                 label={new Date(row.last_accessed).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
                 size="small"
-                sx={{ bgcolor: 'rgba(168,85,247,0.12)', color: palette.accentBright, fontWeight: 600 }}
+                sx={{ bgcolor: 'rgba(99, 102, 241,0.12)', color: palette.accentBright, fontWeight: 600 }}
               />
             </Box>
           ))}

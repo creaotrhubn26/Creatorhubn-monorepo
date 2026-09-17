@@ -1,12 +1,13 @@
 /**
  * TalentsLogo.tsx — "The Role Room" logo + "TALENTS" under.
  *
- * Bruker /theroleroom-app-icon-1024-transparent.png (original lilla
+ * Bruker /theroleroom-app-icon-1024-transparent.png (lilla ikon-fil
  * logo med teater-masker + clapperboard + person-ikon).
  *
- * Branding-strategi: Originale lilla brand-farger bevares. For å sikre
- * kontrast mot mørk lilla sidebar-bakgrunn, plasseres logoen på en
- * lys hvit card-bakgrunn med padding + subtil drop-shadow.
+ * Branding: ikon-filen er fortsatt i den gamle lilla paletten. Den hvite
+ * card-bakgrunnen gir kontrast mot den mørke indigo-sidebaren og gjør
+ * avviket usynlig i praksis — men logoen bør tegnes om i indigo før
+ * merket er helt samstemt.
  */
 
 import { Box, Typography } from '@mui/material';
@@ -17,7 +18,10 @@ interface TalentsLogoProps {
   variant?: 'large' | 'compact';
 }
 
-// Hvit card-bakgrunn for å gi den lilla logoen kontrast mot mørk sidebar.
+// Hvit card-bakgrunn gir logoen kontrast mot mørk sidebar. ⚠️ Selve
+// PNG-en er fortsatt lilla fra den gamle paletten; den må tegnes om i
+// indigo før merket er helt samstemt. Den hvite flaten skjuler avviket,
+// den fjerner det ikke.
 const LIGHT_CARD_BG = '#ffffff';
 
 export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
@@ -69,7 +73,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
           borderRadius: radius.md,
           p: 1.4,
           display: 'inline-flex',
-          boxShadow: '0 4px 16px rgba(168,85,247,0.18), 0 1px 3px rgba(0,0,0,0.4)',
+          boxShadow: '0 4px 16px rgba(99, 102, 241,0.18), 0 1px 3px rgba(0,0,0,0.4)',
           // Subtil hvit-glow så card-en pop'er mot mørk sidebar
         }}
       >

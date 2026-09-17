@@ -97,7 +97,7 @@ export default function SelfTapeScriptCard({ sceneLabel, sidesPages, sidesConten
                   py: isActive ? 1.4 : 0,
                   borderLeft: isActive ? `3px solid ${palette.accentBright}` : 'none',
                   borderRadius: isActive ? `0 ${radius.sm} ${radius.sm} 0` : 0,
-                  bgcolor: isActive ? 'rgba(168,85,247,0.16)' : 'transparent',
+                  bgcolor: isActive ? 'rgba(99, 102, 241,0.16)' : 'transparent',
                 }}
               >
                 <Typography

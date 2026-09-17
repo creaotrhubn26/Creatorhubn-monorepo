@@ -113,7 +113,7 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
       {demoMode ? (
         <Alert
           severity="info"
-          sx={{ mb: 3, bgcolor: 'rgba(168,85,247,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.accentBright } }}
+          sx={{ mb: 3, bgcolor: 'rgba(99, 102, 241,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.accentBright } }}
         >
           Du ser demo-data. Klikk <strong>Logg inn</strong> oppe til høyre for å bruke din egen profil.
         </Alert>
@@ -142,7 +142,7 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
                 sx={{
                   height: 8,
                   borderRadius: 4,
-                  bgcolor: 'rgba(168,85,247,0.12)',
+                  bgcolor: 'rgba(99, 102, 241,0.12)',
                   '& .MuiLinearProgress-bar': { background: palette.accentGradient },
                 }}
               />
@@ -233,7 +233,7 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
                 alignItems="center"
                 sx={{ p: 1.4, borderRadius: radius.sm, bgcolor: palette.bgCardElevated }}
               >
-                <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(99, 102, 241,0.18)', color: palette.accentBright }}>
                   <CheckCircleIcon fontSize="small" />
                 </Avatar>
                 <Stack spacing={0.2} sx={{ flexGrow: 1 }}>
@@ -286,7 +286,7 @@ function QuickCard({ Icon, label, value, desc, onClick, ctaText }: QuickCardProp
           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', fontWeight: 500, mb: 0.6 }}>{label}</Typography>
           <Typography sx={{ color: palette.textPrimary, fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>{value}</Typography>
         </Box>
-        <Box sx={{ width: 36, height: 36, borderRadius: radius.sm, bgcolor: 'rgba(168, 85, 247, 0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ width: 36, height: 36, borderRadius: radius.sm, bgcolor: 'rgba(99, 102, 241, 0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon sx={{ color: palette.accentBright, fontSize: 18 }} />
         </Box>
       </Stack>

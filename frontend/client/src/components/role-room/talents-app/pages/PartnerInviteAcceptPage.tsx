@@ -156,7 +156,7 @@ export default function PartnerInviteAcceptPage() {
                   <Chip
                     key={s}
                     label={SCOPE_LABELS[s] ?? s}
-                    sx={{ bgcolor: 'rgba(168, 85, 247, 0.16)', color: palette.accentBright, fontWeight: 600 }}
+                    sx={{ bgcolor: 'rgba(99, 102, 241, 0.16)', color: palette.accentBright, fontWeight: 600 }}
                   />
                 ))}
               </Stack>

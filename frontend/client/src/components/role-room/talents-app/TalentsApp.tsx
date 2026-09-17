@@ -109,7 +109,7 @@ interface TalentsAppProps {
 /**
  * CreatorHub Design (Fase C): token-driv Role Room-aksenten fra design-tokens
  * (ws=theroleroom). Bruker RÅ override (?raw=1) — ingen eksplisitt aksent → ingen
- * --rr-*-vars → literalene (lilla #a855f7) i theme.ts gjelder → identisk. Endres
+ * --rr-*-vars → literalene (indigo #6366f1) i theme.ts gjelder → identisk. Endres
  * aksenten i CreatorHub Design (The Role Room-workspace), re-farges Talents ved neste last.
  */
 function useTalentsBrand() {
