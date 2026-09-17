@@ -197,6 +197,7 @@ import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
 import { createGameBillingRouter } from "./game-billing-routes.js";
+import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
 import {
   createDanceTeamRouter,
   createDanceInviteAcceptRouter,
@@ -2854,6 +2855,15 @@ app.use(
 app.use(
   "/api/game/billing",
   createGameBillingRouter(pool, { activeSessions }),
+);
+// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0612_game_team.sql.
+app.use(
+  "/api/game/teams",
+  createGameTeamRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/game/invites",
+  createGameInviteAcceptRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/dance/teams",

@@ -891,6 +891,27 @@ function App() {
                       );
                     }}
                   </Route>
+                  {/* Spillstudio team-invite landing (Story Graph, Fase 7e-1) */}
+                  <Route path="/game/invite/:token">
+                    {(params: { token: string }) => {
+                      const GameTeamInviteLanding = React.lazy(() =>
+                        import('./components/role-room/game/GameInviteLandingPage').then((m) => ({
+                          default: m.GameInviteLandingPage,
+                        })),
+                      );
+                      return (
+                        <React.Suspense
+                          fallback={
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                              <CircularProgress />
+                            </Box>
+                          }
+                        >
+                          <GameTeamInviteLanding token={params.token} />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
                   {/* <Route path="/test" component={TestMinimal} /> */}
                   {/* TEMPORARY: Demo route for Evendi Timeline Admin - bypasses auth */}
                   <Route path="/wedding-timeline-admin-demo" component={() => (

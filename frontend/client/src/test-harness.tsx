@@ -22,6 +22,8 @@
  *                                innholdsprodusent (Creative Space Sync /
  *                                klient-brief, producer-timeline, osv.).
  *   ?harness-project=<id>        Override projectId (default: proj-spring-2026)
+ *   ?harness=game_invite         Mounter GameInviteLandingPage (/game/invite/:token) med
+ *                                ?harness-token=<token>
  *   ?harness=story_play          Mounter StoryPlayView (offentlig /story/:token) med
  *                                ?harness-token=<token> (default sgs_e2e_public)
  */
@@ -36,6 +38,7 @@ import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterI
 import { DanceWorkspace } from './components/role-room/dance';
 import { NarrativeWorkspace } from './components/role-room/narrative';
 import { StoryPlayView } from './pages/story-play';
+import { GameInviteLandingPage } from './components/role-room/game/GameInviteLandingPage';
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -80,6 +83,9 @@ function TestHarness() {
   } else if (harnessMode === 'story_play') {
     // Offentlig spill-side (/story/:token) uten wouter/App-bootstrap.
     panel = <StoryPlayView token={readUrlFlag('harness-token') ?? 'sgs_e2e_public'} locale={readUrlFlag('harness-locale')} embed={readUrlFlag('harness-embed') === '1'} />;
+  } else if (harnessMode === 'game_invite') {
+    // Spillstudio team-invite landing (/game/invite/:token) uten wouter/App-bootstrap.
+    panel = <GameInviteLandingPage token={readUrlFlag('harness-token') ?? 'gti_ok'} />;
   } else if (harnessMode === 'content_producer') {
     panel = (
       <RoleRoomDashboardPanel userId="e2e-test-user" profession="content_producer" />

@@ -145,6 +145,7 @@ const RrTesterInviteLanding = React.lazy(() =>
   import('@/components/role-room/dance/BillingPanels').then((m) => ({ default: m.TesterInviteLanding })),
 );
 const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dance/InviteLandingPage'));
+const RrGameInviteLanding = React.lazy(() => import('@/components/role-room/game/GameInviteLandingPage').then((m) => ({ default: m.GameInviteLandingPage })));
 const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
 const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
@@ -178,6 +179,7 @@ const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: Rea
   { test: /^\/story\/[^/]+$/, path: '/story/:token', component: RrStoryPlay },
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
+  { test: /^\/game\/invite\/[^/]+$/, path: '/game/invite/:token', component: RrGameInviteLanding },
   { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
   { test: /^\/role-room\/student\/claim$/, path: '/role-room/student/claim', component: RrClaimStudentAccess },
   { test: /^\/role-room\/censor\/claim$/, path: '/role-room/censor/claim', component: RrClaimCensorAccess },

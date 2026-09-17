@@ -978,3 +978,57 @@ describe('narrative routes — Fase 7: produksjons-OS (gater, replikker, episode
     expect(hashSceneSnapshot(v1b)).toBe(hashSceneSnapshot(v1));
   });
 });
+
+describe('narrative routes — Fase 7e-1: kapabiliteter i studio-team', () => {
+  const auth = (r: request.Test) => r.set('Authorization', `Bearer ${SESSION_TOKEN}`);
+  const base = `/api/role-room/narrative/projects/${PROJECT_ID}`;
+  const plan = (ownerUserId: string) => async () => ({
+    ownerUserId, active: true,
+    plan: { slug: 'studio', name: 'Studio', description: null, monthlyPriceKr: 0, yearlyPriceKr: 0, stripeMonthlyPriceId: null, stripeYearlyPriceId: null, features: ['scene_review', 'production_plan', 'team_seats'], limits: { seats: 5 }, trialDays: 0, isActive: true, isFeatured: false, displayOrder: 0, createdAt: '', updatedAt: '' },
+  });
+  const appWith = (pool: Pool, ownerUserId: string, caps: string[]) => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/role-room/narrative', createRoleRoomNarrativeRouter(pool, {
+      activeSessions: new Map([[SESSION_TOKEN, { userId: 'u1', email: 'u1@example.com', name: 'U1', role: 'user', loginAt: '' }]]),
+      canAccessProject: async () => true, broadcast: () => 0, resolveProjectPlan: plan(ownerUserId),
+      resolveCapabilities: async () => new Set(caps),
+    }));
+    return app;
+  };
+
+  it('eier bypasser; medlem uten scenes.delete → 403 capability_required; med → 200', async () => {
+    const pool = makePool([{ match: /DELETE FROM narrative_scenes/, rows: [{ id: 'nsc_1' }] }]);
+    const owner = await auth(request(appWith(pool, 'u1', [])).delete(`${base}/scenes/nsc_1`));
+    expect(owner.status).toBe(200);
+    const member = await auth(request(appWith(pool, 'u-owner', ['scenes.edit'])).delete(`${base}/scenes/nsc_1`));
+    expect(member.status).toBe(403);
+    expect(member.body).toMatchObject({ error: 'capability_required', capability: 'scenes.delete' });
+    const allowed = await auth(request(appWith(pool, 'u-owner', ['scenes.delete'])).delete(`${base}/scenes/nsc_1`));
+    expect(allowed.status).toBe(200);
+  });
+
+  it('milepæl-mutasjon krever plan.edit (etter plan-gating); GET er åpen', async () => {
+    const pool = makePool([{ match: /INSERT INTO narrative_milestones/, rows: (p) => [{ id: p[0], project_id: p[1], title: p[2], lane: p[3], start_at: null, due_at: null, status: 'planned', owner_user_id: null, description: '', acceptance: '', evidence: '', sort_order: 0, created_by: 'u1', created_at: new Date(), updated_at: new Date() }] }]);
+    const denied = await auth(request(appWith(pool, 'u-owner', ['story.edit'])).post(`${base}/milestones`)).send({ title: 'M1' });
+    expect(denied.status).toBe(403);
+    const ok = await auth(request(appWith(pool, 'u-owner', ['plan.edit'])).post(`${base}/milestones`)).send({ title: 'M1' });
+    expect(ok.status).toBe(201);
+    const list = await auth(request(appWith(pool, 'u-owner', [])).get(`${base}/milestones`));
+    expect(list.status).toBe(200);
+  });
+
+  it('review-beslutning krever review.decide', async () => {
+    const denied = await auth(request(appWith(makePool(), 'u-owner', ['review.request'])).post(`${base}/scenes/nsc_1/reviews/nsr_1/decision`)).send({ decision: 'approved' });
+    expect(denied.status).toBe(403);
+    expect(denied.body.capability).toBe('review.decide');
+  });
+
+  it('members-lite inkluderer aktive game_studio-teammedlemmer hos eieren (UNION i SQL)', async () => {
+    const pool = makePool([{ match: /LEFT JOIN role_room_member_profiles/, rows: [{ user_id: 'u1', is_owner: true, display_name: 'Daniel', profile_image_url: null, full_name: null, email: null }] }]);
+    const res = await auth(request(createApp(pool)).get(`${base}/members-lite`));
+    expect(res.status).toBe(200);
+    const sql = String(pool.query.mock.calls.find(([s]) => /LEFT JOIN role_room_member_profiles/.test(String(s)))?.[0]);
+    expect(sql).toMatch(/enterprise_team_members m ON m\.organization_id = p\.created_by AND m\.org_kind = 'game_studio' AND m\.status = 'active'/);
+  });
+});

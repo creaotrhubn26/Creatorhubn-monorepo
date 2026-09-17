@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import * as svc from './role-room-narrative-service.js';
+import { resolveUserCapabilitiesForTeam } from './game-team-service.js';
 // Delt validator (struktur + skript) — samme kode som frontendens merknader-chip.
 import { validateStoryGraph } from '../../frontend/shared/narrative-runtime/validate.ts';
 // Delt format-lag (Fase 3): Arcweave JSON, Markdown, filnavn.
@@ -76,6 +77,8 @@ export interface CreateRoleRoomNarrativeRouterDeps {
   resolveProjectPlan?: ResolveProjectPlan;
   /** Overstyrbar for tester. Default: inbox-varsel + e-post (best-effort). */
   notify?: SceneNotifier;
+  /** Overstyrbar for tester. Default: game-team-service (eier = alle capabilities). */
+  resolveCapabilities?: (pool: Pool, userId: string, teamOrgId: string) => Promise<Set<string>>;
 }
 
 /** Fase 6: varsel når en review-runde bes om / avgjøres (inbox + e-post, best-effort). */
@@ -470,6 +473,21 @@ export function createRoleRoomNarrativeRouter(
   // Plan-gating (Fase 4d): 402 { error: 'plan_required' | 'plan_limit' } fra game-plan-gate.
   const feature = (projectId: string, f: Parameters<typeof assertGameFeature>[2]) => assertGameFeature(pool, projectId, f, resolvePlan);
   const notify = deps.notify ?? defaultSceneNotifier;
+  /**
+   * Fase 7e-1: server-side kapabilitetssjekk for de få handlingene med
+   * produksjonskonsekvens (scenes.delete, review.decide, plan.edit).
+   * Prosjekteier bypasser; uten team-medlemskap = 403 (fail closed).
+   */
+  const resolveCaps = deps.resolveCapabilities ?? resolveUserCapabilitiesForTeam;
+  const requireCapability = async (req: AuthedRequest, res: Response, cap: string): Promise<boolean> => {
+    const info = await resolvePlan(pool, req.projectId);
+    const ownerUserId = info.ownerUserId;
+    if (!ownerUserId || ownerUserId === req.userId) return true;
+    const caps = await resolveCaps(pool, req.userId, ownerUserId);
+    if (caps.has(cap)) return true;
+    res.status(403).json({ error: 'capability_required', capability: cap, message: 'Rollen din i studioet mangler denne rettigheten.' });
+    return false;
+  };
   const limit = (projectId: string, key: string, current: number) => assertGameLimit(pool, projectId, key, current, resolvePlan);
   /**
    * Push «grafen er endret» til alle i prosjektets sanntidsrom (inkl. aktøren —
@@ -876,6 +894,7 @@ export function createRoleRoomNarrativeRouter(
     }
   }));
   router.delete('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
+    if (!(await requireCapability(req, res, 'scenes.delete'))) return;
     const ok = await svc.deleteScene(pool, req.projectId, req.params.sceneId);
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
@@ -961,6 +980,7 @@ export function createRoleRoomNarrativeRouter(
     const parsed = reviewDecisionBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     await feature(req.projectId, 'scene_review');
+    if (!(await requireCapability(req, res, 'review.decide'))) return;
     const session = deps.activeSessions?.get((req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim());
     const userLabel = (session && (session.name || session.email)) || null;
     try {
@@ -1167,18 +1187,21 @@ export function createRoleRoomNarrativeRouter(
     const parsed = milestoneBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     await feature(req.projectId, 'production_plan');
+    if (!(await requireCapability(req, res, 'plan.edit'))) return;
     res.status(201).json({ success: true, data: await svc.createMilestone(pool, req.projectId, req.userId, parsed.data) });
   }));
   router.patch('/projects/:projectId/milestones/:id', ...guard, wrap(async (req, res) => {
     const parsed = milestonePatch.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     await feature(req.projectId, 'production_plan');
+    if (!(await requireCapability(req, res, 'plan.edit'))) return;
     const m = await svc.patchMilestone(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!m) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: m });
   }));
   router.delete('/projects/:projectId/milestones/:id', ...guard, wrap(async (req, res) => {
     await feature(req.projectId, 'production_plan');
+    if (!(await requireCapability(req, res, 'plan.edit'))) return;
     const ok = await svc.deleteMilestone(pool, req.projectId, param(req, 'id'));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
@@ -1187,6 +1210,7 @@ export function createRoleRoomNarrativeRouter(
     const parsed = milestoneScenesBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     await feature(req.projectId, 'production_plan');
+    if (!(await requireCapability(req, res, 'plan.edit'))) return;
     const sceneIds = await svc.setMilestoneScenes(pool, req.projectId, param(req, 'id'), parsed.data.sceneIds);
     if (!sceneIds) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: { sceneIds } });

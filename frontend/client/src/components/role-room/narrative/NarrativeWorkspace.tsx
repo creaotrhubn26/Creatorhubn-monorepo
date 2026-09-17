@@ -70,6 +70,8 @@ import { StoryPanel } from './story/StoryPanel';
 import { ComponentGalleryPanel } from './characters/ComponentGalleryPanel';
 import { PlatformPanel } from './platform/PlatformPanel';
 import { PlanPanel } from './plan/PlanPanel';
+import { TeamPanel } from '../game/TeamPanel';
+import { PlanGateBanner } from '../game/GameBillingPanels';
 import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
 import { htmlToText, type NarrativeElementKind } from './narrativeTypes';
@@ -465,6 +467,13 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
             onImported={(next) => store.replaceGraph(next)}
             onNotice={(message, severity) => setNotice({ message, severity })}
           />
+        );
+      case 'team':
+        return (
+          <Box sx={{ p: { xs: 1, md: 2 } }} data-testid="narrative-team">
+            <PlanGateBanner feature="team_seats" />
+            <TeamPanel />
+          </Box>
         );
       case 'pricing':
         return <GamePricingPage />;

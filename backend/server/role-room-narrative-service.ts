@@ -2213,6 +2213,11 @@ export async function listMembersLite(db: Queryable, projectId: string): Promise
        SELECT created_by AS user_id, TRUE AS is_owner FROM casting_projects WHERE id = $1
        UNION
        SELECT user_id, FALSE FROM casting_user_roles WHERE project_id = $1 AND deactivated_at IS NULL
+       UNION
+       SELECT m.user_id, FALSE
+         FROM casting_projects p
+         JOIN enterprise_team_members m ON m.organization_id = p.created_by AND m.org_kind = 'game_studio' AND m.status = 'active'
+        WHERE p.id = $1
      )
      SELECT ids.user_id, BOOL_OR(ids.is_owner) AS is_owner,
             MAX(p.display_name) AS display_name, MAX(p.profile_image_url) AS profile_image_url,
