@@ -35,7 +35,8 @@ describe('professionTabs — game_studio', () => {
   it('har faner (default i getTabsForProfession returnerer tom liste stille)', () => {
     const tabs = getTabsForProfession('game_studio');
     expect(tabs.length).toBeGreaterThan(0);
-    expect(tabs[0].id).toBe('boards');
+    expect(tabs[0].id).toBe('home'); // Fase 7b: «Hjem» er standard landing
+    expect(tabs.map((t) => t.id)).toContain('boards');
   });
 });
 

@@ -48,6 +48,9 @@ import type {
   NarrativePlatformTarget,
   NarrativeProjectOverview,
   NarrativeInboxItem,
+  NarrativeReviewShareLink,
+  NarrativeReviewAccessMode,
+  NarrativeGuestReview,
   NarrativePublicStory,
   NarrativeScene,
   NarrativeSceneDetail,
@@ -602,3 +605,38 @@ export function getProjectOverview(projectId: string): Promise<NarrativeProjectO
 export function listInbox(projectId: string): Promise<NarrativeInboxItem[]> { return request(p(projectId, '/inbox')); }
 export function markInboxRead(projectId: string, id: string): Promise<void> { return request(p(projectId, `/inbox/${encodeURIComponent(id)}/read`), { method: 'POST' }); }
 export function markAllInboxRead(projectId: string): Promise<{ marked: number }> { return request(p(projectId, '/inbox/read-all'), { method: 'POST' }); }
+
+// ─── Fase 7e-2: gjeste-reviewere ───────────────────────────────────────
+export const REVIEW_PUBLIC_BASE = '/api/role-room/narrative/review';
+export function listReviewShareLinks(projectId: string, sceneId: string, reviewId: string): Promise<NarrativeReviewShareLink[]> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/reviews/${encodeURIComponent(reviewId)}/share-links`));
+}
+export function createReviewShareLink(projectId: string, sceneId: string, reviewId: string, input: { accessMode?: NarrativeReviewAccessMode; requireIdentity?: boolean; expiresAt?: string | null }): Promise<{ link: NarrativeReviewShareLink; token: string; path: string }> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/reviews/${encodeURIComponent(reviewId)}/share-links`), { method: 'POST', body: JSON.stringify(input) });
+}
+export function revokeReviewShareLink(projectId: string, sceneId: string, reviewId: string, linkId: string): Promise<void> {
+  return request(p(projectId, `/scenes/${encodeURIComponent(sceneId)}/reviews/${encodeURIComponent(reviewId)}/share-links/${encodeURIComponent(linkId)}`), { method: 'DELETE' });
+}
+async function publicRequest<T>(token: string, path: string, init: RequestInit = {}, reviewerToken?: string | null): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${REVIEW_PUBLIC_BASE}/${encodeURIComponent(token)}${path}`, {
+      ...init, credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', ...(reviewerToken ? { 'x-narrative-reviewer': reviewerToken } : {}), ...(init.headers ?? {}) },
+    });
+  } catch { throw new NarrativeNetworkError(); }
+  const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; currentHash?: string | null; data?: T };
+  if (res.status === 409 && body.error === 'snapshot_stale') throw new NarrativeStaleReviewError(body.currentHash ?? null);
+  if (!res.ok) throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+  return body.data as T;
+}
+export async function getGuestReview(token: string, reviewerToken: string | null): Promise<NarrativeGuestReview | null> {
+  try { return await publicRequest<NarrativeGuestReview>(token, '', {}, reviewerToken); }
+  catch (err) { if (err instanceof NarrativeApiError && err.status === 404) return null; throw err; }
+}
+export function createGuestReviewerSession(token: string, displayName: string, email: string | null): Promise<{ reviewerToken: string; reviewer: { id: string; displayName: string; email: string | null } }> {
+  return publicRequest(token, '/sessions', { method: 'POST', body: JSON.stringify({ displayName, email }) });
+}
+export function decideAsGuest(token: string, reviewerToken: string, input: { decision: 'approved' | 'changes_requested'; note: string | null; expectedSnapshotHash: string | null }): Promise<NarrativeSceneReview> {
+  return publicRequest(token, '/decision', { method: 'POST', body: JSON.stringify(input) }, reviewerToken);
+}

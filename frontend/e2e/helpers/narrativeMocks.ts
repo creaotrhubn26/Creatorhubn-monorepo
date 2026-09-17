@@ -51,6 +51,7 @@ export async function installGameBillingMocks(page: Page, plan: MockGamePlanSlug
     if (path.startsWith('/admin/settings/') && method === 'PUT') { const key = decodeURIComponent(path.split('/')[3]); const s = settings.find((x) => x.key === key) ?? (settings.push({ key }) && settings[settings.length - 1]); Object.assign(s, body, { updatedAt: now() }); return route.fulfill(ok(s)); }
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
   });
+
 }
 
 /**
@@ -268,6 +269,8 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     { id: 'ntf_1', eventType: 'narrative_scene_review_requested', title: 'Review: P01 – Skoleveien', message: 'Kari ba om review av runde 1.', linkedEntityType: 'narrative_scene', linkedEntityId: null, createdByUserId: 'u-kari', createdAt: now(), updatedAt: now(), readAt: null },
     { id: 'ntf_2', eventType: 'narrative_scene_review_decided', title: 'Godkjent: S1', message: null, linkedEntityType: 'narrative_scene', linkedEntityId: null, createdByUserId: 'u-kari', createdAt: now(), updatedAt: now(), readAt: now() },
   ];
+  const reviewShareLinks: Rec[] = [];
+  const reviewerSessions: Rec[] = [];
   const GATE_KEYS = ['script_coverage', 'greybox', 'characters_animation', 'playthrough', 'picture', 'audio'];
   const gatesFor = (sceneId: string) => GATE_KEYS.map((k) => gates.find((x) => x.sceneId === sceneId && x.gateKey === k) ?? { sceneId, projectId, gateKey: k, status: 'not_started', evidence: '', evidenceRefs: [], checkedBy: null, checkedAt: null, updatedAt: null });
   if (opts.seed === 'what-follows-us') {
@@ -564,21 +567,21 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       return route.fulfill(ok({ translations: segments.map((s) => ({ key: s.key, text: `[${body.targetLocale}] ${s.text}` })), missing: [], model: 'mock' }));
     }
 
-    if (m(/\/projects\/[^/]+\/share-links$/) && method === 'GET') return route.fulfill(ok(shareLinks));
+    if (m(/\/projects\/[^/]+\/share-links$/) && method === 'GET') return route.fulfill(ok(reviewShareLinks));
     if (m(/\/projects\/[^/]+\/share-links$/) && method === 'POST') {
       const link = {
         id: nextId('nsl'), projectId, mode: body.mode ?? 'play_only',
         expiresAt: typeof body.expiresInDays === 'number' ? new Date(Date.now() + body.expiresInDays * 86_400_000).toISOString() : null,
         revokedAt: null, viewCount: 0, createdBy: 'u1', createdAt: now(),
       };
-      shareLinks.unshift(link);
+      reviewShareLinks.unshift(link);
       const token = `sgs_e2e_${link.id}`;
       tokens.set(token, link);
       return route.fulfill(ok({ link, token, path: `/story/${token}` }, 201));
     }
     mm = m(/\/projects\/[^/]+\/share-links\/([^/]+)\/revoke$/);
     if (mm && method === 'POST') {
-      const link = shareLinks.find((l) => l.id === mm![1]);
+      const link = reviewShareLinks.find((l) => l.id === mm![1]);
       if (!link) return route.fulfill({ status: 404, body: '{"error":"not_found"}' });
       link.revokedAt = now();
       return route.fulfill(ok(link));
@@ -779,6 +782,20 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         if (method === 'DELETE') { c.rows.splice(c.rows.indexOf(row), 1); return route.fulfill(ok(undefined)); }
       }
     }
+    // ── Fase 7e-2: gjestelenker per runde (Studio) ──
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/reviews\/([^/]+)\/share-links$/);
+    if (mm && method === 'GET') return route.fulfill(ok(reviewShareLinks.filter((l) => l.reviewId === mm![2])));
+    if (mm && method === 'POST') {
+      if (gamePlan !== 'studio') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'guest_reviewers', plan: gamePlan }) });
+      const r = reviews.find((x) => x.id === mm![2]);
+      if (!r) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      const token = `nrl_e2e_${body.accessMode ?? 'comment'}_${reviewShareLinks.length + 1}`;
+      const link = { id: nextId('nrl'), projectId, sceneId: mm[1], reviewId: mm[2], accessMode: body.accessMode ?? 'comment', requireIdentity: body.requireIdentity ?? true, expiresAt: body.expiresAt ?? null, revokedAt: null, viewCount: 0, createdBy: 'u-e2e', createdAt: now(), token };
+      reviewShareLinks.push(link);
+      return route.fulfill(ok({ link, token, path: `/story-review/${token}` }, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/reviews\/([^/]+)\/share-links\/([^/]+)$/);
+    if (mm && method === 'DELETE') { const l = reviewShareLinks.find((x) => x.id === mm![3]); if (!l) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); l.revokedAt = now(); return route.fulfill(ok(undefined)); }
     if (m(/\/projects\/[^/]+\/overview$/) && method === 'GET') {
       const byStatus: Record<string, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
       const byEra: Record<string, number> = {};
@@ -809,6 +826,84 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     if (mm && method === 'POST') { const it = inbox.find((x) => x.id === mm![1]); if (!it) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); it.readAt = now(); return route.fulfill(ok(undefined)); }
 
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
+  });
+
+  // ── Fase 7e-2: offentlig gjeste-review (/api/role-room/narrative/review/:token) ──
+  // Faste tokens for specs: nrl_e2e_approve (beslutte), nrl_e2e_view (bare se), nrl_e2e_comment.
+  // Binder til første scene (WFU: P01) og sørger for en åpen runde.
+  const fixedBinding = new Map<string, string>(); // token → reviewId (så avgjorte runder forblir bundet)
+  const ensureGuestRound = (token: string): { sc: Rec; r: Rec } | null => {
+    const boundId = fixedBinding.get(token);
+    if (boundId) { const r0 = reviews.find((x) => x.id === boundId); const sc0 = r0 ? scenes.find((x) => x.id === r0.sceneId) : null; if (r0 && sc0) return { sc: sc0, r: r0 }; }
+    const sc = scenes.find((x) => x.code === 'P01') ?? scenes[0];
+    if (!sc) return null;
+    let r = reviews.find((x) => x.sceneId === sc.id && x.status === 'in_review');
+    if (!r) {
+      r = { id: nextId('nsr'), sceneId: sc.id, projectId, round: reviews.filter((x) => x.sceneId === sc.id).length + 1, status: 'in_review', requestedBy: 'u-e2e', requestedAt: now(), requestNote: 'Vennligst se på manusfeltene og replikkene.', decidedByUserId: null, decidedByLabel: null, decidedAt: null, decisionNote: null, snapshotHash: sceneSnapshotHash(sc.id) };
+      reviews.push(r); sc.status = 'in_review';
+    }
+    fixedBinding.set(token, String(r.id));
+    return { sc, r };
+  };
+  const guestSnapshot = (sc: Rec) => ({
+    v: 2, code: sc.code, title: sc.title, subtitle: sc.subtitle, location: sc.location, challenge: sc.challenge, gameplayMechanic: sc.gameplayMechanic, environment: sc.environment, heroAssetId: sc.heroAssetId,
+    frames: frames.filter((f) => f.sceneId === sc.id).map((f) => ({ assetId: f.assetId, externalUrl: f.externalUrl, caption: f.caption })),
+    links: links.filter((l) => l.sceneId === sc.id).map((l) => ({ ownerKind: l.ownerKind, ownerId: l.ownerId, title: '' })),
+    script: { beforeState: sc.beforeState, action: sc.action, control: sc.control, afterState: sc.afterState, audio: sc.audio, changeNote: sc.changeNote, bridge: sc.bridge, timeNote: sc.timeNote, knowledge: sc.knowledge },
+    era: sc.era, sourceRefs: sc.sourceRefs,
+    lines: lines.filter((l) => l.sceneId === sc.id).map((l) => ({ cueId: l.cueId, speakerLabel: l.speakerLabel, textEn: l.textEn, textNb: l.textNb, sourceType: l.sourceType, perspective: l.perspective })),
+  });
+  await page.route('**/api/role-room/narrative/review/**', async (route: Route) => {
+    const req = route.request();
+    const method = req.method();
+    const url = new URL(req.url());
+    const rest = url.pathname.replace(/^.*\/api\/role-room\/narrative\/review\//, '');
+    const [token, ...segs] = rest.split('/');
+    const sub = '/' + segs.join('/');
+    const body = (method === 'POST' || method === 'PATCH') ? (req.postDataJSON() as Rec | null) ?? {} : {};
+    const known = reviewShareLinks.find((l) => l.token === token && !l.revokedAt);
+    const fixed = /^nrl_e2e_(approve|view|comment)$/.exec(token);
+    if (!known && !fixed) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+    const accessMode = known ? String(known.accessMode) : fixed![1];
+    const bound = ensureGuestRound(token);
+    if (!bound) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+    const { sc, r } = known ? { sc: scenes.find((x) => x.id === known.sceneId) ?? bound.sc, r: reviews.find((x) => x.id === known.reviewId) ?? bound.r } : bound;
+    const reviewerToken = req.headers()['x-narrative-reviewer'];
+    const reviewer = reviewerToken ? reviewerSessions.find((s) => s.token === reviewerToken) ?? null : null;
+    const roundMeta = { id: r.id, round: r.round, status: r.status, requestedAt: r.requestedAt, requestNote: r.requestNote, decidedAt: r.decidedAt, decidedByLabel: r.decidedByLabel, decisionNote: r.decisionNote, snapshotHash: r.snapshotHash };
+    const share = { accessMode, requireIdentity: true, expiresAt: null };
+    if (sub === '/' && method === 'GET') {
+      if (!reviewer) return route.fulfill(ok({ requiresIdentity: true, scene: { code: sc.code, title: sc.title }, round: roundMeta, share, reviewer: null }));
+      return route.fulfill(ok({ requiresIdentity: false, scene: { id: sc.id, code: sc.code, title: sc.title, status: sc.status }, round: roundMeta, snapshot: guestSnapshot(sc), share, reviewer: { id: reviewer.id, displayName: reviewer.displayName, email: reviewer.email } }));
+    }
+    if (sub === '/sessions' && method === 'POST') {
+      if (String(body.displayName ?? '').trim().length < 2) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_request"}' });
+      const s = { id: nextId('nrs'), token: `rt_${reviewerSessions.length + 1}`, displayName: body.displayName, email: body.email ?? null };
+      reviewerSessions.push(s);
+      return route.fulfill(ok({ reviewerToken: s.token, reviewer: { id: s.id, displayName: s.displayName, email: s.email } }, 201));
+    }
+    if (sub === '/editor-comments' && method === 'GET') {
+      if (!reviewer) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"reviewer_identity_required"}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ comments: comments.filter((c) => c.anchorRef === sc.id).map((c) => ({ ...c, canEdit: c.authorId === `reviewer:${reviewer.id}` })), serverTime: now() }) });
+    }
+    if (sub === '/editor-comments' && method === 'POST') {
+      if (accessMode === 'view') return route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":"comments_not_allowed"}' });
+      if (!reviewer) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"reviewer_identity_required"}' });
+      const c = { id: nextId('cmt'), projectId, anchorType: 'narrative_scene', anchorRef: sc.id, timestampSec: null, commentText: body.commentText, parentId: body.parentId ?? null, status: 'open', priority: body.priority ?? 'normal', authorDisplayName: reviewer.displayName, authorId: `reviewer:${reviewer.id}`, createdAt: now(), updatedAt: now(), replyCount: 0 };
+      comments.push(c);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, id: c.id, createdAt: c.createdAt }) });
+    }
+    if (sub === '/decision' && method === 'POST') {
+      if (accessMode !== 'approve') return route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":"decision_not_allowed"}' });
+      if (!reviewer) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"reviewer_identity_required"}' });
+      if (r.status !== 'in_review') return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'review_closed', status: r.status }) });
+      if (sceneSnapshotHash(sc.id) !== r.snapshotHash) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'snapshot_stale', currentHash: sceneSnapshotHash(sc.id), reviewHash: r.snapshotHash }) });
+      Object.assign(r, { status: body.decision, decidedByUserId: `reviewer:${reviewer.id}`, decidedByLabel: reviewer.displayName, decidedAt: now(), decisionNote: body.note ?? null });
+      sc.status = body.decision === 'approved' ? 'approved' : 'changes_requested';
+      inbox.unshift({ id: nextId('ntf'), eventType: 'narrative_scene_review_decided', title: `${body.decision === 'approved' ? 'Godkjent' : 'Endringer ønsket'}: ${sc.code} – ${sc.title}`, message: `Av ${reviewer.displayName} (gjest)`, linkedEntityType: 'narrative_scene', linkedEntityId: sc.id, createdByUserId: `reviewer:${reviewer.id}`, createdAt: now(), updatedAt: now(), readAt: null });
+      return route.fulfill(ok(r));
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
   });
 }
 

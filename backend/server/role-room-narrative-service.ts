@@ -3093,3 +3093,135 @@ export async function markAllInboxRead(db: Queryable, projectId: string, userId:
   );
   return r.rowCount ?? 0;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Fase 7e-2: Gjeste-reviewere (delingslenker per runde + reviewer-sesjoner)
+//  (tabeller i 0613_narrative_review_share_links.sql)
+// ═══════════════════════════════════════════════════════════════════════
+
+export type NarrativeReviewAccessMode = 'view' | 'comment' | 'approve';
+
+export interface NarrativeReviewShareLink {
+  id: string;
+  projectId: string;
+  sceneId: string;
+  reviewId: string;
+  accessMode: NarrativeReviewAccessMode;
+  requireIdentity: boolean;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  viewCount: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface NarrativeReviewerSession { id: string; shareLinkId: string; displayName: string; email: string | null }
+
+function mapReviewShareLinkRow(row: Row): NarrativeReviewShareLink {
+  return {
+    id: String(row.id), projectId: String(row.project_id), sceneId: String(row.scene_id), reviewId: String(row.review_id),
+    accessMode: String(row.access_mode ?? 'comment') as NarrativeReviewAccessMode, requireIdentity: row.require_identity !== false,
+    expiresAt: isoTsOrNull(row.expires_at), revokedAt: isoTsOrNull(row.revoked_at), viewCount: num(row.view_count),
+    createdBy: String(row.created_by ?? ''), createdAt: isoTs(row.created_at),
+  };
+}
+
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+export interface ReviewShareLinkInput { accessMode?: NarrativeReviewAccessMode; requireIdentity?: boolean; expiresAt?: string | null }
+
+/** Oppretter delingslenke for en åpen runde; råtoken returneres én gang. */
+export async function createReviewShareLink(
+  db: Queryable, projectId: string, sceneId: string, reviewId: string, userId: string, input: ReviewShareLinkInput = {},
+): Promise<{ link: NarrativeReviewShareLink; token: string } | null> {
+  const { rows } = await db.query(`SELECT id, status FROM narrative_scene_reviews WHERE id = $1 AND scene_id = $2 AND project_id = $3 LIMIT 1`, [reviewId, sceneId, projectId]);
+  if (!rows[0]) return null;
+  if (rows[0].status === 'superseded') throw new SceneReviewClosedError('superseded');
+  const token = randomBytes(32).toString('base64url');
+  const inserted = await db.query(
+    `INSERT INTO narrative_review_share_links (id, project_id, scene_id, review_id, token_hash, access_mode, require_identity, expires_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [generateId('nrl'), projectId, sceneId, reviewId, sha256Hex(token), input.accessMode ?? 'comment', input.requireIdentity ?? true, input.expiresAt ?? null, userId],
+  );
+  return { link: mapReviewShareLinkRow(inserted.rows[0] as Row), token };
+}
+
+export async function listReviewShareLinks(db: Queryable, projectId: string, sceneId: string, reviewId: string): Promise<NarrativeReviewShareLink[]> {
+  const { rows } = await db.query(
+    `SELECT * FROM narrative_review_share_links WHERE project_id = $1 AND scene_id = $2 AND review_id = $3 ORDER BY created_at DESC`,
+    [projectId, sceneId, reviewId],
+  );
+  return (rows as Row[]).map(mapReviewShareLinkRow);
+}
+
+export async function revokeReviewShareLink(db: Queryable, projectId: string, sceneId: string, reviewId: string, linkId: string): Promise<boolean> {
+  const r = await db.query(
+    `UPDATE narrative_review_share_links SET revoked_at = now() WHERE id = $1 AND project_id = $2 AND scene_id = $3 AND review_id = $4 AND revoked_at IS NULL RETURNING id`,
+    [linkId, projectId, sceneId, reviewId],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+export interface ResolvedReviewShare {
+  link: NarrativeReviewShareLink;
+  review: NarrativeSceneReview;
+  /** Runde-snapshotet slik det ble frosset (v1/v2). */
+  snapshot: SceneSnapshot;
+  sceneStatus: NarrativeSceneStatus;
+  sceneTitle: string;
+  sceneCode: string;
+}
+
+/** Ugyldig, utløpt og tilbakekalt gir null (ingen lekkasje av hvilken). */
+export async function resolveReviewShare(db: Queryable, token: string): Promise<ResolvedReviewShare | null> {
+  if (!token || token.length > 200) return null;
+  const { rows } = await db.query(
+    `SELECT l.*, r.snapshot AS review_snapshot, r.round, r.status AS review_status, r.requested_by, r.requested_at, r.request_note,
+            r.decided_by_user_id, r.decided_by_label, r.decided_at, r.decision_note, r.snapshot_hash, r.created_at AS review_created_at, r.updated_at AS review_updated_at,
+            s.status AS scene_status, s.title AS scene_title, s.code AS scene_code
+       FROM narrative_review_share_links l
+       JOIN narrative_scene_reviews r ON r.id = l.review_id
+       JOIN narrative_scenes s ON s.id = l.scene_id
+      WHERE l.token_hash = $1 AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > now())
+      LIMIT 1`,
+    [sha256Hex(token)],
+  );
+  const row = rows[0] as Row | undefined;
+  if (!row) return null;
+  const link = mapReviewShareLinkRow(row);
+  const review = mapSceneReviewRow({
+    id: row.review_id, scene_id: row.scene_id, project_id: row.project_id, round: row.round, status: row.review_status, requested_by: row.requested_by,
+    requested_at: row.requested_at, request_note: row.request_note, decided_by_user_id: row.decided_by_user_id, decided_by_label: row.decided_by_label,
+    decided_at: row.decided_at, decision_note: row.decision_note, snapshot_hash: row.snapshot_hash,
+  });
+  return {
+    link, review, snapshot: jsonObject(row.review_snapshot) as unknown as SceneSnapshot,
+    sceneStatus: String(row.scene_status ?? 'idea') as NarrativeSceneStatus, sceneTitle: String(row.scene_title ?? ''), sceneCode: String(row.scene_code ?? ''),
+  };
+}
+
+export async function bumpReviewShareViews(db: Queryable, linkId: string): Promise<void> {
+  await db.query(`UPDATE narrative_review_share_links SET view_count = view_count + 1 WHERE id = $1`, [linkId]).catch(() => undefined);
+}
+
+export async function createReviewerSession(db: Queryable, shareLinkId: string, displayName: string, email: string | null): Promise<{ session: NarrativeReviewerSession; reviewerToken: string }> {
+  const reviewerToken = randomBytes(32).toString('base64url');
+  const { rows } = await db.query(
+    `INSERT INTO narrative_review_sessions (id, share_link_id, reviewer_token_hash, display_name, email) VALUES ($1, $2, $3, $4, $5) RETURNING id, share_link_id, display_name, email`,
+    [generateId('nrs'), shareLinkId, sha256Hex(reviewerToken), displayName, email],
+  );
+  const r = rows[0] as Row;
+  return { session: { id: String(r.id), shareLinkId: String(r.share_link_id), displayName: String(r.display_name), email: strOrNull(r.email) }, reviewerToken };
+}
+
+export async function resolveReviewer(db: Queryable, shareLinkId: string, reviewerToken: string | undefined): Promise<NarrativeReviewerSession | null> {
+  if (!reviewerToken || reviewerToken.length > 200) return null;
+  const { rows } = await db.query(
+    `UPDATE narrative_review_sessions SET last_seen_at = now() WHERE share_link_id = $1 AND reviewer_token_hash = $2 RETURNING id, share_link_id, display_name, email`,
+    [shareLinkId, sha256Hex(reviewerToken)],
+  );
+  const r = rows[0] as Row | undefined;
+  return r ? { id: String(r.id), shareLinkId: String(r.share_link_id), displayName: String(r.display_name), email: strOrNull(r.email) } : null;
+}

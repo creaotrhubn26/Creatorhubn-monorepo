@@ -428,6 +428,11 @@ const platformTargetBody = z.object({
   sortOrder: z.number().int().optional(),
 });
 const platformTargetPatch = platformTargetBody.partial();
+const reviewShareLinkBody = z.object({
+  accessMode: z.enum(['view', 'comment', 'approve']).optional(),
+  requireIdentity: z.boolean().optional(),
+  expiresAt: isoDate,
+});
 
 /** Ruteparameter som streng (Express 5 typer `req.params.x` som `string | string[]`). */
 function param(req: Request, key: string): string {
@@ -1252,6 +1257,30 @@ export function createRoleRoomNarrativeRouter(
   }));
   router.post('/projects/:projectId/inbox/:id/read', ...guard, wrap(async (req, res) => {
     const ok = await svc.markInboxRead(pool, req.projectId, req.userId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  // ─── Fase 7e-2: gjeste-reviewere (delingslenker per runde, Studio) ──
+  router.get('/projects/:projectId/scenes/:sceneId/reviews/:reviewId/share-links', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listReviewShareLinks(pool, req.projectId, param(req, 'sceneId'), param(req, 'reviewId')) });
+  }));
+  router.post('/projects/:projectId/scenes/:sceneId/reviews/:reviewId/share-links', ...guard, wrap(async (req, res) => {
+    const parsed = reviewShareLinkBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'guest_reviewers');
+    try {
+      const created = await svc.createReviewShareLink(pool, req.projectId, param(req, 'sceneId'), param(req, 'reviewId'), req.userId, parsed.data);
+      if (!created) { res.status(404).json({ error: 'not_found' }); return; }
+      res.status(201).json({ success: true, data: { link: created.link, token: created.token, path: `/story-review/${created.token}` } });
+    } catch (err) {
+      if (err instanceof svc.SceneReviewClosedError) { res.status(409).json({ error: 'review_closed', status: err.status, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.delete('/projects/:projectId/scenes/:sceneId/reviews/:reviewId/share-links/:linkId', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'guest_reviewers');
+    const ok = await svc.revokeReviewShareLink(pool, req.projectId, param(req, 'sceneId'), param(req, 'reviewId'), param(req, 'linkId'));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
   }));

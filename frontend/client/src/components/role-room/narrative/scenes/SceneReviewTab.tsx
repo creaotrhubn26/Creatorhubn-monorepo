@@ -22,6 +22,7 @@ import { useGamePlanGate } from '../../game/useGamePlanGate';
 import { PostCommentLayer } from '../../components/PostCommentLayer';
 import { bearerToken, selfDisplayName, NARRATIVE_COMMENT_THEME } from './SceneStoryboardTab';
 import { useMembersLite } from '../components/MemberPicker';
+import { ReviewShareSection } from './ReviewShareSection';
 
 const STATUS_COLOR: Record<NarrativeSceneReview['status'], string> = {
   in_review: narrativeColors.warning,
@@ -162,6 +163,8 @@ export function SceneReviewTab({ projectId, detail, scenes, onNotice }: {
           </Stack>
         )}
       </Box>
+
+      {open ? <ReviewShareSection projectId={projectId} sceneId={detail.scene.id} review={open} onNotice={onNotice} /> : null}
 
       <Box>
         <SectionTitle>Diskusjon</SectionTitle>

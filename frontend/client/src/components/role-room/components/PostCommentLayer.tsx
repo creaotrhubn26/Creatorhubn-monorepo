@@ -53,7 +53,9 @@ export interface PostCommentItem {
  */
 export type PostCommentAuth =
   | { kind: 'bearer'; token: string }
-  | { kind: 'client-portal'; sessionToken: string };
+  | { kind: 'client-portal'; sessionToken: string }
+  /** Gjeste-reviewer i Story Graph (Fase 7e-2): sesjonstoken i x-narrative-reviewer; brukes med apiBase = /api/role-room/narrative/review/<token>. */
+  | { kind: 'narrative-reviewer'; token: string };
 
 interface Props {
   /** casting_projects.id som posten tilhører. */
@@ -118,6 +120,9 @@ function themedStyles(theme?: PostCommentTheme) {
 function buildAuthHeaders(auth: PostCommentAuth): Record<string, string> {
   if (auth.kind === 'bearer') {
     return { Authorization: `Bearer ${auth.token}` };
+  }
+  if (auth.kind === 'narrative-reviewer') {
+    return { 'x-narrative-reviewer': auth.token };
   }
   return { 'X-Client-Portal-Token': auth.sessionToken };
 }

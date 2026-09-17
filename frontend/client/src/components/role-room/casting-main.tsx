@@ -170,6 +170,7 @@ const RrMockupReview = React.lazy(() => import('@/pages/mockup-review'));
 const RrStoryboardReview = React.lazy(() => import('@/pages/storyboard-review'));
 // Story Graph (game_studio): offentlig spill-lenke — samme rute finnes i App.tsx.
 const RrStoryPlay = React.lazy(() => import('@/pages/story-play'));
+const RrStoryReview = React.lazy(() => import('@/pages/story-review'));
 
 const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
   { test: /^\/privacy-policy$/, path: '/privacy-policy', component: RrPrivacyPolicy },
@@ -177,6 +178,7 @@ const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: Rea
   { test: /^\/mockup-review\/[^/]+$/, path: '/mockup-review/:token', component: RrMockupReview },
   { test: /^\/storyboard-review\/[^/]+$/, path: '/storyboard-review/:token', component: RrStoryboardReview },
   { test: /^\/story\/[^/]+$/, path: '/story/:token', component: RrStoryPlay },
+  { test: /^\/story-review\/[^/]+$/, path: '/story-review/:token', component: RrStoryReview },
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
   { test: /^\/game\/invite\/[^/]+$/, path: '/game/invite/:token', component: RrGameInviteLanding },

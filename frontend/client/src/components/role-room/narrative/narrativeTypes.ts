@@ -596,3 +596,45 @@ export interface NarrativeMemberLite {
   profileImageUrl: string | null;
   isOwner: boolean;
 }
+
+// ─── Fase 7e-2: gjeste-reviewere ───────────────────────────────────────
+export type NarrativeReviewAccessMode = 'view' | 'comment' | 'approve';
+export const NARRATIVE_REVIEW_ACCESS_LABELS: Record<NarrativeReviewAccessMode, string> = { view: 'Bare se', comment: 'Se og kommentere', approve: 'Kommentere og beslutte' };
+export interface NarrativeReviewShareLink {
+  id: string;
+  projectId: string;
+  sceneId: string;
+  reviewId: string;
+  accessMode: NarrativeReviewAccessMode;
+  requireIdentity: boolean;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  viewCount: number;
+  createdBy: string;
+  createdAt: string;
+}
+export interface NarrativeReviewSnapshot {
+  v?: number;
+  code: string;
+  title: string;
+  subtitle: string;
+  location: string;
+  challenge: string;
+  gameplayMechanic: string;
+  environment: string;
+  heroAssetId: string | null;
+  frames: Array<{ assetId: string | null; externalUrl: string | null; caption: string }>;
+  links: Array<{ ownerKind: string; ownerId: string; title: string }>;
+  script?: { beforeState: string; action: string; control: string; afterState: string; audio: string; changeNote: string; bridge: string; timeNote: string; knowledge: NarrativeSceneKnowledge };
+  era?: NarrativeSceneEra;
+  sourceRefs?: NarrativeSourceRef[];
+  lines?: Array<{ cueId: string; speakerLabel: string; textEn: string; textNb: string; sourceType: NarrativeLineSourceType; perspective: string }>;
+}
+export interface NarrativeGuestReview {
+  requiresIdentity: boolean;
+  scene: { id?: string; code: string; title: string; status?: NarrativeSceneStatus };
+  round: { id: string; round: number; status: NarrativeSceneReviewStatus; requestedAt: string; requestNote: string | null; decidedAt: string | null; decidedByLabel: string | null; decisionNote: string | null; snapshotHash: string };
+  snapshot?: NarrativeReviewSnapshot;
+  share: { accessMode: NarrativeReviewAccessMode; requireIdentity: boolean; expiresAt: string | null };
+  reviewer: { id: string; displayName: string; email: string | null } | null;
+}

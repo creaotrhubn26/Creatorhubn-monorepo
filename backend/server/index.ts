@@ -198,6 +198,7 @@ import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
 import { createGameBillingRouter } from "./game-billing-routes.js";
 import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
+import { createNarrativeReviewPublicRouter } from "./role-room-narrative-review-public-routes.js";
 import {
   createDanceTeamRouter,
   createDanceInviteAcceptRouter,
@@ -2876,6 +2877,12 @@ app.use(
 app.use(
   "/api/dance/addons",
   createDanceAddonRouter(pool, { activeSessions }),
+);
+// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0613). Montert før
+// narrative-routeren så /review/:token aldri treffer prosjekt-rutene.
+app.use(
+  "/api/role-room/narrative/review",
+  createNarrativeReviewPublicRouter(pool),
 );
 // Spillstudio (game_studio) — Story Graph: narrativ graf, prosjekt-skopet.
 app.use(
