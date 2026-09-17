@@ -39,6 +39,7 @@ import { rateLimit } from 'express-rate-limit';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
   collectProductionDayChangeImpact,
+  collectProductionDayLocationImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
 import {
@@ -1343,7 +1344,14 @@ export function createCastingProductionRouter(
       const projectId = String(req.params.projectId || '').trim();
       const dayId = String(req.params.dayId || '').trim();
       const toDate = String(req.query.date || '').trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+      const toLocationId = String(req.query.locationId || '').trim();
+      // Samme rute svarer for begge endringene. En forespørsel uten noen av
+      // dem har ingen konsekvens å beregne.
+      if (!toDate && !toLocationId) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato eller ny lokasjon.' });
+        return;
+      }
+      if (toDate && !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
         res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato som YYYY-MM-DD.' });
         return;
       }
@@ -1352,29 +1360,50 @@ export function createCastingProductionRouter(
       if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
 
       const dayResult = await pool.query(
-        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id
            FROM casting_production_days
           WHERE id = $1 AND project_id = $2
           LIMIT 1`,
         [dayId, projectId],
       );
-      const day = dayResult.rows[0] as { date?: string } | undefined;
+      const day = dayResult.rows[0] as { date?: string; location_id?: string | null } | undefined;
       if (!day) {
         res.status(404).json({ error: 'not_found' });
         return;
       }
       const fromDate = String(day.date ?? '');
-      if (fromDate === toDate) {
-        res.json({ from: fromDate, to: toDate, impacts: [], blocking: false, unchanged: true });
+      const fromLocationId = day.location_id ? String(day.location_id) : null;
+
+      const dateChanged = Boolean(toDate) && toDate !== fromDate;
+      const locationChanged = Boolean(toLocationId) && toLocationId !== fromLocationId;
+      if (!dateChanged && !locationChanged) {
+        res.json({
+          from: fromDate,
+          to: toDate || fromDate,
+          fromLocationId,
+          toLocationId: toLocationId || fromLocationId,
+          impacts: [],
+          blocking: false,
+          unchanged: true,
+        });
         return;
       }
 
-      const impacts = await collectProductionDayChangeImpact(pool, {
-        projectId, dayId, fromDate, toDate,
-      });
+      const impacts = [
+        ...(dateChanged
+          ? await collectProductionDayChangeImpact(pool, { projectId, dayId, fromDate, toDate })
+          : []),
+        ...(locationChanged
+          ? await collectProductionDayLocationImpact(pool, {
+              projectId, dayId, fromLocationId, toLocationId,
+            })
+          : []),
+      ];
       res.json({
         from: fromDate,
-        to: toDate,
+        to: toDate || fromDate,
+        fromLocationId,
+        toLocationId: toLocationId || fromLocationId,
         impacts,
         blocking: hasBlockingImpact(impacts),
         unchanged: false,

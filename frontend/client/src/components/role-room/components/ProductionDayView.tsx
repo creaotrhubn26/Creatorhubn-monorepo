@@ -5109,6 +5109,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               dayId={editingDay?.id ?? null}
               currentDate={editingDay?.date ?? null}
               targetDate={formData.date || ''}
+              currentLocationId={editingDay?.locationId ?? null}
+              targetLocationId={formData.locationId || null}
               onBlockingChange={setDateMoveBlocked}
             />
 

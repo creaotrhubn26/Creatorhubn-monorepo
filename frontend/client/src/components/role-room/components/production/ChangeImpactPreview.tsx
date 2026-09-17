@@ -47,6 +47,10 @@ export interface ChangeImpactPreviewProps {
   currentDate: string | null;
   /** Datoen brukeren har skrevet inn. */
   targetDate: string;
+  /** Lokasjonen dagen har i dag. */
+  currentLocationId?: string | null;
+  /** Lokasjonen brukeren har valgt. */
+  targetLocationId?: string | null;
   /** Sier fra når noe må ryddes før lagring er forsvarlig. */
   onBlockingChange?: (blocking: boolean) => void;
 }
@@ -69,25 +73,31 @@ export function ChangeImpactPreview({
   dayId,
   currentDate,
   targetDate,
+  currentLocationId = null,
+  targetLocationId = null,
   onBlockingChange,
 }: ChangeImpactPreviewProps): JSX.Element | null {
   const [data, setData] = useState<ImpactResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const shouldAsk = Boolean(dayId)
-    && /^\d{4}-\d{2}-\d{2}$/.test(targetDate)
+  const dateChanged = /^\d{4}-\d{2}-\d{2}$/.test(targetDate)
     && targetDate !== (currentDate ?? '');
+  const locationChanged = Boolean(targetLocationId)
+    && targetLocationId !== (currentLocationId ?? null);
+  const shouldAsk = Boolean(dayId) && (dateChanged || locationChanged);
 
   const load = useCallback(async () => {
     if (!dayId || !shouldAsk) return;
     setLoading(true);
     setFailed(false);
     try {
+      const params = new URLSearchParams();
+      if (dateChanged) params.set('date', targetDate);
+      if (locationChanged && targetLocationId) params.set('locationId', targetLocationId);
       const response = await fetch(
         `/api/role-room/projects/${encodeURIComponent(projectId)}`
-        + `/production-days/${encodeURIComponent(dayId)}/impact`
-        + `?date=${encodeURIComponent(targetDate)}`,
+        + `/production-days/${encodeURIComponent(dayId)}/impact?${params.toString()}`,
         { headers: authSessionService.getAuthHeadersSync() },
       );
       if (!response.ok) throw new Error(String(response.status));
@@ -98,7 +108,7 @@ export function ChangeImpactPreview({
     } finally {
       setLoading(false);
     }
-  }, [projectId, dayId, targetDate, shouldAsk]);
+  }, [projectId, dayId, targetDate, targetLocationId, dateChanged, locationChanged, shouldAsk]);
 
   useEffect(() => {
     if (!shouldAsk) {
@@ -116,13 +126,18 @@ export function ChangeImpactPreview({
     // og da skal ingen kunne lagre i blinde. Det samme gjelder en dag som har
     // flyttet seg under føttene på oss — da bygger skjemaet på en dato som
     // ikke lenger finnes.
-    const stale = Boolean(data && currentDate && data.from !== currentDate);
+    const stale = Boolean(data && currentDate && dateChanged && data.from !== currentDate);
     onBlockingChange?.(failed || stale || Boolean(data?.blocking));
-  }, [failed, data, currentDate, onBlockingChange]);
+  }, [failed, data, currentDate, dateChanged, onBlockingChange]);
 
   // Serveren svarer med datoen dagen faktisk har nå. Er den en annen enn den
   // skjemaet ble åpnet med, har noen andre flyttet dagen i mellomtiden.
-  const staleFrom = data && currentDate && data.from !== currentDate ? data.from : null;
+  // Bare en datoendring kan gjøre skjemaet foreldet på denne måten. Ved et
+  // rent lokasjonsbytte er `from` bare dagens dato, ikke et tegn på at noen
+  // andre har rørt den.
+  const staleFrom = data && currentDate && dateChanged && data.from !== currentDate
+    ? data.from
+    : null;
 
   if (!shouldAsk) return null;
 
@@ -160,7 +175,9 @@ export function ChangeImpactPreview({
   if (data.impacts.length === 0) {
     return (
       <Alert severity="success" icon={<CheckCircleOutlineIcon fontSize="small" />} sx={{ mt: 1 }}>
-        Ingenting annet henger på {data.from}. Flyttingen berører bare dagen selv.
+        {dateChanged
+          ? `Ingenting annet henger på ${data.from}. Endringen berører bare dagen selv.`
+          : 'Ingenting annet henger på den gamle lokasjonen. Endringen berører bare dagen selv.'}
       </Alert>
     );
   }
@@ -168,7 +185,11 @@ export function ChangeImpactPreview({
   return (
     <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, border: '1px solid rgba(255,255,255,0.12)' }}>
       <Typography variant="subtitle2" sx={{ color: '#fff', mb: 1 }}>
-        Flytting fra {data.from} til {data.to} påvirker:
+        {dateChanged && locationChanged
+          ? `Ny dato og ny lokasjon påvirker:`
+          : dateChanged
+            ? `Flytting fra ${data.from} til ${data.to} påvirker:`
+            : 'Ny lokasjon påvirker:'}
       </Typography>
       <Stack spacing={1}>
         {data.impacts.map((impact) => (
