@@ -146,3 +146,43 @@ describe("talent-krediteringer", () => {
     expect(state.queries.some((q) => q.sql.includes("GROUP BY value"))).toBe(false);
   });
 });
+
+describe("rekkefølge", () => {
+  let state: State;
+
+  beforeEach(() => {
+    state = { hasTalent: true, queries: [], updateRowCount: 1 };
+  });
+
+  it("krever innlogging", async () => {
+    const res = await request(buildApp(state, false))
+      .post("/api/role-room/talents/me/credits/reorder")
+      .send({ ids: [CREDIT_ID] });
+    expect(res.status).toBe(401);
+  });
+
+  it("avviser noe annet enn en liste med id-er", async () => {
+    const res = await request(buildApp(state))
+      .post("/api/role-room/talents/me/credits/reorder")
+      .send({ ids: [{ id: CREDIT_ID }] });
+
+    expect(res.status).toBe(400);
+    expect(state.queries.some((q) => q.sql.includes("UPDATE talent_credits"))).toBe(false);
+  });
+
+  it("skriver rekkefølgen med talent_id i WHERE, slik at andres rader ikke treffes", async () => {
+    const res = await request(buildApp(state))
+      .post("/api/role-room/talents/me/credits/reorder")
+      .send({ ids: [CREDIT_ID, "33333333-3333-4333-8333-333333333333"] });
+
+    expect(res.status).toBe(200);
+    const update = state.queries.find((q) => q.sql.includes("UPDATE talent_credits"));
+    // Uten talent_id her kunne hvem som helst omsortere en annen
+    // skuespillers CV ved å gjette id-er.
+    expect(update?.sql).toContain("c.talent_id = $1");
+    expect(update?.params[0]).toBe(TALENT_ID);
+    // Posisjonen kommer fra rekkefølgen i lista, ikke fra klienten.
+    expect(update?.sql).toContain("WITH ORDINALITY");
+    expect(update?.params[1]).toEqual([CREDIT_ID, "33333333-3333-4333-8333-333333333333"]);
+  });
+});

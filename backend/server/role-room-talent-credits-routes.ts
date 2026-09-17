@@ -211,6 +211,44 @@ export function setupRoleRoomTalentCreditsRoutes(
     }
   });
 
+  // ── POST /me/credits/reorder — rekkefølgen i CV-en ──────────────────
+  //
+  // En casting-CV sorteres etter relevans, ikke kronologi: den rollen som
+  // ligner det du søker på skal stå øverst, uansett hvilket år den var.
+  // GET-en sorterer allerede på sort_order, men ingenting kunne sette den.
+  //
+  // Hele lista sendes inn, ikke «flytt id X til plass 3». Da slipper vi å
+  // gjette hva klienten så, og resultatet blir det samme uansett hvor mange
+  // ganger kallet kjøres.
+  app.post("/api/role-room/talents/me/credits/reorder", async (req, res) => {
+    const talentId = await ownTalentId(req);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const ids = (req.body || {}).ids;
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+      return res.status(400).json({ error: "ids må være en liste med id-er" });
+    }
+    if (ids.length > 500) return res.status(400).json({ error: "For mange rader" });
+
+    try {
+      // talent_id i WHERE-en er det som gjør dette til en eierskapssjekk:
+      // id-er som tilhører noen andre treffer ingen rad i stedet for å bli
+      // omsortert. Derfor svarer vi heller ikke 404 på ukjente id-er — det
+      // ville bekreftet at de finnes.
+      await pool.query(
+        `UPDATE talent_credits AS c
+            SET sort_order = v.ord
+           FROM (SELECT * FROM unnest($2::uuid[]) WITH ORDINALITY AS t(id, ord)) AS v
+          WHERE c.id = v.id AND c.talent_id = $1`,
+        [talentId, ids],
+      );
+      return res.json({ ok: true, ordered: ids.length });
+    } catch (err) {
+      console.error("[talents/credits reorder] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å lagre rekkefølgen" });
+    }
+  });
+
   // ── POST /me/cv-import — PDF/Word → forslag ─────────────────────────
   //
   // Returnerer KUN et forslag. Ingenting lagres før skuespilleren har sett
