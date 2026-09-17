@@ -195,6 +195,7 @@ import {
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
   matchesLensProjectRole,
+  isLensDecisionPending,
   resolveLensUrlState,
   resolveWorkspaceLens,
   type RoleWorkspaceLens,
@@ -3361,7 +3362,11 @@ type RoleRoomProjectWorkspaceState = {
     || ['director', 'producer', 'first_ad', 'second_ad'].includes(normalizedCurrentProjectRole);
   // Admin-linsen er den eneste som ikke følger av prosjektrollen. Klientporten
   // skjuler UI; hver Admin Room-rute er e-postlåst på serveren i tillegg.
-  const { isSuperAdmin: isSuperAdminSession } = useSuperAdminGate();
+  const { isSuperAdmin: isSuperAdminSession, ready: superAdminGateReady } = useSuperAdminGate();
+  // Serveren avgjør admin-linsen, og svaret kommer etter første render. Uten
+  // denne ventetilstanden rakk URL-synkroniseringen å slette ?lens=admin, og
+  // flaten under viste produksjonsarbeidsflaten i mellomtiden.
+  const adminLensPending = isLensDecisionPending(workspaceLensPreference, superAdminGateReady);
   // Rene oppslag, ikke hooks: de leses av både lenseoppløsningen og
   // URL-synkroniseringen, som fortsatt lister de underliggende
   // boolean-verdiene i sin dependency-array.
@@ -5388,6 +5393,9 @@ type RoleRoomProjectWorkspaceState = {
     // følger det alltid et state-bytte (currentProject/tab/view) som
     // re-trigger denne effekten, så URL-en skrives korrekt straks etter.
     if (deepLinkProjectId && !deepLinkResolvedRef.current) return;
+    // Ikke skriv URL-en mens admin-linsen venter på serveren: den ville
+    // strippe ?lens=admin ut fra et svar vi ennå ikke har.
+    if (adminLensPending) return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
@@ -5443,6 +5451,7 @@ type RoleRoomProjectWorkspaceState = {
   }, [
     bootstrapComplete,
     activeTab,
+    adminLensPending,
     currentProject?.id,
     storyArcView,
     contentProducerPlannerSurface,
@@ -11064,7 +11073,14 @@ type RoleRoomProjectWorkspaceState = {
           <ErrorBoundary key={displayedActiveTab}>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
-          {effectiveWorkspaceLens === 'admin' ? (
+          {adminLensPending ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
+              <CircularProgress size={40} sx={{ color: 'var(--role-violet, #8875eb)' }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
+                Bekrefter tilgang til Admin Room …
+              </Typography>
+            </Box>
+          ) : effectiveWorkspaceLens === 'admin' ? (
             <AdminRoomWorkspace />
           ) : !currentProject && projects.length === 0 ? (
             <EmptyProjectsHero
