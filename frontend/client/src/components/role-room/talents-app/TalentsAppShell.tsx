@@ -287,6 +287,19 @@ export default function TalentsAppShell({
             alignItems="center"
             spacing={1.2}
             onClick={() => setUserMenuOpen(true)}
+            // Var en ren Stack med onClick: ikke tastaturnåbar og uten
+            // tilgjengelig navn, så menyen — og dermed «Logg ut» — fantes
+            // ikke for noen som ikke bruker mus.
+            role="button"
+            tabIndex={0}
+            aria-haspopup="menu"
+            aria-label="Kontomeny"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setUserMenuOpen(true);
+              }
+            }}
             sx={{
               pl: 1,
               pr: 1.4,
