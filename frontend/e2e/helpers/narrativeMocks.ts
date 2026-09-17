@@ -14,6 +14,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 const gamePlansFixture = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'game', 'plans.json'), 'utf8')) as unknown;
+// Fase 7a-2: det ekte prosjektet («What Follows Us») som strukturert fixture — delt med backend-seederen.
+import type { StoryGraphFixture } from '../../shared/narrative-fixtures/types';
+const WFU_FIXTURE_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'shared', 'narrative-fixtures', 'what-follows-us.json');
+export function loadWhatFollowsUsFixture(): StoryGraphFixture {
+  return JSON.parse(fs.readFileSync(WFU_FIXTURE_PATH, 'utf8')) as StoryGraphFixture;
+}
+export type NarrativeMockSeed = 'default' | 'what-follows-us';
 
 export async function installGameBillingMocks(page: Page, plan: MockGamePlanSlug): Promise<void> {
   const plans = gamePlansFixture as Array<Record<string, unknown> & { slug: string }>;
@@ -42,6 +49,115 @@ export async function installGameBillingMocks(page: Page, plan: MockGamePlanSlug
     if (path === '/admin/tester-invites' && method === 'POST') { const inv = { token: `tok_${invites.length + 1}`, invitedByUserId: 'u-e2e', usedCount: 0, acceptedAt: null, acceptedUserId: null, validUntil: null, invitedEmail: null, invitedName: null, notes: null, trialDays: 90, maxUses: 1, ...body, createdAt: now(), updatedAt: now() }; invites.unshift(inv); return route.fulfill(ok(inv, 201)); }
     if (path === '/admin/settings' && method === 'GET') return route.fulfill(ok(settings));
     if (path.startsWith('/admin/settings/') && method === 'PUT') { const key = decodeURIComponent(path.split('/')[3]); const s = settings.find((x) => x.key === key) ?? (settings.push({ key }) && settings[settings.length - 1]); Object.assign(s, body, { updatedAt: now() }); return route.fulfill(ok(s)); }
+    // ── Fase 7: produksjons-OS ─────────────────────────────────────────
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/gates$/);
+    if (mm && method === 'GET') return route.fulfill(ok(gatesFor(mm[1])));
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/gates\/([^/]+)$/);
+    if (mm && method === 'PUT') {
+      if (!GATE_KEYS.includes(mm[2])) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_request"}' });
+      if (body.status === 'passed' && !String(body.evidence ?? '').trim()) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'gate_evidence_required', message: 'En gate kan ikke settes «bestått» uten bevis.' }) });
+      const existing = gates.find((x) => x.sceneId === mm![1] && x.gateKey === mm![2]);
+      const row = { sceneId: mm[1], projectId, gateKey: mm[2], status: body.status, evidence: String(body.evidence ?? '').trim(), evidenceRefs: body.evidenceRefs ?? [], checkedBy: 'u-e2e', checkedAt: now(), updatedAt: now() };
+      if (existing) Object.assign(existing, row); else gates.push(row);
+      return route.fulfill(ok(row));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/lines$/);
+    if (mm && method === 'GET') return route.fulfill(ok(lines.filter((l) => l.sceneId === mm![1]).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number))));
+    if (mm && method === 'POST') {
+      const cueId = String(body.cueId ?? '').trim().toUpperCase();
+      if (!/^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?(\.[0-9]{1,3})?$/.test(cueId)) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_request"}' });
+      if (lines.some((l) => l.sceneId === mm![1] && l.cueId === cueId)) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_cue', cueId }) });
+      const l = { id: nextId('nsl'), sceneId: mm[1], projectId, cueId, speakerComponentId: body.speakerComponentId ?? null, speakerLabel: body.speakerLabel ?? '', perspective: body.perspective ?? '', textEn: body.textEn ?? '', textNb: body.textNb ?? '', sourceType: body.sourceType ?? 'T', recordingStatus: body.recordingStatus ?? 'none', note: body.note ?? '', sortOrder: lines.filter((x) => x.sceneId === mm![1]).length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() };
+      lines.push(l);
+      return route.fulfill(ok(l, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/lines\/order$/);
+    if (mm && method === 'PUT') { (body.orderedIds as string[]).forEach((id, i) => { const l = lines.find((x) => x.id === id); if (l) l.sortOrder = i; }); return route.fulfill(ok(lines.filter((l) => l.sceneId === mm![1]).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)))); }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/lines\/([^/]+)$/);
+    if (mm) {
+      const l = lines.find((x) => x.id === mm![2] && x.sceneId === mm![1]);
+      if (!l) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      if (method === 'PATCH') { if (typeof body.cueId === 'string') body.cueId = body.cueId.toUpperCase(); Object.assign(l, body, { updatedAt: now() }); return route.fulfill(ok(l)); }
+      if (method === 'DELETE') { lines.splice(lines.indexOf(l), 1); return route.fulfill(ok(undefined)); }
+    }
+    if (m(/\/projects\/[^/]+\/lines$/) && method === 'GET') {
+      const speaker = url.searchParams.get('speakerComponentId');
+      return route.fulfill(ok(lines.filter((l) => l.speakerComponentId === speaker).map((l) => { const sc = scenes.find((x) => x.id === l.sceneId); return { ...l, sceneCode: sc?.code ?? '', sceneTitle: sc?.title ?? '' }; })));
+    }
+    mm = m(/\/projects\/[^/]+\/components\/([^/]+)\/scenes$/);
+    if (mm && method === 'GET') return route.fulfill(ok(links.filter((l) => l.ownerKind === 'component' && l.ownerId === mm![1]).map((l) => scenes.find((x) => x.id === l.sceneId)).filter(Boolean).map((sc) => ({ id: sc!.id, code: sc!.code, title: sc!.title, status: sc!.status }))));
+    // Generisk CRUD for episoder / spørsmål / kilder / milepæler / plattformmål.
+    const collections: Array<{ head: string; rows: Rec[]; prefix: string; codeKey?: string; gated?: boolean; defaults: (b: Rec) => Rec }> = [
+      { head: 'episodes', rows: episodes, prefix: 'nep', codeKey: 'code', defaults: (b) => ({ code: String(b.code ?? '').toUpperCase(), title: b.title ?? '', summary: b.summary ?? '', playersLearn: b.playersLearn ?? '', sourceNote: b.sourceNote ?? '', status: b.status ?? 'draft', sortOrder: b.sortOrder ?? episodes.length }) },
+      { head: 'open-questions', rows: openQuestions, prefix: 'noq', codeKey: 'code', defaults: (b) => ({ code: String(b.code ?? '').toUpperCase(), kind: b.kind ?? 'question', question: b.question ?? '', context: b.context ?? '', status: b.status ?? 'open', decision: b.decision ?? '', decidedBy: null, decidedAt: null, sourceRefs: b.sourceRefs ?? [], sortOrder: b.sortOrder ?? openQuestions.length }) },
+      { head: 'sources', rows: sources, prefix: 'nso', codeKey: 'code', defaults: (b) => ({ code: String(b.code ?? '').toUpperCase(), label: b.label ?? '', kind: b.kind ?? 'other', sha256: b.sha256 ?? null, pathHint: b.pathHint ?? '', notes: b.notes ?? '', verifiedAt: null, verifiedBy: null, sortOrder: b.sortOrder ?? sources.length }) },
+      { head: 'milestones', rows: milestones, prefix: 'nms', gated: true, defaults: (b) => ({ title: b.title ?? '', lane: b.lane ?? 'other', status: b.status ?? 'planned', startAt: b.startAt ?? null, dueAt: b.dueAt ?? null, ownerUserId: b.ownerUserId ?? null, description: b.description ?? '', acceptance: b.acceptance ?? '', evidence: b.evidence ?? '', sortOrder: b.sortOrder ?? milestones.length, sceneIds: [] }) },
+      { head: 'platform-targets', rows: platformTargets, prefix: 'npt', defaults: (b) => ({ name: b.name ?? '', platform: b.platform ?? 'other', isPrimary: b.isPrimary ?? false, engine: b.engine ?? '', osMin: b.osMin ?? '', deviceMin: b.deviceMin ?? '', inputModel: b.inputModel ?? '', budgets: b.budgets ?? {}, requirements: b.requirements ?? [], visualDirection: b.visualDirection ?? {}, notes: b.notes ?? '', sortOrder: b.sortOrder ?? platformTargets.length }) },
+    ];
+    for (const c of collections) {
+      if (m(new RegExp(`/projects/[^/]+/${c.head}$`))) {
+        if (method === 'GET') return route.fulfill(ok([...c.rows].sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number))));
+        if (method === 'POST') {
+          if (c.gated && gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'production_plan', plan: 'solo' }) });
+          const row = { id: nextId(c.prefix), projectId, ...c.defaults(body), createdAt: now(), updatedAt: now() };
+          if (c.codeKey && c.rows.some((x) => x[c.codeKey!] === row[c.codeKey!])) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_code', value: row[c.codeKey!] }) });
+          c.rows.push(row);
+          return route.fulfill(ok(row, 201));
+        }
+      }
+      const mmScenes = m(new RegExp(`/projects/[^/]+/${c.head}/([^/]+)/scenes$`));
+      if (mmScenes && method === 'PUT' && c.head === 'milestones') {
+        if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'production_plan', plan: 'solo' }) });
+        const row = c.rows.find((x) => x.id === mmScenes[1]);
+        if (!row) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+        row.sceneIds = (body.sceneIds as string[]).filter((id) => scenes.some((sc) => sc.id === id));
+        return route.fulfill(ok({ sceneIds: row.sceneIds }));
+      }
+      const mmOne = m(new RegExp(`/projects/[^/]+/${c.head}/([^/]+)$`));
+      if (mmOne) {
+        const row = c.rows.find((x) => x.id === mmOne[1]);
+        if (!row) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+        if (c.gated && gamePlan === 'solo' && method !== 'GET') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'production_plan', plan: 'solo' }) });
+        if (method === 'PATCH') {
+          if (c.head === 'sources' && body.verified === true) { row.verifiedAt = now(); row.verifiedBy = 'u-e2e'; delete body.verified; }
+          if (c.head === 'open-questions' && body.status === 'done') { row.decidedAt = now(); row.decidedBy = 'u-e2e'; }
+          if (c.head === 'platform-targets' && body.isPrimary === true) for (const t of platformTargets) t.isPrimary = false;
+          if (typeof body.code === 'string') body.code = body.code.toUpperCase();
+          Object.assign(row, body, { updatedAt: now() });
+          return route.fulfill(ok(row));
+        }
+        if (method === 'DELETE') { c.rows.splice(c.rows.indexOf(row), 1); return route.fulfill(ok(undefined)); }
+      }
+    }
+    if (m(/\/projects\/[^/]+\/overview$/) && method === 'GET') {
+      const byStatus: Record<string, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
+      const byEra: Record<string, number> = {};
+      for (const sc of scenes) { byStatus[String(sc.status)] = (byStatus[String(sc.status)] ?? 0) + 1; byEra[String(sc.era ?? 'other')] = (byEra[String(sc.era ?? 'other')] ?? 0) + 1; }
+      const byKey = Object.fromEntries(GATE_KEYS.map((k) => [k, { passed: gates.filter((x) => x.gateKey === k && x.status === 'passed').length, total: scenes.length }]));
+      const nowMs = Date.now();
+      const openTasks = tasks.filter((t) => t.status !== 'done');
+      const primary = platformTargets.find((t) => t.isPrimary) ?? platformTargets[0];
+      const reqs = (primary?.requirements as Rec[] | undefined) ?? [];
+      const activity = [...scenes.map((sc) => ({ kind: 'scene', id: sc.id, title: `${sc.code} – ${sc.title}`, detail: 'Scene oppdatert', at: sc.updatedAt, sceneId: sc.id })), ...milestones.map((ms) => ({ kind: 'milestone', id: ms.id, title: ms.title, detail: `Milepæl: ${ms.status}`, at: ms.updatedAt, sceneId: null }))].slice(0, 20);
+      return route.fulfill(ok({
+        scenes: { total: scenes.length, byStatus, byEra, withoutDates: scenes.filter((sc) => !sc.startAt && !sc.dueAt).length },
+        gates: { total: scenes.length * GATE_KEYS.length, passed: gates.filter((x) => x.status === 'passed').length, failed: gates.filter((x) => x.status === 'failed').length, byKey },
+        tasks: { open: openTasks.length, overdue: openTasks.filter((t) => t.dueAt && new Date(String(t.dueAt)).getTime() < nowMs).length, done: tasks.filter((t) => t.status === 'done').length },
+        reviews: { open: reviews.filter((r) => r.status === 'in_review').length },
+        lines: { total: lines.length, approved: lines.filter((l) => l.recordingStatus === 'approved').length },
+        questions: { open: openQuestions.filter((q) => q.kind === 'question' && q.status === 'open').length, checksOpen: openQuestions.filter((q) => q.kind === 'check' && q.status === 'open').length },
+        platform: { requirements: reqs.length, verified: reqs.filter((r) => r.status === 'verified').length, primaryName: primary ? primary.name : null },
+        milestones: [...milestones].sort((a, b) => String(a.dueAt ?? '9').localeCompare(String(b.dueAt ?? '9'))),
+        episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
+        activity,
+        unreadInbox: inbox.filter((n) => !n.readAt).length,
+      }));
+    }
+    if (m(/\/projects\/[^/]+\/inbox$/) && method === 'GET') return route.fulfill(ok(inbox));
+    if (m(/\/projects\/[^/]+\/inbox\/read-all$/) && method === 'POST') { let n = 0; for (const it of inbox) if (!it.readAt) { it.readAt = now(); n += 1; } return route.fulfill(ok({ marked: n })); }
+    mm = m(/\/projects\/[^/]+\/inbox\/([^/]+)\/read$/);
+    if (mm && method === 'POST') { const it = inbox.find((x) => x.id === mm![1]); if (!it) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); it.readAt = now(); return route.fulfill(ok(undefined)); }
+
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
   });
 }
@@ -226,7 +342,7 @@ function mockImportText(format: 'twee' | 'ink', source: string, projectId: strin
 
 export type MockGamePlanSlug = 'solo' | 'pro' | 'studio';
 
-export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean; gamePlan?: MockGamePlanSlug } = {}): Promise<void> {
+export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean; gamePlan?: MockGamePlanSlug; seed?: NarrativeMockSeed } = {}): Promise<void> {
   const projectId = opts.projectId ?? 'proj-game-2026';
   const gamePlan = opts.gamePlan ?? 'studio';
   await installGameBillingMocks(page, gamePlan);
@@ -249,6 +365,49 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     { userId: 'u-e2e', displayName: 'Meg Selv', profileImageUrl: null, isOwner: true },
     { userId: 'u-kari', displayName: 'Kari Nordmann', profileImageUrl: null, isOwner: false },
   ];
+  // ── Fase 7: produksjons-OS (in-memory) ──
+  const gates: Rec[] = [];
+  const lines: Rec[] = [];
+  const episodes: Rec[] = [];
+  const openQuestions: Rec[] = [];
+  const sources: Rec[] = [];
+  const milestones: Rec[] = [];
+  const platformTargets: Rec[] = [];
+  const inbox: Rec[] = [
+    { id: 'ntf_1', eventType: 'narrative_scene_review_requested', title: 'Review: P01 – Skoleveien', message: 'Kari ba om review av runde 1.', linkedEntityType: 'narrative_scene', linkedEntityId: null, createdByUserId: 'u-kari', createdAt: now(), updatedAt: now(), readAt: null },
+    { id: 'ntf_2', eventType: 'narrative_scene_review_decided', title: 'Godkjent: S1', message: null, linkedEntityType: 'narrative_scene', linkedEntityId: null, createdByUserId: 'u-kari', createdAt: now(), updatedAt: now(), readAt: now() },
+  ];
+  const GATE_KEYS = ['script_coverage', 'greybox', 'characters_animation', 'playthrough', 'picture', 'audio'];
+  const gatesFor = (sceneId: string) => GATE_KEYS.map((k) => gates.find((x) => x.sceneId === sceneId && x.gateKey === k) ?? { sceneId, projectId, gateKey: k, status: 'not_started', evidence: '', evidenceRefs: [], checkedBy: null, checkedAt: null, updatedAt: null });
+  if (opts.seed === 'what-follows-us') {
+    const fx = loadWhatFollowsUsFixture();
+    for (const src of fx.sources) sources.push({ id: nextId('nso'), projectId, code: src.code, label: src.label, kind: src.kind, sha256: src.sha256 ?? null, pathHint: src.pathHint ?? '', notes: src.notes ?? '', verifiedAt: null, verifiedBy: null, sortOrder: sources.length, createdAt: now(), updatedAt: now() });
+    const episodeIdByCode = new Map<string, string>();
+    for (const e of fx.episodes) { const id = nextId('nep'); episodeIdByCode.set(e.code.toUpperCase(), id); episodes.push({ id, projectId, code: e.code, title: e.title, summary: e.summary ?? '', playersLearn: e.playersLearn ?? '', sourceNote: e.sourceNote ?? '', status: e.status ?? 'draft', sortOrder: episodes.length, createdAt: now(), updatedAt: now() }); }
+    const componentIdByCustomId = new Map<string, string>();
+    for (const c of fx.components) {
+      const id = nextId('ncp'); componentIdByCustomId.set(c.customId, id);
+      g.components.push({ id, projectId, name: c.name, folderPath: c.folderPath ?? '', coverAssetId: null, customId: c.customId, sortOrder: g.components.length, kind: c.kind, profile: c.profile as Rec, createdAt: now(), updatedAt: now() } as unknown as MockGraph['components'][number]);
+      for (const a of c.attributes ?? []) g.attributes.push({ id: nextId('nat'), projectId, ownerKind: 'component', ownerId: id, name: a.name, type: a.type, value: a.value, customId: null, sortOrder: 0, createdAt: now(), updatedAt: now() } as unknown as MockGraph['attributes'][number]);
+    }
+    for (const sc of fx.scenes) {
+      const id = nextId('nsc');
+      scenes.push({
+        id, projectId, code: sc.code.toUpperCase(), workingId: sc.workingId ?? null, title: sc.title, subtitle: sc.subtitle ?? '', location: sc.location ?? '', challenge: sc.challenge ?? '', gameplayMechanic: sc.gameplayMechanic ?? '', environment: sc.environment ?? '',
+        status: sc.status ?? 'idea', assigneeUserId: null, dueAt: null, startAt: null, heroAssetId: null, sortOrder: scenes.length, createdBy: 'u-seed', createdAt: now(), updatedAt: now(),
+        beforeState: sc.beforeState ?? '', action: sc.action ?? '', control: sc.control ?? '', afterState: sc.afterState ?? '', audio: sc.audio ?? '', changeNote: sc.changeNote ?? '', bridge: sc.bridge ?? '', timeNote: sc.timeNote ?? '',
+        knowledge: sc.knowledge ?? {}, era: sc.era, episodeId: sc.episode ? episodeIdByCode.get(sc.episode.toUpperCase()) ?? null : null, sourceRefs: sc.sourceRefs,
+      });
+      for (const cid of sc.components ?? []) { const oid = componentIdByCustomId.get(cid); if (oid) links.push({ sceneId: id, ownerKind: 'component', ownerId: oid, sortOrder: links.length }); }
+      for (const l of sc.lines ?? []) lines.push({ id: nextId('nsl'), sceneId: id, projectId, cueId: l.cueId.toUpperCase(), speakerComponentId: l.speaker ? componentIdByCustomId.get(l.speaker) ?? null : null, speakerLabel: l.speakerLabel, perspective: l.perspective ?? '', textEn: l.textEn, textNb: l.textNb ?? '', sourceType: l.sourceType, recordingStatus: l.recordingStatus ?? 'none', note: l.note ?? '', sortOrder: lines.filter((x) => x.sceneId === id).length, createdBy: 'u-seed', createdAt: now(), updatedAt: now() });
+      for (const gt of sc.gates ?? []) gates.push({ sceneId: id, projectId, gateKey: gt.key, status: gt.status, evidence: gt.evidence ?? '', evidenceRefs: gt.evidenceRefs ?? [], checkedBy: 'u-seed', checkedAt: now(), updatedAt: now() });
+      for (const t of sc.tasks ?? []) tasks.push({ id: nextId('nst'), sceneId: id, projectId, title: t.title, status: t.status ?? 'todo', assigneeUserId: null, dueAt: null, completedAt: null, sortOrder: tasks.length, createdBy: 'u-seed', createdAt: now(), updatedAt: now() });
+    }
+    for (const q of fx.openQuestions) openQuestions.push({ id: nextId('noq'), projectId, code: q.code, kind: q.kind, question: q.question, context: q.context ?? '', status: q.status ?? 'open', decision: q.decision ?? '', decidedBy: null, decidedAt: null, sourceRefs: q.sourceRefs ?? [], sortOrder: openQuestions.length, createdAt: now(), updatedAt: now() });
+    for (const m of fx.milestones) milestones.push({ id: nextId('nms'), projectId, title: m.title, lane: m.lane, status: m.status ?? 'planned', startAt: m.startAt ?? null, dueAt: m.dueAt ?? null, ownerUserId: null, description: m.description ?? '', acceptance: m.acceptance ?? '', evidence: m.evidence ?? '', sortOrder: milestones.length, sceneIds: (m.scenes ?? []).map((c) => scenes.find((x) => x.code === c.toUpperCase())?.id).filter(Boolean), createdAt: now(), updatedAt: now() });
+    for (const t of fx.platformTargets) platformTargets.push({ id: nextId('npt'), projectId, name: t.name, platform: t.platform, isPrimary: t.isPrimary ?? false, engine: t.engine ?? '', osMin: t.osMin ?? '', deviceMin: t.deviceMin ?? '', inputModel: t.inputModel ?? '', budgets: t.budgets ?? {}, requirements: t.requirements ?? [], visualDirection: t.visualDirection ?? {}, notes: t.notes ?? '', sortOrder: platformTargets.length, createdAt: now(), updatedAt: now() });
+    g.settings.title = fx.meta.title;
+  }
   const sceneSnapshotHash = (sceneId: string): string => {
     const sc = scenes.find((x) => x.id === sceneId);
     const snap = JSON.stringify({
@@ -549,7 +708,11 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     if (m(/\/projects\/[^/]+\/scenes$/) && method === 'POST') {
       const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().toUpperCase() : nextSceneCode();
       if (scenes.some((sc) => sc.code === code)) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_code', code }) });
-      const sc = { id: nextId('nsc'), projectId, code, title: body.title ?? '', subtitle: body.subtitle ?? '', location: body.location ?? '', challenge: body.challenge ?? '', gameplayMechanic: body.gameplayMechanic ?? '', environment: body.environment ?? '', status: body.status ?? 'idea', assigneeUserId: body.assigneeUserId ?? null, dueAt: body.dueAt ?? null, heroAssetId: body.heroAssetId ?? null, sortOrder: scenes.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() };
+      const sc = {
+        id: nextId('nsc'), projectId, code, title: body.title ?? '', subtitle: body.subtitle ?? '', location: body.location ?? '', challenge: body.challenge ?? '', gameplayMechanic: body.gameplayMechanic ?? '', environment: body.environment ?? '', status: body.status ?? 'idea', assigneeUserId: body.assigneeUserId ?? null, dueAt: body.dueAt ?? null, heroAssetId: body.heroAssetId ?? null, sortOrder: scenes.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now(),
+        beforeState: body.beforeState ?? '', action: body.action ?? '', control: body.control ?? '', afterState: body.afterState ?? '', audio: body.audio ?? '', changeNote: body.changeNote ?? '', bridge: body.bridge ?? '', timeNote: body.timeNote ?? '',
+        knowledge: body.knowledge ?? {}, era: body.era ?? 'other', episodeId: body.episodeId ?? null, startAt: body.startAt ?? null, sourceRefs: body.sourceRefs ?? [], workingId: body.workingId ?? null,
+      };
       scenes.push(sc);
       return route.fulfill(ok(sc, 201));
     }
@@ -564,6 +727,8 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
           frames: frames.filter((f) => f.sceneId === sc.id).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)),
           tasks: tasks.filter((t) => t.sceneId === sc.id),
           reviews: reviews.filter((r) => r.sceneId === sc.id).sort((a, b) => (b.round as number) - (a.round as number)),
+          gates: gatesFor(sc.id),
+          lines: lines.filter((l) => l.sceneId === sc.id).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)),
           currentSnapshotHash: sceneSnapshotHash(sc.id),
         }));
       }
@@ -642,6 +807,115 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       sc.status = body.decision === 'approved' ? 'approved' : 'changes_requested';
       return route.fulfill(ok(r));
     }
+
+    // ── Fase 7: produksjons-OS ─────────────────────────────────────────
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/gates$/);
+    if (mm && method === 'GET') return route.fulfill(ok(gatesFor(mm[1])));
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/gates\/([^/]+)$/);
+    if (mm && method === 'PUT') {
+      if (!GATE_KEYS.includes(mm[2])) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_request"}' });
+      if (body.status === 'passed' && !String(body.evidence ?? '').trim()) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'gate_evidence_required', message: 'En gate kan ikke settes «bestått» uten bevis.' }) });
+      const existing = gates.find((x) => x.sceneId === mm![1] && x.gateKey === mm![2]);
+      const row = { sceneId: mm[1], projectId, gateKey: mm[2], status: body.status, evidence: String(body.evidence ?? '').trim(), evidenceRefs: body.evidenceRefs ?? [], checkedBy: 'u-e2e', checkedAt: now(), updatedAt: now() };
+      if (existing) Object.assign(existing, row); else gates.push(row);
+      return route.fulfill(ok(row));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/lines$/);
+    if (mm && method === 'GET') return route.fulfill(ok(lines.filter((l) => l.sceneId === mm![1]).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number))));
+    if (mm && method === 'POST') {
+      const cueId = String(body.cueId ?? '').trim().toUpperCase();
+      if (!/^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?(\.[0-9]{1,3})?$/.test(cueId)) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_request"}' });
+      if (lines.some((l) => l.sceneId === mm![1] && l.cueId === cueId)) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_cue', cueId }) });
+      const l = { id: nextId('nsl'), sceneId: mm[1], projectId, cueId, speakerComponentId: body.speakerComponentId ?? null, speakerLabel: body.speakerLabel ?? '', perspective: body.perspective ?? '', textEn: body.textEn ?? '', textNb: body.textNb ?? '', sourceType: body.sourceType ?? 'T', recordingStatus: body.recordingStatus ?? 'none', note: body.note ?? '', sortOrder: lines.filter((x) => x.sceneId === mm![1]).length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() };
+      lines.push(l);
+      return route.fulfill(ok(l, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/lines\/order$/);
+    if (mm && method === 'PUT') { (body.orderedIds as string[]).forEach((id, i) => { const l = lines.find((x) => x.id === id); if (l) l.sortOrder = i; }); return route.fulfill(ok(lines.filter((l) => l.sceneId === mm![1]).sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number)))); }
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/lines\/([^/]+)$/);
+    if (mm) {
+      const l = lines.find((x) => x.id === mm![2] && x.sceneId === mm![1]);
+      if (!l) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      if (method === 'PATCH') { if (typeof body.cueId === 'string') body.cueId = body.cueId.toUpperCase(); Object.assign(l, body, { updatedAt: now() }); return route.fulfill(ok(l)); }
+      if (method === 'DELETE') { lines.splice(lines.indexOf(l), 1); return route.fulfill(ok(undefined)); }
+    }
+    if (m(/\/projects\/[^/]+\/lines$/) && method === 'GET') {
+      const speaker = url.searchParams.get('speakerComponentId');
+      return route.fulfill(ok(lines.filter((l) => l.speakerComponentId === speaker).map((l) => { const sc = scenes.find((x) => x.id === l.sceneId); return { ...l, sceneCode: sc?.code ?? '', sceneTitle: sc?.title ?? '' }; })));
+    }
+    mm = m(/\/projects\/[^/]+\/components\/([^/]+)\/scenes$/);
+    if (mm && method === 'GET') return route.fulfill(ok(links.filter((l) => l.ownerKind === 'component' && l.ownerId === mm![1]).map((l) => scenes.find((x) => x.id === l.sceneId)).filter(Boolean).map((sc) => ({ id: sc!.id, code: sc!.code, title: sc!.title, status: sc!.status }))));
+    // Generisk CRUD for episoder / spørsmål / kilder / milepæler / plattformmål.
+    const collections: Array<{ head: string; rows: Rec[]; prefix: string; codeKey?: string; gated?: boolean; defaults: (b: Rec) => Rec }> = [
+      { head: 'episodes', rows: episodes, prefix: 'nep', codeKey: 'code', defaults: (b) => ({ code: String(b.code ?? '').toUpperCase(), title: b.title ?? '', summary: b.summary ?? '', playersLearn: b.playersLearn ?? '', sourceNote: b.sourceNote ?? '', status: b.status ?? 'draft', sortOrder: b.sortOrder ?? episodes.length }) },
+      { head: 'open-questions', rows: openQuestions, prefix: 'noq', codeKey: 'code', defaults: (b) => ({ code: String(b.code ?? '').toUpperCase(), kind: b.kind ?? 'question', question: b.question ?? '', context: b.context ?? '', status: b.status ?? 'open', decision: b.decision ?? '', decidedBy: null, decidedAt: null, sourceRefs: b.sourceRefs ?? [], sortOrder: b.sortOrder ?? openQuestions.length }) },
+      { head: 'sources', rows: sources, prefix: 'nso', codeKey: 'code', defaults: (b) => ({ code: String(b.code ?? '').toUpperCase(), label: b.label ?? '', kind: b.kind ?? 'other', sha256: b.sha256 ?? null, pathHint: b.pathHint ?? '', notes: b.notes ?? '', verifiedAt: null, verifiedBy: null, sortOrder: b.sortOrder ?? sources.length }) },
+      { head: 'milestones', rows: milestones, prefix: 'nms', gated: true, defaults: (b) => ({ title: b.title ?? '', lane: b.lane ?? 'other', status: b.status ?? 'planned', startAt: b.startAt ?? null, dueAt: b.dueAt ?? null, ownerUserId: b.ownerUserId ?? null, description: b.description ?? '', acceptance: b.acceptance ?? '', evidence: b.evidence ?? '', sortOrder: b.sortOrder ?? milestones.length, sceneIds: [] }) },
+      { head: 'platform-targets', rows: platformTargets, prefix: 'npt', defaults: (b) => ({ name: b.name ?? '', platform: b.platform ?? 'other', isPrimary: b.isPrimary ?? false, engine: b.engine ?? '', osMin: b.osMin ?? '', deviceMin: b.deviceMin ?? '', inputModel: b.inputModel ?? '', budgets: b.budgets ?? {}, requirements: b.requirements ?? [], visualDirection: b.visualDirection ?? {}, notes: b.notes ?? '', sortOrder: b.sortOrder ?? platformTargets.length }) },
+    ];
+    for (const c of collections) {
+      if (m(new RegExp(`/projects/[^/]+/${c.head}$`))) {
+        if (method === 'GET') return route.fulfill(ok([...c.rows].sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number))));
+        if (method === 'POST') {
+          if (c.gated && gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'production_plan', plan: 'solo' }) });
+          const row = { id: nextId(c.prefix), projectId, ...c.defaults(body), createdAt: now(), updatedAt: now() };
+          if (c.codeKey && c.rows.some((x) => x[c.codeKey!] === row[c.codeKey!])) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'duplicate_code', value: row[c.codeKey!] }) });
+          c.rows.push(row);
+          return route.fulfill(ok(row, 201));
+        }
+      }
+      const mmScenes = m(new RegExp(`/projects/[^/]+/${c.head}/([^/]+)/scenes$`));
+      if (mmScenes && method === 'PUT' && c.head === 'milestones') {
+        if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'production_plan', plan: 'solo' }) });
+        const row = c.rows.find((x) => x.id === mmScenes[1]);
+        if (!row) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+        row.sceneIds = (body.sceneIds as string[]).filter((id) => scenes.some((sc) => sc.id === id));
+        return route.fulfill(ok({ sceneIds: row.sceneIds }));
+      }
+      const mmOne = m(new RegExp(`/projects/[^/]+/${c.head}/([^/]+)$`));
+      if (mmOne) {
+        const row = c.rows.find((x) => x.id === mmOne[1]);
+        if (!row) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+        if (c.gated && gamePlan === 'solo' && method !== 'GET') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'production_plan', plan: 'solo' }) });
+        if (method === 'PATCH') {
+          if (c.head === 'sources' && body.verified === true) { row.verifiedAt = now(); row.verifiedBy = 'u-e2e'; delete body.verified; }
+          if (c.head === 'open-questions' && body.status === 'done') { row.decidedAt = now(); row.decidedBy = 'u-e2e'; }
+          if (c.head === 'platform-targets' && body.isPrimary === true) for (const t of platformTargets) t.isPrimary = false;
+          if (typeof body.code === 'string') body.code = body.code.toUpperCase();
+          Object.assign(row, body, { updatedAt: now() });
+          return route.fulfill(ok(row));
+        }
+        if (method === 'DELETE') { c.rows.splice(c.rows.indexOf(row), 1); return route.fulfill(ok(undefined)); }
+      }
+    }
+    if (m(/\/projects\/[^/]+\/overview$/) && method === 'GET') {
+      const byStatus: Record<string, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
+      const byEra: Record<string, number> = {};
+      for (const sc of scenes) { byStatus[String(sc.status)] = (byStatus[String(sc.status)] ?? 0) + 1; byEra[String(sc.era ?? 'other')] = (byEra[String(sc.era ?? 'other')] ?? 0) + 1; }
+      const byKey = Object.fromEntries(GATE_KEYS.map((k) => [k, { passed: gates.filter((x) => x.gateKey === k && x.status === 'passed').length, total: scenes.length }]));
+      const nowMs = Date.now();
+      const openTasks = tasks.filter((t) => t.status !== 'done');
+      const primary = platformTargets.find((t) => t.isPrimary) ?? platformTargets[0];
+      const reqs = (primary?.requirements as Rec[] | undefined) ?? [];
+      const activity = [...scenes.map((sc) => ({ kind: 'scene', id: sc.id, title: `${sc.code} – ${sc.title}`, detail: 'Scene oppdatert', at: sc.updatedAt, sceneId: sc.id })), ...milestones.map((ms) => ({ kind: 'milestone', id: ms.id, title: ms.title, detail: `Milepæl: ${ms.status}`, at: ms.updatedAt, sceneId: null }))].slice(0, 20);
+      return route.fulfill(ok({
+        scenes: { total: scenes.length, byStatus, byEra, withoutDates: scenes.filter((sc) => !sc.startAt && !sc.dueAt).length },
+        gates: { total: scenes.length * GATE_KEYS.length, passed: gates.filter((x) => x.status === 'passed').length, failed: gates.filter((x) => x.status === 'failed').length, byKey },
+        tasks: { open: openTasks.length, overdue: openTasks.filter((t) => t.dueAt && new Date(String(t.dueAt)).getTime() < nowMs).length, done: tasks.filter((t) => t.status === 'done').length },
+        reviews: { open: reviews.filter((r) => r.status === 'in_review').length },
+        lines: { total: lines.length, approved: lines.filter((l) => l.recordingStatus === 'approved').length },
+        questions: { open: openQuestions.filter((q) => q.kind === 'question' && q.status === 'open').length, checksOpen: openQuestions.filter((q) => q.kind === 'check' && q.status === 'open').length },
+        platform: { requirements: reqs.length, verified: reqs.filter((r) => r.status === 'verified').length, primaryName: primary ? primary.name : null },
+        milestones: [...milestones].sort((a, b) => String(a.dueAt ?? '9').localeCompare(String(b.dueAt ?? '9'))),
+        episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
+        activity,
+        unreadInbox: inbox.filter((n) => !n.readAt).length,
+      }));
+    }
+    if (m(/\/projects\/[^/]+\/inbox$/) && method === 'GET') return route.fulfill(ok(inbox));
+    if (m(/\/projects\/[^/]+\/inbox\/read-all$/) && method === 'POST') { let n = 0; for (const it of inbox) if (!it.readAt) { it.readAt = now(); n += 1; } return route.fulfill(ok({ marked: n })); }
+    mm = m(/\/projects\/[^/]+\/inbox\/([^/]+)\/read$/);
+    if (mm && method === 'POST') { const it = inbox.find((x) => x.id === mm![1]); if (!it) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); it.readAt = now(); return route.fulfill(ok(undefined)); }
 
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
   });

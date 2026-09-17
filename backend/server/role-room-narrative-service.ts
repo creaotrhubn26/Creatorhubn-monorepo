@@ -193,7 +193,7 @@ export interface NarrativeGraph {
 //  Hjelpere
 // ═══════════════════════════════════════════════════════════════════════
 
-type Queryable = Pick<Pool, 'query'> | Pick<PoolClient, 'query'>;
+export type Queryable = Pick<Pool, 'query'> | Pick<PoolClient, 'query'>;
 type Row = Record<string, unknown>;
 
 function generateId(prefix: string): string {
