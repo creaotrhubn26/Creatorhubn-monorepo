@@ -1,0 +1,58 @@
+claim: >
+  The seed project «What Follows Us — Episode One: The Seeker» in Story Graph
+  (frontend/shared/narrative-fixtures/what-follows-us.json) is a structured extraction of the
+  studio's 16 source documents; the original Word screenplay (W) and the cult PDF (K) are NOT
+  committed — only their SHA-256 checksums are, and every scene/line carries a source tag
+  (W/K kildehendelse, U brukertillegg, A iscenesettelsesforslag, E bevart engelsk, T ny oversettelse).
+source_type: internal_document
+source: >
+  Studio uploads 2026-09-17 (16 unique files): OPENING-HYBRID-v2, SCENE-PLAN-v3, Storyline-v2,
+  OPENING-DIALOGUE-v2, FIRST-BOUND-ENCOUNTER-v1, HUMAN-SHELTERS-AND-ESCAPE-v1, POWER-PROGRESSION-v1,
+  WEAPONS-1817-AND-FACTION-NAMES, CINEMATIC-M1-QUALITY-v1, MOVEMENT-ANIMATION-CONTRACT-v1,
+  PROLOGUE-IMPLEMENTATION-v1, P01-STAGING-v1, P01-SCHOOL-DETAILS-v1, Elise-source, Elise-opening-source,
+  AGENTS.md. Checksums of each md/txt file are stored in fixture.sources[].sha256.
+authority_tier: 1
+vendor: Studio (internal)
+product: What Follows Us — Episode One: The Seeker (screenplay + production notes)
+version_scope: "Word DOCX sha256 553a5e2f0ea0a8302e6981f4a219c4ef8329b1226803c7259885aa26e6201633; cult PDF sha256 aef8dde76b8db133548da056bd0547bdfbbc3823c67de333e700c9168d0988c7; markdown set dated 2026-09-13"
+publication_date: "2026-09-17"
+valid_from: "2026-09"
+valid_to: "until the studio publishes a new screenplay version (new DOCX/PDF checksum) or a SCENE-PLAN v4"
+evidence_summary: >
+  49 explicit W-lines (W01–W10) plus game shouts/inscriptions, U04/U05/U11 additions and the
+  approved counting continuation are all present (no line dropped); G03A lines are marked A
+  (staging proposal); K-scene working translations are marked T with unnamed speakers noted.
+  Gates are «passed» only where a build/test count is cited (P01-STAGING «68 bestått», PROLOGUE-
+  IMPLEMENTATION «60 beståtte tester», DOCX checksum re-read); picture/audio gates are not_started
+  because the documents state no Foley/voice/SFX jobs were ordered. Platform target values (30 fps,
+  ~33.3 ms, GPU 25–28 ms, CPU 8–12 ms, 65–80 % internal resolution, 30–45 min warm test, iPadOS 17,
+  iPad Pro M1 8 GB) come from CINEMATIC-M1-QUALITY-v1; MetalFX gates are unverified there too.
+interpretation: >
+  Episode assignment for scenes (E01: P01–P06, E02: P07–P09+G01, E03: P10–P12+G02, E04: G03/G03A,
+  E05: G04, E06: G05, E07: G06, E08: G08, E10: G09, E11: G10, E12: K07–K08) is editorial, not
+  stated in the sources; G07, H01–H03 and K01–K06 are intentionally left without episode. Character
+  voice casts for adults (except Desmond) are absent in the sources and left empty, not guessed.
+  «BLIR HAN AVBRUTT» in FIRST-BOUND-ENCOUNTER is read as the man being interrupted (speaker MANNEN,
+  perspective noted). Active power tier 1 for the four leads is an interpretation of «første
+  kontroll», not a number from the document.
+project_impact: >
+  backend/scripts/seed-what-follows-us.ts (idempotent, via service layer); backend/server/
+  narrative-fixture.test.ts validates schema, unique codes, references and idempotent re-seed;
+  Playwright mocks seed the same fixture (`seed: 'what-follows-us'`). A new screenplay version
+  must update fixture.sources[].sha256 and re-run the extraction with the same AGENTS.md rules.
+confidence: verified
+decision: >
+  Commit the structured fixture (not the source documents); keep provenance per field via
+  sourceRefs/sourceType; treat every gate/requirement as unverified until evidence is quoted.
+affected:
+  - frontend/shared/narrative-fixtures/what-follows-us.json
+  - frontend/shared/narrative-fixtures/types.ts
+  - backend/server/narrative-fixture-seed.ts
+  - backend/scripts/seed-what-follows-us.ts
+  - backend/server/narrative-fixture.test.ts
+  - backend/migrations/0611_narrative_production_os.sql (narrative_sources, source_refs, gates)
+lesson: >
+  Mechanical extraction by smaller models is fine for fixture content when the contract (types,
+  tag rules, «never drop a line», «passed needs evidence») is explicit and a stronger model
+  verifies against the sources afterwards; ambiguous speaker labels and episode mapping must be
+  recorded as interpretation, not silently normalised.

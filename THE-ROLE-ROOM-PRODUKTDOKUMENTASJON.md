@@ -283,6 +283,10 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Runtime-pakker | `packages/story-graph-runtime`: JS (full motor), Unity C# og Godot 4 GDScript (dokumentert delsett) | ✅ Fase 4 (C#/GD manuelt verifisert) |
 | CSV + PDF + embed | CSV (én rad per element, norsk Excel-profil) alle planer; PDF «lesbart manus» (Pro/Studio); embed-kode (iframe mot `/story/:token?embed=1`) | ✅ Fase 5 |
 | Scener & review | Scenekort (kode, lokasjon, utfordring, spillmekanikk, miljø, status, ansvarlig, frist) koblet til Story Graph-elementer; storyboard-rammer, oppgaver, review-runder med frosset snapshot, godkjenning og stale-vern, kommentartråd og varsler; MCP `rr_list_game_scenes` | ✅ Fase 6 (review Pro/Studio) |
+| Skall & hjem | Sidebar-skall (Prosjekt/Produksjon/Ressurser/Studio), ⌘K, innboks-bjelle; Hjem med KPI-er (scener, gater, oppgaver, runder, replikker, plattformkrav), neste opp, milepæler, episoder, aktivitet; MCP `rr_project_overview` | ✅ Fase 7 (alle planer) |
+| Historie, karakterer, lokasjoner, plattform | Episoder med «hva spillerne lærer», tidslinje med låste beslutninger, åpne spørsmål/sjekklister, kilderegister med SHA-256; scenekort v2 (Før/Handling/Kontroll/Etter/Lyd, epoke, kildemerker, replikker med cue-ID og opptaksstatus, seks leveransegater med bevis-krav); karakter-/lokasjonsgalleri med typet profil; målplattform med budsjett, krav m/ bevis og visuell retning; MCP `rr_get_scene_card`; seed av det ekte prosjektet «What Follows Us» | ✅ Fase 7 (alle planer) |
+| Produksjonsplan | Milepæler per bane i Gantt (i-dag, zoom, popover) og liste, scener med datoer, «uten dato» | ✅ Fase 7 (Pro/Studio) |
+| Team & gjester | Roller med spill-kapabiliteter, seter fra plan, PIN-invitasjon (`/game/invite/:token`), kapabilitetssjekk på sletting/beslutning/plan; gjeste-reviewere uten konto via `/story-review/:token` (se/kommentere/beslutte, stale-vern, varsel) | ✅ Fase 7 (Studio) |
 
 **Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
 login-persona. Priser er plassholdere satt i migrasjon 0608 og redigeres i «Admin · Planer».

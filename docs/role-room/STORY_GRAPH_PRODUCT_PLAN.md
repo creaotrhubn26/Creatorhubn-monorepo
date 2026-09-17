@@ -186,8 +186,47 @@ før noen rekker å trykke «Godkjenn»).
   med faner Oversikt/Storyboard/Gameplay/Assets/Oppgaver/Review), `MemberPicker` (avatar + navn,
   fallback «Deg selv»), `sceneOps.ts` (rene regler, vitest), «Åpne i Story Graph» hopper til noden.
   e2e `game-scenes.spec.ts` (flyt + stale-vern + storyboard) og plan-gate-tilfelle for Solo.
-- Fase 7 (skisse): venstre-sidebar-skall, prosjekt-hjem/dashbord, Karakterer/Lokasjoner, produksjons-
-  plan (Gantt) med `narrative_milestones`, team/roller/seter for game_studio, gjeste-reviewere, ⌘K + bjelle.
+
+### Fase 7 — Produksjons-OS del 2: bygg «What Follows Us» i Story Graph (LEVERT)
+Mål (bruker 2026-09-17): Story Graph er verktøyet studioet bygger **What Follows Us — Episode One:
+The Seeker** med, fra 16 kildedokumenter (åpning P01–P12, spillscener G01–G10/G03A, tilfluktsrom
+H01–H03, kultfilm K01–K08, replikkgrunnlag W01–W10 + U-cues, kraftprogresjon, våpen/fraksjoner,
+M1-kvalitetskrav, bevegelseskontrakt, implementeringsrapporter). Studioets AGENTS.md-regler er bygd
+inn: kildehendelse (W/K) / brukertillegg (U) / forslag (A) / bevart engelsk (E) / ny oversettelse (T)
+holdes fra hverandre, ingen replikk strykes stille, ingen gate er bestått uten sitert bevis, og
+kildene registreres med SHA-256.
+- **Datamodell** (`0611_narrative_production_os.sql`, `0612_game_team.sql`, `0613_narrative_review_share_links.sql`):
+  scenekort v2 (Før/Handling/Kontroll/Etter/Lyd/Endring/Bro/tidsnote, kunnskap §E, epoke, episode,
+  kildemerker, arbeids-ID; kode med bokstav-suffiks for G03A), `narrative_scene_gates` (seks gater,
+  «bestått» krever bevis — CHECK i DB og 400 i API), `narrative_scene_lines` (cue-ID, taler, type,
+  EN/NB, opptaksstatus), `narrative_episodes`, `narrative_open_questions` (spørsmål + sjekklister +
+  låste beslutninger), `narrative_sources` (SHA-256), komponent-`kind`/`profile`, `narrative_milestones`
+  (+ scenekobling), `narrative_platform_targets` (budsjetter, krav m/ status og bevis, visuell retning);
+  team (`game_team_role`, `game_team_invite`, `enterprise_team_members.game_role_id`) og gjestelenker
+  (`narrative_review_share_links`, `narrative_review_sessions`). Snapshot v2 for review-runder; v1-runder
+  fra før avgjøres fortsatt med v1-hash.
+- **Backend**: Fase 7-service (CRUD for alt over, prosjektoversikt-aggregat, narrative innboks over
+  `role_room_project_notifications` — producer-ACL-en avviser spillstudio-eiere), ruter med
+  `production`-sanntidskind, `production_plan`-gating (Pro/Studio) på milepæler, `team_seats`/
+  `guest_reviewers` (Studio); kapabilitetssjekk (`scenes.delete`, `review.decide`, `plan.edit`) med
+  eier-bypass; `canAccessRoleRoomProject` fjerde gren for game_studio-teammedlemmer; offentlig
+  gjeste-router `/api/role-room/narrative/review/:token` (navngitt sesjon, kommentarer via
+  `role_room_editor_comments` som `reviewer:<sid>`, beslutning med stale-vern og varsel). MCP:
+  `rr_get_scene_card`, `rr_project_overview`. Seed: `npm run seed:story-graph -- --project <id>`
+  (idempotent) fra `frontend/shared/narrative-fixtures/what-follows-us.json` (34 scener, 84
+  replikker, 12 episoder, 38 komponenter, 70 spørsmål/sjekklister, 13 milepæler, iPad-mål).
+- **Frontend**: skall med sidebar (seksjoner, vertikale Tabs så `aria-selected`/testids består),
+  mobil-drawer, ⌘K, innboks-bjelle; **Hjem** (KPI-er, neste opp, milepæler, episoder, aktivitet);
+  **Historie** (episoder, tidslinje med låste beslutninger, åpne spørsmål/sjekklister, kilderegister);
+  scenekort med **Manus / Replikker / Gater**; **Karakterer** og **Lokasjoner** som galleri over
+  komponentarkivet (forfatterfasit bak intern-toggle, stemmecast, minnespor, krefter; epoker/
+  kontinuitet/rekvisitter; scener + replikker); **Plattform** (iPad Pro M1: engine, OS, enhet, input,
+  budsjett, krav med bevis, visuell retning); **Produksjonsplan** (Gantt per bane + liste);
+  **Team** (roller, seter, PIN-invitasjon, `/game/invite/:token`); «Del med reviewer» →
+  `/story-review/:token` for gjester. e2e: game-shell, game-story-characters, game-plan, game-team,
+  game-guest-review (+ eksisterende game-scenes/plan-gate/narrative-board).
+- Uttrekk av fixturen: Sonnet-subagenter per dokumentgruppe (mekanisk), verifisert av Fable 5.1 mot
+  kildene; evidens i `docs/evidence/2026-09-what-follows-us-source-registry.yaml`.
 
 
 ## Researchprogram
