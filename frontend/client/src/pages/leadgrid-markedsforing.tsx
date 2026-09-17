@@ -83,6 +83,8 @@ import {
   readStoredProjectId,
   useLeadgridProjects,
 } from "@/components/leadgrid/LeadgridProjectSelect";
+import { LinkedInPublishCard } from "@/components/leadgrid/LinkedInPublishCard";
+import { MarketingResultsLine } from "@/components/leadgrid/MarketingResultsLine";
 import {
   deriveMarketingFlowState,
   describeMissingField,
@@ -205,7 +207,7 @@ type StatusError = { status: number; error: string; module?: string; required?: 
 
 type PostsProgress = { generated: number; expected: number; complete: boolean };
 
-type Toast = { kind: "ok" | "error"; msg: string };
+type Toast = { kind: "ok" | "error"; msg: string; href?: string | null };
 
 async function readStatusError(response: Response): Promise<StatusError> {
   const body = (await response.json().catch(() => ({}))) as Partial<StatusError>;
@@ -591,6 +593,11 @@ export default function LeadgridMarkedsforingPage(): JSX.Element {
               chatRef={chatRef}
               currentUserId={currentUserId}
               projectKey={status?.project_key ?? null}
+              onPublished={(permalink) => {
+                setToast({ kind: "ok", msg: "Posten er publisert på LinkedIn.", href: permalink });
+                setReloadSignal((n) => n + 1);
+              }}
+              onNotice={(kind, msg) => setToast({ kind, msg })}
             />
           )}
         </Container>
@@ -627,6 +634,13 @@ export default function LeadgridMarkedsforingPage(): JSX.Element {
             severity={toast?.kind === "ok" ? "success" : "error"}
             variant="filled"
             onClose={() => setToast(null)}
+            action={
+              toast?.href ? (
+                <Button color="inherit" size="small" href={toast.href} target="_blank" rel="noreferrer">
+                  Åpne posten
+                </Button>
+              ) : undefined
+            }
           >
             {toast?.msg}
           </Alert>
@@ -657,10 +671,12 @@ interface FlowBodyProps {
   chatRef: React.MutableRefObject<HTMLDivElement | null>;
   currentUserId: string | null;
   projectKey: string | null;
+  onPublished: (permalink: string | null) => void;
+  onNotice: (kind: "ok" | "error", message: string) => void;
 }
 
 function FlowBody(props: FlowBodyProps): JSX.Element | null {
-  const { view, status, flowStatus, reloadSignal, chatAvailable, chatOpen, onToggleChat, chatRef, currentUserId, projectKey } = props;
+  const { view, status, flowStatus, reloadSignal, chatAvailable, chatOpen, onToggleChat, chatRef, currentUserId, projectKey, onPublished, onNotice } = props;
   const { state } = view;
 
   if (state.kind === "loading") {
@@ -726,6 +742,19 @@ function FlowBody(props: FlowBodyProps): JSX.Element | null {
     </Card>
   ) : null;
 
+  // Publiseringskortet (fase 1b): vises så snart planen er aktiv — også mens
+  // postene fortsatt genereres, så de første kan publiseres med en gang.
+  const activePlanId = status.plan.exists && status.plan.status === "active" ? status.plan.id : null;
+  const publishCard = activePlanId ? (
+    <LinkedInPublishCard
+      projectKey={projectKey}
+      planId={activePlanId}
+      reloadSignal={reloadSignal}
+      onPublished={(_post, permalink) => onPublished(permalink)}
+      onNotice={onNotice}
+    />
+  ) : null;
+
   // ── Steady-state: planen er jobben, oppsettet er én linje ─────────────
   if (view.steady) {
     return (
@@ -742,6 +771,7 @@ function FlowBody(props: FlowBodyProps): JSX.Element | null {
                   .filter(Boolean)
                   .join(" · ")}
               </Typography>
+              {activePlanId && <MarketingResultsLine planId={activePlanId} refreshKey={reloadSignal} />}
               <Box sx={{ flex: 1 }} />
               {view.primaryAction === "open_chat" && !chatOpen && (
                 <Button size="small" variant="contained" startIcon={<ChatIcon />} onClick={onToggleChat}>
@@ -752,6 +782,7 @@ function FlowBody(props: FlowBodyProps): JSX.Element | null {
             </Stack>
           </CardContent>
         </Card>
+        {publishCard}
         <MarketingPlanWorkspace projectId={projectKey} reloadSignal={reloadSignal} />
         {chat}
       </Stack>
@@ -796,6 +827,7 @@ function FlowBody(props: FlowBodyProps): JSX.Element | null {
         </CardContent>
       </Card>
 
+      {publishCard}
       {status.plan.exists && (
         <MarketingPlanWorkspace projectId={projectKey} reloadSignal={reloadSignal} />
       )}

@@ -1,0 +1,67 @@
+claim: >
+  For Leadgrid Markedssjef-modus må plan-poster publiseres som LinkedIn-bedriftsside
+  for at resultattall (visninger, klikk, likes, kommentarer) kan leses tilbake:
+  r_member_social (lese egne profilposter) er stengt for nye søkere, mens
+  bedriftsposter kan leses via organizationalEntityShareStatistics med
+  r_organization_social (Community Management API). Publisering som bedrift krever
+  w_organization_social, og listing av sider (organizationAcls) krever
+  r_organization_admin. Legacy /v2/ugcPosts aksepteres fortsatt, men Posts API
+  (/rest/posts) er erstatningen.
+source_type: api_reference
+source: >
+  LinkedIn Marketing API docs (learn.microsoft.com, søketreff — domenet er
+  egress-blokkert fra agent-miljøet):
+  https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/share-statistics?view=li-lms-2026-06
+  https://learn.microsoft.com/en-us/linkedin/marketing/community-management/community-management-overview?view=li-lms-2026-06
+  https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/network-update-social-actions?view=li-lms-2025-11
+  https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-04
+  Sekundært: bundle.social/blog/linkedin-api-permissions, postproxy.dev (2026).
+authority_tier: 2
+vendor: LinkedIn (Microsoft)
+product: Marketing API — Community Management
+version_scope: "LinkedIn-Version 202608 (LINKEDIN_API_VERSION); 202508 sunsettes 2026-08-17"
+publication_date: "2026-09-17"
+valid_from: "2026-09-17"
+valid_to: "2027-09-17"
+evidence_summary: >
+  Repo-inventar (17.09.2026): fire LinkedIn-credential-sett. Role Room-medlemsflyten
+  (role-room-linkedin-oauth-scopes.ts) ba kun om openid/profile/email/w_member_social;
+  cockpit-flyten (linkedin-oauth-routes.ts) ber om r_organization_admin +
+  w_organization_social på samme app — Daniel bekrefter Community Management er
+  godkjent. organizationalEntityShareStatistics fantes ikke i repoet; socialActions
+  (likes/kommentarer) var eneste lesevei og gir 403 for profilposter uten
+  r_member_social. Tier 2 fordi de offisielle sidene ikke kunne leses direkte;
+  påstandene er konsistente på tvers av søketreff fra learn.microsoft.com og to
+  uavhengige sekundærkilder.
+interpretation: >
+  Bedriftssiden er eneste avsender som gir en lukket resultat-løkke
+  (post → tall → neste plan). Aggregatorer (Ayrshare/Postproxy/Zernio) wrapper samme
+  API, koster per profil og legger til en ekstern databehandler for kundenes tokens
+  uten å kunne koble tall til Leadgrid-planen. Egen app + eksisterende godkjenning
+  er derfor den etablerte løsningen for oss.
+project_impact: >
+  Fase 1c: ROLE_ROOM_LINKEDIN_ORG_SCOPES (default på) legger w_organization_social,
+  r_organization_social, r_organization_admin til medlemsflyten; publish-ruten lagrer
+  published_author_urn; KPI-connectoren leser organizationalEntityShareStatistics for
+  urn:li:organization:*-poster og faller tilbake til socialActions for personposter
+  (stille tomt). Eksisterende tilkoblinger må kobles til på nytt for å få scopene
+  (kortet tilbyr det). Skulle LinkedIn avvise scopene: sett flagget til "off" —
+  ingen deploy.
+confidence: moderate_evidence
+decision: >
+  GO — bedriftsside som standard avsender; ingen aggregator. Følg opp: migrer
+  publisher fra /v2/ugcPosts til /rest/posts (Role Room-publisher +
+  cockpit-b2b-routes.ts) før LinkedIn fjerner legacy-endepunktet; bump
+  LINKEDIN_API_VERSION før 202608 sunsettes (≈ 2027-08).
+affected:
+  - backend/server/role-room-linkedin-oauth-scopes.ts
+  - backend/server/role-room-marketing-plan-routes.ts (publish, publish-options, kpi-sync)
+  - backend/server/role-room-kpi-connectors.ts
+  - backend/server/social-linkedin-org-share-stats.ts
+  - backend/server/social-publisher-linkedin.ts (/v2/ugcPosts — legacy)
+  - frontend/client/src/components/leadgrid/LinkedInPublishCard.tsx
+lesson: >
+  «Kan vi lese tallene?» må avgjøres FØR publiseringsflyten bygges: profil-
+  publisering var teknisk enklest, men gir en resultat-løkke som aldri lukkes.
+  Sjekk scope-tilgjengelighet (åpen/stengt for søknad) som del av vendor-
+  vurderingen, ikke bare API-endepunktet.
