@@ -411,7 +411,7 @@ export default function RoleRoomEducationPartnershipPage(
               sx={{
                 p: { xs: 2.2, md: 3 },
                 borderRadius: '28px',
-                bgcolor: 'rgba(17,12,26,0.82)',
+                bgcolor: 'rgba(13, 12, 26,0.82)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 flexDirection: 'column',

@@ -53,7 +53,7 @@ const STATUS_META: Record<
 > = {
   scheduled:         { label: 'Planlagt',           color: '#ffb800', bg: 'rgba(255,184,0,0.15)' },
   confirmed:         { label: 'Bekreftet',          color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-  awaiting_callback: { label: 'Venter tilbakemelding', color: '#a855f7', bg: 'rgba(168,85,247,0.15)' },
+  awaiting_callback: { label: 'Venter tilbakemelding', color: '#7666e6', bg: 'rgba(118, 102, 230,0.15)' },
   completed:         { label: 'Fullført',           color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
   cancelled:         { label: 'Kansellert',         color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   pool:              { label: 'Pool',               color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },

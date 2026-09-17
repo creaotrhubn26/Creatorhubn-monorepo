@@ -26,15 +26,15 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
 const palette = {
-  bgCard: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bgCard: '#0e0b2e',
+  border: 'rgba(118, 102, 230,0.18)',
+  borderStrong: 'rgba(118, 102, 230,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e93ed',
   linkedin: '#0a66c2',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accentGradient: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
 };
 
 export default function ClientLinkedinSuitePanel({
@@ -263,7 +263,7 @@ export default function ClientLinkedinSuitePanel({
             sx={{
               background: palette.accentGradient,
               color: '#fff', textTransform: 'none', fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)' },
             }}
           >
             {provisioning ? 'Oppretter…' : `Opprett Insight Tag for ${clientName}`}
@@ -373,7 +373,7 @@ export default function ClientLinkedinSuitePanel({
                 '&:hover': {
                   background: capiSaved
                     ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                    : 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)',
                 },
               }}
             >

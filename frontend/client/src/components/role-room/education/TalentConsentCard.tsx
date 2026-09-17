@@ -21,7 +21,7 @@ import {
 } from '@mui/icons-material';
 import { educationTalentPipelineService, type PendingInvite, type TalentsInfo } from './educationTalentPipelineService';
 
-const ACCENT = '#8B5CF6';
+const ACCENT = '#756be7';
 
 export function TalentConsentCard({ onDone }: { onDone?: () => void }) {
   const [pending, setPending] = useState<PendingInvite[]>([]);
@@ -72,9 +72,9 @@ export function TalentConsentCard({ onDone }: { onDone?: () => void }) {
 
   const p = pending[0];
   return (
-    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.32)', color: '#fff' }}>
+    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(117, 107, 231,0.09)', border: '1px solid rgba(117, 107, 231,0.32)', color: '#fff' }}>
       <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1 }}>
-        <Box sx={{ width: 42, height: 42, borderRadius: 2.5, bgcolor: 'rgba(139,92,246,0.22)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><TalentIcon /></Box>
+        <Box sx={{ width: 42, height: 42, borderRadius: 2.5, bgcolor: 'rgba(117, 107, 231,0.22)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><TalentIcon /></Box>
         <Box>
           <Typography sx={{ fontWeight: 800, fontSize: 16 }}>Du er invitert til Role Room Talents</Typography>
           <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)' }}>Skolen din har opprettet et utkast til talent-profil for deg{p.credential?.institution ? ` (${[p.credential.program, p.credential.institution, p.credential.year].filter(Boolean).join(' · ')})` : ''}.</Typography>
@@ -117,7 +117,7 @@ export function TalentConsentCard({ onDone }: { onDone?: () => void }) {
 
       <Stack direction="row" spacing={1.25} sx={{ mt: 2 }}>
         <Button variant="contained" startIcon={<AcceptIcon />} onClick={accept} disabled={busy}
-          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
           {busy ? 'Lagrer…' : 'Ja, overta profilen'}
         </Button>
         <Button variant="outlined" startIcon={<DeclineIcon />} onClick={decline} disabled={busy}

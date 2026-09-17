@@ -83,13 +83,13 @@ const PLATFORM_META: Record<Platform, PlatformConfig> = {
 };
 
 const palette = {
-  bg: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bg: '#0e0b2e',
+  border: 'rgba(118, 102, 230,0.18)',
+  borderStrong: 'rgba(118, 102, 230,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e93ed',
 };
 
 const STATUS_LABEL: Record<string, { txt: string; color: string; bg: string }> = {
@@ -304,7 +304,7 @@ export default function ClientAdsCrmEventsPanel({
               return (
                 <Box key={ev.id} sx={{
                   p: 1.4, borderRadius: 1.2,
-                  bgcolor: 'rgba(168,85,247,0.04)',
+                  bgcolor: 'rgba(118, 102, 230,0.04)',
                   border: `1px solid ${palette.border}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   gap: 1.4,

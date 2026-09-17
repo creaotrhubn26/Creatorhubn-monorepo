@@ -67,14 +67,14 @@ const HEALTH_META = {
 };
 
 const palette = {
-  bg: '#150b2e',
-  bgSubtle: 'rgba(168,85,247,0.04)',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bg: '#0e0b2e',
+  bgSubtle: 'rgba(118, 102, 230,0.04)',
+  border: 'rgba(118, 102, 230,0.18)',
+  borderStrong: 'rgba(118, 102, 230,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accent: '#c084fc',
+  accent: '#9e93ed',
 };
 
 function formatRelative(iso: string): string {
@@ -185,7 +185,7 @@ export default function ClientAdsDiagnosticsPanel({
         {/* Window-counts */}
         <Stack direction="row" spacing={1.4} sx={{ mb: 2 }}>
           {[
-            { label: 'Siste 24t', value: data.windowCounts.last_24h, color: '#c084fc' },
+            { label: 'Siste 24t', value: data.windowCounts.last_24h, color: '#9e93ed' },
             { label: 'Siste 7 dager', value: data.windowCounts.last_7d, color: '#60a5fa' },
             { label: 'Siste 30 dager', value: data.windowCounts.last_30d, color: '#34d399' },
             {

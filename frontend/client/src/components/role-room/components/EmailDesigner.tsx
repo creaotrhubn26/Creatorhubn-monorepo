@@ -253,9 +253,9 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
 ];
 
 const BRAND_COLORS = {
-  primary: '#8b5cf6',
+  primary: '#756be7',
   secondary: '#6366f1',
-  accent: '#a78bfa',
+  accent: '#9d97ee',
   dark: '#0a0a0f',
   light: '#f5f5f5',
 };
@@ -274,8 +274,8 @@ const TEMPLATE_TYPE_CONFIG: Record<string, {
   },
   callback: {
     icon: <ScheduleIcon sx={{ fontSize: 24 }} />,
-    color: 'var(--role-violet, #8b5cf6)',
-    bgColor: 'rgba(139, 92, 246, 0.15)',
+    color: 'var(--role-violet, #756be7)',
+    bgColor: 'rgba(117, 107, 231, 0.15)',
     label: 'Callback',
   },
   confirmation: {
@@ -342,7 +342,7 @@ const DEFAULT_PREVIEW_THEME: Required<EmailDesignerPreviewTheme> = {
   cardBorder: '#e9e0d4',
   headerBackground: '#171410',
   headerText: '#f8f5ef',
-  brandLabelColor: '#a13bca',
+  brandLabelColor: '#533bca',
   bodyText: '#4d473f',
   mutedText: '#7b7368',
   buttonBackground: '#f6c358',
@@ -476,7 +476,7 @@ const generateEmailHTML = (
       line-height: 1.7;
     }
     .variable-highlight {
-      background-color: rgba(161, 59, 202, 0.1);
+      background-color: rgba(83, 59, 202, 0.1);
       color: ${theme.brandLabelColor};
       padding: 2px 6px;
       border-radius: 4px;
@@ -1018,7 +1018,7 @@ export function EmailDesigner({
                   color: 'rgba(255,255,255,0.87)',
                   '&:hover': { 
                     color: BRAND_COLORS.primary,
-                    bgcolor: 'rgba(139, 92, 246, 0.1)',
+                    bgcolor: 'rgba(117, 107, 231, 0.1)',
                   },
                 }}
               >
@@ -1042,14 +1042,14 @@ export function EmailDesigner({
                       sx={{
                         p: 2,
                         cursor: 'pointer',
-                        bgcolor: isSelected ? 'rgba(139, 92, 246, 0.15)' : '#161b22',
+                        bgcolor: isSelected ? 'rgba(117, 107, 231, 0.15)' : '#161b22',
                         border: isSelected 
                           ? `2px solid ${BRAND_COLORS.primary}` 
                           : '1px solid rgba(255,255,255,0.08)',
                         borderRadius: 2,
                         transition: 'all 0.2s ease',
                         '&:hover': {
-                          bgcolor: isSelected ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255,255,255,0.05)',
+                          bgcolor: isSelected ? 'rgba(117, 107, 231, 0.2)' : 'rgba(255,255,255,0.05)',
                           borderColor: isSelected ? BRAND_COLORS.primary : 'rgba(255,255,255,0.15)',
                           transform: 'translateY(-1px)',
                         },
@@ -1113,7 +1113,7 @@ export function EmailDesigner({
                   '&:hover': {
                     borderColor: BRAND_COLORS.primary,
                     color: BRAND_COLORS.primary,
-                    bgcolor: 'rgba(139, 92, 246, 0.1)',
+                    bgcolor: 'rgba(117, 107, 231, 0.1)',
                   },
                 }}
               >
@@ -1241,7 +1241,7 @@ export function EmailDesigner({
                 border: '1px solid rgba(255,255,255,0.1)', 
                 borderRadius: 1, 
                 p: spacing,
-                bgcolor: 'rgba(139, 92, 246, 0.05)',
+                bgcolor: 'rgba(117, 107, 231, 0.05)',
               }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 600, mb: 1.5, display: 'block', fontSize: fontSize.caption }}>
                   Topptekst (Header)
@@ -1281,9 +1281,9 @@ export function EmailDesigner({
                         sx={{ 
                           mt: 0.5,
                           color: BRAND_COLORS.primary,
-                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          border: '1px solid rgba(117, 107, 231, 0.3)',
                           '&:hover': { 
-                            bgcolor: 'rgba(139, 92, 246, 0.1)',
+                            bgcolor: 'rgba(117, 107, 231, 0.1)',
                             borderColor: BRAND_COLORS.primary,
                           },
                           '&.Mui-disabled': {
@@ -1567,7 +1567,7 @@ export function EmailDesigner({
           px: 2, 
           py: 1.5, 
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(139, 92, 246, 0.1)',
+          bgcolor: 'rgba(117, 107, 231, 0.1)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <FolderIcon sx={{ fontSize: 18, color: BRAND_COLORS.primary }} />
@@ -1589,7 +1589,7 @@ export function EmailDesigner({
               key={variable.key}
               onClick={() => insertVariable(variable.key)}
               sx={{ 
-                '&:hover': { bgcolor: 'rgba(139, 92, 246, 0.1)' },
+                '&:hover': { bgcolor: 'rgba(117, 107, 231, 0.1)' },
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
@@ -1882,7 +1882,7 @@ export function EmailDesigner({
             <Paper
               sx={{
                 p: 2,
-                bgcolor: 'rgba(139,92,246,0.1)',
+                bgcolor: 'rgba(117, 107, 231,0.1)',
                 border: '2px solid',
                 borderColor: BRAND_COLORS.primary,
                 borderRadius: 2,
@@ -1890,7 +1890,7 @@ export function EmailDesigner({
                 transition: 'all 0.2s ease',
                 position: 'relative',
                 '&:hover': {
-                  bgcolor: 'rgba(139,92,246,0.15)',
+                  bgcolor: 'rgba(117, 107, 231,0.15)',
                 },
               }}
               onClick={handleCopyHtmlToClipboard}
@@ -1914,7 +1914,7 @@ export function EmailDesigner({
                     width: 48,
                     height: 48,
                     borderRadius: 2,
-                    bgcolor: 'rgba(139,92,246,0.3)',
+                    bgcolor: 'rgba(117, 107, 231,0.3)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1943,7 +1943,7 @@ export function EmailDesigner({
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   borderColor: BRAND_COLORS.primary,
-                  bgcolor: 'rgba(139,92,246,0.1)',
+                  bgcolor: 'rgba(117, 107, 231,0.1)',
                 },
               }}
               onClick={() => handleOpenMailto()}
@@ -1954,7 +1954,7 @@ export function EmailDesigner({
                     width: 48,
                     height: 48,
                     borderRadius: 2,
-                    bgcolor: 'rgba(139,92,246,0.2)',
+                    bgcolor: 'rgba(117, 107, 231,0.2)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1984,7 +1984,7 @@ export function EmailDesigner({
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   borderColor: BRAND_COLORS.primary,
-                  bgcolor: 'rgba(139,92,246,0.1)',
+                  bgcolor: 'rgba(117, 107, 231,0.1)',
                 },
               }}
               onClick={handleCopyToClipboard}
@@ -2025,7 +2025,7 @@ export function EmailDesigner({
                   transition: 'all 0.2s ease',
                   '&:hover': {
                     borderColor: BRAND_COLORS.primary,
-                    bgcolor: 'rgba(139,92,246,0.1)',
+                    bgcolor: 'rgba(117, 107, 231,0.1)',
                   },
                 }}
                 onClick={() => {

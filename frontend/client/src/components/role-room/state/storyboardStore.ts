@@ -368,11 +368,11 @@ export function getShotTypeColor(type: ShotType): string {
   const colors: Record<ShotType, string> = {
     'Wide': '#4caf50',
     'Medium': '#2196f3',
-    'Close-up': '#9333ea',
+    'Close-up': '#523ee0',
     'Extreme Close-up': '#e91e63',
-    'Establishing': '#9c27b0',
+    'Establishing': '#4227b0',
     'Detail': '#00bcd4',
-    'Two Shot': '#7c3aed',
+    'Two Shot': '#5446e1',
     'Over Shoulder': '#795548',
     'Point of View': '#607d8b',
   };

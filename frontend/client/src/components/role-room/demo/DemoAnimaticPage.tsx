@@ -70,7 +70,7 @@ const DEMO_FRAMES = [
     description: 'CU på Kari. Hun gisper og setter seg opp i senga.',
     caption: 'KARI\nHallo?',
     imageUrl: makePlaceholderSvg({
-      bgColor: '#2d1b4e',
+      bgColor: '#201b4e',
       textColor: '#fde68a',
       shotNumber: '2',
       description: 'Hun gisper',
@@ -96,7 +96,7 @@ const DEMO_FRAMES = [
     description: 'Hun løper mot døra og åpner den voldsomt.',
     caption: '',
     imageUrl: makePlaceholderSvg({
-      bgColor: '#4c1d95',
+      bgColor: '#291d95',
       textColor: '#ede9fe',
       shotNumber: '4',
       description: 'Hun løper',

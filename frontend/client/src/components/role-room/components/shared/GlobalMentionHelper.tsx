@@ -184,8 +184,8 @@ export function GlobalMentionHelper({
           sx={{
             p: 1,
             borderRadius: 2,
-            border: '1px solid rgba(124,77,255,0.28)',
-            background: 'linear-gradient(135deg, rgba(18,24,52,0.82) 0%, rgba(36,22,70,0.78) 100%)',
+            border: '1px solid rgba(111, 102, 230,0.28)',
+            background: 'linear-gradient(135deg, rgba(18,24,52,0.82) 0%, rgba(26, 22, 70,0.78) 100%)',
           }}
         >
           <Typography sx={{ color: '#9ec5ff', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
@@ -198,9 +198,9 @@ export function GlobalMentionHelper({
                 size="small"
                 label={`@${name}`}
                 sx={{
-                  bgcolor: 'rgba(124,77,255,0.25)',
-                  color: '#efe8ff',
-                  border: '1px solid rgba(168,122,255,0.48)',
+                  bgcolor: 'rgba(111, 102, 230,0.25)',
+                  color: '#edebfc',
+                  border: '1px solid rgba(149, 141, 236,0.48)',
                   fontWeight: 700,
                 }}
               />

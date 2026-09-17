@@ -405,15 +405,15 @@ interface DecisionCardProps {
 }
 
 const DecisionCard: React.FC<DecisionCardProps> = ({ title, body, subtext, severity }) => {
-  const color = severity === 'info' ? '#6d28d9' : '#b45309';
-  const bg = severity === 'info' ? 'rgba(124,58,237,0.08)' : 'rgba(245,158,11,0.1)';
+  const color = severity === 'info' ? '#3928d9' : '#b45309';
+  const bg = severity === 'info' ? 'rgba(84, 70, 225,0.08)' : 'rgba(245,158,11,0.1)';
   return (
     <Box
       sx={{
         p: 1.5,
         borderRadius: 'var(--rr-card-radius, 12px)',
         border: '1px solid',
-        borderColor: severity === 'info' ? 'rgba(124,58,237,0.24)' : 'rgba(245,158,11,0.32)',
+        borderColor: severity === 'info' ? 'rgba(84, 70, 225,0.24)' : 'rgba(245,158,11,0.32)',
         bgcolor: bg,
       }}
     >

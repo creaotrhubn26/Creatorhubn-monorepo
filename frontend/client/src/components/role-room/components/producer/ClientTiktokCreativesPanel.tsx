@@ -19,13 +19,13 @@ import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 
 const palette = {
-  bg: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bg: '#0e0b2e',
+  border: 'rgba(118, 102, 230,0.18)',
+  borderStrong: 'rgba(118, 102, 230,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e93ed',
   tiktok: '#ff0050',
 };
 
@@ -212,7 +212,7 @@ export default function ClientTiktokCreativesPanel({
                     size="small"
                     sx={{
                       position: 'absolute', top: 6, right: 6,
-                      bgcolor: 'rgba(192,132,252,0.85)', color: '#fff', fontWeight: 700, fontSize: '0.6rem', height: 18,
+                      bgcolor: 'rgba(158, 147, 237,0.85)', color: '#fff', fontWeight: 700, fontSize: '0.6rem', height: 18,
                     }}
                   />
                 ) : null}

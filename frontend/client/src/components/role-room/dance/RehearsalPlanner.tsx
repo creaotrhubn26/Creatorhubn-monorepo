@@ -212,7 +212,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 size="small"
                 startIcon={<AddIcon sx={{ fontSize: 14 }} />}
                 onClick={addFocusArea}
-                sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(139,92,246,0.4)' }}
+                sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(117, 107, 231,0.4)' }}
                 variant="outlined"
                 data-testid="rehearsal-add-focus"
               >
@@ -521,8 +521,8 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
         p: 1.25,
         borderRadius: 1,
         border: '1px solid #1e2536',
-        bgcolor: 'rgba(139,92,246,0.04)',
-        borderLeft: meta ? `3px solid ${meta.color}` : '3px solid #a78bfa',
+        bgcolor: 'rgba(117, 107, 231,0.04)',
+        borderLeft: meta ? `3px solid ${meta.color}` : '3px solid #9d97ee',
       }}
     >
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 0.5 }}>

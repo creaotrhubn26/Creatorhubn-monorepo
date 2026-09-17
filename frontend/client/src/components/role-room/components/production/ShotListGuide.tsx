@@ -384,7 +384,7 @@ const STEPS: Step[] = [
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>
               People who are already assigned to at least one shot appear at the top of the sidebar under <strong>On Shot</strong>. Each row shows a pink badge with the number of shots they are assigned to. Collapse or expand this section by clicking the section header.
             </Typography>
-            <Callout color="#a855f7">
+            <Callout color="#7666e6">
               The sidebar shot count is aggregated across all shot lists in the project — not just the ones visible in the current filtered grid.
             </Callout>
           </>

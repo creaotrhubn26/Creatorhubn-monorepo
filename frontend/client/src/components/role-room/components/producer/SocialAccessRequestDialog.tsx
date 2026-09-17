@@ -172,8 +172,8 @@ export default function SocialAccessRequestDialog({
                 label={`Rolle: ${request.requiredRole}`}
                 size="small"
                 sx={{
-                  bgcolor: 'rgba(168,85,247,0.15)',
-                  color: '#d8b4fe',
+                  bgcolor: 'rgba(118, 102, 230,0.15)',
+                  color: '#c4bef4',
                   fontSize: '0.7rem',
                   height: 20,
                 }}

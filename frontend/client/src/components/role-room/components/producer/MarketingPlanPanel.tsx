@@ -953,7 +953,7 @@ function PillarsSection({
             size="small"
             startIcon={<AddIcon fontSize="small" />}
             onClick={handleAdd}
-            sx={{ textTransform: 'none', color: '#a78bfa', fontSize: '0.78rem' }}
+            sx={{ textTransform: 'none', color: '#9d97ee', fontSize: '0.78rem' }}
           >
             Legg til pillar
           </Button>
@@ -971,9 +971,9 @@ function PillarsSection({
               p: 1.2,
               borderRadius: 2.2,
               border: pillar.isCustom
-                ? '1px dashed rgba(168,85,247,0.5)'
-                : '1px solid rgba(168,85,247,0.24)',
-              bgcolor: 'rgba(168,85,247,0.08)',
+                ? '1px dashed rgba(118, 102, 230,0.5)'
+                : '1px solid rgba(118, 102, 230,0.24)',
+              bgcolor: 'rgba(118, 102, 230,0.08)',
               opacity: isActive ? 1 : 0.45,
               transition: 'opacity 0.2s',
             }}
@@ -985,8 +985,8 @@ function PillarsSection({
                     width: 22,
                     height: 22,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(168,85,247,0.22)',
-                    color: '#e9d5ff',
+                    bgcolor: 'rgba(118, 102, 230,0.22)',
+                    color: '#dedbf9',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1004,7 +1004,7 @@ function PillarsSection({
                   <Chip
                     size="small"
                     label="Egendefinert"
-                    sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(167,139,250,0.18)', color: '#ddd6fe' }}
+                    sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(157, 151, 238,0.18)', color: '#ddd6fe' }}
                   />
                 ) : null}
               </Stack>
@@ -1062,7 +1062,7 @@ function PillarsSection({
                       size="small"
                       label={seg}
                       sx={{
-                        bgcolor: 'rgba(167,139,250,0.16)',
+                        bgcolor: 'rgba(157, 151, 238,0.16)',
                         color: '#ddd6fe',
                         height: 18,
                         fontSize: '0.7rem',
@@ -1078,8 +1078,8 @@ function PillarsSection({
                 label={`${pillar.targetKpi.target.toLocaleString('nb-NO')} ${pillar.targetKpi.metric.replace(/_/g, ' ')} / ${pillar.targetKpi.per}`}
                 sx={{
                   mt: 0.8,
-                  bgcolor: 'rgba(168,85,247,0.16)',
-                  color: '#e9d5ff',
+                  bgcolor: 'rgba(118, 102, 230,0.16)',
+                  color: '#dedbf9',
                   fontWeight: 700,
                   fontSize: '0.72rem',
                 }}
@@ -1107,7 +1107,7 @@ const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: 'rgba(221,42,123,0.18)',
   carousel: 'rgba(245,133,41,0.2)',
   image: 'rgba(34,211,238,0.16)',
-  story: 'rgba(168,85,247,0.2)',
+  story: 'rgba(118, 102, 230,0.2)',
   tiktok: 'rgba(236,72,153,0.2)',
   linkedin_post: 'rgba(59,130,246,0.22)',
   youtube_short: 'rgba(239,68,68,0.18)',
@@ -1368,7 +1368,7 @@ function PostsSection({
                 const idx = ids.indexOf(pillarFilter);
                 setPillarFilter(ids[(idx + 1) % ids.length] as typeof pillarFilter);
               }}
-              sx={{ bgcolor: pillarFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(168,85,247,0.22)', color: '#e9d5ff', cursor: 'pointer' }}
+              sx={{ bgcolor: pillarFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(118, 102, 230,0.22)', color: '#dedbf9', cursor: 'pointer' }}
             />
             <Chip
               size="small"
@@ -1521,10 +1521,10 @@ function PostsSection({
                     width: 6,
                     height: 6,
                     borderRadius: '50%',
-                    bgcolor: '#a855f7',
+                    bgcolor: '#7666e6',
                   }}
                 />
-                <Typography sx={{ color: '#e9d5ff', fontWeight: 700, fontSize: '0.84rem' }}>
+                <Typography sx={{ color: '#dedbf9', fontWeight: 700, fontSize: '0.84rem' }}>
                   {group.name}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
@@ -1824,7 +1824,7 @@ function PostCard({
                 sx={{
                   height: 18,
                   fontSize: '0.66rem',
-                  bgcolor: 'rgba(167,139,250,0.18)',
+                  bgcolor: 'rgba(157, 151, 238,0.18)',
                   color: '#ddd6fe',
                   fontWeight: 700,
                   cursor: 'help',
@@ -1938,7 +1938,7 @@ function PostCard({
               <Chip
                 size="small"
                 label={`${post.goalKpi.target} ${post.goalKpi.metric.replace(/_/g, ' ')}/${post.goalKpi.per}`}
-                sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.72rem' }}
+                sx={{ bgcolor: 'rgba(118, 102, 230,0.16)', color: '#dedbf9', fontSize: '0.72rem' }}
               />
             ) : null}
           </Stack>
@@ -2057,13 +2057,13 @@ function PostCard({
                   px: 0.8,
                   py: 0.3,
                   borderRadius: 1,
-                  bgcolor: 'rgba(167,139,250,0.08)',
-                  border: '1px solid rgba(167,139,250,0.32)',
+                  bgcolor: 'rgba(157, 151, 238,0.08)',
+                  border: '1px solid rgba(157, 151, 238,0.32)',
                   display: 'inline-block',
                 }}
               >
                 <Typography sx={{ color: '#ddd6fe', fontSize: '0.72rem', fontWeight: 600 }}>
-                  Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{suggestedCta.linkMacro}</code>
+                  Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#9d97ee' }}>{suggestedCta.linkMacro}</code>
                 </Typography>
               </Box>
             </Tooltip>
@@ -2131,7 +2131,7 @@ function PostCard({
                       textTransform: 'none',
                       fontSize: '0.76rem',
                       py: 0.3,
-                      color: '#a78bfa',
+                      color: '#9d97ee',
                       minWidth: 0,
                     }}
                   >
@@ -2233,7 +2233,7 @@ function PostCard({
                         {live?.profilePictureUrl ? (
                           <Box component="img" src={live.profilePictureUrl} alt="" sx={{ width: 22, height: 22, borderRadius: '50%' }} />
                         ) : (
-                          <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(167,139,250,0.2)' }} />
+                          <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(157, 151, 238,0.2)' }} />
                         )}
                         <Stack spacing={0} sx={{ flex: 1, minWidth: 0 }}>
                           <Typography sx={{ color: '#f8fafc', fontSize: '0.74rem', fontWeight: 700 }}>
@@ -2327,7 +2327,7 @@ function PostCard({
                     textTransform: 'none',
                     fontSize: '0.72rem',
                     color: '#ddd6fe',
-                    bgcolor: 'rgba(167,139,250,0.16)',
+                    bgcolor: 'rgba(157, 151, 238,0.16)',
                     px: 1,
                     py: 0.3,
                   }}

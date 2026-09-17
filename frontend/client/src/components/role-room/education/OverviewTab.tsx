@@ -22,7 +22,7 @@ import {
 } from '@mui/icons-material';
 import { educationOverviewService, type OverviewData } from './educationOverviewService';
 
-const ACCENT = '#8B5CF6';
+const ACCENT = '#756be7';
 const CARD_BG = 'rgba(255,255,255,0.035)';
 const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
 
@@ -55,7 +55,7 @@ function Panel({ title, action, children, sx }: { title: string; action?: React.
 function SeeAllLink({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Button onClick={onClick} endIcon={<ChevronIcon sx={{ fontSize: '16px !important' }} />}
-      sx={{ color: ACCENT, textTransform: 'none', fontSize: 12.5, fontWeight: 600, p: 0.5, minWidth: 0, '&:hover': { bgcolor: 'transparent', color: '#a78bfa' } }}>
+      sx={{ color: ACCENT, textTransform: 'none', fontSize: 12.5, fontWeight: 600, p: 0.5, minWidth: 0, '&:hover': { bgcolor: 'transparent', color: '#9d97ee' } }}>
       {label}
     </Button>
   );
@@ -64,7 +64,7 @@ function SeeAllLink({ label, onClick }: { label: string; onClick: () => void }) 
 function EmptyBlock({ icon, title, subtitle, action }: { icon: React.ReactNode; title: string; subtitle: string; action?: React.ReactNode }) {
   return (
     <Stack alignItems="center" justifyContent="center" spacing={1} sx={{ flex: 1, textAlign: 'center', py: 3, minHeight: 150 }}>
-      <Box sx={{ color: 'rgba(167,139,250,0.55)', '& svg': { fontSize: 40 } }}>{icon}</Box>
+      <Box sx={{ color: 'rgba(157, 151, 238,0.55)', '& svg': { fontSize: 40 } }}>{icon}</Box>
       <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{title}</Typography>
       <Typography sx={{ fontSize: 12.5, color: 'text.secondary', maxWidth: 260 }}>{subtitle}</Typography>
       {action && <Box sx={{ mt: 1 }}>{action}</Box>}
@@ -167,7 +167,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
         <Box>
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Typography data-edit-id="edu-ov-title" variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>Utdannings-workspace</Typography>
-            <Chip data-edit-id="edu-ov-rolechip" label="Faglærer" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
+            <Chip data-edit-id="edu-ov-rolechip" label="Faglærer" size="small" sx={{ bgcolor: 'rgba(117, 107, 231,0.22)', color: '#dedbf9', fontWeight: 700 }} />
           </Stack>
           <Typography data-edit-id="edu-ov-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, mt: 0.5 }}>
             Undervisning, studentproduksjoner og samarbeid med eksterne oppdragsgivere — i én flate.
@@ -175,7 +175,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
         </Box>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
           <Button variant="contained" startIcon={<CohortIcon />} onClick={() => onNavigate('cohorts')}
-            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, px: 2 }}>
+            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, px: 2 }}>
             Opprett kull
           </Button>
           <Button variant="outlined" startIcon={<AssignmentIcon />} onClick={() => onNavigate('assignments')}
@@ -195,8 +195,8 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
       {firstRun && (
         <Box sx={{
           position: 'relative', overflow: 'hidden', borderRadius: 3, minHeight: 210, display: 'flex', alignItems: 'center',
-          border: '1px solid rgba(139,92,246,0.28)',
-          backgroundImage: 'linear-gradient(90deg, rgba(9,7,14,0.94) 0%, rgba(9,7,14,0.62) 46%, rgba(9,7,14,0.12) 100%), url(/trr-edu-hero-bg.png)',
+          border: '1px solid rgba(117, 107, 231,0.28)',
+          backgroundImage: 'linear-gradient(90deg, rgba(8, 7, 14,0.94) 0%, rgba(8, 7, 14,0.62) 46%, rgba(8, 7, 14,0.12) 100%), url(/trr-edu-hero-bg.png)',
           backgroundSize: 'cover', backgroundPosition: 'center right',
         }}>
           <Box sx={{ p: { xs: 3, md: 4 }, maxWidth: 620 }}>
@@ -207,7 +207,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
             </Typography>
             <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
               <Button variant="contained" startIcon={<CohortIcon />} onClick={() => onNavigate('cohorts')}
-                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
                 Opprett ditt første kull
               </Button>
               <Button variant="outlined" startIcon={<AssignmentIcon />} onClick={() => onNavigate('assignments')}
@@ -243,7 +243,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
           <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, alignItems: 'center' }}>
             <EmptyBlock icon={<CohortIcon />} title="Ingen kull ennå" subtitle="Opprett ditt første kull for å komme i gang."
               action={<Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => onNavigate('cohorts')}
-                sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2 }}>Opprett ditt første kull</Button>} />
+                sx={{ borderColor: 'rgba(117, 107, 231,0.5)', color: '#dedbf9', textTransform: 'none', borderRadius: 2 }}>Opprett ditt første kull</Button>} />
             <Box>
               <Typography sx={{ fontSize: 12, color: 'text.secondary', mb: 1.5 }}>Studentfremdrift (alle kull)</Typography>
               <ProgressDonut segments={donutSegments} total={donutTotal} />
@@ -261,14 +261,14 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
         <Panel title="Nylige oppgaver" action={<SeeAllLink label="Se alle oppgaver" onClick={() => onNavigate('assignments')} />}>
           <EmptyBlock icon={<AssignmentIcon />} title="Ingen oppgaver ennå" subtitle="Opprett en oppgave for å gi studentene noe å jobbe med."
             action={<Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => onNavigate('assignments')}
-              sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2 }}>Opprett ny oppgave</Button>} />
+              sx={{ borderColor: 'rgba(117, 107, 231,0.5)', color: '#dedbf9', textTransform: 'none', borderRadius: 2 }}>Opprett ny oppgave</Button>} />
         </Panel>
 
         <Panel title="Kom i gang" action={<SeeAllLink label="Oversikt" onClick={() => onNavigate('cohorts')} />}>
           <Stack divider={<Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}>
             {WELCOME_FEED.map((a) => (
               <Stack key={a.id} direction="row" alignItems="center" spacing={1.25} sx={{ py: 1.1 }}>
-                <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', flexShrink: 0 }}>{a.icon}</Box>
+                <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', flexShrink: 0 }}>{a.icon}</Box>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <Typography sx={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
                   <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{a.source}</Typography>
@@ -285,7 +285,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
               <Card key={q.label} sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: CARD_BORDER, borderRadius: 2 }}>
                 <CardActionArea onClick={q.onClick} sx={{ p: 1.25, borderRadius: 2 }}>
                   <Stack direction="row" alignItems="center" spacing={1.25}>
-                    <Box sx={{ width: 32, height: 32, borderRadius: 1.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', flexShrink: 0, '& svg': { fontSize: 18 } }}>{q.icon}</Box>
+                    <Box sx={{ width: 32, height: 32, borderRadius: 1.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', flexShrink: 0, '& svg': { fontSize: 18 } }}>{q.icon}</Box>
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{q.label}</Typography>
                       <Typography sx={{ fontSize: 11, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.sub}</Typography>
@@ -301,15 +301,15 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
 
       {/* Tips-banner */}
       {!tipDismissed && (
-        <Card sx={{ bgcolor: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3, p: 2 }}>
+        <Card sx={{ bgcolor: 'rgba(117, 107, 231,0.1)', border: '1px solid rgba(117, 107, 231,0.3)', borderRadius: 3, p: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Box sx={{ width: 38, height: 38, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(139,92,246,0.25)', color: '#e9d5ff', flexShrink: 0 }}><SparkleIcon /></Box>
+            <Box sx={{ width: 38, height: 38, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(117, 107, 231,0.25)', color: '#dedbf9', flexShrink: 0 }}><SparkleIcon /></Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ fontWeight: 700, fontSize: 14 }}>Tips: Opprett et kull</Typography>
               <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)' }}>Organiser studentene dine i kull for enklere samarbeid og oppfølging.</Typography>
             </Box>
             <Button size="small" variant="outlined" onClick={() => onNavigate('cohorts')}
-              sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Kom i gang</Button>
+              sx={{ borderColor: 'rgba(117, 107, 231,0.5)', color: '#dedbf9', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Kom i gang</Button>
             <IconButton size="small" onClick={() => setTipDismissed(true)} sx={{ color: 'rgba(255,255,255,0.75)' }}><CloseIcon fontSize="small" /></IconButton>
           </Stack>
         </Card>

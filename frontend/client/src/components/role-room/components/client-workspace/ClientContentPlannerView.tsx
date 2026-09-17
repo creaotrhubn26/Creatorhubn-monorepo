@@ -116,11 +116,11 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
       </Box>
 
       {!adding ? (
-        <Button onClick={() => setAdding(true)} startIcon={<AddIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}>
+        <Button onClick={() => setAdding(true)} startIcon={<AddIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:hover': { background: 'linear-gradient(135deg,#523ee0,#4926d3)' } }}>
           Legg til post
         </Button>
       ) : (
-        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(124,58,237,0.06)' }}>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(118, 102, 230,0.3)', background: 'rgba(84, 70, 225,0.06)' }}>
           <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Ny post</Typography>
           <Stack spacing={1.25}>
             <TextField label="Tittel / idé" value={title} onChange={(e) => setTitle(e.target.value)} size="small" fullWidth sx={fieldSx} />
@@ -135,7 +135,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
             </Stack>
             <TextField label="Caption (valgfritt)" value={caption} onChange={(e) => setCaption(e.target.value)} size="small" fullWidth multiline maxRows={4} sx={fieldSx} />
             <Stack direction="row" spacing={1}>
-              <Button onClick={() => void add()} disabled={busyId === 'add'} startIcon={busyId === 'add' ? <CircularProgress size={15} color="inherit" /> : <AddIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>Legg til</Button>
+              <Button onClick={() => void add()} disabled={busyId === 'add'} startIcon={busyId === 'add' ? <CircularProgress size={15} color="inherit" /> : <AddIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)' }}>Legg til</Button>
               <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
             </Stack>
           </Stack>
@@ -143,7 +143,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
       )}
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#7666e6' }} /></Box>
       ) : items.length === 0 ? (
         <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
           <CalendarIcon sx={{ fontSize: 32, color: 'rgba(226,232,240,0.8)' }} />
@@ -173,7 +173,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Typography sx={{ color: '#f1f5f9', fontSize: '0.88rem', fontWeight: 700 }}>{it.title}</Typography>
                           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.3, flexWrap: 'wrap', rowGap: 0.3 }}>
-                            {it.platform ? <Chip label={PLATFORM_LABEL[it.platform] ?? it.platform} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: '#c4b5fd', bgcolor: 'rgba(168,85,247,0.14)' }} /> : null}
+                            {it.platform ? <Chip label={PLATFORM_LABEL[it.platform] ?? it.platform} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: '#c4b5fd', bgcolor: 'rgba(118, 102, 230,0.14)' }} /> : null}
                             <Chip icon={<SIcon sx={{ fontSize: 12, color: `${sm.color} !important` }} />} label={sm.label} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: sm.color, bgcolor: 'rgba(255,255,255,0.04)' }} />
                             {it.source === 'chat' ? <Chip label="fra chat" size="small" sx={{ height: 18, fontSize: '0.6rem', color: 'rgba(226,232,240,0.8)', bgcolor: 'rgba(148,163,184,0.14)' }} /> : null}
                             {it.feedPlanPushed ? <Chip label="i feed-planner" size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#6ee7b7', bgcolor: 'rgba(16,185,129,0.12)' }} /> : null}

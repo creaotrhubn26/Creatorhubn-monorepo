@@ -75,16 +75,16 @@ const ALL_TABS: TabSpec[] = [
   { value: 'roles', label: 'Roller', Icon: TheaterIcon, color: '#f48fb1' },
   { value: 'candidates', label: 'Kandidater', Icon: PersonIcon, color: '#10b981' },
   { value: 'crew', label: 'Crew', Icon: GroupIcon, color: 'var(--role-cyan, #00d4ff)' },
-  { value: 'schedule', label: 'Tidsplan', Icon: CalendarIcon, color: '#9c27b0' },
+  { value: 'schedule', label: 'Tidsplan', Icon: CalendarIcon, color: '#4227b0' },
   { value: 'publishing', label: 'Publisering', Icon: YouTubeIcon, color: '#ff0000' },
   { value: 'carousel', label: 'Ukescontent', Icon: EditIcon, color: '#84cc16' },
   { value: 'approval', label: 'Godkjenning', Icon: CheckCircleIcon, color: '#10b981' },
   { value: 'brief', label: 'Brief', Icon: EditIcon, color: '#3b82f6' },
-  { value: 'planner', label: 'Planner', Icon: ScheduleIcon, color: '#a78bfa' },
+  { value: 'planner', label: 'Planner', Icon: ScheduleIcon, color: '#9d97ee' },
   { value: 'shooting', label: 'Skyting', Icon: MovieIcon, color: '#ef4444' },
   { value: 'shotlist', label: 'Shotliste', Icon: TheaterIcon, color: '#ec4899' },
   { value: 'mannskap', label: 'Mannskap', Icon: GroupIcon, color: '#06b6d4' },
-  { value: 'agent', label: 'Agent', Icon: AutoFixHighIcon, color: '#a78bfa' },
+  { value: 'agent', label: 'Agent', Icon: AutoFixHighIcon, color: '#9d97ee' },
 ];
 
 const TAB_BY_VALUE: Record<SubTabValue, TabSpec> = ALL_TABS.reduce(
@@ -180,7 +180,7 @@ export const RoleNavConfigTab: React.FC = () => {
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-        <CircularProgress sx={{ color: '#a78bfa' }} />
+        <CircularProgress sx={{ color: '#9d97ee' }} />
       </Box>
     );
   }
@@ -234,8 +234,8 @@ export const RoleNavConfigTab: React.FC = () => {
                         py: 1,
                         borderRadius: 1,
                         border: '1px solid',
-                        borderColor: isActive ? '#a78bfa' : 'rgba(148,163,184,0.16)',
-                        bgcolor: isActive ? 'rgba(167,139,250,0.16)' : 'transparent',
+                        borderColor: isActive ? '#9d97ee' : 'rgba(148,163,184,0.16)',
+                        bgcolor: isActive ? 'rgba(157, 151, 238,0.16)' : 'transparent',
                         color: isActive ? '#fff' : '#cbd5e1',
                         textAlign: 'left',
                         fontSize: '0.85rem',
@@ -243,7 +243,7 @@ export const RoleNavConfigTab: React.FC = () => {
                         cursor: 'pointer',
                         fontFamily: 'inherit',
                         WebkitTapHighlightColor: 'transparent',
-                        '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+                        '&:hover': { bgcolor: 'rgba(157, 151, 238,0.08)' },
                       }}
                     >
                       <span>{USER_ROLE_LABELS[role]}</span>
@@ -254,7 +254,7 @@ export const RoleNavConfigTab: React.FC = () => {
                           sx={{
                             height: 18,
                             fontSize: '0.6rem',
-                            bgcolor: 'rgba(167,139,250,0.2)',
+                            bgcolor: 'rgba(157, 151, 238,0.2)',
                             color: '#c4b5fd',
                           }}
                         />
@@ -296,11 +296,11 @@ export const RoleNavConfigTab: React.FC = () => {
                     onClick={handleSave}
                     disabled={!isDirty || updateMut.isPending}
                     sx={{
-                      bgcolor: '#a78bfa',
+                      bgcolor: '#9d97ee',
                       color: '#0b0815',
                       textTransform: 'none',
                       fontWeight: 700,
-                      '&:hover': { bgcolor: 'var(--role-violet, #8b5cf6)' },
+                      '&:hover': { bgcolor: 'var(--role-violet, #756be7)' },
                     }}
                   >
                     {updateMut.isPending ? 'Lagrer…' : 'Lagre'}
@@ -433,10 +433,10 @@ export const RoleNavConfigTab: React.FC = () => {
                     onClick={() => addTab(addValue)}
                     disabled={!addValue}
                     sx={{
-                      color: '#a78bfa',
+                      color: '#9d97ee',
                       textTransform: 'none',
                       fontWeight: 600,
-                      '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+                      '&:hover': { bgcolor: 'rgba(157, 151, 238,0.08)' },
                     }}
                   >
                     Legg til
@@ -553,7 +553,7 @@ function PhoneMockup({ tabs }: MockupProps) {
           {/* Mock content */}
           <Box sx={{ flex: 1, p: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Box sx={{ height: 22, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)' }} />
-            <Box sx={{ height: 36, borderRadius: 0.75, bgcolor: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.24)' }} />
+            <Box sx={{ height: 36, borderRadius: 0.75, bgcolor: 'rgba(157, 151, 238,0.1)', border: '1px solid rgba(157, 151, 238,0.24)' }} />
             <Box sx={{ height: 14, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', width: '70%' }} />
             <Box sx={{ flex: 1 }} />
           </Box>
@@ -575,8 +575,8 @@ function PhoneMockup({ tabs }: MockupProps) {
               const Icon = spec.Icon;
               return (
                 <Stack key={v} alignItems="center" spacing={0.25} sx={{ py: 0.25 }}>
-                  <Icon sx={{ fontSize: 12, color: i === 0 ? '#a78bfa' : 'rgba(255,255,255,0.6)' }} />
-                  <Typography sx={{ fontSize: '0.45rem', color: i === 0 ? '#a78bfa' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
+                  <Icon sx={{ fontSize: 12, color: i === 0 ? '#9d97ee' : 'rgba(255,255,255,0.6)' }} />
+                  <Typography sx={{ fontSize: '0.45rem', color: i === 0 ? '#9d97ee' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
                     {spec.label.length > 7 ? spec.label.slice(0, 6) + '…' : spec.label}
                   </Typography>
                 </Stack>
@@ -651,11 +651,11 @@ function IpadPortraitMockup({ tabs }: MockupProps) {
                     gap: 0.4,
                     px: 0.5,
                     py: 0.5,
-                    borderBottom: isActive ? '2px solid #a78bfa' : '2px solid transparent',
+                    borderBottom: isActive ? '2px solid #9d97ee' : '2px solid transparent',
                     flexShrink: 0,
                   }}
                 >
-                  <Icon sx={{ fontSize: 10, color: isActive ? '#a78bfa' : 'rgba(255,255,255,0.6)' }} />
+                  <Icon sx={{ fontSize: 10, color: isActive ? '#9d97ee' : 'rgba(255,255,255,0.6)' }} />
                   <Typography sx={{ fontSize: '0.5rem', color: isActive ? '#fff' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
                     {spec.label.length > 8 ? spec.label.slice(0, 7) + '…' : spec.label}
                   </Typography>
@@ -670,7 +670,7 @@ function IpadPortraitMockup({ tabs }: MockupProps) {
           </Box>
           {/* Content area */}
           <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            <Box sx={{ height: 28, borderRadius: 0.75, bgcolor: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.24)' }} />
+            <Box sx={{ height: 28, borderRadius: 0.75, bgcolor: 'rgba(157, 151, 238,0.1)', border: '1px solid rgba(157, 151, 238,0.24)' }} />
             <Box sx={{ height: 12, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.06)' }} />
             <Box sx={{ height: 12, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.06)', width: '70%' }} />
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, mt: 0.5 }}>
@@ -738,14 +738,14 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
                   sx={{
                     py: 0.5,
                     position: 'relative',
-                    bgcolor: isActive ? 'rgba(167,139,250,0.12)' : 'transparent',
+                    bgcolor: isActive ? 'rgba(157, 151, 238,0.12)' : 'transparent',
                   }}
                 >
                   {isActive && (
-                    <Box sx={{ position: 'absolute', left: 2, top: 6, bottom: 6, width: 2, bgcolor: '#a78bfa', borderRadius: 1 }} />
+                    <Box sx={{ position: 'absolute', left: 2, top: 6, bottom: 6, width: 2, bgcolor: '#9d97ee', borderRadius: 1 }} />
                   )}
-                  <Icon sx={{ fontSize: 12, color: isActive ? '#a78bfa' : 'rgba(255,255,255,0.6)' }} />
-                  <Typography sx={{ fontSize: '0.46rem', color: isActive ? '#a78bfa' : 'rgba(255,255,255,0.6)', lineHeight: 1, textAlign: 'center', maxWidth: 50, overflow: 'hidden' }}>
+                  <Icon sx={{ fontSize: 12, color: isActive ? '#9d97ee' : 'rgba(255,255,255,0.6)' }} />
+                  <Typography sx={{ fontSize: '0.46rem', color: isActive ? '#9d97ee' : 'rgba(255,255,255,0.6)', lineHeight: 1, textAlign: 'center', maxWidth: 50, overflow: 'hidden' }}>
                     {spec.label.length > 7 ? spec.label.slice(0, 6) + '…' : spec.label}
                   </Typography>
                 </Stack>
@@ -756,8 +756,8 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
           <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Box sx={{ height: 18, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.06)', width: '50%' }} />
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, mt: 0.5 }}>
-              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(167,139,250,0.1)' }} />
-              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(167,139,250,0.1)' }} />
+              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(157, 151, 238,0.1)' }} />
+              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(157, 151, 238,0.1)' }} />
             </Box>
             <Box sx={{ height: 60, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.04)' }} />
           </Box>
@@ -847,11 +847,11 @@ function MacbookMockup({ tabs }: MockupProps) {
                       gap: 0.3,
                       px: 0.5,
                       py: 0.4,
-                      borderBottom: isActive ? '2px solid #a78bfa' : '2px solid transparent',
+                      borderBottom: isActive ? '2px solid #9d97ee' : '2px solid transparent',
                       flexShrink: 0,
                     }}
                   >
-                    <Icon sx={{ fontSize: 9, color: isActive ? '#a78bfa' : 'rgba(255,255,255,0.6)' }} />
+                    <Icon sx={{ fontSize: 9, color: isActive ? '#9d97ee' : 'rgba(255,255,255,0.6)' }} />
                     <Typography sx={{ fontSize: '0.5rem', color: isActive ? '#fff' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
                       {spec.label.length > 9 ? spec.label.slice(0, 8) + '…' : spec.label}
                     </Typography>

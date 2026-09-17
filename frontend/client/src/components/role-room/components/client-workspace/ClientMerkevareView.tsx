@@ -102,9 +102,9 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
                 textTransform: 'none', fontWeight: 700, fontSize: '0.82rem', minHeight: 44, px: 1.6,
                 borderRadius: '10px',
                 color: active ? '#fff' : 'rgba(226,232,240,0.82)',
-                background: active ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : 'rgba(255,255,255,0.03)',
+                background: active ? 'linear-gradient(135deg,#5446e1,#7666e6)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.2)'}`,
-                '&:hover': { background: active ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : 'rgba(255,255,255,0.06)' },
+                '&:hover': { background: active ? 'linear-gradient(135deg,#5446e1,#7666e6)' : 'rgba(255,255,255,0.06)' },
                 '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
               }}
             >
@@ -132,12 +132,12 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files); }}
         sx={{
-          borderRadius: '14px', border: `1.5px dashed ${dragOver ? '#a855f7' : 'rgba(148,163,184,0.32)'}`,
-          background: dragOver ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.015)',
+          borderRadius: '14px', border: `1.5px dashed ${dragOver ? '#7666e6' : 'rgba(148,163,184,0.32)'}`,
+          background: dragOver ? 'rgba(118, 102, 230,0.08)' : 'rgba(255,255,255,0.015)',
           px: 2, py: { xs: 4, md: 5 }, textAlign: 'center', transition: 'all 0.15s',
         }}
       >
-        <Box sx={{ width: 56, height: 56, mx: 'auto', mb: 1.5, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow: '0 8px 24px rgba(124,58,237,0.4)' }}>
+        <Box sx={{ width: 56, height: 56, mx: 'auto', mb: 1.5, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#5446e1,#7666e6)', boxShadow: '0 8px 24px rgba(84, 70, 225,0.4)' }}>
           <UploadIcon sx={{ fontSize: 28, color: '#fff' }} />
         </Box>
         <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, color: '#f1f5f9' }}>
@@ -149,7 +149,7 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
         <Button
           onClick={() => inputRef.current?.click()}
           startIcon={<UploadIcon />}
-          sx={{ mt: 2, textTransform: 'none', fontWeight: 700, minHeight: 44, px: 3, borderRadius: '10px', color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+          sx={{ mt: 2, textTransform: 'none', fontWeight: 700, minHeight: 44, px: 3, borderRadius: '10px', color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:hover': { background: 'linear-gradient(135deg,#523ee0,#4926d3)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
         >
           Bla gjennom filer
         </Button>
@@ -184,7 +184,7 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
           {u.error ? (
             <Typography sx={{ color: '#fca5a5', fontSize: '0.74rem' }}>{u.error}</Typography>
           ) : (
-            <LinearProgress variant="determinate" value={u.pct} sx={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(148,163,184,0.16)', '& .MuiLinearProgress-bar': { borderRadius: 3, background: 'linear-gradient(90deg,#a855f7,#d946ef)' } }} />
+            <LinearProgress variant="determinate" value={u.pct} sx={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(148,163,184,0.16)', '& .MuiLinearProgress-bar': { borderRadius: 3, background: 'linear-gradient(90deg,#7666e6,#6f52e3)' } }} />
           )}
         </Box>
       ))}
@@ -195,7 +195,7 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
           Dine opplastinger {loading ? '' : `· ${items.length} filer`}
         </Typography>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#7666e6' }} /></Box>
         ) : items.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>
             Ingen filer ennå. Velg en kategori og last opp.
@@ -227,7 +227,7 @@ function MaterialRow({ m }: { m: RoleRoomMaterial }) {
           {m.originalName ?? m.title}
         </Typography>
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.2, flexWrap: 'wrap', rowGap: 0.2 }}>
-          <Chip label={CATEGORY_LABEL[m.entryType] ?? 'Annet'} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: 'rgba(196,181,253,0.95)', background: 'rgba(168,85,247,0.14)' }} />
+          <Chip label={CATEGORY_LABEL[m.entryType] ?? 'Annet'} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: 'rgba(196,181,253,0.95)', background: 'rgba(118, 102, 230,0.14)' }} />
           {m.fileSize ? <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.72rem' }}>{fmtSize(m.fileSize)}</Typography> : null}
         </Stack>
       </Box>

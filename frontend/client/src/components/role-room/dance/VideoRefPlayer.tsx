@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { OpenInNew as OpenInNewIcon } from '@mui/icons-material';
 
-const PURPLE_BORDER = 'rgba(139,92,246,0.25)';
+const PURPLE_BORDER = 'rgba(117, 107, 231,0.25)';
 
 interface ParsedSource {
   kind: 'youtube' | 'vimeo' | 'direct' | 'unknown';

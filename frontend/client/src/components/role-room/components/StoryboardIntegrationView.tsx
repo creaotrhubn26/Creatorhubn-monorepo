@@ -209,7 +209,7 @@ const BEAT_TAG_OPTIONS: StoryboardBeatTag[] = ['ESTABLISHING', 'TENSION', 'BEAT'
 const BEAT_TAG_STYLES: Record<StoryboardBeatTag, { bg: string; fg: string }> = {
   ESTABLISHING: { bg: 'rgba(100,116,139,0.28)', fg: 'rgba(226,232,240,0.95)' },
   TENSION: { bg: 'rgba(245,158,11,0.22)', fg: 'rgba(253,230,138,0.98)' },
-  BEAT: { bg: 'rgba(168,85,247,0.22)', fg: 'rgba(233,213,255,0.98)' },
+  BEAT: { bg: 'rgba(118, 102, 230,0.22)', fg: 'rgba(222, 219, 249,0.98)' },
   ACTION: { bg: 'rgba(239,68,68,0.22)', fg: 'rgba(254,202,202,0.98)' },
   DIALOGUE: { bg: 'rgba(16,185,129,0.2)', fg: 'rgba(209,250,229,0.98)' },
   RESOLUTION: { bg: 'rgba(56,189,248,0.2)', fg: 'rgba(224,242,254,0.98)' },
@@ -320,7 +320,7 @@ const STYLE_PRESETS: Record<StylePresetId, StylePreset> = {
     label: 'Sci-fi neon',
     description: 'Mørk neon-stil for cyberpunk og futuristisk sci-fi.',
     brush: { type: 'marker', color: '#00d4ff', size: 5 },
-    palette: ['#00d4ff', '#ff00ff', '#ffff00', '#00ff00', '#9c27b0', '#000020'],
+    palette: ['#00d4ff', '#4e24db', '#ffff00', '#00ff00', '#4227b0', '#000020'],
     aiPromptSuffix: 'cyberpunk sci-fi concept art, neon-lit, holographic interfaces, dark atmospheric environment, rim light from magenta and cyan sources, futuristic architecture',
     canvasTint: '#0a0a1f',
   },
@@ -678,7 +678,7 @@ const renderStrokesToThumbnailDataUrl = (
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = stroke.opacity ?? 1;
         ctx.font = `700 ${Math.max(10, 52 * scale)}px Caveat, "Segoe Script", cursive`;
-        ctx.fillStyle = stroke.color || '#8b5cf6';
+        ctx.fillStyle = stroke.color || '#756be7';
         ctx.fillText(String(annotationText).toUpperCase(), stroke.points[0].x * scale, stroke.points[0].y * scale);
         ctx.restore();
         continue;
@@ -2761,7 +2761,7 @@ const StoryboardView: React.FC<{
               variant="contained"
               data-testid="storyboard-board-pro-button"
               onClick={() => setBoardProOpen(true)}
-              sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', flexShrink: 0, fontWeight: 700 }}
+              sx={{ bgcolor: '#756be7', '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', flexShrink: 0, fontWeight: 700 }}
             >
               Board Pro
             </Button>
@@ -2771,7 +2771,7 @@ const StoryboardView: React.FC<{
                 variant="outlined"
                 data-testid="storyboard-versions-button"
                 onClick={() => setVersionsDialogOpen(true)}
-                sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none', flexShrink: 0 }}
+                sx={{ borderColor: 'rgba(117, 107, 231,0.5)', color: '#9d97ee', textTransform: 'none', flexShrink: 0 }}
               >
                 Versions ({versionLog?.length ?? 0})
               </Button>
@@ -2964,7 +2964,7 @@ const StoryboardView: React.FC<{
               iconSrc={storyboardEmptyPng}
               title="Bygg storyboardet ditt"
               subtitle="Hver frame representerer ett shot. Start med å legge til det første — du kan tegne, importere bilder og koble frames til manus."
-              color="#b86bff"
+              color="#8d80ea"
               buttonLabel="Opprett første frame"
               onAction={handleAddFrame}
             />
@@ -3489,7 +3489,7 @@ const StoryboardView: React.FC<{
                             label={`Av: ${authorLabel}`}
                             size="small"
                             onClick={() => setLibraryAuthorFilter(authorLabel)}
-                            sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: 'rgba(243,232,255,0.95)' }}
+                            sx={{ bgcolor: 'rgba(118, 102, 230,0.16)', color: 'rgba(237, 235, 252,0.95)' }}
                           />
                           <Chip
                             label={`Mappe: ${folderLabel}`}
@@ -4317,8 +4317,8 @@ const StoryboardView: React.FC<{
                   gap: 1.25,
                   p: 1.25,
                   borderRadius: 1.5,
-                  border: reversedIndex === 0 ? '1px solid rgba(139,92,246,0.55)' : '1px solid rgba(148,163,184,0.2)',
-                  bgcolor: reversedIndex === 0 ? 'rgba(139,92,246,0.08)' : 'rgba(13,17,23,0.7)',
+                  border: reversedIndex === 0 ? '1px solid rgba(117, 107, 231,0.55)' : '1px solid rgba(148,163,184,0.2)',
+                  bgcolor: reversedIndex === 0 ? 'rgba(117, 107, 231,0.08)' : 'rgba(13,17,23,0.7)',
                 }}
               >
                 <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
@@ -4343,7 +4343,7 @@ const StoryboardView: React.FC<{
                       v{entry.v}
                     </Typography>
                     {reversedIndex === 0 && (
-                      <Chip label="Current Version" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(139,92,246,0.25)', color: '#c4b5fd' }} />
+                      <Chip label="Current Version" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(117, 107, 231,0.25)', color: '#c4b5fd' }} />
                     )}
                     <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)' }}>
                       {relativeTime(entry.at)}{entry.author ? ` · ${entry.author}` : ''}
@@ -4374,7 +4374,7 @@ const StoryboardView: React.FC<{
                   onSaveVersion?.(versionSummary);
                   setVersionSummary('');
                 }}
-                sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, flexShrink: 0 }}
+                sx={{ bgcolor: '#756be7', '&:hover': { bgcolor: '#5446e1' }, flexShrink: 0 }}
               >
                 Lagre versjon
               </Button>
@@ -4569,7 +4569,7 @@ const StoryboardFrameCard: React.FC<{
               label={frame.variantLabel}
               size="small"
               sx={{
-                bgcolor: 'rgba(139,92,246,0.9)',
+                bgcolor: 'rgba(117, 107, 231,0.9)',
                 color: 'white',
               }}
             />
@@ -4586,7 +4586,7 @@ const StoryboardFrameCard: React.FC<{
               position: 'absolute',
               top: hasPreviewImage ? 48 : 42,
               right: 8,
-              bgcolor: 'rgba(139,92,246,0.9)',
+              bgcolor: 'rgba(117, 107, 231,0.9)',
               color: 'white',
               '& .MuiChip-icon': { color: 'white' },
             }}
@@ -4637,9 +4637,9 @@ const StoryboardFrameCard: React.FC<{
                 position: 'absolute',
                 bottom: 8,
                 left: 8,
-                bgcolor: 'rgba(139,92,246,0.9)',
+                bgcolor: 'rgba(117, 107, 231,0.9)',
                 color: 'white',
-                '&:hover': { bgcolor: 'rgba(139,92,246,1)' },
+                '&:hover': { bgcolor: 'rgba(117, 107, 231,1)' },
               }}
             >
               <BrushIcon fontSize="small" />
@@ -4727,7 +4727,7 @@ const StoryboardFrameCard: React.FC<{
             <Chip
               label={`${frame.shotType || frame.cameraAngle}${frame.movement ? ` · ${frame.movement}` : ''}`}
               size="small"
-              sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: 'rgba(233,213,255,0.98)', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(117, 107, 231,0.2)', color: 'rgba(222, 219, 249,0.98)', fontWeight: 600 }}
             />
             {typeof frame.lensMm === 'number' && (
               <Chip label={`${frame.lensMm}mm`} size="small" sx={{ bgcolor: 'rgba(99,102,241,0.18)', color: 'rgba(224,231,255,0.95)' }} />
@@ -4908,9 +4908,9 @@ const BoardStripView: React.FC<{
             p: 1.5,
             borderRadius: 1.5,
             cursor: 'pointer',
-            border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.18)',
-            bgcolor: isActive ? 'rgba(139,92,246,0.07)' : 'rgba(13,17,23,0.75)',
-            '&:hover': { borderColor: 'rgba(139,92,246,0.55)' },
+            border: isActive ? '2px solid #756be7' : '1px solid rgba(148,163,184,0.18)',
+            bgcolor: isActive ? 'rgba(117, 107, 231,0.07)' : 'rgba(13,17,23,0.75)',
+            '&:hover': { borderColor: 'rgba(117, 107, 231,0.55)' },
           }}
         >
           {/* Venstre: shot-kode + action/dialog + notes */}
@@ -5000,7 +5000,7 @@ const BoardStripView: React.FC<{
       onClick={onAddFrame}
       startIcon={<AddIcon />}
       data-testid="board-strip-add-shot"
-      sx={{ alignSelf: 'flex-start', borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa' }}
+      sx={{ alignSelf: 'flex-start', borderColor: 'rgba(117, 107, 231,0.5)', color: '#9d97ee' }}
     >
       Add Shot
     </Button>
@@ -5054,7 +5054,7 @@ const ReviewModeView: React.FC<{
           sx={{
             borderRadius: 1.5,
             overflow: 'hidden',
-            border: '1px solid rgba(139,92,246,0.3)',
+            border: '1px solid rgba(117, 107, 231,0.3)',
             bgcolor: 'rgba(13,17,23,0.9)',
             aspectRatio: '2.39 / 1',
             backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
@@ -5097,7 +5097,7 @@ const ReviewModeView: React.FC<{
                 sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(13,17,23,0.8)', border: '1px solid rgba(148,163,184,0.18)' }}
               >
                 <Stack direction="row" spacing={1} alignItems="baseline">
-                  <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 700 }}>
+                  <Typography variant="caption" sx={{ color: '#9d97ee', fontWeight: 700 }}>
                     {comment.role}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.75)' }}>
@@ -5179,7 +5179,7 @@ const ReviewModeView: React.FC<{
                 borderRadius: 1,
                 overflow: 'hidden',
                 cursor: 'pointer',
-                border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.22)',
+                border: isActive ? '2px solid #756be7' : '1px solid rgba(148,163,184,0.22)',
               }}
             >
               <Box
@@ -5250,7 +5250,7 @@ const SceneTimelineStrip: React.FC<{
                 cursor: 'pointer',
                 borderRadius: 1,
                 overflow: 'hidden',
-                border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.25)',
+                border: isActive ? '2px solid #756be7' : '1px solid rgba(148,163,184,0.25)',
                 bgcolor: 'rgba(13,17,23,0.9)',
               }}
             >
@@ -5515,7 +5515,7 @@ const ShotListView: React.FC<{
             size="small"
             variant="outlined"
             data-testid="shot-list-export-csv"
-            sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none' }}
+            sx={{ borderColor: 'rgba(117, 107, 231,0.5)', color: '#9d97ee', textTransform: 'none' }}
             onClick={() => {
               const escapeCsv = (value: unknown) => {
                 const text = String(value ?? '');

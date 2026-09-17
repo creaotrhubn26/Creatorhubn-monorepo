@@ -40,7 +40,7 @@ type MobileShotStatus = 'planned' | 'shot' | 'selected' | 'missing';
 const STATUS_META: Record<MobileShotStatus, { label: string; icon: React.ReactNode; color: string; bg: string }> = {
   planned: { label: 'Planlagt', icon: <PlannedIcon fontSize="small" />, color: '#475569', bg: 'rgba(100,116,139,0.12)' },
   shot: { label: 'Tatt', icon: <CheckCircleIcon fontSize="small" />, color: '#047857', bg: 'rgba(16,185,129,0.16)' },
-  selected: { label: 'Valgt', icon: <SelectedIcon fontSize="small" />, color: '#6d28d9', bg: 'rgba(124,58,237,0.16)' },
+  selected: { label: 'Valgt', icon: <SelectedIcon fontSize="small" />, color: '#3928d9', bg: 'rgba(84, 70, 225,0.16)' },
   missing: { label: 'Mangler', icon: <MissingIcon fontSize="small" />, color: '#b91c1c', bg: 'rgba(239,68,68,0.16)' },
 };
 

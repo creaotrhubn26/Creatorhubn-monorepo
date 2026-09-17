@@ -203,7 +203,7 @@ function NodeGraph({
                 height={NODE_HEIGHT}
                 rx="8"
                 fill="rgba(255,255,255,0.05)"
-                stroke={isPlayhead ? '#a78bfa' : color}
+                stroke={isPlayhead ? '#9d97ee' : color}
                 strokeWidth={isPlayhead ? 2.5 : 1.5}
               />
               {/* Header badge */}
@@ -367,7 +367,7 @@ function Timeline({
                 top: -10,
                 bottom: -4,
                 width: 2,
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 zIndex: 10,
               }}
             >
@@ -380,7 +380,7 @@ function Timeline({
                   height: 0,
                   borderLeft: '7px solid transparent',
                   borderRight: '7px solid transparent',
-                  borderTop: '8px solid #a78bfa',
+                  borderTop: '8px solid #9d97ee',
                 }}
               />
             </Box>
@@ -403,7 +403,7 @@ function Timeline({
         <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
           <SkipPreviousIcon fontSize="small" />
         </IconButton>
-        <IconButton sx={{ color: '#fff', bgcolor: 'rgba(139,92,246,0.3)', '&:hover': { bgcolor: 'rgba(139,92,246,0.5)' } }}>
+        <IconButton sx={{ color: '#fff', bgcolor: 'rgba(117, 107, 231,0.3)', '&:hover': { bgcolor: 'rgba(117, 107, 231,0.5)' } }}>
           <PlayArrowIcon />
         </IconButton>
         <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -518,11 +518,11 @@ export const EditModeWorkspace: React.FC<EditModeWorkspaceProps> = ({ projectId,
             disabled={generating}
             sx={{
               color: '#c4b5fd',
-              borderColor: 'rgba(139,92,246,0.3)',
+              borderColor: 'rgba(117, 107, 231,0.3)',
               fontSize: 11,
               fontWeight: 700,
               letterSpacing: 0.5,
-              '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
+              '&:hover': { borderColor: 'var(--role-violet, #756be7)', bgcolor: 'rgba(117, 107, 231,0.1)' },
             }}
           >
             {generating ? 'GENERERER...' : 'GENERER DRAFT'}
@@ -584,12 +584,12 @@ export const EditModeWorkspace: React.FC<EditModeWorkspaceProps> = ({ projectId,
           <Button
             fullWidth
             sx={{
-              bgcolor: 'rgba(139,92,246,0.2)',
+              bgcolor: 'rgba(117, 107, 231,0.2)',
               color: '#c4b5fd',
               fontWeight: 700,
               letterSpacing: 0.5,
               fontSize: 11,
-              '&:hover': { bgcolor: 'rgba(139,92,246,0.3)' },
+              '&:hover': { bgcolor: 'rgba(117, 107, 231,0.3)' },
             }}
             onClick={handleGenerateDraft}
             disabled={generating}
@@ -621,9 +621,9 @@ export const EditModeWorkspace: React.FC<EditModeWorkspaceProps> = ({ projectId,
               key={sug.id}
               sx={{
                 p: 0.75,
-                bgcolor: idx === 0 ? 'rgba(139,92,246,0.1)' : 'rgba(255,255,255,0.02)',
+                bgcolor: idx === 0 ? 'rgba(117, 107, 231,0.1)' : 'rgba(255,255,255,0.02)',
                 border: '1px solid',
-                borderColor: idx === 0 ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.05)',
+                borderColor: idx === 0 ? 'rgba(117, 107, 231,0.3)' : 'rgba(255,255,255,0.05)',
                 borderRadius: 1,
                 cursor: 'pointer',
               }}

@@ -150,7 +150,7 @@ export function IndustryTab() {
   }, [pipeline, cohortFilter, query]);
 
   const kpis = [
-    { id: 'promotert', label: 'Promoterte', value: pipeline.filter((r) => r.status !== 'none').length, hint: 'På Talents-registeret', icon: <TalentIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
+    { id: 'promotert', label: 'Promoterte', value: pipeline.filter((r) => r.status !== 'none').length, hint: 'På Talents-registeret', icon: <TalentIcon />, bg: 'rgba(117, 107, 231,0.16)', c: '#c4b5fd' },
     { id: 'claimet', label: 'Overtatt av student', value: pipeline.filter((r) => r.status === 'claimed').length, hint: 'Studenten styrer selv', icon: <ClaimedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     { id: 'showreel', label: 'Med showreel', value: pipeline.filter((r) => r.hasShowreel).length, hint: 'Klar for visning', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
     { id: 'sokbar', label: 'Søkbare', value: pipeline.filter((r) => r.searchable).length, hint: 'Dukker opp i casting-søk', icon: <SearchIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
@@ -170,7 +170,7 @@ export function IndustryTab() {
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><IndustryIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><IndustryIcon /></Box>
           <Box>
             <T eid="edu-br-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Bransje</T>
             <T eid="edu-br-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Avgangs-pipeline: fra klasserom til rollebesetning. Promoter studenter til Talents-registeret, gjør profilene søkbare for byråer/casting, og styr avgangs-showcase.</T>
@@ -184,7 +184,7 @@ export function IndustryTab() {
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
       <Alert severity="info" icon={<TalentIcon fontSize="inherit" />}
-        sx={{ bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
+        sx={{ bgcolor: 'rgba(117, 107, 231,0.08)', border: '1px solid rgba(117, 107, 231,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
         <T eid="edu-br-consent" component="span">Samtykke først: en promotert profil er <b>ikke</b> synlig for byråer/casting før studenten selv har overtatt den og gitt consent. Skolen verifiserer utdanningen; studenten eier profilen.</T>
       </Alert>
 
@@ -233,7 +233,7 @@ export function IndustryTab() {
           return (
             <Box key={r.studentId} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', minWidth: 560, alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(r.name)}</Avatar>
+                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(117, 107, 231,0.3)', color: '#dedbf9' }}>{initials(r.name)}</Avatar>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Typography>
               </Stack>
               <Typography sx={{ fontSize: 12.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pr: 1 }}>{cohortName(r.cohortId)}</Typography>
@@ -246,7 +246,7 @@ export function IndustryTab() {
               <Stack direction="row" spacing={0.25} sx={{ justifySelf: 'end' }} alignItems="center">
                 <Button size="small" variant={r.status === 'none' ? 'contained' : 'outlined'} startIcon={r.status === 'none' ? <TalentIcon sx={{ fontSize: '15px !important' }} /> : <EditIcon sx={{ fontSize: '15px !important' }} />} onClick={() => openEdit(r)}
                   sx={r.status === 'none'
-                    ? { bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }
+                    ? { bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }
                     : { borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>
                   {r.status === 'none' ? 'Promoter' : 'Rediger'}
                 </Button>
@@ -259,7 +259,7 @@ export function IndustryTab() {
 
       {/* Rediger/promoter-dialog */}
       <Dialog open={!!edit} onClose={() => setEdit(null)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#111018', color: '#fff', border: '1px solid rgba(117, 107, 231,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>{edit?.status === 'none' ? `Promoter ${edit?.name} til Talents` : `Talent-attributter — ${edit?.name}`}</DialogTitle>
         <DialogContent>
           {edit?.status === 'none' && (
@@ -306,13 +306,13 @@ export function IndustryTab() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEdit(null)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={save} disabled={busy || (edit?.status === 'none' && !attested)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{busy ? 'Lagrer…' : edit?.status === 'none' ? 'Promoter' : 'Lagre attributter'}</Button>
+          <Button variant="contained" onClick={save} disabled={busy || (edit?.status === 'none' && !attested)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700 }}>{busy ? 'Lagrer…' : edit?.status === 'none' ? 'Promoter' : 'Lagre attributter'}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Avgangs-showcase-dialog */}
       <Dialog open={showcaseOpen} onClose={() => setShowcaseOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#111018', color: '#fff', border: '1px solid rgba(117, 107, 231,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Avgangs-showcase</DialogTitle>
         <DialogContent>
           <T eid="edu-br-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>Promoterte talenter i kullet. Byråer/casting ser kun de studentene selv har gitt samtykke til.</T>
@@ -322,7 +322,7 @@ export function IndustryTab() {
             <Typography sx={{ fontSize: 13, color: 'text.secondary', py: 2 }}>Ingen promoterte talenter i dette kullet ennå.</Typography>
           ) : showcase.map((s) => (
             <Stack key={s.talentId} direction="row" alignItems="center" spacing={1.5} sx={{ py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(s.name)}</Avatar>
+              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(117, 107, 231,0.3)', color: '#dedbf9' }}>{initials(s.name)}</Avatar>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</Typography>

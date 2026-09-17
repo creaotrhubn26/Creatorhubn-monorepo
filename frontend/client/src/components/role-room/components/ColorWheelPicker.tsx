@@ -136,7 +136,7 @@ const PRESET_COLORS = [
   // Cool colors
   '#44ff44', '#44ffcc', '#44ccff', '#4488ff',
   // Purple/Pink
-  '#8844ff', '#cc44ff', '#ff44cc', '#ff4488',
+  '#6a5ee5', '#755ee5', '#855ee5', '#ff4488',
   // Neutrals
   '#ffffff', '#cccccc', '#888888', '#444444', '#000000',
   // Skin tones
@@ -361,7 +361,7 @@ export const ColorWheelPicker: FC<ColorWheelPickerProps> = ({
               min={0}
               max={100}
               sx={{
-                color: 'var(--role-violet, #8b5cf6)',
+                color: 'var(--role-violet, #756be7)',
                 '& .MuiSlider-track': {
                   background: `linear-gradient(to right, #000, ${hsbToHex({ ...hsb, b: 100 })})`,
                 },

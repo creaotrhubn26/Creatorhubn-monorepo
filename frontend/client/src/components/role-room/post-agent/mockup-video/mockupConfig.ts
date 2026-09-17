@@ -80,7 +80,7 @@ export const BACKGROUND_PRESETS: Record<string, { from?: string; to?: string; di
   brand: { from: '#312e81', to: '#0b1120', direction: 'diagonal' },
   sunset: { from: '#7c2d12', to: '#1e1b4b', direction: 'diagonal' },
   ocean: { from: '#0e7490', to: '#0b1120', direction: 'vertical' },
-  plum: { from: '#a030c0', to: '#0a0518', direction: 'diagonal' },
+  plum: { from: '#4a30c0', to: '#060518', direction: 'diagonal' },
   light: { from: '#f1f5f9', to: '#cbd5e1', direction: 'vertical' },
   black: { from: '#000000', solid: true },
 };

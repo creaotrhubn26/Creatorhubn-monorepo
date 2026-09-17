@@ -133,7 +133,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
     const dueThisWeek = assignments.filter((a) => { const d = relDue(a.dueAt); return !d.overdue && a.dueAt && (new Date(a.dueAt).getTime() - Date.now()) < 7 * 86_400_000; }).length;
     const missing = assignments.reduce((n, a) => n + Math.max(0, a.submittedCount - a.reviewedCount), 0);
     return [
-      { id: 'aktive', label: 'Aktive oppgaver', value: active, hint: 'Publisert og pågående', icon: <ActiveIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
+      { id: 'aktive', label: 'Aktive oppgaver', value: active, hint: 'Publisert og pågående', icon: <ActiveIcon />, bg: 'rgba(117, 107, 231,0.16)', c: '#c4b5fd' },
       { id: 'vurder', label: 'Til vurdering', value: toReview, hint: 'Innleveringer venter', icon: <ReviewIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
       { id: 'frist', label: 'Forfaller denne uken', value: dueThisWeek, hint: 'Kommende frister', icon: <DueIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
       { id: 'mangler', label: 'Manglende innleveringer', value: missing, hint: 'Krever oppfølging', icon: <MissingIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
@@ -157,7 +157,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssignmentIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssignmentIcon /></Box>
           <Box>
             <T eid="edu-op-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Oppgaver</T>
             <T eid="edu-op-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Oppgave-brief → student-leveranse → frist, koblet til kull, produksjon og læringsmål.</T>
@@ -168,7 +168,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
             <T eid="edu-op-btn-template" component="span" sx={{ fontWeight: 600 }}>Opprett fra mal</T>
           </Button>
           <Menu anchorEl={tmplAnchor} open={!!tmplAnchor} onClose={() => setTmplAnchor(null)}
-            PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', maxWidth: 320 } }}>
+            PaperProps={{ sx: { bgcolor: '#111018', color: '#fff', border: '1px solid rgba(117, 107, 231,0.3)', maxWidth: 320 } }}>
             {ASSIGNMENT_TEMPLATES.map((t) => (
               <MenuItem key={t.id} onClick={() => applyTemplate(t)} sx={{ display: 'block', py: 1 }}>
                 <ListItemText primary={t.name} secondary={t.description}
@@ -177,7 +177,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               </MenuItem>
             ))}
           </Menu>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-op-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny oppgave</T>
           </Button>
         </Stack>
@@ -186,7 +186,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
       <Collapse in={creating}>
-        <Panel sx={{ border: '1px solid rgba(139,92,246,0.35)' }}>
+        <Panel sx={{ border: '1px solid rgba(117, 107, 231,0.35)' }}>
           <Stack spacing={1.5}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
               <TextField size="small" label="Tittel" value={f.title} onChange={(e) => setField('title', e.target.value)} fullWidth />
@@ -226,7 +226,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
             </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
               <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" onClick={handleCreate} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Publiser oppgave'}</Button>
+              <Button variant="contained" onClick={handleCreate} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Publiser oppgave'}</Button>
             </Stack>
           </Stack>
         </Panel>
@@ -291,8 +291,8 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
                   {a.isArbeidskrav && <Chip label="Arbeidskrav" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', flexShrink: 0 }} />}
                   {a.isExam && <Chip label="Eksamen" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(236,72,153,0.18)', color: '#ec4899', flexShrink: 0 }} />}
                   {vurderingsformLabel(a.vurderingsform) && <Chip label={vurderingsformLabel(a.vurderingsform)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 600, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)', flexShrink: 0 }} />}
-                  {artifactLabel(a.artifactKind) && <Chip label={artifactLabel(a.artifactKind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.18)', color: '#c4b5fd', flexShrink: 0 }} />}
-                  {a.artifactView && stegLabel(a.artifactView) && <Chip label={stegLabel(a.artifactView)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.10)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.28)', flexShrink: 0 }} />}
+                  {artifactLabel(a.artifactKind) && <Chip label={artifactLabel(a.artifactKind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(117, 107, 231,0.18)', color: '#c4b5fd', flexShrink: 0 }} />}
+                  {a.artifactView && stegLabel(a.artifactView) && <Chip label={stegLabel(a.artifactView)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(117, 107, 231,0.10)', color: '#c4b5fd', border: '1px solid rgba(117, 107, 231,0.28)', flexShrink: 0 }} />}
                 </Stack>
                 <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.productionTitle ? `Produksjon · ${a.productionTitle}` : (a.brief || 'Oppgave')}</Typography>
               </Box>

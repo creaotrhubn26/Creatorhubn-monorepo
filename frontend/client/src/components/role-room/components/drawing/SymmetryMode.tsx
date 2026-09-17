@@ -88,10 +88,10 @@ const SymmetryButton = styled(IconButton, {
 })<{ active?: boolean }>(({ active }) => ({
   borderRadius: 6,
   padding: 6,
-  backgroundColor: active ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
-  border: active ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+  backgroundColor: active ? 'rgba(117, 107, 231, 0.3)' : 'transparent',
+  border: active ? '1px solid rgba(117, 107, 231, 0.5)' : '1px solid transparent',
   '&:hover': {
-    backgroundColor: active ? 'rgba(139, 92, 246, 0.4)' : 'rgba(255,255,255,0.1)',
+    backgroundColor: active ? 'rgba(117, 107, 231, 0.4)' : 'rgba(255,255,255,0.1)',
   },
 }));
 
@@ -192,7 +192,7 @@ export function drawSymmetryGuides(
   const axisY = settings.axisY * canvasHeight;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(139, 92, 246, 0.5)';
+  ctx.strokeStyle = 'rgba(117, 107, 231, 0.5)';
   ctx.lineWidth = 1;
   ctx.setLineDash([8, 4]);
 
@@ -415,7 +415,7 @@ export const SymmetryMode: React.FC<SymmetryModeProps> = ({
             px: 1,
             py: 0.25,
             borderRadius: 2,
-            bgcolor: 'rgba(139, 92, 246, 0.2)',
+            bgcolor: 'rgba(117, 107, 231, 0.2)',
           }}
         >
           <Box
@@ -423,10 +423,10 @@ export const SymmetryMode: React.FC<SymmetryModeProps> = ({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              bgcolor: 'var(--role-violet, #8b5cf6)',
+              bgcolor: 'var(--role-violet, #756be7)',
             }}
           />
-          <Typography variant="caption" sx={{ color: '#a78bfa', fontSize: 10 }}>
+          <Typography variant="caption" sx={{ color: '#9d97ee', fontSize: 10 }}>
             {settings.type === 'radial' 
               ? `${settings.radialSegments}x` 
               : settings.type.charAt(0).toUpperCase() + settings.type.slice(1)}

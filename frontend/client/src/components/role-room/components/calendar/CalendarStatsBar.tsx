@@ -32,9 +32,9 @@ export interface CalendarStatsBarProps {
 }
 
 const PILL_PALETTE = {
-  total: { color: 'var(--role-violet, #8b5cf6)', bg: 'rgba(139,92,246,0.14)' },
+  total: { color: 'var(--role-violet, #756be7)', bg: 'rgba(117, 107, 231,0.14)' },
   shooting: { color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
-  rehearsal: { color: '#a78bfa', bg: 'rgba(167,139,250,0.14)' },
+  rehearsal: { color: '#9d97ee', bg: 'rgba(157, 151, 238,0.14)' },
   audition: { color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
   next: { color: 'var(--role-cyan, #22d3ee)', bg: 'rgba(34,211,238,0.14)' },
 };
@@ -159,7 +159,7 @@ export const CalendarStatsBar: React.FC<CalendarStatsBarProps> = ({ events, prog
           <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
             Fremdrift
           </Typography>
-          <Typography sx={{ color: '#a78bfa', fontSize: '0.72rem', fontWeight: 700 }}>
+          <Typography sx={{ color: '#9d97ee', fontSize: '0.72rem', fontWeight: 700 }}>
             {computedProgress}%
           </Typography>
         </Box>
@@ -171,7 +171,7 @@ export const CalendarStatsBar: React.FC<CalendarStatsBarProps> = ({ events, prog
             borderRadius: 3,
             bgcolor: 'rgba(255,255,255,0.08)',
             '& .MuiLinearProgress-bar': {
-              bgcolor: computedProgress >= 70 ? '#10b981' : computedProgress >= 40 ? '#a78bfa' : '#f59e0b',
+              bgcolor: computedProgress >= 70 ? '#10b981' : computedProgress >= 40 ? '#9d97ee' : '#f59e0b',
               borderRadius: 3,
             },
           }}

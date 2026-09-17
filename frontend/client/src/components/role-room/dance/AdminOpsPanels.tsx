@@ -85,7 +85,7 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
               <Chip
                 size="small"
                 label={p.performanceDate ? new Date(p.performanceDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—'}
-                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight }}
               />
               <Chip
                 size="small"
@@ -182,7 +182,7 @@ export const PerformancesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
             sx={{
               cursor: 'pointer', px: 1.5, py: 0.5, fontSize: 11, fontWeight: 700, letterSpacing: 1,
               color: mode === m ? '#fff' : 'rgba(229,231,235,0.5)',
-              bgcolor: mode === m ? 'rgba(167,139,250,0.22)' : 'transparent',
+              bgcolor: mode === m ? 'rgba(157, 151, 238,0.22)' : 'transparent',
               border: `1px solid ${mode === m ? danceFlowColors.lavender : 'rgba(255,255,255,0.12)'}`,
               borderRadius: 0.5,
               textTransform: 'uppercase',
@@ -266,7 +266,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
             sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55` }}
           />
           {item.bpm ? (
-            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }} />
+            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight }} />
           ) : null}
           {item.musicalKey ? (
             <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
@@ -498,7 +498,7 @@ const GrantsStatStrip: React.FC<GrantsStatProps> = ({ list }) => {
         <Chip
           size="small"
           label={`Tildelt totalt: ${formatNok(stats.totalAwardedKr)}`}
-          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
         />
       ) : null}
     </Stack>
@@ -583,10 +583,10 @@ export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
             data-testid={`grants-template-${t.id}`}
             sx={{
               height: 22, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
-              bgcolor: 'rgba(167,139,250,0.12)',
+              bgcolor: 'rgba(157, 151, 238,0.12)',
               color: danceFlowColors.lavenderLight,
-              border: '1px solid rgba(167,139,250,0.35)',
-              '&:hover': { bgcolor: 'rgba(167,139,250,0.22)' },
+              border: '1px solid rgba(157, 151, 238,0.35)',
+              '&:hover': { bgcolor: 'rgba(157, 151, 238,0.22)' },
             }}
           />
         ))}
@@ -749,7 +749,7 @@ const UnionWorkDaysStrip: React.FC<{ memberships: ops.DanceUnionMembership[] }> 
         <Chip
           size="small"
           label={`${stats.totalThisYear} dager`}
-          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
+          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
       <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>

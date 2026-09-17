@@ -733,7 +733,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
                     <Typography component="span" sx={{ fontSize: '0.66rem', fontWeight: 700 }}>{color.label} · {color.hex.toUpperCase()}</Typography>
                   </Box>
                 ))}
-                <Box component="label" title="Velg egen farge" sx={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', background: 'conic-gradient(#ef4444,#facc15,#22c55e,#06b6d4,#6366f1,#d946ef,#ef4444)', border: '1px solid rgba(255,255,255,0.48)' }}>
+                <Box component="label" title="Velg egen farge" sx={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', background: 'conic-gradient(#ef4444,#facc15,#22c55e,#06b6d4,#6366f1,#6f52e3,#ef4444)', border: '1px solid rgba(255,255,255,0.48)' }}>
                   <Box component="input" type="color" aria-label="Velg egen plaggfarge" value={targetColor} onChange={(event) => {
                     setTargetColorOverrides((current) => ({ ...current, [productId]: event.target.value.toUpperCase() }));
                     setVariantOverrides((current) => { const next = { ...current }; delete next[productId]; return next; });

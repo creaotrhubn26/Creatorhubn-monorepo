@@ -224,7 +224,7 @@ export const QUICK_FILTER_PRESETS: Array<{
     label: 'VFX',
     labelNo: 'VFX',
     query: { vfxOnly: true },
-    color: '#8B5CF6',
+    color: '#756be7',
   },
   {
     id: 'night',

@@ -431,7 +431,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
             size="small"
             sx={{
               alignSelf: 'flex-start',
-              bgcolor: 'rgba(167,139,250,0.16)',
+              bgcolor: 'rgba(157, 151, 238,0.16)',
               color: '#ddd6fe',
               fontWeight: 600,
               '& .MuiChip-icon': { color: '#ddd6fe' },
@@ -457,7 +457,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -528,7 +528,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* Relevante features */}
         <Box>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <AssignmentIcon sx={{ color: '#a78bfa' }} />
+            <AssignmentIcon sx={{ color: '#9d97ee' }} />
             <Typography
               component="h2"
               sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.8rem' } }}
@@ -542,9 +542,9 @@ function PageView({ config }: { config: StudentPageConfig }) {
                 key={f}
                 label={f}
                 sx={{
-                  bgcolor: 'rgba(167,139,250,0.10)',
+                  bgcolor: 'rgba(157, 151, 238,0.10)',
                   color: '#ddd6fe',
-                  border: '1px solid rgba(167,139,250,0.32)',
+                  border: '1px solid rgba(157, 151, 238,0.32)',
                   fontWeight: 500,
                 }}
               />
@@ -613,8 +613,8 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* CTA */}
         <Card
           sx={{
-            bgcolor: 'rgba(167,139,250,0.10)',
-            border: '1px solid rgba(167,139,250,0.32)',
+            bgcolor: 'rgba(157, 151, 238,0.10)',
+            border: '1px solid rgba(157, 151, 238,0.32)',
             mt: 2,
           }}
         >
@@ -633,7 +633,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -667,7 +667,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     textTransform: 'none',
                     fontWeight: 500,
                     fontSize: '0.82rem',
-                    '&:hover': { borderColor: 'rgba(167,139,250,0.48)', bgcolor: 'rgba(167,139,250,0.06)' },
+                    '&:hover': { borderColor: 'rgba(157, 151, 238,0.48)', bgcolor: 'rgba(157, 151, 238,0.06)' },
                   }}
                 >
                   {c.h1}

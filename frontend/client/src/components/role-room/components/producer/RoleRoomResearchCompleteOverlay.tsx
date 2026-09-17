@@ -920,7 +920,7 @@ const ConfettiLayer: React.FC = () => {
       }}
     >
       {pieces.map((i) => {
-        const colors = ['#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#a78bfa', '#22d3ee'];
+        const colors = ['#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#9d97ee', '#22d3ee'];
         const color = colors[i % colors.length];
         const left = (i * 7) % 100;
         const drift = `${(((i * 13) % 80) - 40)}px`;

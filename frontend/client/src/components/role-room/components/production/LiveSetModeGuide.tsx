@@ -182,7 +182,7 @@ function TierBadge({ tier }: { tier: 'MVP' | 'Pro' | 'Studio' }) {
   const colors: Record<string, string> = {
     MVP:    '#10B981',
     Pro:    '#F97316',
-    Studio: '#8B5CF6',
+    Studio: '#756be7',
   };
   return (
     <Chip
@@ -585,7 +585,7 @@ const STEPS: Step[] = [
               advance through setups in sequence. The Scene Plan tab keeps a visual
               tick-list of completed setups for the day.
             </Typography>
-            <Callout color="#8B5CF6">
+            <Callout color="#756be7">
               The Scene Plan is read-only in Live Set Mode — edits to shot order and scene
               content are made in the Stripboard and Shot List panels and reflected here
               automatically.
@@ -867,7 +867,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#8B5CF6">
+            <Callout color="#756be7">
               The WebSocket server routes messages to the{' '}
               <code>liveset:{'{'}projectId{'}'}:{'{'}shootingDayId{'}'}</code> room only —
               multiple productions can use the system simultaneously without interference.

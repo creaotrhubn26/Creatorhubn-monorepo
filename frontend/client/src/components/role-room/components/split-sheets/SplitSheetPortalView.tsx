@@ -372,7 +372,7 @@ export default function SplitSheetPortalView({
       case 'completed':
         return '#4caf50';
       case 'pending_signatures':
-        return '#9333ea';
+        return '#523ee0';
       default:
         return '#9e9e9e';
     }

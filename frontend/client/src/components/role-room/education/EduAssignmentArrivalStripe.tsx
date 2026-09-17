@@ -35,8 +35,8 @@ import { AssignmentSubmit } from './StudentWorkspace';
 import { ACCENT } from './_eduUi';
 
 /** RailTips-behandlingen 1:1 (`_eduUi.tsx:40`) — full ring + lav-alfa vask, ikke en side-stripe. */
-const WASH_BG = 'rgba(139,92,246,0.09)';
-const WASH_BORDER = '1px solid rgba(139,92,246,0.26)';
+const WASH_BG = 'rgba(117, 107, 231,0.09)';
+const WASH_BORDER = '1px solid rgba(117, 107, 231,0.26)';
 
 function readArrivalParams(): { edu: boolean; assignmentId: string | null } {
   if (typeof window === 'undefined') return { edu: false, assignmentId: null };

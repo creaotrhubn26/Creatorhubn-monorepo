@@ -197,7 +197,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
           <Chip
             label={config.tagline}
             size="small"
-            sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 600 }}
+            sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(157, 151, 238,0.16)', color: '#ddd6fe', fontWeight: 600 }}
           />
           <Typography
             component="h1"
@@ -214,7 +214,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -257,7 +257,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
             <Card key={v.title} sx={{ bgcolor: 'rgba(2,6,23,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
               <CardContent>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                  <v.Icon sx={{ color: '#a78bfa' }} />
+                  <v.Icon sx={{ color: '#9d97ee' }} />
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{v.title}</Typography>
                 </Stack>
                 <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.92rem' }}>{v.text}</Typography>
@@ -321,8 +321,8 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
         {/* CTA */}
         <Card
           sx={{
-            bgcolor: 'rgba(167,139,250,0.10)',
-            border: '1px solid rgba(167,139,250,0.32)',
+            bgcolor: 'rgba(157, 151, 238,0.10)',
+            border: '1px solid rgba(157, 151, 238,0.32)',
             mt: 2,
           }}
         >
@@ -341,7 +341,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -386,7 +386,7 @@ function AlternativesIndexView() {
                 bgcolor: 'rgba(2,6,23,0.42)',
                 border: '1px solid rgba(148,163,184,0.16)',
                 transition: 'border-color 0.2s',
-                '&:hover': { borderColor: 'rgba(167,139,250,0.48)' },
+                '&:hover': { borderColor: 'rgba(157, 151, 238,0.48)' },
               }}
             >
               <CardContent>
@@ -405,11 +405,11 @@ function AlternativesIndexView() {
                   size="small"
                   endIcon={<OpenInNewIcon />}
                   sx={{
-                    color: '#a78bfa',
-                    borderColor: 'rgba(167,139,250,0.32)',
+                    color: '#9d97ee',
+                    borderColor: 'rgba(157, 151, 238,0.32)',
                     textTransform: 'none',
                     fontWeight: 600,
-                    '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(167,139,250,0.08)' },
+                    '&:hover': { borderColor: '#9d97ee', bgcolor: 'rgba(157, 151, 238,0.08)' },
                   }}
                 >
                   Les sammenligningen

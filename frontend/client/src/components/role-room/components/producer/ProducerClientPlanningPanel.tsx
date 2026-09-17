@@ -349,7 +349,7 @@ function ProducerClientMaterialsSection({
       summary={materials.length > 0 ? `${materials.length} element` : 'Ingen sendt ennå'}
       badge={
         materials.length > 0 ? (
-          <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(192,132,252,0.18)', color: '#f5d0fe', fontWeight: 700, fontSize: '0.68rem' }} />
+          <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(158, 147, 237,0.18)', color: '#dcd6f8', fontWeight: 700, fontSize: '0.68rem' }} />
         ) : null
       }
     >
@@ -368,7 +368,7 @@ function ProducerClientMaterialsSection({
         <Stack spacing={1.4}>
           {groups.map((group) => (
             <Box key={group.type}>
-              <Typography sx={{ color: '#e9d5ff', fontWeight: 700, fontSize: '0.82rem', mb: 0.6 }}>
+              <Typography sx={{ color: '#dedbf9', fontWeight: 700, fontSize: '0.82rem', mb: 0.6 }}>
                 {group.label} · {group.items.length}
               </Typography>
               <Stack spacing={0.7}>
@@ -902,7 +902,7 @@ export default function ProducerClientPlanningPanel({
                 key={item.label}
                 size="small"
                 label={`${item.label}: ${item.value}`}
-                sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff', maxWidth: '100%' }}
+                sx={{ bgcolor: 'rgba(118, 102, 230,0.14)', color: '#dedbf9', maxWidth: '100%' }}
               />
             ))}
           </Stack>
@@ -950,7 +950,7 @@ export default function ProducerClientPlanningPanel({
               <Chip
                 size="small"
                 label={storyLogicSnapshot.length > 0 ? `Den røde tråden ${storyLogicSnapshot.length} signaler` : 'Den røde tråden ikke fylt ut'}
-                sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
+                sx={{ bgcolor: 'rgba(118, 102, 230,0.14)', color: '#dedbf9' }}
               />
               {onOpenMedia ? (
                 <Button
@@ -1067,7 +1067,7 @@ export default function ProducerClientPlanningPanel({
                     </Typography>
                     <Stack direction="row" spacing={0.75} flexWrap="wrap">
                       <Chip size="small" label={loadSummary.headline} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
-                      <Chip size="small" label={`${contentCalendarCountByPhase[item.phase]} kalenderpunkt`} sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }} />
+                      <Chip size="small" label={`${contentCalendarCountByPhase[item.phase]} kalenderpunkt`} sx={{ bgcolor: 'rgba(158, 147, 237,0.14)', color: '#dedbf9' }} />
                     </Stack>
                   </Stack>
                   <Box
@@ -1139,10 +1139,10 @@ export default function ProducerClientPlanningPanel({
                       p: 1,
                       borderRadius: 1.25,
                       border: isContentLogicMoment
-                        ? '1px solid rgba(167,139,250,0.26)'
+                        ? '1px solid rgba(157, 151, 238,0.26)'
                         : '1px solid rgba(148,163,184,0.14)',
                       background: isContentLogicMoment
-                        ? 'rgba(76,29,149,0.14)'
+                        ? 'rgba(41, 29, 149,0.14)'
                         : 'rgba(15,23,42,0.55)',
                     }}
                   >
@@ -1153,7 +1153,7 @@ export default function ProducerClientPlanningPanel({
                             size="small"
                             label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                             sx={{
-                              bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
+                              bgcolor: isContentLogicMoment ? 'rgba(157, 151, 238,0.18)' : 'rgba(59,130,246,0.14)',
                               color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
                             }}
                           />
@@ -1161,8 +1161,8 @@ export default function ProducerClientPlanningPanel({
                             size="small"
                             label={isContentLogicMoment ? contentLogicMomentLabel : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
                             sx={{
-                              bgcolor: isContentLogicMoment ? 'rgba(34,211,238,0.14)' : 'rgba(192,132,252,0.14)',
-                              color: isContentLogicMoment ? '#cffafe' : '#e9d5ff',
+                              bgcolor: isContentLogicMoment ? 'rgba(34,211,238,0.14)' : 'rgba(158, 147, 237,0.14)',
+                              color: isContentLogicMoment ? '#cffafe' : '#dedbf9',
                             }}
                           />
                           <Chip
@@ -1185,7 +1185,7 @@ export default function ProducerClientPlanningPanel({
                         <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                           {moment.title}
                         </Typography>
-                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.9)' : 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
+                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(222, 219, 249,0.9)' : 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
                           {moment.detail || 'Ingen detaljer lagt inn ennå.'}
                         </Typography>
                         {isContentLogicMoment ? (

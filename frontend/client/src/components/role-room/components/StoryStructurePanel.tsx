@@ -115,7 +115,7 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
   conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
   rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
   climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
-  falling_action: { color: 'var(--role-violet, #8b5cf6)', label: 'Fallende handling', Icon: FallingActionIcon },
+  falling_action: { color: 'var(--role-violet, #756be7)', label: 'Fallende handling', Icon: FallingActionIcon },
   resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
   transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
   character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
@@ -125,7 +125,7 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
 // Generate character color
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
+    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#756be7',
     '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -838,8 +838,8 @@ const PacingPanel: FC<PacingPanelProps> = ({
             sx={{
               height: 16,
               borderRadius: 2,
-              bgcolor: 'rgba(139,92,246,0.2)',
-              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #8b5cf6)' },
+              bgcolor: 'rgba(117, 107, 231,0.2)',
+              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #756be7)' },
             }}
           />
         </Box>

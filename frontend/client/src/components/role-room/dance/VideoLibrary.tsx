@@ -47,7 +47,7 @@ const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
 const BG = danceFlowColors.bgBase;
 const CARD = danceFlowColors.bgCard;
-const BORDER = 'rgba(139,92,246,0.25)';
+const BORDER = 'rgba(117, 107, 231,0.25)';
 
 const KIND_LABEL: Record<VideoClipKind, string> = {
   rehearsal: 'Prøve',
@@ -56,7 +56,7 @@ const KIND_LABEL: Record<VideoClipKind, string> = {
 };
 
 const KIND_COLOR: Record<VideoClipKind, string> = {
-  rehearsal: '#a78bfa',
+  rehearsal: '#9d97ee',
   reference: danceFlowColors.gold,
   performance: danceFlowColors.successDark,
 };
@@ -283,7 +283,7 @@ export function VideoLibrary({
               disabled={uploadState.uploading}
               sx={{
                 bgcolor: PURPLE,
-                '&:hover': { bgcolor: '#7c3aed' },
+                '&:hover': { bgcolor: '#5446e1' },
                 textTransform: 'none', fontWeight: 600, fontSize: 12,
               }}
               data-testid="video-library-upload"
@@ -296,7 +296,7 @@ export function VideoLibrary({
                 value={uploadPct}
                 sx={{
                   height: 4, borderRadius: 1,
-                  bgcolor: 'rgba(139,92,246,0.18)',
+                  bgcolor: 'rgba(117, 107, 231,0.18)',
                   '& .MuiLinearProgress-bar': { bgcolor: PURPLE },
                 }}
               />
@@ -322,7 +322,7 @@ export function VideoLibrary({
               boxSizing: 'border-box',
               padding: '6px 8px',
               borderRadius: 4,
-              border: '1px solid rgba(139,92,246,0.25)',
+              border: '1px solid rgba(117, 107, 231,0.25)',
               background: '#0a0a0a',
               color: danceFlowColors.textSecondary,
               fontSize: 12,
@@ -357,9 +357,9 @@ export function VideoLibrary({
                         p: 0.75,
                         borderRadius: 1,
                         border: `1px solid ${isActive ? PURPLE : BORDER}`,
-                        bgcolor: isActive ? 'rgba(139,92,246,0.12)' : CARD,
+                        bgcolor: isActive ? 'rgba(117, 107, 231,0.12)' : CARD,
                         cursor: 'pointer',
-                        '&:hover': { bgcolor: 'rgba(139,92,246,0.08)' },
+                        '&:hover': { bgcolor: 'rgba(117, 107, 231,0.08)' },
                       }}
                       onClick={() => setActiveClipId(c.id)}
                     >
@@ -423,7 +423,7 @@ export function VideoLibrary({
             spacing={2}
             sx={{ minHeight: 320, color: 'rgba(229,231,235,0.5)', p: 4 }}
           >
-            <Chip label="Velg eller last opp et klipp" sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT }} />
+            <Chip label="Velg eller last opp et klipp" sx={{ bgcolor: 'rgba(117, 107, 231,0.18)', color: PURPLE_LIGHT }} />
           </Stack>
         )}
       </Box>

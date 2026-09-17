@@ -458,7 +458,7 @@ export function B2ArchiveTab({
                   <TableCell sx={{ color: 'rgba(203,213,225,0.7)' }}>{formatDate(file.lastModified)}</TableCell>
                   <TableCell align="right">
                     <Tooltip title="Last ned">
-                      <IconButton size="small" onClick={() => void handleDownload(file.key)} sx={{ color: '#a78bfa' }}>
+                      <IconButton size="small" onClick={() => void handleDownload(file.key)} sx={{ color: '#9d97ee' }}>
                         <DownloadIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>

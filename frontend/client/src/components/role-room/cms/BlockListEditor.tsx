@@ -157,14 +157,14 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
                 size="small"
                 onClick={() => setLocale(loc)}
                 sx={{
-                  bgcolor: active ? 'rgba(167,139,250,0.16)' : 'transparent',
+                  bgcolor: active ? 'rgba(157, 151, 238,0.16)' : 'transparent',
                   color: active ? '#ddd6fe' : 'rgba(203,213,225,0.78)',
-                  border: active ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(148,163,184,0.24)',
+                  border: active ? '1px solid rgba(157, 151, 238,0.5)' : '1px solid rgba(148,163,184,0.24)',
                   textTransform: 'uppercase',
                   fontWeight: 700,
                   fontSize: '0.74rem',
                   minWidth: 56,
-                  '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+                  '&:hover': { bgcolor: 'rgba(157, 151, 238,0.08)' },
                 }}
               >
                 {loc === 'no' ? '🇳🇴 NO' : '🇬🇧 EN'}
@@ -208,7 +208,7 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
         </DndContext>
       )}
 
-      <Card sx={{ bgcolor: 'rgba(167,139,250,0.06)', border: '1px dashed rgba(167,139,250,0.32)' }}>
+      <Card sx={{ bgcolor: 'rgba(157, 151, 238,0.06)', border: '1px dashed rgba(157, 151, 238,0.32)' }}>
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
             <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
@@ -229,7 +229,7 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
               variant="contained"
               startIcon={<AddIcon />}
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -277,7 +277,7 @@ function BlockCard({ block, index, total, onUpdate, onDelete, onMove, locale }: 
       <Card
         sx={{
           bgcolor: 'rgba(2,6,23,0.42)',
-          border: isDragging ? '1px solid rgba(167,139,250,0.6)' : '1px solid rgba(148,163,184,0.16)',
+          border: isDragging ? '1px solid rgba(157, 151, 238,0.6)' : '1px solid rgba(148,163,184,0.16)',
           boxShadow: isDragging ? '0 12px 32px rgba(0,0,0,0.4)' : 'none',
         }}
       >
@@ -300,7 +300,7 @@ function BlockCard({ block, index, total, onUpdate, onDelete, onMove, locale }: 
             <Chip
               label={BLOCK_LABELS[block.type]}
               size="small"
-              sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }}
+              sx={{ bgcolor: 'rgba(157, 151, 238,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }}
             />
             <Typography sx={{ color: 'rgba(148,163,184,0.65)', fontSize: '0.74rem', fontFamily: 'monospace' }}>
               #{index + 1}
@@ -414,7 +414,7 @@ function RichTextBlockEditor({ block, onUpdate }: { block: RichTextBlock; onUpda
           onChange={(v) => onUpdate({ ...block, text: v })}
           placeholder="Skriv brødtekst — bruk knappene over for bold, italic, overskrifter, lister …"
           minHeight={140}
-          accentColor="#a78bfa"
+          accentColor="#9d97ee"
         />
       </Box>
     </Stack>
@@ -437,7 +437,7 @@ function FaqEditor({ block, onUpdate }: { block: FaqBlock; onUpdate: (b: FaqBloc
           </IconButton>
         </Stack>
       ))}
-      <Button size="small" startIcon={<AddIcon />} onClick={() => upd([...block.items, { q: '', a: '' }])} sx={{ color: '#a78bfa', textTransform: 'none', alignSelf: 'flex-start' }}>
+      <Button size="small" startIcon={<AddIcon />} onClick={() => upd([...block.items, { q: '', a: '' }])} sx={{ color: '#9d97ee', textTransform: 'none', alignSelf: 'flex-start' }}>
         Nytt spørsmål
       </Button>
     </Stack>
@@ -488,7 +488,7 @@ function ComparisonEditor({ block, onUpdate }: { block: ComparisonBlock; onUpdat
           </IconButton>
         </Stack>
       ))}
-      <Button size="small" startIcon={<AddIcon />} onClick={() => updRows([...block.rows, { feature: '', roleRoom: 'yes', competitor: 'no' }])} sx={{ color: '#a78bfa', textTransform: 'none', alignSelf: 'flex-start' }}>
+      <Button size="small" startIcon={<AddIcon />} onClick={() => updRows([...block.rows, { feature: '', roleRoom: 'yes', competitor: 'no' }])} sx={{ color: '#9d97ee', textTransform: 'none', alignSelf: 'flex-start' }}>
         Ny rad
       </Button>
     </Stack>
@@ -540,7 +540,7 @@ function FeatureListEditor({ block, onUpdate }: { block: FeatureListBlock; onUpd
           </IconButton>
         </Stack>
       ))}
-      <Button size="small" startIcon={<AddIcon />} onClick={() => updItems([...block.items, ''])} sx={{ color: '#a78bfa', textTransform: 'none', alignSelf: 'flex-start' }}>
+      <Button size="small" startIcon={<AddIcon />} onClick={() => updItems([...block.items, ''])} sx={{ color: '#9d97ee', textTransform: 'none', alignSelf: 'flex-start' }}>
         Nytt element
       </Button>
     </Stack>
@@ -562,7 +562,7 @@ function RelatedStudiesEditor({ block, onUpdate }: { block: RelatedStudiesBlock;
           </IconButton>
         </Stack>
       ))}
-      <Button size="small" startIcon={<AddIcon />} onClick={() => upd([...block.items, { name: '', institution: '' }])} sx={{ color: '#a78bfa', textTransform: 'none', alignSelf: 'flex-start' }}>
+      <Button size="small" startIcon={<AddIcon />} onClick={() => upd([...block.items, { name: '', institution: '' }])} sx={{ color: '#9d97ee', textTransform: 'none', alignSelf: 'flex-start' }}>
         Nytt studie
       </Button>
     </Stack>
@@ -585,7 +585,7 @@ function UsageExamplesEditor({ block, onUpdate }: { block: UsageExamplesBlock; o
           </IconButton>
         </Stack>
       ))}
-      <Button size="small" startIcon={<AddIcon />} onClick={() => upd([...block.items, { title: '', body: '' }])} sx={{ color: '#a78bfa', textTransform: 'none', alignSelf: 'flex-start' }}>
+      <Button size="small" startIcon={<AddIcon />} onClick={() => upd([...block.items, { title: '', body: '' }])} sx={{ color: '#9d97ee', textTransform: 'none', alignSelf: 'flex-start' }}>
         Nytt eksempel
       </Button>
     </Stack>
@@ -647,9 +647,9 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
           p: 2,
           borderRadius: 1.5,
           border: dragOver
-            ? '2px dashed #a78bfa'
-            : '2px dashed rgba(167,139,250,0.3)',
-          bgcolor: dragOver ? 'rgba(167,139,250,0.08)' : 'rgba(2,6,23,0.34)',
+            ? '2px dashed #9d97ee'
+            : '2px dashed rgba(157, 151, 238,0.3)',
+          bgcolor: dragOver ? 'rgba(157, 151, 238,0.08)' : 'rgba(2,6,23,0.34)',
           textAlign: 'center',
           transition: 'all 0.15s ease',
         }}
@@ -668,7 +668,7 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
                 size="small"
                 variant="outlined"
                 disabled={uploading}
-                sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+                sx={{ color: '#9d97ee', borderColor: 'rgba(157, 151, 238,0.32)', textTransform: 'none' }}
               >
                 {uploading ? 'Laster opp ...' : 'Bytt bilde'}
                 <input
@@ -702,7 +702,7 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
               variant="contained"
               disabled={uploading}
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9d97ee',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,

@@ -603,10 +603,10 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
                 <Badge sx={{ 
                   px: 0.75, 
                   py: 0.25, 
-                  backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                  backgroundColor: 'rgba(117, 107, 231, 0.2)',
                   borderRadius: 1,
                   fontSize: 10,
-                  color: '#a78bfa',
+                  color: '#9d97ee',
                 }}>
                   {state.scriptContext.dialogueCharacter}
                 </Badge>

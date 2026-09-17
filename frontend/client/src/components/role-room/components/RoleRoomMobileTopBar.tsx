@@ -210,8 +210,8 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
             aria-label={`Aktiv rolle: ${activeRoleLabel}`}
             sx={{
               fontWeight: 600,
-              bgcolor: 'rgba(124,58,237,0.12)',
-              color: '#6d28d9',
+              bgcolor: 'rgba(84, 70, 225,0.12)',
+              color: '#3928d9',
               maxWidth: 140,
             }}
           />

@@ -188,7 +188,7 @@ export function WhatsNewTab(): JSX.Element {
               ))}
             </Select>
           </FormControl>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ bgcolor: '#a78bfa' }}>
+          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ bgcolor: '#9d97ee' }}>
             Ny oppføring
           </Button>
         </Stack>
@@ -210,7 +210,7 @@ export function WhatsNewTab(): JSX.Element {
         Array.from(grouped.entries()).map(([mode, list]) => (
           <Paper key={mode} sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <Typography sx={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.92rem', letterSpacing: 0.5 }}>
+              <Typography sx={{ color: '#9d97ee', fontWeight: 700, fontSize: '0.92rem', letterSpacing: 0.5 }}>
                 {modeLabel(mode).toUpperCase()} · {list.length}
               </Typography>
             </Box>
@@ -267,7 +267,7 @@ export function WhatsNewTab(): JSX.Element {
                         {entry.displayOrder}
                       </TableCell>
                       <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEdit(entry)} sx={{ color: '#a78bfa' }}>
+                        <IconButton size="small" onClick={() => openEdit(entry)} sx={{ color: '#9d97ee' }}>
                           <EditOutlinedIcon fontSize="small" />
                         </IconButton>
                         <IconButton size="small" onClick={() => remove(entry.id)} sx={{ color: '#f87171' }}>
@@ -361,7 +361,7 @@ export function WhatsNewTab(): JSX.Element {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog} disabled={saving}>Avbryt</Button>
-          <Button onClick={submit} variant="contained" disabled={saving} sx={{ bgcolor: '#a78bfa' }}>
+          <Button onClick={submit} variant="contained" disabled={saving} sx={{ bgcolor: '#9d97ee' }}>
             {saving ? 'Lagrer…' : editing ? 'Lagre' : 'Opprett'}
           </Button>
         </DialogActions>

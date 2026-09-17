@@ -31,10 +31,10 @@ const RUBRIC_LEVEL_LABELS = ['Ikke nådd', 'Delvis', 'Nådd'];
 
 function StudentRubricBreakdown({ rubric }: { rubric: StudentRubricBreakdownData }) {
   return (
-    <Box sx={{ mt: 1, p: 1.25, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)' }}>
+    <Box sx={{ mt: 1, p: 1.25, borderRadius: 2, bgcolor: 'rgba(117, 107, 231,0.06)', border: '1px solid rgba(117, 107, 231,0.2)' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
         <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Vurderingskriterier</Typography>
-        <Chip size="small" label={`${rubric.pct}%`} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+        <Chip size="small" label={`${rubric.pct}%`} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(117, 107, 231,0.22)', color: '#dedbf9' }} />
       </Stack>
       <Stack spacing={0.5}>
         {rubric.criteria.map((c, i) => (
@@ -44,7 +44,7 @@ function StudentRubricBreakdown({ rubric }: { rubric: StudentRubricBreakdownData
               {c.goalTitle && <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{c.goalTitle}</Typography>}
             </Box>
             <Chip size="small" label={RUBRIC_LEVEL_LABELS[c.level] ?? '—'}
-              sx={{ height: 20, fontSize: 10, color: c.level >= 2 ? '#10b981' : c.level === 1 ? '#e9d5ff' : 'rgba(255,255,255,0.72)', borderColor: c.level >= 2 ? '#10b981' : 'rgba(255,255,255,0.2)' }}
+              sx={{ height: 20, fontSize: 10, color: c.level >= 2 ? '#10b981' : c.level === 1 ? '#dedbf9' : 'rgba(255,255,255,0.72)', borderColor: c.level >= 2 ? '#10b981' : 'rgba(255,255,255,0.2)' }}
               variant="outlined" />
           </Stack>
         ))}
@@ -55,11 +55,11 @@ function StudentRubricBreakdown({ rubric }: { rubric: StudentRubricBreakdownData
 import { MEMBER_ROLE_LABELS, type MemberRole } from './educationProductionMembersService';
 import { TalentConsentCard } from './TalentConsentCard';
 
-const ACCENT = '#8B5CF6';
+const ACCENT = '#756be7';
 
 const SUB_META: Record<StudentViewAssignment['submissionStatus'], { label: string; color: string }> = {
   not_started: { label: 'Ikke levert', color: 'rgba(255,255,255,0.72)' },
-  submitted: { label: 'Levert', color: '#e9d5ff' },
+  submitted: { label: 'Levert', color: '#dedbf9' },
   reviewed: { label: 'Vurdert', color: '#10b981' },
 };
 
@@ -85,7 +85,7 @@ export function StudentWorkspace() {
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 0.5 }}>
         <StudentIcon sx={{ color: ACCENT }} />
         <Typography variant="h5" sx={{ fontWeight: 800 }}>Min side</Typography>
-        <Chip label="Student" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
+        <Chip label="Student" size="small" sx={{ bgcolor: 'rgba(117, 107, 231,0.22)', color: '#dedbf9', fontWeight: 700 }} />
         {loggedIn && (
           <>
             <Box sx={{ flexGrow: 1 }} />
@@ -128,7 +128,7 @@ function MyStudentView() {
 
 function StudentPlaceholder() {
   return (
-    <Card sx={{ bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.24)', borderRadius: 3 }}>
+    <Card sx={{ bgcolor: 'rgba(117, 107, 231,0.06)', border: '1px solid rgba(117, 107, 231,0.24)', borderRadius: 3 }}>
       <CardContent sx={{ p: 4, textAlign: 'center' }}>
         <StudentIcon sx={{ fontSize: 40, color: ACCENT, mb: 1.5 }} />
         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>Studenttilgang aktiveres via invitasjon</Typography>
@@ -176,7 +176,7 @@ function SuperAdminPreview() {
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
-      <Alert severity="info" sx={{ bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
+      <Alert severity="info" sx={{ bgcolor: 'rgba(117, 107, 231,0.08)', border: '1px solid rgba(117, 107, 231,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
         Administrator-forhåndsvisning: velg kull og student for å se nøyaktig hva studenten vil se.
       </Alert>
 
@@ -238,11 +238,11 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                 <CardContent>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
                     <Typography sx={{ fontWeight: 700 }}>{p.title}</Typography>
-                    <Chip size="small" label={MEMBER_ROLE_LABELS[p.role as MemberRole] ?? p.role} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+                    <Chip size="small" label={MEMBER_ROLE_LABELS[p.role as MemberRole] ?? p.role} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(117, 107, 231,0.22)', color: '#dedbf9' }} />
                   </Stack>
                   <Button fullWidth variant="outlined" startIcon={<OpenIcon />}
                     onClick={() => (!studentMode || view.canOpenProduction ? openProductionInRoleRoom(p.projectId, undefined, { asStudent: studentMode }) : setOpenProd(p))}
-                    sx={{ mt: 1.5, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                    sx={{ mt: 1.5, borderColor: 'rgba(117, 107, 231,0.5)', color: '#dedbf9', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(117, 107, 231,0.08)' } }}>
                     {studentMode ? 'Åpne produksjon' : 'Åpne i Role Room'}
                   </Button>
                 </CardContent>
@@ -280,7 +280,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                       </Box>
                       {a.productionProjectId && (
                         <Button size="small" variant="text" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(a.productionProjectId as string, a.artifactKind || undefined, { asStudent: studentMode, view: a.artifactView || undefined, assignmentId: a.id })}
-                          sx={{ color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap' }}>
+                          sx={{ color: '#dedbf9', textTransform: 'none', whiteSpace: 'nowrap' }}>
                           Åpne
                         </Button>
                       )}
@@ -380,7 +380,7 @@ function StudentProductionDetail({ production, onBack }: { production: StudentVi
         <IconButton onClick={onBack} sx={{ color: '#fff' }} aria-label="Tilbake"><BackIcon /></IconButton>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{production.title}</Typography>
-          {hub && <Chip size="small" label={`Din rolle: ${MEMBER_ROLE_LABELS[hub.production.myRole as MemberRole] ?? hub.production.myRole}`} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />}
+          {hub && <Chip size="small" label={`Din rolle: ${MEMBER_ROLE_LABELS[hub.production.myRole as MemberRole] ?? hub.production.myRole}`} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(117, 107, 231,0.22)', color: '#dedbf9' }} />}
         </Box>
       </Stack>
 

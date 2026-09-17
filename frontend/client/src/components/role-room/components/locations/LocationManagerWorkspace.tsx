@@ -1144,7 +1144,7 @@ export function LocationManagerWorkspace({
                           {selectedMedia.captureMetadata.coordinates && <Chip size="small" label={`${selectedMedia.captureMetadata.coordinates.latitude.toFixed(5)}, ${selectedMedia.captureMetadata.coordinates.longitude.toFixed(5)}`} sx={{ bgcolor: 'rgba(45,212,191,.08)', color: '#99f6e4' }} />}
                           {selectedMedia.captureMetadata.bearingDegrees !== undefined && <Chip size="small" label={`${selectedMedia.captureMetadata.bearingDegrees}°`} sx={{ bgcolor: 'rgba(56,189,248,.08)', color: '#bae6fd' }} />}
                           {selectedMedia.captureMetadata.deviceLabel && <Chip size="small" label={selectedMedia.captureMetadata.deviceLabel} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />}
-                          {selectedMedia.captureMetadata.sceneIds.map((sceneId) => <Chip key={sceneId} size="small" label={`Scene ${sceneId}`} sx={{ bgcolor: 'rgba(168,85,247,.1)', color: '#ddd6fe' }} />)}
+                          {selectedMedia.captureMetadata.sceneIds.map((sceneId) => <Chip key={sceneId} size="small" label={`Scene ${sceneId}`} sx={{ bgcolor: 'rgba(118, 102, 230,.1)', color: '#ddd6fe' }} />)}
                         </Stack>
                         {(selectedMedia.kind === 'photo' || selectedMedia.kind === 'panorama') && (
                           <>

@@ -28,7 +28,7 @@ const bootstrap = {
       logoUrl: 'https://example.test/medinnova-logo.png',
       colors: [
         { label: 'Primær', hex: '#0F766E' },
-        { label: 'Sekundær', hex: '#7C3AED' },
+        { label: 'Sekundær', hex: '#5446e1' },
       ],
     },
   },

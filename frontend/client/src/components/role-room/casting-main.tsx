@@ -874,7 +874,7 @@ function CastingStandaloneRuntimeContent() {
             bgcolor: 'var(--role-chrome-bg, #050816)',
           }}
         >
-          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
+          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #756be7)' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
             {processingGoogleLogin
               ? 'Fullfører Google-innlogging…'
@@ -1040,7 +1040,7 @@ export default function CastingStandaloneApp() {
 
   // CreatorHub Design (Fase C): token-driv Role Room-aksenten (casting-admin-panelene) fra
   // design-tokens (ws=theroleroom, RÅ override m/ raw:true-markør). Ingen override →
-  // literalene (#b86bff) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
+  // literalene (#8d80ea) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
@@ -1065,7 +1065,7 @@ export default function CastingStandaloneApp() {
         if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
           root.style.setProperty('--role-cyan', cyan);
         }
-        // Fiolett-aksent (primær sekundærfarge #8b5cf6 — dekorative flater, ikke kategorisk koding).
+        // Fiolett-aksent (primær sekundærfarge #756be7 — dekorative flater, ikke kategorisk koding).
         const violet = d.tokens.violetAccent;
         if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
           root.style.setProperty('--role-violet', violet);

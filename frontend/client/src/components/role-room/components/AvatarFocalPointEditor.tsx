@@ -144,7 +144,7 @@ export const AvatarFocalPointEditor: React.FC<AvatarFocalPointEditorProps> = ({
             height: 34,
             borderRadius: '50%',
             border: '2px solid #fff',
-            boxShadow: '0 0 0 2px rgba(160,48,192,0.9), 0 1px 6px rgba(0,0,0,0.5)',
+            boxShadow: '0 0 0 2px rgba(74, 48, 192,0.9), 0 1px 6px rgba(0,0,0,0.5)',
             pointerEvents: 'none',
             '&::after': {
               content: '""',
@@ -162,7 +162,7 @@ export const AvatarFocalPointEditor: React.FC<AvatarFocalPointEditorProps> = ({
         <Stack spacing={0.5} alignItems="center">
           <Box sx={{
             width: 96, height: 96, borderRadius: '50%', overflow: 'hidden',
-            border: '2px solid rgba(160,48,192,0.5)', flexShrink: 0,
+            border: '2px solid rgba(74, 48, 192,0.5)', flexShrink: 0,
           }}>
             <Box component="img" src={imageUrl} alt="Forhåndsvisning"
                  sx={{ width: '100%', height: '100%', objectFit: 'cover',

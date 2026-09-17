@@ -540,8 +540,8 @@ const ROLE_ROOM_SELECT_MENU_PROPS = {
       zIndex: 10061,
       mt: 0.5,
       maxHeight: 'min(52vh, 360px)',
-      bgcolor: 'rgba(18,14,30,0.98)',
-      color: 'rgba(245,240,255,0.94)',
+      bgcolor: 'rgba(15, 14, 30,0.98)',
+      color: 'rgba(243, 242, 253,0.94)',
       border: '1px solid rgba(255,255,255,0.08)',
       backdropFilter: 'blur(18px)',
       '& .MuiMenuItem-root': {
@@ -1015,7 +1015,7 @@ const DESIGN = {
   card: {
     aspectRatio:        '2 / 3',
     borderRadius:       '14px',
-    background:         'rgba(4,2,10,0.92)',
+    background:         'rgba(3, 2, 10,0.92)',
     defaultFocalPoint:  'center 15%',          // objectPosition fallback
     hoverTransform:     'translateY(-10px) rotate(-2deg) scale(1.04)',
     activeTransform:    'translateY(-4px) rotate(0deg) scale(0.98)',
@@ -1030,43 +1030,43 @@ const DESIGN = {
   /** Purple accent palette — swap every purple by editing this block */
   p: {
     // borders
-    borderIdle:          'rgba(147,51,234,0.35)',
-    borderSelected:      'rgba(192,132,252,0.95)',
-    borderHover:         'rgba(192,132,252,0.85)',
+    borderIdle:          'rgba(82, 62, 224,0.35)',
+    borderSelected:      'rgba(158, 147, 237,0.95)',
+    borderHover:         'rgba(158, 147, 237,0.85)',
     // shadows / glows
-    glowInner:           'rgba(109,40,217,0.60)',
-    glowInset:           'rgba(216,180,254,0.20)',
-    glowHover:           'rgba(109,40,217,0.65)',
-    shadowRing:          'rgba(192,132,252,0.40)',
-    shadowRingHover:     'rgba(192,132,252,0.50)',
-    shadowIdle:          'rgba(109,40,217,0.15)',
+    glowInner:           'rgba(57, 40, 217,0.60)',
+    glowInset:           'rgba(196, 190, 244,0.20)',
+    glowHover:           'rgba(57, 40, 217,0.65)',
+    shadowRing:          'rgba(158, 147, 237,0.40)',
+    shadowRingHover:     'rgba(158, 147, 237,0.50)',
+    shadowIdle:          'rgba(57, 40, 217,0.15)',
     // pulse-glow keyframe stops
-    pulse0:              'rgba(147,51,234,0.45)',
-    pulse0Outer:         'rgba(147,51,234,0.15)',
-    pulse50:             'rgba(192,132,252,0.70)',
-    pulse50Outer:        'rgba(192,132,252,0.25)',
+    pulse0:              'rgba(82, 62, 224,0.45)',
+    pulse0Outer:         'rgba(82, 62, 224,0.15)',
+    pulse50:             'rgba(158, 147, 237,0.70)',
+    pulse50Outer:        'rgba(158, 147, 237,0.25)',
     // shimmer sweep
-    shimmerMid:          'rgba(200,150,255,0.28)',
-    shimmerEdge:         'rgba(220,180,255,0.12)',
+    shimmerMid:          'rgba(173, 165, 240,0.28)',
+    shimmerEdge:         'rgba(197, 191, 244,0.12)',
     // top-edge shine
-    edgeIdle:            'rgba(147,51,234,0.40)',
-    edgeSelected:        'rgba(192,132,252,0.70)',
+    edgeIdle:            'rgba(82, 62, 224,0.40)',
+    edgeSelected:        'rgba(158, 147, 237,0.70)',
     // label band
-    labelBorderIdle:     'rgba(147,51,234,0.10)',
-    labelBorderSelected: 'rgba(147,51,234,0.30)',
-    labelBgSelInner:     'rgba(12,2,22,0.97)',
-    labelBgSelOuter:     'rgba(22,5,40,0.85)',
+    labelBorderIdle:     'rgba(82, 62, 224,0.10)',
+    labelBorderSelected: 'rgba(82, 62, 224,0.30)',
+    labelBgSelInner:     'rgba(5, 3, 21,0.97)',
+    labelBgSelOuter:     'rgba(10, 6, 39,0.85)',
     // text
-    textIdle:            'rgba(167,139,250,0.85)',
-    textSelected:        'rgba(216,180,254,1.00)',
-    textGlow:            'rgba(192,132,252,0.80)',
-    textLabelGlow:       'rgba(192,132,252,0.70)',
+    textIdle:            'rgba(157, 151, 238,0.85)',
+    textSelected:        'rgba(196, 190, 244,1.00)',
+    textGlow:            'rgba(158, 147, 237,0.80)',
+    textLabelGlow:       'rgba(158, 147, 237,0.70)',
     // selected radial burst
-    burstInner:          'rgba(147,51,234,0.14)',
-    burstOuter:          'rgba(109,40,217,0.06)',
+    burstInner:          'rgba(82, 62, 224,0.14)',
+    burstOuter:          'rgba(57, 40, 217,0.06)',
     // icon effects
-    iconDropHover:       'rgba(192,132,252,0.55)',
-    iconDropSelected:    'rgba(192,132,252,0.40)',
+    iconDropHover:       'rgba(158, 147, 237,0.55)',
+    iconDropSelected:    'rgba(158, 147, 237,0.40)',
   },
 
   /** Ambient video backdrop shown behind the modal */
@@ -1196,8 +1196,8 @@ function DanceInvitePasteEntry(): React.ReactElement {
         variant="contained"
         onClick={submit}
         sx={{
-          bgcolor: 'var(--role-violet, #8b5cf6)',
-          '&:hover': { bgcolor: '#4c1d95' },
+          bgcolor: 'var(--role-violet, #756be7)',
+          '&:hover': { bgcolor: '#291d95' },
           textTransform: 'none',
           fontWeight: 600,
           alignSelf: 'flex-start',
@@ -1418,15 +1418,15 @@ function RoleChip({
             zIndex: 0,
             // Lilla gradient som matcher dans-vertikalens branding-tokens.
             background: selected
-              ? 'radial-gradient(circle at 50% 40%, rgba(167,139,250,0.35) 0%, rgba(76,29,149,0.85) 70%, #0a0a0a 100%)'
-              : 'radial-gradient(circle at 50% 40%, rgba(139,92,246,0.18) 0%, rgba(30,18,52,0.92) 70%, #0a0a0a 100%)',
+              ? 'radial-gradient(circle at 50% 40%, rgba(157, 151, 238,0.35) 0%, rgba(41, 29, 149,0.85) 70%, #0a0a0a 100%)'
+              : 'radial-gradient(circle at 50% 40%, rgba(117, 107, 231,0.18) 0%, rgba(21, 18, 52,0.92) 70%, #0a0a0a 100%)',
             transition: `background 0.3s ${easing}`,
             // SVG-ikon arver fontSize fra parent.
             fontSize: 'clamp(40px, 14vw, 76px)',
             lineHeight: 1,
             color: selected ? 'rgba(237,233,254,0.98)' : 'rgba(221,214,254,0.88)',
             filter: selected
-              ? `drop-shadow(0 0 14px rgba(167,139,250,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.35))`
+              ? `drop-shadow(0 0 14px rgba(157, 151, 238,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.35))`
               : 'drop-shadow(0 2px 8px rgba(0,0,0,0.6))',
           }}
         >
@@ -1484,7 +1484,7 @@ function RoleChip({
               lineHeight: 1,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: selected ? DESIGN.p.textSelected : 'rgba(228,220,245,0.78)',
+              color: selected ? DESIGN.p.textSelected : 'rgba(222, 220, 245,0.78)',
             }}
           >
             {spotlight.eyebrow}
@@ -1555,7 +1555,7 @@ function RoleChip({
         background: selected
           ? `linear-gradient(to top, ${DESIGN.p.labelBgSelInner} 0%, ${DESIGN.p.labelBgSelOuter} 55%, transparent 100%)`
           : variant === 'decision'
-            ? 'linear-gradient(to top, rgba(8,4,16,0.72) 0%, rgba(8,4,16,0.24) 100%)'
+            ? 'linear-gradient(to top, rgba(5, 4, 16,0.72) 0%, rgba(5, 4, 16,0.24) 100%)'
             : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 55%, transparent 100%)',
         display: 'flex',
         alignItems: showDecisionDetails ? 'center' : 'flex-end',
@@ -1588,7 +1588,7 @@ function RoleChip({
                     fontSize: compact ? '0.47rem' : '0.56rem',
                     lineHeight: 1.32,
                     textAlign: 'center',
-                    color: 'rgba(236,231,247,0.84)',
+                    color: 'rgba(232, 231, 247,0.84)',
                     maxWidth: compact ? '88%' : '90%',
                   }}
                 >
@@ -1602,8 +1602,8 @@ function RoleChip({
                 width: compact ? '62%' : '44%',
                 height: '2px',
                 borderRadius: '999px',
-                bgcolor: 'rgba(192,132,252,0.46)',
-                boxShadow: '0 0 18px rgba(192,132,252,0.22)',
+                bgcolor: 'rgba(158, 147, 237,0.46)',
+                boxShadow: '0 0 18px rgba(158, 147, 237,0.22)',
               }}
             />
           )
@@ -1682,7 +1682,7 @@ function CategorySection({
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
           color: variant === 'decision'
-            ? (isSecondaryDecisionGroup ? 'rgba(196,188,220,0.62)' : 'rgba(225,216,248,0.88)')
+            ? (isSecondaryDecisionGroup ? 'rgba(190, 188, 220,0.62)' : 'rgba(218, 216, 248,0.88)')
             : glass.textMuted,
           mb: category.description ? 0.35 : 0.75,
           pl: 0.25,
@@ -1695,7 +1695,7 @@ function CategorySection({
           sx={{
             fontSize: isSecondaryDecisionGroup ? '0.68rem' : '0.74rem',
             lineHeight: 1.55,
-            color: isSecondaryDecisionGroup ? 'rgba(194,188,212,0.62)' : 'rgba(218,211,236,0.76)',
+            color: isSecondaryDecisionGroup ? 'rgba(194,188,212,0.62)' : 'rgba(213, 211, 236,0.76)',
             mb: 0.9,
             maxWidth: isSecondaryDecisionGroup ? 560 : 760,
             pl: 0.25,
@@ -1793,12 +1793,12 @@ interface ProfessionPickerMeta {
 const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
   production:       { label: 'Film/video',       glyph: '🎬', accent: '#60a5fa' },
   photographer:     { label: 'Fotograf',         glyph: '📷', accent: 'var(--role-cyan, #22d3ee)' },
-  content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#a855f7' },
+  content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#7666e6' },
   content_creator:  { label: 'Innholdsskaper',   glyph: '⚡', accent: '#f59e0b' },
-  dance_studio:     { label: 'Dansestudio',      glyph: '🎓', accent: '#8b5cf6', beta: true },
-  dance_freelance:  { label: 'Dans — frilans',   glyph: '💫', accent: '#8b5cf6', beta: true },
-  education:        { label: 'Utdanningsinstitusjon', glyph: '🏫', accent: '#8b5cf6', beta: true },
-  student:          { label: 'Student', glyph: '🎓', accent: '#8b5cf6', beta: true },
+  dance_studio:     { label: 'Dansestudio',      glyph: '🎓', accent: '#756be7', beta: true },
+  dance_freelance:  { label: 'Dans — frilans',   glyph: '💫', accent: '#756be7', beta: true },
+  education:        { label: 'Utdanningsinstitusjon', glyph: '🏫', accent: '#756be7', beta: true },
+  student:          { label: 'Student', glyph: '🎓', accent: '#756be7', beta: true },
 };
 
 // Landing-velgeren viser kun profesjoner som IKKE allerede dekkes av
@@ -3825,12 +3825,12 @@ export default function LoginDialog({
                   justifyContent: 'flex-start',
                   alignItems: 'flex-start',
                   textAlign: 'left',
-                  border: `1px solid ${active ? 'rgba(139,92,246,0.55)' : 'rgba(255,255,255,0.1)'}`,
-                  bgcolor: active ? 'rgba(139,92,246,0.18)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${active ? 'rgba(117, 107, 231,0.55)' : 'rgba(255,255,255,0.1)'}`,
+                  bgcolor: active ? 'rgba(117, 107, 231,0.18)' : 'rgba(255,255,255,0.04)',
                   color: active ? '#fff' : 'rgba(235,235,245,0.78)',
                   '&:hover': {
-                    bgcolor: active ? 'rgba(139,92,246,0.24)' : 'rgba(255,255,255,0.08)',
-                    borderColor: active ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.18)',
+                    bgcolor: active ? 'rgba(117, 107, 231,0.24)' : 'rgba(255,255,255,0.08)',
+                    borderColor: active ? 'rgba(117, 107, 231,0.7)' : 'rgba(255,255,255,0.18)',
                   },
                 }}
               >
@@ -3895,10 +3895,10 @@ export default function LoginDialog({
         })}
       </Box>
       <Box>
-        <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(245,240,255,0.96)' }}>
+        <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(243, 242, 253,0.96)' }}>
           {contentProducerCurrentStep.label}
         </Typography>
-        <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(205,198,224,0.72)' }}>
+        <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(200, 198, 224,0.72)' }}>
           {contentProducerCurrentStep.description}
         </Typography>
       </Box>
@@ -3950,10 +3950,10 @@ export default function LoginDialog({
         })}
       </Box>
       <Box>
-        <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(245,240,255,0.96)' }}>
+        <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(243, 242, 253,0.96)' }}>
           {productionTeamCurrentStep.label}
         </Typography>
-        <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(205,198,224,0.72)' }}>
+        <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(200, 198, 224,0.72)' }}>
           {productionTeamCurrentStep.description}
         </Typography>
       </Box>
@@ -3972,24 +3972,24 @@ export default function LoginDialog({
       }}
     >
       <Box sx={{ display: 'grid', gap: 0.4 }}>
-        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>
+        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(174, 170, 226,0.72)' }}>
           Klar til innlogging
         </Typography>
-        <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
+        <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.95)' }}>
           {organizationCompanyName || 'Foretak ikke satt'}
         </Typography>
-        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
+        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(210, 208, 230,0.72)' }}>
           {selectedRoleLabel || 'Rolle ikke valgt'} · {formatRoleRoomStatValue(planMonthlyTotal)} kr / måned eks. mva.
         </Typography>
       </Box>
       <Box sx={{ display: 'grid', gap: 0.35 }}>
-        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
           Kontoeier: {teamOwner.name.trim() || 'Ikke satt ennå'}
         </Typography>
-        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
           E-post: {teamOwner.email.trim() || 'Ikke satt ennå'}
         </Typography>
-        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
           Plasser: {billableSeatCount}
         </Typography>
       </Box>
@@ -4008,24 +4008,24 @@ export default function LoginDialog({
       }}
     >
       <Box sx={{ display: 'grid', gap: 0.4 }}>
-        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>
+        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(174, 170, 226,0.72)' }}>
           Klar til innlogging
         </Typography>
-        <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
+        <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.95)' }}>
           {organizationCompanyName || 'Foretak ikke satt'}
         </Typography>
-        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
+        <Typography sx={{ fontSize: '0.78rem', color: 'rgba(210, 208, 230,0.72)' }}>
           {selectedRoleLabel || 'Rolle ikke valgt'} · {formatRoleRoomStatValue(planMonthlyTotal)} kr / måned eks. mva.
         </Typography>
       </Box>
       <Box sx={{ display: 'grid', gap: 0.35 }}>
-        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
           Teamleder: {teamOwner.name.trim() || 'Ikke satt ennå'}
         </Typography>
-        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
           Teamlederrolle: {selectedRoleLabel || 'Ikke satt ennå'}
         </Typography>
-        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
           Plasser: {billableSeatCount}
         </Typography>
       </Box>
@@ -4051,7 +4051,7 @@ export default function LoginDialog({
             fontWeight: 700,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
-            color: 'rgba(188,176,222,0.66)',
+            color: 'rgba(179, 176, 222,0.66)',
           }}
         >
           Plan
@@ -4060,7 +4060,7 @@ export default function LoginDialog({
           sx={{
             fontSize: '0.92rem',
             fontWeight: 700,
-            color: 'rgba(245,240,255,0.96)',
+            color: 'rgba(243, 242, 253,0.96)',
           }}
         >
           Innholdsprodusent
@@ -4108,7 +4108,7 @@ export default function LoginDialog({
             fontWeight: 700,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
-            color: 'rgba(188,176,222,0.66)',
+            color: 'rgba(179, 176, 222,0.66)',
           }}
         >
           Plan
@@ -4117,7 +4117,7 @@ export default function LoginDialog({
           sx={{
             fontSize: '0.92rem',
             fontWeight: 700,
-            color: 'rgba(245,240,255,0.96)',
+            color: 'rgba(243, 242, 253,0.96)',
           }}
         >
           Produksjonsteam
@@ -4151,7 +4151,7 @@ export default function LoginDialog({
         sx={{
           fontSize: '0.75rem',
           fontWeight: 600,
-          color: 'rgba(225,218,246,0.95)',
+          color: 'rgba(220, 218, 246,0.95)',
           letterSpacing: '0.03em',
           textTransform: 'uppercase',
         }}
@@ -4418,7 +4418,7 @@ export default function LoginDialog({
               width: '60%',
               height: '60%',
               background:
-                'radial-gradient(circle, rgba(200,100,255,0.1) 0%, transparent 65%)',
+                'radial-gradient(circle, rgba(139, 122, 233,0.1) 0%, transparent 65%)',
               filter: 'blur(40px)',
               pointerEvents: 'none',
             },
@@ -4987,7 +4987,7 @@ export default function LoginDialog({
                   sx={{
                     fontSize: { xs: '0.9rem', sm: '0.96rem' },
                     fontWeight: 600,
-                    color: 'rgba(244,240,255,0.96)',
+                    color: 'rgba(243, 242, 253,0.96)',
                   }}
                 >
                   {effectiveLoginPersonaOption?.label || 'The Role Room'}
@@ -5004,13 +5004,13 @@ export default function LoginDialog({
                   fontSize: '0.76rem',
                   fontWeight: 600,
                   borderRadius: 0,
-                  color: 'rgba(214,206,238,0.82)',
+                  color: 'rgba(208, 206, 238,0.82)',
                   alignSelf: { xs: 'flex-start', md: 'center' },
                   justifyContent: 'flex-start',
                   minWidth: 0,
                   '&:hover': {
                     bgcolor: 'transparent',
-                    color: 'rgba(242,236,255,0.96)',
+                    color: 'rgba(240, 239, 252,0.96)',
                   },
                 }}
               >
@@ -5039,7 +5039,7 @@ export default function LoginDialog({
                 sx={{
                   fontSize: '0.78rem',
                   lineHeight: 1.5,
-                  color: 'rgba(206,199,226,0.72)',
+                  color: 'rgba(201, 199, 226,0.72)',
                 }}
               >
                 Start med å velge om dette er et produksjonsteam, en innholdsprodusent-plan eller et institusjonssamarbeid. Deretter verifiserer du bedriften, setter opp teamet eller institusjonen og ser hva neste steg er.
@@ -5068,7 +5068,7 @@ export default function LoginDialog({
                       sx={{
                         fontSize: '0.74rem',
                         fontWeight: 600,
-                        color: 'rgba(232,226,246,0.96)',
+                        color: 'rgba(228, 226, 246,0.96)',
                         letterSpacing: '0.08em',
                         textTransform: 'uppercase',
                       }}
@@ -5079,7 +5079,7 @@ export default function LoginDialog({
                       sx={{
                         fontSize: '0.78rem',
                         lineHeight: 1.5,
-                        color: 'rgba(205,198,224,0.72)',
+                        color: 'rgba(200, 198, 224,0.72)',
                       }}
                     >
                       Legg inn organisasjonsnummeret deres først. Vi verifiserer det automatisk mot Brønnøysundregistrene før team og abonnement åpnes.
@@ -5126,13 +5126,13 @@ export default function LoginDialog({
                         : '1px solid rgba(255,255,255,0.07)',
                     }}
                   >
-                    <Typography sx={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(195,188,214,0.72)' }}>
+                    <Typography sx={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(190, 188, 214,0.72)' }}>
                       Foretak
                     </Typography>
-                    <Typography sx={{ mt: 0.35, fontSize: '0.94rem', fontWeight: 600, color: 'rgba(244,240,255,0.95)' }}>
+                    <Typography sx={{ mt: 0.35, fontSize: '0.94rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.95)' }}>
                       {organizationCompanyName || 'Venter på verifisert organisasjonsnummer'}
                     </Typography>
-                    <Typography sx={{ mt: 0.25, fontSize: '0.74rem', color: 'rgba(205,198,224,0.68)' }}>
+                    <Typography sx={{ mt: 0.25, fontSize: '0.74rem', color: 'rgba(200, 198, 224,0.68)' }}>
                       {hasVerifiedOrganization
                         ? `${formatOrganizationNumber(normalizedOrganizationNumber)} er verifisert.`
                         : 'Teamoppsettet låses opp når foretaket er verifisert.'}
@@ -5218,7 +5218,7 @@ export default function LoginDialog({
                     mt: -0.55,
                     fontSize: { xs: '0.72rem', sm: '0.75rem' },
                     lineHeight: 1.55,
-                    color: 'rgba(208,201,226,0.7)',
+                    color: 'rgba(203, 201, 226,0.7)',
                     maxWidth: 760,
                   }}
                 >
@@ -5276,7 +5276,7 @@ export default function LoginDialog({
                   sx={{
                     fontSize: '0.74rem',
                     fontWeight: 600,
-                    color: 'rgba(232,226,246,0.96)',
+                    color: 'rgba(228, 226, 246,0.96)',
                     letterSpacing: '0.08em',
                     textTransform: 'uppercase',
                   }}
@@ -5287,7 +5287,7 @@ export default function LoginDialog({
                   sx={{
                     fontSize: '0.8rem',
                     lineHeight: 1.5,
-                    color: 'rgba(205,198,224,0.72)',
+                    color: 'rgba(200, 198, 224,0.72)',
                     maxWidth: 560,
                   }}
                 >
@@ -5497,7 +5497,7 @@ export default function LoginDialog({
                       sx={{
                         fontSize: '0.72rem',
                         lineHeight: 1.55,
-                        color: 'rgba(198,191,218,0.68)',
+                        color: 'rgba(193, 191, 218,0.68)',
                       }}
                     >
                       Institusjonsansvarlig blir hovedkontakt for oppsettet. Når samarbeid, kull og faglærerstruktur er avklart,
@@ -5546,29 +5546,29 @@ export default function LoginDialog({
                       <Typography sx={{ mt: 0.5, fontSize: '1.45rem', fontWeight: 700, letterSpacing: '-0.04em', color: 'rgba(255,255,255,0.96)' }}>
                         Samarbeidsforespørsel
                       </Typography>
-                      <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
+                      <Typography sx={{ fontSize: '0.78rem', color: 'rgba(210, 208, 230,0.72)' }}>
                         Vi bruker opplysningene til å forberede en institusjonssamtale og anbefale riktig oppsett for kull, lærere og produksjonsflyt.
                       </Typography>
                       <Box sx={{ mt: 1, display: 'grid', gap: 0.55 }}>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Institusjon: {organizationCompanyName || 'Venter på verifisering'}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Institusjonstype: {EDUCATION_INSTITUTION_TYPES.find((option) => option.id === educationInstitutionType)?.label || 'Ikke satt ennå'}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Studieprogram: {educationProgramName.trim() || 'Ikke satt ennå'}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Studenter: {getEducationSeatLabel(educationStudentSeatRange, EDUCATION_STUDENT_SEAT_OPTIONS)}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Faglærere / koordinatorer: {getEducationSeatLabel(educationStaffSeatRange, EDUCATION_STAFF_SEAT_OPTIONS)}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Ønsket oppstart: {getEducationStartWindowLabel(educationDesiredStartWindow)}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Hovedkontakt: {teamOwner.name.trim() || 'Ikke satt ennå'}
                         </Typography>
                       </Box>
@@ -5585,7 +5585,7 @@ export default function LoginDialog({
                         gap: 0.85,
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
+                      <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.94)' }}>
                         Hva skjer etter innsending?
                       </Typography>
                       <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.6, color: 'rgba(210,204,228,0.72)' }}>
@@ -5599,7 +5599,7 @@ export default function LoginDialog({
                         ].map((line) => (
                           <Typography
                             key={line}
-                            sx={{ fontSize: '0.72rem', lineHeight: 1.55, color: 'rgba(220,214,235,0.8)' }}
+                            sx={{ fontSize: '0.72rem', lineHeight: 1.55, color: 'rgba(216, 214, 235,0.8)' }}
                           >
                             {line}
                           </Typography>
@@ -5619,7 +5619,7 @@ export default function LoginDialog({
                           gap: 0.75,
                         }}
                       >
-                        <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.94)' }}>
                           Bekreft innsendingen
                         </Typography>
                         <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.55, color: 'rgba(210,204,228,0.72)' }}>
@@ -5797,7 +5797,7 @@ export default function LoginDialog({
                                 textTransform: 'none',
                                 fontSize: '0.74rem',
                                 borderRadius: '12px',
-                                color: 'rgba(220,212,242,0.82)',
+                                color: 'rgba(214, 212, 242,0.82)',
                                 minWidth: { xs: '100%', sm: 112 },
                                 bgcolor: 'rgba(255,255,255,0.04)',
                                 border: '1px solid rgba(255,255,255,0.08)',
@@ -5844,7 +5844,7 @@ export default function LoginDialog({
                       sx={{
                         fontSize: '0.72rem',
                         lineHeight: 1.5,
-                        color: 'rgba(198,191,218,0.68)',
+                        color: 'rgba(193, 191, 218,0.68)',
                       }}
                     >
                       {isProductionTeamFlow
@@ -5868,32 +5868,32 @@ export default function LoginDialog({
                         border: '1px solid rgba(160,140,255,0.18)',
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(184,170,226,0.72)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(174, 170, 226,0.72)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                         {isProductionTeamFlow ? 'Produksjonsteam-plan' : 'Innholdsprodusent-plan'}
                       </Typography>
                       <Typography sx={{ mt: 0.5, fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.04em', color: 'rgba(255,255,255,0.96)' }}>
                         {formatRoleRoomStatValue(planMonthlyTotal)} kr
                       </Typography>
-                      <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
+                      <Typography sx={{ fontSize: '0.78rem', color: 'rgba(210, 208, 230,0.72)' }}>
                         {formatRoleRoomStatValue(seatPrice)} kr per person / måned eks. mva.
                       </Typography>
-                      <Typography sx={{ mt: 0.35, fontSize: '0.72rem', color: 'rgba(196,188,220,0.64)' }}>
+                      <Typography sx={{ mt: 0.35, fontSize: '0.72rem', color: 'rgba(190, 188, 220,0.64)' }}>
                         Alle priser i The Role Room oppgis eks. mva.
                       </Typography>
                       <Box sx={{ mt: 1, display: 'grid', gap: 0.55 }}>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Minste team: {minimumSeatCount} {minimumSeatCount === 1 ? 'person' : 'personer'}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Valgte plasser: {billableSeatCount}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Roller valgt: {teamVisualMembers.length}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           {teamOwnerLabel}: {teamOwner.name.trim() || 'Ikke satt ennå'}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: 'rgba(230, 228, 245,0.84)' }}>
                           Bedrift: {organizationCompanyName || 'Venter på verifisering'}
                         </Typography>
                       </Box>
@@ -5951,10 +5951,10 @@ export default function LoginDialog({
                               )}
                             </Box>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
-                              <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
+                              <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.95)' }}>
                                 {member.name.trim() || `Teammedlem ${index + 1}`}
                               </Typography>
-                              <Typography sx={{ fontSize: '0.68rem', color: 'rgba(195,188,214,0.72)' }}>
+                              <Typography sx={{ fontSize: '0.68rem', color: 'rgba(190, 188, 214,0.72)' }}>
                                 {roleLabel}
                               </Typography>
                             </Box>
@@ -5970,7 +5970,7 @@ export default function LoginDialog({
                             border: '1px dashed rgba(255,255,255,0.12)',
                           }}
                         >
-                          <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.5, color: 'rgba(205,198,224,0.68)' }}>
+                          <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.5, color: 'rgba(200, 198, 224,0.68)' }}>
                             Når du velger roller til teamet ditt, dukker de opp her som en visuell teamstripe.
                           </Typography>
                         </Box>
@@ -5987,7 +5987,7 @@ export default function LoginDialog({
                     border: '1px solid rgba(160,140,255,0.18)',
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
+                  <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(243, 242, 253,0.94)' }}>
                     Admin-tilgang
                   </Typography>
                   <Typography sx={{ mt: 0.45, fontSize: '0.78rem', lineHeight: 1.5, color: 'rgba(210,204,228,0.72)' }}>
@@ -6001,7 +6001,7 @@ export default function LoginDialog({
                   sx={{
                     fontSize: '0.76rem',
                     lineHeight: 1.5,
-                    color: 'rgba(205,198,224,0.68)',
+                    color: 'rgba(200, 198, 224,0.68)',
                   }}
                 >
                   {isEducationInstitutionFlow
@@ -6099,10 +6099,10 @@ export default function LoginDialog({
                 gap: 1,
               }}
             >
-              <Typography sx={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: isCommercialPaymentSatisfied ? 'rgba(142,255,196,0.88)' : 'rgba(184,170,226,0.74)' }}>
+              <Typography sx={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: isCommercialPaymentSatisfied ? 'rgba(142,255,196,0.88)' : 'rgba(174, 170, 226,0.74)' }}>
                 {isCommercialPaymentSatisfied ? 'Plan aktivert' : 'Stripe Checkout'}
               </Typography>
-              <Typography sx={{ fontSize: { xs: '0.96rem', sm: '1.02rem' }, fontWeight: 700, color: 'rgba(250,247,255,0.96)' }}>
+              <Typography sx={{ fontSize: { xs: '0.96rem', sm: '1.02rem' }, fontWeight: 700, color: 'rgba(249, 248, 254,0.96)' }}>
                 {isCommercialPaymentSatisfied
                   ? 'Betalingen er registrert. Fullfør kontogodkjenningen fra e-posten hvis dette er første gang du logger inn.'
                   : `Aktiver ${isProductionTeamFlow ? 'produksjonsteamet' : 'innholdsprodusent-planen'} før innlogging.`}
@@ -6390,7 +6390,7 @@ export default function LoginDialog({
                   px: { xs: 1, sm: 1.5 },
                   bgcolor: 'rgba(255,255,255,0.06)',
                   border: '1px solid rgba(255,255,255,0.12)',
-                  color: 'rgba(240,235,255,0.85)',
+                  color: 'rgba(239, 238, 252,0.85)',
                   backdropFilter: 'blur(10px)',
                   gap: 0.7,
                   justifyContent: 'center',

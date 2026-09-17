@@ -479,7 +479,7 @@ const COLORS = {
   
   // Section colors - all WCAG AA compliant
   location: { bg: '#0369a1', text: '#ffffff' }, // 5.3:1 - darkened from #0ea5e9
-  scenes: { bg: '#6d28d9', text: '#ffffff' }, // 6.8:1 - darkened from #7c3aed
+  scenes: { bg: '#3928d9', text: '#ffffff' }, // 6.8:1 - darkened from #5446e1
   cast: { bg: '#047857', text: '#ffffff' }, // 5.5:1 - darkened from #059669
   crew: { bg: '#4f46e5', text: '#ffffff' }, // 5.9:1 - darkened from #6366f1
   instructions: { bg: '#b45309', text: '#ffffff' }, // 5.4:1 - darkened from #d97706
@@ -488,7 +488,7 @@ const COLORS = {
   
   // Department colors (all WCAG compliant with white text - contrast >= 4.5:1)
   departments: {
-    'Regi': '#6d28d9', // 6.8:1
+    'Regi': '#3928d9', // 6.8:1
     'Foto': '#0369a1', // 5.3:1
     'Lyd': '#b45309', // 5.4:1
     'Lys': '#4d7c0f', // 5.1:1
@@ -496,7 +496,7 @@ const COLORS = {
     'Produksjon': '#b91c1c', // 5.7:1
     'Kostyme': '#be185d', // 5.2:1
     'Sminke': '#9d174d', // 6.4:1
-    'VFX': '#6d28d9', // 6.8:1
+    'VFX': '#3928d9', // 6.8:1
     'Art': '#0f766e', // 5.1:1
   } as Record<string, string>,
 };
@@ -1175,7 +1175,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               margin-bottom: 8px;
             }
             .section-location { background: #0369a1; color: #fff; }
-            .section-scenes { background: #6d28d9; color: #fff; }
+            .section-scenes { background: #3928d9; color: #fff; }
             .section-cast { background: #047857; color: #fff; }
             .section-crew { background: #4f46e5; color: #fff; }
             .section-instructions { background: #b45309; color: #fff; }

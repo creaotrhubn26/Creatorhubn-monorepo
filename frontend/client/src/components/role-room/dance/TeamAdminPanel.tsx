@@ -50,14 +50,14 @@ import type { DanceTeamRole, DanceTeamMember, DanceTeamInvite, DanceTeamSummary,
 
 // ─── Branding tokens ────────────────────────────────────────────────────
 
-const PURPLE_DEEP   = '#4c1d95';
+const PURPLE_DEEP   = '#291d95';
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT  = danceFlowColors.lavender;
-const PURPLE_GLASS  = 'rgba(139,92,246,0.10)';
+const PURPLE_GLASS  = 'rgba(117, 107, 231,0.10)';
 const TEXT_DIM      = 'rgba(229,231,235,0.65)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.45)';
 const PANEL_BG      = 'rgba(15,12,28,0.62)';
-const PANEL_BORDER  = 'rgba(167,139,250,0.18)';
+const PANEL_BORDER  = 'rgba(157, 151, 238,0.18)';
 
 const sectionLabel: React.CSSProperties = {
   fontSize: 10,
@@ -273,7 +273,7 @@ const TeamHeader: React.FC<{
     sx={{
       p: { xs: 2, md: 3 },
       borderRadius: 2,
-      background: `linear-gradient(135deg, ${PURPLE_GLASS}, rgba(76,29,149,0.06))`,
+      background: `linear-gradient(135deg, ${PURPLE_GLASS}, rgba(41, 29, 149,0.06))`,
       border: `1px solid ${PANEL_BORDER}`,
     }}
   >
@@ -611,7 +611,7 @@ const InviteDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#0b0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>Inviter medlem</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>
@@ -713,7 +713,7 @@ const RoleEditorDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#0b0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>
         {role ? `Rediger rolle: ${role.label}` : 'Ny rolle'}
         {isOwner ? <Chip label="Eier — capabilities er låst til alt" size="small" sx={{ ml: 2, bgcolor: 'rgba(245,158,11,0.18)', color: danceFlowColors.amber, fontWeight: 700 }} /> : null}

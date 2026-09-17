@@ -780,7 +780,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       dialogue: { ...base, color: '#f5f5f5',
         marginLeft: isMobile ? '5%' : isTablet ? '12%' : '17%',
         marginRight: isMobile ? '5%' : isTablet ? '12%' : '17%' },
-      parenthetical: { ...base, color: '#a78bfa', fontStyle: 'italic',
+      parenthetical: { ...base, color: '#9d97ee', fontStyle: 'italic',
         marginLeft: isMobile ? '10%' : isTablet ? '20%' : '27%',
         marginRight: isMobile ? '10%' : isTablet ? '20%' : '27%' },
       transition: { ...base, fontWeight: 600, color: '#f472b6', textTransform: 'uppercase',
@@ -1998,7 +1998,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 setInsertMenuAnchor(e.currentTarget);
               }}
               aria-label="Sett inn manuselement"
-              sx={{ color: '#a78bfa' }}
+              sx={{ color: '#9d97ee' }}
             >
               <TextFields sx={{ fontSize: responsive.iconSize }} />
             </IconButton>
@@ -2026,7 +2026,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               </Tooltip>
               <Tooltip title="Parenthetical">
                 <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('parenthetical')}>
-                  <FormatAlignCenter sx={{ color: '#a78bfa', fontSize: responsive.iconSize }} />
+                  <FormatAlignCenter sx={{ color: '#9d97ee', fontSize: responsive.iconSize }} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Transition">
@@ -2140,8 +2140,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 size={responsive.chipSize}
                 label={getScreenplayElementRule(currentElement).label}
                 sx={{ 
-                  bgcolor: 'rgba(167, 139, 250, 0.2)',
-                  color: '#a78bfa',
+                  bgcolor: 'rgba(157, 151, 238, 0.2)',
+                  color: '#9d97ee',
                   fontSize: responsive.captionFontSize,
                 }}
               />
@@ -2325,7 +2325,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               case 'scene_heading': return <SceneIcon sx={{ color: '#fbbf24' }} />;
               case 'character': return <CharacterIcon sx={{ color: '#60a5fa' }} />;
               case 'dialogue': return <DialogueIcon />;
-              case 'parenthetical': return <FormatAlignCenter sx={{ color: '#a78bfa' }} />;
+              case 'parenthetical': return <FormatAlignCenter sx={{ color: '#9d97ee' }} />;
               case 'transition': return <TransitionIcon sx={{ color: '#f472b6' }} />;
               case 'shot': return <SceneIcon sx={{ color: '#fb7185' }} />;
               case 'section': return <TitleIcon sx={{ color: '#f97316' }} />;
@@ -2446,7 +2446,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                     fontFamily: 'Courier Prime, Courier New, monospace',
                     fontSize: responsive.fontSize,
                     lineHeight: '1.5',
-                    color: cursorPosition.line === index + 1 ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                    color: cursorPosition.line === index + 1 ? '#9d97ee' : 'rgba(255,255,255,0.3)',
                     textAlign: 'right',
                     pr: isMobile ? 0.5 : 1,
                     pl: 1,
@@ -2512,7 +2512,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             fontSize: responsive.fontSize,
             lineHeight: '1.5',
             color: isEditorFocused ? '#e5e5e5' : 'transparent',
-            caretColor: '#a78bfa',
+            caretColor: '#9d97ee',
             bgcolor: 'transparent',
             border: 'none',
             outline: 'none',
@@ -2542,7 +2542,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                   selected={index === selectedAutocompleteIndex}
                   onClick={() => applyAutocomplete(option)}
                   sx={{
-                    bgcolor: index === selectedAutocompleteIndex ? 'rgba(167, 139, 250, 0.2)' : 'transparent',
+                    bgcolor: index === selectedAutocompleteIndex ? 'rgba(157, 151, 238, 0.2)' : 'transparent',
                     fontSize: responsive.bodyFontSize,
                     py: isMobile ? 0.5 : 1,
                   }}
@@ -2604,7 +2604,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           mt: isMobile ? 0.5 : 1,
           px: isMobile ? 1 : 1.5,
           py: 0.75,
-          borderColor: 'rgba(167, 139, 250, 0.28)',
+          borderColor: 'rgba(157, 151, 238, 0.28)',
           bgcolor: 'rgba(12, 15, 28, 0.92)',
           overflowX: 'auto',
         }}

@@ -21,7 +21,7 @@ export default function ProducerExtrasPanel({ children }: ProducerExtrasPanelPro
     >
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
         <Stack direction="row" spacing={1} alignItems="center">
-          <GroupsIcon sx={{ color: '#c084fc' }} />
+          <GroupsIcon sx={{ color: '#9e93ed' }} />
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
             Statister / medvirkende
           </Typography>
@@ -30,9 +30,9 @@ export default function ProducerExtrasPanel({ children }: ProducerExtrasPanelPro
           size="small"
           label="Kandidatmodus: statister"
           sx={{
-            bgcolor: 'rgba(192,132,252,0.18)',
-            color: '#e9d5ff',
-            border: '1px solid rgba(192,132,252,0.35)',
+            bgcolor: 'rgba(158, 147, 237,0.18)',
+            color: '#dedbf9',
+            border: '1px solid rgba(158, 147, 237,0.35)',
           }}
         />
       </Stack>

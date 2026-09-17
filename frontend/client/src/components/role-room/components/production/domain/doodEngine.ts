@@ -290,7 +290,7 @@ export const DOOD_CODE_CONFIG: Record<DOODCode, {
   SW:  { label: 'SW',  color: '#fff', bgColor: '#2196f3', description: 'Start / Arbeider' },
   WF:  { label: 'WF',  color: '#fff', bgColor: '#1565c0', description: 'Arbeider / Ferdig' },
   SWF: { label: 'SWF', color: '#fff', bgColor: '#0d47a1', description: 'Start / Arbeid / Ferdig (én dag)' },
-  T:   { label: 'T',   color: '#fff', bgColor: '#9333ea', description: 'Reise til' },
+  T:   { label: 'T',   color: '#fff', bgColor: '#523ee0', description: 'Reise til' },
   TF:  { label: 'TF',  color: '#fff', bgColor: '#f57c00', description: 'Reise fra' },
   H:   { label: 'H',   color: '#333', bgColor: '#fff9c4', description: 'Hold (lønnet, ikke opptak)' },
   F:   { label: 'F',   color: '#fff', bgColor: '#4caf50', description: 'Ferdig (siste dag)' },

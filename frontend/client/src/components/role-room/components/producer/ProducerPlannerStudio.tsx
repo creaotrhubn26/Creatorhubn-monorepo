@@ -2332,7 +2332,7 @@ export default function ProducerPlannerStudio({
                           <Chip
                             size="small"
                             label={`Ansvarlig: ${item.assignedToLabel}`}
-                            sx={{ bgcolor: 'rgba(168,85,247,0.12)', color: '#e9d5ff' }}
+                            sx={{ bgcolor: 'rgba(118, 102, 230,0.12)', color: '#dedbf9' }}
                           />
                         ) : null}
                         <Chip
@@ -2956,7 +2956,7 @@ export default function ProducerPlannerStudio({
                                       <Chip
                                         size="small"
                                         label={ownerLookup.get(item.owner_user_id)?.label ?? item.owner_user_id}
-                                        sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#e9d5ff' }}
+                                        sx={{ bgcolor: 'rgba(157, 151, 238,0.16)', color: '#dedbf9' }}
                                       />
                                     ) : null}
                                   </Stack>
@@ -3155,7 +3155,7 @@ export default function ProducerPlannerStudio({
                     <Box sx={{ minWidth: 0 }}>
                       <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
                         <Chip size="small" label={CALENDAR_TYPE_LABELS[entry.type]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
-                        <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[entry.phase]} sx={{ bgcolor: 'rgba(192,132,252,0.16)', color: '#e9d5ff' }} />
+                        <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[entry.phase]} sx={{ bgcolor: 'rgba(158, 147, 237,0.16)', color: '#dedbf9' }} />
                       </Stack>
                       <Typography sx={{ color: '#fff', fontWeight: 700 }}>{entry.title}</Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>

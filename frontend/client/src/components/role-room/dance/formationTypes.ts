@@ -97,7 +97,7 @@ export const DEMO_DANCERS: readonly Dancer[] = [
   { id: 'd-ingrid',   name: 'Ingrid Nordahl', initials: 'IN', role: 'Solo · protagonist', color: danceFlowColors.info },
   { id: 'd-martin',   name: 'Martin Aas',     initials: 'MA', role: 'Pas de deux',         color: danceFlowColors.amber },
   { id: 'd-sofie',    name: 'Sofie Olsen',    initials: 'SO', role: 'Ensemble',            color: danceFlowColors.successDark },
-  { id: 'd-jonas',    name: 'Jonas K.',       initials: 'JK', role: 'Ensemble',            color: '#8b5cf6' },
+  { id: 'd-jonas',    name: 'Jonas K.',       initials: 'JK', role: 'Ensemble',            color: '#756be7' },
   { id: 'd-lea',      name: 'Lea Hansen',     initials: 'LH', role: 'Ensemble',            color: danceFlowColors.pinkAccent },
 ] as const;
 

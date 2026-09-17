@@ -424,7 +424,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
           borderRadius: 3,
           border: '1px solid rgba(246,195,88,0.18)',
           background:
-            'linear-gradient(180deg, rgba(16,14,20,0.98) 0%, rgba(10,8,15,0.98) 100%)',
+            'linear-gradient(180deg, rgba(15, 14, 20,0.98) 0%, rgba(9, 8, 15,0.98) 100%)',
           color: '#f8fafc',
         },
       }}
@@ -782,8 +782,8 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                                 '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
                               }
                             : {
-                                borderColor: 'rgba(168,85,247,0.36)',
-                                color: '#e9d5ff',
+                                borderColor: 'rgba(118, 102, 230,0.36)',
+                                color: '#dedbf9',
                               }),
                         }}
                       >
@@ -1313,7 +1313,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             <Stack spacing={1}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <PeopleIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 18 }} />
+                <PeopleIcon sx={{ color: 'var(--role-violet, #756be7)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Teamet ditt
                 </Typography>

@@ -60,17 +60,17 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   }, [projects, selectedRole?.name]);
 
   const TOUCH_TARGET = 44;
-  const roleTabAccent = 'var(--role-accent, #b86bff)';
-  const roleTabAccentHover = '#a855f7';
-  const roleTabAccentSoft = 'rgba(184,107,255,0.24)';
+  const roleTabAccent = 'var(--role-accent, #8d80ea)';
+  const roleTabAccentHover = '#7666e6';
+  const roleTabAccentSoft = 'rgba(141, 128, 234,0.24)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
-  const roleText = '#f3eaff';
-  const roleTextMuted = 'rgba(220,205,255,0.82)';
+  const roleBorder = 'var(--role-border, rgba(141, 128, 234,0.32))';
+  const roleText = '#efedfc';
+  const roleTextMuted = 'rgba(215, 212, 248,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
   const roleTexture =
-    `linear-gradient(180deg, rgba(9,6,26,0.9) 0%, rgba(10,7,30,0.92) 100%), radial-gradient(circle at 18% -25%, rgba(184,107,255,0.3), transparent 55%), radial-gradient(circle at 82% -10%, rgba(106,76,207,0.28), transparent 46%), ${rolePanelBackdrop}`;
+    `linear-gradient(180deg, rgba(9,6,26,0.9) 0%, rgba(10,7,30,0.92) 100%), radial-gradient(circle at 18% -25%, rgba(141, 128, 234,0.3), transparent 55%), radial-gradient(circle at 82% -10%, rgba(106,76,207,0.28), transparent 46%), ${rolePanelBackdrop}`;
 
   const {
     data: poolRoles = [],
@@ -225,7 +225,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
       case 'hovedrolle': return '#f59e0b';
       case 'birolle': return '#8f6b52';
       case 'statist': return '#6b7280';
-      default: return 'var(--role-accent, #b86bff)';
+      default: return 'var(--role-accent, #8d80ea)';
     }
   };
 
@@ -333,7 +333,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             color: workspaceView === 'standard' ? roleTabAccent : 'rgba(255,255,255,0.7)',
             borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
             '&:hover': {
-              bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              bgcolor: workspaceView === 'standard' ? 'rgba(141, 128, 234,0.28)' : 'rgba(255,255,255,0.06)',
             },
           }}
         >
@@ -349,7 +349,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             color: workspaceView === 'pro' ? roleTabAccent : 'rgba(255,255,255,0.7)',
             borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
             '&:hover': {
-              bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              bgcolor: workspaceView === 'pro' ? 'rgba(141, 128, 234,0.28)' : 'rgba(255,255,255,0.06)',
             },
           }}
         >
@@ -415,7 +415,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                         onClick={() => setSelectedTemplateId(role.id)}
                         sx={{
                           cursor: 'pointer',
-                          bgcolor: isSelected ? 'rgba(184,107,255,0.16)' : roleSurfaceMuted,
+                          bgcolor: isSelected ? 'rgba(141, 128, 234,0.16)' : roleSurfaceMuted,
                           border: isSelected ? `1px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
                           borderRadius: 1.5,
                           '&:hover': { borderColor: roleTabAccentSoft },
@@ -458,7 +458,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                                   <Chip
                                     label={`${role.tags.length} tags`}
                                     size="small"
-                                    sx={{ height: 20, fontSize: '0.7rem', bgcolor: 'rgba(184,107,255,0.2)', color: roleTabAccent }}
+                                    sx={{ height: 20, fontSize: '0.7rem', bgcolor: 'rgba(141, 128, 234,0.2)', color: roleTabAccent }}
                                   />
                                 )}
                               </Box>
@@ -599,7 +599,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                         onClick={() => handleImportClick(selectedTemplate)}
                         sx={{
                           bgcolor: roleTabAccent,
-                          color: '#160a24',
+                          color: '#0d0a24',
                           fontWeight: 700,
                           '&:hover': { bgcolor: roleTabAccentHover },
                         }}
@@ -728,8 +728,8 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                         sx={{
                           height: 20,
                           fontSize: '0.7rem',
-                          bgcolor: 'rgba(184,107,255,0.26)',
-                          color: 'var(--role-accent, #b86bff)',
+                          bgcolor: 'rgba(141, 128, 234,0.26)',
+                          color: 'var(--role-accent, #8d80ea)',
                         }}
                       />
                     ))}
@@ -965,9 +965,9 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             startIcon={<DownloadIcon />}
             sx={{
               bgcolor: roleTabAccent,
-              color: '#160a24',
+              color: '#0d0a24',
               '&:hover': { bgcolor: roleTabAccentHover },
-              '&.Mui-disabled': { bgcolor: 'rgba(184,107,255,0.34)', color: 'rgba(255,255,255,0.87)' },
+              '&.Mui-disabled': { bgcolor: 'rgba(141, 128, 234,0.34)', color: 'rgba(255,255,255,0.87)' },
             }}
           >
             Importer

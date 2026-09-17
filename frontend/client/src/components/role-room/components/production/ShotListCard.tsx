@@ -67,7 +67,7 @@ const COLOR_TAG_MAP: Record<string, string> = {
   yellow: '#eab308',
   green: '#22c55e',
   blue: '#3b82f6',
-  purple: '#a855f7',
+  purple: '#7666e6',
   gray: '#6b7280',
 };
 

@@ -136,9 +136,9 @@ export function DirectorWorkspace({
                 size="small"
                 sx={{
                   height: 24,
-                  color: '#d8b4fe',
-                  bgcolor: 'rgba(168, 85, 247, 0.13)',
-                  border: '1px solid rgba(168, 85, 247, 0.28)',
+                  color: '#c4bef4',
+                  bgcolor: 'rgba(118, 102, 230, 0.13)',
+                  border: '1px solid rgba(118, 102, 230, 0.28)',
                   fontWeight: 800,
                   letterSpacing: 0.7,
                 }}
@@ -198,9 +198,9 @@ export function DirectorWorkspace({
                   justifyContent: 'flex-start',
                   px: 1.5,
                   color: selected ? '#fff' : roleTokens.textMuted,
-                  bgcolor: selected ? 'rgba(184, 107, 255, 0.18)' : 'transparent',
-                  border: selected ? '1px solid rgba(184, 107, 255, 0.36)' : '1px solid transparent',
-                  '&:hover': { bgcolor: selected ? 'rgba(184, 107, 255, 0.24)' : 'rgba(255,255,255,0.05)' },
+                  bgcolor: selected ? 'rgba(141, 128, 234, 0.18)' : 'transparent',
+                  border: selected ? '1px solid rgba(141, 128, 234, 0.36)' : '1px solid transparent',
+                  '&:hover': { bgcolor: selected ? 'rgba(141, 128, 234, 0.24)' : 'rgba(255,255,255,0.05)' },
                   ...focusVisibleStyles,
                 }}
               >
@@ -329,7 +329,7 @@ export function DirectorWorkspace({
                     </Typography>
                   </Stack>
                   {updatedLabel ? (
-                    <Typography sx={{ mt: 0.75, color: 'rgba(220,205,255,0.58)', fontSize: '0.7rem' }}>
+                    <Typography sx={{ mt: 0.75, color: 'rgba(215, 212, 248,0.58)', fontSize: '0.7rem' }}>
                       Prosjektdata sist oppdatert {updatedLabel}
                     </Typography>
                   ) : null}

@@ -268,7 +268,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
               whiteSpace: 'nowrap',
               textTransform: 'none',
               color: '#c4b5fd',
-              borderColor: 'rgba(139,92,246,0.4)',
+              borderColor: 'rgba(117, 107, 231,0.4)',
             }}
           >
             Foreslå fra scene
@@ -305,7 +305,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
         <>
           {suggesting && (
             <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 3 }}>
-              <CircularProgress size={16} sx={{ color: '#a78bfa' }} />
+              <CircularProgress size={16} sx={{ color: '#9d97ee' }} />
               <Typography sx={{ fontSize: 12, color: '#c4b5fd' }}>
                 Finner frames som matcher scenen…
               </Typography>
@@ -369,9 +369,9 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                   borderRadius: 1,
                   overflow: 'hidden',
                   bgcolor: '#0f1318',
-                  border: '1px solid rgba(139,92,246,0.4)',
+                  border: '1px solid rgba(117, 107, 231,0.4)',
                   cursor: 'pointer',
-                  '&:hover': { borderColor: '#a78bfa' },
+                  '&:hover': { borderColor: '#9d97ee' },
                   '&:hover .archive-overlay': { opacity: 1 },
                 }}
               >
@@ -392,7 +392,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                     right: 4,
                     height: 18,
                     fontSize: 10,
-                    bgcolor: 'rgba(139,92,246,0.8)',
+                    bgcolor: 'rgba(117, 107, 231,0.8)',
                     color: '#fff',
                   }}
                 />
@@ -437,7 +437,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
               bgcolor: '#0f1318',
               border: '1px solid #252d3d',
               cursor: 'pointer',
-              '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)' },
+              '&:hover': { borderColor: 'var(--role-violet, #756be7)' },
               '&:hover .archive-overlay': { opacity: 1 },
             }}
           >
@@ -480,7 +480,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                   <Chip
                     size="small"
                     label={frame.claudeTags.shotType}
-                    sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(139,92,246,0.3)', color: '#e5e7eb' }}
+                    sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(117, 107, 231,0.3)', color: '#e5e7eb' }}
                   />
                 )}
                 {frame.claudeTags.lightingMood && (
@@ -532,7 +532,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                 textAlign: 'center',
                 cursor: 'pointer',
                 bgcolor: '#252d3d',
-                '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)' },
+                '&:hover': { borderColor: 'var(--role-violet, #756be7)' },
               }}
             >
               <input
@@ -558,7 +558,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                 />
               ) : (
                 <Stack spacing={1} alignItems="center">
-                  <UploadIcon sx={{ fontSize: 32, color: 'var(--role-violet, #8b5cf6)' }} />
+                  <UploadIcon sx={{ fontSize: 32, color: 'var(--role-violet, #756be7)' }} />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>
                     Klikk for å velge fil (JPEG/PNG/WebP/HEIC)
                   </Typography>
@@ -569,7 +569,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
             {upload.analyzing && (
               <Stack direction="row" spacing={1} alignItems="center">
                 <CircularProgress size={14} />
-                <Typography sx={{ fontSize: 12, color: '#a78bfa' }}>
+                <Typography sx={{ fontSize: 12, color: '#9d97ee' }}>
                   CI tagger bildet…
                 </Typography>
               </Stack>
@@ -587,13 +587,13 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                 sx={{
                   p: 1.5,
                   borderRadius: 1,
-                  bgcolor: 'rgba(139,92,246,0.08)',
-                  border: '1px solid rgba(139,92,246,0.3)',
+                  bgcolor: 'rgba(117, 107, 231,0.08)',
+                  border: '1px solid rgba(117, 107, 231,0.3)',
                 }}
               >
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <AutoAwesomeIcon sx={{ fontSize: 14, color: '#a78bfa' }} />
-                  <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}>
+                  <AutoAwesomeIcon sx={{ fontSize: 14, color: '#9d97ee' }} />
+                  <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#9d97ee', letterSpacing: 1 }}>
                     AUTO-TAGS
                   </Typography>
                 </Stack>

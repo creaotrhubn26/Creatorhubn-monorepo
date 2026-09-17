@@ -66,7 +66,7 @@ const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
 };
 
 const STATUS_COLORS: Record<MarketingPlanPost['status'], { bg: string; fg: string; icon: typeof CheckCircleIcon }> = {
-  proposed: { bg: 'rgba(168,85,247,0.16)', fg: '#c084fc', icon: LightbulbIcon },
+  proposed: { bg: 'rgba(118, 102, 230,0.16)', fg: '#9e93ed', icon: LightbulbIcon },
   scheduled: { bg: 'rgba(34,211,238,0.16)', fg: '#67e8f9', icon: ScheduleIcon },
   published: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', icon: CheckCircleIcon },
   skipped: { bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8', icon: BlockIcon },
@@ -273,8 +273,8 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
             </Typography>
             <Chip size="small" label={plan.status.toUpperCase()}
                   sx={{
-                    bgcolor: plan.status === 'active' ? 'rgba(34,197,94,0.2)' : 'rgba(168,85,247,0.2)',
-                    color: plan.status === 'active' ? '#86efac' : '#c084fc',
+                    bgcolor: plan.status === 'active' ? 'rgba(34,197,94,0.2)' : 'rgba(118, 102, 230,0.2)',
+                    color: plan.status === 'active' ? '#86efac' : '#9e93ed',
                     fontWeight: 700, fontSize: '0.66rem',
                   }} />
           </Stack>
@@ -730,7 +730,7 @@ const FORMAT_COLOR_FALLBACK: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
   image: 'var(--role-cyan, #22d3ee)',
-  story: '#a855f7',
+  story: '#7666e6',
   tiktok: '#ec4899',
   linkedin_post: '#3b82f6',
   youtube_short: '#ef4444',

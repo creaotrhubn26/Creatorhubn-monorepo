@@ -74,9 +74,9 @@ const professionCategories = [
     description: 'Film og videoproduksjon',
     logo: '/role-video.png',
     icon: VideocamIcon,
-    color: 'var(--role-violet, #8b5cf6)',
-    gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%)',
-    glowColor: 'rgba(139, 92, 246, 0.4)',
+    color: 'var(--role-violet, #756be7)',
+    gradient: 'linear-gradient(135deg, rgba(117, 107, 231, 0.15) 0%, rgba(117, 107, 231, 0.05) 100%)',
+    glowColor: 'rgba(117, 107, 231, 0.4)',
     roles: [
       { id: 'director', label: 'Regissør', description: 'Kreativ ledelse for video', icon: MovieIcon },
       { id: 'producer', label: 'Produsent', description: 'Prosjektledelse og budsjett', icon: SupervisorAccountIcon },
@@ -165,7 +165,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
           sx={{
             background: 'linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%)',
             borderRadius: 4,
-            border: '1px solid rgba(139, 92, 246, 0.2)',
+            border: '1px solid rgba(117, 107, 231, 0.2)',
             overflow: 'hidden',
             position: 'relative',
             maxHeight: '85vh',
@@ -180,7 +180,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
               transform: 'translateX(-50%)',
               width: '60%',
               height: '1px',
-              background: 'linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.5) 50%, transparent 100%)',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(117, 107, 231, 0.5) 50%, transparent 100%)',
             }}
           />
           
@@ -197,7 +197,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
                   width: 120,
                   height: 120,
                   marginBottom: 16,
-                  filter: 'drop-shadow(0 0 25px rgba(139, 92, 246, 0.4))',
+                  filter: 'drop-shadow(0 0 25px rgba(117, 107, 231, 0.4))',
                 }}
                 onError={(e: SyntheticEvent<HTMLImageElement>) => {
                   e.currentTarget.style.display = 'none';
@@ -207,7 +207,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
                 variant="h4" 
                 sx={{ 
                   fontWeight: 700,
-                  background: 'linear-gradient(135deg, #ffffff 0%, #a78bfa 100%)',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #9d97ee 100%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',

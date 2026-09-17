@@ -323,7 +323,7 @@ const STEPS: Step[] = [
                 ['Action', 'Light grey #e5e5e5', 'Any prose description line (default)'],
                 ['Character', '#60a5fa (blue)', 'All-caps name on its own line followed by dialogue'],
                 ['Dialogue', 'Off-white #f5f5f5', 'Lines following a character line'],
-                ['Parenthetical', '#a78bfa (lavender)', 'Lines wrapped in (parentheses) inside a dialogue block'],
+                ['Parenthetical', '#9d97ee (lavender)', 'Lines wrapped in (parentheses) inside a dialogue block'],
                 ['Transition', '#f472b6 (pink)', 'All-caps lines ending with a colon e.g. CUT TO:'],
                 ['Centered', '#34d399 (green)', 'Lines wrapped in >angle brackets<'],
                 ['Section', '#f97316 (orange)', 'Lines starting with # or ## for acts'],
@@ -540,7 +540,7 @@ const STEPS: Step[] = [
               the script. Cards can be colour-tagged, annotated with notes, reordered by
               drag-and-drop, duplicated, locked, or deleted.
             </Typography>
-            <Callout color="#8b5cf6">
+            <Callout color="#756be7">
               The Beat Board is ideal during outlining — use it to visualise story
               structure before filling in all the dialogue.
             </Callout>
@@ -573,7 +573,7 @@ const STEPS: Step[] = [
               High-weight types (Climax, Midpoint, Reversal) render with a coloured
               glow and bolder typography so they stand out at a glance.
             </Typography>
-            <Callout color="#8b5cf6">
+            <Callout color="#756be7">
               💡 Assign beat types consistently — the Dramaturgical Analysis panel reads
               them to flag structural issues.
             </Callout>
@@ -628,7 +628,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#8b5cf6">
+            <Callout color="#756be7">
               A balanced three-act script typically aims for roughly 25 % / 50 % / 25 %.
             </Callout>
           </>
@@ -668,7 +668,7 @@ const STEPS: Step[] = [
               This is useful for tracing a single character's journey across all three
               acts without reading every scene description.
             </Typography>
-            <Callout color="#8b5cf6">
+            <Callout color="#756be7">
               Characters are pulled automatically from the Fountain parser. If a
               character name is missing, check that the scene uses proper Fountain
               CHARACTER formatting.

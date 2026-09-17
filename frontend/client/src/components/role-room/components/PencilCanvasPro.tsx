@@ -3939,7 +3939,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   // Color presets
   const COLOR_PRESETS = [
     '#000000', '#FFFFFF', '#FF5252', '#FF9800', '#FFEB3B',
-    '#4CAF50', '#2196F3', '#9C27B0', '#795548', '#607D8B',
+    '#4CAF50', '#2196F3', '#4227b0', '#795548', '#607D8B',
   ];
   const QUICK_BRUSH_TYPES: ProBrushType[] = ['pen', 'marker', 'highlighter', 'eraser'];
   const EXTRA_BRUSH_TYPES: ProBrushType[] = PRO_BRUSH_TYPES.filter(
@@ -4255,7 +4255,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           Flow {(activeBrushConfig.flow * 100).toFixed(0)}%
         </Typography>
         {symmetrySettings.type !== 'none' && (
-          <Typography variant="caption" sx={{ color: '#c084fc' }}>
+          <Typography variant="caption" sx={{ color: '#9e93ed' }}>
             Symmetry
           </Typography>
         )}

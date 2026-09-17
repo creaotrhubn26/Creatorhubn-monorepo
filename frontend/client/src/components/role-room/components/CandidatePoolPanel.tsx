@@ -251,8 +251,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                         sx={{
                           height: 20,
                           fontSize: '0.7rem',
-                          bgcolor: 'rgba(139,92,246,0.2)',
-                          color: '#a78bfa',
+                          bgcolor: 'rgba(117, 107, 231,0.2)',
+                          color: '#9d97ee',
                         }}
                       />
                     ))}

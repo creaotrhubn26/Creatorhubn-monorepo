@@ -853,7 +853,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   // Colors and styling
   const bgColor = '#1a1a2e';
   const textColor = '#e0e0e0';
-  const accentColor = '#a78bfa';
+  const accentColor = '#9d97ee';
   const intColor = '#60a5fa';
   const extColor = '#34d399';
 

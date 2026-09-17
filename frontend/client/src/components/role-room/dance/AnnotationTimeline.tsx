@@ -129,7 +129,7 @@ export function AnnotationTimeline({
       sx={{
         width: '100%',
         bgcolor: '#0d0f14',
-        border: '1px solid rgba(139,92,246,0.18)',
+        border: '1px solid rgba(117, 107, 231,0.18)',
         borderRadius: 1,
         p: 1,
         position: 'relative',
@@ -306,7 +306,7 @@ export function AnnotationTimeline({
             '&:hover': {
               color: danceFlowColors.lavender,
               borderColor: danceFlowColors.lavender,
-              bgcolor: 'rgba(167,139,250,0.06)',
+              bgcolor: 'rgba(157, 151, 238,0.06)',
             },
           }}
         >

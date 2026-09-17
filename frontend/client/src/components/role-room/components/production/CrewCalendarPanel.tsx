@@ -187,7 +187,7 @@ export interface CalendarFilter {
 // ============================================================================
 
 const DEPARTMENT_CONFIG: Record<Department, { label: string; color: string; icon: React.ReactNode }> = {
-  regi: { label: 'Regi', color: '#9C27B0', icon: <Movie fontSize="small" /> },
+  regi: { label: 'Regi', color: '#4227b0', icon: <Movie fontSize="small" /> },
   produksjon: { label: 'Produksjon', color: '#FF9800', icon: <TheaterComedy fontSize="small" /> },
   kamera: { label: 'Kamera', color: '#FFEB3B', icon: <CameraAlt fontSize="small" /> },
   lys: { label: 'Lys', color: '#4CAF50', icon: <Lightbulb fontSize="small" /> },
@@ -195,7 +195,7 @@ const DEPARTMENT_CONFIG: Record<Department, { label: string; color: string; icon
   lyd: { label: 'Lyd', color: '#2196F3', icon: <Mic fontSize="small" /> },
   art: { label: 'Art', color: '#E91E63', icon: <Brush fontSize="small" /> },
   hmu: { label: 'HMU', color: '#FF4081', icon: <Face fontSize="small" /> },
-  kostyme: { label: 'Kostyme', color: '#7C4DFF', icon: <Person fontSize="small" /> },
+  kostyme: { label: 'Kostyme', color: '#6f66e6', icon: <Person fontSize="small" /> },
   personal: { label: 'Personlig', color: '#607D8B', icon: <Star fontSize="small" /> },
 };
 
@@ -445,7 +445,7 @@ const EventDetailDialog: React.FC<EventDetailDialogProps> = ({
             label="Avtaler" 
             sx={{ 
               textTransform: 'none',
-              '&.Mui-selected': { color: '#7C3AED' }
+              '&.Mui-selected': { color: '#5446e1' }
             }} 
           />
           <Tab label="Påminnelser" sx={{ textTransform: 'none' }} />
@@ -1166,7 +1166,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
     ${alpha('#E3F2FD', 0.5)} 25%, 
     ${alpha('#FFF3E0', 0.5)} 50%, 
     ${alpha('#FCE4EC', 0.5)} 75%, 
-    ${alpha('#F3E5F5', 0.5)} 100%
+    ${alpha('#e8e5f5', 0.5)} 100%
   )`;
   
   // Stats calculation
@@ -1186,11 +1186,11 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                 width: isMobile ? 36 : 42,
                 height: isMobile ? 36 : 42,
                 borderRadius: 2.5,
-                background: 'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)',
+                background: 'linear-gradient(135deg, #5446e1 0%, #7666e6 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 16px rgba(124, 58, 237, 0.4)',
+                boxShadow: '0 4px 16px rgba(84, 70, 225, 0.4)',
               }}
             >
               <CalendarMonth sx={{ color: '#fff', fontSize: isMobile ? 18 : 22 }} />
@@ -1236,15 +1236,15 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
             if (isMobile) setMobileDrawerOpen(false);
           }}
           sx={{
-            background: 'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)',
+            background: 'linear-gradient(135deg, #5446e1 0%, #7666e6 100%)',
             borderRadius: 2,
             py: isMobile ? 1 : 1.25,
             fontWeight: 600,
             fontSize: isMobile ? '0.85rem' : '0.875rem',
-            boxShadow: '0 4px 16px rgba(124, 58, 237, 0.3)',
+            boxShadow: '0 4px 16px rgba(84, 70, 225, 0.3)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #6D28D9 0%, #9333EA 100%)',
-              boxShadow: '0 6px 20px rgba(124, 58, 237, 0.4)',
+              background: 'linear-gradient(135deg, #3928d9 0%, #523ee0 100%)',
+              boxShadow: '0 6px 20px rgba(84, 70, 225, 0.4)',
             },
           }}
         >
@@ -1257,7 +1257,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 1 : 1.5 }}>
           {[
             { label: 'I dag', value: todayEvents, color: '#10B981' },
-            { label: 'Denne uken', value: weekEvents, color: '#7C3AED' },
+            { label: 'Denne uken', value: weekEvents, color: '#5446e1' },
             { label: 'Crew', value: crewOnDuty, color: '#F59E0B' },
           ].map((stat) => (
             <Box
@@ -1303,13 +1303,13 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
               '& .MuiPickersDay-root': {
                 color: '#fff',
                 fontSize: isMobile ? '0.75rem' : '0.8rem',
-                '&:hover': { bgcolor: alpha('#7C3AED', 0.2) },
+                '&:hover': { bgcolor: alpha('#5446e1', 0.2) },
                 '&.Mui-selected': {
-                  bgcolor: '#7C3AED',
-                  '&:hover': { bgcolor: '#6D28D9' },
+                  bgcolor: '#5446e1',
+                  '&:hover': { bgcolor: '#3928d9' },
                 },
                 '&.MuiPickersDay-today': {
-                  border: '1px solid #7C3AED',
+                  border: '1px solid #5446e1',
                 },
               },
             }}
@@ -1615,7 +1615,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
             px: isMobile ? 2 : 3,
             py: isMobile ? 1.5 : 2,
             borderBottom: `1px solid ${alpha('#fff', 0.06)}`,
-            background: 'linear-gradient(180deg, rgba(124,58,237,0.12) 0%, rgba(255,255,255,0) 100%)',
+            background: 'linear-gradient(180deg, rgba(84, 70, 225,0.12) 0%, rgba(255,255,255,0) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 1 : 2, width: isMobile ? '100%' : 'auto' }}>
@@ -1625,11 +1625,11 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                 size="small" 
                 onClick={() => setMobileDrawerOpen(true)}
                 sx={{ 
-                  bgcolor: alpha('#7C3AED', 0.1),
-                  color: '#7C3AED',
-                  border: `1px solid ${alpha('#7C3AED', 0.2)}`,
+                  bgcolor: alpha('#5446e1', 0.1),
+                  color: '#5446e1',
+                  border: `1px solid ${alpha('#5446e1', 0.2)}`,
                   '&:hover': { 
-                    bgcolor: alpha('#7C3AED', 0.2),
+                    bgcolor: alpha('#5446e1', 0.2),
                   },
                 }}
               >
@@ -1645,9 +1645,9 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                   color: '#fff',
                   border: `1px solid ${alpha('#fff', 0.12)}`,
                   '&:hover': { 
-                    bgcolor: alpha('#7C3AED', 0.15),
-                    color: '#7C3AED',
-                    borderColor: alpha('#7C3AED', 0.3),
+                    bgcolor: alpha('#5446e1', 0.15),
+                    color: '#5446e1',
+                    borderColor: alpha('#5446e1', 0.3),
                   },
                 }}
               >
@@ -1661,9 +1661,9 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                   color: '#fff',
                   border: `1px solid ${alpha('#fff', 0.12)}`,
                   '&:hover': { 
-                    bgcolor: alpha('#7C3AED', 0.15),
-                    color: '#7C3AED',
-                    borderColor: alpha('#7C3AED', 0.3),
+                    bgcolor: alpha('#5446e1', 0.15),
+                    color: '#5446e1',
+                    borderColor: alpha('#5446e1', 0.3),
                   },
                 }}
               >
@@ -1725,9 +1725,9 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                 color: '#fff',
                 border: `1px solid ${alpha('#fff', 0.12)}`,
                 '&:hover': { 
-                  bgcolor: alpha('#7C3AED', 0.15),
-                  color: '#7C3AED',
-                  borderColor: alpha('#7C3AED', 0.3),
+                  bgcolor: alpha('#5446e1', 0.15),
+                  color: '#5446e1',
+                  borderColor: alpha('#5446e1', 0.3),
                 },
               }}
             >
@@ -1740,18 +1740,18 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
               onClick={() => setFilterDialogOpen(true)}
               sx={{ 
                 bgcolor: enabledDepartments.size < Object.keys(DEPARTMENT_CONFIG).length 
-                  ? alpha('#7C3AED', 0.15) 
+                  ? alpha('#5446e1', 0.15) 
                   : alpha('#fff', 0.08),
                 color: enabledDepartments.size < Object.keys(DEPARTMENT_CONFIG).length 
-                  ? '#7C3AED' 
+                  ? '#5446e1' 
                   : '#fff',
                 border: `1px solid ${enabledDepartments.size < Object.keys(DEPARTMENT_CONFIG).length 
-                  ? alpha('#7C3AED', 0.3) 
+                  ? alpha('#5446e1', 0.3) 
                   : alpha('#fff', 0.12)}`,
                 '&:hover': { 
-                  bgcolor: alpha('#7C3AED', 0.15),
-                  color: '#7C3AED',
-                  borderColor: alpha('#7C3AED', 0.3),
+                  bgcolor: alpha('#5446e1', 0.15),
+                  color: '#5446e1',
+                  borderColor: alpha('#5446e1', 0.3),
                 },
               }}
             >
@@ -1786,9 +1786,9 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                       sx={{
                         borderRadius: 1.5,
                         color: viewMode === item.mode ? '#fff' : alpha('#fff', 0.5),
-                        bgcolor: viewMode === item.mode ? '#7C3AED' : 'transparent',
+                        bgcolor: viewMode === item.mode ? '#5446e1' : 'transparent',
                         '&:hover': { 
-                          bgcolor: viewMode === item.mode ? '#6D28D9' : alpha('#fff', 0.08),
+                          bgcolor: viewMode === item.mode ? '#3928d9' : alpha('#fff', 0.08),
                         },
                       }}
                     >
@@ -1845,14 +1845,14 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                 onClick={() => setViewMode(item.mode)}
                 size="small"
                 sx={{
-                  bgcolor: viewMode === item.mode ? '#7C3AED' : alpha('#fff', 0.04),
+                  bgcolor: viewMode === item.mode ? '#5446e1' : alpha('#fff', 0.04),
                   color: viewMode === item.mode ? '#fff' : alpha('#fff', 0.7),
                   fontWeight: 600,
                   '& .MuiChip-icon': {
                     color: viewMode === item.mode ? '#fff' : alpha('#fff', 0.5),
                   },
                   '&:hover': { 
-                    bgcolor: viewMode === item.mode ? '#6D28D9' : alpha('#fff', 0.08),
+                    bgcolor: viewMode === item.mode ? '#3928d9' : alpha('#fff', 0.08),
                   },
                 }}
               />
@@ -1891,19 +1891,19 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                   p: isMobile ? 0.75 : 1.5,
                   textAlign: 'center',
                   borderLeft: `1px solid ${alpha('#fff', 0.04)}`,
-                  bgcolor: dayIsToday ? alpha('#7C3AED', 0.05) : dayIsWeekend ? alpha('#fff', 0.02) : 'transparent',
+                  bgcolor: dayIsToday ? alpha('#5446e1', 0.05) : dayIsWeekend ? alpha('#fff', 0.02) : 'transparent',
                   position: 'relative',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: dayIsToday ? alpha('#7C3AED', 0.1) : alpha('#fff', 0.04),
+                    bgcolor: dayIsToday ? alpha('#5446e1', 0.1) : alpha('#fff', 0.04),
                   },
                 }}
               >
                 <Typography
                   variant="caption"
                   sx={{
-                    color: dayIsToday ? '#7C3AED' : dayIsWeekend ? alpha('#fff', 0.35) : alpha('#fff', 0.5),
+                    color: dayIsToday ? '#5446e1' : dayIsWeekend ? alpha('#fff', 0.35) : alpha('#fff', 0.5),
                     textTransform: 'uppercase',
                     fontWeight: 600,
                     letterSpacing: '0.05em',
@@ -1917,7 +1917,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                     variant={isMobile ? 'body1' : 'h4'}
                     sx={{
                       fontWeight: 700,
-                      color: dayIsToday ? '#7C3AED' : dayIsWeekend ? alpha('#fff', 0.4) : '#fff',
+                      color: dayIsToday ? '#5446e1' : dayIsWeekend ? alpha('#fff', 0.4) : '#fff',
                       lineHeight: 1.2,
                       fontSize: isMobile ? '0.9rem' : undefined,
                     }}
@@ -1934,7 +1934,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                         width: 6,
                         height: 6,
                         borderRadius: '50%',
-                        bgcolor: '#7C3AED',
+                        bgcolor: '#5446e1',
                       }}
                     />
                   )}
@@ -1948,7 +1948,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                         height: 18,
                         fontSize: '0.65rem',
                         fontWeight: 600,
-                        bgcolor: dayIsToday ? '#7C3AED' : alpha('#fff', 0.08),
+                        bgcolor: dayIsToday ? '#5446e1' : alpha('#fff', 0.08),
                         color: dayIsToday ? '#fff' : alpha('#fff', 0.6),
                         '& .MuiChip-label': { px: 0.75 },
                       }}
@@ -2013,7 +2013,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                     position: 'relative',
                     borderLeft: `1px solid ${alpha('#fff', 0.04)}`,
                     bgcolor: dayIsToday 
-                      ? alpha('#7C3AED', 0.02) 
+                      ? alpha('#5446e1', 0.02) 
                       : dayIsWeekend 
                         ? alpha('#fff', 0.015) 
                         : 'transparent',
@@ -2028,7 +2028,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                         height: isMobile ? 48 : 60,
                         borderBottom: `1px solid ${alpha('#fff', 0.04)}`,
                         '&:hover': {
-                          bgcolor: alpha('#7C3AED', 0.06),
+                          bgcolor: alpha('#5446e1', 0.06),
                           '&::after': isMobile ? {} : {
                             content: '"+ Ny hendelse"',
                             position: 'absolute',
@@ -2036,7 +2036,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                             top: '50%',
                             transform: 'translate(-50%, -50%)',
                             fontSize: '0.65rem',
-                            color: '#7C3AED',
+                            color: '#5446e1',
                             fontWeight: 600,
                             opacity: 0.7,
                           },
@@ -2153,20 +2153,20 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                       p: isMobile ? 0.5 : 1,
                       borderRadius: isMobile ? 1 : 2,
                       bgcolor: dayIsToday 
-                        ? alpha('#7C3AED', 0.1) 
+                        ? alpha('#5446e1', 0.1) 
                         : !dayInMonth 
                           ? alpha('#fff', 0.02) 
                           : dayIsWeekend 
                             ? alpha('#fff', 0.015)
                             : 'white',
                       border: dayIsToday 
-                        ? `2px solid ${alpha('#7C3AED', 0.5)}` 
+                        ? `2px solid ${alpha('#5446e1', 0.5)}` 
                         : `1px solid ${alpha('#fff', 0.04)}`,
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
                       '&:hover': {
                         boxShadow: `0 4px 12px ${alpha('#fff', 0.1)}`,
-                        borderColor: alpha('#7C3AED', 0.3),
+                        borderColor: alpha('#5446e1', 0.3),
                       },
                     }}
                   >
@@ -2175,7 +2175,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                       sx={{
                         fontWeight: dayIsToday ? 700 : 600,
                         color: dayIsToday 
-                          ? '#7C3AED' 
+                          ? '#5446e1' 
                           : !dayInMonth 
                             ? alpha('#fff', 0.25) 
                             : '#fff',
@@ -2254,14 +2254,14 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
               sx={{
                 p: isMobile ? 1.5 : 2,
                 borderBottom: `1px solid ${alpha('#fff', 0.06)}`,
-                bgcolor: isToday(selectedDate) ? alpha('#7C3AED', 0.05) : alpha('#f8f9fa', 0.5),
+                bgcolor: isToday(selectedDate) ? alpha('#5446e1', 0.05) : alpha('#f8f9fa', 0.5),
               }}
             >
               <Typography
                 variant={isMobile ? 'subtitle1' : 'h5'}
                 sx={{
                   fontWeight: 700,
-                  color: isToday(selectedDate) ? '#7C3AED' : '#fff',
+                  color: isToday(selectedDate) ? '#5446e1' : '#fff',
                   textTransform: 'capitalize',
                   fontSize: isMobile ? '1rem' : undefined,
                 }}
@@ -2274,7 +2274,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                   size="small"
                   sx={{
                     mt: 1,
-                    bgcolor: '#7C3AED',
+                    bgcolor: '#5446e1',
                     color: '#fff',
                     fontWeight: 600,
                     fontSize: '0.65rem',
@@ -2327,7 +2327,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                         cursor: 'pointer',
                         transition: 'background-color 0.15s ease',
                         '&:hover': {
-                          bgcolor: alpha('#7C3AED', 0.06),
+                          bgcolor: alpha('#5446e1', 0.06),
                         },
                       }}
                     />
@@ -2759,13 +2759,13 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
           justifyContent: 'space-between',
           borderBottom: '1px solid',
           borderColor: 'divider',
-          bgcolor: alpha('#7C3AED', 0.08),
+          bgcolor: alpha('#5446e1', 0.08),
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Badge badgeContent={todayEvents} sx={{ '& .MuiBadge-badge': { bgcolor: '#7C3AED', color: 'white' } }}>
-              <Notifications sx={{ color: '#7C3AED' }} />
+            <Badge badgeContent={todayEvents} sx={{ '& .MuiBadge-badge': { bgcolor: '#5446e1', color: 'white' } }}>
+              <Notifications sx={{ color: '#5446e1' }} />
             </Badge>
-            <Typography variant="h6" fontWeight={600} sx={{ color: '#7C3AED' }}>
+            <Typography variant="h6" fontWeight={600} sx={{ color: '#5446e1' }}>
               Varsler
             </Typography>
           </Box>
@@ -2775,8 +2775,8 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 0 }}>
           {/* Today's Events */}
-          <Box sx={{ p: 2, bgcolor: alpha('#7C3AED', 0.05) }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#7C3AED', mb: 1 }}>
+          <Box sx={{ p: 2, bgcolor: alpha('#5446e1', 0.05) }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#5446e1', mb: 1 }}>
               I dag ({todayEvents} hendelser)
             </Typography>
             {events
@@ -2803,11 +2803,11 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
                       mb: 1,
                       cursor: 'pointer',
                       border: '1px solid',
-                      borderColor: alpha('#7C3AED', 0.2),
-                      boxShadow: `0 1px 4px ${alpha('#7C3AED', 0.08)}`,
+                      borderColor: alpha('#5446e1', 0.2),
+                      boxShadow: `0 1px 4px ${alpha('#5446e1', 0.08)}`,
                       '&:hover': {
-                        borderColor: '#7C3AED',
-                        boxShadow: `0 2px 8px ${alpha('#7C3AED', 0.15)}`,
+                        borderColor: '#5446e1',
+                        boxShadow: `0 2px 8px ${alpha('#5446e1', 0.15)}`,
                       },
                     }}
                   >
@@ -2917,8 +2917,8 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
             size="small"
             startIcon={<Today />}
             sx={{ 
-              color: '#7C3AED',
-              '&:hover': { bgcolor: alpha('#7C3AED', 0.08) }
+              color: '#5446e1',
+              '&:hover': { bgcolor: alpha('#5446e1', 0.08) }
             }}
           >
             Se alle i dag

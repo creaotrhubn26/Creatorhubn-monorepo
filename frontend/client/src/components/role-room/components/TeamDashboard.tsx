@@ -112,7 +112,7 @@ const blockerConfig: Record<ShotBlocker, { label: string; color: string; bgColor
   none: { label: 'Ingen blokkering', color: '#9ca3af', bgColor: 'rgba(156,163,175,0.14)' },
   equipment: { label: 'Venter på utstyr', color: '#f59e0b', bgColor: 'rgba(245,158,11,0.16)' },
   location: { label: 'Venter på location', color: '#06b6d4', bgColor: 'rgba(6,182,212,0.16)' },
-  talent: { label: 'Venter på talent', color: '#a855f7', bgColor: 'rgba(168,85,247,0.16)' },
+  talent: { label: 'Venter på talent', color: '#7666e6', bgColor: 'rgba(118, 102, 230,0.16)' },
 };
 
 const presetLabels: Record<DashboardFilterPreset, string> = {
@@ -242,7 +242,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
           </Typography>
           {shot.reservedBy && (
             <Tooltip title={`Reservert av ${shot.reservedByName ?? 'annen bruker'}`}>
-              <LockIcon sx={{ fontSize: 16, color: '#a78bfa' }} />
+              <LockIcon sx={{ fontSize: 16, color: '#9d97ee' }} />
             </Tooltip>
           )}
         </Stack>
@@ -296,12 +296,12 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
           ) : (
             <Chip
               size="small"
-              icon={<PersonIcon sx={{ color: '#a855f7 !important' }} />}
+              icon={<PersonIcon sx={{ color: '#7666e6 !important' }} />}
               label="Ledig"
               sx={{
-                bgcolor: 'rgba(168,85,247,0.15)',
-                color: '#a855f7',
-                border: '1px dashed rgba(168,85,247,0.45)',
+                bgcolor: 'rgba(118, 102, 230,0.15)',
+                color: '#7666e6',
+                border: '1px dashed rgba(118, 102, 230,0.45)',
                 height: 20,
               }}
             />
@@ -1208,7 +1208,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               </IconButton>
             </Tooltip>
             <Tooltip title="Callsheet">
-              <IconButton aria-label="Åpne callsheet" onClick={() => setShowCallSheetDrawer(true)} sx={{ color: '#a78bfa' }}>
+              <IconButton aria-label="Åpne callsheet" onClick={() => setShowCallSheetDrawer(true)} sx={{ color: '#9d97ee' }}>
                 <CallSheetIcon />
               </IconButton>
             </Tooltip>
@@ -1274,7 +1274,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Gj.snitt estimat</Typography>
               <Typography sx={{ color: '#38bdf8', fontWeight: 700, fontSize: 24 }}>{stats.averageEstimated.toFixed(0)}m</Typography>
             </Paper>
-            <Paper sx={{ p: 1, bgcolor: 'rgba(168,85,247,0.14)' }}>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(118, 102, 230,0.14)' }}>
               <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Teknisk readiness</Typography>
               <Typography sx={{ color: '#c4b5fd', fontWeight: 700, fontSize: 24 }}>{readinessScore}%</Typography>
             </Paper>
@@ -1638,7 +1638,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                       variant="outlined"
                       startIcon={<AutoBalanceIcon />}
                       onClick={autoBalanceAssignments}
-                      sx={{ borderColor: 'rgba(168,85,247,0.45)', color: '#c4b5fd' }}
+                      sx={{ borderColor: 'rgba(118, 102, 230,0.45)', color: '#c4b5fd' }}
                     >
                       Auto-balanser
                     </Button>
@@ -1727,7 +1727,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                         <Chip size="small" label={`${load.assigned} tilordnet`} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f8fafc' }} />
                         <Chip size="small" label={`${load.blocked} blokkert`} sx={{ bgcolor: 'rgba(245,158,11,0.14)', color: '#f59e0b' }} />
                         <Chip size="small" label={`Kapasitet ${load.capacity}`} sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: '#38bdf8' }} />
-                        <Chip size="small" label={`Utnyttelse ${(load.utilization * 100).toFixed(0)}%`} sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#c4b5fd' }} />
+                        <Chip size="small" label={`Utnyttelse ${(load.utilization * 100).toFixed(0)}%`} sx={{ bgcolor: 'rgba(118, 102, 230,0.14)', color: '#c4b5fd' }} />
                       </Stack>
 
                       <Box sx={{ mt: 1 }}>
@@ -1799,14 +1799,14 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                 })}
 
                 {workloadByMember.unassigned?.assigned > 0 && (
-                  <Paper sx={{ p: 1.25, bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.45)' }}>
+                  <Paper sx={{ p: 1.25, bgcolor: 'rgba(118, 102, 230,0.12)', border: '1px solid rgba(118, 102, 230,0.45)' }}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                      <Avatar sx={{ bgcolor: '#a855f7', width: 34, height: 34 }}>
+                      <Avatar sx={{ bgcolor: '#7666e6', width: 34, height: 34 }}>
                         <PersonIcon fontSize="small" />
                       </Avatar>
                       <Box sx={{ flex: 1 }}>
                         <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: 14 }}>Ufordelte shots</Typography>
-                        <Typography variant="caption" sx={{ color: '#d8b4fe' }}>{workloadByMember.unassigned.assigned} trenger eier</Typography>
+                        <Typography variant="caption" sx={{ color: '#c4bef4' }}>{workloadByMember.unassigned.assigned} trenger eier</Typography>
                       </Box>
                       <Button
                         size="small"
@@ -1816,7 +1816,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                           setSelectedMemberForAssign(scopedCrewMembers[0]?.id ?? '');
                           setAssignDialogOpen(true);
                         }}
-                        sx={{ borderColor: 'rgba(168,85,247,0.5)', color: '#e9d5ff' }}
+                        sx={{ borderColor: 'rgba(118, 102, 230,0.5)', color: '#dedbf9' }}
                       >
                         Tilordne
                       </Button>
@@ -2103,7 +2103,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                             sx={{
                               minWidth: 170,
                               color: '#f8fafc',
-                              bgcolor: shot.assigneeId ? 'rgba(56,189,248,0.14)' : 'rgba(168,85,247,0.14)',
+                              bgcolor: shot.assigneeId ? 'rgba(56,189,248,0.14)' : 'rgba(118, 102, 230,0.14)',
                               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
                             }}
                             renderValue={(value) => {
@@ -2307,7 +2307,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <CallSheetIcon sx={{ color: '#a78bfa' }} />
+              <CallSheetIcon sx={{ color: '#9d97ee' }} />
               <Typography sx={{ fontWeight: 600 }}>Daglig teknisk callsheet</Typography>
             </Stack>
             <Stack direction="row" spacing={0.5}>

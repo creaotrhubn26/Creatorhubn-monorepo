@@ -22,15 +22,15 @@ export interface ThemeTokens {
 
 const THEMES: Record<MarketingPosterTheme, ThemeTokens> = {
   purple: {
-    accent: '#a78bfa',
-    accentDark: '#7c3aed',
+    accent: '#9d97ee',
+    accentDark: '#5446e1',
     glowRgb: '167,139,250',
     tintRgb: '167,139,250',
     background:
-      'radial-gradient(circle at 15% 10%, rgba(167,139,250,0.30), transparent 40%),' +
-      ' radial-gradient(circle at 95% 105%, rgba(124,58,237,0.22), transparent 50%),' +
-      ' linear-gradient(180deg, #0a0a14 0%, #0e0820 50%, #1a0f2e 100%)',
-    shadow: '0 20px 60px rgba(124,58,237,0.25)',
+      'radial-gradient(circle at 15% 10%, rgba(157, 151, 238,0.30), transparent 40%),' +
+      ' radial-gradient(circle at 95% 105%, rgba(84, 70, 225,0.22), transparent 50%),' +
+      ' linear-gradient(180deg, #0a0a14 0%, #0a0820 50%, #120f2e 100%)',
+    shadow: '0 20px 60px rgba(84, 70, 225,0.25)',
   },
   film_warm: {
     accent: '#fb923c',
@@ -51,7 +51,7 @@ const THEMES: Record<MarketingPosterTheme, ThemeTokens> = {
     background:
       'radial-gradient(circle at 15% 10%, rgba(244,114,182,0.28), transparent 40%),' +
       ' radial-gradient(circle at 95% 105%, rgba(190,24,93,0.20), transparent 50%),' +
-      ' linear-gradient(180deg, #0a0a14 0%, #1e0a16 50%, #2a0c20 100%)',
+      ' linear-gradient(180deg, #0a0a14 0%, #1e0a16 50%, #150c2a 100%)',
     shadow: '0 20px 60px rgba(190,24,93,0.25)',
   },
 };

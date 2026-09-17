@@ -108,7 +108,7 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '16px' }}>Min dag</Typography>
           {loading ? (
-            <CircularProgress size={14} sx={{ color: '#a855f7' }} />
+            <CircularProgress size={14} sx={{ color: '#7666e6' }} />
           ) : (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>
               {totalActionable > 0
@@ -216,7 +216,7 @@ function MinDagRow({
           <Typography
             sx={{
               color: 'rgba(196,181,253,0.92)', fontSize: '10.5px', fontWeight: 700,
-              px: 0.7, py: 0.1, borderRadius: '6px', background: 'rgba(168,85,247,0.14)',
+              px: 0.7, py: 0.1, borderRadius: '6px', background: 'rgba(118, 102, 230,0.14)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160,
             }}
             title={item.projectName}
@@ -248,7 +248,7 @@ function MinDagRow({
           sx={{
             flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '12px',
             minHeight: 44, px: 1.2, borderRadius: '9px', color: '#c4b5fd',
-            '&:hover': { background: 'rgba(168,85,247,0.1)' },
+            '&:hover': { background: 'rgba(118, 102, 230,0.1)' },
             '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
           }}
         >

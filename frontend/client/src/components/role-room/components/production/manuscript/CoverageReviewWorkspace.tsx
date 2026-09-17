@@ -71,7 +71,7 @@ const STATUS_META = {
   missing: { label: 'missing', color: '#f87171', bg: 'rgba(248,113,113,0.14)', border: 'rgba(248,113,113,0.35)' },
   planned: { label: 'planned', color: '#fbbf24', bg: 'rgba(251,191,36,0.14)', border: 'rgba(251,191,36,0.35)' },
   recorded: { label: 'recorded', color: '#60a5fa', bg: 'rgba(96,165,250,0.14)', border: 'rgba(96,165,250,0.35)' },
-  reviewed: { label: 'reviewed', color: '#a78bfa', bg: 'rgba(167,139,250,0.14)', border: 'rgba(167,139,250,0.35)' },
+  reviewed: { label: 'reviewed', color: '#9d97ee', bg: 'rgba(157, 151, 238,0.14)', border: 'rgba(157, 151, 238,0.35)' },
   selected: { label: 'selected', color: '#34d399', bg: 'rgba(52,211,153,0.14)', border: 'rgba(52,211,153,0.35)' },
 } as const;
 
@@ -93,7 +93,7 @@ const SYNC_STATUS_META: Record<CoverageReviewSyncStatus, { label: string; color:
   synced: { label: 'Server synket', color: '#86efac', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)' },
   local_only: { label: 'Lokal backup', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)' },
   error: { label: 'Sync-feil', color: '#fca5a5', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)' },
-  conflict: { label: 'Konflikt løses', color: '#f0abfc', bg: 'rgba(217,70,239,0.12)', border: 'rgba(217,70,239,0.3)' },
+  conflict: { label: 'Konflikt løses', color: '#c0b4f3', bg: 'rgba(111, 82, 227,0.12)', border: 'rgba(111, 82, 227,0.3)' },
 };
 
 export const CoverageReviewWorkspace = ({
@@ -211,7 +211,7 @@ export const CoverageReviewWorkspace = ({
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Chip label={`${sceneTakes.length} takes`} sx={{ bgcolor: 'rgba(96,165,250,0.12)', color: '#93c5fd' }} />
-            <Chip label={`${reviewedTakeCount} reviewed`} sx={{ bgcolor: 'rgba(167,139,250,0.12)', color: '#c4b5fd' }} />
+            <Chip label={`${reviewedTakeCount} reviewed`} sx={{ bgcolor: 'rgba(157, 151, 238,0.12)', color: '#c4b5fd' }} />
             <Chip label={`${selectedTakeCount} selected`} sx={{ bgcolor: 'rgba(52,211,153,0.12)', color: '#86efac' }} />
             <Chip
               label={sceneReadyForPost ? 'Post-ready' : 'Mangler coverage'}
@@ -369,8 +369,8 @@ export const CoverageReviewWorkspace = ({
                           height: 28,
                           fontSize: 10,
                           color: compared ? '#fff' : '#9ca3af',
-                          bgcolor: compared ? 'rgba(139,92,246,0.22)' : 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(139,92,246,0.24)',
+                          bgcolor: compared ? 'rgba(117, 107, 231,0.22)' : 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(117, 107, 231,0.24)',
                         }}
                       >
                         Compare
@@ -431,13 +431,13 @@ export const CoverageReviewWorkspace = ({
             </Stack>
 
             {comparedTakes.length > 0 && (
-              <Box data-testid="pmv-take-compare-panel" sx={{ mt: 2, p: 1.5, borderRadius: '12px', bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.24)' }}>
+              <Box data-testid="pmv-take-compare-panel" sx={{ mt: 2, p: 1.5, borderRadius: '12px', bgcolor: 'rgba(117, 107, 231,0.08)', border: '1px solid rgba(117, 107, 231,0.24)' }}>
                 <Typography sx={{ color: '#c4b5fd', fontSize: 11, fontWeight: 800, mb: 1 }}>
                   TAKE COMPARE
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   {comparedTakes.map((take) => (
-                    <Chip key={take.id} size="small" label={`${formatTakeLabel(take)} · ${take.status} · ${take.duration}s`} sx={{ bgcolor: 'rgba(139,92,246,0.14)', color: '#ddd6fe' }} />
+                    <Chip key={take.id} size="small" label={`${formatTakeLabel(take)} · ${take.status} · ${take.duration}s`} sx={{ bgcolor: 'rgba(117, 107, 231,0.14)', color: '#ddd6fe' }} />
                   ))}
                 </Stack>
               </Box>

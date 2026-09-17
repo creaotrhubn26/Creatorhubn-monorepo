@@ -227,7 +227,7 @@ const CrewRow: React.FC<CrewRowProps> = ({ member }) => {
             size="small"
             label={member.__synced ? member.availability : `Tilgjengelig: ${member.availability}`}
             variant="outlined"
-            sx={member.__synced ? { borderColor: '#a030c0', color: '#c07fe0' } : undefined}
+            sx={member.__synced ? { borderColor: '#4a30c0', color: '#8e7fe0' } : undefined}
           />
           {member.__synced ? (
             <Tooltip title="Synket fra medlemmets egen kalender" arrow>
@@ -236,8 +236,8 @@ const CrewRow: React.FC<CrewRowProps> = ({ member }) => {
                   width: 7,
                   height: 7,
                   borderRadius: '50%',
-                  bgcolor: '#a030c0',
-                  boxShadow: '0 0 4px rgba(160,48,192,0.9)',
+                  bgcolor: '#4a30c0',
+                  boxShadow: '0 0 4px rgba(74, 48, 192,0.9)',
                   flexShrink: 0,
                 }}
               />

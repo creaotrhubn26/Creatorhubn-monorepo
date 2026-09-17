@@ -70,7 +70,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       label: 'Call Sheet',
       icon: <CallSheetIcon />,
       description: 'Generer call sheets med crew, cast og scener',
-      color: 'var(--role-violet, #8b5cf6)',
+      color: 'var(--role-violet, #756be7)',
     },
     {
       id: 'shots',
@@ -132,7 +132,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       >
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
           <Stack direction="row" spacing={1.5} alignItems="center">
-            <MovieIcon sx={{ color: '#a78bfa' }} />
+            <MovieIcon sx={{ color: '#9d97ee' }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 Produksjonsverktøy
@@ -172,7 +172,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
                   },
                 },
                 '& .MuiTabs-indicator': {
-                  backgroundColor: activeTabConfig?.color || '#8b5cf6',
+                  backgroundColor: activeTabConfig?.color || '#756be7',
                   height: 3,
                 },
               }}

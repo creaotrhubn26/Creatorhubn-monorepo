@@ -56,7 +56,7 @@ export const CREW_ROLE_COLOR_PALETTE: Record<string, string> = {
   producer: '#f97316',
   production_manager: '#fb7185',
   production_coordinator: '#38bdf8',
-  cinematographer: '#8b5cf6',
+  cinematographer: '#756be7',
   camera_operator: '#6366f1',
   camera_assistant: '#4f46e5',
   drone_pilot: '#3b82f6',
@@ -67,7 +67,7 @@ export const CREW_ROLE_COLOR_PALETTE: Record<string, string> = {
   video_editor: '#10b981',
   colorist: '#22c55e',
   vfx_artist: '#ec4899',
-  motion_graphics: '#a855f7',
+  motion_graphics: '#7666e6',
   other: '#64748b',
 };
 

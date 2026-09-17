@@ -48,10 +48,10 @@ interface Props {
   candidateName?: string;
 }
 
-const PURPLE_BRIGHT = '#8b5cf6';
-const PURPLE_LIGHT = '#a78bfa';
+const PURPLE_BRIGHT = '#756be7';
+const PURPLE_LIGHT = '#9d97ee';
 const PANEL_BG = 'rgba(15,12,28,0.62)';
-const PANEL_BORDER = 'rgba(167,139,250,0.18)';
+const PANEL_BORDER = 'rgba(157, 151, 238,0.18)';
 const TEXT_DIM = 'rgba(229,231,235,0.78)';
 
 function formatTime(seconds: number): string {
@@ -202,7 +202,7 @@ export const CandidateVideoReview: React.FC<Props> = ({ candidateId, projectId, 
           variant="contained"
           startIcon={uploading ? <CircularProgress size={18} sx={{ color: 'inherit' }} /> : <UploadIcon />}
           disabled={uploading}
-          sx={{ bgcolor: PURPLE_BRIGHT, '&:hover': { bgcolor: '#4c1d95' }, textTransform: 'none', fontWeight: 600 }}
+          sx={{ bgcolor: PURPLE_BRIGHT, '&:hover': { bgcolor: '#291d95' }, textTransform: 'none', fontWeight: 600 }}
         >
           {uploading ? `Laster opp ${uploadProgress}%…` : 'Last opp video'}
           <input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska" hidden onChange={handleUpload} />
@@ -227,7 +227,7 @@ export const CandidateVideoReview: React.FC<Props> = ({ candidateId, projectId, 
                   onClick={() => setActiveVideo(v)}
                   sx={{
                     p: 1, borderRadius: 1.5, cursor: 'pointer',
-                    bgcolor: activeVideo?.id === v.id ? 'rgba(139,92,246,0.18)' : PANEL_BG,
+                    bgcolor: activeVideo?.id === v.id ? 'rgba(117, 107, 231,0.18)' : PANEL_BG,
                     border: `1px solid ${activeVideo?.id === v.id ? PURPLE_LIGHT : PANEL_BORDER}`,
                   }}
                 >
@@ -310,7 +310,7 @@ export const CandidateVideoReview: React.FC<Props> = ({ candidateId, projectId, 
 
                 {/* Add comment ved nåværende time */}
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-                  <Chip label={`@ ${formatTime(currentTime)}`} size="small" sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT, fontFamily: 'monospace' }} />
+                  <Chip label={`@ ${formatTime(currentTime)}`} size="small" sx={{ bgcolor: 'rgba(117, 107, 231,0.18)', color: PURPLE_LIGHT, fontFamily: 'monospace' }} />
                   <TextField
                     size="small" fullWidth placeholder="Skriv kommentar ved dette timestampet…"
                     value={newComment}
@@ -323,7 +323,7 @@ export const CandidateVideoReview: React.FC<Props> = ({ candidateId, projectId, 
                     disabled={!newComment.trim()}
                     variant="contained"
                     startIcon={<AddCommentIcon />}
-                    sx={{ bgcolor: PURPLE_BRIGHT, '&:hover': { bgcolor: '#4c1d95' }, textTransform: 'none' }}
+                    sx={{ bgcolor: PURPLE_BRIGHT, '&:hover': { bgcolor: '#291d95' }, textTransform: 'none' }}
                   >
                     Lagre
                   </Button>
@@ -342,7 +342,7 @@ export const CandidateVideoReview: React.FC<Props> = ({ candidateId, projectId, 
                           label={formatTime(a.timestampSeconds)}
                           size="small"
                           onClick={() => seekTo(a.timestampSeconds)}
-                          sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT, fontFamily: 'monospace', cursor: 'pointer', minWidth: 56 }}
+                          sx={{ bgcolor: 'rgba(117, 107, 231,0.18)', color: PURPLE_LIGHT, fontFamily: 'monospace', cursor: 'pointer', minWidth: 56 }}
                         />
                         <Box sx={{ flexGrow: 1 }}>
                           <Typography sx={{ fontSize: 13, color: 'rgba(237,233,254,0.92)' }}>{a.comment}</Typography>

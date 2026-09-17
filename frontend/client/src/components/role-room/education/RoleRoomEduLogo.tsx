@@ -29,7 +29,7 @@ export function RoleRoomEduLogo({
           backgroundRepeat: 'no-repeat',
           // Lysende lilla glød så merket «synes mer» (som på hero-bildet):
           // radial halo (0 0-blur) i to lag.
-          filter: 'drop-shadow(0 0 13px rgba(139,92,246,0.75)) drop-shadow(0 0 5px rgba(196,181,253,0.55))',
+          filter: 'drop-shadow(0 0 13px rgba(117, 107, 231,0.75)) drop-shadow(0 0 5px rgba(196,181,253,0.55))',
         }}
       />
       <Box sx={{ minWidth: 0 }}>

@@ -543,7 +543,7 @@ const ellipseSuggestions: ShapeIntentSuggestion[] = [
     category: 'Prop',
     description: 'Build a clean prop read with rim control and optional dish content.',
     learningFocus: 'Good for practicing nested ellipses and prop readability in close-up shots.',
-    accentColor: '#e879f9',
+    accentColor: '#9b87eb',
     parameters: [
       {
         id: 'rim',
@@ -1448,7 +1448,7 @@ const rectangleSuggestions: ShapeIntentSuggestion[] = [
     category: 'Prop',
     description: 'Turn the rectangle into a screen with bezel and stand choices.',
     learningFocus: 'Useful for modern prop design and clean tech silhouettes.',
-    accentColor: '#a78bfa',
+    accentColor: '#9d97ee',
     parameters: [
       {
         id: 'bezel',

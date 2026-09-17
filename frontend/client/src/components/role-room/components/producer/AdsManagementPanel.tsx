@@ -349,7 +349,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
   return (
     <Stack spacing={1.2} sx={CARD_SX}>
       <Stack direction="row" alignItems="center" spacing={1}>
-        <CampaignIcon sx={{ fontSize: 20, color: '#f0abfc' }} />
+        <CampaignIcon sx={{ fontSize: 20, color: '#c0b4f3' }} />
         <Typography sx={LABEL}>Annonser</Typography>
         {campaigns.length > 0 && (
           <Chip
@@ -363,7 +363,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
           size="small"
           startIcon={<AddIcon />}
           onClick={openCreate}
-          sx={{ textTransform: 'none', color: '#f0abfc', fontWeight: 700 }}
+          sx={{ textTransform: 'none', color: '#c0b4f3', fontWeight: 700 }}
         >
           Ny kampanje
         </Button>
@@ -495,10 +495,10 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
               </Stack>
 
               {/* ── AI-annonsetekst (Lag 1): agenten lager riktig copy fra bedriften ── */}
-              <Stack spacing={0.9} sx={{ mt: 0.5, p: 1, borderRadius: 1.5, bgcolor: 'rgba(240,171,252,0.06)', border: '1px solid rgba(240,171,252,0.22)' }}>
+              <Stack spacing={0.9} sx={{ mt: 0.5, p: 1, borderRadius: 1.5, bgcolor: 'rgba(192, 180, 243,0.06)', border: '1px solid rgba(192, 180, 243,0.22)' }}>
                 <Stack direction="row" alignItems="center" spacing={0.8}>
-                  <AutoAwesomeIcon sx={{ fontSize: 17, color: '#f0abfc' }} />
-                  <Typography sx={{ color: '#f0abfc', fontWeight: 700, fontSize: '0.82rem' }}>AI-annonsetekst</Typography>
+                  <AutoAwesomeIcon sx={{ fontSize: 17, color: '#c0b4f3' }} />
+                  <Typography sx={{ color: '#c0b4f3', fontWeight: 700, fontSize: '0.82rem' }}>AI-annonsetekst</Typography>
                 </Stack>
                 <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
                   CI lager plattform-tilpasset tekst fra bedriftens marketing-plan + det du fyller inn under. Du velger variant og redigerer før kampanjen opprettes.
@@ -525,7 +525,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 <Button size="small" variant="outlined" startIcon={generating ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
                   disabled={generating}
                   onClick={runGenerate}
-                  sx={{ textTransform: 'none', fontWeight: 700, color: '#f0abfc', borderColor: 'rgba(240,171,252,0.4)', alignSelf: 'flex-start' }}>
+                  sx={{ textTransform: 'none', fontWeight: 700, color: '#c0b4f3', borderColor: 'rgba(192, 180, 243,0.4)', alignSelf: 'flex-start' }}>
                   {generating ? 'Genererer…' : generated ? 'Generer på nytt' : 'Generer annonsetekst'}
                 </Button>
 
@@ -545,8 +545,8 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                         <Box key={i} onClick={() => setSelectedVariant(i)}
                           sx={{
                             p: 1, borderRadius: 1.2, cursor: 'pointer',
-                            bgcolor: selected ? 'rgba(240,171,252,0.12)' : 'rgba(148,163,184,0.06)',
-                            border: `1px solid ${selected ? 'rgba(240,171,252,0.6)' : 'rgba(148,163,184,0.18)'}`,
+                            bgcolor: selected ? 'rgba(192, 180, 243,0.12)' : 'rgba(148,163,184,0.06)',
+                            border: `1px solid ${selected ? 'rgba(192, 180, 243,0.6)' : 'rgba(148,163,184,0.18)'}`,
                           }}>
                           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
                             {selected ? '● ' : '○ '}{v.headline}
@@ -561,7 +561,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                             <Typography sx={{ color: 'rgba(226,232,240,0.85)', fontSize: '0.76rem', mt: 0.3 }}>{v.descriptions.join(' • ')}</Typography>
                           )}
                           <Stack direction="row" spacing={0.6} sx={{ mt: 0.4, flexWrap: 'wrap', gap: 0.4 }}>
-                            {v.callToAction && <Chip size="small" label={v.callToAction} sx={{ height: 18, fontSize: '0.66rem', color: '#f0abfc', bgcolor: 'rgba(240,171,252,0.1)' }} />}
+                            {v.callToAction && <Chip size="small" label={v.callToAction} sx={{ height: 18, fontSize: '0.66rem', color: '#c0b4f3', bgcolor: 'rgba(192, 180, 243,0.1)' }} />}
                             {v.rationale && <Typography sx={{ ...SUBTLE, fontSize: '0.68rem', fontStyle: 'italic' }}>{v.rationale}</Typography>}
                           </Stack>
                           {v.imageBrief && (

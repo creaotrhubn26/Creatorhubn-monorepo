@@ -91,7 +91,7 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
   casting_director: {
     label: 'Casting Director',
     icon: '/role-room-assets/roleroom_casting_director.webp',
-    accentColor: '#d250e6',
+    accentColor: '#7053e3',
     columns: ALL_STATUSES,
     canAdd: true, canMove: true, canBulkAction: true, canAssignEvent: true,
     toolbarHint: 'Full casting-kontroll — flytt, vurder og bestill talent',
@@ -181,7 +181,7 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
   client: {
     label: 'Klient',
     icon: '/role-room-assets/roleroom_klient.webp',
-    accentColor: '#b482ff',
+    accentColor: '#9c93ee',
     columns: ['selected', 'confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
     toolbarHint: 'Bekreftet talent for din produksjon',
@@ -231,7 +231,7 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
   composer: {
     label: 'Komponist',
     icon: null,
-    accentColor: '#9169ff',
+    accentColor: '#867eea',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
     toolbarHint: 'Bekreftet talent du jobber med',
@@ -253,7 +253,7 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
 const DEFAULT_ROLE_CONFIG: RoleKanbanConfig = {
   label: '',
   icon: null,
-  accentColor: '#8b5cf6',
+  accentColor: '#756be7',
   columns: ALL_STATUSES,
   canAdd: true, canMove: true, canBulkAction: true, canAssignEvent: true,
   toolbarHint: '',
@@ -284,7 +284,7 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
   { status: 'pending',   label: 'Ingen status', color: '#6b7280' },
   { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)' },
   { status: 'shortlist', label: 'Vurderes',     color: '#ffb800' },
-  { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #8b5cf6)' },
+  { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #756be7)' },
   { status: 'confirmed', label: 'Bekreftet',    color: '#10b981' },
   { status: 'rejected',  label: 'Avvist',       color: '#ef4444' },
 ];
@@ -382,7 +382,7 @@ function AssignEventDialog({
       color: '#fff',
       '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-      '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
+      '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #756be7)' },
     },
     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
   };
@@ -401,7 +401,7 @@ function AssignEventDialog({
     >
       <DialogTitle sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)', pb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <EventIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
+          <EventIcon sx={{ color: 'var(--role-violet, #756be7)' }} />
           Tilordne audition-event
         </Box>
         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mt: 0.5, fontWeight: 400, fontSize: '0.8rem' }}>
@@ -443,7 +443,7 @@ function AssignEventDialog({
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }} disabled={loading}>Avbryt</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!date || !time || loading}
           startIcon={loading ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : <EventIcon />}
-          sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}>
+          sx={{ bgcolor: 'var(--role-violet, #756be7)', '&:hover': { bgcolor: '#5446e1' } }}>
           {loading ? 'Oppretter…' : `Opprett event (${candidateIds.length})`}
         </Button>
       </DialogActions>
@@ -501,7 +501,7 @@ function BulkActionBar({
           checked={allSelected}
           indeterminate={!allSelected && count > 0}
           size="small"
-          sx={{ p: 0.25, color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#a78bfa' }, '&.MuiCheckbox-indeterminate': { color: '#a78bfa' } }}
+          sx={{ p: 0.25, color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#9d97ee' }, '&.MuiCheckbox-indeterminate': { color: '#9d97ee' } }}
         />
         <Typography variant="body2" sx={{ color: '#e5e7eb', fontSize: '13px', userSelect: 'none' }}>
           Velg alle
@@ -512,7 +512,7 @@ function BulkActionBar({
       <Chip
         label={count}
         size="small"
-        sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: '#a78bfa', fontWeight: 700, height: 22, fontSize: '12px', ml: 0.5 }}
+        sx={{ bgcolor: 'rgba(117, 107, 231,0.2)', color: '#9d97ee', fontWeight: 700, height: 22, fontSize: '12px', ml: 0.5 }}
       />
 
       {/* Divider */}
@@ -940,7 +940,7 @@ function KanbanPanelInner({
               color: '#fff', height: 30, fontSize: '12px',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
-              '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
+              '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #756be7)' },
             },
           }}
         />
@@ -1449,7 +1449,7 @@ function KanbanPanelInner({
                               onClick={e => e.stopPropagation()}>
                               <Tooltip title="Tilordne audition-event">
                                 <IconButton size="small" onClick={() => openAssignEvent([candidate.id])}
-                                  sx={{ color: 'var(--role-violet, #8b5cf6)', p: 0.5, '&:hover': { bgcolor: 'rgba(139,92,246,0.15)' } }}>
+                                  sx={{ color: 'var(--role-violet, #756be7)', p: 0.5, '&:hover': { bgcolor: 'rgba(117, 107, 231,0.15)' } }}>
                                   <EventIcon sx={{ fontSize: 15 }} />
                                 </IconButton>
                               </Tooltip>

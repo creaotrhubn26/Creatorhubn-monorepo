@@ -137,7 +137,7 @@ function getCharacters(dialogueLines: DialogueLine[]): string[] {
 // Generate consistent colors for characters
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
+    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#756be7',
     '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);

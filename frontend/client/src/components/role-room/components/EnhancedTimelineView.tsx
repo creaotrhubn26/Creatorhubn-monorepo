@@ -37,9 +37,9 @@ interface ShotBlock {
 
 const SHOT_COLORS: Record<string, string> = {
   'Wide': '#4caf50',
-  'Medium': '#9333ea',
+  'Medium': '#523ee0',
   'Close-up': '#2196f3',
-  'Extreme Close-up': '#9c27b0',
+  'Extreme Close-up': '#4227b0',
   'Establishing': '#00bcd4',
   'Detail': '#f44336',
   'Two Shot': '#ffc107',

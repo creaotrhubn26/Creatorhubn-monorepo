@@ -81,7 +81,7 @@ export const RoleRoomTabRail: React.FC<RoleRoomTabRailProps> = ({
       {items.map((item) => {
         const ItemIcon = item.Icon;
         const isActive = item.value === value;
-        const accent = item.accent ?? '#a78bfa';
+        const accent = item.accent ?? '#9d97ee';
 
         return (
           <Tooltip key={item.value} title={item.label} placement="right" arrow>
@@ -125,20 +125,20 @@ export const RoleRoomTabRail: React.FC<RoleRoomTabRailProps> = ({
                   : undefined,
                 '@media (hover: hover)': {
                   '&:hover': {
-                    bgcolor: 'rgba(167,139,250,0.08)',
+                    bgcolor: 'rgba(157, 151, 238,0.08)',
                     color: accent,
                   },
                 },
                 '&:active': {
                   transform: 'scale(0.96)',
-                  bgcolor: 'rgba(167,139,250,0.18)',
+                  bgcolor: 'rgba(157, 151, 238,0.18)',
                 },
                 '&:focus-visible': {
-                  outline: '3px solid #8b5cf6',
+                  outline: '3px solid #756be7',
                   outlineOffset: 2,
                 },
                 ...(item.highlight && !isActive
-                  ? { color: '#a78bfa' }
+                  ? { color: '#9d97ee' }
                   : {}),
               }}
             >

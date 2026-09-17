@@ -631,7 +631,7 @@ export const PRODUCER_WORKSPACE_SURFACE_COLORS: Record<ProducerWorkspaceSurfaceK
   storyboard: '#fb7185',
   manuscript: '#818cf8',
   shotlist: '#22d3ee',
-  brand: '#a855f7',
+  brand: '#7666e6',
   accounts: '#14b8a6',
   delivery: '#22c55e',
   meetings: '#f97316',
@@ -1732,7 +1732,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     ],
     {
       id: 'workspace-section-delivery',
-      color: '#a855f7',
+      color: '#7666e6',
       order: 3,
       layout: 'focus',
     },

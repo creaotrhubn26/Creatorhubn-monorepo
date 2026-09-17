@@ -126,7 +126,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
         p: 2,
         borderRadius: 2,
         border: "1px solid rgba(196,181,253,0.24)",
-        bgcolor: "rgba(76,29,149,0.16)",
+        bgcolor: "rgba(41, 29, 149,0.16)",
       }}
     >
       <Stack spacing={1.5}>

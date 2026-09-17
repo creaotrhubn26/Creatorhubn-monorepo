@@ -2,7 +2,7 @@
 /**
  * StoryboardBoardPage — piksel-tro implementasjon av mål-designet
  * («Neon City»-mockupen, STORYBOARD_DESIGN.md §4b) med Role Room-brand:
- * mockupens blå aksent er byttet mot fiolett #8b5cf6; chrome-gråtonene og
+ * mockupens blå aksent er byttet mot fiolett #756be7; chrome-gråtonene og
  * den lyse arbeidsflaten/arket følger mockupen.
  *
  * Fullskjerms-overlay montert fra StoryboardView (workspaceMode 'pro').
@@ -42,8 +42,8 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 
-const BRAND = '#8b5cf6';
-const BRAND_SOFT = 'rgba(139,92,246,0.16)';
+const BRAND = '#756be7';
+const BRAND_SOFT = 'rgba(117, 107, 231,0.16)';
 const CHROME = '#0b0b0e';
 const PANEL = '#141519';
 const PANEL_BORDER = 'rgba(255,255,255,0.07)';
@@ -59,7 +59,7 @@ const MOVEMENT_GLYPHS: Record<string, string> = {
 };
 const TRANSITIONS = ['Cut', 'Dissolve', 'Match Cut', 'Smash Cut', 'Wipe', 'Fade'];
 const FOCUS_OPTIONS = ['Shallow', 'Deep'];
-const LABEL_COLORS = ['#ffffff', '#8b5cf6', '#ef6a6a', '#f0c24b', '#3fa46a', '#2fbdb3'];
+const LABEL_COLORS = ['#ffffff', '#756be7', '#ef6a6a', '#f0c24b', '#3fa46a', '#2fbdb3'];
 
 // Shot size-ikon: enkel figur+ramme-glyf per størrelse (mockupens figurikoner)
 const ShotSizeGlyph: React.FC<{ size: string; active: boolean }> = ({ size, active }) => {
@@ -95,7 +95,7 @@ const parseStrokesJSON = (value: unknown): any[] => {
 
 // Lag-rekkefølge på arket (bunn → topp) — matcher mockupens Layers-panel.
 const BOARD_LAYERS = ['Drawing', 'Camera / Arrows', 'Dialog', 'Notes'] as const;
-const ANNOTATION_COLOR = '#8b5cf6';
+const ANNOTATION_COLOR = '#756be7';
 
 const InlineFrameCanvas: React.FC<{
   frame: any;
@@ -413,7 +413,7 @@ const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames
         <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>Ingen tegnede frames å spille av ennå.</Typography>
       )}
       <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 3 }}>
-        <IconButton onClick={() => setPlaying((p) => !p)} sx={{ color: '#fff', bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}>
+        <IconButton onClick={() => setPlaying((p) => !p)} sx={{ color: '#fff', bgcolor: '#756be7', '&:hover': { bgcolor: '#5446e1' } }}>
           {playing ? <PauseIcon /> : <PlayArrowIcon />}
         </IconButton>
         <Typography sx={{ color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
@@ -422,7 +422,7 @@ const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames
       </Stack>
       <Stack direction="row" spacing={0.5} sx={{ mt: 2, width: 'min(86vw, 1400px)' }}>
         {playable.map((f, i) => (
-          <Box key={f.id} onClick={() => { setIndex(i); setPlaying(false); }} sx={{ flexGrow: Math.max(0.5, f.duration ?? 1), height: 5, borderRadius: 2, cursor: 'pointer', bgcolor: i === index ? '#8b5cf6' : 'rgba(255,255,255,0.2)' }} />
+          <Box key={f.id} onClick={() => { setIndex(i); setPlaying(false); }} sx={{ flexGrow: Math.max(0.5, f.duration ?? 1), height: 5, borderRadius: 2, cursor: 'pointer', bgcolor: i === index ? '#756be7' : 'rgba(255,255,255,0.2)' }} />
         ))}
       </Stack>
     </Box>

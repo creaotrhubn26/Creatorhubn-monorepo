@@ -207,7 +207,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                       <Chip
                         size="small"
                         label={`Rolle: ${p.role_name}`}
-                        sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#c4b5fd', fontWeight: 600, fontSize: '0.7rem', height: 22 }}
+                        sx={{ bgcolor: 'rgba(118, 102, 230,0.16)', color: '#c4b5fd', fontWeight: 600, fontSize: '0.7rem', height: 22 }}
                       />
                     ) : null}
                   </Stack>

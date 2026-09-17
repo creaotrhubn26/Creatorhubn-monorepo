@@ -55,7 +55,7 @@ const STATUS_LABEL: Record<ShootingDay['status'], string> = {
 
 const STATUS_COLOR: Record<ShootingDay['status'], { color: string; bg: string }> = {
   'planned': { color: '#334155', bg: 'rgba(100,116,139,0.14)' },
-  'in-progress': { color: '#6d28d9', bg: 'rgba(124,58,237,0.16)' },
+  'in-progress': { color: '#3928d9', bg: 'rgba(84, 70, 225,0.16)' },
   'wrapped': { color: '#047857', bg: 'rgba(16,185,129,0.16)' },
   'postponed': { color: '#b45309', bg: 'rgba(245,158,11,0.18)' },
   'cancelled': { color: '#b91c1c', bg: 'rgba(239,68,68,0.16)' },

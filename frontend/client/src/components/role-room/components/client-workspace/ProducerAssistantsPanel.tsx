@@ -94,11 +94,11 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
       </Box>
 
       {!adding ? (
-        <Button onClick={() => setAdding(true)} startIcon={<InviteIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}>
+        <Button onClick={() => setAdding(true)} startIcon={<InviteIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:hover': { background: 'linear-gradient(135deg,#523ee0,#4926d3)' } }}>
           Inviter assistent
         </Button>
       ) : (
-        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(124,58,237,0.06)' }}>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(118, 102, 230,0.3)', background: 'rgba(84, 70, 225,0.06)' }}>
           <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Inviter assistent</Typography>
           <Stack spacing={1.25}>
             <TextField label="E-post" value={email} onChange={(e) => setEmail(e.target.value)} size="small" fullWidth sx={fieldSx} />
@@ -113,7 +113,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
               Rollen setter fornuftig tilgang automatisk — du finjusterer etterpå. Sensitive områder forblir av.
             </Typography>
             <Stack direction="row" spacing={1}>
-              <Button onClick={() => void invite()} disabled={busyId === 'invite'} startIcon={busyId === 'invite' ? <CircularProgress size={15} color="inherit" /> : <InviteIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>Send invitasjon</Button>
+              <Button onClick={() => void invite()} disabled={busyId === 'invite'} startIcon={busyId === 'invite' ? <CircularProgress size={15} color="inherit" /> : <InviteIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)' }}>Send invitasjon</Button>
               <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
             </Stack>
           </Stack>
@@ -125,7 +125,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
           Aktive assistenter {loading ? '' : `· ${items.length}`}
         </Typography>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#7666e6' }} /></Box>
         ) : items.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen assistenter ennå.</Typography>
         ) : (
@@ -176,7 +176,7 @@ function AssistantCard({ a, busy, onToggle, onRevoke }: {
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography sx={{ color: '#f1f5f9', fontSize: '0.92rem', fontWeight: 700 }}>{a.assistantName || a.assistantEmail}</Typography>
           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2 }}>
-            <Chip label={PRESET_LABEL[a.rolePreset] ?? a.rolePreset} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#c4b5fd', bgcolor: 'rgba(168,85,247,0.14)' }} />
+            <Chip label={PRESET_LABEL[a.rolePreset] ?? a.rolePreset} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#c4b5fd', bgcolor: 'rgba(118, 102, 230,0.14)' }} />
             <Chip label={a.status === 'active' ? 'Aktiv' : 'Invitert'} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: a.status === 'active' ? '#6ee7b7' : '#fcd34d', bgcolor: a.status === 'active' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)' }} />
             {a.assistantName ? <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem' }}>{a.assistantEmail}</Typography> : null}
           </Stack>

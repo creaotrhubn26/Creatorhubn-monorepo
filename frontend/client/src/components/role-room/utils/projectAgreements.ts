@@ -426,7 +426,7 @@ export function getAgreementSignatureTone(
     case 'opened_in_google':
       return { background: 'rgba(59,130,246,0.16)', color: '#bfdbfe' };
     case 'prepared':
-      return { background: 'rgba(139,92,246,0.16)', color: '#ddd6fe' };
+      return { background: 'rgba(117, 107, 231,0.16)', color: '#ddd6fe' };
     case 'rejected':
     case 'changes_requested':
       return { background: 'rgba(251,191,36,0.16)', color: '#fde68a' };

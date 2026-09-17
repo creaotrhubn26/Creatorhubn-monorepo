@@ -178,7 +178,7 @@ interface BeatTypeConfig {
 const BEAT_TYPE_CONFIG: Record<BeatType, BeatTypeConfig> = {
   setup:             { label: 'Setup',            color: '#78909c', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   catalyst:          { label: 'Catalyst',          color: '#e91e63', glow: '0 0 12px rgba(233,30,99,0.7)',             icon: <BoltIcon sx={{ fontSize: 11 }} />,       weight: 'strong'  },
-  debate:            { label: 'Debate',            color: '#9c27b0', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
+  debate:            { label: 'Debate',            color: '#4227b0', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   break_into_two:    { label: 'Break Into Two',    color: '#1976d2', glow: '0 0 8px rgba(25,118,210,0.5)',             icon: <BoltIcon sx={{ fontSize: 11 }} />,       weight: 'emphasis'},
   b_story:           { label: 'B Story',           color: '#7b61ff', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   fun_and_games:     { label: 'Fun & Games',       color: '#0097a7', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
@@ -199,7 +199,7 @@ const BEAT_TYPE_CONFIG: Record<BeatType, BeatTypeConfig> = {
 
 const BEAT_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
+  '#06b6d4', '#3b82f6', '#756be7', '#ec4899', '#6b7280',
 ];
 
 // Thread colours consistent with the screenshot sidebar
@@ -223,7 +223,7 @@ const STATUS_COLOR: Record<ScriptStatus, string> = {
 const EmotionIcon: FC<{ emotion: 'positive' | 'negative' | 'neutral' }> = ({ emotion }) => {
   if (emotion === 'positive') return <PositiveIcon sx={{ color: '#4ade80', fontSize: 14 }} />;
   if (emotion === 'negative') return <NegativeIcon sx={{ color: '#f87171', fontSize: 14 }} />;
-  return <NeutralIcon sx={{ color: '#a78bfa', fontSize: 14 }} />;
+  return <NeutralIcon sx={{ color: '#9d97ee', fontSize: 14 }} />;
 };
 
 // ─── Mini tension sparkline (SVG) shown above each act column ────────────────

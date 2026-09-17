@@ -189,7 +189,7 @@ export default function BudgetCategoryPicker({
             </MenuItem>
           ) : null}
           {groups.map((group) => [
-            <ListSubheader key={`hdr-${group.parent_group}`} sx={{ bgcolor: 'rgba(15,23,42,0.92)', color: '#a78bfa', fontWeight: 800, lineHeight: '32px' }}>
+            <ListSubheader key={`hdr-${group.parent_group}`} sx={{ bgcolor: 'rgba(15,23,42,0.92)', color: '#9d97ee', fontWeight: 800, lineHeight: '32px' }}>
               {group.parent_group_label}
             </ListSubheader>,
             ...group.categories.map((cat) => (
@@ -213,7 +213,7 @@ export default function BudgetCategoryPicker({
             )),
           ])}
           <ListSubheader sx={{ bgcolor: 'rgba(15,23,42,0.92)' }} />
-          <MenuItem value={NEW_CATEGORY_VALUE} sx={{ color: '#a78bfa', fontWeight: 700 }}>
+          <MenuItem value={NEW_CATEGORY_VALUE} sx={{ color: '#9d97ee', fontWeight: 700 }}>
             <AddIcon fontSize="small" sx={{ mr: 1 }} />
             Legg til egen kategori…
           </MenuItem>

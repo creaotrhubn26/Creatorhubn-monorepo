@@ -158,7 +158,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             <Stack direction="row" flexWrap="wrap" gap={0.5}>
               {topProfessions.map((p) => (
                 <Chip key={p} label={p} size="small"
-                      sx={{ bgcolor: 'rgba(139,92,246,0.12)', color: '#6d28d9', fontWeight: 600 }} />
+                      sx={{ bgcolor: 'rgba(117, 107, 231,0.12)', color: '#3928d9', fontWeight: 600 }} />
               ))}
             </Stack>
           )}
@@ -174,8 +174,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           sx={{
             minHeight: 'var(--rr-touch-target-min, 44px)',
             justifyContent: 'flex-start',
-            borderColor: 'rgba(124,58,237,0.35)',
-            color: '#6d28d9',
+            borderColor: 'rgba(84, 70, 225,0.35)',
+            color: '#3928d9',
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -190,8 +190,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           sx={{
             minHeight: 'var(--rr-touch-target-min, 44px)',
             justifyContent: 'flex-start',
-            borderColor: 'rgba(124,58,237,0.35)',
-            color: '#6d28d9',
+            borderColor: 'rgba(84, 70, 225,0.35)',
+            color: '#3928d9',
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -206,8 +206,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           sx={{
             minHeight: 'var(--rr-touch-target-min, 44px)',
             justifyContent: 'flex-start',
-            borderColor: 'rgba(124,58,237,0.35)',
-            color: '#6d28d9',
+            borderColor: 'rgba(84, 70, 225,0.35)',
+            color: '#3928d9',
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -255,8 +255,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
               sx={{
                 minHeight: 'var(--rr-touch-target-min, 44px)',
                 justifyContent: 'flex-start',
-                borderColor: 'rgba(124,58,237,0.35)',
-                color: '#6d28d9',
+                borderColor: 'rgba(84, 70, 225,0.35)',
+                color: '#3928d9',
                 textTransform: 'none',
                 fontWeight: 600,
               }}
@@ -276,8 +276,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         sx={{
           minHeight: 'var(--rr-touch-target-min, 44px)',
           justifyContent: 'flex-start',
-          borderColor: 'rgba(168,85,247,0.35)',
-          color: '#a855f7',
+          borderColor: 'rgba(118, 102, 230,0.35)',
+          color: '#7666e6',
           textTransform: 'none',
           fontWeight: 600,
         }}
@@ -351,7 +351,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       onClose={() => setAvailabilityOpen(false)}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
+      PaperProps={{ sx: { bgcolor: '#050415', color: '#f5f3ff' } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Min tilgjengelighet
@@ -375,7 +375,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       onClose={() => setStorageOpen(false)}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
+      PaperProps={{ sx: { bgcolor: '#050415', color: '#f5f3ff' } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Lagring

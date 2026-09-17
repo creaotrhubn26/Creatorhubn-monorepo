@@ -128,11 +128,11 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
 
       {/* Legg til tilgang */}
       {!adding ? (
-        <Button onClick={() => setAdding(true)} startIcon={<AddIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}>
+        <Button onClick={() => setAdding(true)} startIcon={<AddIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:hover': { background: 'linear-gradient(135deg,#523ee0,#4926d3)' } }}>
           Legg til tilgang
         </Button>
       ) : (
-        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(124,58,237,0.06)' }}>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(118, 102, 230,0.3)', background: 'rgba(84, 70, 225,0.06)' }}>
           <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Ny tilgang</Typography>
           <Stack spacing={1.25}>
             <FormControl size="small" fullWidth sx={fieldSx}>
@@ -155,7 +155,7 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
             </Typography>
             <TextField label="Tilgang utløper (valgfritt tidsvindu)" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} sx={fieldSx} />
             <Stack direction="row" spacing={1}>
-              <Button onClick={() => void handleAdd()} disabled={saving} startIcon={saving ? <CircularProgress size={15} color="inherit" /> : <LockIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)' }}>
+              <Button onClick={() => void handleAdd()} disabled={saving} startIcon={saving ? <CircularProgress size={15} color="inherit" /> : <LockIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)' }}>
                 {saving ? 'Lagrer …' : 'Lagre kryptert'}
               </Button>
               <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
@@ -170,7 +170,7 @@ export default function ClientVaultView({ projectId }: { projectId: string }) {
           Dine tilganger {loading ? '' : `· ${secrets.length}`}
         </Typography>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#7666e6' }} /></Box>
         ) : secrets.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen tilganger lagt inn ennå.</Typography>
         ) : (
@@ -226,7 +226,7 @@ function SecretRow({ s }: { s: RoleRoomAccessVaultSecretSummary }) {
           </Typography>
           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2, flexWrap: 'wrap', rowGap: 0.3 }}>
             <Chip size="small" icon={clientOwned ? <ClientOwnedIcon sx={{ fontSize: 12, color: '#6ee7b7 !important' }} /> : <ProducerOwnedIcon sx={{ fontSize: 12, color: '#c4b5fd !important' }} />}
-              label={clientOwned ? 'Du eier' : 'Produsent'} sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: clientOwned ? '#6ee7b7' : '#c4b5fd', background: clientOwned ? 'rgba(16,185,129,0.12)' : 'rgba(168,85,247,0.14)' }} />
+              label={clientOwned ? 'Du eier' : 'Produsent'} sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: clientOwned ? '#6ee7b7' : '#c4b5fd', background: clientOwned ? 'rgba(16,185,129,0.12)' : 'rgba(118, 102, 230,0.14)' }} />
             <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.7rem' }}>{PLATFORM_LABEL[s.platform] ?? s.platform}</Typography>
             {s.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{s.maskedReference}</Typography> : null}
           </Stack>

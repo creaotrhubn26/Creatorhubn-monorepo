@@ -15,13 +15,13 @@ import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 
 const palette = {
-  bg: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bg: '#0e0b2e',
+  border: 'rgba(118, 102, 230,0.18)',
+  borderStrong: 'rgba(118, 102, 230,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e93ed',
   tiktok: '#ff0050',
 };
 
@@ -146,10 +146,10 @@ export default function ClientTiktokCreatorsPanel({
           disabled={searching || !advertiserId}
           startIcon={searching ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SearchOutlinedIcon />}
           sx={{
-            background: 'linear-gradient(135deg, #ff0050 0%, #d946ef 100%)',
+            background: 'linear-gradient(135deg, #ff0050 0%, #6f52e3 100%)',
             color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '1rem',
             px: 4, py: 1.4, borderRadius: 1.6,
-            '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #5437cc 100%)' },
           }}
         >
           {searching ? 'Søker…' : 'Finn skapere'}
@@ -169,7 +169,7 @@ export default function ClientTiktokCreatorsPanel({
             <Stack spacing={1.2}>
               {creators.slice(0, 20).map((c) => (
                 <Box key={c.handle} sx={{
-                  bgcolor: 'rgba(168,85,247,0.04)',
+                  bgcolor: 'rgba(118, 102, 230,0.04)',
                   border: `1px solid ${palette.border}`,
                   borderRadius: 1.4,
                   p: 1.6,

@@ -142,7 +142,7 @@ export function CoursesTab() {
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CourseIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CourseIcon /></Box>
           <Box>
             <T eid="edu-em-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Emner</T>
             <T eid="edu-em-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Studiepoenggivende enheter med læringsutbytte (kunnskap / ferdigheter / generell kompetanse), vurderingsform og oppgaver.</T>
@@ -152,7 +152,7 @@ export function CoursesTab() {
           <Button variant="outlined" startIcon={<PackIcon />} onClick={() => setPackOpen(true)} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-em-btn-pack" component="span" sx={{ fontWeight: 600 }}>Fra studieplan-mal</T>
           </Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openNew} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openNew} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-em-btn-new" component="span" sx={{ fontWeight: 700 }}>Nytt emne</T>
           </Button>
         </Stack>
@@ -178,7 +178,7 @@ export function CoursesTab() {
 
       {/* Editor */}
       <Collapse in={editing !== null}>
-        <Panel sx={{ border: '1px solid rgba(139,92,246,0.35)' }}>
+        <Panel sx={{ border: '1px solid rgba(117, 107, 231,0.35)' }}>
           <T eid="edu-em-form-title" sx={{ fontWeight: 700, fontSize: 15, mb: 1.5 }}>{editing === 'new' ? 'Nytt emne' : 'Rediger emne'}</T>
           <Stack spacing={1.5}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
@@ -204,7 +204,7 @@ export function CoursesTab() {
             </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
               <Button onClick={() => setEditing(null)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" onClick={save} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}>{busy ? 'Lagrer…' : 'Lagre emne'}</Button>
+              <Button variant="contained" onClick={save} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none' }}>{busy ? 'Lagrer…' : 'Lagre emne'}</Button>
             </Stack>
           </Stack>
         </Panel>
@@ -223,7 +223,7 @@ export function CoursesTab() {
                 <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
                   <Box sx={{ minWidth: 0, pr: 6 }}>
                     <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
-                      {c.code && <Chip label={c.code} size="small" sx={{ height: 20, fontSize: 10.5, fontWeight: 800, bgcolor: 'rgba(139,92,246,0.2)', color: '#c4b5fd' }} />}
+                      {c.code && <Chip label={c.code} size="small" sx={{ height: 20, fontSize: 10.5, fontWeight: 800, bgcolor: 'rgba(117, 107, 231,0.2)', color: '#c4b5fd' }} />}
                       <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{c.title}</Typography>
                     </Stack>
                     <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75, color: 'rgba(255,255,255,0.72)' }} flexWrap="wrap" useFlexGap>
@@ -258,7 +258,7 @@ export function CoursesTab() {
 
       {/* Studieplan-mal-pakke */}
       <Dialog open={packOpen} onClose={() => setPackOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#111018', color: '#fff', border: '1px solid rgba(117, 107, 231,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Adopter studieplan-mal</DialogTitle>
         <DialogContent>
           <T eid="edu-em-pack-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
@@ -269,7 +269,7 @@ export function CoursesTab() {
               const active = p.id === packId;
               const arbeidskrav = p.courses.reduce((n, c) => n + c.assignments.filter((a) => a.isArbeidskrav).length, 0);
               return (
-                <Card key={p.id} sx={{ bgcolor: active ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(139,92,246,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
+                <Card key={p.id} sx={{ bgcolor: active ? 'rgba(117, 107, 231,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(117, 107, 231,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
                   <CardActionArea onClick={() => setPackId(p.id)} sx={{ p: 1.75 }}>
                     <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{p.program}</Typography>
                     <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3 }}>{p.description}</Typography>
@@ -287,7 +287,7 @@ export function CoursesTab() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setPackOpen(false)} disabled={packBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={adoptPack} disabled={packBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700 }}>{packBusy ? 'Oppretter…' : 'Adopter'}</Button>
+          <Button variant="contained" onClick={adoptPack} disabled={packBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700 }}>{packBusy ? 'Oppretter…' : 'Adopter'}</Button>
         </DialogActions>
       </Dialog>
 

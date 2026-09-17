@@ -49,11 +49,11 @@ function LandingCTAImpl({ onStartClick, onGuestEnter }: LandingCTAProps) {
             fontWeight: 600,
             borderRadius: 3,
             minHeight: 56,
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-            boxShadow: '0 8px 32px rgba(139,92,246,0.4)',
+            background: 'linear-gradient(135deg, #756be7 0%, #6366f1 100%)',
+            boxShadow: '0 8px 32px rgba(117, 107, 231,0.4)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #9b6cf6 0%, #7376f1 100%)',
-              boxShadow: '0 12px 40px rgba(139,92,246,0.55)',
+              background: 'linear-gradient(135deg, #8379e9 0%, #7376f1 100%)',
+              boxShadow: '0 12px 40px rgba(117, 107, 231,0.55)',
               transform: 'translateY(-2px)',
             },
             '&:focus-visible': {

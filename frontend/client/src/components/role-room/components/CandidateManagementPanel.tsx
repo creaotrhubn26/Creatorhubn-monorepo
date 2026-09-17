@@ -233,7 +233,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #b86bff',
+    outline: '3px solid #8d80ea',
     outlineOffset: 2,
   },
 };
@@ -363,14 +363,14 @@ function CandidateManagementPanelInner({
   const focalPickerRef = useRef<HTMLDivElement | null>(null);
 
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
-  const roleTabAccent = 'var(--role-accent, #b86bff)';
-  const roleTabAccentHover = '#a855f7';
-  const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
+  const roleTabAccent = 'var(--role-accent, #8d80ea)';
+  const roleTabAccentHover = '#7666e6';
+  const roleTabAccentSoft = 'rgba(141, 128, 234,0.18)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
-  const roleText = '#f3eaff';
-  const roleTextMuted = 'rgba(220,205,255,0.82)';
+  const roleBorder = 'var(--role-border, rgba(141, 128, 234,0.32))';
+  const roleText = '#efedfc';
+  const roleTextMuted = 'rgba(215, 212, 248,0.82)';
   const quickContactColor = '#46d9ff';
   const quickContactColorMuted = 'rgba(70,217,255,0.46)';
   const quickContactBackground = 'rgba(70,217,255,0.12)';
@@ -601,7 +601,7 @@ function CandidateManagementPanelInner({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed': return '#10b981';
-      case 'selected': return '#8b5cf6';
+      case 'selected': return '#756be7';
       case 'shortlist': return '#ffb800';
       case 'rejected': return '#ef4444';
       case 'requested': return 'var(--role-cyan, #00d4ff)';
@@ -1616,7 +1616,7 @@ function CandidateManagementPanelInner({
     }
     .badge-pending { background: #f59e0b; color: white; }
     .badge-requested { background: #00d4ff; color: white; }
-    .badge-shortlist { background: #8b5cf6; color: white; }
+    .badge-shortlist { background: #756be7; color: white; }
     .badge-selected { background: #10b981; color: white; }
     .badge-confirmed { background: #10b981; color: white; }
     .badge-rejected { background: #ef4444; color: white; }
@@ -1794,7 +1794,7 @@ function CandidateManagementPanelInner({
         onClick={() => setSelectedCandidateId(candidate.id)}
         sx={{
           cursor: 'pointer',
-          bgcolor: isSelectedCard ? 'rgba(184,107,255,0.16)' : roleSurfaceMuted,
+          bgcolor: isSelectedCard ? 'rgba(141, 128, 234,0.16)' : roleSurfaceMuted,
           border: isSelectedCard ? `1px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
           borderRadius: 1.5,
           transition: 'all 0.2s ease',
@@ -1872,7 +1872,7 @@ function CandidateManagementPanelInner({
                   icon={<TuneIcon sx={{ color: `${roleTabAccent} !important`, fontSize: '0.9rem' }} />}
                   label={`Treffscore ${fitScore}`}
                   size="small"
-                  sx={{ height: 22, bgcolor: 'rgba(184,107,255,0.14)', color: roleTabAccent, border: `1px solid ${roleBorder}` }}
+                  sx={{ height: 22, bgcolor: 'rgba(141, 128, 234,0.14)', color: roleTabAccent, border: `1px solid ${roleBorder}` }}
                 />
                 {(() => {
                   // Vis "Foreslått av <byrå>"-chip når kandidat kom via
@@ -1958,7 +1958,7 @@ function CandidateManagementPanelInner({
         border: `1px solid ${roleBorder}`,
         backgroundColor: roleSurface,
         backgroundImage: `
-          linear-gradient(160deg, rgba(39,24,77,0.84) 0%, rgba(16,10,36,0.92) 62%, rgba(15,8,30,0.95) 100%)
+          linear-gradient(160deg, rgba(28, 24, 77,0.84) 0%, rgba(16,10,36,0.92) 62%, rgba(10, 8, 30,0.95) 100%)
         `,
       }}
     >
@@ -1977,16 +1977,16 @@ function CandidateManagementPanelInner({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(184,107,255,0.28) 0%, rgba(94,58,184,0.2) 100%)',
-              border: '2px solid rgba(184,107,255,0.45)',
+              background: 'linear-gradient(135deg, rgba(141, 128, 234,0.28) 0%, rgba(67, 58, 184,0.2) 100%)',
+              border: '2px solid rgba(141, 128, 234,0.45)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(184,107,255,0.24)',
+              boxShadow: '0 4px 12px rgba(141, 128, 234,0.24)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(184,107,255,0.34)',
+                boxShadow: '0 6px 16px rgba(141, 128, 234,0.34)',
               },
             }}
           >
@@ -2010,7 +2010,7 @@ function CandidateManagementPanelInner({
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #d9c0ff 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #cdc9f6 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -2061,7 +2061,7 @@ function CandidateManagementPanelInner({
               onClick={() => setShowStats(!showStats)}
               sx={{
                 borderColor: roleBorder,
-                color: showStats ? '#160a24' : roleText,
+                color: showStats ? '#0d0a24' : roleText,
                 bgcolor: showStats ? roleTabAccent : 'transparent',
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
@@ -2107,7 +2107,7 @@ function CandidateManagementPanelInner({
               onClick={onCreateCandidate}
               sx={{
                 bgcolor: roleTabAccent,
-                color: '#160a24',
+                color: '#0d0a24',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
@@ -2150,7 +2150,7 @@ function CandidateManagementPanelInner({
             color: poolMode === 'project' ? roleTabAccent : 'rgba(255,255,255,0.7)',
             borderColor: poolMode === 'project' ? roleTabAccent : roleBorder,
             '&:hover': {
-              bgcolor: poolMode === 'project' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              bgcolor: poolMode === 'project' ? 'rgba(141, 128, 234,0.28)' : 'rgba(255,255,255,0.06)',
             },
           }}
         >
@@ -2166,7 +2166,7 @@ function CandidateManagementPanelInner({
             color: poolMode === 'pool' ? roleTabAccent : 'rgba(255,255,255,0.7)',
             borderColor: poolMode === 'pool' ? roleTabAccent : roleBorder,
             '&:hover': {
-              bgcolor: poolMode === 'pool' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              bgcolor: poolMode === 'pool' ? 'rgba(141, 128, 234,0.28)' : 'rgba(255,255,255,0.06)',
             },
           }}
         >
@@ -2201,7 +2201,7 @@ function CandidateManagementPanelInner({
             color: workspaceView === 'standard' ? roleTabAccent : 'rgba(255,255,255,0.7)',
             borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
             '&:hover': {
-              bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              bgcolor: workspaceView === 'standard' ? 'rgba(141, 128, 234,0.28)' : 'rgba(255,255,255,0.06)',
             },
           }}
         >
@@ -2217,7 +2217,7 @@ function CandidateManagementPanelInner({
             color: workspaceView === 'pro' ? roleTabAccent : 'rgba(255,255,255,0.7)',
             borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
             '&:hover': {
-              bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              bgcolor: workspaceView === 'pro' ? 'rgba(141, 128, 234,0.28)' : 'rgba(255,255,255,0.06)',
             },
           }}
         >
@@ -2254,7 +2254,7 @@ function CandidateManagementPanelInner({
                   onClick={() => handleApplyProPreset(preset.id)}
                   sx={{
                     minHeight: 34,
-                    color: proPreset === preset.id ? '#160a24' : roleText,
+                    color: proPreset === preset.id ? '#0d0a24' : roleText,
                     bgcolor: proPreset === preset.id ? roleTabAccent : 'transparent',
                     borderColor: roleBorder,
                     '&:hover': { bgcolor: proPreset === preset.id ? roleTabAccentHover : roleTabAccentSoft },
@@ -2366,7 +2366,7 @@ function CandidateManagementPanelInner({
                   },
                 }}
               />
-              <Box sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(184,107,255,0.1)', border: `1px solid ${roleBorder}` }}>
+              <Box sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(141, 128, 234,0.1)', border: `1px solid ${roleBorder}` }}>
                 <Typography sx={{ color: roleText, fontSize: '0.8rem', fontWeight: 700, mb: 0.75 }}>Beste match nå</Typography>
                 <Stack spacing={0.5}>
                   {proCandidates.slice(0, 3).map((candidate) => (
@@ -2407,7 +2407,7 @@ function CandidateManagementPanelInner({
                               sx={{
                                 width: 34,
                                 height: 34,
-                                bgcolor: 'rgba(184,107,255,0.16)',
+                                bgcolor: 'rgba(141, 128, 234,0.16)',
                                 border: `1px solid ${roleBorder}`,
                                 '& .MuiAvatar-img': {
                                   objectPosition: getCandidatePhotoObjectPosition(poolCandidate, 0),
@@ -2477,7 +2477,7 @@ function CandidateManagementPanelInner({
                   onClick={onCreateCandidate}
                   sx={{
                     bgcolor: roleTabAccent,
-                    color: '#160a24',
+                    color: '#0d0a24',
                     fontWeight: 700,
                     '&:hover': { bgcolor: roleTabAccentHover },
                   }}
@@ -2531,7 +2531,7 @@ function CandidateManagementPanelInner({
                   label={`${proCandidates.length} kandidater`}
                   sx={{
                     color: roleTabAccent,
-                    bgcolor: 'rgba(184,107,255,0.14)',
+                    bgcolor: 'rgba(141, 128, 234,0.14)',
                     border: `1px solid ${roleBorder}`,
                     fontWeight: 600,
                   }}
@@ -2564,7 +2564,7 @@ function CandidateManagementPanelInner({
                               mt: 1,
                               mb: 0.75,
                               borderRadius: 1,
-                              bgcolor: 'rgba(184,107,255,0.12)',
+                              bgcolor: 'rgba(141, 128, 234,0.12)',
                               border: `1px solid ${roleBorder}`,
                               display: 'flex',
                               alignItems: 'center',
@@ -2927,7 +2927,7 @@ function CandidateManagementPanelInner({
                       <Button
                         variant="contained"
                         onClick={() => onEditCandidate(selectedCandidate)}
-                        sx={{ bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}
+                        sx={{ bgcolor: roleTabAccent, color: '#0d0a24', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}
                       >
                         Rediger kandidat
                       </Button>
@@ -3052,7 +3052,7 @@ function CandidateManagementPanelInner({
                       setProDetailTab('compare');
                     }}
                     sx={{
-                      color: proCompareMode ? '#160a24' : roleText,
+                      color: proCompareMode ? '#0d0a24' : roleText,
                       bgcolor: proCompareMode ? roleTabAccent : 'transparent',
                       borderColor: roleBorder,
                     }}
@@ -3101,7 +3101,7 @@ function CandidateManagementPanelInner({
             gap: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-            bgcolor: 'rgba(184,107,255,0.08)',
+            bgcolor: 'rgba(141, 128, 234,0.08)',
             borderRadius: 2,
             border: `1px solid ${roleBorder}`,
           }}
@@ -3122,9 +3122,9 @@ function CandidateManagementPanelInner({
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: 'var(--role-violet, #8b5cf6)' }} />
+              <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: 'var(--role-violet, #756be7)' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: 'var(--role-violet, #8b5cf6)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.selected}</Typography>
+            <Typography variant="h4" sx={{ color: 'var(--role-violet, #756be7)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.selected}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Valgt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3281,7 +3281,7 @@ function CandidateManagementPanelInner({
           severity="info"
           sx={{
             mb: 2,
-            bgcolor: 'rgba(184,107,255,0.12)',
+            bgcolor: 'rgba(141, 128, 234,0.12)',
             color: '#fff',
             '& .MuiAlert-icon': { color: roleTabAccent },
           }}
@@ -3298,7 +3298,7 @@ function CandidateManagementPanelInner({
           subtitle={safeRoles.length > 0
             ? `Du har ${safeRoles.length} rolle${safeRoles.length > 1 ? 'r' : ''} som venter på kandidater.`
             : 'Start med å opprette roller, deretter legg til kandidater.'}
-          color="#b86bff"
+          color="#8d80ea"
           buttonLabel="Legg til kandidat"
           onAction={onCreateCandidate}
         />
@@ -3328,7 +3328,7 @@ function CandidateManagementPanelInner({
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedCandidates.length}
                     onChange={handleSelectAll}
                     inputProps={{ 'aria-label': 'Velg alle kandidater' }}
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #8d80ea)' } }}
                   />
                 </TableCell>
                 <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Favoritt</TableCell>
@@ -3337,7 +3337,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #8d80ea)' } }}
                   >
                     Kandidat
                   </TableSortLabel>
@@ -3347,7 +3347,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #8d80ea)' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -3357,7 +3357,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'roles'}
                     direction={sortField === 'roles' ? sortDirection : 'asc'}
                     onClick={() => handleSort('roles')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #8d80ea)' } }}
                   >
                     Roller
                   </TableSortLabel>
@@ -3374,7 +3374,7 @@ function CandidateManagementPanelInner({
                 <TableRow
                   key={candidate.id}
                   sx={{
-                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(184,107,255,0.1)' : 'transparent',
+                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(141, 128, 234,0.1)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
@@ -3383,7 +3383,7 @@ function CandidateManagementPanelInner({
                       checked={selectedIds.has(candidate.id)}
                       onChange={() => handleToggleSelect(candidate.id)}
                       inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #8d80ea)' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3594,7 +3594,7 @@ function CandidateManagementPanelInner({
                           color: 'rgba(255,255,255,0.78)',
                           minWidth: TOUCH_TARGET_SIZE,
                           minHeight: TOUCH_TARGET_SIZE,
-                          '&:hover': { color: 'var(--role-accent, #b86bff)', bgcolor: 'rgba(184,107,255,0.1)' },
+                          '&:hover': { color: 'var(--role-accent, #8d80ea)', bgcolor: 'rgba(141, 128, 234,0.1)' },
                         }}
                       >
                         <MoreVertIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
@@ -3633,8 +3633,8 @@ function CandidateManagementPanelInner({
                 <Card
                   component="article"
                   sx={{
-                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(184,107,255,0.18)' : 'rgba(255,255,255,0.05)',
-                    border: selectedIds.has(candidate.id) ? '2px solid #b86bff' : '1px solid rgba(255,255,255,0.1)',
+                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(141, 128, 234,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: selectedIds.has(candidate.id) ? '2px solid #8d80ea' : '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 2,
                     transition: 'all 0.2s ease',
                     height: '100%',
@@ -3643,8 +3643,8 @@ function CandidateManagementPanelInner({
                     overflow: 'hidden',
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.08)',
-                      borderColor: 'var(--role-accent, #b86bff)',
-                      boxShadow: '0 8px 24px rgba(184,107,255,0.24)',
+                      borderColor: 'var(--role-accent, #8d80ea)',
+                      boxShadow: '0 8px 24px rgba(141, 128, 234,0.24)',
                       transform: 'translateY(-2px)',
                     },
                     ...focusVisibleStyles,
@@ -3709,7 +3709,7 @@ function CandidateManagementPanelInner({
                         sx={{
                           width: '100%',
                           height: { xs: 100, sm: 120, md: 110, lg: 140, xl: 180 },
-                          background: 'linear-gradient(135deg, rgba(184,107,255,0.25) 0%, rgba(93,67,191,0.16) 100%)',
+                          background: 'linear-gradient(135deg, rgba(141, 128, 234,0.25) 0%, rgba(93,67,191,0.16) 100%)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -3720,12 +3720,12 @@ function CandidateManagementPanelInner({
                             width: { xs: 60, sm: 70, md: 65, lg: 80, xl: 100 },
                             height: { xs: 60, sm: 70, md: 65, lg: 80, xl: 100 },
                             borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #b86bff 0%, #5d43bf 100%)',
+                            background: 'linear-gradient(135deg, #8d80ea 0%, #5d43bf 100%)',
                             border: '3px solid rgba(255,255,255,0.3)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            boxShadow: '0 4px 12px rgba(184,107,255,0.36)',
+                            boxShadow: '0 4px 12px rgba(141, 128, 234,0.36)',
                           }}
                         >
                           <RecentActorsIcon sx={{ fontSize: { xs: 30, sm: 36, md: 33, lg: 40, xl: 50 }, color: '#fff' }} />
@@ -3782,7 +3782,7 @@ function CandidateManagementPanelInner({
                           checked={selectedIds.has(candidate.id)}
                           onChange={() => handleToggleSelect(candidate.id)}
                           inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
-                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
+                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: 'var(--role-accent, #8d80ea)' } }}
                         />
                         <Typography
                           variant="h6"
@@ -3839,8 +3839,8 @@ function CandidateManagementPanelInner({
                             gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             borderRadius: 2,
-                            bgcolor: 'rgba(184,107,255,0.12)',
-                            border: '1px solid rgba(184,107,255,0.3)',
+                            bgcolor: 'rgba(141, 128, 234,0.12)',
+                            border: '1px solid rgba(141, 128, 234,0.3)',
                           }}
                         >
                           <Box
@@ -3848,13 +3848,13 @@ function CandidateManagementPanelInner({
                               width: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                               height: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                               borderRadius: 1.5,
-                              bgcolor: 'rgba(184,107,255,0.25)',
+                              bgcolor: 'rgba(141, 128, 234,0.25)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            <EmailIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#d6b5ff' }} />
+                            <EmailIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#c5bff5' }} />
                           </Box>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography
@@ -3891,8 +3891,8 @@ function CandidateManagementPanelInner({
                             gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             borderRadius: 2,
-                            bgcolor: 'rgba(139,92,246,0.1)',
-                            border: '1px solid rgba(139,92,246,0.25)',
+                            bgcolor: 'rgba(117, 107, 231,0.1)',
+                            border: '1px solid rgba(117, 107, 231,0.25)',
                           }}
                         >
                           <Box
@@ -3900,13 +3900,13 @@ function CandidateManagementPanelInner({
                               width: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                               height: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                               borderRadius: 1.5,
-                              bgcolor: 'rgba(139,92,246,0.25)',
+                              bgcolor: 'rgba(117, 107, 231,0.25)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            <PhoneIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#a78bfa' }} />
+                            <PhoneIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#9d97ee' }} />
                           </Box>
                           <Box sx={{ flex: 1 }}>
                             <Typography
@@ -3943,14 +3943,14 @@ function CandidateManagementPanelInner({
                               mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                               p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                               borderRadius: 2,
-                              bgcolor: 'rgba(184,107,255,0.1)',
-                              border: '1px solid rgba(184,107,255,0.24)',
+                              bgcolor: 'rgba(141, 128, 234,0.1)',
+                              border: '1px solid rgba(141, 128, 234,0.24)',
                             }}
                           >
                             <Typography
                               variant="subtitle2"
                               sx={{
-                                color: 'var(--role-accent, #b86bff)',
+                                color: 'var(--role-accent, #8d80ea)',
                                 fontWeight: 700,
                                 mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                                 fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
@@ -4010,7 +4010,7 @@ function CandidateManagementPanelInner({
                         alignItems: 'center',
                         pt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                         mt: 'auto',
-                        borderTop: '2px solid rgba(184,107,255,0.24)',
+                        borderTop: '2px solid rgba(141, 128, 234,0.24)',
                       }}
                     >
                       <Button
@@ -4020,28 +4020,28 @@ function CandidateManagementPanelInner({
                         endIcon={expandedCards.has(candidate.id) ? <CollapseIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <ExpandIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         sx={{
                           bgcolor: expandedCards.has(candidate.id)
-                            ? 'rgba(184,107,255,0.3)'
-                            : 'rgba(184,107,255,0.18)',
-                          color: expandedCards.has(candidate.id) ? '#e3c8ff' : '#fff',
+                            ? 'rgba(141, 128, 234,0.3)'
+                            : 'rgba(141, 128, 234,0.18)',
+                          color: expandedCards.has(candidate.id) ? '#d4d0f7' : '#fff',
                           fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
                           fontWeight: 600,
                           minHeight: TOUCH_TARGET_SIZE,
                           px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                           py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                           border: expandedCards.has(candidate.id)
-                            ? '2px solid rgba(184,107,255,0.58)'
-                            : '2px solid rgba(184,107,255,0.38)',
+                            ? '2px solid rgba(141, 128, 234,0.58)'
+                            : '2px solid rgba(141, 128, 234,0.38)',
                           borderRadius: 2,
                           textTransform: 'none',
                           boxShadow: expandedCards.has(candidate.id)
-                            ? '0 4px 12px rgba(184,107,255,0.34)'
-                            : '0 2px 8px rgba(184,107,255,0.26)',
+                            ? '0 4px 12px rgba(141, 128, 234,0.34)'
+                            : '0 2px 8px rgba(141, 128, 234,0.26)',
                           transition: 'all 0.2s ease',
                           '&:hover': {
-                            bgcolor: 'rgba(184,107,255,0.35)',
-                            borderColor: 'rgba(184,107,255,0.65)',
+                            bgcolor: 'rgba(141, 128, 234,0.35)',
+                            borderColor: 'rgba(141, 128, 234,0.65)',
                             transform: 'translateY(-1px)',
-                            boxShadow: '0 6px 16px rgba(184,107,255,0.42)',
+                            boxShadow: '0 6px 16px rgba(141, 128, 234,0.42)',
                           },
                           ...focusVisibleStyles,
                         }}
@@ -4055,8 +4055,8 @@ function CandidateManagementPanelInner({
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
-                              color: 'var(--role-violet, #8b5cf6)',
-                              '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' },
+                              color: 'var(--role-violet, #756be7)',
+                              '&:hover': { bgcolor: 'rgba(141, 128, 234,0.12)' },
                               ...focusVisibleStyles,
                             }}
                           >
@@ -4083,8 +4083,8 @@ function CandidateManagementPanelInner({
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
-                              color: 'var(--role-accent, #b86bff)',
-                              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
+                              color: 'var(--role-accent, #8d80ea)',
+                              '&:hover': { bgcolor: 'rgba(141, 128, 234,0.1)' },
                               ...focusVisibleStyles,
                             }}
                           >
@@ -4123,12 +4123,12 @@ function CandidateManagementPanelInner({
             sx={{
               mb: 3,
               p: 2,
-              bgcolor: 'rgba(156, 39, 176, 0.08)',
+              bgcolor: 'rgba(66, 39, 176, 0.08)',
               borderRadius: 2,
-              border: '1px solid rgba(156, 39, 176, 0.2)',
+              border: '1px solid rgba(66, 39, 176, 0.2)',
             }}
           >
-            <Typography variant="subtitle1" sx={{ color: '#9c27b0', fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle1" sx={{ color: '#4227b0', fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
               <InventoryIcon sx={{ fontSize: 20 }} />
               Slik bruker du kandidatmaler
             </Typography>
@@ -4153,9 +4153,9 @@ function CandidateManagementPanelInner({
                 textAlign: 'center',
                 py: { xs: 4, sm: 8 },
                 px: 4,
-                bgcolor: 'rgba(156, 39, 176, 0.03)',
+                bgcolor: 'rgba(66, 39, 176, 0.03)',
                 borderRadius: 3,
-                border: '2px dashed rgba(156, 39, 176, 0.2)',
+                border: '2px dashed rgba(66, 39, 176, 0.2)',
               }}
             >
               <Box
@@ -4163,7 +4163,7 @@ function CandidateManagementPanelInner({
                   width: { xs: 60, sm: 80 },
                   height: { xs: 60, sm: 80 },
                   borderRadius: '50%',
-                  bgcolor: 'rgba(156, 39, 176, 0.1)',
+                  bgcolor: 'rgba(66, 39, 176, 0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4171,7 +4171,7 @@ function CandidateManagementPanelInner({
                   mb: { xs: 2, sm: 3 },
                 }}
               >
-                <InventoryIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: '#9c27b0' }} />
+                <InventoryIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: '#4227b0' }} />
               </Box>
               <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
                 Ingen kandidatmaler ennå
@@ -4186,14 +4186,14 @@ function CandidateManagementPanelInner({
                 <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={poolCandidate.id}>
                   <Card
                     sx={{
-                      bgcolor: 'rgba(156, 39, 176, 0.08)',
-                      border: '1px solid rgba(156, 39, 176, 0.3)',
+                      bgcolor: 'rgba(66, 39, 176, 0.08)',
+                      border: '1px solid rgba(66, 39, 176, 0.3)',
                       borderRadius: 2,
                       transition: 'all 0.2s',
                       '&:hover': {
-                        borderColor: '#9c27b0',
+                        borderColor: '#4227b0',
                         transform: 'translateY(-2px)',
-                        boxShadow: '0 4px 12px rgba(156, 39, 176, 0.2)',
+                        boxShadow: '0 4px 12px rgba(66, 39, 176, 0.2)',
                       },
                     }}
                   >
@@ -4205,14 +4205,14 @@ function CandidateManagementPanelInner({
                             sx={{
                               width: 48,
                               height: 48,
-                              bgcolor: 'rgba(156, 39, 176, 0.2)',
-                              border: '2px solid rgba(156, 39, 176, 0.4)',
+                              bgcolor: 'rgba(66, 39, 176, 0.2)',
+                              border: '2px solid rgba(66, 39, 176, 0.4)',
                               '& .MuiAvatar-img': {
                                 objectPosition: getCandidatePhotoObjectPosition(poolCandidate, 0),
                               },
                             }}
                           >
-                            <PersonIcon sx={{ color: '#ce93d8' }} />
+                            <PersonIcon sx={{ color: '#a193d8' }} />
                           </Avatar>
                           <Box>
                             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '1rem', sm: '1.1rem' } }}>
@@ -4231,8 +4231,8 @@ function CandidateManagementPanelInner({
                           label="Mal"
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(156, 39, 176, 0.2)',
-                            color: '#ce93d8',
+                            bgcolor: 'rgba(66, 39, 176, 0.2)',
+                            color: '#a193d8',
                             fontSize: '0.7rem',
                             height: 24,
                           }}
@@ -4272,11 +4272,11 @@ function CandidateManagementPanelInner({
                           startIcon={<DownloadIcon />}
                           onClick={() => handleImportFromPool(poolCandidate)}
                           sx={{
-                            bgcolor: '#9c27b0',
+                            bgcolor: '#4227b0',
                             color: '#fff',
                             flex: 1,
                             minHeight: TOUCH_TARGET_SIZE,
-                            '&:hover': { bgcolor: '#7b1fa2' },
+                            '&:hover': { bgcolor: '#341fa2' },
                           }}
                         >
                           Importer
@@ -4313,7 +4313,7 @@ function CandidateManagementPanelInner({
         onClose={() => setUndoSnackbarOpen(false)}
         message="Kandidat slettet"
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: 'var(--role-accent, #b86bff)' }}>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: 'var(--role-accent, #8d80ea)' }}>
             Angre
           </Button>
         }
@@ -4331,7 +4331,7 @@ function CandidateManagementPanelInner({
             bgcolor: '#1a1a2e',
             color: '#fff',
             borderRadius: 3,
-            border: '1px solid rgba(139, 92, 246, 0.3)',
+            border: '1px solid rgba(117, 107, 231, 0.3)',
           }
         }}
       >
@@ -4343,7 +4343,7 @@ function CandidateManagementPanelInner({
           pb: 2,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <ViewInArIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 28 }} />
+            <ViewInArIcon sx={{ color: 'var(--role-violet, #756be7)', fontSize: 28 }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               Forhåndsvisning - Legg til i scene
             </Typography>
@@ -4388,12 +4388,12 @@ function CandidateManagementPanelInner({
                   key={candidate.id}
                   sx={{
                     bgcolor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(139, 92, 246, 0.2)',
+                    border: '1px solid rgba(117, 107, 231, 0.2)',
                     borderRadius: 2,
                     position: 'relative',
                     transition: 'all 0.2s ease',
                     '&:hover': {
-                      borderColor: 'rgba(139, 92, 246, 0.5)',
+                      borderColor: 'rgba(117, 107, 231, 0.5)',
                       transform: 'translateY(-2px)',
                     }
                   }}
@@ -4424,8 +4424,8 @@ function CandidateManagementPanelInner({
                         sx={{ 
                           width: 56, 
                           height: 56,
-                          bgcolor: 'var(--role-violet, #8b5cf6)',
-                          border: '2px solid rgba(139, 92, 246, 0.5)',
+                          bgcolor: 'var(--role-violet, #756be7)',
+                          border: '2px solid rgba(117, 107, 231, 0.5)',
                           '& .MuiAvatar-img': {
                             objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
                           },
@@ -4468,8 +4468,8 @@ function CandidateManagementPanelInner({
                             label={role.name}
                             size="small"
                             sx={{
-                              bgcolor: 'rgba(139, 92, 246, 0.2)',
-                              color: '#a78bfa',
+                              bgcolor: 'rgba(117, 107, 231, 0.2)',
+                              color: '#9d97ee',
                               fontSize: '0.65rem',
                               height: 18,
                             }}
@@ -4496,7 +4496,7 @@ function CandidateManagementPanelInner({
                         alignItems: 'center', 
                         gap: 0.5, 
                         mt: 1.5,
-                        color: 'var(--role-accent, #b86bff)',
+                        color: 'var(--role-accent, #8d80ea)',
                         fontSize: '0.75rem',
                       }}>
                         <CheckIcon sx={{ fontSize: 14 }} />
@@ -4545,13 +4545,13 @@ function CandidateManagementPanelInner({
             disabled={addingToScene || candidatesToPreview.length === 0}
             startIcon={addingToScene ? <CircularProgress size={18} color="inherit" /> : <ViewInArIcon />}
             sx={{
-              bgcolor: 'var(--role-violet, #8b5cf6)',
+              bgcolor: 'var(--role-violet, #756be7)',
               color: '#fff',
               fontWeight: 600,
               px: 3,
-              '&:hover': { bgcolor: '#7c3aed' },
+              '&:hover': { bgcolor: '#5446e1' },
               '&:disabled': { 
-                bgcolor: 'rgba(139, 92, 246, 0.3)',
+                bgcolor: 'rgba(117, 107, 231, 0.3)',
                 color: 'rgba(255,255,255,0.87)',
               }
             }}
@@ -4573,7 +4573,7 @@ function CandidateManagementPanelInner({
           paper: {
             sx: {
               bgcolor: 'rgba(15,23,42,0.98)',
-              border: '1px solid rgba(168,85,247,0.32)',
+              border: '1px solid rgba(118, 102, 230,0.32)',
               backdropFilter: 'blur(8px)',
               color: '#fff',
               minWidth: 200,
@@ -4589,9 +4589,9 @@ function CandidateManagementPanelInner({
             setRowActionMenuAnchor(null);
             setRowActionMenuCandidate(null);
           }}
-          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' } }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(141, 128, 234,0.14)' } }}
         >
-          <ListItemIcon sx={{ color: 'var(--role-accent, #b86bff)', minWidth: 36 }}>
+          <ListItemIcon sx={{ color: 'var(--role-accent, #8d80ea)', minWidth: 36 }}>
             <EditIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Rediger</ListItemText>
@@ -4602,9 +4602,9 @@ function CandidateManagementPanelInner({
             setRowActionMenuAnchor(null);
             setRowActionMenuCandidate(null);
           }}
-          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(139,92,246,0.14)' } }}
+          sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(117, 107, 231,0.14)' } }}
         >
-          <ListItemIcon sx={{ color: 'var(--role-violet, #8b5cf6)', minWidth: 36 }}>
+          <ListItemIcon sx={{ color: 'var(--role-violet, #756be7)', minWidth: 36 }}>
             <UploadIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Lagre til pool</ListItemText>

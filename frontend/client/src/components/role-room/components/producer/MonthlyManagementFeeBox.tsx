@@ -68,8 +68,8 @@ export default function MonthlyManagementFeeBox({
 
   return (
     <Card sx={{
-      bgcolor: '#150b2e',
-      border: '1px solid rgba(168,85,247,0.32)',
+      bgcolor: '#0e0b2e',
+      border: '1px solid rgba(118, 102, 230,0.32)',
       color: '#f5f3ff',
       mb: 2,
     }}>
@@ -117,7 +117,7 @@ export default function MonthlyManagementFeeBox({
             label="Totalt månedlig kost"
             value={`${fmt(data.totals.spend_mtd_nok + data.totals.mgmt_fee_mtd_nok)} kr`}
             sub="spend + mgmt-fee"
-            color="#c084fc"
+            color="#9e93ed"
           />
         </Box>
 
@@ -134,8 +134,8 @@ export default function MonthlyManagementFeeBox({
               <Box
                 key={c.config_id}
                 sx={{
-                  bgcolor: 'rgba(168,85,247,0.06)',
-                  border: '1px solid rgba(168,85,247,0.18)',
+                  bgcolor: 'rgba(118, 102, 230,0.06)',
+                  border: '1px solid rgba(118, 102, 230,0.18)',
                   borderRadius: 1.2,
                   p: 1.4,
                 }}
@@ -181,7 +181,7 @@ export default function MonthlyManagementFeeBox({
                   display: 'flex',
                   justifyContent: 'space-between',
                   pt: 0.8,
-                  borderTop: '1px solid rgba(168,85,247,0.12)',
+                  borderTop: '1px solid rgba(118, 102, 230,0.12)',
                   mt: 0.6,
                 }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem' }}>

@@ -91,7 +91,7 @@ const getSeverityColor = (severity: GrammarError['severity']) => {
     case 'error':
       return '#f44336';
     case 'warning':
-      return '#9333ea';
+      return '#523ee0';
     case 'suggestion':
       return '#2196f3';
     default:

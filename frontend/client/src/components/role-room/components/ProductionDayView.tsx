@@ -113,7 +113,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #9c27b0',
+    outline: '3px solid #4227b0',
     outlineOffset: 2,
   },
 };
@@ -1573,7 +1573,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         <title>Call sheet ${day.date}</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0a0f1c; color:#f8fafc; padding:24px; }
-          .sheet { border:1px solid rgba(156,39,176,.35); border-radius:16px; padding:20px; background:linear-gradient(160deg, rgba(124,58,237,.22), rgba(6,182,212,.1)); }
+          .sheet { border:1px solid rgba(66, 39, 176,.35); border-radius:16px; padding:20px; background:linear-gradient(160deg, rgba(84, 70, 225,.22), rgba(6,182,212,.1)); }
           h1 { margin:0 0 8px; font-size:28px; }
           h2 { margin:20px 0 8px; font-size:16px; color:#c4b5fd; text-transform:uppercase; letter-spacing:.08em; }
           .meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
@@ -1988,7 +1988,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     const inProgressDays = productionDays.filter(d => d.status === 'in_progress').length;
     const completedPercent = totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0;
 
-    const productionIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9c27b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const productionIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4227b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
       <line x1="16" y1="2" x2="16" y2="6"/>
       <line x1="8" y1="2" x2="8" y2="6"/>
@@ -2011,19 +2011,19 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
     .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #9c27b0; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #9c27b0; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #4227b0; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #4227b0; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
     .title svg { flex-shrink: 0; }
     .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #9c27b0; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #9c27b0; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #4227b0; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #4227b0; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
     .summary-title svg { flex-shrink: 0; }
     .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
     .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #9c27b0; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #4227b0; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg, #9c27b0 0%, #7b1fa2 100%); border-radius: 10px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #4227b0 0%, #341fa2 100%); border-radius: 10px; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
     .section-title { font-size: 24px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 12px; letter-spacing: -0.4px; }
@@ -2032,7 +2032,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #4227b0 0%, #341fa2 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -2192,22 +2192,22 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               width: { xs: 48, sm: 56, md: 64 },
               height: { xs: 48, sm: 56, md: 64 },
               borderRadius: { xs: 2, sm: 3 },
-              background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.25) 0%, rgba(156, 39, 176, 0.15) 100%)',
-              border: '2px solid rgba(156, 39, 176, 0.4)',
+              background: 'linear-gradient(135deg, rgba(66, 39, 176, 0.25) 0%, rgba(66, 39, 176, 0.15) 100%)',
+              border: '2px solid rgba(66, 39, 176, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(156, 39, 176, 0.2)',
+              boxShadow: '0 4px 12px rgba(66, 39, 176, 0.2)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(156, 39, 176, 0.3)',
+                boxShadow: '0 6px 16px rgba(66, 39, 176, 0.3)',
               },
             }}
           >
             <CalendarMonthIcon
               sx={{
-                color: '#ce93d8',
+                color: '#a193d8',
                 fontSize: { xs: 26, sm: 32, md: 36 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
               }}
@@ -2225,7 +2225,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #ce93d8 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #a193d8 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -2286,8 +2286,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: filtersExpanded ? '#9c27b0' : 'rgba(255,255,255,0.7)',
-                borderColor: filtersExpanded ? '#9c27b0' : 'rgba(255,255,255,0.2)',
+                color: filtersExpanded ? '#4227b0' : 'rgba(255,255,255,0.7)',
+                borderColor: filtersExpanded ? '#4227b0' : 'rgba(255,255,255,0.2)',
                 px: { xs: 1, sm: 2 },
                 ...focusVisibleStyles,
               }}
@@ -2310,8 +2310,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: showStats ? '#9c27b0' : 'rgba(255,255,255,0.7)',
-                borderColor: showStats ? '#9c27b0' : 'rgba(255,255,255,0.2)',
+                color: showStats ? '#4227b0' : 'rgba(255,255,255,0.7)',
+                borderColor: showStats ? '#4227b0' : 'rgba(255,255,255,0.2)',
                 px: { xs: 1, sm: 2 },
                 ...focusVisibleStyles,
               }}
@@ -2329,13 +2329,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               disabled={locations.length === 0}
               aria-label="Legg til ny produksjonsdag"
               sx={{
-                bgcolor: '#9c27b0',
+                bgcolor: '#4227b0',
                 color: '#fff',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
                 flex: { xs: 1, sm: 'none' },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: '#7b1fa2' },
+                '&:hover': { bgcolor: '#341fa2' },
                 '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' },
               }}
             >
@@ -2352,12 +2352,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 disabled={locations.length === 0 || generatingDays}
                 aria-label="Planlegg produksjonsdager fra lokasjoner"
                 sx={{
-                  color: '#ce93d8',
-                  borderColor: 'rgba(206,147,216,0.5)',
+                  color: '#a193d8',
+                  borderColor: 'rgba(161, 147, 216,0.5)',
                   fontWeight: 600,
                   minHeight: TOUCH_TARGET_SIZE,
                   ...focusVisibleStyles,
-                  '&:hover': { borderColor: '#ce93d8', bgcolor: 'rgba(206,147,216,0.12)' },
+                  '&:hover': { borderColor: '#a193d8', bgcolor: 'rgba(161, 147, 216,0.12)' },
                 }}
               >
                 <AutoGenerateIcon />
@@ -2371,7 +2371,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       {/* Planlegg-dialog: produsent-styrt scheduling med live forhåndsvisning */}
       <Dialog open={schedulerOpen} onClose={() => !generatingDays && setSchedulerOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AutoGenerateIcon sx={{ color: '#ce93d8' }} />
+          <AutoGenerateIcon sx={{ color: '#a193d8' }} />
           Planlegg produksjonsdager
         </DialogTitle>
         <DialogContent>
@@ -2429,7 +2429,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             variant="contained"
             onClick={handleGenerateDaysFromLocations}
             disabled={generatingDays || plannedPreview.length === 0}
-            sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#7b1fa2' } }}
+            sx={{ bgcolor: '#4227b0', '&:hover': { bgcolor: '#341fa2' } }}
           >
             {generatingDays ? 'Genererer…' : `Generer ${plannedPreview.length} dag(er)`}
           </Button>
@@ -2469,9 +2469,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         >
           <Box sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <CalendarMonthIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9c27b0' }} />
+              <CalendarMonthIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#4227b0' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+            <Typography variant="h4" sx={{ color: '#4227b0', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.totalDays}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Totalt dager</Typography>
@@ -2543,7 +2543,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               color: '#fff',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-              '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+              '&.Mui-focused fieldset': { borderColor: '#4227b0' },
             },
           }}
         />
@@ -2569,7 +2569,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 color: '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9c27b0' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#4227b0' },
               }}
             >
               <MenuItem value="all">Alle statuser</MenuItem>
@@ -2589,9 +2589,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 sx={{
                   minHeight: TOUCH_TARGET_SIZE,
                   minWidth: TOUCH_TARGET_SIZE,
-                  bgcolor: viewMode === 'grid' ? 'rgba(156,39,176,0.2)' : 'transparent',
-                  color: viewMode === 'grid' ? '#9c27b0' : 'rgba(255,255,255,0.7)',
-                  borderColor: viewMode === 'grid' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
+                  bgcolor: viewMode === 'grid' ? 'rgba(66, 39, 176,0.2)' : 'transparent',
+                  color: viewMode === 'grid' ? '#4227b0' : 'rgba(255,255,255,0.7)',
+                  borderColor: viewMode === 'grid' ? '#4227b0' : 'rgba(255,255,255,0.2)',
                   ...focusVisibleStyles,
                 }}
               >
@@ -2608,9 +2608,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 sx={{
                   minHeight: TOUCH_TARGET_SIZE,
                   minWidth: TOUCH_TARGET_SIZE,
-                  bgcolor: viewMode === 'table' ? 'rgba(156,39,176,0.2)' : 'transparent',
-                  color: viewMode === 'table' ? '#9c27b0' : 'rgba(255,255,255,0.7)',
-                  borderColor: viewMode === 'table' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
+                  bgcolor: viewMode === 'table' ? 'rgba(66, 39, 176,0.2)' : 'transparent',
+                  color: viewMode === 'table' ? '#4227b0' : 'rgba(255,255,255,0.7)',
+                  borderColor: viewMode === 'table' ? '#4227b0' : 'rgba(255,255,255,0.2)',
                   ...focusVisibleStyles,
                 }}
               >
@@ -2646,9 +2646,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           mb: 2,
           p: { xs: 1.5, sm: 2 },
           borderRadius: 2,
-          border: '1px solid rgba(124,58,237,0.35)',
+          border: '1px solid rgba(84, 70, 225,0.35)',
           background:
-            'linear-gradient(135deg, rgba(124,58,237,0.16) 0%, rgba(8,145,178,0.08) 100%)',
+            'linear-gradient(135deg, rgba(84, 70, 225,0.16) 0%, rgba(8,145,178,0.08) 100%)',
         }}
       >
         <Box
@@ -2678,7 +2678,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   color="secondary"
                 />
               }
-              label={<Typography sx={{ color: '#e9d5ff', fontSize: '0.8rem' }}>Pro</Typography>}
+              label={<Typography sx={{ color: '#dedbf9', fontSize: '0.8rem' }}>Pro</Typography>}
             />
             <FormControlLabel
               sx={{ m: 0 }}
@@ -2715,7 +2715,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   sx={{
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#a855f7' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#7666e6' },
                   }}
                 >
                   {filteredAndSortedDays.map((day) => (
@@ -2748,8 +2748,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 disabled={selectedIds.size === 0}
                 sx={{
                   minHeight: TOUCH_TARGET_SIZE,
-                  color: selectedIds.size > 0 ? '#f5d0fe' : 'rgba(255,255,255,0.45)',
-                  borderColor: selectedIds.size > 0 ? 'rgba(217,70,239,0.5)' : 'rgba(255,255,255,0.2)',
+                  color: selectedIds.size > 0 ? '#dcd6f8' : 'rgba(255,255,255,0.45)',
+                  borderColor: selectedIds.size > 0 ? 'rgba(111, 82, 227,0.5)' : 'rgba(255,255,255,0.2)',
                 }}
               >
                 Bulk-flytt ({selectedIds.size})
@@ -2980,7 +2980,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     variant="outlined"
                     startIcon={<QueueIcon />}
                     onClick={() => void applyFieldStatus(selectedProDay, selectedProDay.status, 'status_update')}
-                    sx={{ color: '#e9d5ff', borderColor: 'rgba(217,70,239,0.45)' }}
+                    sx={{ color: '#dedbf9', borderColor: 'rgba(111, 82, 227,0.45)' }}
                   >
                     Synk status
                   </Button>
@@ -3103,7 +3103,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                             key={tag}
                             label={`Tag: ${tag}`}
                             onDelete={() => replaceDraftMention(selectedProDay.id, tag, '')}
-                            sx={{ bgcolor: 'rgba(124,58,237,0.25)', color: '#f5d0fe' }}
+                            sx={{ bgcolor: 'rgba(84, 70, 225,0.25)', color: '#dcd6f8' }}
                           />
                         ))}
                       </Box>
@@ -3114,7 +3114,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                         variant="contained"
                         startIcon={<CommentIcon />}
                         onClick={() => addTeamFlowEntry(selectedProDay.id, 'comment')}
-                        sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+                        sx={{ bgcolor: '#5446e1', '&:hover': { bgcolor: '#3928d9' } }}
                       >
                         Legg til kommentar
                       </Button>
@@ -3146,7 +3146,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                             </Typography>
                             <Typography sx={{ color: '#f8fafc', fontSize: '0.8rem' }}>{entry.text}</Typography>
                             {!!entry.mentions.length && (
-                              <Typography sx={{ color: '#d8b4fe', fontSize: '0.72rem', mt: 0.25 }}>
+                              <Typography sx={{ color: '#c4bef4', fontSize: '0.72rem', mt: 0.25 }}>
                                 Tags: {entry.mentions.join(', ')}
                               </Typography>
                             )}
@@ -3168,9 +3168,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           severity="info"
           sx={{
             mb: 2,
-            bgcolor: 'rgba(156,39,176,0.1)',
+            bgcolor: 'rgba(66, 39, 176,0.1)',
             color: '#fff',
-            '& .MuiAlert-icon': { color: '#9c27b0' },
+            '& .MuiAlert-icon': { color: '#4227b0' },
           }}
         >
           Viser {filteredAndSortedDays.length} av {productionDays.length} produksjonsdager
@@ -3183,7 +3183,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           iconSrc={calenderPng}
           title="Ingen produksjonsdager ennå"
           subtitle="Legg til produksjonsdager for å planlegge dag-for-dag produksjon"
-          color="#9c27b0"
+          color="#4227b0"
         />
       ) : filteredAndSortedDays.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
@@ -3211,7 +3211,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedDays.length}
                     onChange={handleSelectAll}
                     aria-label="Velg alle produksjonsdager"
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9c27b0' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#4227b0' } }}
                   />
                 </TableCell>
                 <TableCell>
@@ -3219,7 +3219,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     active={sortField === 'date'}
                     direction={sortField === 'date' ? sortDirection : 'asc'}
                     onClick={() => handleSort('date')}
-                    sx={{ color: '#fff', '&:hover': { color: '#9c27b0' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#4227b0' } }}
                   >
                     Dato
                   </TableSortLabel>
@@ -3229,7 +3229,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     active={sortField === 'location'}
                     direction={sortField === 'location' ? sortDirection : 'asc'}
                     onClick={() => handleSort('location')}
-                    sx={{ color: '#fff', '&:hover': { color: '#9c27b0' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#4227b0' } }}
                   >
                     Lokasjon
                   </TableSortLabel>
@@ -3240,7 +3240,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', '&:hover': { color: '#9c27b0' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#4227b0' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -3250,7 +3250,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     active={sortField === 'scenes'}
                     direction={sortField === 'scenes' ? sortDirection : 'asc'}
                     onClick={() => handleSort('scenes')}
-                    sx={{ color: '#fff', '&:hover': { color: '#9c27b0' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#4227b0' } }}
                   >
                     Scener
                   </TableSortLabel>
@@ -3263,7 +3263,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 <TableRow
                   key={day.id}
                   sx={{
-                    bgcolor: selectedIds.has(day.id) ? 'rgba(156,39,176,0.1)' : 'transparent',
+                    bgcolor: selectedIds.has(day.id) ? 'rgba(66, 39, 176,0.1)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
@@ -3271,7 +3271,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     <Checkbox
                       checked={selectedIds.has(day.id)}
                       onChange={() => handleToggleSelect(day.id)}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9c27b0' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#4227b0' } }}
                     />
                   </TableCell>
                   <TableCell>
@@ -3298,7 +3298,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     />
                   </TableCell>
                   <TableCell>
-                    <Chip label={day.scenes.length} size="small" sx={{ bgcolor: 'rgba(156,39,176,0.2)', color: '#9c27b0' }} />
+                    <Chip label={day.scenes.length} size="small" sx={{ bgcolor: 'rgba(66, 39, 176,0.2)', color: '#4227b0' }} />
                   </TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
@@ -3318,7 +3318,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                             e.stopPropagation();
                             handleOpenDialog(day);
                           }} 
-                          sx={{ color: '#9c27b0' }}
+                          sx={{ color: '#4227b0' }}
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -3401,8 +3401,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                           }
                         }}
                         sx={{
-                          bgcolor: selectedIds.has(day.id) ? 'rgba(156,39,176,0.15)' : 'rgba(255,255,255,0.05)',
-                          border: selectedIds.has(day.id) ? '2px solid #9c27b0' : '1px solid rgba(255,255,255,0.1)',
+                          bgcolor: selectedIds.has(day.id) ? 'rgba(66, 39, 176,0.15)' : 'rgba(255,255,255,0.05)',
+                          border: selectedIds.has(day.id) ? '2px solid #4227b0' : '1px solid rgba(255,255,255,0.1)',
                           outline: dragTargetDayId === day.id ? '2px dashed rgba(34,211,238,0.8)' : 'none',
                           borderRadius: 2,
                           transition: 'all 0.2s ease',
@@ -3411,8 +3411,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                           flexDirection: 'column',
                           '&:hover': { 
                             bgcolor: 'rgba(255,255,255,0.08)', 
-                            borderColor: '#9c27b0',
-                            boxShadow: '0 8px 24px rgba(156,39,176,0.2)',
+                            borderColor: '#4227b0',
+                            boxShadow: '0 8px 24px rgba(66, 39, 176,0.2)',
                             transform: 'translateY(-2px)',
                           },
                           ...focusVisibleStyles,
@@ -3425,7 +3425,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               <Checkbox
                                 checked={selectedIds.has(day.id)}
                                 onChange={() => handleToggleSelect(day.id)}
-                                sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#9c27b0' } }}
+                                sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#4227b0' } }}
                               />
                               <Box sx={{ flex: 1 }}>
                                 {/* Eye-catching Date Display */}
@@ -3438,9 +3438,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                     mb: 1.5,
                                     p: { xs: 2, sm: 2.5 },
                                     borderRadius: 3,
-                                    background: 'linear-gradient(135deg, rgba(156,39,176,0.25) 0%, rgba(123,31,162,0.15) 100%)',
-                                    border: '2px solid rgba(156,39,176,0.4)',
-                                    boxShadow: '0 4px 12px rgba(156,39,176,0.2), inset 0 1px 0 rgba(255,255,255,0.1)',
+                                    background: 'linear-gradient(135deg, rgba(66, 39, 176,0.25) 0%, rgba(52, 31, 162,0.15) 100%)',
+                                    border: '2px solid rgba(66, 39, 176,0.4)',
+                                    boxShadow: '0 4px 12px rgba(66, 39, 176,0.2), inset 0 1px 0 rgba(255,255,255,0.1)',
                                     overflow: 'hidden',
                                     '&::before': {
                                       content: '""',
@@ -3449,7 +3449,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       left: 0,
                                       right: 0,
                                       height: '3px',
-                                      background: 'linear-gradient(90deg, #9c27b0 0%, #7b1fa2 50%, #9c27b0 100%)',
+                                      background: 'linear-gradient(90deg, #4227b0 0%, #341fa2 50%, #4227b0 100%)',
                                     },
                                   }}
                                 >
@@ -3464,9 +3464,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       minWidth: { xs: 70, sm: 85, md: 95 },
                                       height: { xs: 70, sm: 85, md: 95 },
                                       borderRadius: 3,
-                                      background: 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)',
+                                      background: 'linear-gradient(135deg, #4227b0 0%, #341fa2 100%)',
                                       border: '3px solid rgba(255,255,255,0.3)',
-                                      boxShadow: '0 4px 16px rgba(156,39,176,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                                      boxShadow: '0 4px 16px rgba(66, 39, 176,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
                                       overflow: 'hidden',
                                     }}
                                   >
@@ -3644,9 +3644,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                 mb: 2,
                                 px: 1.5,
                                 py: 1,
-                                bgcolor: 'rgba(156,39,176,0.08)',
+                                bgcolor: 'rgba(66, 39, 176,0.08)',
                                 borderRadius: 1.5,
-                                border: '1px solid rgba(156,39,176,0.15)',
+                                border: '1px solid rgba(66, 39, 176,0.15)',
                               }}
                             >
                               <HistoryIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />
@@ -3681,8 +3681,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                 gap: 2,
                                 p: { xs: 1.5, sm: 2 },
                                 borderRadius: 2.5,
-                                bgcolor: 'rgba(156,39,176,0.12)',
-                                border: '1px solid rgba(156,39,176,0.25)',
+                                bgcolor: 'rgba(66, 39, 176,0.12)',
+                                border: '1px solid rgba(66, 39, 176,0.25)',
                               }}
                             >
                               <Box
@@ -3690,13 +3690,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   width: { xs: 44, sm: 52 },
                                   height: { xs: 44, sm: 52 },
                                   borderRadius: 2,
-                                  bgcolor: 'rgba(156,39,176,0.25)',
+                                  bgcolor: 'rgba(66, 39, 176,0.25)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                 }}
                               >
-                                <TimeIcon sx={{ fontSize: { xs: 24, sm: 28 }, color: '#ce93d8' }} />
+                                <TimeIcon sx={{ fontSize: { xs: 24, sm: 28 }, color: '#a193d8' }} />
                               </Box>
                               <Box sx={{ flex: 1 }}>
                                 <Typography
@@ -3732,8 +3732,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   px: { xs: 1.5, sm: 2 },
                                   py: { xs: 1, sm: 1.25 },
                                   borderRadius: 2,
-                                  bgcolor: 'rgba(156,39,176,0.35)',
-                                  border: '2px solid rgba(206,147,216,0.5)',
+                                  bgcolor: 'rgba(66, 39, 176,0.35)',
+                                  border: '2px solid rgba(161, 147, 216,0.5)',
                                   minWidth: { xs: 56, sm: 68 },
                                 }}
                               >
@@ -3862,7 +3862,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                 if (isSunny) return '#ffb800';
                                 if (isRainy) return 'var(--role-cyan, #00d4ff)';
                                 if (isSnowy) return '#a8d8ff';
-                                if (isThunder) return '#8b5cf6';
+                                if (isThunder) return '#756be7';
                                 if (isCloudy) return '#94a3b8';
                                 return '#94a3b8';
                               };
@@ -3871,7 +3871,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                 if (isSunny) return 'linear-gradient(135deg, rgba(255,184,0,0.2) 0%, rgba(255,120,0,0.1) 100%)';
                                 if (isRainy) return 'linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(0,100,180,0.1) 100%)';
                                 if (isSnowy) return 'linear-gradient(135deg, rgba(168,216,255,0.2) 0%, rgba(200,230,255,0.1) 100%)';
-                                if (isThunder) return 'linear-gradient(135deg, rgba(139,92,246,0.2) 0%, rgba(80,40,180,0.1) 100%)';
+                                if (isThunder) return 'linear-gradient(135deg, rgba(117, 107, 231,0.2) 0%, rgba(50, 40, 180,0.1) 100%)';
                                 return 'linear-gradient(135deg, rgba(148,163,184,0.15) 0%, rgba(100,116,139,0.1) 100%)';
                               };
 
@@ -4142,7 +4142,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               sx={{
                                 mt: 2.5,
                                 pt: 2.5,
-                                borderTop: '2px solid rgba(156,39,176,0.3)',
+                                borderTop: '2px solid rgba(66, 39, 176,0.3)',
                                 // iPad landscape optimizations
                                 '@media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape)': {
                                   display: 'grid',
@@ -4155,7 +4155,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               <Typography
                                 variant="subtitle2"
                                 sx={{
-                                  color: '#9c27b0',
+                                  color: '#4227b0',
                                   fontWeight: 700,
                                   fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem' },
                                   mb: 2.5,
@@ -4200,8 +4200,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       sx={{
                                         p: { xs: 2, sm: 2.5 },
                                         borderRadius: 2.5,
-                                        bgcolor: 'rgba(156,39,176,0.08)',
-                                        border: '1px solid rgba(156,39,176,0.2)',
+                                        bgcolor: 'rgba(66, 39, 176,0.08)',
+                                        border: '1px solid rgba(66, 39, 176,0.2)',
                                         height: '100%',
                                         transition: 'all 0.2s ease',
                                         '@media (min-width: 768px) and (orientation: landscape)': {
@@ -4215,20 +4215,20 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             width: { xs: 36, sm: 40 },
                                             height: { xs: 36, sm: 40 },
                                             borderRadius: 2,
-                                            bgcolor: 'rgba(156,39,176,0.2)',
+                                            bgcolor: 'rgba(66, 39, 176,0.2)',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                           }}
                                         >
                                           {dayScenes.some((scene) => typeof scene.thumbnail === 'string' && scene.thumbnail.trim().length > 0) ? (
-                                            <ImageIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#ce93d8' }} />
+                                            <ImageIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#a193d8' }} />
                                           ) : (
-                                            <MovieIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#ce93d8' }} />
+                                            <MovieIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#a193d8' }} />
                                           )}
                                         </Box>
                                         <Box sx={{ flex: 1 }}>
-                                          <Typography sx={{ color: '#ce93d8', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                          <Typography sx={{ color: '#a193d8', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                                             Scener
                                           </Typography>
                                           <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
@@ -4239,8 +4239,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           label={dayScenes.length}
                                           size="small"
                                           sx={{
-                                            bgcolor: 'rgba(156,39,176,0.3)',
-                                            color: '#ce93d8',
+                                            bgcolor: 'rgba(66, 39, 176,0.3)',
+                                            color: '#a193d8',
                                             fontWeight: 700,
                                             minWidth: 32,
                                           }}
@@ -4258,17 +4258,17 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                               thumbnail: scene.thumbnail,
                                             })}
                                             sx={{
-                                              bgcolor: 'rgba(156,39,176,0.25)',
-                                              color: '#e1bee7',
+                                              bgcolor: 'rgba(66, 39, 176,0.25)',
+                                              color: '#c6bee7',
                                               fontWeight: 600,
                                               fontSize: { xs: '0.8rem', sm: '0.875rem' },
                                               height: { xs: 28, sm: 32 },
                                               cursor: 'pointer',
                                               transition: 'all 0.2s',
                                               '&:hover': {
-                                                bgcolor: 'rgba(156,39,176,0.45)',
+                                                bgcolor: 'rgba(66, 39, 176,0.45)',
                                                 transform: 'translateY(-2px)',
-                                                boxShadow: '0 4px 12px rgba(156,39,176,0.3)',
+                                                boxShadow: '0 4px 12px rgba(66, 39, 176,0.3)',
                                               },
                                             }}
                                           />
@@ -4351,8 +4351,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       sx={{
                                         p: { xs: 2, sm: 2.5 },
                                         borderRadius: 2.5,
-                                        bgcolor: 'rgba(147,51,234,0.08)',
-                                        border: '1px solid rgba(147,51,234,0.2)',
+                                        bgcolor: 'rgba(82, 62, 224,0.08)',
+                                        border: '1px solid rgba(82, 62, 224,0.2)',
                                         height: '100%',
                                         transition: 'all 0.2s ease',
                                       }}
@@ -4363,16 +4363,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             width: { xs: 36, sm: 40 },
                                             height: { xs: 36, sm: 40 },
                                             borderRadius: 2,
-                                            bgcolor: 'rgba(147,51,234,0.2)',
+                                            bgcolor: 'rgba(82, 62, 224,0.2)',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                           }}
                                         >
-                                          <InventoryIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#c084fc' }} />
+                                          <InventoryIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#9e93ed' }} />
                                         </Box>
                                         <Box sx={{ flex: 1 }}>
-                                          <Typography sx={{ color: '#c084fc', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                          <Typography sx={{ color: '#9e93ed', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                                             Utstyr
                                           </Typography>
                                           <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
@@ -4383,8 +4383,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           label={dayProps.length}
                                           size="small"
                                           sx={{
-                                            bgcolor: 'rgba(147,51,234,0.3)',
-                                            color: '#c084fc',
+                                            bgcolor: 'rgba(82, 62, 224,0.3)',
+                                            color: '#9e93ed',
                                             fontWeight: 700,
                                             minWidth: 32,
                                           }}
@@ -4397,7 +4397,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             label={prop.name}
                                             size="medium"
                                             sx={{
-                                              bgcolor: 'rgba(147,51,234,0.2)',
+                                              bgcolor: 'rgba(82, 62, 224,0.2)',
                                               color: '#ffcc80',
                                               fontWeight: 500,
                                               fontSize: { xs: '0.8rem', sm: '0.875rem' },
@@ -4517,9 +4517,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   sx={{
                                     mt: 2,
                                     borderRadius: 2,
-                                    bgcolor: 'rgba(147,51,234,0.1)',
-                                    border: '1px solid rgba(147,51,234,0.3)',
-                                    '& .MuiAlert-icon': { color: '#c084fc' },
+                                    bgcolor: 'rgba(82, 62, 224,0.1)',
+                                    border: '1px solid rgba(82, 62, 224,0.3)',
+                                    '& .MuiAlert-icon': { color: '#9e93ed' },
                                     '& .MuiAlert-message': {
                                       color: 'rgba(255,255,255,0.9)',
                                       fontSize: '0.875rem',
@@ -4542,15 +4542,15 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   sx={{
                                     mt: 2.5,
                                     p: 2,
-                                    bgcolor: 'rgba(156,39,176,0.05)',
+                                    bgcolor: 'rgba(66, 39, 176,0.05)',
                                     borderRadius: 2,
-                                    border: '1px solid rgba(156,39,176,0.2)',
+                                    border: '1px solid rgba(66, 39, 176,0.2)',
                                   }}
                                 >
                                   <Typography
                                     variant="subtitle2"
                                     sx={{
-                                      color: '#9c27b0',
+                                      color: '#4227b0',
                                       fontWeight: 700,
                                       fontSize: '0.875rem',
                                       mb: 1.5,
@@ -4623,7 +4623,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                               width: 8,
                                               height: 8,
                                               borderRadius: '50%',
-                                              bgcolor: log.action === 'created' ? '#10b981' : log.action === 'status_changed' ? '#9333ea' : '#9c27b0',
+                                              bgcolor: log.action === 'created' ? '#10b981' : log.action === 'status_changed' ? '#523ee0' : '#4227b0',
                                               mt: 0.75,
                                               flexShrink: 0,
                                             }}
@@ -4671,7 +4671,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               alignItems: 'center',
                               pt: { xs: 2, sm: 2.5 },
                               mt: { xs: 2, sm: 2.5 },
-                              borderTop: '2px solid rgba(156,39,176,0.2)',
+                              borderTop: '2px solid rgba(66, 39, 176,0.2)',
                             }}
                           >
                             {/* Enhanced "Vis mer" button */}
@@ -4683,27 +4683,27 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               endIcon={expandedCards.has(day.id) ? <ArrowUpIcon /> : <ArrowDownIcon />}
                               sx={{
                                 bgcolor: expandedCards.has(day.id)
-                                  ? 'rgba(156,39,176,0.25)'
-                                  : 'rgba(156,39,176,0.15)',
-                                color: expandedCards.has(day.id) ? '#ce93d8' : '#fff',
+                                  ? 'rgba(66, 39, 176,0.25)'
+                                  : 'rgba(66, 39, 176,0.15)',
+                                color: expandedCards.has(day.id) ? '#a193d8' : '#fff',
                                 fontSize: { xs: '0.875rem', sm: '0.9375rem' },
                                 fontWeight: 600,
                                 minHeight: TOUCH_TARGET_SIZE,
                                 px: { xs: 2, sm: 2.5 },
                                 border: expandedCards.has(day.id)
-                                  ? '2px solid rgba(156,39,176,0.5)'
-                                  : '2px solid rgba(156,39,176,0.3)',
+                                  ? '2px solid rgba(66, 39, 176,0.5)'
+                                  : '2px solid rgba(66, 39, 176,0.3)',
                                 borderRadius: 2,
                                 textTransform: 'none',
                                 boxShadow: expandedCards.has(day.id)
-                                  ? '0 4px 12px rgba(156,39,176,0.3)'
-                                  : '0 2px 8px rgba(156,39,176,0.2)',
+                                  ? '0 4px 12px rgba(66, 39, 176,0.3)'
+                                  : '0 2px 8px rgba(66, 39, 176,0.2)',
                                 transition: 'all 0.2s ease',
                                 '&:hover': {
-                                  bgcolor: 'rgba(156,39,176,0.35)',
-                                  borderColor: 'rgba(156,39,176,0.6)',
+                                  bgcolor: 'rgba(66, 39, 176,0.35)',
+                                  borderColor: 'rgba(66, 39, 176,0.6)',
                                   transform: 'translateY(-1px)',
-                                  boxShadow: '0 6px 16px rgba(156,39,176,0.4)',
+                                  boxShadow: '0 6px 16px rgba(66, 39, 176,0.4)',
                                 },
                                 ...focusVisibleStyles,
                               }}
@@ -4748,8 +4748,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   sx={{ 
                                     minWidth: TOUCH_TARGET_SIZE, 
                                     minHeight: TOUCH_TARGET_SIZE, 
-                                    color: '#9c27b0',
-                                    '&:hover': { bgcolor: 'rgba(156,39,176,0.1)' },
+                                    color: '#4227b0',
+                                    '&:hover': { bgcolor: 'rgba(66, 39, 176,0.1)' },
                                     ...focusVisibleStyles,
                                   }}
                                 >
@@ -4841,7 +4841,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             variant="contained"
             onClick={() => void applyBulkShift()}
             disabled={bulkShiftPreview.length === 0}
-            sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+            sx={{ bgcolor: '#5446e1', '&:hover': { bgcolor: '#3928d9' } }}
           >
             Flytt
           </Button>
@@ -4907,7 +4907,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         onClose={() => setUndoSnackbarOpen(false)}
         message="Produksjonsdag slettet"
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#9c27b0' }}>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#4227b0' }}>
             Angre
           </Button>
         }
@@ -4939,7 +4939,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               minHeight: { sm: '60vh', md: '70vh' },
               m: { xs: 0, sm: 2, md: 3, lg: 4 },
               borderRadius: { xs: 0, sm: 2, md: 3 },
-              border: { xs: 'none', sm: '1px solid rgba(156,39,176,0.2)' },
+              border: { xs: 'none', sm: '1px solid rgba(66, 39, 176,0.2)' },
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
               zIndex: 100000,
               willChange: 'transform, opacity',
@@ -4972,8 +4972,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           id={dialogTitleId}
           sx={{
             color: '#fff',
-            borderBottom: '2px solid rgba(156,39,176,0.3)',
-            background: 'linear-gradient(135deg, rgba(156,39,176,0.1) 0%, rgba(0,0,0,0.2) 100%)',
+            borderBottom: '2px solid rgba(66, 39, 176,0.3)',
+            background: 'linear-gradient(135deg, rgba(66, 39, 176,0.1) 0%, rgba(0,0,0,0.2) 100%)',
             fontSize: { xs: '1.1rem', sm: '1.35rem', md: '1.5rem' },
             display: 'flex',
             justifyContent: 'space-between',
@@ -4989,17 +4989,17 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 width: { xs: 40, sm: 48, md: 52 },
                 height: { xs: 40, sm: 48, md: 52 },
                 borderRadius: 2,
-                bgcolor: 'rgba(156,39,176,0.2)',
-                border: '2px solid rgba(156,39,176,0.4)',
+                bgcolor: 'rgba(66, 39, 176,0.2)',
+                border: '2px solid rgba(66, 39, 176,0.4)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               {editingDay ? (
-                <EditIcon sx={{ color: '#ce93d8', fontSize: { xs: 22, sm: 26, md: 28 } }} />
+                <EditIcon sx={{ color: '#a193d8', fontSize: { xs: 22, sm: 26, md: 28 } }} />
               ) : (
-                <AddIcon sx={{ color: '#ce93d8', fontSize: { xs: 22, sm: 26, md: 28 } }} />
+                <AddIcon sx={{ color: '#a193d8', fontSize: { xs: 22, sm: 26, md: 28 } }} />
               )}
             </Box>
             <Box>
@@ -5008,7 +5008,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 sx={{
                   fontWeight: 700,
                   fontSize: { xs: '1.1rem', sm: '1.35rem', md: '1.5rem' },
-                  background: 'linear-gradient(135deg, #fff 0%, #ce93d8 100%)',
+                  background: 'linear-gradient(135deg, #fff 0%, #a193d8 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
@@ -5068,11 +5068,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               p: { xs: 1.5, sm: 2 },
               mb: { xs: 2, sm: 3 },
               borderRadius: 2,
-              bgcolor: 'rgba(156,39,176,0.1)',
-              border: '1px solid rgba(156,39,176,0.2)',
+              bgcolor: 'rgba(66, 39, 176,0.1)',
+              border: '1px solid rgba(66, 39, 176,0.2)',
             }}
           >
-            <CalendarMonthIcon sx={{ color: '#ce93d8', fontSize: { xs: 20, sm: 24 } }} />
+            <CalendarMonthIcon sx={{ color: '#a193d8', fontSize: { xs: 20, sm: 24 } }} />
             <Typography
               sx={{
                 color: 'rgba(255,255,255,0.87)',
@@ -5099,7 +5099,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+                  '&.Mui-focused fieldset': { borderColor: '#4227b0' },
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
@@ -5129,10 +5129,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   minHeight: TOUCH_TARGET_SIZE,
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+                  '&.Mui-focused fieldset': { borderColor: '#4227b0' },
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#9c27b0' },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#4227b0' },
               }}
             />
               <TextField
@@ -5151,10 +5151,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     minHeight: TOUCH_TARGET_SIZE,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9c27b0' },
+                    '&.Mui-focused fieldset': { borderColor: '#4227b0' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                  '& .MuiInputLabel-root.Mui-focused': { color: '#9c27b0' },
+                  '& .MuiInputLabel-root.Mui-focused': { color: '#4227b0' },
                 }}
               />
             </Box>
@@ -5170,7 +5170,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   minHeight: TOUCH_TARGET_SIZE,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9c27b0' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#4227b0' },
                 }}
                 MenuProps={{
                   container: document.body,
@@ -5189,12 +5189,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                         fontSize: { xs: '0.875rem', sm: '0.9375rem' },
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': {
-                          bgcolor: 'rgba(156,39,176,0.15)',
+                          bgcolor: 'rgba(66, 39, 176,0.15)',
                         },
                         '&.Mui-selected': {
-                          bgcolor: 'rgba(156,39,176,0.25)',
+                          bgcolor: 'rgba(66, 39, 176,0.25)',
                           '&:hover': {
-                            bgcolor: 'rgba(156,39,176,0.35)',
+                            bgcolor: 'rgba(66, 39, 176,0.35)',
                           },
                         },
                       },
@@ -5221,7 +5221,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   minHeight: TOUCH_TARGET_SIZE,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#9c27b0' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#4227b0' },
                 }}
                 MenuProps={{
                   container: document.body,
@@ -5240,12 +5240,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                         fontSize: { xs: '0.875rem', sm: '0.9375rem' },
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': {
-                          bgcolor: 'rgba(156,39,176,0.15)',
+                          bgcolor: 'rgba(66, 39, 176,0.15)',
                         },
                         '&.Mui-selected': {
-                          bgcolor: 'rgba(156,39,176,0.25)',
+                          bgcolor: 'rgba(66, 39, 176,0.25)',
                           '&:hover': {
-                            bgcolor: 'rgba(156,39,176,0.35)',
+                            bgcolor: 'rgba(66, 39, 176,0.35)',
                           },
                         },
                       },
@@ -5379,12 +5379,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             startIcon={<SaveIcon />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#9c27b0',
+              bgcolor: '#4227b0',
               color: '#fff',
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,
               '&:hover': {
-                bgcolor: '#7b1fa2'
+                bgcolor: '#341fa2'
               }
             }}
           >
@@ -5404,7 +5404,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             bgcolor: '#1c2128',
             color: '#fff',
             borderRadius: 3,
-            border: '2px solid rgba(147,51,234,0.3)',
+            border: '2px solid rgba(82, 62, 224,0.3)',
           },
         }}
       >
@@ -5413,8 +5413,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             display: 'flex',
             alignItems: 'center',
             gap: 2,
-            bgcolor: 'rgba(147,51,234,0.1)',
-            borderBottom: '1px solid rgba(147,51,234,0.2)',
+            bgcolor: 'rgba(82, 62, 224,0.1)',
+            borderBottom: '1px solid rgba(82, 62, 224,0.2)',
           }}
         >
           <Box
@@ -5422,7 +5422,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               width: 48,
               height: 48,
               borderRadius: 2,
-              bgcolor: 'rgba(147,51,234,0.2)',
+              bgcolor: 'rgba(82, 62, 224,0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -5437,13 +5437,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             <NotifyIcon
               sx={{
                 fontSize: 28,
-                color: '#9333ea',
+                color: '#523ee0',
                 animation: 'ring 0.5s ease-in-out 2',
               }}
             />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#9333ea' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#523ee0' }}>
               Informer teamet?
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -5456,11 +5456,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             severity="warning"
             icon={<WarningIcon />}
             sx={{
-              bgcolor: 'rgba(147,51,234,0.1)',
+              bgcolor: 'rgba(82, 62, 224,0.1)',
               color: '#fff',
-              border: '1px solid rgba(147,51,234,0.3)',
+              border: '1px solid rgba(82, 62, 224,0.3)',
               mb: 3,
-              '& .MuiAlert-icon': { color: '#9333ea' },
+              '& .MuiAlert-icon': { color: '#523ee0' },
             }}
           >
             Følgende felt er endret og kan påvirke teamet:
@@ -5485,16 +5485,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     width: 36,
                     height: 36,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(147,51,234,0.2)',
+                    bgcolor: 'rgba(82, 62, 224,0.2)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  {field === 'Dato' && <CalendarIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
-                  {field === 'Arbeidstid' && <TimeIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
-                  {field === 'Lokasjon' && <LocationIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
-                  {field === 'Notater' && <NotesIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
+                  {field === 'Dato' && <CalendarIcon sx={{ color: '#523ee0', fontSize: 20 }} />}
+                  {field === 'Arbeidstid' && <TimeIcon sx={{ color: '#523ee0', fontSize: 20 }} />}
+                  {field === 'Lokasjon' && <LocationIcon sx={{ color: '#523ee0', fontSize: 20 }} />}
+                  {field === 'Notater' && <NotesIcon sx={{ color: '#523ee0', fontSize: 20 }} />}
                 </Box>
                 <Typography sx={{ color: '#fff', fontWeight: 600 }}>
                   {field}
@@ -5508,8 +5508,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               mt: 3,
               p: 2,
               borderRadius: 2,
-              bgcolor: 'rgba(156,39,176,0.1)',
-              border: '1px solid rgba(156,39,176,0.2)',
+              bgcolor: 'rgba(66, 39, 176,0.1)',
+              border: '1px solid rgba(66, 39, 176,0.2)',
               color: 'rgba(255,255,255,0.8)',
               fontSize: '0.9rem',
             }}
@@ -5544,11 +5544,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             startIcon={<NotifyIcon />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#9333ea',
+              bgcolor: '#523ee0',
               color: '#000',
               fontWeight: 700,
               minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { bgcolor: '#6d28d9' },
+              '&:hover': { bgcolor: '#3928d9' },
             }}
           >
             Informer teamet
@@ -5566,7 +5566,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             bgcolor: '#1c2128',
             color: '#fff',
             borderRadius: 3,
-            border: '1px solid rgba(156,39,176,0.28)',
+            border: '1px solid rgba(66, 39, 176,0.28)',
           },
         }}
       >
@@ -5647,7 +5647,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', p: 2 }}>
-          <Button onClick={() => setScenePreview(null)} variant="contained" sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#7b1fa2' } }}>
+          <Button onClick={() => setScenePreview(null)} variant="contained" sx={{ bgcolor: '#4227b0', '&:hover': { bgcolor: '#341fa2' } }}>
             Lukk
           </Button>
         </DialogActions>

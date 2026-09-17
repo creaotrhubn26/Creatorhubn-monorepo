@@ -81,7 +81,7 @@ interface DitBackupJob {
 const DEST_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   original: { label: 'Original', color: '#94a3b8' },
   primary: { label: 'Primary', color: 'var(--role-cyan, #22d3ee)' },
-  secondary: { label: 'Secondary', color: '#a78bfa' },
+  secondary: { label: 'Secondary', color: '#9d97ee' },
   offsite: { label: 'Offsite', color: '#f59e0b' },
   archive: { label: 'Archive', color: '#10b981' },
 };

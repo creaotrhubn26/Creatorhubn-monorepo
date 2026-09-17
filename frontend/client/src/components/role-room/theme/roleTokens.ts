@@ -16,24 +16,24 @@
  */
 
 export const roleTokens = {
-  /** Hovedaksent — lilla #b86bff. CreatorHub Design (Fase C): CSS-var-drevet fra
+  /** Hovedaksent — lilla #8d80ea. CreatorHub Design (Fase C): CSS-var-drevet fra
    *  design-tokens (ws=theroleroom); literal-fallback = identisk. accentHover/Soft er
    *  håndplukkede (ikke eksakt aksent-derivbare) → holdes literal. */
-  accent: 'var(--role-accent, #b86bff)',
-  /** Hover-aksent — litt mørkere lilla #a855f7. */
-  accentHover: '#a855f7',
+  accent: 'var(--role-accent, #8d80ea)',
+  /** Hover-aksent — litt mørkere lilla #7666e6. */
+  accentHover: '#7666e6',
   /** Soft aksent — rgba med 0.24 alpha. Brukes for bakgrunn på chips. */
-  accentSoft: 'rgba(184,107,255,0.24)',
-  /** Surface — dypt lilla bg #200e30. Brukes for hovedflater. */
+  accentSoft: 'rgba(141, 128, 234,0.24)',
+  /** Surface — dypt lilla bg #120e30. Brukes for hovedflater. */
   surface: 'rgba(20,14,48,0.84)',
   /** Dempet surface — for nestede flater. */
   surfaceMuted: 'rgba(33,24,70,0.72)',
   /** Standard border for kort/dialoger (aksent-derivbar). */
-  border: 'var(--role-border, rgba(184,107,255,0.32))',
-  /** Primær tekst-farge — varm-hvit #f3eaff. */
-  text: '#f3eaff',
+  border: 'var(--role-border, rgba(141, 128, 234,0.32))',
+  /** Primær tekst-farge — varm-hvit #efedfc. */
+  text: '#efedfc',
   /** Dempet tekst — beige-lavendel for sekundær-info. */
-  textMuted: 'rgba(220,205,255,0.82)',
+  textMuted: 'rgba(215, 212, 248,0.82)',
 
   /** Status-farger (matcher roleWorkflow.ts) */
   status: {

@@ -13,7 +13,7 @@ describe('Sprint 1.2 — RoleRoomEmptyState contract used by Storyboard', () => 
         iconSrc="/fake-storyboard.png"
         title="Bygg storyboardet ditt"
         subtitle="Hver frame representerer ett shot."
-        color="#b86bff"
+        color="#8d80ea"
         buttonLabel="Opprett første frame"
         onAction={onAction}
       />,

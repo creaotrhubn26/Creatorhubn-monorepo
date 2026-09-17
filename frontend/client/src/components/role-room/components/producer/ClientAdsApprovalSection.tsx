@@ -131,7 +131,7 @@ export default function ClientAdsApprovalSection({
   if (loading) {
     return (
       <Box sx={{ textAlign: 'center', py: 3 }}>
-        <CircularProgress size={22} sx={{ color: '#c084fc' }} />
+        <CircularProgress size={22} sx={{ color: '#9e93ed' }} />
       </Box>
     );
   }
@@ -142,8 +142,8 @@ export default function ClientAdsApprovalSection({
 
   return (
     <Card sx={{
-      bgcolor: '#150b2e',
-      border: '1px solid rgba(168,85,247,0.32)',
+      bgcolor: '#0e0b2e',
+      border: '1px solid rgba(118, 102, 230,0.32)',
       color: '#f5f3ff',
       mb: 2,
     }}>
@@ -151,7 +151,7 @@ export default function ClientAdsApprovalSection({
         <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 1.6 }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: 1.4,
-            background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+            background: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <AutoAwesomeIcon sx={{ color: '#fff', fontSize: 20 }} />
@@ -176,8 +176,8 @@ export default function ClientAdsApprovalSection({
               <Box
                 key={config.id}
                 sx={{
-                  bgcolor: 'rgba(168,85,247,0.06)',
-                  border: '1px solid rgba(168,85,247,0.18)',
+                  bgcolor: 'rgba(118, 102, 230,0.06)',
+                  border: '1px solid rgba(118, 102, 230,0.18)',
                   borderRadius: 1.6,
                   p: 2,
                 }}
@@ -205,7 +205,7 @@ export default function ClientAdsApprovalSection({
                 </Stack>
 
                 {config.approval_message ? (
-                  <Typography sx={{ color: 'rgba(196,181,253,0.9)', fontStyle: 'italic', fontSize: '0.86rem', mb: 1.6, p: 1.2, bgcolor: 'rgba(168,85,247,0.10)', borderRadius: 1 }}>
+                  <Typography sx={{ color: 'rgba(196,181,253,0.9)', fontStyle: 'italic', fontSize: '0.86rem', mb: 1.6, p: 1.2, bgcolor: 'rgba(118, 102, 230,0.10)', borderRadius: 1 }}>
                     Beskjed fra innholdsprodusenten: «{config.approval_message}»
                   </Typography>
                 ) : null}
@@ -293,7 +293,7 @@ export default function ClientAdsApprovalSection({
                   </tbody>
                 </Box>
 
-                <Divider sx={{ borderColor: 'rgba(168,85,247,0.18)', my: 1.6 }} />
+                <Divider sx={{ borderColor: 'rgba(118, 102, 230,0.18)', my: 1.6 }} />
 
                 <TextField
                   multiline

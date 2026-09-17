@@ -209,10 +209,10 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       {/* Branded header */}
       <Box sx={{
         px: 2, py: 1.5,
-        background: 'linear-gradient(135deg, #1e1a2e, #2d1b4e)',
+        background: 'linear-gradient(135deg, #1e1a2e, #201b4e)',
         display: 'flex', alignItems: 'center', gap: 1,
       }}>
-        <EditCalendar sx={{ color: '#c084fc', fontSize: 20 }} />
+        <EditCalendar sx={{ color: '#9e93ed', fontSize: 20 }} />
         <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600, flex: 1 }}>
           {title ?? (editable ? 'Min tilgjengelighet' : 'Tilgjengelighet')}
         </Typography>
@@ -315,10 +315,10 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
                             color: meta ? meta.color : 'text.primary',
                             bgcolor: meta ? meta.soft : 'transparent',
                             border: isToday
-                              ? '2px solid #a030c0'
+                              ? '2px solid #4a30c0'
                               : meta ? `1px solid ${meta.color}` : '1px solid transparent',
                             transition: 'background-color 0.1s ease',
-                            '&:hover': editable ? { bgcolor: meta ? meta.soft : 'rgba(160,48,192,0.08)' } : undefined,
+                            '&:hover': editable ? { bgcolor: meta ? meta.soft : 'rgba(74, 48, 192,0.08)' } : undefined,
                           }}
                         >
                           {dayNum}

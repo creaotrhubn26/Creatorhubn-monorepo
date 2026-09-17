@@ -224,8 +224,8 @@ export default function ClientEconomyPanel({
         <Box
           sx={{
             borderRadius: '16px',
-            border: '1px solid rgba(168,85,247,0.3)',
-            background: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(217,70,239,0.1) 60%, rgba(10,10,20,0.6) 100%)',
+            border: '1px solid rgba(118, 102, 230,0.3)',
+            background: 'linear-gradient(135deg, rgba(84, 70, 225,0.18) 0%, rgba(111, 82, 227,0.1) 60%, rgba(10,10,20,0.6) 100%)',
             p: { xs: 2, sm: 2.5 },
             boxShadow: '0 14px 36px rgba(0,0,0,0.4)',
           }}
@@ -235,7 +235,7 @@ export default function ClientEconomyPanel({
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Samlet avkastning (ROAS)
               </Typography>
-              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c4b5fd,#f0abfc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
+              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c4b5fd,#c0b4f3)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
                 {results.totals.roas.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '13px', mt: 0.6, maxWidth: 360 }}>

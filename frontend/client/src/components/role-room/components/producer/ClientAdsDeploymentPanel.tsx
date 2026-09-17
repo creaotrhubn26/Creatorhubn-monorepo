@@ -60,7 +60,7 @@ interface ValidationResult {
 
 const METHOD_META: Record<TrackingMethod, { label: string; description: string; color: string }> = {
   pending: { label: 'Ikke valgt', description: 'Velg en metode først', color: '#8b7ec4' },
-  gtag_snippets: { label: 'gtag-snippets', description: 'Lim-inn-koden er enkelest for de fleste', color: '#c084fc' },
+  gtag_snippets: { label: 'gtag-snippets', description: 'Lim-inn-koden er enkelest for de fleste', color: '#9e93ed' },
   gtm_api: { label: 'GTM API', description: 'Vi sender tags via API til klientens GTM', color: '#60a5fa' },
   proxy: { label: 'Server-side proxy', description: 'Mest sikkert — token aldri i browser', color: '#34d399' },
   wordpress_plugin: { label: 'WordPress-plugin', description: 'Vår plugin pull-er config automatisk', color: '#fbbf24' },
@@ -68,14 +68,14 @@ const METHOD_META: Record<TrackingMethod, { label: string; description: string; 
 };
 
 const palette = {
-  bg: '#150b2e',
-  bgSubtle: 'rgba(168,85,247,0.04)',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bg: '#0e0b2e',
+  bgSubtle: 'rgba(118, 102, 230,0.04)',
+  border: 'rgba(118, 102, 230,0.18)',
+  borderStrong: 'rgba(118, 102, 230,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accent: '#c084fc',
+  accent: '#9e93ed',
 };
 
 export default function ClientAdsDeploymentPanel({
@@ -159,7 +159,7 @@ export default function ClientAdsDeploymentPanel({
         <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 2.4 }}>
           <Box sx={{
             width: 40, height: 40, borderRadius: 1.4,
-            bgcolor: 'rgba(168,85,247,0.12)',
+            bgcolor: 'rgba(118, 102, 230,0.12)',
             border: `1px solid ${palette.borderStrong}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
@@ -295,7 +295,7 @@ export default function ClientAdsDeploymentPanel({
                   <Stack direction="row" spacing={0.8} alignItems="center">
                     <Chip
                       size="small" label={s.location}
-                      sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent, fontSize: '0.66rem', fontWeight: 700, height: 18 }}
+                      sx={{ bgcolor: 'rgba(118, 102, 230,0.18)', color: palette.accent, fontSize: '0.66rem', fontWeight: 700, height: 18 }}
                     />
                     <Typography sx={{ fontWeight: 600, fontSize: '0.82rem', color: palette.textPrimary }}>
                       {s.description}
@@ -338,7 +338,7 @@ export default function ClientAdsDeploymentPanel({
                 sx={{
                   color: palette.accent, borderColor: palette.borderStrong,
                   fontWeight: 700, fontSize: '0.82rem',
-                  '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(168,85,247,0.06)' },
+                  '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(118, 102, 230,0.06)' },
                 }}
               >
                 Verifiser

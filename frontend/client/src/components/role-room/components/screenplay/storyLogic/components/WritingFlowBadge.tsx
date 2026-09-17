@@ -47,9 +47,9 @@ const PALETTE: Record<WritingFlowState, { bg: string; fg: string; iconColor: str
     iconColor: '#10b981',
   },
   paused: {
-    bg: 'rgba(168,85,247,0.10)',
+    bg: 'rgba(118, 102, 230,0.10)',
     fg: '#c4b5fd',
-    iconColor: '#a78bfa',
+    iconColor: '#9d97ee',
   },
 };
 

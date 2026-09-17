@@ -169,7 +169,7 @@ export function useStripboardData(projectId: string, projectTitle: string) {
         if (d.dayId !== null && !printOptions.scheduledDays)    return '';
         const isUnassigned = d.dayId === null;
         return `<div class="day-group">
-          <div class="day-header" style="background:${isUnassigned ? '#f3e8ff' : '#7C3AED'};color:${isUnassigned ? '#1a1a1a' : '#fff'};">
+          <div class="day-header" style="background:${isUnassigned ? '#edebfc' : '#5446e1'};color:${isUnassigned ? '#1a1a1a' : '#fff'};">
             <h3>${isUnassigned ? '📋 Ikke planlagt' : `Dag ${d.dayNumber}`}</h3>
             ${!isUnassigned && d.date ? `<span class="day-date">${new Date(d.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' })}</span>` : ''}
             <span class="day-stats">${d.strips.length} scener • ${d.totalPages}p • ${Math.floor(d.totalTime / 60)}t ${d.totalTime % 60}m</span>
@@ -194,11 +194,11 @@ export function useStripboardData(projectId: string, projectTitle: string) {
         <style>
           *{margin:0;padding:0;box-sizing:border-box}
           body{font-family:'Inter','Segoe UI',sans-serif;font-size:11px;line-height:1.4;padding:20px;color:#1a1a1a}
-          .header{text-align:center;margin-bottom:20px;padding-bottom:15px;border-bottom:3px solid #7C3AED}
-          .header h1{font-size:28px;font-weight:700} .header h2{font-size:14px;color:#7C3AED;font-weight:600}
-          .branding{font-size:10px;color:#666;margin-top:8px} .branding strong{color:#7C3AED}
+          .header{text-align:center;margin-bottom:20px;padding-bottom:15px;border-bottom:3px solid #5446e1}
+          .header h1{font-size:28px;font-weight:700} .header h2{font-size:14px;color:#5446e1;font-weight:600}
+          .branding{font-size:10px;color:#666;margin-top:8px} .branding strong{color:#5446e1}
           .stats-bar{display:flex;justify-content:center;gap:30px;background:#f8f9fa;padding:15px;border-radius:8px;margin-bottom:20px}
-          .stat{text-align:center} .stat-value{font-size:20px;font-weight:700;color:#7C3AED;display:block}
+          .stat{text-align:center} .stat-value{font-size:20px;font-weight:700;color:#5446e1;display:block}
           .stat-label{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.5px}
           .legend{background:#f8f9fa;padding:12px 15px;border-radius:8px;margin-bottom:20px}
           .legend h4{font-size:11px;color:#666;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
@@ -218,7 +218,7 @@ export function useStripboardData(projectId: string, projectTitle: string) {
           .strip-cast{font-size:10px;opacity:.85;margin-top:4px}
           .strip-notes{font-size:10px;font-style:italic;opacity:.8;margin-top:4px}
           .strip-status{font-size:9px;padding:2px 6px;background:rgba(0,0,0,.08);border-radius:3px;margin-left:auto;font-weight:600}
-          .footer{margin-top:30px;padding-top:15px;border-top:1px solid #e5e7eb;text-align:center;font-size:9px;color:#7C3AED}
+          .footer{margin-top:30px;padding-top:15px;border-top:1px solid #e5e7eb;text-align:center;font-size:9px;color:#5446e1}
           @media print{body{padding:10px} .day-group{page-break-inside:avoid}}
         </style>
       </head><body>

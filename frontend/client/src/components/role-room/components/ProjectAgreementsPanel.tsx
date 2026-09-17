@@ -1670,13 +1670,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   agreementRefs.current[agreement.id] = node;
                 }}
                 sx={{
-                  bgcolor: isHighlighted ? 'rgba(139,92,246,0.12)' : 'rgba(15,23,42,0.66)',
+                  bgcolor: isHighlighted ? 'rgba(117, 107, 231,0.12)' : 'rgba(15,23,42,0.66)',
                   border: isHighlighted
-                    ? '1px solid rgba(192,132,252,0.52)'
+                    ? '1px solid rgba(158, 147, 237,0.52)'
                     : '1px solid rgba(148,163,184,0.16)',
                   borderRadius: 2.5,
                   boxShadow: isHighlighted
-                    ? '0 0 0 1px rgba(192,132,252,0.12), 0 16px 40px rgba(2,6,23,0.26)'
+                    ? '0 0 0 1px rgba(158, 147, 237,0.12), 0 16px 40px rgba(2,6,23,0.26)'
                     : 'none',
                   transition: 'border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease',
                 }}
@@ -1714,7 +1714,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Chip
                       label={getAgreementTypeLabel(agreement.agreement_type)}
                       size="small"
-                      sx={{ bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd' }}
+                      sx={{ bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd' }}
                     />
                     {linkedReviewStatusLabel ? (
                       <Chip
@@ -1865,7 +1865,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             : primarySignatureAction.key === 'send' || primarySignatureAction.key === 'manual_send'
                               ? '#f59e0b'
                               : primarySignatureAction.key === 'prepare'
-                                ? '#8b5cf6'
+                                ? '#756be7'
                                 : '#2563eb',
                         }}
                       >
@@ -2040,7 +2040,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 variant="contained"
                 startIcon={<DescriptionIcon />}
                 onClick={openClientAgreementDialog}
-                sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-violet, #8b5cf6)' }}
+                sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-violet, #756be7)' }}
               >
                 Ny klientavtale
               </Button>
@@ -2077,7 +2077,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 <Chip
                   size="small"
                   label={PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS[collaborationDraft.agreementModel ?? 'one_time_project']}
-                  sx={{ bgcolor: 'rgba(139,92,246,0.16)', color: '#ddd6fe' }}
+                  sx={{ bgcolor: 'rgba(117, 107, 231,0.16)', color: '#ddd6fe' }}
                 />
                 <Chip
                   size="small"
@@ -2166,7 +2166,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   minHeight: 42,
                 },
                 '& .Mui-selected': { color: '#f8fafc' },
-                '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+                '& .MuiTabs-indicator': { backgroundColor: '#9d97ee' },
               }}
             >
               <Tab value="agreement" label="Avtale" />
@@ -2529,7 +2529,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                 p: 1.1,
                                 borderRadius: 1.5,
                                 border: '1px solid rgba(196,181,253,0.28)',
-                                background: 'rgba(76,29,149,0.10)',
+                                background: 'rgba(41, 29, 149,0.10)',
                               }}
                             >
                               <Typography sx={{ color: '#ddd6fe', fontWeight: 800, fontSize: '0.92rem' }}>
@@ -2545,7 +2545,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                   href={`mailto:${firm.email}?subject=${mailSubject}&body=${mailBody}`}
                                   sx={{
                                     textTransform: 'none', fontWeight: 700, fontSize: '0.74rem',
-                                    bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' },
+                                    bgcolor: '#5446e1', '&:hover': { bgcolor: '#3928d9' },
                                     minWidth: 0, py: 0.4, px: 1,
                                   }}
                                 >
@@ -2611,7 +2611,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       variant="contained"
                       startIcon={<AddIcon />}
                       onClick={() => { void addCollaborationCostItem(); }}
-                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed', whiteSpace: 'nowrap' }}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#5446e1', whiteSpace: 'nowrap' }}
                     >
                       Ny kostnadslinje
                     </Button>
@@ -3215,7 +3215,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           mb: 2,
           '& .MuiTab-root': { color: 'rgba(255,255,255,0.78)', textTransform: 'none', fontWeight: 700 },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #8b5cf6)' },
+          '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #756be7)' },
         }}
       >
         <Tab label="Casting og rollekontrakter" />
@@ -3267,7 +3267,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Chip
               size="small"
               label={`Klientsamarbeid totalt ${reviewSummary.pending + reviewSummary.approved + reviewSummary.changesRequested + reviewSummary.rejected}`}
-              sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
+              sx={{ bgcolor: 'rgba(158, 147, 237,0.14)', color: '#dedbf9' }}
             />
           </Stack>
           {reviewsLoading ? (
@@ -3362,7 +3362,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Alert severity="info" sx={{ bgcolor: 'rgba(16,185,129,0.08)' }}>
               {clientTemplateConfig.description}
             </Alert>
-            <Box sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(139,92,246,0.24)', bgcolor: 'rgba(76,29,149,0.18)' }}>
+            <Box sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(117, 107, 231,0.24)', bgcolor: 'rgba(41, 29, 149,0.18)' }}>
               <Typography sx={{ color: '#f8fafc', fontWeight: 800, mb: 0.4 }}>
                 Best egnet for
               </Typography>
@@ -3547,7 +3547,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             onClick={() => { void createAgreement('client', clientDraft, clientPreviewSections); }}
             startIcon={submitting ? <DescriptionIcon /> : <AddIcon />}
             disabled={submitting || !clientDraft.title.trim() || !clientDraft.disclosingPartyName.trim() || !clientDraft.counterpartyName.trim() || !clientDraft.purpose.trim()}
-            sx={{ bgcolor: 'var(--role-violet, #8b5cf6)' }}
+            sx={{ bgcolor: 'var(--role-violet, #756be7)' }}
           >
             {`Opprett ${clientTemplateConfig.shortLabel.toLowerCase()}`}
           </Button>
@@ -3837,7 +3837,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     <Chip
                       size="small"
                       label={getAgreementTypeLabel(previewAgreement.agreement_type)}
-                      sx={{ bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd' }}
+                      sx={{ bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd' }}
                     />
                     <Chip
                       size="small"
@@ -3958,7 +3958,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                               : drawerPrimary.key === 'send' || drawerPrimary.key === 'manual_send'
                                 ? '#f59e0b'
                                 : drawerPrimary.key === 'prepare'
-                                  ? '#8b5cf6'
+                                  ? '#756be7'
                                   : '#2563eb',
                         }}
                       >

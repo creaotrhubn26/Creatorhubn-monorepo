@@ -180,7 +180,7 @@ export function FormationTimeline({
       sx={{
         width: '100%',
         bgcolor: '#0d0f14',
-        border: '1px solid rgba(139,92,246,0.18)',
+        border: '1px solid rgba(117, 107, 231,0.18)',
         borderRadius: 1,
         p: 1,
       }}
@@ -290,13 +290,13 @@ export function FormationTimeline({
                         sx={{
                           position: 'absolute', top: 2, bottom: 2,
                           left: `${startPct}%`, width: `${widthPct}%`, minWidth: 24,
-                          bgcolor: isActive ? 'rgba(167,139,250,0.32)' : 'rgba(167,139,250,0.14)',
-                          border: `${isActive ? 2 : 1}px solid ${isActive ? danceFlowColors.lavenderLight : 'rgba(167,139,250,0.45)'}`,
+                          bgcolor: isActive ? 'rgba(157, 151, 238,0.32)' : 'rgba(157, 151, 238,0.14)',
+                          border: `${isActive ? 2 : 1}px solid ${isActive ? danceFlowColors.lavenderLight : 'rgba(157, 151, 238,0.45)'}`,
                           borderRadius: 0.5, cursor: 'pointer', color: danceFlowColors.textPrimary,
                           fontSize: 10, fontWeight: 600, px: 0.5,
                           display: 'flex', alignItems: 'center', overflow: 'hidden',
                           whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                          '&:hover': { bgcolor: 'rgba(167,139,250,0.28)' },
+                          '&:hover': { bgcolor: 'rgba(157, 151, 238,0.28)' },
                           '&:focus-visible': { outline: `2px solid ${danceFlowColors.lavenderLight}` },
                         }}
                       >

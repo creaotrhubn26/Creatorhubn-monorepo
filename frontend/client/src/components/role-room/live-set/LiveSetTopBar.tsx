@@ -150,9 +150,9 @@ export const LiveSetTopBar: React.FC<LiveSetTopBarProps> = ({
               letterSpacing: 0.5,
             },
             '& .Mui-selected': {
-              bgcolor: 'rgba(139,92,246,0.2) !important',
-              color: '#a78bfa !important',
-              borderColor: '#8b5cf6 !important',
+              bgcolor: 'rgba(117, 107, 231,0.2) !important',
+              color: '#9d97ee !important',
+              borderColor: '#756be7 !important',
             },
           }}
         >
@@ -250,7 +250,7 @@ export const LiveSetTopBar: React.FC<LiveSetTopBarProps> = ({
               </IconButton>
             </Tooltip>
           )}
-          <Avatar sx={{ width: 28, height: 28, bgcolor: 'var(--role-violet, #8b5cf6)', fontSize: 12 }}>D</Avatar>
+          <Avatar sx={{ width: 28, height: 28, bgcolor: 'var(--role-violet, #756be7)', fontSize: 12 }}>D</Avatar>
           {onClose && (
             <Tooltip title="Lukk LIVE SET">
               <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(255,255,255,0.5)', ml: 0.5 }}>

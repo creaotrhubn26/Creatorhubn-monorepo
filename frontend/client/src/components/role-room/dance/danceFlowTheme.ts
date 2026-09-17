@@ -24,9 +24,9 @@ export const danceFlowColors = {
   borderSoft: '#2a3142', //   21× — sekundær divider, hover-states
 
   // Brand accent (lavender)
-  lavender: '#a78bfa', //      103× — primær aksent (knapper, fokusring, badges)
-  lavenderDark: '#8b5cf6', //   43× — hover/active
-  lavenderDeep: '#7c3aed', //   25× — pressed/selected
+  lavender: '#9d97ee', //      103× — primær aksent (knapper, fokusring, badges)
+  lavenderDark: '#756be7', //   43× — hover/active
+  lavenderDeep: '#5446e1', //   25× — pressed/selected
   lavenderLight: '#c4b5fd', //  30× — disabled-aksent, dim aksent-tekst
 
   // Secondary accents

@@ -179,7 +179,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
               <Button
                 onClick={() => void handleCreate()} disabled={creating || !newTitle.trim()}
                 size="small"
-                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
+                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
               >
                 {creating ? 'Legger til…' : 'Legg til'}
               </Button>
@@ -231,7 +231,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
 
       {loading && items.length === 0 ? (
         <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
-          <CircularProgress size={24} sx={{ color: '#a855f7' }} />
+          <CircularProgress size={24} sx={{ color: '#7666e6' }} />
         </Box>
       ) : isMobile ? (
         // Mobil: status-faner (én kolonne om gangen) i stedet for 4 stablede.
@@ -306,7 +306,7 @@ function DeliverableCard({
         {item.format ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '11px' }}>{item.format}</Typography>
         ) : null}
-        <Typography sx={{ color: 'rgba(196,181,253,0.9)', fontSize: '10.5px', fontWeight: 700, px: 0.6, py: 0.1, borderRadius: '5px', background: 'rgba(168,85,247,0.14)', fontVariantNumeric: 'tabular-nums' }}>
+        <Typography sx={{ color: 'rgba(196,181,253,0.9)', fontSize: '10.5px', fontWeight: 700, px: 0.6, py: 0.1, borderRadius: '5px', background: 'rgba(118, 102, 230,0.14)', fontVariantNumeric: 'tabular-nums' }}>
           v{item.version}
         </Typography>
       </Stack>

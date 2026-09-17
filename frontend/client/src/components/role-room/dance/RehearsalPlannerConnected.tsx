@@ -65,7 +65,7 @@ const PURPLE_LIGHT = danceFlowColors.lavender;
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const PALETTE = [
   danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, danceFlowColors.pinkAccent,
-  '#06b6d4', '#f97316', '#84cc16', '#a855f7', '#f43f5e',
+  '#06b6d4', '#f97316', '#84cc16', '#7666e6', '#f43f5e',
 ];
 
 export interface RehearsalPlannerConnectedProps {
@@ -336,7 +336,7 @@ export function RehearsalPlannerConnected({
             icon={<SavingIcon sx={{ fontSize: 16 }} />}
             label="Lagrer…"
             size="small"
-            sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }}
+            sx={{ bgcolor: 'rgba(117, 107, 231,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }}
           />
         ) : null}
         {saveStatus === 'saved' ? (

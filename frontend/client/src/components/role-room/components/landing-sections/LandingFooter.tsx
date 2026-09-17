@@ -65,8 +65,8 @@ function LandingFooterImpl({ onAdminLoginClick }: LandingFooterProps) {
             bgcolor: 'rgba(255,255,255,0.03)',
             '&:hover': {
               color: '#fff',
-              borderColor: 'rgba(139,92,246,0.45)',
-              bgcolor: 'rgba(139,92,246,0.12)',
+              borderColor: 'rgba(117, 107, 231,0.45)',
+              bgcolor: 'rgba(117, 107, 231,0.12)',
             },
           }}
         >

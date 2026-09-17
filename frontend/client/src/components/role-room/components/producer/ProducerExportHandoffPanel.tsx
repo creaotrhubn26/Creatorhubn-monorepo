@@ -1025,9 +1025,9 @@ export default function ProducerExportHandoffPanel({
               sx={{
                 textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
                 px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
-                background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                color: '#fff', boxShadow: '0 8px 24px rgba(139,92,246,0.35)',
-                '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
+                background: 'linear-gradient(135deg, #756be7 0%, #6366f1 100%)',
+                color: '#fff', boxShadow: '0 8px 24px rgba(117, 107, 231,0.35)',
+                '&:hover': { background: 'linear-gradient(135deg, #655be4 0%, #5457e0 100%)' },
                 '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
               }}
             >
@@ -1269,12 +1269,12 @@ export default function ProducerExportHandoffPanel({
                       p: 1,
                       borderRadius: 1.25,
                       border: isContentLogicMoment
-                        ? '1px solid rgba(167,139,250,0.26)'
+                        ? '1px solid rgba(157, 151, 238,0.26)'
                         : isAccountAccessMoment
                           ? '1px solid rgba(45,212,191,0.24)'
                         : '1px solid rgba(148,163,184,0.14)',
                       background: isContentLogicMoment
-                        ? 'rgba(76,29,149,0.16)'
+                        ? 'rgba(41, 29, 149,0.16)'
                         : isAccountAccessMoment
                           ? 'rgba(15,118,110,0.14)'
                         : 'rgba(2,6,23,0.56)',
@@ -1288,7 +1288,7 @@ export default function ProducerExportHandoffPanel({
                               <Chip
                                 size="small"
                                 label="Innholdsplan"
-                                sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
+                                sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: '#ede9fe' }}
                               />
                               <Chip
                                 size="small"
@@ -1338,7 +1338,7 @@ export default function ProducerExportHandoffPanel({
                         <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                           {moment.title}
                         </Typography>
-                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.92)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
+                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(222, 219, 249,0.92)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
                           {moment.detail || 'Ingen detaljer lagt inn ennå.'}
                         </Typography>
                         {isContentLogicMoment ? (
@@ -1523,7 +1523,7 @@ export default function ProducerExportHandoffPanel({
           <CollapsibleSection
             title="Juridiske dokumenter"
             summary={`${legalAgreements.agreements.length} avtaler`}
-            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.68rem' }} />}
+            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(118, 102, 230,0.16)', color: '#dedbf9', fontSize: '0.68rem' }} />}
           >
             {legalAgreements.agreements.length > 0 ? (
               <Stack spacing={0.85}>
@@ -1742,7 +1742,7 @@ export default function ProducerExportHandoffPanel({
                       <Chip
                         size="small"
                         label={item.statusLabel}
-                        sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
+                        sx={{ bgcolor: 'rgba(158, 147, 237,0.14)', color: '#dedbf9' }}
                       />
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
                         {item.publishDateLabel ?? 'Publiseringsdato ikke satt'}

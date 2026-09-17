@@ -40,13 +40,13 @@ import {
 // Tema-konstanter — duplisert lokalt så denne komponenten kan brukes
 // utenfor talents-app uten å trekke inn dens theme.
 const palette = {
-  bgShell: '#0f0721',
-  bgCard: '#150b2e',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  bgShell: '#090721',
+  bgCard: '#0e0b2e',
+  border: 'rgba(118, 102, 230, 0.18)',
+  borderSubtle: 'rgba(118, 102, 230, 0.08)',
   textPrimary: '#f5f3ff',
   textMuted: '#8b7ec4',
-  accentBright: '#c084fc',
+  accentBright: '#9e93ed',
 };
 
 interface Props {
@@ -240,7 +240,7 @@ export default function SelfTapePreviewModal({
               <Box
                 sx={{
                   width: 40, height: 40, borderRadius: '50%',
-                  bgcolor: 'rgba(168,85,247,0.18)',
+                  bgcolor: 'rgba(118, 102, 230,0.18)',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   color: palette.accentBright, fontWeight: 800, flexShrink: 0,
                 }}
@@ -277,7 +277,7 @@ export default function SelfTapePreviewModal({
               alignItems="center"
               spacing={0.4}
               sx={{
-                bgcolor: 'rgba(192,132,252,0.16)',
+                bgcolor: 'rgba(158, 147, 237,0.16)',
                 color: palette.accentBright,
                 fontWeight: 700, fontSize: '0.72rem',
                 px: 1, py: 0.3, borderRadius: 999,
@@ -511,7 +511,7 @@ export default function SelfTapePreviewModal({
                       onChange={(e) => setDeadlineDraft(e.target.value)}
                       sx={{
                         '& .MuiInputBase-input': { color: palette.textPrimary, py: 0.6, fontSize: '0.85rem' },
-                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(168,85,247,0.32)' },
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(118, 102, 230,0.32)' },
                         '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: palette.accentBright },
                         // datetime-input ikon-fix for mørkt tema
                         '& input::-webkit-calendar-picker-indicator': { filter: 'invert(0.9)' },
@@ -522,13 +522,13 @@ export default function SelfTapePreviewModal({
                       onClick={handleSetDeadline}
                       disabled={!deadlineDraft || actionBusy === 'deadline'}
                       sx={{
-                        background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+                        background: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
                         color: '#fff',
                         textTransform: 'none',
                         fontWeight: 700,
                         fontSize: '0.78rem',
                         px: 1.4,
-                        '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.5)' },
+                        '&.Mui-disabled': { background: 'rgba(118, 102, 230,0.32)', color: 'rgba(255,255,255,0.5)' },
                       }}
                     >
                       {actionBusy === 'deadline' ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Lagre'}
@@ -618,7 +618,7 @@ export default function SelfTapePreviewModal({
                   inputProps={{ maxLength: 2000 }}
                   sx={{
                     '& .MuiInputBase-input': { color: palette.textPrimary, fontSize: '0.88rem' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(168,85,247,0.24)' },
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(118, 102, 230,0.24)' },
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: palette.accentBright },
                   }}
                 />
@@ -633,13 +633,13 @@ export default function SelfTapePreviewModal({
                       ? <CircularProgress size={14} sx={{ color: '#fff' }} />
                       : <ChatBubbleOutlineIcon sx={{ fontSize: 14 }} />}
                     sx={{
-                      background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+                      background: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
                       color: '#fff',
                       textTransform: 'none',
                       fontWeight: 700,
                       px: 2,
-                      '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
-                      '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.6)' },
+                      '&:hover': { background: 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)' },
+                      '&.Mui-disabled': { background: 'rgba(118, 102, 230,0.32)', color: 'rgba(255,255,255,0.6)' },
                     }}
                   >
                     Send kommentar

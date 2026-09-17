@@ -117,7 +117,7 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
       </Box>
 
       {/* Planlegg møte */}
-      <Box sx={{ borderRadius: 2.5, border: '1px solid rgba(168,85,247,0.24)', background: 'rgba(124,58,237,0.05)', p: { xs: 1.5, md: 2 } }}>
+      <Box sx={{ borderRadius: 2.5, border: '1px solid rgba(118, 102, 230,0.24)', background: 'rgba(84, 70, 225,0.05)', p: { xs: 1.5, md: 2 } }}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
           <PlanIcon sx={{ color: '#c4b5fd', fontSize: 20 }} />
           <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '1rem' }}>Planlegg møte</Typography>
@@ -158,7 +158,7 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
           <Button
             onClick={() => void handleCreate()} disabled={creating}
             startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <MeetIcon />}
-            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 46, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}
+            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 46, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:hover': { background: 'linear-gradient(135deg,#523ee0,#4926d3)' } }}
           >
             {creating ? 'Oppretter …' : 'Opprett møte & generer Google Meet'}
           </Button>
@@ -171,7 +171,7 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
           Kommende møter {loading ? '' : `· ${upcoming.length}`}
         </Typography>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#7666e6' }} /></Box>
         ) : upcoming.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen kommende møter ennå.</Typography>
         ) : (
@@ -235,7 +235,7 @@ function MeetingCard({ m, past = false }: { m: RoleRoomMeeting; past?: boolean }
       <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.75 }}>
         {m.meetLink && !past ? (
           <Button href={m.meetLink} target="_blank" rel="noopener" startIcon={<MeetIcon />} size="small"
-            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#a855f7,#d946ef)', '&:hover': { background: 'linear-gradient(135deg,#9333ea,#c026d3)' } }}>
+            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#7666e6,#6f52e3)', '&:hover': { background: 'linear-gradient(135deg,#523ee0,#4926d3)' } }}>
             Bli med (Google Meet)
           </Button>
         ) : null}

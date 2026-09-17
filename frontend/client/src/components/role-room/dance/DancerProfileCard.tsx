@@ -185,7 +185,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             <Chip
               size="small"
               label={`${stats.formationsCount} form.`}
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(167,139,250,0.15)', color: danceFlowColors.lavenderLight }}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(157, 151, 238,0.15)', color: danceFlowColors.lavenderLight }}
             />
             <Chip
               size="small"
@@ -216,8 +216,8 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                   textTransform: 'none',
                   fontSize: 11,
                   color: danceFlowColors.lavenderLight,
-                  borderColor: 'rgba(139,92,246,0.4)',
-                  '&:hover': { borderColor: danceFlowColors.lavender, bgcolor: 'rgba(139,92,246,0.08)' },
+                  borderColor: 'rgba(117, 107, 231,0.4)',
+                  '&:hover': { borderColor: danceFlowColors.lavender, bgcolor: 'rgba(117, 107, 231,0.08)' },
                 }}
               >
                 Opprett profil
@@ -235,9 +235,9 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                   sx={{
                     height: 20,
                     fontSize: 10,
-                    bgcolor: 'rgba(139,92,246,0.18)',
+                    bgcolor: 'rgba(117, 107, 231,0.18)',
                     color: danceFlowColors.lavenderLight,
-                    border: '1px solid rgba(139,92,246,0.4)',
+                    border: '1px solid rgba(117, 107, 231,0.4)',
                     textTransform: 'capitalize',
                   }}
                 />
