@@ -26,6 +26,7 @@ import React from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import CommandPalette, { type Command } from './CommandPalette';
 import ProfessionModeChip from './ProfessionModeChip';
+import SurfaceSwitcher from './SurfaceSwitcher';
 import HelpButton from './HelpButton';
 import FirstTimeTour, { type TourStep } from './FirstTimeTour';
 import type { ProfessionMode } from '../config/professionMode';
@@ -91,6 +92,9 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
         >
           {customHeader ?? (
             <Stack direction="row" spacing={1} alignItems="center">
+              {/* Flatevelgeren først: hvilken app du er i, før hvilken modus
+                  du er i innenfor den. */}
+              <SurfaceSwitcher />
               {mode && (
                 <ProfessionModeChip mode={mode} onSwitch={onSwitchMode} />
               )}
