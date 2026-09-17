@@ -193,10 +193,10 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
               Casting-byråer ser kun det du eksplisitt deler — du kontrollerer alt.
             </Typography>
             <Stack direction="row" spacing={1.4} flexWrap="wrap" useFlexGap>
-              <Chip label="Steg 1: Bio" sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright }} />
-              <Chip label="Steg 2: Headshot" sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright }} />
-              <Chip label="Steg 3: Showreel + CV" sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright }} />
-              <Chip label="Steg 4: Ferdigheter + språk" sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright }} />
+              <Chip label="Steg 1: Bio" sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright }} />
+              <Chip label="Steg 2: Headshot" sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright }} />
+              <Chip label="Steg 3: Showreel + CV" sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright }} />
+              <Chip label="Steg 4: Ferdigheter + språk" sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright }} />
             </Stack>
             <Button
               onClick={() => setWizardOpen(true)}
@@ -280,7 +280,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
           <Chip
             size="small"
             label={`${REQUIRED_PHOTO_KINDS.filter((k: { id: RequiredPhotoKind }) => talent.casting_photos?.[k.id]).length}/${REQUIRED_PHOTO_KINDS.length}`}
-            sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accentBright, fontWeight: 700 }}
+            sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.accentBright, fontWeight: 700 }}
           />
         </Stack>
         <Stack direction="row" spacing={1.6} flexWrap="wrap" useFlexGap>
@@ -360,7 +360,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
         <Stack direction="row" flexWrap="wrap" gap={0.7} useFlexGap>
           {(talent.skills ?? []).map((s, i) => (
             <Chip key={i} label={typeof s === 'string' ? s : s.label} size="small"
-              sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.textPrimary }} />
+              sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.textPrimary }} />
           ))}
           {(talent.skills ?? []).length === 0 ? (
             <Typography sx={{ color: palette.textMuted, fontSize: '0.85rem' }}>Ingen ferdigheter lagt inn ennå</Typography>
@@ -373,7 +373,7 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
               key={i}
               label={`${l.label} ${l.level ? `(${l.level})` : ''}`}
               size="small"
-              sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.textPrimary }}
+              sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.textPrimary }}
             />
           ))}
           {(talent.languages ?? []).length === 0 ? (
@@ -402,9 +402,9 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
             </Stack>
             <Stack direction="row" flexWrap="wrap" gap={0.7} useFlexGap sx={{ mb: windows.length ? 1.2 : 0 }}>
               <Chip size="small" label={AVAILABILITY_LABEL[talent.availability_status] ?? talent.availability_status}
-                sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.textPrimary, fontWeight: 600 }} />
+                sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.textPrimary, fontWeight: 600 }} />
               {talent.willing_to_travel ? (
-                <Chip size="small" label="Kan reise" sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.textPrimary }} />
+                <Chip size="small" label="Kan reise" sx={{ bgcolor: 'rgba(98, 73, 223,0.14)', color: palette.textPrimary }} />
               ) : null}
             </Stack>
             {windows.length > 0 ? (
@@ -559,7 +559,7 @@ function OnboardingWizard({ open, onClose, onDone }: OnboardingWizardProps) {
         Sett opp profil
       </DialogTitle>
       <DialogContent sx={{ pt: 2.4 }}>
-        <Stepper activeStep={step} sx={{ mb: 3, '& .MuiStepLabel-label': { color: palette.textMuted, fontSize: '0.78rem' }, '& .MuiStepLabel-label.Mui-active': { color: palette.textPrimary }, '& .MuiStepIcon-root': { color: 'rgba(168,85,247,0.3)' }, '& .MuiStepIcon-root.Mui-active': { color: palette.accent } }}>
+        <Stepper activeStep={step} sx={{ mb: 3, '& .MuiStepLabel-label': { color: palette.textMuted, fontSize: '0.78rem' }, '& .MuiStepLabel-label.Mui-active': { color: palette.textPrimary }, '& .MuiStepIcon-root': { color: 'rgba(98, 73, 223,0.3)' }, '& .MuiStepIcon-root.Mui-active': { color: palette.accent } }}>
           <Step><StepLabel>Hvem er du</StepLabel></Step>
           <Step><StepLabel>Bio</StepLabel></Step>
           <Step><StepLabel>Media</StepLabel></Step>

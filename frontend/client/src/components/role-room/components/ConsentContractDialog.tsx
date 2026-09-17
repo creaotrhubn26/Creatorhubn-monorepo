@@ -113,7 +113,7 @@ const TikTokIcon = () => (
 );
 
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
-const CONSENT_DIALOG_ACCENT = 'var(--role-accent, #b86bff)';
+const CONSENT_DIALOG_ACCENT = 'var(--role-accent, #8875eb)';
 
 const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
   const current = typeof sourceText === 'string' ? sourceText : '';
@@ -300,7 +300,7 @@ const consentTypeConfig: Record<ConsentType, {
     IconComponent: AudioIcon,
     label: 'Lyd-samtykke',
     description: 'Tillater bruk av lyd-opptak og stemme',
-    color: 'var(--role-violet, #8b5cf6)',
+    color: 'var(--role-violet, #8875eb)',
     defaultTitle: 'Samtykke for bruk av lyd-opptak',
   },
   location_release: {
@@ -1143,24 +1143,24 @@ return (
         zIndex: consentModalZIndex,
         '& .MuiBackdrop-root': {
           zIndex: consentModalBackdropZIndex,
-          bgcolor: 'rgba(8,5,20,0.86)',
+          bgcolor: 'rgba(10, 5, 21,0.86)',
           backdropFilter: 'blur(3px)',
         },
       }}
       PaperProps={{
         sx: {
           '--dialog-accent-color': CONSENT_DIALOG_ACCENT,
-          '--dialog-accent-hover': 'rgba(184,107,255,0.15)',
-          '--dialog-border-color': 'rgba(184,107,255,0.34)',
+          '--dialog-accent-hover': 'rgba(136, 117, 235,0.15)',
+          '--dialog-border-color': 'rgba(136, 117, 235,0.34)',
           '--dialog-text': '#ffffff',
-          bgcolor: 'rgba(20,14,48,0.94)',
+          bgcolor: 'rgba(24, 18, 43,0.94)',
           color: 'var(--dialog-text)',
           border: '1px solid var(--dialog-border-color)',
           borderRadius: { xs: 0, sm: 2.5 },
           backgroundImage: [
-            'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
-            'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
-            'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+            'linear-gradient(180deg, rgba(10, 5, 21,0.9) 0%, rgba(16, 11, 30,0.9) 100%)',
+            'radial-gradient(circle at 16% -24%, rgba(136, 117, 235,0.28), transparent 55%)',
+            'radial-gradient(circle at 82% -10%, rgba(98, 73, 223,0.24), transparent 48%)',
           ].join(', '),
           backgroundRepeat: 'no-repeat, no-repeat, no-repeat',
           boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
@@ -1177,14 +1177,14 @@ return (
         justifyContent: 'space-between',
         py: { xs: 2.25, sm: 2.5 },
         px: { xs: 2.5, sm: 3.5 },
-        background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
+        background: 'linear-gradient(180deg, rgba(136, 117, 235,0.14) 0%, rgba(136, 117, 235,0.04) 100%)',
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box sx={{
             width: 44,
             height: 44,
             borderRadius: 2,
-            bgcolor: 'rgba(184,107,255,0.2)',
+            bgcolor: 'rgba(136, 117, 235,0.2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1882,12 +1882,12 @@ return (
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <StorageIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
+                      <StorageIcon sx={{ color: 'var(--role-violet, #8875eb)' }} />
                       <Typography fontWeight={600}>Lagringstid og sletting</Typography>
                       <Chip 
                         label="GDPR" 
                         size="small" 
-                        sx={{ bgcolor: '#8b5cf630', color: 'var(--role-violet, #8b5cf6)', fontSize: '0.7rem', height: 20 }} 
+                        sx={{ bgcolor: '#8875eb30', color: 'var(--role-violet, #8875eb)', fontSize: '0.7rem', height: 20 }} 
                       />
                     </Box>
                   </AccordionSummary>
@@ -1958,7 +1958,7 @@ return (
                         />
                       </FormGroup>
 
-                      <Alert severity="info" sx={{ bgcolor: 'rgba(139,92,246,0.1)', color: '#a78bfa' }}>
+                      <Alert severity="info" sx={{ bgcolor: 'rgba(136, 117, 235,0.1)', color: '#9e8cf8' }}>
                         <Typography variant="body2">
                           Iht. GDPR skal personopplysninger ikke lagres lenger enn nødvendig for formålet.
                         </Typography>

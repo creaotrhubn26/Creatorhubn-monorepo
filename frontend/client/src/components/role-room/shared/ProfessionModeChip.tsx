@@ -19,7 +19,12 @@ import {
   Mic as ContentIcon,
   ExpandMore as ExpandIcon,
 } from '@mui/icons-material';
-import type { ProfessionMode } from '../config/professionMode';
+import {
+  ALL_PROFESSION_MODES,
+  PROFESSION_MODE_META,
+  isProfessionMode,
+  type ProfessionMode,
+} from '../config/professionMode';
 
 interface ProfessionModeChipProps {
   mode: ProfessionMode | string;
@@ -28,37 +33,18 @@ interface ProfessionModeChipProps {
   fallbackLabel?: string;
 }
 
-const MODE_META: Record<string, { label: string; icon: React.ReactNode; description: string; color: string }> = {
-  dance_studio: {
-    label: 'Studio-modus',
-    icon: <StudioIcon />,
-    description: 'Dansestudio — klasser, instruktører, rom og påmelding.',
-    color: '#F5B82E',
-  },
-  dance_freelance: {
-    label: 'Frilans-modus',
-    icon: <FreelanceIcon />,
-    description: 'Frilans-danser — koreografi, performances, faktura.',
-    color: '#10B981',
-  },
-  casting: {
-    label: 'Casting-modus',
-    icon: <ContentIcon />,
-    description: 'Casting — talenter, audition og produksjonsteam.',
-    color: '#3B82F6',
-  },
-  education: {
-    label: 'Utdannings-modus',
-    icon: <EducationIcon />,
-    description: 'Utdanningsinstitusjon — studenter, kurs og portfolio.',
-    color: '#8B5CF6',
-  },
-  production: {
-    label: 'Produksjons-modus',
-    icon: <ProductionIcon />,
-    description: 'Produksjon — prosjekter, team og leveranser.',
-    color: '#EC4899',
-  },
+// Ikon og farge per modus. Navn, beskrivelse og hvorvidt en modus kan velges
+// bor i config/professionMode.ts sammen med selve typen — denne filen skal
+// ikke kunne vise en modus som ikke finnes, slik «Casting-modus» gjorde.
+const MODE_STYLE: Record<ProfessionMode, { icon: React.ReactNode; color: string }> = {
+  production: { icon: <ProductionIcon />, color: '#EC4899' },
+  photographer: { icon: <ContentIcon />, color: '#0EA5E9' },
+  content_producer: { icon: <ContentIcon />, color: '#3B82F6' },
+  content_creator: { icon: <ContentIcon />, color: '#6366F1' },
+  dance_studio: { icon: <StudioIcon />, color: '#F5B82E' },
+  dance_freelance: { icon: <FreelanceIcon />, color: '#10B981' },
+  education: { icon: <EducationIcon />, color: '#8B5CF6' },
+  student: { icon: <EducationIcon />, color: '#A78BFA' },
 };
 
 export const ProfessionModeChip: React.FC<ProfessionModeChipProps> = ({
@@ -67,14 +53,25 @@ export const ProfessionModeChip: React.FC<ProfessionModeChipProps> = ({
   fallbackLabel,
 }) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const meta = MODE_META[mode] ?? {
-    label: fallbackLabel ?? String(mode),
-    icon: <StudioIcon />,
-    description: '',
-    color: '#9CA3AF',
-  };
+  const known = isProfessionMode(mode) ? (mode as ProfessionMode) : null;
+  const meta = known
+    ? { ...PROFESSION_MODE_META[known], ...MODE_STYLE[known] }
+    : {
+        // Ukjent lagret verdi: vis den som den er i stedet for å late som
+        // den er en modus vi støtter.
+        label: fallbackLabel ?? String(mode),
+        icon: <StudioIcon />,
+        description: '',
+        color: '#9CA3AF',
+      };
 
-  const switchableModes = Object.entries(MODE_META).filter(([k]) => k !== mode);
+  // Bygges av den kanoniske listen, ikke av en egen kopi.
+  const switchableModes = ALL_PROFESSION_MODES
+    .filter((candidate) => candidate !== known && PROFESSION_MODE_META[candidate].switchable)
+    .map((candidate) => [
+      candidate,
+      { ...PROFESSION_MODE_META[candidate], ...MODE_STYLE[candidate] },
+    ] as const);
 
   return (
     <>

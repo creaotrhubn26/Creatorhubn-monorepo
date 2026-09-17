@@ -99,12 +99,12 @@ export const AnimaticThumbnailStrip: React.FC<AnimaticThumbnailStripProps> = ({
                 // Scene-boundary: tykt lilla skille til venstre for første
                 // frame i ny scene (men ikke for index 0).
                 borderLeft: idx > 0 && sceneBoundarySet.has(idx)
-                  ? '3px solid #c4b5fd'
+                  ? '3px solid #c6bdf4'
                   : 'none',
                 opacity: isActive ? 1 : 0.65,
                 transition: 'opacity 0.15s',
                 '&:hover': { opacity: 0.9 },
-                boxShadow: isActive ? 'inset 0 0 0 2px #a5b4fc' : 'none',
+                boxShadow: isActive ? 'inset 0 0 0 2px #c6bdf4' : 'none',
                 flexShrink: 0,
                 minWidth: 0,
               }}

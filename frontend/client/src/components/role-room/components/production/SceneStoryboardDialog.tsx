@@ -60,7 +60,7 @@ export function SceneStoryboardDialog({
           alignItems: 'center',
           gap: 2,
           borderBottom: '1px solid rgba(255,255,255,0.08)',
-          bgcolor: 'rgba(2,6,23,0.9)',
+          bgcolor: 'rgba(10, 5, 21,0.9)',
         }}
       >
         <Stack direction="row" spacing={1.25} alignItems="center">

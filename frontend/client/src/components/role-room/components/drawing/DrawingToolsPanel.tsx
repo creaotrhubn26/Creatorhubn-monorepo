@@ -236,7 +236,7 @@ const PanelContainer = styled(Paper, {
   [position]: 16,
   bottom: 16,
   width: collapsed ? collapsedWidth : panelWidth,
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: 'rgba(16, 11, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -603,10 +603,10 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
                 <Badge sx={{ 
                   px: 0.75, 
                   py: 0.25, 
-                  backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                  backgroundColor: 'rgba(136, 117, 235, 0.2)',
                   borderRadius: 1,
                   fontSize: 10,
-                  color: '#a78bfa',
+                  color: '#9e8cf8',
                 }}>
                   {state.scriptContext.dialogueCharacter}
                 </Badge>

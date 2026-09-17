@@ -18,12 +18,12 @@ import { usePermissions } from './usePermissions';
 import LeadMapPermissionsMatrix from './LeadMapPermissionsMatrix';
 
 const ROLE_META: Record<string, { label: string; color: string; description: string }> = {
-  admin: { label: 'Administrator', color: '#c084fc', description: 'Full kontroll over org-en' },
+  admin: { label: 'Administrator', color: '#9e8cf8', description: 'Full kontroll over org-en' },
   salgssjef: { label: 'Salgssjef', color: '#f97316', description: 'Leder hele salgsorganisasjonen' },
   teamleder: { label: 'Teamleder', color: '#fbbf24', description: 'Leder ett salgs-team' },
   salgskonsulent: { label: 'Salgskonsulent', color: '#34d399', description: 'Selger leads i ditt team' },
   promotor: { label: 'Promotør', color: '#60a5fa', description: 'Promoterer på event/feltarbeid' },
-  member: { label: 'Medlem', color: '#a78bfa', description: 'Standard skrive-tilgang' },
+  member: { label: 'Medlem', color: '#9e8cf8', description: 'Standard skrive-tilgang' },
   viewer: { label: 'Leser', color: '#9ca3af', description: 'Kun lese-tilgang' },
 };
 

@@ -1966,14 +1966,14 @@ export default function ProducerClientReviewPanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
       }}
     >
       <Stack spacing={1}>
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ lg: 'center' }}>
           <Stack spacing={0.35}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <RateReviewIcon sx={{ color: '#c084fc' }} />
+              <RateReviewIcon sx={{ color: '#9e8cf8' }} />
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
                 Klientgodkjenning
               </Typography>
@@ -2424,7 +2424,7 @@ export default function ProducerClientReviewPanel({
             minHeight: 44,
           },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#c084fc', height: 3 },
+          '& .MuiTabs-indicator': { backgroundColor: '#9e8cf8', height: 3 },
         }}
       >
         <Tab value="grunnlag" label="Grunnlag & blokkeringer" />
@@ -2474,7 +2474,7 @@ export default function ProducerClientReviewPanel({
           <Stack spacing={1.1} sx={{ mt: 1.1 }}>
             <Stack direction="row" spacing={0.75} flexWrap="wrap">
               <Chip size="small" label={`Brieffelter ${clientBriefReadyCount}/6`} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#dbeafe' }} />
-              <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(192,132,252,0.18)', color: '#f5d0fe' }} />
+              <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa' }} />
               {Object.entries(clientMaterialsByType).slice(0, 3).map(([type, count]) => (
                 <Chip
                   key={type}
@@ -2523,7 +2523,7 @@ export default function ProducerClientReviewPanel({
                   p: 1,
                   borderRadius: 1.25,
                   border: '1px solid rgba(148,163,184,0.14)',
-                  background: 'rgba(2,6,23,0.46)',
+                  background: 'rgba(10, 5, 21,0.46)',
                 }}
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -2568,7 +2568,7 @@ export default function ProducerClientReviewPanel({
                   p: 1,
                   borderRadius: 1.25,
                   border: '1px solid rgba(148,163,184,0.14)',
-                  background: 'rgba(2,6,23,0.46)',
+                  background: 'rgba(10, 5, 21,0.46)',
                 }}
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -2619,7 +2619,7 @@ export default function ProducerClientReviewPanel({
                     key={item.label}
                     size="small"
                     label={`${item.label}: ${item.value}`}
-                    sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
+                    sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }}
                   />
                 ))}
               </Stack>
@@ -2651,15 +2651,15 @@ export default function ProducerClientReviewPanel({
                         p: 0.95,
                         borderRadius: 1.2,
                         border: isContentLogicMoment
-                          ? '1px solid rgba(167,139,250,0.26)'
+                          ? '1px solid rgba(158, 140, 248,0.26)'
                           : isAccountAccessMoment
                             ? '1px solid rgba(45,212,191,0.26)'
                           : '1px solid rgba(148,163,184,0.14)',
                         background: isContentLogicMoment
-                          ? 'rgba(76,29,149,0.16)'
+                          ? 'rgba(48, 31, 132,0.16)'
                           : isAccountAccessMoment
                             ? 'rgba(15,118,110,0.14)'
-                          : 'rgba(2,6,23,0.46)',
+                          : 'rgba(10, 5, 21,0.46)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -2669,8 +2669,8 @@ export default function ProducerClientReviewPanel({
                               size="small"
                               label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                               sx={{
-                                bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
-                                color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
+                                bgcolor: isContentLogicMoment ? 'rgba(158, 140, 248,0.18)' : 'rgba(59,130,246,0.14)',
+                                color: isContentLogicMoment ? '#ebe7fd' : '#bfdbfe',
                               }}
                             />
                             {isContentLogicMoment ? (
@@ -2714,7 +2714,7 @@ export default function ProducerClientReviewPanel({
                           <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
                             {moment.title}
                           </Typography>
-                          <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.94)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(226,232,240,0.88)', fontSize: '0.82rem', mt: 0.3 }}>
+                          <Typography sx={{ color: isContentLogicMoment ? 'rgba(224, 219, 250,0.94)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(226,232,240,0.88)', fontSize: '0.82rem', mt: 0.3 }}>
                             {moment.detail}
                           </Typography>
                           {linkedDeliveryItem && linkedDeliveryVariantResolution ? (
@@ -2850,7 +2850,7 @@ export default function ProducerClientReviewPanel({
                 <Chip
                   size="small"
                   label="Klientsamarbeid brukes til kommentarer og beslutning"
-                  sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
+                  sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
                 />
               </Stack>
               {onOpenEconomy ? (
@@ -3099,7 +3099,7 @@ export default function ProducerClientReviewPanel({
                   border: highlightedReviewId === review.id
                     ? '1px solid rgba(251,191,36,0.52)'
                     : isContentLogicReview
-                      ? '1px solid rgba(167,139,250,0.32)'
+                      ? '1px solid rgba(158, 140, 248,0.32)'
                       : isAccountAccessReview
                         ? '1px solid rgba(45,212,191,0.28)'
                       : '1px solid rgba(148,163,184,0.22)',
@@ -3107,12 +3107,12 @@ export default function ProducerClientReviewPanel({
                   bgcolor: highlightedReviewId === review.id
                     ? 'rgba(251,191,36,0.08)'
                     : isContentLogicReview
-                      ? 'rgba(76,29,149,0.15)'
+                      ? 'rgba(48, 31, 132,0.15)'
                       : isAccountAccessReview
                         ? 'rgba(15,118,110,0.12)'
                       : 'rgba(15,23,42,0.55)',
                   boxShadow: highlightedReviewId === review.id
-                    ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(2,6,23,0.22)'
+                    ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(10, 5, 21,0.22)'
                     : 'none',
                   transition: 'border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease',
                 }}
@@ -3124,7 +3124,7 @@ export default function ProducerClientReviewPanel({
                         <Chip
                           size="small"
                           label="Innholdsplan"
-                          sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
+                          sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#ebe7fd' }}
                         />
                         <Chip
                           size="small"
@@ -3184,7 +3184,7 @@ export default function ProducerClientReviewPanel({
                 </Stack>
 
                 {review.description && (
-                  <Typography sx={{ color: isContentLogicReview ? 'rgba(233,213,255,0.92)' : isAccountAccessReview ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.9)', fontSize: '0.9rem', mt: 1 }}>
+                  <Typography sx={{ color: isContentLogicReview ? 'rgba(224, 219, 250,0.92)' : isAccountAccessReview ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.9)', fontSize: '0.9rem', mt: 1 }}>
                     {review.description}
                   </Typography>
                 )}
@@ -3481,7 +3481,7 @@ export default function ProducerClientReviewPanel({
                     </Stack>
                     <Stack spacing={0.35}>
                       {visibleComments.map((comment) => (
-                        <Box key={comment.id} sx={{ p: 0.6, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.42)' }}>
+                        <Box key={comment.id} sx={{ p: 0.6, borderRadius: 1, bgcolor: 'rgba(10, 5, 21,0.42)' }}>
                           <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.4 }}>{comment.comment_text}</Typography>
                           <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', mt: 0.18 }}>
                             {comment.author_role || 'ukjent'} • {new Date(comment.created_at).toLocaleString('nb-NO')}

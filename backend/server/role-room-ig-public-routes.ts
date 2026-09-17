@@ -231,13 +231,13 @@ export function setupIgPublicRoutes(deps: SetupIgPublicRoutesDeps): void {
   h3{margin:24px 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
   label{display:block;font-size:13px;font-weight:600;color:#cbd5e1;margin:18px 0 6px}
   input{width:100%;padding:12px;border-radius:8px;border:1px solid #475569;background:#0f1729;color:#f1f5f9;font-size:14px;font-family:inherit}
-  button{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#ec4899,#a855f7);color:#fff;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:18px;transition:transform .12s}
+  button{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#ec4899,#8875eb);color:#fff;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:18px;transition:transform .12s}
   button:hover{transform:translateY(-1px);filter:brightness(1.1)}
   button:disabled{opacity:.5;cursor:wait}
   button.secondary{background:#475569;color:#f1f5f9}
   pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#fbcfe8;margin-top:8px;max-height:380px}
   .status-ok{color:#22c55e} .status-err{color:#f87171}
-  .badge{display:inline-block;background:linear-gradient(135deg,rgba(236,72,153,.2),rgba(168,85,247,.2));color:#f9a8d4;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .badge{display:inline-block;background:linear-gradient(135deg,rgba(236,72,153,.2),rgba(136, 117, 235,.2));color:#f9a8d4;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .hint{color:#94a3b8;font-size:12px;margin-top:6px}
   .media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}

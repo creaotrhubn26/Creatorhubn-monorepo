@@ -105,9 +105,9 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
       aria-labelledby="exit-intent-title"
       PaperProps={{
         sx: {
-          bgcolor: 'rgba(8, 10, 18, 0.96)',
+          bgcolor: 'rgba(10, 5, 21, 0.96)',
           color: '#e2e8f0',
-          border: '1px solid rgba(139, 92, 246, 0.35)',
+          border: '1px solid rgba(136, 117, 235, 0.35)',
           borderRadius: 3,
           backdropFilter: 'blur(20px)',
         },
@@ -123,7 +123,7 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
               fontWeight: 700,
               letterSpacing: '0.2em',
               textTransform: 'uppercase',
-              color: 'var(--role-violet, #8b5cf6)',
+              color: 'var(--role-violet, #8875eb)',
               mb: 0.75,
             }}
           >
@@ -142,7 +142,7 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
           Hopp inn på 30 sekunder. Du trenger ingen kredittkortinfo — bare en e-post for å lage prosjektet ditt.
           Du kan slette kontoen når som helst.
         </Typography>
-        <Typography sx={{ color: 'rgba(167,139,250,0.7)', fontSize: '0.84rem', fontStyle: 'italic' }}>
+        <Typography sx={{ color: 'rgba(158, 140, 248,0.7)', fontSize: '0.84rem', fontStyle: 'italic' }}>
           Vi sender ingen markedsføring uten samtykke. Personvernerklæringen vår beskriver alt vi gjør med dataene dine.
         </Typography>
       </DialogContent>
@@ -150,7 +150,7 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
         <Button
           onClick={handleClose}
           sx={{
-            color: 'rgba(200,185,255,0.55)',
+            color: 'rgba(198, 189, 244,0.55)',
             textTransform: 'none',
             fontSize: '0.86rem',
           }}
@@ -169,9 +169,9 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
             fontWeight: 700,
             borderRadius: 2.5,
             textTransform: 'none',
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+            background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #9b6cf6 0%, #7376f1 100%)',
+              background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
             },
           }}
         >

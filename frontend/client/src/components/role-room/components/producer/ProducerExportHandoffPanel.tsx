@@ -996,7 +996,7 @@ export default function ProducerExportHandoffPanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
       }}
     >
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.25} justifyContent="space-between">
@@ -1025,9 +1025,9 @@ export default function ProducerExportHandoffPanel({
               sx={{
                 textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
                 px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
-                background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                color: '#fff', boxShadow: '0 8px 24px rgba(139,92,246,0.35)',
-                '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
+                background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+                color: '#fff', boxShadow: '0 8px 24px rgba(136, 117, 235,0.35)',
+                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                 '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
               }}
             >
@@ -1269,15 +1269,15 @@ export default function ProducerExportHandoffPanel({
                       p: 1,
                       borderRadius: 1.25,
                       border: isContentLogicMoment
-                        ? '1px solid rgba(167,139,250,0.26)'
+                        ? '1px solid rgba(158, 140, 248,0.26)'
                         : isAccountAccessMoment
                           ? '1px solid rgba(45,212,191,0.24)'
                         : '1px solid rgba(148,163,184,0.14)',
                       background: isContentLogicMoment
-                        ? 'rgba(76,29,149,0.16)'
+                        ? 'rgba(48, 31, 132,0.16)'
                         : isAccountAccessMoment
                           ? 'rgba(15,118,110,0.14)'
-                        : 'rgba(2,6,23,0.56)',
+                        : 'rgba(10, 5, 21,0.56)',
                     }}
                   >
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1288,7 +1288,7 @@ export default function ProducerExportHandoffPanel({
                               <Chip
                                 size="small"
                                 label="Innholdsplan"
-                                sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
+                                sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#ebe7fd' }}
                               />
                               <Chip
                                 size="small"
@@ -1338,7 +1338,7 @@ export default function ProducerExportHandoffPanel({
                         <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                           {moment.title}
                         </Typography>
-                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.92)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
+                        <Typography sx={{ color: isContentLogicMoment ? 'rgba(224, 219, 250,0.92)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
                           {moment.detail || 'Ingen detaljer lagt inn ennå.'}
                         </Typography>
                         {isContentLogicMoment ? (
@@ -1406,7 +1406,7 @@ export default function ProducerExportHandoffPanel({
                     p: 0.85,
                     borderRadius: 1.15,
                     border: '1px solid rgba(45,212,191,0.16)',
-                    bgcolor: entry.requiredForProject ? 'rgba(15,118,110,0.12)' : 'rgba(2,6,23,0.36)',
+                    bgcolor: entry.requiredForProject ? 'rgba(15,118,110,0.12)' : 'rgba(10, 5, 21,0.36)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1483,7 +1483,7 @@ export default function ProducerExportHandoffPanel({
                     p: 1,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(2,6,23,0.56)',
+                    background: 'rgba(10, 5, 21,0.56)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1523,7 +1523,7 @@ export default function ProducerExportHandoffPanel({
           <CollapsibleSection
             title="Juridiske dokumenter"
             summary={`${legalAgreements.agreements.length} avtaler`}
-            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.68rem' }} />}
+            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa', fontSize: '0.68rem' }} />}
           >
             {legalAgreements.agreements.length > 0 ? (
               <Stack spacing={0.85}>
@@ -1545,7 +1545,7 @@ export default function ProducerExportHandoffPanel({
                         p: 1,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.14)',
-                        background: 'rgba(2,6,23,0.56)',
+                        background: 'rgba(10, 5, 21,0.56)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1640,7 +1640,7 @@ export default function ProducerExportHandoffPanel({
                     p: 1,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(2,6,23,0.56)',
+                    background: 'rgba(10, 5, 21,0.56)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1708,7 +1708,7 @@ export default function ProducerExportHandoffPanel({
                     p: 1,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(2,6,23,0.56)',
+                    background: 'rgba(10, 5, 21,0.56)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1742,7 +1742,7 @@ export default function ProducerExportHandoffPanel({
                       <Chip
                         size="small"
                         label={item.statusLabel}
-                        sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
+                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
                       />
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
                         {item.publishDateLabel ?? 'Publiseringsdato ikke satt'}
@@ -1980,7 +1980,7 @@ export default function ProducerExportHandoffPanel({
                   </Typography>
                   <Stack spacing={0.35} sx={{ mt: 0.25 }}>
                     {manifest.overlayFormatProfiles.map((profile) => (
-                      <Box key={profile.format} sx={{ p: 0.7, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.36)' }}>
+                      <Box key={profile.format} sx={{ p: 0.7, borderRadius: 1, bgcolor: 'rgba(10, 5, 21,0.36)' }}>
                         <Typography sx={{ color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700 }}>
                           {profile.formatLabel}
                         </Typography>
@@ -2034,7 +2034,7 @@ export default function ProducerExportHandoffPanel({
                           gap: { xs: 0.4, md: 0.75 },
                           px: 0.85,
                           py: 0.8,
-                          bgcolor: index % 2 === 0 ? 'rgba(2,6,23,0.36)' : 'rgba(15,23,42,0.24)',
+                          bgcolor: index % 2 === 0 ? 'rgba(10, 5, 21,0.36)' : 'rgba(15,23,42,0.24)',
                           borderTop: index === 0 ? 'none' : '1px solid rgba(148,163,184,0.12)',
                         }}
                       >

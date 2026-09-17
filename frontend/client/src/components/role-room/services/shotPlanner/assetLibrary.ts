@@ -223,7 +223,7 @@ export const PROP_ASSETS: Asset2DDefinition[] = [
     category: 'Electronics',
     thumbnailUrl: '',
     defaultSize: { width: 120, height: 10 },
-    defaultColor: '#1A1A2E',
+    defaultColor: '#18122b',
     tags: ['tv', 'television', 'screen', 'electronics'],
   },
   {
@@ -253,7 +253,7 @@ export const PROP_ASSETS: Asset2DDefinition[] = [
     category: 'Electronics',
     thumbnailUrl: '',
     defaultSize: { width: 8, height: 15 },
-    defaultColor: '#1A1A2E',
+    defaultColor: '#18122b',
     tags: ['phone', 'mobile', 'electronics'],
   },
   {
@@ -426,7 +426,7 @@ export const VEHICLE_ASSETS: Asset2DDefinition[] = [
     category: 'Bikes',
     thumbnailUrl: '',
     defaultSize: { width: 90, height: 40 },
-    defaultColor: '#1A1A2E',
+    defaultColor: '#18122b',
     tags: ['motorcycle', 'bike', 'vehicle'],
   },
   {
@@ -711,7 +711,7 @@ export const EQUIPMENT_ASSETS: Asset2DDefinition[] = [
     category: 'Audio',
     thumbnailUrl: '',
     defaultSize: { width: 15, height: 100 },
-    defaultColor: '#1A1A2E',
+    defaultColor: '#18122b',
     tags: ['boom', 'mic', 'audio', 'equipment'],
   },
 ];

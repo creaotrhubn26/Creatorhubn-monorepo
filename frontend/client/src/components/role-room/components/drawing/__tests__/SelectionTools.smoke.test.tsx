@@ -57,7 +57,7 @@ describe('Sprint A.7 — Quick-select same color', () => {
   const strokes = [
     makeStroke('a', '#ff0000', [{ x: 0, y: 0 }, { x: 1, y: 1 }]),
     makeStroke('b', '#ff0a00', [{ x: 10, y: 10 }, { x: 11, y: 11 }]), // nesten rød
-    makeStroke('c', '#0000ff', [{ x: 20, y: 20 }, { x: 21, y: 21 }]),
+    makeStroke('c', '#472bd4', [{ x: 20, y: 20 }, { x: 21, y: 21 }]),
     makeStroke('d', '#ffffff', [{ x: 30, y: 30 }, { x: 31, y: 31 }]),
   ];
 

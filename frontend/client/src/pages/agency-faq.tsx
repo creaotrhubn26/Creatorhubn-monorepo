@@ -20,17 +20,17 @@ import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
 import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 const palette = {
-  bgRoot: '#0a0118',
-  bgShell: '#0f0721',
-  bgCard: '#150b2e',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  bgRoot: '#0a0515',
+  bgShell: '#100b1e',
+  bgCard: '#18122b',
+  border: 'rgba(136, 117, 235, 0.18)',
+  borderStrong: 'rgba(136, 117, 235, 0.32)',
+  borderSubtle: 'rgba(136, 117, 235, 0.08)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accentBright: '#c084fc',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accentBright: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 interface FAQItem {
@@ -202,7 +202,7 @@ export default function AgencyFAQPage() {
       <Box
         sx={{
           background: `
-            radial-gradient(ellipse at top, rgba(168, 85, 247, 0.18), transparent 60%),
+            radial-gradient(ellipse at top, rgba(136, 117, 235, 0.18), transparent 60%),
             ${palette.bgRoot}
           `,
           pt: { xs: 6, md: 10 },
@@ -257,10 +257,10 @@ export default function AgencyFAQPage() {
                   px: 2,
                   py: 1,
                   borderRadius: 999,
-                  bgcolor: isActive ? 'rgba(168,85,247,0.18)' : 'transparent',
+                  bgcolor: isActive ? 'rgba(136, 117, 235,0.18)' : 'transparent',
                   color: isActive ? palette.accentBright : palette.textMuted,
                   border: `1px solid ${isActive ? palette.accentBright : palette.borderSubtle}`,
-                  '&:hover': { bgcolor: 'rgba(168,85,247,0.10)', color: palette.textPrimary },
+                  '&:hover': { bgcolor: 'rgba(136, 117, 235,0.10)', color: palette.textPrimary },
                 }}
               >
                 {cat}
@@ -338,7 +338,7 @@ export default function AgencyFAQPage() {
             mt: 6,
             textAlign: 'center',
             p: { xs: 3, md: 4 },
-            bgcolor: 'rgba(168,85,247,0.08)',
+            bgcolor: 'rgba(136, 117, 235,0.08)',
             border: `1px solid ${palette.borderStrong}`,
             borderRadius: 3,
           }}
@@ -359,7 +359,7 @@ export default function AgencyFAQPage() {
                 fontWeight: 700,
                 px: 3, py: 1.4,
                 borderRadius: 2,
-                '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
               }}
               endIcon={<ArrowForwardIcon />}
             >

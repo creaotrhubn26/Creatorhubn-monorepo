@@ -197,7 +197,7 @@ function generateCurvePath(points: CurvePoint[], width: number, height: number):
 // =============================================================================
 
 const EditorContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: 'rgba(16, 11, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',

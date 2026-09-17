@@ -67,7 +67,7 @@ const COLOR_TAG_MAP: Record<string, string> = {
   yellow: '#eab308',
   green: '#22c55e',
   blue: '#3b82f6',
-  purple: '#a855f7',
+  purple: '#8875eb',
   gray: '#6b7280',
 };
 
@@ -584,7 +584,7 @@ export function ShotListCard({
         anchorEl={menuAnchor}
         open={Boolean(menuAnchor)}
         onClose={closeMenu}
-        PaperProps={{ sx: { bgcolor: '#1e1e2e', backgroundImage: 'none', border: '1px solid rgba(255,255,255,0.1)' } }}
+        PaperProps={{ sx: { bgcolor: '#211c3b', backgroundImage: 'none', border: '1px solid rgba(255,255,255,0.1)' } }}
       >
         <MenuItem onClick={() => { onEdit(sm.shotListId); closeMenu(); }} dense>
           <EditIcon sx={{ fontSize: 16, mr: 1 }} /> Edit

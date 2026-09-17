@@ -64,7 +64,7 @@ export const AssignStripDialog: FC<AssignStripDialogProps> = ({
       <DialogTitle
         sx={{
           fontSize: responsive.fontSize.title,
-          bgcolor: alpha('#7C3AED', 0.05),
+          bgcolor: alpha('#6249df', 0.05),
           borderBottom: 1,
           borderColor: 'divider',
         }}
@@ -124,8 +124,8 @@ export const AssignStripDialog: FC<AssignStripDialogProps> = ({
           onClick={onConfirm}
           sx={{
             fontSize: responsive.fontSize.body,
-            bgcolor: '#7C3AED',
-            '&:hover': { bgcolor: '#6D28D9' },
+            bgcolor: '#6249df',
+            '&:hover': { bgcolor: '#472bd4' },
           }}
         >
           Flytt

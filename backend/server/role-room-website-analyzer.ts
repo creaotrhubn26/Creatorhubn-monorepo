@@ -401,7 +401,7 @@ function parseColorsFromHtml(
   return {
     primary: themeColor || findVar("primary", "brand", "main") || "#1f2937",
     secondary: findVar("secondary", "accent-2") || "#6b7280",
-    accent: findVar("accent", "highlight", "cta") || "#a855f7",
+    accent: findVar("accent", "highlight", "cta") || "#8875eb",
     background: findVar("background", "bg") || "#ffffff",
     text: findVar("text", "foreground", "fg") || "#0f172a",
   };

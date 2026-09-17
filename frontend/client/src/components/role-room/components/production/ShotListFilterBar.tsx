@@ -179,7 +179,7 @@ export function ShotListFilterBar({
           }}
           sx={selectSx}
           MenuProps={{
-            PaperProps: { sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)' } },
+            PaperProps: { sx: { bgcolor: '#211c3b', border: '1px solid rgba(255,255,255,0.1)' } },
           }}
         >
           {(Object.keys(statusMeta) as StatusFilter[]).map((statusValue) => {
@@ -207,7 +207,7 @@ export function ShotListFilterBar({
             displayEmpty
             sx={selectSx}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)' } },
+              PaperProps: { sx: { bgcolor: '#211c3b', border: '1px solid rgba(255,255,255,0.1)' } },
             }}
           >
             <MenuItem value="" sx={menuItemSx}>All scenes</MenuItem>
@@ -232,7 +232,7 @@ export function ShotListFilterBar({
           }}
           sx={selectSx}
           MenuProps={{
-            PaperProps: { sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)' } },
+            PaperProps: { sx: { bgcolor: '#211c3b', border: '1px solid rgba(255,255,255,0.1)' } },
           }}
         >
           <MenuItem value="updated:desc" sx={menuItemSx}>Latest first</MenuItem>

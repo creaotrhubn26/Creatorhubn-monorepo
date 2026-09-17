@@ -66,7 +66,7 @@ const InstagramPreview: React.FC<PreviewSubProps> = ({ post, handle, logoUrl }) 
     <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 1 }}>
       <Box sx={{
         width: 28, height: 28, borderRadius: '50%',
-        background: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)',
+        background: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #3c27a5 100%)',
         p: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {logoUrl ? (

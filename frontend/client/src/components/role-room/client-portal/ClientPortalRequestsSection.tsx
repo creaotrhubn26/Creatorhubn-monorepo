@@ -359,7 +359,7 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
                             href={req.bookingUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            sx={{ textTransform: 'none', color: '#a78bfa' }}
+                            sx={{ textTransform: 'none', color: '#9e8cf8' }}
                           >
                             Heller booke et møte?
                           </Button>

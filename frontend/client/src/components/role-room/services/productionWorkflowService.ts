@@ -1926,6 +1926,8 @@ class ProductionWorkflowService {
   // ============================================
 
   getStripColor(intExt: string, timeOfDay: string): string {
+    // 🔑 Bransjekode, ikke merkevare: se stripboard.constants.ts. Hold
+    // disse utenfor palett-ommalinger.
     if (intExt === 'INT' && timeOfDay === 'DAY') return '#fff9c4'; // Light yellow
     if (intExt === 'INT' && timeOfDay === 'NIGHT') return '#4a148c'; // Purple
     if (intExt === 'EXT' && timeOfDay === 'DAY') return '#e3f2fd'; // Light blue

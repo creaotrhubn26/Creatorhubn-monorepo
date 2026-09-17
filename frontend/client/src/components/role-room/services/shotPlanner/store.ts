@@ -398,7 +398,7 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
         const id = generateId();
         const cameraName = name || getNextCameraName(state.scene.cameras);
         const colorIndex = state.scene.cameras.length % 8;
-        const colors = ['#4FC3F7', '#81C784', '#FFD54F', '#FFB74D', '#E57373', '#BA68C8', '#4DD0E1', '#F06292'];
+        const colors = ['#4FC3F7', '#81C784', '#FFD54F', '#FFB74D', '#E57373', '#6249df', '#4DD0E1', '#F06292'];
         
         // Calculate cinematography-accurate focus distance based on default lens
         const defaultLens = DEFAULT_CAMERA.lens;

@@ -155,14 +155,14 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
         sx={{
           p: 1,
           borderRadius: 1,
-          bgcolor: 'rgba(139,92,246,0.06)',
-          border: '1px solid rgba(139,92,246,0.25)',
+          bgcolor: 'rgba(136, 117, 235,0.06)',
+          border: '1px solid rgba(136, 117, 235,0.25)',
         }}
       >
         <Stack direction="row" spacing={0.75} alignItems="center">
-          <AutoAwesomeIcon sx={{ fontSize: 14, color: '#a78bfa' }} />
+          <AutoAwesomeIcon sx={{ fontSize: 14, color: '#9e8cf8' }} />
           <Typography
-            sx={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', letterSpacing: 1 }}
+            sx={{ fontSize: 10, fontWeight: 700, color: '#9e8cf8', letterSpacing: 1 }}
           >
             CI
           </Typography>
@@ -171,7 +171,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           size="small"
           data-testid="live-set-ai-coverage"
           onClick={() => runAction('coverage-check')}
-          sx={{ textTransform: 'none', color: '#c4b5fd' }}
+          sx={{ textTransform: 'none', color: '#c6bdf4' }}
         >
           Coverage-sjekk
         </Button>
@@ -179,7 +179,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           size="small"
           data-testid="live-set-ai-replan"
           onClick={() => runAction('replan-day')}
-          sx={{ textTransform: 'none', color: '#c4b5fd' }}
+          sx={{ textTransform: 'none', color: '#c6bdf4' }}
         >
           Re-planlegg
         </Button>
@@ -188,7 +188,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           data-testid="live-set-ai-continuity"
           onClick={() => runAction('continuity-check')}
           disabled={!props.newShot}
-          sx={{ textTransform: 'none', color: '#c4b5fd' }}
+          sx={{ textTransform: 'none', color: '#c6bdf4' }}
         >
           Kontinuitet
         </Button>
@@ -196,7 +196,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           size="small"
           data-testid="live-set-ai-end-of-day"
           onClick={() => runAction('end-of-day')}
-          sx={{ textTransform: 'none', color: '#c4b5fd' }}
+          sx={{ textTransform: 'none', color: '#c6bdf4' }}
         >
           Dagsbrief
         </Button>
@@ -212,7 +212,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
         <DialogTitle sx={{ borderBottom: '1px solid #2a3142', pb: 1.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Stack direction="row" spacing={1} alignItems="center">
-              <AutoAwesomeIcon sx={{ color: '#a78bfa', fontSize: 18 }} />
+              <AutoAwesomeIcon sx={{ color: '#9e8cf8', fontSize: 18 }} />
               <Typography sx={{ fontSize: 16, fontWeight: 600 }}>
                 {open === 'coverage-check' && 'Coverage-sjekk'}
                 {open === 'replan-day' && 'Re-planlegging'}
@@ -229,7 +229,7 @@ export const LiveSetAiActions: React.FC<Props> = (props) => {
           {currentCall?.status === 'loading' && (
             <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 4, justifyContent: 'center' }}>
               <CircularProgress size={18} />
-              <Typography sx={{ color: '#a78bfa' }}>CI analyserer…</Typography>
+              <Typography sx={{ color: '#9e8cf8' }}>CI analyserer…</Typography>
             </Stack>
           )}
           {currentCall?.status === 'error' && (
@@ -518,7 +518,7 @@ const EndOfDayView: React.FC<{ data: EndOfDayBrief }> = ({ data }) => {
       )}
       {data.tomorrowBrief.editorNeeds.length > 0 && (
         <Box>
-          <Typography sx={{ fontSize: 11, color: '#a78bfa', fontWeight: 700, letterSpacing: 1 }}>
+          <Typography sx={{ fontSize: 11, color: '#9e8cf8', fontWeight: 700, letterSpacing: 1 }}>
             KLIPPER TRENGER
           </Typography>
           <List dense sx={{ p: 0 }}>
@@ -548,7 +548,7 @@ const EndOfDayView: React.FC<{ data: EndOfDayBrief }> = ({ data }) => {
               startIcon={<CopyIcon sx={{ fontSize: 14 }} />}
               onClick={copyMessage}
               data-testid="live-set-ai-copy-crew-message"
-              sx={{ fontSize: 11, textTransform: 'none', color: copied ? '#34d399' : '#a78bfa' }}
+              sx={{ fontSize: 11, textTransform: 'none', color: copied ? '#34d399' : '#9e8cf8' }}
             >
               {copied ? 'Kopiert!' : 'Kopier'}
             </Button>

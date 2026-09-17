@@ -710,7 +710,7 @@ const addBtnSx = {
   textTransform: 'none' as const,
   fontSize: 11,
   color: danceFlowColors.lavenderLight,
-  borderColor: 'rgba(139,92,246,0.4)',
+  borderColor: 'rgba(136, 117, 235,0.4)',
   alignSelf: 'flex-start' as const,
 };
 

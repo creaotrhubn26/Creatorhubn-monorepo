@@ -151,7 +151,7 @@ export const ContentProducerWorkflowStepper = ({
         const tooltipTitle = approvalHint ?? step.description;
 
         const stateColor = isActive
-          ? 'var(--role-accent, #b86bff)'
+          ? 'var(--role-accent, #8875eb)'
           : isCompleted
             ? '#4ade80'
             : 'rgba(255,255,255,0.45)';
@@ -175,18 +175,18 @@ export const ContentProducerWorkflowStepper = ({
                   px: { xs: 0.9, sm: 1.2 },
                   py: 0.6,
                   border: 'none',
-                  background: isActive ? 'rgba(184,107,255,0.14)' : 'transparent',
+                  background: isActive ? 'rgba(136, 117, 235,0.14)' : 'transparent',
                   borderRadius: 1.5,
                   cursor: 'pointer',
                   color: stateColor,
                   fontFamily: 'inherit',
                   transition: 'background 120ms, color 120ms',
                   '&:hover': {
-                    background: isActive ? 'rgba(184,107,255,0.2)' : 'rgba(255,255,255,0.05)',
+                    background: isActive ? 'rgba(136, 117, 235,0.2)' : 'rgba(255,255,255,0.05)',
                     color: isActive ? '#fff' : 'rgba(255,255,255,0.85)',
                   },
                   '&:focus-visible': {
-                    outline: '2px solid rgba(184,107,255,0.6)',
+                    outline: '2px solid rgba(136, 117, 235,0.6)',
                     outlineOffset: 2,
                   },
                 }}
@@ -200,7 +200,7 @@ export const ContentProducerWorkflowStepper = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     bgcolor: isActive
-                      ? 'var(--role-accent, #b86bff)'
+                      ? 'var(--role-accent, #8875eb)'
                       : isCompleted
                         ? 'rgba(34,197,94,0.18)'
                         : 'rgba(255,255,255,0.06)',

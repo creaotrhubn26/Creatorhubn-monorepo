@@ -69,7 +69,7 @@ interface DashboardData {
 }
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
-  new: { label: 'Ny', color: '#c084fc' },
+  new: { label: 'Ny', color: '#9e8cf8' },
   contacted: { label: 'Kontaktet', color: '#60a5fa' },
   demo: { label: 'Demo booket', color: '#fbbf24' },
   trial: { label: 'Prøveperiode', color: '#fb923c' },
@@ -169,9 +169,9 @@ export default function AgencyAcquisitionDashboard() {
 
   if (loading) {
     return (
-      <Card sx={{ bgcolor: '#150b2e', border: '1px solid rgba(168,85,247,0.18)' }}>
+      <Card sx={{ bgcolor: '#18122b', border: '1px solid rgba(136, 117, 235,0.18)' }}>
         <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress sx={{ color: '#c084fc' }} />
+          <CircularProgress sx={{ color: '#9e8cf8' }} />
         </CardContent>
       </Card>
     );
@@ -179,7 +179,7 @@ export default function AgencyAcquisitionDashboard() {
 
   if (error || !data) {
     return (
-      <Card sx={{ bgcolor: '#150b2e', border: '1px solid rgba(168,85,247,0.18)' }}>
+      <Card sx={{ bgcolor: '#18122b', border: '1px solid rgba(136, 117, 235,0.18)' }}>
         <CardContent>
           <Alert severity="error">{error ?? 'Ingen data'}</Alert>
         </CardContent>
@@ -195,7 +195,7 @@ export default function AgencyAcquisitionDashboard() {
 
   return (
     <Card sx={{
-      bgcolor: '#150b2e', border: '1px solid rgba(168,85,247,0.18)',
+      bgcolor: '#18122b', border: '1px solid rgba(136, 117, 235,0.18)',
       borderRadius: 2,
     }}>
       <CardContent>
@@ -204,11 +204,11 @@ export default function AgencyAcquisitionDashboard() {
           <Stack direction="row" alignItems="center" spacing={1.4}>
             <Box sx={{
               width: 40, height: 40, borderRadius: 1.4,
-              bgcolor: 'rgba(168,85,247,0.12)',
-              border: '1px solid rgba(168,85,247,0.32)',
+              bgcolor: 'rgba(136, 117, 235,0.12)',
+              border: '1px solid rgba(136, 117, 235,0.32)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <TrendingUpOutlinedIcon sx={{ color: '#c084fc', fontSize: 24 }} />
+              <TrendingUpOutlinedIcon sx={{ color: '#9e8cf8', fontSize: 24 }} />
             </Box>
             <Stack>
               <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', color: '#f5f3ff' }}>
@@ -238,7 +238,7 @@ export default function AgencyAcquisitionDashboard() {
         <Stack direction="row" spacing={1.4} sx={{ mb: 3 }}>
           {[
             {
-              label: 'Total leads', value: t.total, color: '#c084fc',
+              label: 'Total leads', value: t.total, color: '#9e8cf8',
               hint: `${t.disqualified} disqualified`,
             },
             {
@@ -256,8 +256,8 @@ export default function AgencyAcquisitionDashboard() {
           ].map((k) => (
             <Box key={k.label} sx={{
               flex: 1, p: 1.8, borderRadius: 1.6,
-              bgcolor: 'rgba(168,85,247,0.04)',
-              border: '1px solid rgba(168,85,247,0.18)',
+              bgcolor: 'rgba(136, 117, 235,0.04)',
+              border: '1px solid rgba(136, 117, 235,0.18)',
             }}>
               <Typography sx={{ fontSize: '0.72rem', color: '#8b7ec4', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {k.label}
@@ -273,7 +273,7 @@ export default function AgencyAcquisitionDashboard() {
         </Stack>
 
         {/* Funnel-viz med konvertering-pile */}
-        <Box sx={{ mb: 3, p: 2, borderRadius: 1.6, bgcolor: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.18)' }}>
+        <Box sx={{ mb: 3, p: 2, borderRadius: 1.6, bgcolor: 'rgba(136, 117, 235,0.04)', border: '1px solid rgba(136, 117, 235,0.18)' }}>
           <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: '#f5f3ff', mb: 1.4 }}>
             Trakt
           </Typography>
@@ -312,10 +312,10 @@ export default function AgencyAcquisitionDashboard() {
                       alignItems: 'center', justifyContent: 'center',
                       p: 0.6,
                     }}>
-                      <Typography sx={{ fontSize: '1.4rem', fontWeight: 800, color: '#160a24', lineHeight: 1 }}>
+                      <Typography sx={{ fontSize: '1.4rem', fontWeight: 800, color: '#100b1e', lineHeight: 1 }}>
                         {stage.count}
                       </Typography>
-                      <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#160a24', mt: 0.2 }}>
+                      <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#100b1e', mt: 0.2 }}>
                         {meta.label}
                       </Typography>
                     </Box>
@@ -337,7 +337,7 @@ export default function AgencyAcquisitionDashboard() {
         {/* Pipeline + velocity side ved side */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4} sx={{ mb: 3 }}>
           {/* Pipeline-verdi */}
-          <Box sx={{ flex: 1, p: 2, borderRadius: 1.6, bgcolor: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.18)' }}>
+          <Box sx={{ flex: 1, p: 2, borderRadius: 1.6, bgcolor: 'rgba(136, 117, 235,0.04)', border: '1px solid rgba(136, 117, 235,0.18)' }}>
             <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1.4 }}>
               <PaidOutlinedIcon sx={{ color: '#fbbf24', fontSize: 18 }} />
               <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: '#f5f3ff' }}>
@@ -348,7 +348,7 @@ export default function AgencyAcquisitionDashboard() {
               {[
                 { label: 'Eksisterende kunder', value: data.pipelineValueNok.annual_customer, weight: 100, color: '#34d399' },
                 { label: 'I prøveperiode', value: data.pipelineValueNok.annual_trial, weight: 50, color: '#fb923c' },
-                { label: 'Vektet pipeline (alle stadier)', value: data.pipelineValueNok.weighted_pipeline, weight: 100, color: '#c084fc' },
+                { label: 'Vektet pipeline (alle stadier)', value: data.pipelineValueNok.weighted_pipeline, weight: 100, color: '#9e8cf8' },
               ].map((p) => (
                 <Box key={p.label}>
                   <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.2 }}>
@@ -363,9 +363,9 @@ export default function AgencyAcquisitionDashboard() {
           </Box>
 
           {/* Velocity */}
-          <Box sx={{ flex: 1, p: 2, borderRadius: 1.6, bgcolor: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.18)' }}>
+          <Box sx={{ flex: 1, p: 2, borderRadius: 1.6, bgcolor: 'rgba(136, 117, 235,0.04)', border: '1px solid rgba(136, 117, 235,0.18)' }}>
             <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1.4 }}>
-              <TrendingUpOutlinedIcon sx={{ color: '#c084fc', fontSize: 18 }} />
+              <TrendingUpOutlinedIcon sx={{ color: '#9e8cf8', fontSize: 18 }} />
               <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: '#f5f3ff' }}>
                 Velocity (siste 8 uker)
               </Typography>
@@ -386,7 +386,7 @@ export default function AgencyAcquisitionDashboard() {
                       <Box sx={{ flex: 1, position: 'relative', height: 14 }}>
                         <Box sx={{
                           height: '100%', borderRadius: 0.6,
-                          bgcolor: '#c084fc',
+                          bgcolor: '#9e8cf8',
                           width: `${(w.n / maxN) * 100}%`,
                           transition: 'width 240ms ease',
                         }} />
@@ -435,8 +435,8 @@ export default function AgencyAcquisitionDashboard() {
                 return (
                   <Box key={lead.id} sx={{
                     p: 1.4, borderRadius: 1.2,
-                    bgcolor: 'rgba(168,85,247,0.04)',
-                    border: '1px solid rgba(168,85,247,0.18)',
+                    bgcolor: 'rgba(136, 117, 235,0.04)',
+                    border: '1px solid rgba(136, 117, 235,0.18)',
                     display: 'flex', alignItems: 'center', gap: 1.4,
                   }}>
                     <Box sx={{
@@ -444,7 +444,7 @@ export default function AgencyAcquisitionDashboard() {
                       bgcolor: stageMeta.color,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <GroupsOutlinedIcon sx={{ color: '#160a24', fontSize: 18 }} />
+                      <GroupsOutlinedIcon sx={{ color: '#100b1e', fontSize: 18 }} />
                     </Box>
                     <Stack sx={{ flex: 1, minWidth: 0 }}>
                       <Stack direction="row" alignItems="center" spacing={0.8}>
@@ -489,7 +489,7 @@ export default function AgencyAcquisitionDashboard() {
                           disabled={updating === lead.id}
                           startIcon={updating === lead.id ? <CircularProgress size={12} /> : <CheckCircleOutlineIcon sx={{ fontSize: 14 }} />}
                           sx={{
-                            bgcolor: stageMeta.color, color: '#160a24',
+                            bgcolor: stageMeta.color, color: '#100b1e',
                             fontWeight: 700, fontSize: '0.72rem',
                             '&:hover': { bgcolor: stageMeta.color, filter: 'brightness(0.9)' },
                           }}
@@ -528,7 +528,7 @@ export default function AgencyAcquisitionDashboard() {
           anchorEl={convertMenu?.anchor ?? null}
           open={Boolean(convertMenu)}
           onClose={() => setConvertMenu(null)}
-          PaperProps={{ sx: { bgcolor: '#1a0f3a', color: '#f5f3ff', border: '1px solid rgba(168,85,247,0.3)' } }}
+          PaperProps={{ sx: { bgcolor: '#18122b', color: '#f5f3ff', border: '1px solid rgba(136, 117, 235,0.3)' } }}
         >
           <Typography sx={{ px: 2, py: 0.8, fontSize: '0.7rem', color: '#8b7ec4', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Send onboarding-lenke som…
@@ -548,7 +548,7 @@ export default function AgencyAcquisitionDashboard() {
         </Menu>
 
         {/* Top sources */}
-        <Box sx={{ p: 2, borderRadius: 1.6, bgcolor: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.18)' }}>
+        <Box sx={{ p: 2, borderRadius: 1.6, bgcolor: 'rgba(136, 117, 235,0.04)', border: '1px solid rgba(136, 117, 235,0.18)' }}>
           <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: '#f5f3ff', mb: 1.4 }}>
             Topp-kilder
           </Typography>
@@ -572,8 +572,8 @@ export default function AgencyAcquisitionDashboard() {
                         value={(s.n / maxN) * 100}
                         sx={{
                           height: 6, borderRadius: 3,
-                          bgcolor: 'rgba(168,85,247,0.10)',
-                          '& .MuiLinearProgress-bar': { bgcolor: '#c084fc' },
+                          bgcolor: 'rgba(136, 117, 235,0.10)',
+                          '& .MuiLinearProgress-bar': { bgcolor: '#9e8cf8' },
                         }}
                       />
                     </Box>

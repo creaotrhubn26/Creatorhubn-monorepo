@@ -145,7 +145,7 @@ export default function DanceAnnotationsListView({
           data-testid="dance-annotations-count-chip"
           sx={{
             mr: 1, fontWeight: 700, fontSize: 11,
-            bgcolor: 'rgba(167,139,250,0.12)',
+            bgcolor: 'rgba(158, 140, 248,0.12)',
             color: danceFlowColors.lavender,
           }}
         />
@@ -296,7 +296,7 @@ export default function DanceAnnotationsListView({
               textAlign: 'left',
             },
             '& th': {
-              bgcolor: 'rgba(167,139,250,0.04)',
+              bgcolor: 'rgba(158, 140, 248,0.04)',
               color: danceFlowColors.textMuted,
               fontWeight: 700, letterSpacing: 0.5, fontSize: 10,
               textTransform: 'uppercase',
@@ -306,7 +306,7 @@ export default function DanceAnnotationsListView({
             '& tbody tr': {
               cursor: 'pointer',
               transition: 'background-color 120ms',
-              '&:hover': { bgcolor: 'rgba(167,139,250,0.04)' },
+              '&:hover': { bgcolor: 'rgba(158, 140, 248,0.04)' },
             },
             '& tbody tr:last-of-type td': { borderBottom: 'none' },
           }}

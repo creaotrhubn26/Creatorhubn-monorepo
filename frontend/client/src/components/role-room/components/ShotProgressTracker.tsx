@@ -158,7 +158,7 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
       in_progress: '#f59e0b',
       completed: '#10b981',
       retake_needed: '#ef4444',
-      approved: '#8b5cf6',
+      approved: '#8875eb',
     };
     return colors[status];
   };
@@ -178,7 +178,7 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
     const colors = {
       good: '#10b981',
       ng: '#ef4444',
-      print: '#8b5cf6',
+      print: '#8875eb',
       hold: '#f59e0b',
     };
     return colors[status];

@@ -1,5 +1,5 @@
 /**
- * SelfTapeAlmostReadyCard — lilla gradient CTA-card under takes-strip.
+ * SelfTapeAlmostReadyCard — indigo gradient CTA-card under takes-strip.
  *
  * "Snart klar til å sendes" + sjekkliste + primær CTA.
  */
@@ -26,13 +26,13 @@ export default function SelfTapeAlmostReadyCard({ checklist, onSubmit }: Props) 
   return (
     <Box
       sx={{
-        background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 60%, #d946ef 100%)',
+        background: 'linear-gradient(135deg, #3c27a5 0%, #6249df 60%, #8875eb 100%)',
         borderRadius: radius.lg,
         p: 2.4,
         color: '#fff',
         position: 'relative',
         overflow: 'hidden',
-        boxShadow: '0 10px 30px rgba(168,85,247,0.32)',
+        boxShadow: '0 10px 30px rgba(98, 73, 223,0.32)',
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
@@ -66,7 +66,7 @@ export default function SelfTapeAlmostReadyCard({ checklist, onSubmit }: Props) 
         sx={{
           width: '100%',
           bgcolor: allDone ? '#fff' : 'rgba(255,255,255,0.32)',
-          color: allDone ? '#7c3aed' : 'rgba(255,255,255,0.8)',
+          color: allDone ? '#3c27a5' : 'rgba(255,255,255,0.8)',
           border: 'none',
           cursor: allDone ? 'pointer' : 'not-allowed',
           py: 1.2,
@@ -74,7 +74,7 @@ export default function SelfTapeAlmostReadyCard({ checklist, onSubmit }: Props) 
           fontWeight: 800,
           fontSize: '0.9rem',
           fontFamily: 'inherit',
-          '&:hover': allDone ? { bgcolor: '#f3e8ff' } : undefined,
+          '&:hover': allDone ? { bgcolor: '#eef2ff' } : undefined,
         }}
       >
         Send self-tapen
