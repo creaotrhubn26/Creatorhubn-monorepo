@@ -98,6 +98,7 @@ import {
 // gå via dashboard-subtab (som var begravd bak email-gate + project-state).
 import SuperAdminOverlay from './components/admin/SuperAdminOverlay';
 import { useSuperAdminGate } from './components/admin/useSuperAdminGate';
+import { useAuth } from '../../hooks/useAuth';
 import SuperAdminAdminRoomShell, {
   isSuperAdminAdminRoomPath,
 } from './components/admin/SuperAdminAdminRoomShell';
@@ -533,6 +534,10 @@ function CastingStandaloneRuntimeContent() {
   // uten at noe leste den. Super admin skal nå linsen uansett hvilken portal
   // kontoen ellers lander på.
   const { isSuperAdmin: isSuperAdminSession } = useSuperAdminGate();
+  // Talents-skallet tegner «Logg ut» bare hvis den får en handler. Den ble
+  // aldri sendt inn herfra, så en innlogget talent hadde ingen vei ut av
+  // appen — hverken for å bytte konto eller for å logge av på delt maskin.
+  const auth = useAuth();
   const adminLensRequested = isSuperAdminSession
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search || '').get('lens') === 'admin';
@@ -897,7 +902,10 @@ function CastingStandaloneRuntimeContent() {
           <TheRoleRoomLanding onEnter={handleEnter} />
         ) : shouldRenderTalentsApp ? (
           <ToastProvider position="bottom-right">
-            <TalentsApp initialPage={talentsAppPage ?? undefined} />
+            <TalentsApp
+              initialPage={talentsAppPage ?? undefined}
+              onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
+            />
           </ToastProvider>
         ) : (
           <ToastProvider position="bottom-right">
