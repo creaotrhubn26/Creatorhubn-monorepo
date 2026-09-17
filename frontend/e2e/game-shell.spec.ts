@@ -33,7 +33,7 @@ test.describe('Story Graph — skall og hjem', () => {
     await page.getByTestId('narrative-tab-scenes').click();
     await expect(page.getByTestId('narrative-tab-scenes')).toHaveAttribute('aria-selected', 'true');
     await expect(page).toHaveURL(/tab=scenes/);
-    await expect(page.getByTestId('narrative-scene-row-nsc_1').or(page.getByText('P01'))).toBeVisible();
+    await expect(page.getByTestId('narrative-scene-row-nsc_p01')).toBeVisible();
   });
 
   test('KPI-kort navigerer til Scener', async ({ page }) => {

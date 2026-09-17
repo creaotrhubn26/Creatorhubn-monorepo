@@ -391,7 +391,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       for (const a of c.attributes ?? []) g.attributes.push({ id: nextId('nat'), projectId, ownerKind: 'component', ownerId: id, name: a.name, type: a.type, value: a.value, customId: null, sortOrder: 0, createdAt: now(), updatedAt: now() } as unknown as MockGraph['attributes'][number]);
     }
     for (const sc of fx.scenes) {
-      const id = nextId('nsc');
+      const id = `nsc_${sc.code.toLowerCase()}`; // deterministisk så specs kan bruke ?scene=nsc_p01
       scenes.push({
         id, projectId, code: sc.code.toUpperCase(), workingId: sc.workingId ?? null, title: sc.title, subtitle: sc.subtitle ?? '', location: sc.location ?? '', challenge: sc.challenge ?? '', gameplayMechanic: sc.gameplayMechanic ?? '', environment: sc.environment ?? '',
         status: sc.status ?? 'idea', assigneeUserId: null, dueAt: null, startAt: null, heroAssetId: null, sortOrder: scenes.length, createdBy: 'u-seed', createdAt: now(), updatedAt: now(),
@@ -551,7 +551,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
 
     if (m(/\/projects\/[^/]+\/components$/) && method === 'POST') {
-      const c = { id: nextId('ncp'), projectId, name: body.name, folderPath: body.folderPath ?? '', coverAssetId: null, customId: null, sortOrder: 0, createdAt: now(), updatedAt: now() };
+      const c = { id: nextId('ncp'), projectId, name: body.name, folderPath: body.folderPath ?? '', coverAssetId: null, customId: body.customId ?? null, sortOrder: 0, kind: body.kind ?? 'other', profile: body.profile ?? {}, createdAt: now(), updatedAt: now() };
       g.components.push(c);
       return route.fulfill(ok(c, 201));
     }

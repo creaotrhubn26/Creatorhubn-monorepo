@@ -23,6 +23,7 @@ import type {
   NarrativeGraph,
   NarrativeImportWarning,
   NarrativeMemberLite,
+  NarrativeComponentKind,
   NarrativeSceneKnowledge,
   NarrativeSceneEra,
   NarrativeSourceRef,
@@ -289,6 +290,8 @@ export interface ComponentInput {
   coverAssetId?: string | null;
   customId?: string | null;
   sortOrder?: number;
+  kind?: NarrativeComponentKind;
+  profile?: Record<string, unknown>;
 }
 export function createComponent(projectId: string, input: ComponentInput): Promise<NarrativeComponent> {
   return request<NarrativeComponent>(p(projectId, '/components'), { method: 'POST', body: json(input) });

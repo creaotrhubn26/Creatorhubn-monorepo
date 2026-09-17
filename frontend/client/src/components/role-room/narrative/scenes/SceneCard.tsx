@@ -19,10 +19,17 @@ import { requestNarrativeTab } from '../../game/GameBillingPanels';
 import { SceneStoryboardTab } from './SceneStoryboardTab';
 import { SceneTasksTab } from './SceneTasksTab';
 import { SceneReviewTab } from './SceneReviewTab';
+import { SceneScriptTab } from './SceneScriptTab';
+import { SceneLinesTab } from './SceneLinesTab';
+import { SceneGatesTab, GATE_STATUS_COLOR } from './SceneGatesTab';
+import { NARRATIVE_GATE_KEYS, NARRATIVE_GATE_LABELS, NARRATIVE_SCENE_ERA_LABELS } from '../narrativeTypes';
 
-export type SceneTabId = 'overview' | 'storyboard' | 'gameplay' | 'assets' | 'tasks' | 'review';
+export type SceneTabId = 'overview' | 'script' | 'lines' | 'gates' | 'storyboard' | 'gameplay' | 'assets' | 'tasks' | 'review';
 const SCENE_TABS: Array<{ id: SceneTabId; label: string }> = [
   { id: 'overview', label: 'Oversikt' },
+  { id: 'script', label: 'Manus' },
+  { id: 'lines', label: 'Replikker' },
+  { id: 'gates', label: 'Gater' },
   { id: 'storyboard', label: 'Storyboard' },
   { id: 'gameplay', label: 'Gameplay' },
   { id: 'assets', label: 'Assets' },
@@ -65,7 +72,8 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
       label: htmlToText(e.titleHtml) || (e.kind === 'branch' ? 'Forgrening' : 'Uten tittel'), sub: boardName.get(e.boardId) ?? '',
     })),
     ...graph.boards.map((b) => ({ key: `board:${b.id}`, ownerKind: 'board' as const, ownerId: b.id, label: b.name, sub: 'Brett' })),
-  ], [graph.elements, graph.boards, boardName]);
+    ...graph.components.filter((c) => c.kind === 'character' || c.kind === 'location').map((c) => ({ key: `component:${c.id}`, ownerKind: 'component' as const, ownerId: c.id, label: c.name, sub: c.kind === 'character' ? 'Karakter' : 'Lokasjon' })),
+  ], [graph.elements, graph.boards, graph.components, boardName]);
   const linkedOptions = useMemo(() => detail.links
     .map((l) => linkOptions.find((o) => o.ownerKind === l.ownerKind && o.ownerId === l.ownerId) ?? { key: `${l.ownerKind}:${l.ownerId}`, ownerKind: l.ownerKind, ownerId: l.ownerId, label: '(slettet)', sub: '' })
   , [detail.links, linkOptions]);
@@ -88,7 +96,7 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
         <Stack spacing={0.5}>
           {linkedOptions.map((o) => (
             <Stack key={o.key} direction="row" spacing={1} alignItems="center" data-testid={`narrative-scene-linked-${o.ownerId}`}>
-              <Chip size="small" label={o.ownerKind === 'board' ? 'Brett' : 'Element'} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.textDim }} />
+              <Chip size="small" label={o.ownerKind === 'board' ? 'Brett' : o.ownerKind === 'component' ? o.sub || 'Komponent' : 'Element'} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.textDim }} />
               <Typography sx={{ fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}{o.sub ? <Typography component="span" sx={{ fontSize: 11, color: narrativeColors.textDim }}> · {o.sub}</Typography> : null}</Typography>
               {o.ownerKind === 'element' ? (
                 <Button size="small" endIcon={<OpenIcon sx={{ fontSize: 14 }} />} onClick={() => openInGraph(o.ownerId)} data-testid={`narrative-scene-open-element-${o.ownerId}`} sx={{ color: narrativeColors.accent, fontSize: 11, whiteSpace: 'nowrap' }}>Åpne i Story Graph</Button>
@@ -113,6 +121,18 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
                   action={<Button size="small" variant="outlined" onClick={() => setTab('storyboard')} sx={{ color: narrativeColors.accent, borderColor: narrativeColors.accent }}>Legg til ramme</Button>} />
               )}
               <AutosaveField label="Undertittel / logline" value={scene.subtitle} onSave={(v) => save({ subtitle: v })} placeholder="Én setning om hva scenen gjør for historien" testId="narrative-scene-field-subtitle" maxLength={300} />
+              <Box data-testid="narrative-scene-gates-summary">
+                <SectionTitle action={<Button size="small" onClick={() => setTab('gates')} sx={{ color: narrativeColors.accent, fontSize: 11 }}>Åpne gater</Button>}>Leveransegater</SectionTitle>
+                <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                  {NARRATIVE_GATE_KEYS.map((k) => { const g = detail.gates.find((x) => x.gateKey === k); const st = g?.status ?? 'not_started'; return <Chip key={k} size="small" label={NARRATIVE_GATE_LABELS[k]} onClick={() => setTab('gates')} sx={{ bgcolor: `${GATE_STATUS_COLOR[st]}22`, color: GATE_STATUS_COLOR[st], fontWeight: 700 }} data-testid={`narrative-scene-gate-chip-${k}`} data-status={st} />; })}
+                </Stack>
+              </Box>
+              {scene.beforeState || scene.action ? (
+                <Box>
+                  <SectionTitle action={<Button size="small" onClick={() => setTab('script')} sx={{ color: narrativeColors.accent, fontSize: 11 }}>Åpne manus</Button>}>Manus</SectionTitle>
+                  <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', color: narrativeColors.text }} data-testid="narrative-scene-overview-action">{scene.action || scene.beforeState}</Typography>
+                </Box>
+              ) : null}
               {linkedBlock}
             </Stack>
             <Stack spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: narrativeColors.bgPanel, border: `1px solid ${narrativeColors.borderStrong}`, alignSelf: 'start' }} data-testid="narrative-scene-sidebar">
@@ -121,6 +141,11 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
                 <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, mb: 0.5 }}>Status</Typography>
                 <SceneStatusChip status={scene.status} onChange={(s) => void save({ status: s })} testId="narrative-scene-status" size="medium" />
               </Box>
+              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                <Chip size="small" label={NARRATIVE_SCENE_ERA_LABELS[scene.era]} onClick={() => setTab('script')} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.text }} data-testid="narrative-scene-era-chip" />
+                {scene.workingId ? <Chip size="small" label={scene.workingId} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.textDim, fontFamily: 'monospace' }} /> : null}
+                {detail.lines.length ? <Chip size="small" label={`${detail.lines.length} replikker`} onClick={() => setTab('lines')} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.textDim }} /> : null}
+              </Stack>
               <MemberPicker projectId={projectId} value={scene.assigneeUserId} onChange={(id) => void save({ assigneeUserId: id })} testId="narrative-scene-field-assignee" />
               <AutosaveField label="Forventet ferdig" type="date" value={isoToDateInput(scene.dueAt)} onSave={(v) => save({ dueAt: dateInputToIso(v) })} testId="narrative-scene-field-due"
                 helperText={isOverdue(scene.dueAt, scene.status) ? 'Fristen er passert.' : undefined} />
@@ -136,16 +161,16 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
             <AutosaveField label="Spillmekanikk" multiline value={scene.gameplayMechanic} onSave={(v) => save({ gameplayMechanic: v })} placeholder="Mekanikker i bruk: stealth, dialogvalg, puzzle …" testId="narrative-scene-field-mechanic" maxLength={5000} />
             <AutosaveField label="Miljø" multiline value={scene.environment} onSave={(v) => save({ environment: v })} placeholder="Tid på døgnet, vær, stemning, lyd" testId="narrative-scene-field-environment" maxLength={5000} />
             <Box>
-              <SectionTitle>Koblede elementer og brett</SectionTitle>
+              <SectionTitle>Koblede elementer, brett, karakterer og lokasjoner</SectionTitle>
               <Autocomplete
                 multiple size="small" options={linkOptions} value={linkedOptions}
                 isOptionEqualToValue={(a, b) => a.key === b.key}
                 getOptionLabel={(o) => o.label}
-                groupBy={(o) => (o.ownerKind === 'board' ? 'Brett' : `Brett: ${o.sub || '–'}`)}
+                groupBy={(o) => (o.ownerKind === 'board' ? 'Brett' : o.ownerKind === 'component' ? o.sub : `Brett: ${o.sub || '–'}`)}
                 onChange={(_e, next) => { void scenes.setLinks(next.map((o) => ({ ownerKind: o.ownerKind, ownerId: o.ownerId }))); }}
                 renderOption={(props, o) => <Box component="li" {...props} key={o.key} data-testid={`narrative-scene-link-option-${o.ownerId}`} sx={{ fontSize: 13 }}>{o.label}</Box>}
                 renderTags={(value, getTagProps) => value.map((o, i) => <Chip {...getTagProps({ index: i })} key={o.key} size="small" label={o.label} data-testid={`narrative-scene-link-chip-${o.ownerId}`} sx={{ bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent }} />)}
-                renderInput={(params) => <TextField {...params} label="Elementer / brett i Story Graph" placeholder="Søk etter element…" inputProps={{ ...params.inputProps, 'data-testid': 'narrative-scene-link-picker' }} sx={sceneFieldSx} />}
+                renderInput={(params) => <TextField {...params} label="Elementer / brett / karakterer / lokasjoner" placeholder="Søk…" inputProps={{ ...params.inputProps, 'data-testid': 'narrative-scene-link-picker' }} sx={sceneFieldSx} />}
                 noOptionsText="Ingen elementer — lag dem i Brett-fanen først."
               />
               <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, mt: 0.5 }}>Koblingen gjør at review-runden fryser elementtitlene, og at «Åpne i Story Graph» går rett til riktig node.</Typography>
@@ -153,6 +178,12 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
             {linkedBlock}
           </Stack>
         );
+      case 'script':
+        return <SceneScriptTab projectId={projectId} detail={detail} scenes={scenes} />;
+      case 'lines':
+        return <SceneLinesTab projectId={projectId} graph={graph} detail={detail} scenes={scenes} onNotice={onNotice} />;
+      case 'gates':
+        return <SceneGatesTab projectId={projectId} detail={detail} scenes={scenes} onNotice={onNotice} />;
       case 'storyboard':
         return <SceneStoryboardTab projectId={projectId} graph={graph} detail={detail} scenes={scenes} onNotice={onNotice} />;
       case 'assets': {
@@ -232,7 +263,7 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
         sx={{ minHeight: 36, mb: 2, borderBottom: `1px solid ${narrativeColors.borderStrong}`, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 36, fontSize: 13, px: 1.5 }, '& .Mui-selected': { color: '#fff' }, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}
       >
         {SCENE_TABS.map((t) => {
-          const badge = t.id === 'tasks' && detail.tasks.length ? ` ${detail.tasks.filter((x) => x.status === 'done').length}/${detail.tasks.length}` : t.id === 'storyboard' && detail.frames.length ? ` ${detail.frames.length}` : t.id === 'review' && detail.reviews.some((r) => r.status === 'in_review') ? ' •' : '';
+          const badge = t.id === 'lines' && detail.lines.length ? ` ${detail.lines.length}` : t.id === 'gates' ? ` ${detail.gates.filter((g) => g.status === 'passed').length}/${NARRATIVE_GATE_KEYS.length}` : t.id === 'tasks' && detail.tasks.length ? ` ${detail.tasks.filter((x) => x.status === 'done').length}/${detail.tasks.length}` : t.id === 'storyboard' && detail.frames.length ? ` ${detail.frames.length}` : t.id === 'review' && detail.reviews.some((r) => r.status === 'in_review') ? ' •' : '';
           return <Tab key={t.id} value={t.id} label={`${t.label}${badge}`} data-testid={`narrative-scene-tab-${t.id}`} />;
         })}
       </Tabs>
