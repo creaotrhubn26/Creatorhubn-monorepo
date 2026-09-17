@@ -93,7 +93,7 @@ struct AssetsView: View {
     @State private var newFolderName = ""
     @State private var renameFileId: String?
     @State private var renameDraft = ""
-    @State private var newSwatchColor = Color(red: 0.55, green: 0.36, blue: 0.96)
+    @State private var newSwatchColor = Color(red: 0.384, green: 0.286, blue: 0.875)
 
     init(project: ProjectSummary, manuscript: ManuscriptSummary,
          storageUsed: Int = 0, storageQuota: Int? = nil,
@@ -545,7 +545,7 @@ struct AssetsView: View {
     }
 
     // Faste mappefarger + prosjektets egne fargeprøver i menyen.
-    private let folderColors = ["#8b5cf6", "#3bb8c4", "#4caf7d", "#f0c243",
+    private let folderColors = ["#6249df", "#3bb8c4", "#4caf7d", "#f0c243",
                                 "#ef6a6a", "#a06ee0"]
 
     private func setFolderColor(_ folderId: String, hex: String?) {
