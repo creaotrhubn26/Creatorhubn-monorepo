@@ -15,17 +15,17 @@ import { useEffect, useState } from 'react';
 import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
 
 const palette = {
-  bgRoot: '#0a0118',
-  bgShell: '#0f0721',
-  bgCard: '#150b2e',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  bgRoot: '#0a0515',
+  bgShell: '#100b1e',
+  bgCard: '#18122b',
+  border: 'rgba(136, 117, 235, 0.18)',
+  borderStrong: 'rgba(136, 117, 235, 0.32)',
+  borderSubtle: 'rgba(136, 117, 235, 0.08)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accentBright: '#c084fc',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accentBright: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 interface Article {
@@ -65,17 +65,17 @@ const PILLAR_LABELS: Record<string, string> = {
 const PILLAR_COLORS: Record<string, string> = {
   'production-os': '#60a5fa',
   'content-producer': '#fbbf24',
-  dance: '#e879f9',
+  dance: '#9e8cf8',
   talents: '#34d399',
-  agent: '#c084fc',
+  agent: '#9e8cf8',
   'cross-cutting': '#94a3b8',
   // Legacy
   gdpr: '#34d399',
   selftape: '#34d399',
   crm: '#94a3b8',
-  ai: '#c084fc',
+  ai: '#9e8cf8',
   survey: '#f87171',
-  cases: '#e879f9',
+  cases: '#9e8cf8',
 };
 
 export default function BlogIndexPage() {
@@ -142,7 +142,7 @@ export default function BlogIndexPage() {
       <Box
         sx={{
           background: `
-            radial-gradient(ellipse at top, rgba(168, 85, 247, 0.18), transparent 60%),
+            radial-gradient(ellipse at top, rgba(136, 117, 235, 0.18), transparent 60%),
             ${palette.bgRoot}
           `,
           pt: { xs: 6, md: 10 },
@@ -253,7 +253,7 @@ export default function BlogIndexPage() {
             mt: 6,
             textAlign: 'center',
             p: { xs: 3, md: 4 },
-            bgcolor: 'rgba(168,85,247,0.08)',
+            bgcolor: 'rgba(136, 117, 235,0.08)',
             border: `1px solid ${palette.borderStrong}`,
             borderRadius: 3,
           }}
@@ -274,7 +274,7 @@ export default function BlogIndexPage() {
               fontWeight: 700,
               px: 3, py: 1.4,
               borderRadius: 2,
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             Book demo
@@ -408,9 +408,9 @@ function pillarBtnSx(active: boolean) {
     px: 2,
     py: 1,
     borderRadius: 999,
-    bgcolor: active ? 'rgba(168,85,247,0.18)' : 'transparent',
+    bgcolor: active ? 'rgba(136, 117, 235,0.18)' : 'transparent',
     color: active ? palette.accentBright : palette.textMuted,
     border: `1px solid ${active ? palette.accentBright : palette.borderSubtle}`,
-    '&:hover': { bgcolor: 'rgba(168,85,247,0.10)', color: palette.textPrimary },
+    '&:hover': { bgcolor: 'rgba(136, 117, 235,0.10)', color: palette.textPrimary },
   };
 }

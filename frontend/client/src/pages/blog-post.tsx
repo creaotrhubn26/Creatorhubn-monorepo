@@ -18,18 +18,18 @@ import { useRoute } from 'wouter';
 import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
 
 const palette = {
-  bgRoot: '#0a0118',
-  bgShell: '#0f0721',
-  bgCard: '#150b2e',
-  bgElevated: '#1a0f3a',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  bgRoot: '#0a0515',
+  bgShell: '#100b1e',
+  bgCard: '#18122b',
+  bgElevated: '#18122b',
+  border: 'rgba(136, 117, 235, 0.18)',
+  borderStrong: 'rgba(136, 117, 235, 0.32)',
+  borderSubtle: 'rgba(136, 117, 235, 0.08)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accentBright: '#c084fc',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accentBright: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 const PILLAR_LABELS: Record<string, string> = {
@@ -45,9 +45,9 @@ const PILLAR_COLORS: Record<string, string> = {
   gdpr: '#34d399',
   selftape: '#60a5fa',
   crm: '#fbbf24',
-  ai: '#c084fc',
+  ai: '#9e8cf8',
   survey: '#f87171',
-  cases: '#e879f9',
+  cases: '#9e8cf8',
 };
 
 interface Article {
@@ -279,7 +279,7 @@ export default function BlogPostPage() {
   return (
     <Box sx={{ bgcolor: palette.bgRoot, color: palette.textPrimary, minHeight: '100vh' }}>
       {/* Top-nav */}
-      <Box sx={{ borderBottom: `1px solid ${palette.borderSubtle}`, bgcolor: 'rgba(10,1,24,0.85)', backdropFilter: 'blur(8px)' }}>
+      <Box sx={{ borderBottom: `1px solid ${palette.borderSubtle}`, bgcolor: 'rgba(10, 5, 21,0.85)', backdropFilter: 'blur(8px)' }}>
         <Container maxWidth="md">
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 2 }}>
             <Box
@@ -378,7 +378,7 @@ export default function BlogPostPage() {
           sx={{
             textAlign: 'center',
             p: { xs: 3, md: 4 },
-            bgcolor: 'rgba(168,85,247,0.08)',
+            bgcolor: 'rgba(136, 117, 235,0.08)',
             border: `1px solid ${palette.borderStrong}`,
             borderRadius: 3,
           }}
@@ -403,7 +403,7 @@ export default function BlogPostPage() {
               fontWeight: 700,
               px: 3.2, py: 1.4,
               borderRadius: 2,
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             Book demo
@@ -490,7 +490,7 @@ function MarkdownBody({ markdown }: { markdown: string }) {
         '& a': { color: palette.accentBright, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } },
         '& blockquote': {
           borderLeft: `3px solid ${palette.accentBright}`,
-          bgcolor: 'rgba(168,85,247,0.08)',
+          bgcolor: 'rgba(136, 117, 235,0.08)',
           pl: 2.4,
           pr: 2.4,
           py: 1.6,
