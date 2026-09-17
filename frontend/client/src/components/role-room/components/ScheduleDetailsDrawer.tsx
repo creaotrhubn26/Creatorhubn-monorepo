@@ -53,7 +53,7 @@ const STATUS_META: Record<
 > = {
   scheduled:         { label: 'Planlagt',           color: '#ffb800', bg: 'rgba(255,184,0,0.15)' },
   confirmed:         { label: 'Bekreftet',          color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-  awaiting_callback: { label: 'Venter tilbakemelding', color: '#7666e6', bg: 'rgba(118, 102, 230,0.15)' },
+  awaiting_callback: { label: 'Venter tilbakemelding', color: '#8875eb', bg: 'rgba(136, 117, 235,0.15)' },
   completed:         { label: 'Fullført',           color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
   cancelled:         { label: 'Kansellert',         color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   pool:              { label: 'Pool',               color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
@@ -151,7 +151,7 @@ function ScheduleDetailsDrawerInner({
       PaperProps={{
         sx: {
           width: { xs: '100%', sm: DRAWER_WIDTH },
-          bgcolor: '#0f0f1a',
+          bgcolor: '#100b1e',
           borderLeft: '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
           flexDirection: 'column',

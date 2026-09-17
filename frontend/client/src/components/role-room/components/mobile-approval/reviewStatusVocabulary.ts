@@ -27,7 +27,7 @@ export interface MobileReviewStatusPresentation {
 const PRESENTATION: Record<MobileReviewStatus, MobileReviewStatusPresentation> = {
   draft: { label: 'Utkast', color: '#475569', bg: 'rgba(100,116,139,0.14)' },
   sent: { label: 'Sendt', color: '#0369a1', bg: 'rgba(14,165,233,0.14)' },
-  opened: { label: 'Åpnet', color: '#3928d9', bg: 'rgba(84, 70, 225,0.14)' },
+  opened: { label: 'Åpnet', color: '#472bd4', bg: 'rgba(98, 73, 223,0.14)' },
   approved: { label: 'Godkjent', color: '#047857', bg: 'rgba(16,185,129,0.14)' },
   changes_requested: { label: 'Endring', color: '#b45309', bg: 'rgba(245,158,11,0.18)' },
   rejected: { label: 'Avslått', color: '#b91c1c', bg: 'rgba(239,68,68,0.16)' },

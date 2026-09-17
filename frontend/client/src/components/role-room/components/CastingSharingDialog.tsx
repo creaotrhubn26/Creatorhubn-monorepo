@@ -158,9 +158,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             bgcolor: 'rgba(255,255,255,0.1)',
           },
           '&.Mui-selected': {
-            bgcolor: 'rgba(66, 39, 176,0.2)',
+            bgcolor: 'rgba(60, 39, 165,0.2)',
             '&:hover': {
-              bgcolor: 'rgba(66, 39, 176,0.3)',
+              bgcolor: 'rgba(60, 39, 165,0.3)',
             },
           },
         },
@@ -695,7 +695,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     .badge-cancelled { background: #ef4444; color: white; }
     .badge-pending { background: #f59e0b; color: white; }
     .badge-requested { background: #00d4ff; color: white; }
-    .badge-shortlist { background: #756be7; color: white; }
+    .badge-shortlist { background: #8875eb; color: white; }
     .badge-selected { background: #10b981; color: white; }
     .badge-confirmed { background: #10b981; color: white; }
     .badge-rejected { background: #ef4444; color: white; }

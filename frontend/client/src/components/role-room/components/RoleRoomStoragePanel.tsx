@@ -28,15 +28,15 @@ import SwapHorizOutlinedIcon from '@mui/icons-material/SwapHorizOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 const palette = {
-  bg: '#0e0b2e',
-  bgSubtle: 'rgba(118, 102, 230,0.04)',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
-  textMuted: '#8b7ec4',
-  accent: '#9e93ed',
-  accentBright: '#7666e6',
+  bg: '#18122b',
+  bgSubtle: 'rgba(136, 117, 235,0.04)',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
+  textMuted: '#6249df',
+  accent: '#9e8cf8',
+  accentBright: '#8875eb',
   success: '#34d399',
   warning: '#fbbf24',
   danger: '#f87171',
@@ -332,7 +332,7 @@ export default function RoleRoomStoragePanel() {
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.4 }}>
           <Stack direction="row" alignItems="center" spacing={1.4}>
             <Box sx={{
-              width: 40, height: 40, borderRadius: 1.4, bgcolor: 'rgba(118, 102, 230,0.12)',
+              width: 40, height: 40, borderRadius: 1.4, bgcolor: 'rgba(136, 117, 235,0.12)',
               border: `1px solid ${palette.borderStrong}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
@@ -375,7 +375,7 @@ export default function RoleRoomStoragePanel() {
               label={stats?.tier === 'free' ? 'GRATIS · 1 GB' : stats?.tier === 'paid' ? 'BETALT' : 'BYO B2'}
               size="small"
               sx={{
-                bgcolor: 'rgba(118, 102, 230,0.18)', color: palette.accent,
+                bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent,
                 fontWeight: 700, fontSize: '0.72rem',
               }}
             />
@@ -385,7 +385,7 @@ export default function RoleRoomStoragePanel() {
             value={Math.min(100, pct)}
             sx={{
               height: 10, borderRadius: 5,
-              bgcolor: 'rgba(118, 102, 230,0.10)',
+              bgcolor: 'rgba(136, 117, 235,0.10)',
               '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 5 },
             }}
           />
@@ -412,7 +412,7 @@ export default function RoleRoomStoragePanel() {
             p: 2.4, mb: 2.4,
             borderRadius: 1.6,
             border: `2px dashed ${dragging ? palette.accent : palette.border}`,
-            bgcolor: dragging ? 'rgba(118, 102, 230,0.10)' : 'transparent',
+            bgcolor: dragging ? 'rgba(136, 117, 235,0.10)' : 'transparent',
             textAlign: 'center',
             cursor: isFull ? 'not-allowed' : 'pointer',
             opacity: isFull ? 0.5 : 1,
@@ -500,7 +500,7 @@ export default function RoleRoomStoragePanel() {
                           label={`${f.attachedToEntityType}${f.attachmentNote ? ` · ${f.attachmentNote.slice(0, 30)}` : ''}`}
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(118, 102, 230,0.18)', color: palette.accent,
+                            bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent,
                             fontSize: '0.66rem', height: 18, fontWeight: 600,
                           }}
                         />
@@ -510,7 +510,7 @@ export default function RoleRoomStoragePanel() {
                           label={f.sourceModule}
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(139,126,196,0.18)', color: palette.textMuted,
+                            bgcolor: 'rgba(98, 73, 223,0.18)', color: palette.textMuted,
                             fontSize: '0.66rem', height: 18, fontWeight: 600,
                           }}
                         />
@@ -561,7 +561,7 @@ export default function RoleRoomStoragePanel() {
                     label={formatBytes(p.totalBytes)}
                     size="small"
                     sx={{
-                      bgcolor: 'rgba(118, 102, 230,0.18)', color: palette.accent,
+                      bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent,
                       fontWeight: 700, fontSize: '0.72rem',
                     }}
                   />
@@ -602,7 +602,7 @@ export default function RoleRoomStoragePanel() {
               sx={{
                 color: palette.accent, borderColor: palette.borderStrong,
                 fontWeight: 700, fontSize: '0.74rem',
-                '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(118, 102, 230,0.06)' },
+                '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(136, 117, 235,0.06)' },
               }}
             >
               Flytt til B2
@@ -687,7 +687,7 @@ export default function RoleRoomStoragePanel() {
               sx={{
                 color: palette.accent, borderColor: palette.borderStrong,
                 fontWeight: 700, fontSize: '0.78rem',
-                '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(118, 102, 230,0.06)' },
+                '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(136, 117, 235,0.06)' },
               }}
             >
               {stats?.fileCount === 0
@@ -727,7 +727,7 @@ export default function RoleRoomStoragePanel() {
                 }
                 sx={{
                   height: 6, borderRadius: 3,
-                  bgcolor: 'rgba(118, 102, 230,0.10)',
+                  bgcolor: 'rgba(136, 117, 235,0.10)',
                   '& .MuiLinearProgress-bar': { bgcolor: palette.accent, borderRadius: 3 },
                 }}
               />

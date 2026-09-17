@@ -19,13 +19,13 @@ import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 
 const palette = {
-  bg: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
 };
 
@@ -192,7 +192,7 @@ export default function ClientTiktokCreativesPanel({
             {assets.slice(0, 12).map((a) => (
               <Box key={a.materialId} sx={{
                 aspectRatio: a.assetType === 'image' ? '1' : '9/16',
-                bgcolor: '#0a0a1a',
+                bgcolor: '#100b1e',
                 border: `1px solid ${palette.border}`,
                 borderRadius: 1.4,
                 overflow: 'hidden',
@@ -212,7 +212,7 @@ export default function ClientTiktokCreativesPanel({
                     size="small"
                     sx={{
                       position: 'absolute', top: 6, right: 6,
-                      bgcolor: 'rgba(158, 147, 237,0.85)', color: '#fff', fontWeight: 700, fontSize: '0.6rem', height: 18,
+                      bgcolor: 'rgba(158, 140, 248,0.85)', color: '#fff', fontWeight: 700, fontSize: '0.6rem', height: 18,
                     }}
                   />
                 ) : null}

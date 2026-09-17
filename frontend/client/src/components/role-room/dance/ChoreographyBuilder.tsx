@@ -405,10 +405,10 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
                 aria-pressed={isPlaying}
                 aria-label={isPlaying ? 'Pause' : 'Spill'}
                 sx={{
-                  bgcolor: isPlaying ? 'rgba(52,211,153,0.15)' : 'rgba(117, 107, 231,0.12)',
+                  bgcolor: isPlaying ? 'rgba(52,211,153,0.15)' : 'rgba(136, 117, 235,0.12)',
                   color: isPlaying ? danceFlowColors.successPrimary : danceFlowColors.lavenderLight,
-                  border: `1px solid ${isPlaying ? 'rgba(52,211,153,0.4)' : 'rgba(117, 107, 231,0.4)'}`,
-                  '&:hover': { bgcolor: isPlaying ? 'rgba(52,211,153,0.22)' : 'rgba(117, 107, 231,0.2)' },
+                  border: `1px solid ${isPlaying ? 'rgba(52,211,153,0.4)' : 'rgba(136, 117, 235,0.4)'}`,
+                  '&:hover': { bgcolor: isPlaying ? 'rgba(52,211,153,0.22)' : 'rgba(136, 117, 235,0.2)' },
                   '&.Mui-disabled': { opacity: 0.45 },
                 }}
               >
@@ -552,7 +552,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
             bgcolor: danceFlowColors.bgBase,
             p: 2,
             outline: 'none',
-            '&:focus-visible': { boxShadow: 'inset 0 0 0 2px rgba(157, 151, 238,0.4)' },
+            '&:focus-visible': { boxShadow: 'inset 0 0 0 2px rgba(158, 140, 248,0.4)' },
           }}
         >
           {choreography.segments.length === 0 ? (
@@ -1033,7 +1033,7 @@ const WaveformOverlay: React.FC<{ totalDur: number; bpm: number }> = ({ totalDur
               height: `${h}%`,
               top: '50%',
               transform: 'translateY(-50%)',
-              bgcolor: isAccent ? 'rgba(157, 151, 238,0.7)' : 'rgba(117, 107, 231,0.35)',
+              bgcolor: isAccent ? 'rgba(158, 140, 248,0.7)' : 'rgba(136, 117, 235,0.35)',
             }}
           />
         );
@@ -1147,7 +1147,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         <Chip
           size="small"
           label={`${segmentDuration(segment)}s`}
-          sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(117, 107, 231,0.15)', color: danceFlowColors.lavenderLight }}
+          sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(136, 117, 235,0.15)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
 
@@ -1303,7 +1303,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
       <Divider sx={{ borderColor: danceFlowColors.borderStrong, my: 0.5 }} />
 
       {/* AI-handling */}
-      <Card sx={{ bgcolor: 'rgba(117, 107, 231,0.08)', border: '1px solid rgba(117, 107, 231,0.3)', boxShadow: 'none' }}>
+      <Card sx={{ bgcolor: 'rgba(136, 117, 235,0.08)', border: '1px solid rgba(136, 117, 235,0.3)', boxShadow: 'none' }}>
         <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <AutoAwesomeIcon sx={{ fontSize: 14, color: danceFlowColors.lavender }} />
@@ -1318,7 +1318,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
             size="small"
             variant="outlined"
             startIcon={<AutoAwesomeIcon sx={{ fontSize: 13 }} />}
-            sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(117, 107, 231,0.4)' }}
+            sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(136, 117, 235,0.4)' }}
           >
             Foreslå bevegelser
           </Button>
@@ -1374,9 +1374,9 @@ const MetaPill: React.FC<{ label: string; icon?: React.ReactNode; accent?: boole
       px: 1.25,
       py: 0.5,
       borderRadius: 12,
-      bgcolor: accent ? 'rgba(117, 107, 231,0.15)' : danceFlowColors.borderStrong,
+      bgcolor: accent ? 'rgba(136, 117, 235,0.15)' : danceFlowColors.borderStrong,
       color: accent ? danceFlowColors.lavenderLight : danceFlowColors.grayLight,
-      border: `1px solid ${accent ? 'rgba(117, 107, 231,0.4)' : danceFlowColors.borderSoft}`,
+      border: `1px solid ${accent ? 'rgba(136, 117, 235,0.4)' : danceFlowColors.borderSoft}`,
       fontSize: 10,
       fontWeight: 600,
       display: 'flex',
@@ -1434,7 +1434,7 @@ const AddSegmentMenu: React.FC<{
           textTransform: 'none',
           fontSize: 11,
           color: danceFlowColors.lavenderLight,
-          borderColor: 'rgba(117, 107, 231,0.3)',
+          borderColor: 'rgba(136, 117, 235,0.3)',
           justifyContent: 'flex-start',
           py: 0.75,
         }}
@@ -1501,9 +1501,9 @@ const AudioFileButton: React.FC<{
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
             sx={{
-              bgcolor: hasAudio ? 'rgba(157, 151, 238,0.18)' : danceFlowColors.borderStrong,
+              bgcolor: hasAudio ? 'rgba(158, 140, 248,0.18)' : danceFlowColors.borderStrong,
               color: hasAudio ? danceFlowColors.lavender : danceFlowColors.textMuted,
-              border: `1px solid ${hasAudio ? 'rgba(157, 151, 238,0.4)' : danceFlowColors.borderSoft}`,
+              border: `1px solid ${hasAudio ? 'rgba(158, 140, 248,0.4)' : danceFlowColors.borderSoft}`,
               '&.Mui-disabled': { opacity: 0.6 },
             }}
           >
@@ -1520,7 +1520,7 @@ const AudioFileButton: React.FC<{
 const AutosaveBadge: React.FC<{ status: 'idle' | 'saving' | 'saved' | 'error' }> = ({ status }) => {
   if (status === 'idle') return null;
   const cfg = {
-    saving: { label: 'Lagrer…', color: danceFlowColors.lavender, bg: 'rgba(157, 151, 238,0.12)' },
+    saving: { label: 'Lagrer…', color: danceFlowColors.lavender, bg: 'rgba(158, 140, 248,0.12)' },
     saved:  { label: '✓ Lagret', color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.12)' },
     error:  { label: '⚠ Lagring feilet', color: danceFlowColors.errorPrimary, bg: 'rgba(248,113,113,0.12)' },
   }[status];

@@ -4,8 +4,8 @@
  * Mørk indigo palett, utledet av logoen.
  *
  * Fargene er ikke hentet fra et bibliotek. Logoen har sin egen hue-akse:
- * den mørke grunnen ligger på 258–265 (#080018), den dype fioletten på 268
- * (#401078) og den lyse magentaen på 290 (#a830c0). Paletten legger seg i
+ * den mørke grunnen ligger på 258–265 (#0a0515), den dype fioletten på 268
+ * (#261763) og den lyse magentaen på 290 (#a830c0). Paletten legger seg i
  * den kjølige enden av nettopp den aksen — indigo som fortsatt tilhører
  * merket, i stedet for en indigo som tilfeldigvis står i en fargeskala.
  *
@@ -35,15 +35,15 @@ export const palette = {
   borderSubtle: 'var(--rr-border-subtle, rgba(98, 73, 223, 0.08))',
 
   // Tekst
-  textPrimary: '#f1effb',
-  textSecondary: '#c0b8ea',
-  textMuted: '#a19bbf',
+  textPrimary: '#ebe7fd',
+  textSecondary: '#c6bdf4',
+  textMuted: '#8875eb',
 
   // Accent — indigo, fra dyp til lys (token-drevet, literal-fallback)
   accent: 'var(--rr-accent, #6249df)',
   accentBright: '#9e8cf8',
   accentMuted: '#3c27a5',
-  accentGradient: 'linear-gradient(135deg, #5628c3 0%, #6e65ec 100%)',
+  accentGradient: 'linear-gradient(135deg, #472bd4 0%, #8875eb 100%)',
 
   // Status
   success: '#22c55e',

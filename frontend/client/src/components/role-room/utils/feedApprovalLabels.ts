@@ -35,9 +35,9 @@ const DESCRIPTORS: Record<RoleRoomFeedApprovalState, FeedApprovalDescriptor> = {
     label: "Venter på klient",
     description:
       "Sendt til klient for vurdering. Endringer i mockupen nullstiller denne gjennomgangen.",
-    color: "#c4b5fd",
-    bgColor: "rgba(157, 151, 238,0.18)",
-    borderColor: "rgba(157, 151, 238,0.5)",
+    color: "#c6bdf4",
+    bgColor: "rgba(158, 140, 248,0.18)",
+    borderColor: "rgba(158, 140, 248,0.5)",
     primaryActionLabel: "Trekk tilbake",
     primaryActionTarget: "draft",
   },

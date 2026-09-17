@@ -31,15 +31,15 @@ import { trackEvent } from '@/utils/ga4-client-tracking';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 
 const palette = {
-  bgCard: '#0e0b2e',
-  bgElevated: '#120f3a',
-  border: 'rgba(118, 102, 230, 0.22)',
-  borderStrong: 'rgba(118, 102, 230, 0.4)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
-  textMuted: '#8b7ec4',
-  accentBright: '#9e93ed',
-  accentGradient: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
+  bgCard: '#18122b',
+  bgElevated: '#18122b',
+  border: 'rgba(136, 117, 235, 0.22)',
+  borderStrong: 'rgba(136, 117, 235, 0.4)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
+  textMuted: '#6249df',
+  accentBright: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 // "Hva beskriver dere best?" — mapper til agency_leads.segment (CHECK-begrenset).
@@ -242,7 +242,7 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
           border: `1px solid ${palette.borderStrong}`,
           borderRadius: 3,
           color: palette.textPrimary,
-          boxShadow: '0 24px 80px rgba(118, 102, 230,0.28)',
+          boxShadow: '0 24px 80px rgba(136, 117, 235,0.28)',
         },
       }}
     >
@@ -445,8 +445,8 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
               {/* Consent: auto-research */}
               <Box sx={{
                 mt: 0.5, p: 2, borderRadius: 2,
-                border: `1px solid ${consentResearch ? palette.accentBright : 'rgba(245,243,255,0.15)'}`,
-                bgcolor: consentResearch ? 'rgba(118, 102, 230,0.06)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${consentResearch ? palette.accentBright : 'rgba(246, 245, 255,0.15)'}`,
+                bgcolor: consentResearch ? 'rgba(136, 117, 235,0.06)' : 'rgba(255,255,255,0.02)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
               }} onClick={() => setConsentResearch((v) => !v)}>
@@ -454,7 +454,7 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
                   <Box sx={{
                     width: 20, height: 20, mt: 0.3,
                     borderRadius: 0.5,
-                    border: `2px solid ${consentResearch ? palette.accentBright : 'rgba(245,243,255,0.30)'}`,
+                    border: `2px solid ${consentResearch ? palette.accentBright : 'rgba(246, 245, 255,0.30)'}`,
                     bgcolor: consentResearch ? palette.accentBright : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
@@ -494,8 +494,8 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
                   py: 1.3,
                   borderRadius: 2,
                   fontSize: '1rem',
-                  '&:hover': { background: 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)' },
-                  '&.Mui-disabled': { background: 'rgba(118, 102, 230,0.25)', color: 'rgba(245,243,255,0.5)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                  '&.Mui-disabled': { background: 'rgba(136, 117, 235,0.25)', color: 'rgba(246, 245, 255,0.5)' },
                 }}
               >
                 {submitting ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Send forespørsel'}

@@ -593,7 +593,7 @@ function OverviewTab(props: {
             ...cardSx,
             cursor: 'pointer',
             border: '1px solid rgba(98, 73, 223,0.42)',
-            background: 'linear-gradient(135deg, rgba(98, 73, 223,0.10) 0%, rgba(110, 101, 236,0.06) 100%)',
+            background: 'linear-gradient(135deg, rgba(98, 73, 223,0.10) 0%, rgba(136, 117, 235,0.06) 100%)',
             display: 'flex',
             alignItems: 'center',
             gap: 2,
@@ -636,7 +636,7 @@ function OverviewTab(props: {
               px: 2,
               boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
               '&:hover': {
-                background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)',
+                background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)',
               },
             }}
           >

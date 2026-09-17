@@ -118,7 +118,7 @@ export function AccessMatrixTab(): JSX.Element {
           startIcon={loading ? <CircularProgress size={14} /> : <RefreshIcon />}
           onClick={() => void load()}
           disabled={loading}
-          sx={{ color: '#9d97ee' }}
+          sx={{ color: '#9e8cf8' }}
         >
           Oppdater
         </Button>
@@ -175,7 +175,7 @@ export function AccessMatrixTab(): JSX.Element {
                     </TableCell>
                     <TableCell>
                       {lens
-                        ? <Chip size="small" label={lens} sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: '#ddd6fe' }} />
+                        ? <Chip size="small" label={lens} sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa' }} />
                         : <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.7)' }}>full</Typography>}
                     </TableCell>
                     {grants.map((g) => (

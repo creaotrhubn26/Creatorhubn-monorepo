@@ -24,14 +24,14 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 const palette = {
-  bgCard: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bgCard: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
-  accentGradient: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
+  accent: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 interface Prompt {
@@ -102,7 +102,7 @@ export default function ClientAiPromptsPanel({
         <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 0.8 }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: 1.4,
-            bgcolor: 'rgba(158, 147, 237,0.18)',
+            bgcolor: 'rgba(158, 140, 248,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <AutoAwesomeIcon sx={{ color: palette.accent }} />
@@ -136,7 +136,7 @@ export default function ClientAiPromptsPanel({
                   flexDirection: 'column', alignItems: 'flex-start',
                   minWidth: 0,
                   '&:hover': {
-                    background: target === opt.value ? palette.accentGradient : 'rgba(118, 102, 230,0.08)',
+                    background: target === opt.value ? palette.accentGradient : 'rgba(136, 117, 235,0.08)',
                   },
                 }}
               >
@@ -190,7 +190,7 @@ export default function ClientAiPromptsPanel({
                   disableGutters
                   elevation={0}
                   sx={{
-                    bgcolor: 'rgba(118, 102, 230,0.04)',
+                    bgcolor: 'rgba(136, 117, 235,0.04)',
                     border: `1px solid ${palette.border}`,
                     borderRadius: 1.4,
                     '&:before': { display: 'none' },
@@ -207,14 +207,14 @@ export default function ClientAiPromptsPanel({
                   </AccordionSummary>
                   <AccordionDetails sx={{ pt: 0 }}>
                     <Box sx={{
-                      bgcolor: '#0a0a1a',
+                      bgcolor: '#100b1e',
                       border: `1px solid ${palette.borderStrong}`,
                       borderRadius: 1.2,
                       p: 1.4,
                       mb: 1,
                       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                       fontSize: '0.78rem',
-                      color: '#dedbf9',
+                      color: '#e0dbfa',
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
                       maxHeight: 460,
@@ -237,7 +237,7 @@ export default function ClientAiPromptsPanel({
                           '&:hover': {
                             background: copiedScenario === p.scenario
                               ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                              : 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)',
+                              : 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                           },
                         }}
                       >

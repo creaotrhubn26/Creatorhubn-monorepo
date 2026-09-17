@@ -107,8 +107,8 @@ const TopBarIconButton: React.FC<{
         ...(primary
           ? {
               color: '#fff',
-              bgcolor: '#6366f1',
-              '&:hover': { bgcolor: '#4f46e5' },
+              bgcolor: '#8875eb',
+              '&:hover': { bgcolor: '#6249df' },
             }
           : {}),
       }}
@@ -138,7 +138,7 @@ const SYNC_STATUS_SX = (syncStatus: MobileSyncStatus) => ({
     syncStatus === 'error' || syncStatus === 'offline'
       ? '#b91c1c'
       : syncStatus === 'syncing'
-        ? '#6366f1'
+        ? '#8875eb'
         : '#16a34a',
 });
 
@@ -210,8 +210,8 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
             aria-label={`Aktiv rolle: ${activeRoleLabel}`}
             sx={{
               fontWeight: 600,
-              bgcolor: 'rgba(84, 70, 225,0.12)',
-              color: '#3928d9',
+              bgcolor: 'rgba(98, 73, 223,0.12)',
+              color: '#472bd4',
               maxWidth: 140,
             }}
           />
@@ -299,7 +299,7 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
                   height: 32,
                   fontSize: 14,
                   fontWeight: 700,
-                  bgcolor: '#6366f1',
+                  bgcolor: '#8875eb',
                 }}
               >
                 {profileInitials}

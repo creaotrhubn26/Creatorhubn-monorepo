@@ -197,7 +197,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
           <Chip
             label={config.tagline}
             size="small"
-            sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(157, 151, 238,0.16)', color: '#ddd6fe', fontWeight: 600 }}
+            sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(158, 140, 248,0.16)', color: '#e0dbfa', fontWeight: 600 }}
           />
           <Typography
             component="h1"
@@ -214,11 +214,11 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9d97ee',
+                bgcolor: '#9e8cf8',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
-                '&:hover': { bgcolor: '#c4b5fd' },
+                '&:hover': { bgcolor: '#c6bdf4' },
               }}
             >
               Prøv The Role Room
@@ -254,10 +254,10 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
             { Icon: ShieldIcon, title: 'GDPR i EU/EØS', text: 'Data lagres i Europa. Klart definert databehandler-avtale.' },
             { Icon: AutoAwesomeIcon, title: 'Integrert AI', text: 'Casting-agent foreslår kandidater, sender invitasjoner og oppsummerer pipelinen.' },
           ].map((v) => (
-            <Card key={v.title} sx={{ bgcolor: 'rgba(2,6,23,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
+            <Card key={v.title} sx={{ bgcolor: 'rgba(10, 5, 21,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
               <CardContent>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                  <v.Icon sx={{ color: '#9d97ee' }} />
+                  <v.Icon sx={{ color: '#9e8cf8' }} />
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{v.title}</Typography>
                 </Stack>
                 <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.92rem' }}>{v.text}</Typography>
@@ -292,7 +292,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
           <TableContainer
             component={Box}
             sx={{
-              bgcolor: 'rgba(2,6,23,0.42)',
+              bgcolor: 'rgba(10, 5, 21,0.42)',
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.16)',
             }}
@@ -321,8 +321,8 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
         {/* CTA */}
         <Card
           sx={{
-            bgcolor: 'rgba(157, 151, 238,0.10)',
-            border: '1px solid rgba(157, 151, 238,0.32)',
+            bgcolor: 'rgba(158, 140, 248,0.10)',
+            border: '1px solid rgba(158, 140, 248,0.32)',
             mt: 2,
           }}
         >
@@ -341,12 +341,12 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9d97ee',
+                bgcolor: '#9e8cf8',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
                 px: 4,
-                '&:hover': { bgcolor: '#c4b5fd' },
+                '&:hover': { bgcolor: '#c6bdf4' },
               }}
             >
               Kom i gang gratis
@@ -383,10 +383,10 @@ function AlternativesIndexView() {
             <Card
               key={c.key}
               sx={{
-                bgcolor: 'rgba(2,6,23,0.42)',
+                bgcolor: 'rgba(10, 5, 21,0.42)',
                 border: '1px solid rgba(148,163,184,0.16)',
                 transition: 'border-color 0.2s',
-                '&:hover': { borderColor: 'rgba(157, 151, 238,0.48)' },
+                '&:hover': { borderColor: 'rgba(158, 140, 248,0.48)' },
               }}
             >
               <CardContent>
@@ -405,11 +405,11 @@ function AlternativesIndexView() {
                   size="small"
                   endIcon={<OpenInNewIcon />}
                   sx={{
-                    color: '#9d97ee',
-                    borderColor: 'rgba(157, 151, 238,0.32)',
+                    color: '#9e8cf8',
+                    borderColor: 'rgba(158, 140, 248,0.32)',
                     textTransform: 'none',
                     fontWeight: 600,
-                    '&:hover': { borderColor: '#9d97ee', bgcolor: 'rgba(157, 151, 238,0.08)' },
+                    '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(158, 140, 248,0.08)' },
                   }}
                 >
                   Les sammenligningen

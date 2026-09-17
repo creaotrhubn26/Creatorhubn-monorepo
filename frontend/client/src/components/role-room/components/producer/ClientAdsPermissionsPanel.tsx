@@ -24,13 +24,13 @@ import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined';
 import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined';
 
 const palette = {
-  bg: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
   meta: '#1877f2',
   linkedin: '#0a66c2',
@@ -221,7 +221,7 @@ export default function ClientAdsPermissionsPanel({
         <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 2 }}>
           <Box sx={{
             width: 44, height: 44, borderRadius: 1.4,
-            bgcolor: 'rgba(158, 147, 237,0.18)',
+            bgcolor: 'rgba(158, 140, 248,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <GavelOutlinedIcon sx={{ color: palette.accent, fontSize: 26 }} />
@@ -257,8 +257,8 @@ export default function ClientAdsPermissionsPanel({
 
         {/* Sammendrag */}
         <Box sx={{
-          bgcolor: 'rgba(158, 147, 237,0.06)',
-          border: `1px solid rgba(158, 147, 237,0.30)`,
+          bgcolor: 'rgba(158, 140, 248,0.06)',
+          border: `1px solid rgba(158, 140, 248,0.30)`,
           borderRadius: 1.6,
           p: 2.2,
           mb: 2,
@@ -291,7 +291,7 @@ export default function ClientAdsPermissionsPanel({
                 <Stack spacing={1.2}>
                   {actions.map((a) => (
                     <Box key={a.key} sx={{
-                      bgcolor: perms[a.key] ? 'rgba(52,211,153,0.06)' : 'rgba(118, 102, 230,0.04)',
+                      bgcolor: perms[a.key] ? 'rgba(52,211,153,0.06)' : 'rgba(136, 117, 235,0.04)',
                       border: `1px solid ${perms[a.key] ? 'rgba(52,211,153,0.30)' : palette.border}`,
                       borderRadius: 1.4,
                       p: 1.6,
@@ -329,7 +329,7 @@ export default function ClientAdsPermissionsPanel({
 
         {/* Vilkår */}
         <Box sx={{
-          bgcolor: 'rgba(118, 102, 230,0.06)',
+          bgcolor: 'rgba(136, 117, 235,0.06)',
           border: `1px solid ${palette.border}`,
           borderRadius: 1.4,
           p: 1.6,
@@ -356,10 +356,10 @@ export default function ClientAdsPermissionsPanel({
             disabled={saving || loading}
             startIcon={saving ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <VerifiedUserOutlinedIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #9e93ed 0%, #6f52e3 100%)',
+              background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 100%)',
               color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '1rem',
               px: 4, py: 1.4, borderRadius: 1.6,
-              '&:hover': { background: 'linear-gradient(135deg, #7666e6 0%, #5437cc 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #8875eb 0%, #472bd4 100%)' },
             }}
           >
             {accepted ? 'Lagre endringer + bekreft vilkår' : 'Aksepter vilkår og lagre tillatelser'}

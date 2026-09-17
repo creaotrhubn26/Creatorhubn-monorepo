@@ -221,7 +221,7 @@ const STEPS: Step[] = [
               group the individual scene strips. The header bar shows live stats: how many
               scenes have been shot, scheduled, or are still unplanned.
             </Typography>
-            <Callout color="#5446e1">
+            <Callout color="#6249df">
               💡 Think of it as a digital version of the physical pinboard hanging on the wall
               of a traditional production office — but automatically calculated, sortable, and
               exportable to PDF.
@@ -343,7 +343,7 @@ const STEPS: Step[] = [
               expand or collapse its strips. Use <strong>Expand All / Collapse All</strong>{' '}
               buttons (top-right of the legend bar) to toggle all groups at once.
             </Typography>
-            <Callout color="#5446e1">
+            <Callout color="#6249df">
               Scenes that have not been assigned to any day appear in the dashed
               <em> "Unplanned"</em> group at the top. When all scenes are planned this
               group shows a celebration message and hides itself.
@@ -447,7 +447,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#5446e1">
+            <Callout color="#6249df">
               Drag & drop is disabled on mobile to avoid conflicts with touch scrolling.
               Use the <strong>Assign to Day</strong> dialog instead (see next section).
             </Callout>
@@ -698,7 +698,7 @@ const STEPS: Step[] = [
                 ))}
               </Box>
             </Paper>
-            <Callout color="#5446e1">
+            <Callout color="#6249df">
               The printed page includes a branded footer with the project title and
               generation date. The @media print CSS is baked into the component so any
               browser print function works correctly.
@@ -846,7 +846,7 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#12121e',
+          bgcolor: '#100b1e',
           color: 'text.primary',
           border: '1px solid rgba(255,255,255,0.1)',
           borderRadius: isMobile ? 0 : 2,
@@ -870,14 +870,14 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TheatersIcon sx={{ color: '#5446e1' }} />
+          <TheatersIcon sx={{ color: '#6249df' }} />
           <Typography variant="h6" fontWeight={700}>
             Stripboard Guide
           </Typography>
           <Chip
             label={`${activeStep + 1} / ${visibleSteps.length}`}
             size="small"
-            sx={{ ml: 1, bgcolor: 'rgba(84, 70, 225,0.2)', color: '#9d97ee' }}
+            sx={{ ml: 1, bgcolor: 'rgba(98, 73, 223,0.2)', color: '#9e8cf8' }}
           />
         </Box>
         <Tooltip title="Close guide">
@@ -889,8 +889,8 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
 
       {/* ── Admin intro banner ────────────────────────────────────────── */}
       {guideConfig.introBanner && (
-        <Box sx={{ px: 2.5, py: 1, bgcolor: `${guideConfig.introBannerColor ?? '#5446e1'}20`, borderBottom: `1px solid ${guideConfig.introBannerColor ?? '#5446e1'}40` }}>
-          <Typography variant="body2" sx={{ color: guideConfig.introBannerColor ?? '#9d97ee' }}>
+        <Box sx={{ px: 2.5, py: 1, bgcolor: `${guideConfig.introBannerColor ?? '#6249df'}20`, borderBottom: `1px solid ${guideConfig.introBannerColor ?? '#6249df'}40` }}>
+          <Typography variant="body2" sx={{ color: guideConfig.introBannerColor ?? '#9e8cf8' }}>
             {guideConfig.introBanner}
           </Typography>
         </Box>
@@ -941,12 +941,12 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
                       borderRadius: 1,
                       mx: 0.5,
                       '&.Mui-selected': {
-                        bgcolor: 'rgba(84, 70, 225,0.15)',
-                        '&:hover': { bgcolor: 'rgba(84, 70, 225,0.2)' },
+                        bgcolor: 'rgba(98, 73, 223,0.15)',
+                        '&:hover': { bgcolor: 'rgba(98, 73, 223,0.2)' },
                       },
                     }}
                   >
-                    <Box sx={{ color: idx === activeStep ? '#9d97ee' : 'text.secondary', display: 'flex' }}>
+                    <Box sx={{ color: idx === activeStep ? '#9e8cf8' : 'text.secondary', display: 'flex' }}>
                       {s.icon}
                     </Box>
                     <ListItemText
@@ -954,14 +954,14 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                           <span>{ov.labelOverride ?? s.label}</span>
                           {ov.badge && (
-                            <Chip label={ov.badge} size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: 'rgba(84, 70, 225,0.3)', color: '#c4b5fd' }} />
+                            <Chip label={ov.badge} size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: 'rgba(98, 73, 223,0.3)', color: '#c6bdf4' }} />
                           )}
                         </Box>
                       }
                       primaryTypographyProps={{
                         fontSize: '0.8rem',
                         fontWeight: idx === activeStep ? 600 : 400,
-                        color: idx === activeStep ? '#dbd9f3' : 'text.secondary',
+                        color: idx === activeStep ? '#e0dbfa' : 'text.secondary',
                       }}
                     />
                   </ListItemButton>
@@ -1014,11 +1014,11 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
                 width: 36,
                 height: 36,
                 borderRadius: '50%',
-                bgcolor: 'rgba(84, 70, 225,0.2)',
+                bgcolor: 'rgba(98, 73, 223,0.2)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#9d97ee',
+                color: '#9e8cf8',
                 flexShrink: 0,
               }}
             >
@@ -1035,7 +1035,7 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
               <Typography
                 variant="subtitle1"
                 fontWeight={600}
-                sx={{ mb: 1.5, color: guideConfig.accentColorOverride ?? '#9d97ee' }}
+                sx={{ mb: 1.5, color: guideConfig.accentColorOverride ?? '#9e8cf8' }}
               >
                 {section.heading}
               </Typography>
@@ -1064,8 +1064,8 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
             </Box>
           ))}
           {stepOverride.adminNote && (
-            <Box sx={{ mt: 3, p: 2, borderRadius: 2, border: `1px solid ${stepOverride.adminNoteColor ?? '#5446e1'}40`, bgcolor: `${stepOverride.adminNoteColor ?? '#5446e1'}15` }}>
-              <Typography variant="caption" sx={{ color: stepOverride.adminNoteColor ?? '#9d97ee', fontWeight: 600, display: 'block', mb: 0.5 }}>
+            <Box sx={{ mt: 3, p: 2, borderRadius: 2, border: `1px solid ${stepOverride.adminNoteColor ?? '#6249df'}40`, bgcolor: `${stepOverride.adminNoteColor ?? '#6249df'}15` }}>
+              <Typography variant="caption" sx={{ color: stepOverride.adminNoteColor ?? '#9e8cf8', fontWeight: 600, display: 'block', mb: 0.5 }}>
                 Admin Note
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>{stepOverride.adminNote}</Typography>
@@ -1096,9 +1096,9 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
                 height: 8,
                 borderRadius: 4,
                 bgcolor: idx === activeStep
-                  ? '#5446e1'
+                  ? '#6249df'
                   : idx < activeStep
-                  ? 'rgba(84, 70, 225,0.4)'
+                  ? 'rgba(98, 73, 223,0.4)'
                   : 'rgba(255,255,255,0.12)',
                 cursor: 'pointer',
                 transition: 'width 0.2s ease, background-color 0.2s ease',
@@ -1123,7 +1123,7 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
             size="small"
             onClick={onClose}
             startIcon={<DoneIcon />}
-            sx={{ minWidth: 90, bgcolor: '#5446e1', '&:hover': { bgcolor: '#3928d9' } }}
+            sx={{ minWidth: 90, bgcolor: '#6249df', '&:hover': { bgcolor: '#472bd4' } }}
           >
             Done
           </Button>
@@ -1132,7 +1132,7 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
             variant="contained"
             size="small"
             onClick={handleNext}
-            sx={{ minWidth: 80, bgcolor: '#5446e1', '&:hover': { bgcolor: '#3928d9' } }}
+            sx={{ minWidth: 80, bgcolor: '#6249df', '&:hover': { bgcolor: '#472bd4' } }}
           >
             Next →
           </Button>

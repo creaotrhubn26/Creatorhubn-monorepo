@@ -147,7 +147,7 @@ export function PortfolioTab() {
   }, [portfolios, cohortFilter, statusFilter, query]);
 
   const kpis = [
-    { id: 'porteflojer', label: 'Porteføljer', value: portfolios.length, hint: 'På tvers av alle kull', icon: <PortfolioIcon />, bg: 'rgba(117, 107, 231,0.16)', c: '#c4b5fd' },
+    { id: 'porteflojer', label: 'Porteføljer', value: portfolios.length, hint: 'På tvers av alle kull', icon: <PortfolioIcon />, bg: 'rgba(136, 117, 235,0.16)', c: '#c6bdf4' },
     { id: 'publiserte', label: 'Publiserte', value: portfolios.filter((p) => p.status === 'published').length, hint: 'Klare for visning', icon: <PublishedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     { id: 'showreels', label: 'Showreels', value: portfolios.filter((p) => p.kind === 'showreel').length, hint: 'Videosammendrag', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
     { id: 'eksamen', label: 'Eksamensmapper', value: portfolios.filter((p) => p.kind === 'exam').length, hint: 'Sendt til sensur', icon: <ExamIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
@@ -162,7 +162,7 @@ export function PortfolioTab() {
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><PortfolioIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><PortfolioIcon /></Box>
           <Box>
             <T eid="edu-pf-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Portefølje</T>
             <T eid="edu-pf-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Studentenes showreels og eksamensmapper — klare for visning og deling med sensor.</T>
@@ -175,7 +175,7 @@ export function PortfolioTab() {
           <Button variant="outlined" startIcon={<ShareIcon />} onClick={shareWithCensor} disabled={sharing} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-pf-btn-share" component="span" sx={{ fontWeight: 600 }}>{sharing ? 'Deler…' : 'Del med sensor'}</T>
           </Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { if (students.length === 0) { setError('Legg til studenter i Kull & studenter først.'); return; } setNewOpen(true); }} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { if (students.length === 0) { setError('Legg til studenter i Kull & studenter først.'); return; } setNewOpen(true); }} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-pf-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny portefølje</T>
           </Button>
         </Stack>
@@ -240,7 +240,7 @@ export function PortfolioTab() {
           return (
             <Box key={p.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 150px', minWidth: 560, alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(117, 107, 231,0.3)', color: '#dedbf9' }}>{initials(p.studentName)}</Avatar>
+                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }}>{initials(p.studentName)}</Avatar>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.studentName}</Typography>
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0, pr: 2 }}>
@@ -261,7 +261,7 @@ export function PortfolioTab() {
 
       {/* Ny-portefølje-dialog */}
       <Dialog open={newOpen} onClose={() => setNewOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#111018', color: '#fff', border: '1px solid rgba(117, 107, 231,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Ny portefølje</DialogTitle>
         <DialogContent>
           <Stack spacing={1.75} sx={{ mt: 0.5 }}>
@@ -278,13 +278,13 @@ export function PortfolioTab() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setNewOpen(false)} disabled={creating} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={!newStudentId || creating} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' }, textTransform: 'none', fontWeight: 700 }}>{creating ? 'Oppretter…' : 'Opprett'}</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!newStudentId || creating} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700 }}>{creating ? 'Oppretter…' : 'Opprett'}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Avgangs-showcase-dialog */}
       <Dialog open={showcaseOpen} onClose={() => setShowcaseOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#111018', color: '#fff', border: '1px solid rgba(117, 107, 231,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Avgangs-showcase</DialogTitle>
         <DialogContent>
           <T eid="edu-pf-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
@@ -296,7 +296,7 @@ export function PortfolioTab() {
             <Typography sx={{ fontSize: 13, color: 'text.secondary', py: 2 }}>Ingen promoterte talenter i dette kullet ennå. Bruk «Promoter til Talents» på en student.</Typography>
           ) : showcase.map((s) => (
             <Stack key={s.talentId} direction="row" alignItems="center" spacing={1.5} sx={{ py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(117, 107, 231,0.3)', color: '#dedbf9' }}>{initials(s.name)}</Avatar>
+              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }}>{initials(s.name)}</Avatar>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</Typography>
@@ -304,7 +304,7 @@ export function PortfolioTab() {
                 </Stack>
                 <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>{[s.credential?.program, s.credential?.institution, s.credential?.year].filter(Boolean).join(' · ') || 'Skuespiller'}</Typography>
               </Box>
-              {s.showreelUrl && <Button size="small" href={s.showreelUrl} target="_blank" rel="noopener" startIcon={<ShowreelIcon sx={{ fontSize: '15px !important' }} />} sx={{ color: '#c4b5fd', textTransform: 'none', fontSize: 12 }}>Showreel</Button>}
+              {s.showreelUrl && <Button size="small" href={s.showreelUrl} target="_blank" rel="noopener" startIcon={<ShowreelIcon sx={{ fontSize: '15px !important' }} />} sx={{ color: '#c6bdf4', textTransform: 'none', fontSize: 12 }}>Showreel</Button>}
             </Stack>
           ))}
         </DialogContent>

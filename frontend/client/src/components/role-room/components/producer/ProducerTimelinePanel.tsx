@@ -981,7 +981,7 @@ export default function ProducerTimelinePanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(10, 5, 21,0.82) 100%)',
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
@@ -1039,7 +1039,7 @@ export default function ProducerTimelinePanel({
           display: plannerView === 'tidslinje' ? 'block' : 'none',
           borderRadius: 1.75,
           border: '1px solid rgba(148,163,184,0.22)',
-          background: 'rgba(2,6,23,0.34)',
+          background: 'rgba(10, 5, 21,0.34)',
           p: 1.25,
         }}
       >
@@ -1449,9 +1449,9 @@ export default function ProducerTimelinePanel({
                         p: 1,
                         bgcolor: highlightedItemId === item.id
                           ? 'rgba(251,191,36,0.08)'
-                          : 'rgba(2,6,23,0.45)',
+                          : 'rgba(10, 5, 21,0.45)',
                         boxShadow: highlightedItemId === item.id
-                          ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(2,6,23,0.22)'
+                          ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(10, 5, 21,0.22)'
                           : 'none',
                         transition: 'border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease',
                       }}
@@ -1481,9 +1481,9 @@ export default function ProducerTimelinePanel({
                             label="Prosjektstatus"
                             sx={{
                               height: 22,
-                              bgcolor: 'rgba(158, 147, 237,0.16)',
-                              color: '#dedbf9',
-                              border: '1px solid rgba(158, 147, 237,0.35)',
+                              bgcolor: 'rgba(158, 140, 248,0.16)',
+                              color: '#e0dbfa',
+                              border: '1px solid rgba(158, 140, 248,0.35)',
                             }}
                           />
                         )}
@@ -1541,9 +1541,9 @@ export default function ProducerTimelinePanel({
                             label="Klientgrunnlag"
                             sx={{
                               height: 22,
-                              bgcolor: 'rgba(158, 147, 237,0.16)',
-                              color: '#dedbf9',
-                              border: '1px solid rgba(158, 147, 237,0.35)',
+                              bgcolor: 'rgba(158, 140, 248,0.16)',
+                              color: '#e0dbfa',
+                              border: '1px solid rgba(158, 140, 248,0.35)',
                             }}
                           />
                         )}

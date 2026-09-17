@@ -278,12 +278,12 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
       <Paper
         key={dayData.dayId || 'unassigned'}
         className={printClass}
-        sx={{ mb: { xs: 1.5, sm: 2 }, overflow: 'hidden', border: isUnassigned ? '2px dashed rgba(84, 70, 225,0.3)' : '1px solid', borderColor: isUnassigned ? 'transparent' : 'divider', borderRadius: { xs: 2, sm: 2.5, md: 3 }, bgcolor: 'background.paper' }}
+        sx={{ mb: { xs: 1.5, sm: 2 }, overflow: 'hidden', border: isUnassigned ? '2px dashed rgba(124,58,237,0.3)' : '1px solid', borderColor: isUnassigned ? 'transparent' : 'divider', borderRadius: { xs: 2, sm: 2.5, md: 3 }, bgcolor: 'background.paper' }}
         onDragOver={!isMobile ? handleDragOver : undefined}
         onDrop={!isMobile ? e => handleDrop(e, dayData.dayId) : undefined}
       >
         <Box
-          sx={{ p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 }, bgcolor: isUnassigned ? alpha('#5446e1', 0.05) : '#5446e1', color: isUnassigned ? 'text.primary' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', flexWrap: { xs: 'wrap', md: 'nowrap' }, gap: { xs: 1, sm: 1.5, md: 2 } }}
+          sx={{ p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 }, bgcolor: isUnassigned ? alpha('#7C3AED', 0.05) : '#7C3AED', color: isUnassigned ? 'text.primary' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', flexWrap: { xs: 'wrap', md: 'nowrap' }, gap: { xs: 1, sm: 1.5, md: 2 } }}
           onClick={() => handleToggleDay(dayData.dayId)}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5, md: 2 }, flex: { xs: '1 0 100%', md: 'unset' } }}>
@@ -340,7 +340,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
   const renderLocationGroup = (locGroup: LocationGroup) => {
     const isExpanded   = expandedLocations.has(locGroup.location);
     const sortedStrips = getSortedStrips(locGroup.strips);
-    const intCnt = locGroup.strips.filter(s => ['#fff9c4', '#4227b0', '#23168a'].some(c => s.color.startsWith(c))).length;
+    const intCnt = locGroup.strips.filter(s => ['#fff9c4', '#9c27b0', '#4a148c'].some(c => s.color.startsWith(c))).length;
     const extCnt = locGroup.strips.length - intCnt;
 
     return (
@@ -405,11 +405,11 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
     <Box className="stripboard-print" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <Box sx={{ p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 }, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: { xs: 'wrap', md: 'nowrap' }, gap: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#5446e1', 0.02) }}>
+      <Box sx={{ p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 }, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: { xs: 'wrap', md: 'nowrap' }, gap: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#7C3AED', 0.02) }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5, md: 2 }, flex: { xs: '1 0 100%', sm: 'unset' }, justifyContent: { xs: 'space-between', sm: 'flex-start' } }}>
           <Typography variant="h6" sx={{ fontSize: responsive.fontSize.title, fontWeight: 700 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TheatersIcon sx={{ fontSize: responsive.iconSize, color: '#5446e1' }} />
+              <TheatersIcon sx={{ fontSize: responsive.iconSize, color: '#7C3AED' }} />
               {isMobile ? 'Stripboard' : `Stripboard - ${projectTitle}`}
             </Box>
           </Typography>
@@ -450,8 +450,8 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
               </Tabs>
             )}
             {!isMobile && (
-              <Box sx={{ display: 'flex', bgcolor: alpha('#5446e1', 0.1), borderRadius: 2, p: 0.5 }}>
-                <Tooltip title="Dag-visning"><IconButton size="small" onClick={() => setViewMode('board')} sx={{ bgcolor: viewMode === 'board' ? '#5446e1' : 'transparent', color: viewMode === 'board' ? '#fff' : 'inherit' }}><CalendarIcon sx={{ fontSize: responsive.iconSize - 4 }} /></IconButton></Tooltip>
+              <Box sx={{ display: 'flex', bgcolor: alpha('#7C3AED', 0.1), borderRadius: 2, p: 0.5 }}>
+                <Tooltip title="Dag-visning"><IconButton size="small" onClick={() => setViewMode('board')} sx={{ bgcolor: viewMode === 'board' ? '#7C3AED' : 'transparent', color: viewMode === 'board' ? '#fff' : 'inherit' }}><CalendarIcon sx={{ fontSize: responsive.iconSize - 4 }} /></IconButton></Tooltip>
                 <Tooltip title="Lokasjons-visning"><IconButton size="small" onClick={() => setViewMode('location')} sx={{ bgcolor: viewMode === 'location' ? '#10B981' : 'transparent', color: viewMode === 'location' ? '#fff' : 'inherit' }}><PlaceIcon sx={{ fontSize: responsive.iconSize - 4 }} /></IconButton></Tooltip>
                 <Tooltip title="Kompakt">
                   <IconButton size="small" onClick={() => setCompactView(p => !p)} sx={{ bgcolor: compactView ? '#F59E0B' : 'transparent', color: compactView ? '#fff' : 'inherit' }}>
@@ -540,7 +540,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
 
       {/* ── Stats bar ───────────────────────────────────────────────────── */}
       <Box className={`print-stats ${!printOptions.stats ? 'hide-in-print' : ''}`}
-        sx={{ p: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#5446e1', 0.03), borderBottom: 1, borderColor: 'divider' }}>
+        sx={{ p: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#7C3AED', 0.03), borderBottom: 1, borderColor: 'divider' }}>
         <Grid container spacing={{ xs: 1, sm: 1.5, md: 2 }}>
           {([
             { value: stats.total, color: 'primary.main', label: isMobile ? 'Totalt' : 'Totalt scener' },
@@ -559,7 +559,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
             <Box>
               <Typography variant="caption" sx={{ fontSize: responsive.fontSize.caption }}>Sider skutt</Typography>
               <LinearProgress variant="determinate" value={stats.totalPages ? (stats.pagesShot / stats.totalPages) * 100 : 0}
-                sx={{ height: { xs: 6, sm: 7, md: 8 }, borderRadius: 4, mt: 0.5, bgcolor: alpha('#5446e1', 0.1), '& .MuiLinearProgress-bar': { bgcolor: '#5446e1' } }} />
+                sx={{ height: { xs: 6, sm: 7, md: 8 }, borderRadius: 4, mt: 0.5, bgcolor: alpha('#7C3AED', 0.1), '& .MuiLinearProgress-bar': { bgcolor: '#7C3AED' } }} />
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.fontSize.caption }}>
                 {stats.pagesShot.toFixed(1)} / {stats.totalPages}{!isMobile && ' sider'} ({stats.totalPages ? Math.round((stats.pagesShot / stats.totalPages) * 100) : 0}%)
               </Typography>
@@ -589,7 +589,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
         {showOptimizationPanel && !isMobile && (
           <OptimizationPanel suggestions={optimizationSuggestions} onClose={() => setShowOptimizationPanel(false)} />
         )}
-        <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#5446e1', 0.01) }}>
+        <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#7C3AED', 0.01) }}>
           {viewMode === 'location' && !isMobile && (
             <Paper sx={{ p: 2, mb: 2, bgcolor: alpha('#10B981', 0.03), borderRadius: 3, border: '1px solid', borderColor: alpha('#10B981', 0.2) }}>
               <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -655,17 +655,17 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
 
       {/* ── Print header ─────────────────────────────────────────────────── */}
       <Box className={`print-header ${!printOptions.header ? 'hide-in-print' : ''}`}
-        sx={{ display: 'none', '@media print': { display: printOptions.header ? 'flex !important' : 'none !important', flexDirection: 'column', alignItems: 'center', mb: 3, pb: 2, borderBottom: '2px solid #5446e1' } }}>
+        sx={{ display: 'none', '@media print': { display: printOptions.header ? 'flex !important' : 'none !important', flexDirection: 'column', alignItems: 'center', mb: 3, pb: 2, borderBottom: '2px solid #7C3AED' } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
           <Box component="img" src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp" alt="The Role Room" sx={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 1 }} />
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 0.25 }}>{projectTitle}</Typography>
-            <Typography variant="subtitle1" sx={{ color: '#5446e1', fontWeight: 600 }}>Stripboard / Opptaksplan</Typography>
+            <Typography variant="subtitle1" sx={{ color: '#7C3AED', fontWeight: 600 }}>Stripboard / Opptaksplan</Typography>
           </Box>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
           <Typography variant="caption" sx={{ color: '#666' }}>Generert med</Typography>
-          <Typography variant="caption" sx={{ color: '#5446e1', fontWeight: 600 }}>The Role Room</Typography>
+          <Typography variant="caption" sx={{ color: '#7C3AED', fontWeight: 600 }}>The Role Room</Typography>
           <Typography variant="caption" sx={{ color: '#666' }}>• {new Date().toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })}</Typography>
         </Box>
       </Box>
@@ -687,7 +687,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
           .no-print, button, .MuiIconButton-root, .MuiTooltip-popper, .MuiDialog-root { display: none !important; }
           .shooting-day-group { page-break-inside: avoid; break-inside: avoid; }
           .MuiCard-root { box-shadow: none !important; border: 1px solid #ccc !important; margin-bottom: 8px !important; page-break-inside: avoid; }
-          .stripboard-print::after { content: 'Generert med The Role Room • theroleroom.com'; position: fixed; bottom: 5mm; left: 0; right: 0; text-align: center; font-size: 9px; color: #5446e1; }
+          .stripboard-print::after { content: 'Generert med The Role Room • theroleroom.com'; position: fixed; bottom: 5mm; left: 0; right: 0; text-align: center; font-size: 9px; color: #7C3AED; }
         }
       `}</style>
     </Box>

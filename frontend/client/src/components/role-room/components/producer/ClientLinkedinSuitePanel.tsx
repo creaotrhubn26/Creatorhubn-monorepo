@@ -26,15 +26,15 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
 const palette = {
-  bgCard: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bgCard: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
+  accent: '#9e8cf8',
   linkedin: '#0a66c2',
-  accentGradient: 'linear-gradient(135deg, #7666e6 0%, #6f52e3 100%)',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 export default function ClientLinkedinSuitePanel({
@@ -263,7 +263,7 @@ export default function ClientLinkedinSuitePanel({
             sx={{
               background: palette.accentGradient,
               color: '#fff', textTransform: 'none', fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             {provisioning ? 'Oppretter…' : `Opprett Insight Tag for ${clientName}`}
@@ -275,7 +275,7 @@ export default function ClientLinkedinSuitePanel({
               </Alert>
               <Box sx={{
                 mt: 1.2,
-                bgcolor: '#0a0a1a',
+                bgcolor: '#100b1e',
                 border: `1px solid ${palette.borderStrong}`,
                 borderRadius: 1,
                 p: 1.2,
@@ -317,7 +317,7 @@ export default function ClientLinkedinSuitePanel({
             startIcon={syncing ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
             sx={{
               background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
-              color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
+              color: '#100b1e', textTransform: 'none', fontWeight: 800,
             }}
           >
             {syncing ? 'Synker…' : 'Sync til LinkedIn'}
@@ -373,7 +373,7 @@ export default function ClientLinkedinSuitePanel({
                 '&:hover': {
                   background: capiSaved
                     ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'linear-gradient(135deg, #523ee0 0%, #4926d3 100%)',
+                    : 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                 },
               }}
             >

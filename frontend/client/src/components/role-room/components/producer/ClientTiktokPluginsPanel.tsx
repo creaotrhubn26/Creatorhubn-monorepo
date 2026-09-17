@@ -20,13 +20,13 @@ import AddCircleOutlineOutlinedIcon from '@mui/icons-material/AddCircleOutlineOu
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 const palette = {
-  bg: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
 };
 
@@ -154,10 +154,10 @@ export default function ClientTiktokPluginsPanel({
           disabled={!advertiserId}
           startIcon={<AddCircleOutlineOutlinedIcon />}
           sx={{
-            background: 'linear-gradient(135deg, #ff0050 0%, #6f52e3 100%)',
+            background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
             color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '1rem',
             px: 4, py: 1.4, borderRadius: 1.6,
-            '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #5437cc 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
           }}
         >
           Koble en nettside
@@ -167,7 +167,7 @@ export default function ClientTiktokPluginsPanel({
           <Stack spacing={1.2} sx={{ mt: 2.4 }}>
             {plugins.map((p, i) => (
               <Box key={p.plugin_id ?? p.tiktok_plugin_id ?? i} sx={{
-                bgcolor: 'rgba(118, 102, 230,0.04)',
+                bgcolor: 'rgba(136, 117, 235,0.04)',
                 border: `1px solid ${palette.border}`,
                 borderRadius: 1.4,
                 p: 1.6,
@@ -220,7 +220,7 @@ export default function ClientTiktokPluginsPanel({
             onClick={install}
             disabled={!pluginName || !domain || installing}
             startIcon={installing ? <CircularProgress size={16} /> : null}
-            sx={{ background: 'linear-gradient(135deg, #ff0050 0%, #6f52e3 100%)', color: '#fff', textTransform: 'none', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #5437cc 100%)' } }}
+            sx={{ background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)', color: '#fff', textTransform: 'none', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' } }}
           >
             {installing ? 'Kobler…' : 'Koble til TikTok'}
           </Button>

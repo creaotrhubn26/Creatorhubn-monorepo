@@ -68,9 +68,9 @@ export default function MonthlyManagementFeeBox({
 
   return (
     <Card sx={{
-      bgcolor: '#0e0b2e',
-      border: '1px solid rgba(118, 102, 230,0.32)',
-      color: '#f5f3ff',
+      bgcolor: '#18122b',
+      border: '1px solid rgba(136, 117, 235,0.32)',
+      color: '#f6f5ff',
       mb: 2,
     }}>
       <CardContent>
@@ -86,7 +86,7 @@ export default function MonthlyManagementFeeBox({
             <Typography sx={{ fontWeight: 800, fontSize: '1.04rem' }}>
               Ads-spend + management-fee — {monthLabel}
             </Typography>
-            <Typography sx={{ color: 'rgba(196,181,253,0.85)', fontSize: '0.82rem' }}>
+            <Typography sx={{ color: 'rgba(198, 189, 244,0.85)', fontSize: '0.82rem' }}>
               Fordelt på {data.configs.length} aktive ads-konfigurasjoner
             </Typography>
           </Box>
@@ -117,7 +117,7 @@ export default function MonthlyManagementFeeBox({
             label="Totalt månedlig kost"
             value={`${fmt(data.totals.spend_mtd_nok + data.totals.mgmt_fee_mtd_nok)} kr`}
             sub="spend + mgmt-fee"
-            color="#9e93ed"
+            color="#9e8cf8"
           />
         </Box>
 
@@ -134,8 +134,8 @@ export default function MonthlyManagementFeeBox({
               <Box
                 key={c.config_id}
                 sx={{
-                  bgcolor: 'rgba(118, 102, 230,0.06)',
-                  border: '1px solid rgba(118, 102, 230,0.18)',
+                  bgcolor: 'rgba(136, 117, 235,0.06)',
+                  border: '1px solid rgba(136, 117, 235,0.18)',
                   borderRadius: 1.2,
                   p: 1.4,
                 }}
@@ -172,7 +172,7 @@ export default function MonthlyManagementFeeBox({
                     <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', color: '#60a5fa' }}>
                       {fmt(c.spend_mtd_nok)} kr
                     </Typography>
-                    <Typography sx={{ color: 'rgba(196,181,253,0.7)', fontSize: '0.74rem' }}>
+                    <Typography sx={{ color: 'rgba(198, 189, 244,0.7)', fontSize: '0.74rem' }}>
                       spend {pctOfTotal > 0 ? `(${pctOfTotal}% av total)` : ''}
                     </Typography>
                   </Box>
@@ -181,7 +181,7 @@ export default function MonthlyManagementFeeBox({
                   display: 'flex',
                   justifyContent: 'space-between',
                   pt: 0.8,
-                  borderTop: '1px solid rgba(118, 102, 230,0.12)',
+                  borderTop: '1px solid rgba(136, 117, 235,0.12)',
                   mt: 0.6,
                 }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem' }}>
@@ -199,7 +199,7 @@ export default function MonthlyManagementFeeBox({
         </Stack>
 
         {data.totals.spend_mtd_nok === 0 ? (
-          <Typography sx={{ color: 'rgba(196,181,253,0.7)', fontSize: '0.78rem', mt: 1.4, fontStyle: 'italic' }}>
+          <Typography sx={{ color: 'rgba(198, 189, 244,0.7)', fontSize: '0.78rem', mt: 1.4, fontStyle: 'italic' }}>
             Ingen ads-spend registrert så langt denne måneden. Tall oppdateres hver time
             når kampanjer er live og spend kommer inn fra Google Ads.
           </Typography>

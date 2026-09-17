@@ -52,7 +52,7 @@ export const RolePanelHeader: React.FC<RolePanelHeaderProps> = ({
         gap: 2,
         flexWrap: 'wrap',
         pb: showBorderBottom ? 1.5 : 0,
-        borderBottom: showBorderBottom ? '1px solid rgba(141, 128, 234,0.18)' : 'none',
+        borderBottom: showBorderBottom ? '1px solid rgba(136, 117, 235,0.18)' : 'none',
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
@@ -65,8 +65,8 @@ export const RolePanelHeader: React.FC<RolePanelHeaderProps> = ({
               width: 40,
               height: 40,
               borderRadius: 1.5,
-              bgcolor: 'rgba(141, 128, 234,0.22)',
-              color: '#c4b5fd',
+              bgcolor: 'rgba(136, 117, 235,0.22)',
+              color: '#c6bdf4',
               flexShrink: 0,
               '& svg': { fontSize: 22 },
             }}

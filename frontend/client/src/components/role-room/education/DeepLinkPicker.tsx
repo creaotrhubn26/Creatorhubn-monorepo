@@ -226,7 +226,7 @@ export function DeepLinkPicker() {
     <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff', p: { xs: 2, md: 4 }, display: 'grid', placeItems: 'start center' }}>
       <Box sx={{ width: '100%', maxWidth: 560 }}>
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 0.5 }}>
-          <Box sx={{ width: 44, height: 44, borderRadius: 3, bgcolor: 'rgba(117, 107, 231,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssignmentIcon /></Box>
+          <Box sx={{ width: 44, height: 44, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssignmentIcon /></Box>
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>{lms ? `Publiser oppgave til ${lms}` : 'Publiser oppgave'}</Typography>
             <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)' }}>Oppretter oppgaven og legger en direkte lenke i emnet.</Typography>
@@ -337,7 +337,7 @@ export function DeepLinkPicker() {
                 disabled={!canPublish}
                 endIcon={publishing ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
                 sx={{
-                  bgcolor: ACCENT, '&:hover': { bgcolor: '#5446e1' },
+                  bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' },
                   '&:active': { transform: reduceMotion ? 'none' : 'scale(0.985)' },
                   transition: reduceMotion ? 'none' : 'transform 120ms ease-out',
                   textTransform: 'none', fontWeight: 700, borderRadius: 2, fontSize: 14.5, minHeight: 48,

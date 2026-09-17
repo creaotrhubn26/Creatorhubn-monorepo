@@ -27,7 +27,7 @@ export default function SelfTapeProjectInfoCard({ project, onBriefClick }: Props
             width: 64,
             height: 80,
             borderRadius: 1,
-            bgcolor: project.poster_color ?? '#1c1733',
+            bgcolor: project.poster_color ?? '#18122b',
             backgroundImage: project.poster_url ? `url(${project.poster_url})` : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center',

@@ -102,7 +102,7 @@ export default function CarouselPostEditor({
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-        <IconButton onClick={onBack} sx={{ color: '#9e93ed' }}>
+        <IconButton onClick={onBack} sx={{ color: '#9e8cf8' }}>
           <ArrowBackIcon />
         </IconButton>
         <Box sx={{ flex: 1 }}>
@@ -130,7 +130,7 @@ export default function CarouselPostEditor({
                   width: 200,
                   '& .MuiOutlinedInput-root': {
                     color: '#e2e8f0',
-                    '& fieldset': { borderColor: 'rgba(118, 102, 230,0.35)' },
+                    '& fieldset': { borderColor: 'rgba(136, 117, 235,0.35)' },
                   },
                 }}
               />
@@ -141,7 +141,7 @@ export default function CarouselPostEditor({
               disabled={approveBusy}
               sx={{
                 bgcolor: '#34d399',
-                color: '#0a0617',
+                color: '#0a0515',
                 fontWeight: 700,
                 '&:hover': { bgcolor: '#10b981' },
                 textTransform: 'none',
@@ -176,7 +176,7 @@ export default function CarouselPostEditor({
               cursor: 'pointer',
               opacity: i === selectedSlideIdx ? 1 : 0.55,
               transition: 'opacity 100ms ease',
-              outline: i === selectedSlideIdx ? '2px solid #7666e6' : 'none',
+              outline: i === selectedSlideIdx ? '2px solid #8875eb' : 'none',
               outlineOffset: 2,
               borderRadius: 1.5,
             }}
@@ -202,7 +202,7 @@ export default function CarouselPostEditor({
         {/* Live preview */}
         <Card
           variant="outlined"
-          sx={{ p: 2, bgcolor: 'rgba(15,23,42,0.6)', borderColor: 'rgba(118, 102, 230,0.22)' }}
+          sx={{ p: 2, bgcolor: 'rgba(15,23,42,0.6)', borderColor: 'rgba(136, 117, 235,0.22)' }}
         >
           <Tabs
             value={selectedPlatform}
@@ -245,9 +245,9 @@ export default function CarouselPostEditor({
         <Stack spacing={2}>
           <Card
             variant="outlined"
-            sx={{ p: 2, bgcolor: 'rgba(15,23,42,0.6)', borderColor: 'rgba(118, 102, 230,0.22)' }}
+            sx={{ p: 2, bgcolor: 'rgba(15,23,42,0.6)', borderColor: 'rgba(136, 117, 235,0.22)' }}
           >
-            <Typography variant="overline" sx={{ color: '#9e93ed' }}>
+            <Typography variant="overline" sx={{ color: '#9e8cf8' }}>
               Slide {selectedSlideIdx + 1} av {sortedSlides.length} · {selectedSlide?.layout}
             </Typography>
             <Stack spacing={1.4} sx={{ mt: 1 }}>
@@ -265,7 +265,7 @@ export default function CarouselPostEditor({
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       color: '#e2e8f0',
-                      '& fieldset': { borderColor: 'rgba(118, 102, 230,0.22)' },
+                      '& fieldset': { borderColor: 'rgba(136, 117, 235,0.22)' },
                     },
                   }}
                 />
@@ -279,7 +279,7 @@ export default function CarouselPostEditor({
                 <Chip
                   size="small"
                   label={`Layout: ${selectedSlide?.layout}`}
-                  sx={{ bgcolor: 'rgba(118, 102, 230,0.16)', color: '#9e93ed' }}
+                  sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#9e8cf8' }}
                 />
                 <Button
                   size="small"
@@ -287,8 +287,8 @@ export default function CarouselPostEditor({
                   onClick={() => setImageSwapOpen(true)}
                   startIcon={<ImageIcon fontSize="small" />}
                   sx={{
-                    color: '#9e93ed',
-                    borderColor: 'rgba(118, 102, 230,0.45)',
+                    color: '#9e8cf8',
+                    borderColor: 'rgba(136, 117, 235,0.45)',
                     textTransform: 'none',
                     ml: 'auto',
                   }}
@@ -301,9 +301,9 @@ export default function CarouselPostEditor({
 
           <Card
             variant="outlined"
-            sx={{ p: 2, bgcolor: 'rgba(15,23,42,0.6)', borderColor: 'rgba(118, 102, 230,0.22)' }}
+            sx={{ p: 2, bgcolor: 'rgba(15,23,42,0.6)', borderColor: 'rgba(136, 117, 235,0.22)' }}
           >
-            <Typography variant="overline" sx={{ color: '#9e93ed' }}>
+            <Typography variant="overline" sx={{ color: '#9e8cf8' }}>
               {PLATFORM_LABELS[selectedPlatform]} caption
             </Typography>
             <TextField
@@ -320,7 +320,7 @@ export default function CarouselPostEditor({
                   '& fieldset': {
                     borderColor: captionOverLimit
                       ? '#f87171'
-                      : 'rgba(118, 102, 230,0.22)',
+                      : 'rgba(136, 117, 235,0.22)',
                   },
                 },
               }}
@@ -339,7 +339,7 @@ export default function CarouselPostEditor({
                 onClick={() =>
                   onCaptionPatch(post.id, selectedPlatform, caption.slice(0, captionLimit))
                 }
-                sx={{ color: '#9e93ed', textTransform: 'none' }}
+                sx={{ color: '#9e8cf8', textTransform: 'none' }}
               >
                 Klipp til grense
               </Button>
@@ -357,9 +357,9 @@ export default function CarouselPostEditor({
           setImageSwapOpen(false);
         }}
         brandColors={{
-          primary: selectedSlide?.brand_overlays.primaryColor ?? '#0a0617',
-          secondary: '#131133',
-          accent: selectedSlide?.brand_overlays.accentColor ?? '#7666e6',
+          primary: selectedSlide?.brand_overlays.primaryColor ?? '#0a0515',
+          secondary: '#18122b',
+          accent: selectedSlide?.brand_overlays.accentColor ?? '#8875eb',
         }}
       />
     </Box>

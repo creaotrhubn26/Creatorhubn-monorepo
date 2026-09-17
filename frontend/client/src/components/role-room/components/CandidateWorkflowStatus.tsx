@@ -40,7 +40,7 @@ const WORKFLOW_STEPS: { status: WorkflowStatus; label: string; icon: ReactNode; 
   { status: 'auditioned', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
   { status: 'selected', label: 'Valgt', icon: <CheckCircleIcon />, color: '#10b981' },
   { status: 'offer_sent', label: 'Tilbud sendt', icon: <LocalOfferIcon />, color: '#3b82f6' },
-  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: 'var(--role-violet, #756be7)' },
+  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: 'var(--role-violet, #8875eb)' },
   { status: 'contracted', label: 'Kontrakt', icon: <DescriptionIcon />, color: '#06b6d4' },
   { status: 'production', label: 'Produksjon', icon: <MovieIcon />, color: '#ec4899' },
 ];
@@ -51,12 +51,12 @@ const ColorlibConnector = styled(StepConnector)(({ theme }) => ({
   },
   [`&.${stepConnectorClasses.active}`]: {
     [`& .${stepConnectorClasses.line}`]: {
-      backgroundImage: 'linear-gradient(90deg, #756be7, #06b6d4)',
+      backgroundImage: 'linear-gradient(90deg, #8875eb, #06b6d4)',
     },
   },
   [`&.${stepConnectorClasses.completed}`]: {
     [`& .${stepConnectorClasses.line}`]: {
-      backgroundImage: 'linear-gradient(90deg, #10b981, #756be7)',
+      backgroundImage: 'linear-gradient(90deg, #10b981, #8875eb)',
     },
   },
   [`& .${stepConnectorClasses.line}`]: {
@@ -81,8 +81,8 @@ const ColorlibStepIconRoot = styled('div')<{
   alignItems: 'center',
   transition: 'all 0.3s',
   ...(ownerState.active && {
-    backgroundImage: 'linear-gradient(135deg, #756be7, #06b6d4)',
-    boxShadow: '0 4px 10px 0 rgba(117, 107, 231,0.4)',
+    backgroundImage: 'linear-gradient(135deg, #8875eb, #06b6d4)',
+    boxShadow: '0 4px 10px 0 rgba(136, 117, 235,0.4)',
   }),
   ...(ownerState.completed && {
     backgroundImage: 'linear-gradient(135deg, #10b981, #059669)',

@@ -86,7 +86,7 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
             gap: 1,
             flexWrap: 'wrap',
             bgcolor: 'rgba(10,10,10,0.95)',
-            borderBottom: '1px solid rgba(117, 107, 231,0.18)',
+            borderBottom: '1px solid rgba(136, 117, 235,0.18)',
           }}
         >
           {customHeader ?? (
@@ -131,7 +131,7 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
           steps={tourSteps}
           // Utdanningsmodus bruker den lilla persona-fargen; øvrige beholder
           // default-gull. (FirstTimeTour er delt på tvers av alle vertikaler.)
-          {...(mode === 'education' ? { accentColor: '#756be7', accentHover: '#5446e1' } : {})}
+          {...(mode === 'education' ? { accentColor: '#8875eb', accentHover: '#6249df' } : {})}
         />
       )}
     </>

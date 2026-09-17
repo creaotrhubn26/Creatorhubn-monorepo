@@ -229,7 +229,7 @@ export default function SelfTapeVideoPlayer({
               position: 'absolute',
               inset: 0,
               width: `${progressPct}%`,
-              background: 'linear-gradient(90deg, #6249df, #6e65ec)',
+              background: 'linear-gradient(90deg, #6249df, #8875eb)',
               boxShadow: '0 0 8px rgba(98, 73, 223,0.4)',
               pointerEvents: 'none',
             }}
@@ -322,7 +322,7 @@ export default function SelfTapeVideoPlayer({
             fontSize: '0.92rem',
             fontFamily: 'inherit',
             boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
-            '&:hover': { background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
           }}
         >
           <VideocamOutlinedIcon fontSize="small" />

@@ -364,7 +364,7 @@ export const PropsIcon: React.FC<IconProps> = ({ sx, style, ...props }) => {
       <path d="M12 12L20 7" stroke="currentColor" strokeWidth="1.5" />
       <path d="M12 12L4 7" stroke="currentColor" strokeWidth="1.5" />
       {/* Star highlight on item */}
-      <circle cx="12" cy="9" r="2" fill="#523ee0" />
+      <circle cx="12" cy="9" r="2" fill="#6249df" />
     </svg>
   );
 };
@@ -391,7 +391,7 @@ export const SplitSheetIcon: React.FC<IconProps> = ({ sx, style, ...props }) => 
     <svg viewBox="0 0 24 24" fill="none" style={iconStyle} {...props}>
       {/* Pie chart */}
       <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12" stroke="currentColor" strokeWidth="1.5" fill="none" />
-      <path d="M12 2V12H22C22 6.48 17.52 2 12 2Z" fill="#847be9" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 2V12H22C22 6.48 17.52 2 12 2Z" fill="#8875eb" stroke="currentColor" strokeWidth="1.5" />
       {/* Divider lines */}
       <path d="M12 12L7 18" stroke="currentColor" strokeWidth="1.5" />
       <path d="M12 12L5 8" stroke="currentColor" strokeWidth="1.5" />

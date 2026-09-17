@@ -85,7 +85,7 @@ function SettingDropdown<T>({
           fontFamily: 'monospace',
           appearance: 'none',
           cursor: 'pointer',
-          '&:focus': { outline: 'none', borderColor: 'var(--role-violet, #756be7)' },
+          '&:focus': { outline: 'none', borderColor: 'var(--role-violet, #8875eb)' },
         }}
       >
         {options.map((opt) => (
@@ -111,13 +111,13 @@ function PresetChip({
       onClick={onClick}
       size="small"
       sx={{
-        bgcolor: 'rgba(117, 107, 231,0.1)',
-        border: '1px solid rgba(117, 107, 231,0.3)',
-        color: '#c4b5fd',
+        bgcolor: 'rgba(136, 117, 235,0.1)',
+        border: '1px solid rgba(136, 117, 235,0.3)',
+        color: '#c6bdf4',
         fontSize: 10,
         fontWeight: 600,
         height: 24,
-        '&:hover': { bgcolor: 'rgba(117, 107, 231,0.2)' },
+        '&:hover': { bgcolor: 'rgba(136, 117, 235,0.2)' },
       }}
     />
   );
@@ -149,7 +149,7 @@ function MockScope({ mode }: { mode: 'waveform' | 'vectorscope' }) {
           const r = 15 + Math.sin(i * 0.3 + phase) * 10;
           const x = 100 + Math.cos(angle) * r;
           const y = 50 + Math.sin(angle) * r;
-          return <circle key={i} cx={x} cy={y} r="0.7" fill="rgba(117, 107, 231,0.6)" />;
+          return <circle key={i} cx={x} cy={y} r="0.7" fill="rgba(136, 117, 235,0.6)" />;
         })}
       </svg>
     );
@@ -209,8 +209,8 @@ export const CameraControlsPanel: React.FC<CameraControlsPanelProps> = ({
               key={cam.id}
               onClick={() => onActiveCameraChange(cam.id)}
               sx={{
-                bgcolor: cam.id === activeCameraId ? 'rgba(117, 107, 231,0.15)' : 'transparent',
-                color: cam.id === activeCameraId ? '#c4b5fd' : 'rgba(255,255,255,0.5)',
+                bgcolor: cam.id === activeCameraId ? 'rgba(136, 117, 235,0.15)' : 'transparent',
+                color: cam.id === activeCameraId ? '#c6bdf4' : 'rgba(255,255,255,0.5)',
                 px: 1.5,
                 py: 0.5,
                 borderRadius: 0.5,
@@ -218,7 +218,7 @@ export const CameraControlsPanel: React.FC<CameraControlsPanelProps> = ({
                 fontSize: 11,
                 fontWeight: 600,
                 transition: 'all 120ms',
-                '&:hover': { bgcolor: cam.id === activeCameraId ? 'rgba(117, 107, 231,0.2)' : 'rgba(255,255,255,0.04)' },
+                '&:hover': { bgcolor: cam.id === activeCameraId ? 'rgba(136, 117, 235,0.2)' : 'rgba(255,255,255,0.04)' },
               }}
             >
               KAMERA {cam.label.replace('Cam ', '')}
@@ -278,7 +278,7 @@ export const CameraControlsPanel: React.FC<CameraControlsPanelProps> = ({
                   color: 'rgba(255,255,255,0.5)',
                   border: '1px solid rgba(255,255,255,0.1)',
                 },
-                '& .Mui-selected': { bgcolor: 'rgba(117, 107, 231,0.2) !important', color: '#c4b5fd !important' },
+                '& .Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.2) !important', color: '#c6bdf4 !important' },
               }}
             >
               <ToggleButton value="auto">AUTO</ToggleButton>
@@ -303,7 +303,7 @@ export const CameraControlsPanel: React.FC<CameraControlsPanelProps> = ({
                   color: 'rgba(255,255,255,0.5)',
                   border: '1px solid rgba(255,255,255,0.1)',
                 },
-                '& .Mui-selected': { bgcolor: 'rgba(117, 107, 231,0.2) !important', color: '#c4b5fd !important' },
+                '& .Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.2) !important', color: '#c6bdf4 !important' },
               }}
             >
               <ToggleButton value="on">ON</ToggleButton>
@@ -360,7 +360,7 @@ export const CameraControlsPanel: React.FC<CameraControlsPanelProps> = ({
               letterSpacing: 0.5,
               cursor: 'pointer',
               color: scopeMode === 'waveform' ? '#fff' : 'rgba(255,255,255,0.4)',
-              borderBottom: scopeMode === 'waveform' ? '2px solid #756be7' : '2px solid transparent',
+              borderBottom: scopeMode === 'waveform' ? '2px solid #8875eb' : '2px solid transparent',
               pb: 0.25,
             }}
           >
@@ -374,7 +374,7 @@ export const CameraControlsPanel: React.FC<CameraControlsPanelProps> = ({
               letterSpacing: 0.5,
               cursor: 'pointer',
               color: scopeMode === 'vectorscope' ? '#fff' : 'rgba(255,255,255,0.4)',
-              borderBottom: scopeMode === 'vectorscope' ? '2px solid #756be7' : '2px solid transparent',
+              borderBottom: scopeMode === 'vectorscope' ? '2px solid #8875eb' : '2px solid transparent',
               pb: 0.25,
             }}
           >

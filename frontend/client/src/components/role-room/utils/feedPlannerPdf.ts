@@ -31,7 +31,7 @@ const ROLE_ROOM_INK = '#0b1220';
 const ROLE_ROOM_TEXT = '#e2e8f0';
 const ROLE_ROOM_TEXT_MUTED = '#94a3b8';
 const ROLE_ROOM_ACCENT = '#22d3ee';
-const ROLE_ROOM_ACCENT_2 = '#7666e6';
+const ROLE_ROOM_ACCENT_2 = '#8875eb';
 
 const TIER_LABELS: Record<RoleRoomTierSlug, string> = {
   spotlight: 'Spotlight',

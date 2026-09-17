@@ -42,12 +42,12 @@ export interface SegmentKindMeta {
 /** Sentral konfigurasjon — én sannhet for både farger og labels.
  *  Brukes både i timeline-blokker og i type-velger-menyen. */
 export const SEGMENT_KINDS: readonly SegmentKindMeta[] = [
-  { kind: 'intro',             labelToken: 'choreographySegmentIntro',            color: '#6366f1' }, // indigo
+  { kind: 'intro',             labelToken: 'choreographySegmentIntro',            color: '#8875eb' }, // indigo
   { kind: 'verse',             labelToken: 'choreographySegmentVerse',            color: danceFlowColors.info }, // blue
   { kind: 'chorus',            labelToken: 'choreographySegmentChorus',           color: danceFlowColors.pinkAccent }, // pink
-  { kind: 'bridge',            labelToken: 'choreographySegmentBridge',           color: '#9d97ee' }, // light purple
+  { kind: 'bridge',            labelToken: 'choreographySegmentBridge',           color: '#9e8cf8' }, // light purple
   { kind: 'break',             labelToken: 'choreographySegmentBreak',            color: danceFlowColors.amber }, // amber
-  { kind: 'outro',             labelToken: 'choreographySegmentOutro',            color: '#756be7' }, // purple
+  { kind: 'outro',             labelToken: 'choreographySegmentOutro',            color: '#8875eb' }, // purple
   { kind: 'freestyle',         labelToken: 'choreographySegmentFreestyle',        color: danceFlowColors.successDark }, // emerald
   { kind: 'lift',              labelToken: 'choreographySegmentLift',             color: '#f43f5e' }, // rose
   { kind: 'formation_change',  labelToken: 'choreographySegmentFormationChange',  color: '#06b6d4' }, // cyan
@@ -113,8 +113,8 @@ export interface TimelineLayerMeta {
 }
 
 export const TIMELINE_LAYERS: readonly TimelineLayerMeta[] = [
-  { kind: 'music',        labelToken: 'choreographyLayerMusic',         segmentField: 'musicCue',     color: '#756be7', variant: 'waveform' },
-  { kind: 'choreography', labelToken: 'choreographyLayerChoreography',  segmentField: 'kind',         color: '#9d97ee', variant: 'block'    },
+  { kind: 'music',        labelToken: 'choreographyLayerMusic',         segmentField: 'musicCue',     color: '#8875eb', variant: 'waveform' },
+  { kind: 'choreography', labelToken: 'choreographyLayerChoreography',  segmentField: 'kind',         color: '#9e8cf8', variant: 'block'    },
   { kind: 'formation',    labelToken: 'choreographyLayerFormation',     segmentField: 'formation',    color: '#06b6d4', variant: 'text'     },
   { kind: 'camera',       labelToken: 'choreographyLayerCamera',        segmentField: 'camera',       color: danceFlowColors.info, variant: 'text'     },
   { kind: 'lighting',     labelToken: 'choreographyLayerLighting',      segmentField: 'lighting',     color: danceFlowColors.amber, variant: 'text'     },

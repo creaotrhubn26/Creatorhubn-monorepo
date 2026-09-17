@@ -76,7 +76,7 @@ describe('Sprint A.7 — analyzeFramePalette', () => {
     const frame = {
       id: 'f1',
       drawingData: {
-        strokes: [makeStroke('#0000ff', [{ x: 0, y: 0 }, { x: 50, y: 0 }])],
+        strokes: [makeStroke('#472bd4', [{ x: 0, y: 0 }, { x: 50, y: 0 }])],
       },
     };
     const palette = analyzeFramePalette(frame);
@@ -157,7 +157,7 @@ describe('Sprint A.7 — analyzeStyleDrift med targetPalette (mood-board loop)',
   it('med targetPalette: driftSource er target', () => {
     const report = analyzeStyleDrift(
       [makeFrame('f1', [makeStroke('#ff0000', [{ x: 0, y: 0 }, { x: 100, y: 0 }])])],
-      { targetPalette: [{ color: '#0000ff', weight: 100 }] },
+      { targetPalette: [{ color: '#472bd4', weight: 100 }] },
     );
     expect(report.driftSource).toBe('target');
   });
@@ -175,7 +175,7 @@ describe('Sprint A.7 — analyzeStyleDrift med targetPalette (mood-board loop)',
   it('frame som er langt fra target gir høy drift', () => {
     const report = analyzeStyleDrift(
       [makeFrame('f1', [makeStroke('#ff0000', [{ x: 0, y: 0 }, { x: 100, y: 0 }])])],
-      { targetPalette: [{ color: '#0000ff', weight: 100 }] },
+      { targetPalette: [{ color: '#472bd4', weight: 100 }] },
     );
     const entry = report.driftByFrame.find((d) => d.frameId === 'f1');
     expect(entry?.drift).toBeGreaterThan(0.18);

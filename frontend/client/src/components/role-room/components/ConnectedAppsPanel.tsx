@@ -14,7 +14,7 @@ import {
 import { Link as LinkIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import authSessionService from '../services/authSessionService';
 
-const ACCENT = '#756be7';
+const ACCENT = '#8875eb';
 
 interface Connection {
   clientId: string;
@@ -90,7 +90,7 @@ export function ConnectedAppsPanel() {
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{c.clientName || c.clientId}</Typography>
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5, flexWrap: 'wrap' }}>
-                  <Chip label={scopeLabel(c.scope)} size="small" sx={{ height: 20, bgcolor: 'rgba(117, 107, 231,0.14)', color: ACCENT, fontWeight: 700, fontSize: 11 }} />
+                  <Chip label={scopeLabel(c.scope)} size="small" sx={{ height: 20, bgcolor: 'rgba(136, 117, 235,0.14)', color: ACCENT, fontWeight: 700, fontSize: 11 }} />
                   <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>Tilkoblet {fmtDate(c.connectedAt)}</Typography>
                 </Stack>
               </Box>

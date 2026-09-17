@@ -372,7 +372,7 @@ export function PostCommentLayer({
           {typeof currentTimeSec === 'number' && currentTimeSec > 0 && (
             <label style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 10.5, color: 'rgba(191, 188, 216,0.85)',
+              fontSize: 10.5, color: 'rgba(158, 140, 248,0.85)',
               cursor: 'pointer', marginTop: 2, marginBottom: 4,
             }}>
               <input type="checkbox" checked={attachToTimestamp}
@@ -415,7 +415,7 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
       ...rowSx,
       ...(reply ? replyRowSx : {}),
       background: isResolved ? 'rgba(74,212,138,0.05)' : 'rgba(255,255,255,0.03)',
-      borderColor: isResolved ? 'rgba(74,212,138,0.15)' : 'rgba(74, 48, 192,0.15)',
+      borderColor: isResolved ? 'rgba(74,212,138,0.15)' : 'rgba(71, 43, 212,0.15)',
     }}>
       <div style={rowHeaderSx}>
         <span style={authorSx}>{comment.authorDisplayName}</span>
@@ -424,9 +424,9 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
                   disabled={!onSeek}
                   title={onSeek ? `Hopp til ${formatTime(comment.timestampSec as number)}` : undefined}
                   style={{
-                    background: 'rgba(74, 48, 192,0.22)',
-                    border: '1px solid rgba(74, 48, 192,0.42)',
-                    color: '#b0a8e8',
+                    background: 'rgba(71, 43, 212,0.22)',
+                    border: '1px solid rgba(71, 43, 212,0.42)',
+                    color: '#9e8cf8',
                     padding: '1px 6px', borderRadius: 3,
                     fontSize: 10, fontWeight: 700,
                     cursor: onSeek ? 'pointer' : 'default',
@@ -480,10 +480,10 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
 
 const baseSx: React.CSSProperties = {
   marginTop: 12, padding: 10,
-  background: 'rgba(14, 12, 40,0.55)',
-  border: '1px solid rgba(74, 48, 192,0.20)',
+  background: 'rgba(24, 18, 43,0.55)',
+  border: '1px solid rgba(71, 43, 212,0.20)',
   borderRadius: 6,
-  color: 'rgba(226, 224, 240,0.95)',
+  color: 'rgba(224, 219, 250,0.95)',
   fontFamily: "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
   fontSize: 12,
 };
@@ -494,13 +494,13 @@ const headerSx: React.CSSProperties = {
 };
 
 const titleSx: React.CSSProperties = {
-  fontWeight: 600, color: 'rgba(191, 188, 216,0.9)',
+  fontWeight: 600, color: 'rgba(158, 140, 248,0.9)',
 };
 
 const badgeSx: React.CSSProperties = {
   padding: '2px 8px', borderRadius: 999,
-  background: 'rgba(74, 48, 192,0.25)',
-  color: '#b0a8e8', fontSize: 10, fontWeight: 600,
+  background: 'rgba(71, 43, 212,0.25)',
+  color: '#9e8cf8', fontSize: 10, fontWeight: 600,
 };
 
 const listSx: React.CSSProperties = {
@@ -526,7 +526,7 @@ const replyRowSx: React.CSSProperties = {
 const replyComposerSx: React.CSSProperties = {
   marginLeft: 18,
   padding: 8,
-  borderLeft: '2px solid rgba(74, 48, 192,0.25)',
+  borderLeft: '2px solid rgba(71, 43, 212,0.25)',
 };
 
 const rowHeaderSx: React.CSSProperties = {
@@ -535,7 +535,7 @@ const rowHeaderSx: React.CSSProperties = {
 };
 
 const authorSx: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: '#4a30c0',
+  fontSize: 11, fontWeight: 600, color: '#472bd4',
 };
 
 const timeSx: React.CSSProperties = {
@@ -549,7 +549,7 @@ const pillSx: React.CSSProperties = {
 
 const textSx: React.CSSProperties = {
   fontSize: 11.5, lineHeight: 1.4,
-  color: 'rgba(226, 224, 240,0.92)',
+  color: 'rgba(224, 219, 250,0.92)',
   whiteSpace: 'pre-wrap',
 };
 
@@ -564,18 +564,18 @@ const resolveBtnSx: React.CSSProperties = {
 const replyBtnSx: React.CSSProperties = {
   marginTop: 6, padding: 0,
   border: 0, background: 'transparent',
-  color: '#b0a8e8', fontSize: 10.5, fontWeight: 600,
+  color: '#9e8cf8', fontSize: 10.5, fontWeight: 600,
   cursor: 'pointer',
 };
 
 const secondaryBtnSx: React.CSSProperties = {
-  border: 0, background: 'transparent', color: 'rgba(191, 188, 216,0.8)',
+  border: 0, background: 'transparent', color: 'rgba(158, 140, 248,0.8)',
   fontSize: 10.5, cursor: 'pointer',
 };
 
 const composerSx: React.CSSProperties = {
   marginTop: 6, paddingTop: 8,
-  borderTop: '1px solid rgba(74, 48, 192,0.12)',
+  borderTop: '1px solid rgba(71, 43, 212,0.12)',
 };
 
 const composerActionsSx: React.CSSProperties = {
@@ -590,14 +590,14 @@ const hintSx: React.CSSProperties = {
 const inputSx: React.CSSProperties = {
   width: '100%',
   background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(74, 48, 192,0.18)',
+  border: '1px solid rgba(71, 43, 212,0.18)',
   borderRadius: 3, padding: '6px 8px',
-  color: 'rgba(226, 224, 240,0.95)', fontSize: 11.5,
+  color: 'rgba(224, 219, 250,0.95)', fontSize: 11.5,
   fontFamily: 'inherit', marginBottom: 4,
 };
 
 const primaryBtnSx: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #4b3fc7, #4a30c0)',
+  background: 'linear-gradient(135deg, #472bd4, #472bd4)',
   border: 0, color: '#fff',
   padding: '5px 12px', fontSize: 11, fontWeight: 600,
   borderRadius: 3,
@@ -605,8 +605,8 @@ const primaryBtnSx: React.CSSProperties = {
 
 const expandBtnSx: React.CSSProperties = {
   background: 'transparent',
-  border: '1px dashed rgba(74, 48, 192,0.30)',
-  color: 'rgba(191, 188, 216,0.9)',
+  border: '1px dashed rgba(71, 43, 212,0.30)',
+  color: 'rgba(158, 140, 248,0.9)',
   padding: '4px 10px', fontSize: 10.5, fontWeight: 600,
   borderRadius: 3, cursor: 'pointer',
   alignSelf: 'flex-start',
@@ -634,7 +634,7 @@ function priorityBg(p: CommentPriority): string {
   switch (p) {
     case 'urgent': return 'rgba(239,79,111,0.20)';
     case 'high': return 'rgba(240,165,0,0.20)';
-    default: return 'rgba(74, 48, 192,0.20)';
+    default: return 'rgba(71, 43, 212,0.20)';
   }
 }
 
@@ -642,7 +642,7 @@ function priorityColor(p: CommentPriority): string {
   switch (p) {
     case 'urgent': return '#ef4f6f';
     case 'high': return '#f0a500';
-    default: return '#4a30c0';
+    default: return '#472bd4';
   }
 }
 
@@ -651,7 +651,7 @@ function statusBg(s: CommentStatus): string {
     case 'resolved': return 'rgba(74,212,138,0.18)';
     case 'in_progress': return 'rgba(240,165,0,0.18)';
     case 'wontfix': return 'rgba(159, 156, 184,0.15)';
-    default: return 'rgba(74, 48, 192,0.18)';
+    default: return 'rgba(71, 43, 212,0.18)';
   }
 }
 
@@ -660,7 +660,7 @@ function statusColor(s: CommentStatus): string {
     case 'resolved': return '#4ad48a';
     case 'in_progress': return '#f0a500';
     case 'wontfix': return '#9f9cb8';
-    default: return '#4a30c0';
+    default: return '#472bd4';
   }
 }
 

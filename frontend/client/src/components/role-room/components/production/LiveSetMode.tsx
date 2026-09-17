@@ -164,16 +164,16 @@ const QUICK_NOTES: QuickNote[] = [
 const LEFT_PANEL_NOTES: QuickNote[] = [
   { type: 'good',  label: 'Good Take!',   icon: <ThumbUpIcon sx={{ fontSize: 16, color: '#4caf50' }} /> },
   { type: 'focus', label: 'Pickup Shot',  icon: <RefreshIcon sx={{ fontSize: 16, color: '#64b5f6' }} /> },
-  { type: 'tech',  label: 'Action Safe',  icon: <WarningIcon sx={{ fontSize: 16, color: '#523ee0' }} /> },
+  { type: 'tech',  label: 'Action Safe',  icon: <WarningIcon sx={{ fontSize: 16, color: '#6249df' }} /> },
   { type: 'sound', label: 'Check Focus',  icon: <CameraIcon sx={{ fontSize: 16, color: '#9e9e9e' }} /> },
 ];
 
 const TAKE_STATUS_COLORS: Record<Take['status'], string> = {
   good:   '#4caf50',
-  ok:     '#523ee0',
+  ok:     '#6249df',
   bad:    '#f44336',
   circle: '#2196f3',
-  print:  '#4227b0',
+  print:  '#3c27a5',
 };
 
 const POLL_INTERVAL_MS = 5_000;
@@ -942,7 +942,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
           {unsyncedCount > 0 && (
             <Chip icon={<OfflineIcon sx={{ fontSize: 13 }} />}
               label={`${outboxCount + unsyncedCount} ikke synkronisert`} size="small"
-              sx={{ bgcolor: 'rgba(82, 62, 224,0.15)', color: '#9e93ed', border: '1px solid rgba(82, 62, 224,0.3)' }} />
+              sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#9e8cf8', border: '1px solid rgba(98, 73, 223,0.3)' }} />
           )}
           {/* Studio: realtime connection indicator */}
           <Chip
@@ -1052,9 +1052,9 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
             label={`Fase · ${isRolling ? 'Opptak' : 'Forberedelse'}`}
             size="small"
             sx={{
-              bgcolor: isRolling ? 'rgba(239,68,68,0.16)' : 'rgba(117, 107, 231,0.14)',
-              color: isRolling ? '#fca5a5' : '#c4b5fd',
-              border: isRolling ? '1px solid rgba(239,68,68,0.35)' : '1px solid rgba(117, 107, 231,0.35)',
+              bgcolor: isRolling ? 'rgba(239,68,68,0.16)' : 'rgba(136, 117, 235,0.14)',
+              color: isRolling ? '#fca5a5' : '#c6bdf4',
+              border: isRolling ? '1px solid rgba(239,68,68,0.35)' : '1px solid rgba(136, 117, 235,0.35)',
               height: is2K ? 26 : 24,
               fontSize: is2K ? '0.78rem' : '0.73rem',
             }}
@@ -1363,8 +1363,8 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
               )}
               {shootingDay?.callTime && (
                 <Chip label={shootingDay.callTime} size="small"
-                  sx={{ bgcolor: 'rgba(82, 62, 224,0.12)', color: '#9e93ed',
-                        fontSize: '0.68rem', height: 20, border: '1px solid rgba(82, 62, 224,0.2)' }} />
+                  sx={{ bgcolor: 'rgba(98, 73, 223,0.12)', color: '#9e8cf8',
+                        fontSize: '0.68rem', height: 20, border: '1px solid rgba(98, 73, 223,0.2)' }} />
               )}
               {isRolling && (
                 <Chip icon={<RecordIcon sx={{ fontSize: '12px !important' }} />}
@@ -1662,8 +1662,8 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                             )}
                             {take.status === 'print' && (
                               <Chip label="PRINT" size="small"
-                                sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#4227b033',
-                                      color: '#a193d8', '& .MuiChip-label': { px: 0.75 } }} />
+                                sx={{ height: 18, fontSize: '0.6rem', bgcolor: '#3c27a533',
+                                      color: '#8875eb', '& .MuiChip-label': { px: 0.75 } }} />
                             )}
                             {take.status === 'good' && (
                               <Chip label="GOOD" size="small"
@@ -1735,7 +1735,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
                   <React.Fragment key={note.id}>
                     <ListItem sx={{ py: 0.75, px: 1.5, alignItems: 'flex-start' }}>
                       <ListItemIcon sx={{ minWidth: 30, mt: 0.25 }}>
-                        {note.type === 'tech'       && <WarningIcon sx={{ fontSize: 15, color: '#523ee0' }} />}
+                        {note.type === 'tech'       && <WarningIcon sx={{ fontSize: 15, color: '#6249df' }} />}
                         {note.type === 'general'    && <ThumbUpIcon sx={{ fontSize: 15, color: '#4caf50' }} />}
                         {note.type === 'continuity' && <HistoryIcon sx={{ fontSize: 15, color: muted }} />}
                         {note.type === 'costume'    && <DescriptionIcon sx={{ fontSize: 15, color: muted }} />}

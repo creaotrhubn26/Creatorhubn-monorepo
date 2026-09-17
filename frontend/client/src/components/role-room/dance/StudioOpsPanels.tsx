@@ -23,7 +23,7 @@ const ClassesStatStrip: React.FC<{ classes: svc.DanceClass[]; enrollmentsCount: 
   const fillPct = totalCapacity > 0 ? Math.round((enrollmentsCount / totalCapacity) * 100) : 0;
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="classes-stat-strip">
-      <Chip size="small" label={`${classes.length} klasser`} sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
+      <Chip size="small" label={`${classes.length} klasser`} sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
       <Chip size="small" label={`${enrollmentsCount} elever`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {totalCapacity > 0 ? (
         <Chip
@@ -146,7 +146,7 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
                   height: 20, fontSize: 10, cursor: 'pointer',
                   bgcolor: e.paymentStatus === 'paid' ? 'rgba(16,185,129,0.18)' :
                     e.paymentStatus === 'invoiced' ? 'rgba(251,191,36,0.18)' :
-                    e.paymentStatus === 'comp' ? 'rgba(157, 151, 238,0.18)' : 'rgba(239,68,68,0.18)',
+                    e.paymentStatus === 'comp' ? 'rgba(158, 140, 248,0.18)' : 'rgba(239,68,68,0.18)',
                   color: e.paymentStatus === 'paid' ? danceFlowColors.successDark :
                     e.paymentStatus === 'invoiced' ? danceFlowColors.gold :
                     e.paymentStatus === 'comp' ? PURPLE_LIGHT : danceFlowColors.errorSoft,
@@ -175,7 +175,7 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
           style={{
             flex: 1, padding: '6px 8px', fontSize: 11,
             background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
-            border: '1px solid rgba(117, 107, 231,0.25)', borderRadius: 4,
+            border: '1px solid rgba(136, 117, 235,0.25)', borderRadius: 4,
           }}
         />
         <Chip
@@ -191,7 +191,7 @@ const ClassEnrollments: React.FC<{ classId: string }> = ({ classId }) => {
               await refresh();
             } finally { setAdding(false); }
           }}
-          sx={{ height: 24, fontSize: 11, cursor: 'pointer', bgcolor: 'rgba(117, 107, 231,0.18)', color: PURPLE_LIGHT, fontWeight: 700 }}
+          sx={{ height: 24, fontSize: 11, cursor: 'pointer', bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT, fontWeight: 700 }}
         />
       </Stack>
     </Box>
@@ -219,7 +219,7 @@ const InstructorsStatStrip: React.FC<{ list: svc.DanceInstructor[] }> = ({ list 
   };
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="instructors-stat-strip">
-      <Chip size="small" label={`${list.length} instruktører`} sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
+      <Chip size="small" label={`${list.length} instruktører`} sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
       <Chip size="small" label={`${totalThisMonth}t denne måneden`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {Object.entries(byContract).map(([k, n]) => (
         <Chip
@@ -315,7 +315,7 @@ const RoomsStatStrip: React.FC<{ rooms: svc.DanceRoom[]; bookingsByRoom: Map<str
   };
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="rooms-stat-strip">
-      <Chip size="small" label={`${rooms.length} saler · ${totalCapacity} plasser`} sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
+      <Chip size="small" label={`${rooms.length} saler · ${totalCapacity} plasser`} sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
       <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
       {mostUsed && mostUsed.count > 0 ? (
         <Chip size="small" label={`Mest brukt: ${mostUsed.name} (${mostUsed.count})`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
@@ -457,7 +457,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
           style={{
             flex: 2, padding: '6px 8px', fontSize: 11,
             background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
-            border: '1px solid rgba(117, 107, 231,0.25)', borderRadius: 4,
+            border: '1px solid rgba(136, 117, 235,0.25)', borderRadius: 4,
           }}
         />
         <input
@@ -467,7 +467,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
           style={{
             flex: 1, padding: '6px 8px', fontSize: 11,
             background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
-            border: '1px solid rgba(117, 107, 231,0.25)', borderRadius: 4,
+            border: '1px solid rgba(136, 117, 235,0.25)', borderRadius: 4,
           }}
         />
         <input
@@ -477,7 +477,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
           style={{
             flex: 1, padding: '6px 8px', fontSize: 11,
             background: danceFlowColors.bgBase, color: danceFlowColors.textSecondary,
-            border: '1px solid rgba(117, 107, 231,0.25)', borderRadius: 4,
+            border: '1px solid rgba(136, 117, 235,0.25)', borderRadius: 4,
           }}
         />
         <Chip
@@ -494,7 +494,7 @@ const RoomBookings: React.FC<{ roomId: string }> = ({ roomId }) => {
             setPurpose(''); setStartsAt(''); setEndsAt('');
             await refresh();
           }}
-          sx={{ height: 24, fontSize: 11, cursor: 'pointer', bgcolor: 'rgba(117, 107, 231,0.18)', color: PURPLE_LIGHT, fontWeight: 700 }}
+          sx={{ height: 24, fontSize: 11, cursor: 'pointer', bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT, fontWeight: 700 }}
         />
       </Stack>
     </Box>
@@ -535,7 +535,7 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
         <Chip
           size="small"
           label={`${terms.length} termer`}
-          sx={{ bgcolor: 'rgba(157, 151, 238,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
         />
         {Object.entries(byDifficulty).map(([k, n]) => (
           <Chip

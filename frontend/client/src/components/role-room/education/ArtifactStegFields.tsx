@@ -56,7 +56,7 @@ export function ArtifactStegFields({
   const showSteg = artifactKind === 'story-arc';
   const reduceMotion = useMemo(prefersReducedMotion, []);
 
-  const ringSx = { '& .MuiOutlinedInput-notchedOutline': { transition: 'border-color 160ms ease-out', borderColor: showSteg ? 'rgba(117, 107, 231,0.35)' : undefined } };
+  const ringSx = { '& .MuiOutlinedInput-notchedOutline': { transition: 'border-color 160ms ease-out', borderColor: showSteg ? 'rgba(136, 117, 235,0.35)' : undefined } };
 
   return (
     <Box
@@ -66,7 +66,7 @@ export function ArtifactStegFields({
         gap: 1.5,
         borderRadius: 2,
         p: showSteg ? 0.5 : 0,
-        bgcolor: showSteg ? 'rgba(117, 107, 231,0.05)' : 'transparent',
+        bgcolor: showSteg ? 'rgba(136, 117, 235,0.05)' : 'transparent',
         transition: 'background-color 160ms ease-out',
       }}
     >

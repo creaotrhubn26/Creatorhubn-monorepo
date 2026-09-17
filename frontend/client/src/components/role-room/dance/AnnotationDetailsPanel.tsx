@@ -63,7 +63,7 @@ export function AnnotationDetailsPanel({
   return (
     <Box
       data-testid="annotation-details-panel"
-      sx={{ p: 1.5, borderTop: '1px solid rgba(117, 107, 231,0.18)', bgcolor: '#0d0f14' }}
+      sx={{ p: 1.5, borderTop: '1px solid rgba(136, 117, 235,0.18)', bgcolor: '#0d0f14' }}
     >
       <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
         <Typography sx={{ fontSize: 10, letterSpacing: 1.8, color: PURPLE_LIGHT, fontWeight: 700, flex: 1 }}>

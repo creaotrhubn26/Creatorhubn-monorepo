@@ -304,7 +304,7 @@ type BoardPolishPersistedState = StoryboardDocumentBoardPolishState;
 // =============================================================================
 
 const EditorContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: '#1a1a2e',
+  backgroundColor: '#18122b',
   borderRadius: theme.spacing(2),
   overflow: 'hidden',
   display: 'flex',
@@ -320,7 +320,7 @@ const ToolbarContainer = styled(Box)(({ theme }) => ({
   flexWrap: 'wrap',
   gap: theme.spacing(1),
   padding: theme.spacing(1, 2),
-  backgroundColor: 'rgba(8, 11, 24, 0.96)',
+  backgroundColor: 'rgba(10, 5, 21, 0.96)',
   borderBottom: '1px solid rgba(255,255,255,0.1)',
   position: 'relative',
   zIndex: 5,
@@ -336,7 +336,7 @@ const CanvasWrapper = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: '#0f0f1a',
+  backgroundColor: '#100b1e',
   position: 'relative',
   padding: theme.spacing(0.5),
   overflow: 'hidden',
@@ -9364,7 +9364,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Brush sx={{ color: 'var(--role-violet, #756be7)' }} />
+                <Brush sx={{ color: 'var(--role-violet, #8875eb)' }} />
                 <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                   {editorTitle}
                 </Typography>
@@ -9380,7 +9380,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 <Chip
                   label={`Frame: ${frameId.slice(-6)}`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(117, 107, 231,0.2)', color: 'var(--role-violet, #756be7)' }}
+                  sx={{ bgcolor: 'rgba(136, 117, 235,0.2)', color: 'var(--role-violet, #8875eb)' }}
                 />
               )}
 
@@ -9599,7 +9599,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 gridArea: 'rail',
                 p: 0.75,
                 borderRadius: 3,
-                background: 'linear-gradient(180deg, rgba(12,14,22,0.98), rgba(5,7,12,0.98))',
+                background: 'linear-gradient(180deg, rgba(16, 11, 30,0.98), rgba(5,7,12,0.98))',
                 border: '1px solid rgba(255,255,255,0.06)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -10278,7 +10278,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               position: 'relative',
                               height: 40,
                               borderRadius: 1.2,
-                              bgcolor: 'rgba(2,6,23,0.66)',
+                              bgcolor: 'rgba(10, 5, 21,0.66)',
                               border: '1px solid rgba(255,255,255,0.05)',
                               overflow: 'hidden',
                             }}
@@ -10441,7 +10441,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           position: 'relative',
                           height: 56,
                           borderRadius: 1.5,
-                          bgcolor: 'rgba(2,6,23,0.68)',
+                          bgcolor: 'rgba(10, 5, 21,0.68)',
                           border: '1px solid rgba(255,255,255,0.05)',
                           overflow: 'hidden',
                         }}
@@ -10682,8 +10682,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           sx={{
                             height: 24,
                             borderRadius: 999,
-                            bgcolor: 'rgba(118, 102, 230,0.14)',
-                            color: '#dedbf9',
+                            bgcolor: 'rgba(136, 117, 235,0.14)',
+                            color: '#e0dbfa',
                             '& .MuiChip-label': { px: 0.85, fontSize: '0.6rem', fontWeight: 700, letterSpacing: 0.3 },
                           }}
                         />
@@ -10701,7 +10701,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       >
                         {[
                           { label: 'Drawing Assist', value: autoEnhance ? 82 : 46, accent: '#86efac' },
-                          { label: 'StreamLine', value: stabilizeValue, accent: '#c4b5fd' },
+                          { label: 'StreamLine', value: stabilizeValue, accent: '#c6bdf4' },
                         ].map((meter) => (
                           <Stack key={meter.label} spacing={0.2}>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
@@ -10745,7 +10745,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 gridArea: 'stage',
                 p: 1.05,
                 borderRadius: 3,
-                background: 'linear-gradient(180deg, rgba(12,14,22,0.98), rgba(4,6,12,0.98))',
+                background: 'linear-gradient(180deg, rgba(16, 11, 30,0.98), rgba(4,6,12,0.98))',
                 border: '1px solid rgba(255,255,255,0.06)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -11259,7 +11259,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                             borderRadius: `${Math.max(10, selectedBoardPolishEffectRegion.feather * 56)}px`,
                             border: '1.5px solid rgba(125,211,252,0.9)',
                             background: 'linear-gradient(180deg, rgba(125,211,252,0.08), rgba(15,23,42,0.02))',
-                            boxShadow: '0 0 0 1px rgba(125,211,252,0.18) inset, 0 18px 30px rgba(2,6,23,0.28)',
+                            boxShadow: '0 0 0 1px rgba(125,211,252,0.18) inset, 0 18px 30px rgba(10, 5, 21,0.28)',
                             outline: boardPolishEffectInteractionState ? '2px solid rgba(125,211,252,0.28)' : 'none',
                             outlineOffset: 2,
                           }}
@@ -11278,7 +11278,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               cursor: 'grab',
                               borderTopLeftRadius: 'inherit',
                               borderTopRightRadius: 'inherit',
-                              background: 'linear-gradient(180deg, rgba(14,165,233,0.22), rgba(2,6,23,0.04))',
+                              background: 'linear-gradient(180deg, rgba(14,165,233,0.22), rgba(10, 5, 21,0.04))',
                               borderBottom: '1px solid rgba(125,211,252,0.18)',
                               display: 'flex',
                               alignItems: 'center',
@@ -11351,7 +11351,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               ? `linear-gradient(180deg, ${alpha(selectedShapeScaffoldSuggestion?.accentColor || '#34d399', 0.1)}, rgba(15,23,42,0.02))`
                               : 'rgba(15,23,42,0.08)',
                             boxShadow: selectedShapeScaffold.visible
-                              ? `0 0 0 1px ${alpha(selectedShapeScaffoldSuggestion?.accentColor || '#34d399', 0.18)} inset, 0 14px 28px rgba(2,6,23,0.24)`
+                              ? `0 0 0 1px ${alpha(selectedShapeScaffoldSuggestion?.accentColor || '#34d399', 0.18)} inset, 0 14px 28px rgba(10, 5, 21,0.24)`
                               : '0 0 0 1px rgba(255,255,255,0.06) inset',
                             outline: shapeScaffoldInteractionState ? `2px solid ${alpha(selectedShapeScaffoldSuggestion?.accentColor || '#34d399', 0.32)}` : 'none',
                             outlineOffset: 2,
@@ -11386,7 +11386,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               px: 0.75,
                               py: 0.5,
                               borderRadius: '10px 10px 0 0',
-                              bgcolor: 'rgba(2,6,23,0.68)',
+                              bgcolor: 'rgba(10, 5, 21,0.68)',
                               borderBottom: '1px solid rgba(255,255,255,0.06)',
                               pointerEvents: 'auto',
                               cursor: shapeScaffoldInteractionState ? 'grabbing' : 'grab',
@@ -11442,7 +11442,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                 minWidth: 24,
                                 px: 0.85,
                                 borderRadius: 999,
-                                bgcolor: 'rgba(2,6,23,0.74)',
+                                bgcolor: 'rgba(10, 5, 21,0.74)',
                                 color: '#f8fafc',
                                 border: '1px solid rgba(255,255,255,0.08)',
                               }}
@@ -11461,7 +11461,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                 minWidth: 24,
                                 px: 0.85,
                                 borderRadius: 999,
-                                bgcolor: 'rgba(2,6,23,0.74)',
+                                bgcolor: 'rgba(10, 5, 21,0.74)',
                                 color: '#f8fafc',
                                 border: '1px solid rgba(255,255,255,0.08)',
                               }}
@@ -11510,7 +11510,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               px: 0.6,
                               py: 0.28,
                               borderRadius: 999,
-                              bgcolor: 'rgba(2,6,23,0.7)',
+                              bgcolor: 'rgba(10, 5, 21,0.7)',
                               color: 'rgba(226,232,240,0.82)',
                               fontWeight: 700,
                               letterSpacing: 0.32,
@@ -11535,8 +11535,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                 height: 14,
                                 borderRadius: '50%',
                                 bgcolor: selectedShapeScaffoldSuggestion?.accentColor || '#34d399',
-                                border: '2px solid rgba(2,6,23,0.9)',
-                                boxShadow: `0 0 0 1px ${alpha(selectedShapeScaffoldSuggestion?.accentColor || '#34d399', 0.3)}, 0 6px 14px rgba(2,6,23,0.34)`,
+                                border: '2px solid rgba(10, 5, 21,0.9)',
+                                boxShadow: `0 0 0 1px ${alpha(selectedShapeScaffoldSuggestion?.accentColor || '#34d399', 0.3)}, 0 6px 14px rgba(10, 5, 21,0.34)`,
                                 cursor: handle.cursor,
                                 pointerEvents: 'auto',
                                 ...handle,
@@ -11600,7 +11600,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       label={timecode}
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(2,6,23,0.94)',
+                        bgcolor: 'rgba(10, 5, 21,0.94)',
                         color: '#f8fafc',
                         borderRadius: 1.25,
                         border: '1px solid rgba(255,255,255,0.08)',
@@ -12021,8 +12021,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         sx={{
                           height: 22,
                           borderRadius: 999,
-                          bgcolor: 'rgba(118, 102, 230,0.14)',
-                          color: '#dedbf9',
+                          bgcolor: 'rgba(136, 117, 235,0.14)',
+                          color: '#e0dbfa',
                           '& .MuiChip-label': { px: 0.85, fontSize: '0.62rem', fontWeight: 700, letterSpacing: 0.35 },
                         }}
                       />
@@ -12144,8 +12144,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               sx={{
                                 height: 18,
                                 borderRadius: 999,
-                                bgcolor: 'rgba(118, 102, 230,0.14)',
-                                color: '#dedbf9',
+                                bgcolor: 'rgba(136, 117, 235,0.14)',
+                                color: '#e0dbfa',
                                 '& .MuiChip-label': { px: 0.68, fontSize: '0.54rem', fontWeight: 700, letterSpacing: 0.28 },
                               }}
                             />
@@ -12335,11 +12335,11 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                             handleOnionSkinFramesChange(value);
                           }}
                           sx={{
-                            color: '#7666e6',
+                            color: '#8875eb',
                             '& .MuiSlider-thumb': {
                               width: 12,
                               height: 12,
-                              boxShadow: '0 0 0 4px rgba(118, 102, 230,0.18)',
+                              boxShadow: '0 0 0 4px rgba(136, 117, 235,0.18)',
                             },
                           }}
                         />
@@ -12472,7 +12472,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       <Chip
                         label="Linked"
                         size="small"
-                        sx={{ height: 26, borderRadius: 999, bgcolor: 'rgba(118, 102, 230,0.14)', color: '#dedbf9' }}
+                        sx={{ height: 26, borderRadius: 999, bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }}
                       />
                     )}
                   </Stack>
@@ -12609,7 +12609,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 gridArea: 'inspector',
                 p: 1.1,
                 borderRadius: 3,
-                background: 'linear-gradient(180deg, rgba(15,12,8,0.98), rgba(8,8,12,0.98))',
+                background: 'linear-gradient(180deg, rgba(15,12,8,0.98), rgba(10, 5, 21,0.98))',
                 border: '1px solid rgba(255,255,255,0.06)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -15083,7 +15083,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                   data-testid="frame-editor-shape-intent-variant-pack"
                                   onClick={handleApplyShapeIntentVariantPack}
                                   startIcon={<ContentCopy fontSize="small" />}
-                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.05)', color: '#c4b5fd' }}
+                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.05)', color: '#c6bdf4' }}
                                 >
                                   Add 3 Variants
                                 </Button>
@@ -15092,7 +15092,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                   data-testid="frame-editor-shape-intent-study-pack"
                                   onClick={handleStartShapeIntentVariantStudy}
                                   startIcon={<Shuffle fontSize="small" />}
-                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(157, 151, 238,0.14)', color: '#ddd6fe' }}
+                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
                                 >
                                   Study 3 Variants
                                 </Button>
@@ -16552,8 +16552,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                         sx={{
                                           height: 20,
                                           borderRadius: 999,
-                                          bgcolor: 'rgba(157, 151, 238,0.14)',
-                                          color: '#ddd6fe',
+                                          bgcolor: 'rgba(158, 140, 248,0.14)',
+                                          color: '#e0dbfa',
                                           '& .MuiChip-label': { px: 0.75, fontSize: '0.56rem', fontWeight: 700, letterSpacing: 0.25 },
                                         }}
                                       />
@@ -16603,9 +16603,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                         minHeight: tabletTouchSecondaryButtonHeight,
                                         borderRadius: 999,
                                         px: 1,
-                                        color: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#111827' : '#ddd6fe',
-                                        bgcolor: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#ddd6fe' : 'rgba(157, 151, 238,0.12)',
-                                        border: `1px solid ${selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? 'rgba(221,214,254,0.45)' : 'rgba(157, 151, 238,0.18)'}`,
+                                        color: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#111827' : '#e0dbfa',
+                                        bgcolor: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#e0dbfa' : 'rgba(158, 140, 248,0.12)',
+                                        border: `1px solid ${selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? 'rgba(224, 219, 250,0.45)' : 'rgba(158, 140, 248,0.18)'}`,
                                       }}
                                     >
                                       {selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? 'Lead Active' : 'Use Session Lead'}
@@ -16915,8 +16915,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                                 sx={{
                                                   height: 18,
                                                   borderRadius: 999,
-                                                  bgcolor: 'rgba(157, 151, 238,0.12)',
-                                                  color: '#ddd6fe',
+                                                  bgcolor: 'rgba(158, 140, 248,0.12)',
+                                                  color: '#e0dbfa',
                                                   '& .MuiChip-label': { px: 0.7, fontSize: '0.54rem', fontWeight: 700, letterSpacing: 0.25 },
                                                 }}
                                               />
@@ -18297,7 +18297,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         open={Boolean(shapeScaffoldLibraryRenameEntryId)}
         onClose={handleCloseShapeScaffoldLibraryRename}
         PaperProps={{
-          sx: { bgcolor: '#1a1a2e', backgroundImage: 'none', minWidth: 360 },
+          sx: { bgcolor: '#18122b', backgroundImage: 'none', minWidth: 360 },
         }}
       >
         <DialogTitle sx={{ color: '#fff' }}>Rename Preset</DialogTitle>
@@ -18331,7 +18331,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         open={showDiscardDialog}
         onClose={() => setShowDiscardDialog(false)}
         PaperProps={{
-          sx: { bgcolor: '#1a1a2e', backgroundImage: 'none' },
+          sx: { bgcolor: '#18122b', backgroundImage: 'none' },
         }}
       >
         <DialogTitle sx={{ color: '#fff' }}>Discard Changes?</DialogTitle>
@@ -18409,11 +18409,11 @@ export const QuickDrawButton: FC<QuickDrawButtonProps> = ({
         <IconButton
           onClick={() => setIsOpen(true)}
           sx={{
-            bgcolor: 'rgba(117, 107, 231,0.1)',
-            '&:hover': { bgcolor: 'rgba(117, 107, 231,0.2)' },
+            bgcolor: 'rgba(136, 117, 235,0.1)',
+            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.2)' },
           }}
         >
-          <Brush sx={{ color: 'var(--role-violet, #756be7)' }} />
+          <Brush sx={{ color: 'var(--role-violet, #8875eb)' }} />
         </IconButton>
       </Tooltip>
 

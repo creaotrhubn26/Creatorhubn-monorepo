@@ -66,7 +66,7 @@ export default function RoleRoomEducationPartnershipPage(
 
   if (cmsBlocks) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0' }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0515', color: '#e2e8f0' }}>
         <BlockRenderer blocks={cmsBlocks} locale={locale} />
       </Box>
     );
@@ -78,7 +78,7 @@ export default function RoleRoomEducationPartnershipPage(
         position: 'relative',
         minHeight: '100vh',
         overflowX: 'hidden',
-        bgcolor: '#06070d',
+        bgcolor: '#0a0515',
         color: '#f8f5ef',
       }}
     >
@@ -106,7 +106,7 @@ export default function RoleRoomEducationPartnershipPage(
         sx={{
           position: 'fixed',
           inset: 0,
-          background: 'linear-gradient(180deg, rgba(7,8,14,0.76) 0%, rgba(7,8,14,0.4) 34%, rgba(7,8,14,0.92) 100%)',
+          background: 'linear-gradient(180deg, rgba(10, 5, 21,0.76) 0%, rgba(10, 5, 21,0.4) 34%, rgba(10, 5, 21,0.92) 100%)',
           pointerEvents: 'none',
         }}
       />
@@ -200,7 +200,7 @@ export default function RoleRoomEducationPartnershipPage(
                 width: { xs: '100%', lg: 360 },
                 p: { xs: 2.25, md: 2.5 },
                 borderRadius: '28px',
-                bgcolor: 'rgba(11,13,21,0.8)',
+                bgcolor: 'rgba(10, 5, 21,0.8)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 backdropFilter: 'blur(18px)',
                 boxShadow: '0 24px 80px rgba(0,0,0,0.24)',
@@ -411,7 +411,7 @@ export default function RoleRoomEducationPartnershipPage(
               sx={{
                 p: { xs: 2.2, md: 3 },
                 borderRadius: '28px',
-                bgcolor: 'rgba(13, 12, 26,0.82)',
+                bgcolor: 'rgba(16, 11, 30,0.82)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 flexDirection: 'column',

@@ -49,11 +49,11 @@ function LandingCTAImpl({ onStartClick, onGuestEnter }: LandingCTAProps) {
             fontWeight: 600,
             borderRadius: 3,
             minHeight: 56,
-            background: 'linear-gradient(135deg, #756be7 0%, #6366f1 100%)',
-            boxShadow: '0 8px 32px rgba(117, 107, 231,0.4)',
+            background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+            boxShadow: '0 8px 32px rgba(136, 117, 235,0.4)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #8379e9 0%, #7376f1 100%)',
-              boxShadow: '0 12px 40px rgba(117, 107, 231,0.55)',
+              background: 'linear-gradient(135deg, #8875eb 0%, #8875eb 100%)',
+              boxShadow: '0 12px 40px rgba(136, 117, 235,0.55)',
               transform: 'translateY(-2px)',
             },
             '&:focus-visible': {
@@ -78,19 +78,19 @@ function LandingCTAImpl({ onStartClick, onGuestEnter }: LandingCTAProps) {
             aria-label="Gå inn uten innlogging — utforsk demoen som gjest"
             data-testid="role-room-landing-cta-guest"
             sx={{
-              color: 'rgba(200,185,255,0.5)',
+              color: 'rgba(198, 189, 244,0.5)',
               fontSize: '0.78rem',
               fontWeight: 400,
               textTransform: 'none',
               letterSpacing: '0.02em',
               minHeight: 36,
               '&:hover': {
-                color: 'rgba(200,185,255,0.85)',
+                color: 'rgba(198, 189, 244,0.85)',
                 bgcolor: 'transparent',
                 textDecoration: 'underline',
               },
               '&:focus-visible': {
-                outline: '2px solid rgba(200,185,255,0.7)',
+                outline: '2px solid rgba(198, 189, 244,0.7)',
                 outlineOffset: 2,
               },
             }}

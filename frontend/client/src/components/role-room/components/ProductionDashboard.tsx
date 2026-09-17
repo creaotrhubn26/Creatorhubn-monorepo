@@ -173,10 +173,10 @@ export function ProductionDashboard({
           </Card>
         </Box>
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 120 }}>
-          <Card sx={{ bgcolor: 'rgba(117, 107, 231, 0.1)', border: '1px solid rgba(117, 107, 231, 0.3)' }}>
+          <Card sx={{ bgcolor: 'rgba(136, 117, 235, 0.1)', border: '1px solid rgba(136, 117, 235, 0.3)' }}>
             <CardContent sx={{ textAlign: 'center', py: 2 }}>
-              <ViewInArIcon sx={{ fontSize: 32, color: 'var(--role-violet, #756be7)', mb: 1 }} />
-              <Typography variant="h4" sx={{ color: 'var(--role-violet, #756be7)', fontWeight: 700 }}>
+              <ViewInArIcon sx={{ fontSize: 32, color: 'var(--role-violet, #8875eb)', mb: 1 }} />
+              <Typography variant="h4" sx={{ color: 'var(--role-violet, #8875eb)', fontWeight: 700 }}>
                 {readyForScene}
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -228,7 +228,7 @@ export function ProductionDashboard({
                   borderRadius: 5,
                   bgcolor: 'rgba(255,255,255,0.1)',
                   '& .MuiLinearProgress-bar': {
-                    bgcolor: progress >= 100 ? '#10b981' : '#756be7',
+                    bgcolor: progress >= 100 ? '#10b981' : '#8875eb',
                     borderRadius: 5,
                   },
                 }}
@@ -247,7 +247,7 @@ export function ProductionDashboard({
             <Chip
               label={`${selectedCandidates} valgt`}
               size="small"
-              sx={{ bgcolor: 'rgba(117, 107, 231, 0.2)', color: 'var(--role-violet, #756be7)' }}
+              sx={{ bgcolor: 'rgba(136, 117, 235, 0.2)', color: 'var(--role-violet, #8875eb)' }}
             />
             <Chip
               label={`${roleList.length} roller`}
@@ -273,10 +273,10 @@ export function ProductionDashboard({
             onClick={handleTransferToScene}
             disabled={transferring || readyForScene === 0}
             sx={{
-              bgcolor: 'var(--role-violet, #756be7)',
+              bgcolor: 'var(--role-violet, #8875eb)',
               py: 1.5,
-              '&:hover': { bgcolor: '#5446e1' },
-              '&:disabled': { bgcolor: 'rgba(117, 107, 231, 0.3)' },
+              '&:hover': { bgcolor: '#6249df' },
+              '&:disabled': { bgcolor: 'rgba(136, 117, 235, 0.3)' },
             }}
           >
             {transferring ? 'Overfører...' : `Overfør til 3D-scene (${readyForScene})`}
@@ -371,7 +371,7 @@ export function ProductionDashboard({
                       width: 36,
                       height: 36,
                       borderRadius: '50%',
-                      bgcolor: candidate.photos[0] ? 'transparent' : 'rgba(117, 107, 231, 0.2)',
+                      bgcolor: candidate.photos[0] ? 'transparent' : 'rgba(136, 117, 235, 0.2)',
                       backgroundImage: candidate.photos[0] ? `url(${candidate.photos[0]})` : 'none',
                       backgroundSize: 'cover',
                       backgroundPosition: getCandidatePhotoObjectPosition(candidate, 0),
@@ -381,7 +381,7 @@ export function ProductionDashboard({
                     }}
                   >
                     {!candidate.photos[0] && (
-                      <PeopleIcon sx={{ fontSize: 20, color: 'var(--role-violet, #756be7)' }} />
+                      <PeopleIcon sx={{ fontSize: 20, color: 'var(--role-violet, #8875eb)' }} />
                     )}
                   </Box>
                   <Box>
@@ -403,11 +403,11 @@ export function ProductionDashboard({
                   size="small"
                   sx={{
                     bgcolor: candidate.status === 'confirmed' ? 'rgba(16, 185, 129, 0.2)' :
-                             candidate.status === 'selected' ? 'rgba(117, 107, 231, 0.2)' :
+                             candidate.status === 'selected' ? 'rgba(136, 117, 235, 0.2)' :
                              candidate.status === 'shortlist' ? 'rgba(255, 184, 0, 0.2)' :
                              'rgba(107, 114, 128, 0.2)',
                     color: candidate.status === 'confirmed' ? '#10b981' :
-                           candidate.status === 'selected' ? '#756be7' :
+                           candidate.status === 'selected' ? '#8875eb' :
                            candidate.status === 'shortlist' ? '#ffb800' : '#6b7280',
                   }}
                 />

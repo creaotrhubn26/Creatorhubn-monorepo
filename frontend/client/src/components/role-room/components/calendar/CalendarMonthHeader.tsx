@@ -97,7 +97,7 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
             fontWeight: 600,
             textTransform: 'none',
             px: 2,
-            '&:hover': { bgcolor: 'rgba(117, 107, 231,0.08)' },
+            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)' },
           }}
         >
           {monthLabel}
@@ -109,9 +109,9 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
           PaperProps={{
             sx: {
               maxHeight: 360,
-              bgcolor: '#1a1a2e',
+              bgcolor: '#18122b',
               color: '#fff',
-              border: '1px solid rgba(117, 107, 231,0.3)',
+              border: '1px solid rgba(136, 117, 235,0.3)',
             },
           }}
         >
@@ -129,8 +129,8 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
                 }}
                 sx={{
                   fontSize: '0.85rem',
-                  '&.Mui-selected': { bgcolor: 'rgba(117, 107, 231,0.18)' },
-                  '&:hover': { bgcolor: 'rgba(117, 107, 231,0.1)' },
+                  '&.Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.18)' },
+                  '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)' },
                 }}
               >
                 {opt.label}
@@ -160,10 +160,10 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
               py: 0.5,
               gap: 0.5,
               '&.Mui-selected': {
-                bgcolor: 'rgba(117, 107, 231,0.22)',
-                color: '#c4b5fd',
-                borderColor: 'rgba(117, 107, 231,0.5)',
-                '&:hover': { bgcolor: 'rgba(117, 107, 231,0.3)' },
+                bgcolor: 'rgba(136, 117, 235,0.22)',
+                color: '#c6bdf4',
+                borderColor: 'rgba(136, 117, 235,0.5)',
+                '&:hover': { bgcolor: 'rgba(136, 117, 235,0.3)' },
               },
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
             },
@@ -190,7 +190,7 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
             size="small"
             onClick={() => onMonthChange(shiftMonth(monthDate, -1))}
             aria-label="Forrige måned"
-            sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#c4b5fd' } }}
+            sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#c6bdf4' } }}
           >
             <ChevronLeftIcon />
           </IconButton>
@@ -204,7 +204,7 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
               fontSize: '0.78rem',
               fontWeight: 600,
               minWidth: 56,
-              '&:hover': { bgcolor: 'rgba(117, 107, 231,0.1)', color: '#c4b5fd' },
+              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)', color: '#c6bdf4' },
             }}
           >
             <Typography component="span" sx={{ fontSize: 'inherit', fontWeight: 'inherit' }}>
@@ -215,7 +215,7 @@ export const CalendarMonthHeader: React.FC<CalendarMonthHeaderProps> = ({
             size="small"
             onClick={() => onMonthChange(shiftMonth(monthDate, 1))}
             aria-label="Neste måned"
-            sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#c4b5fd' } }}
+            sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#c6bdf4' } }}
           >
             <ChevronRightIcon />
           </IconButton>

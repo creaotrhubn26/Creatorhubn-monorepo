@@ -12,7 +12,7 @@ const defaultConfigs: ProfessionConfig[] = [
   { id: 'photographer', name: 'Fotograf', icon: 'camera', color: '#4CAF50', categories: ['Portrett', 'Landskap', 'Studio'] },
   { id: 'filmmaker', name: 'Filmskaper', icon: 'video', color: '#2196F3', categories: ['Dokumentar', 'Kortfilm', 'Musikkvideo'] },
   { id: 'lighting', name: 'Lystekniker', icon: 'light', color: '#FFC107', categories: ['Studio', 'Event', 'Film'] },
-  { id: 'director', name: 'Regissør', icon: 'director', color: '#4227b0', categories: ['Film', 'Teater', 'TV'] },
+  { id: 'director', name: 'Regissør', icon: 'director', color: '#3c27a5', categories: ['Film', 'Teater', 'TV'] },
   { id: 'editor', name: 'Klipper', icon: 'edit', color: '#FF5722', categories: ['Video', 'Lyd', 'Farge'] },
 ];
 

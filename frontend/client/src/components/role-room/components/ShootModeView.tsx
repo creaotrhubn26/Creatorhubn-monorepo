@@ -21,7 +21,7 @@ interface ShootModeViewProps {
 
 const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: string }> = {
   not_started: { label: 'Ikke startet', color: '#9e9e9e', bgColor: 'rgba(158,158,158,0.15)' },
-  in_progress: { label: 'Pagar', color: '#523ee0', bgColor: 'rgba(82, 62, 224,0.15)' },
+  in_progress: { label: 'Pagar', color: '#6249df', bgColor: 'rgba(98, 73, 223,0.15)' },
   completed: { label: 'Fullfort', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
 };
 
@@ -358,7 +358,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        bgcolor: '#0a0a0f',
+        bgcolor: '#0a0515',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'column',
@@ -396,18 +396,18 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: 1,
-              bgcolor: isTimerRunning ? 'rgba(82, 62, 224,0.2)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${isTimerRunning ? '#523ee0' : 'rgba(255,255,255,0.1)'}`,
+              bgcolor: isTimerRunning ? 'rgba(98, 73, 223,0.2)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${isTimerRunning ? '#6249df' : 'rgba(255,255,255,0.1)'}`,
               borderRadius: 2,
               px: 2,
               py: 1,
             }}
           >
-            <Timer sx={{ color: isTimerRunning ? '#523ee0' : '#fff' }} />
+            <Timer sx={{ color: isTimerRunning ? '#6249df' : '#fff' }} />
             <Typography
               variant="h5"
               sx={{
-                color: isTimerRunning ? '#523ee0' : '#fff',
+                color: isTimerRunning ? '#6249df' : '#fff',
                 fontFamily: 'monospace',
                 fontWeight: 600,
                 minWidth: 80,
@@ -419,8 +419,8 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               onClick={() => setIsTimerRunning(!isTimerRunning)}
               aria-label={isTimerRunning ? 'Pause tidtaker' : 'Start tidtaker'}
               sx={{
-                color: isTimerRunning ? '#523ee0' : '#4caf50',
-                bgcolor: isTimerRunning ? 'rgba(82, 62, 224,0.1)' : 'rgba(76,175,80,0.1)',
+                color: isTimerRunning ? '#6249df' : '#4caf50',
+                bgcolor: isTimerRunning ? 'rgba(98, 73, 223,0.1)' : 'rgba(76,175,80,0.1)',
               }}
             >
               {isTimerRunning ? <Pause /> : <PlayArrow />}
@@ -438,7 +438,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               </Typography>
             </Box>
             <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ color: '#523ee0', fontWeight: 700 }}>
+              <Typography variant="h4" sx={{ color: '#6249df', fontWeight: 700 }}>
                 {stats.inProgress}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -536,7 +536,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               {stats.completed} av {stats.total} shots fullfort
             </Typography>
-            <Typography variant="caption" sx={{ color: '#523ee0' }}>
+            <Typography variant="caption" sx={{ color: '#6249df' }}>
               Ca. {stats.remainingMinutes} min gjenstaar
             </Typography>
           </Box>
@@ -719,8 +719,8 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                 <Chip size="small" label={currentShot.shotType} sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff' }} />
-                <Chip size="small" label={currentShot.cameraAngle} sx={{ bgcolor: 'rgba(82, 62, 224,0.15)', color: '#523ee0' }} />
-                <Chip size="small" label={currentShot.cameraMovement} sx={{ bgcolor: 'rgba(66, 39, 176,0.15)', color: '#4227b0' }} />
+                <Chip size="small" label={currentShot.cameraAngle} sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#6249df' }} />
+                <Chip size="small" label={currentShot.cameraMovement} sx={{ bgcolor: 'rgba(60, 39, 165,0.15)', color: '#3c27a5' }} />
               </Box>
             </Box>
 
@@ -851,7 +851,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Notes sx={{ color: '#523ee0' }} />
+            <Notes sx={{ color: '#6249df' }} />
             Feltnotater - {selectedShotForNotes?.description || `Shot ${shots.findIndex(s => s.id === selectedShotForNotes?.id) + 1}`}
           </Box>
         </DialogTitle>
@@ -891,7 +891,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             variant="contained"
             onClick={handleSaveNotes}
             startIcon={<Save />}
-            sx={{ bgcolor: '#523ee0', color: '#000' }}
+            sx={{ bgcolor: '#6249df', color: '#000' }}
           >
             Lagre notater
           </Button>
@@ -1045,12 +1045,12 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
           <Chip
             size="small"
             label={shot.cameraAngle}
-            sx={{ bgcolor: 'rgba(82, 62, 224,0.15)', color: '#523ee0', fontSize: '0.7rem' }}
+            sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#6249df', fontSize: '0.7rem' }}
           />
           <Chip
             size="small"
             label={shot.cameraMovement}
-            sx={{ bgcolor: 'rgba(66, 39, 176,0.15)', color: '#4227b0', fontSize: '0.7rem' }}
+            sx={{ bgcolor: 'rgba(60, 39, 165,0.15)', color: '#3c27a5', fontSize: '0.7rem' }}
           />
         </Box>
 
@@ -1090,9 +1090,9 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
               onOpenNotes();
             }}
             sx={{
-              color: shot.notes ? '#523ee0' : 'rgba(255,255,255,0.5)',
+              color: shot.notes ? '#6249df' : 'rgba(255,255,255,0.5)',
               fontSize: '0.75rem',
-              '&:hover': { bgcolor: 'rgba(82, 62, 224,0.1)' },
+              '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' },
             }}
           >
             {shot.notes ? 'Se notater' : 'Legg til notat'}
@@ -1102,8 +1102,8 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
               size="small"
               label="Har notater"
               sx={{
-                bgcolor: 'rgba(82, 62, 224,0.15)',
-                color: '#523ee0',
+                bgcolor: 'rgba(98, 73, 223,0.15)',
+                color: '#6249df',
                 fontSize: '0.65rem',
                 height: 20,
               }}
@@ -1182,7 +1182,7 @@ const TimelineShotRow: React.FC<TimelineShotRowProps> = ({
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
           <Chip size="small" label={shot.shotType} sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff', fontSize: '0.65rem', height: 20 }} />
-          <Chip size="small" label={shot.cameraMovement} sx={{ bgcolor: 'rgba(66, 39, 176,0.15)', color: '#4227b0', fontSize: '0.65rem', height: 20 }} />
+          <Chip size="small" label={shot.cameraMovement} sx={{ bgcolor: 'rgba(60, 39, 165,0.15)', color: '#3c27a5', fontSize: '0.65rem', height: 20 }} />
         </Box>
       </Box>
 

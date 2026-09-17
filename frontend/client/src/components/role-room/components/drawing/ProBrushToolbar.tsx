@@ -45,8 +45,8 @@ const BrushButton = styled(Box, {
   borderRadius: 12,
   cursor: 'pointer',
   transition: 'all 0.2s',
-  backgroundColor: isSelected ? 'rgba(117, 107, 231, 0.3)' : 'transparent',
-  border: isSelected ? '2px solid #756be7' : '2px solid transparent',
+  backgroundColor: isSelected ? 'rgba(136, 117, 235, 0.3)' : 'transparent',
+  border: isSelected ? '2px solid #8875eb' : '2px solid transparent',
   '&:hover': {
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
@@ -85,7 +85,7 @@ const ColorCircle = styled(Box, {
   backgroundColor: color,
   cursor: 'pointer',
   border: isSelected ? '3px solid #fff' : '3px solid transparent',
-  boxShadow: isSelected ? '0 0 0 2px #756be7' : 'none',
+  boxShadow: isSelected ? '0 0 0 2px #8875eb' : 'none',
   transition: 'all 0.2s',
   '&:hover': {
     transform: 'scale(1.1)',
@@ -203,7 +203,7 @@ const BrushTipSVG: React.FC<{
       case 'highlighter':
         return (
           <>
-            <rect x="6" y="4" width="20" height="30" fill="#5d4b9c" rx="3" />
+            <rect x="6" y="4" width="20" height="30" fill="#472bd4" rx="3" />
             <rect x="8" y="34" width="16" height="12" fill={color} opacity="0.7" rx="2" />
           </>
         );
@@ -454,7 +454,7 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
           min={1}
           max={100}
           sx={{
-            color: 'var(--role-violet, #756be7)',
+            color: 'var(--role-violet, #8875eb)',
             '& .MuiSlider-thumb': {
               width: 16,
               height: 16,

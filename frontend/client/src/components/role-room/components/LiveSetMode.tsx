@@ -169,7 +169,7 @@ const TAKE_STATUS_META: Record<string, { label: string; color: string; bg: strin
 
 const NOTE_TAG_META: Record<NoteTag, { label: string; color: string }> = {
   focus:      { label: 'Focus',      color: '#3b82f6' },
-  continuity: { label: 'Continuity', color: '#7666e6' },
+  continuity: { label: 'Continuity', color: '#8875eb' },
   sound:      { label: 'Sound',      color: '#10b981' },
   action:     { label: 'Action',     color: '#f59e0b' },
   general:    { label: 'General',    color: 'rgba(255,255,255,0.5)' },
@@ -179,7 +179,7 @@ const QUICK_ACTIONS: { type: QuickActionType; label: string; emoji: string; Icon
   { type: 'good_take',      label: 'Good Take',       emoji: '👍', Icon: GoodTakeIcon,      color: '#10b981' },
   { type: 'pickup_shot',    label: 'Pickup Shot',      emoji: '🎯', Icon: PickupIcon,        color: '#3b82f6' },
   { type: 'action_safe',    label: 'Action Safe',      emoji: '⚠️', Icon: ActionSafeIcon,    color: '#f59e0b' },
-  { type: 'check_focus',    label: 'Check Focus',      emoji: '🎥', Icon: CheckFocusIcon,    color: '#7666e6' },
+  { type: 'check_focus',    label: 'Check Focus',      emoji: '🎥', Icon: CheckFocusIcon,    color: '#8875eb' },
   { type: 'setup_complete', label: 'Setup Complete',   emoji: '✔',  Icon: SetupCompleteIcon, color: '#10b981' },
 ];
 
@@ -565,7 +565,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             displayEmpty
             disabled={normalizedSceneOptions.length === 0}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#171a2a', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
+              PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
               MenuListProps: { sx: { py: touchUi ? 0.5 : 0 } },
             }}
             sx={{
@@ -599,7 +599,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
           </Select>
         </FormControl>
         <FormControl size={controlSize} sx={{ minWidth: touchUi ? 200 : 170 }}>
-          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#7666e6' } }}>Fase</InputLabel>
+          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#8875eb' } }}>Fase</InputLabel>
           <Select
             label="Fase"
             value={status.phase}
@@ -607,14 +607,14 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             sx={{
               height: controlHeight,
               color: '#fff',
-              bgcolor: 'rgba(118, 102, 230,0.12)',
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(118, 102, 230,0.35)' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(118, 102, 230,0.55)' },
+              bgcolor: 'rgba(136, 117, 235,0.12)',
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.35)' },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.55)' },
               '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.55)' },
               '& .MuiSelect-select': { py: touchUi ? 1.25 : 0.6, fontSize: touchUi ? 14 : 13 },
             }}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#171a2a', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
+              PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
               MenuListProps: { sx: { py: touchUi ? 0.5 : 0 } },
             }}
           >
@@ -825,7 +825,7 @@ const LiveSetControlPanel: FC<LiveSetControlPanelProps> = ({
     <Box
       sx={{
         display: 'flex', flexDirection: 'column', gap: 2, p: 2,
-        bgcolor: 'rgba(10,10,18,0.95)',
+        bgcolor: 'rgba(10, 5, 21,0.95)',
         borderRight: dockSide === 'left' ? '1px solid rgba(255,255,255,0.06)' : 'none',
         borderLeft: dockSide === 'right' ? '1px solid rgba(255,255,255,0.06)' : 'none',
         minHeight: 0,
@@ -1400,7 +1400,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               label="Shot"
               value={normalizedShotId}
               onChange={(event) => onCaptureChange({ shotId: event.target.value })}
-              MenuProps={{ PaperProps: { sx: { bgcolor: '#171a2a', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
+              MenuProps={{ PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
               sx={{
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
@@ -1427,7 +1427,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               label="Kvalitet"
               value={takeCapture.quality}
               onChange={(event) => onCaptureChange({ quality: event.target.value as TakeStatus })}
-              MenuProps={{ PaperProps: { sx: { bgcolor: '#171a2a', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
+              MenuProps={{ PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
               sx={{
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
@@ -1456,7 +1456,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               '& .MuiOutlinedInput-root': {
                 color: '#fff',
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
-                '&.Mui-focused fieldset': { borderColor: '#7666e6' },
+                '&.Mui-focused fieldset': { borderColor: '#8875eb' },
               },
               '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.45)' },
             }}
@@ -1482,9 +1482,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                   sx={{
                     fontSize: touchUi ? 12 : 10,
                     cursor: 'pointer',
-                    color: selected ? '#7666e6' : 'rgba(255,255,255,0.55)',
-                    bgcolor: selected ? 'rgba(118, 102, 230,0.18)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${selected ? 'rgba(118, 102, 230,0.45)' : 'rgba(255,255,255,0.15)'}`,
+                    color: selected ? '#8875eb' : 'rgba(255,255,255,0.55)',
+                    bgcolor: selected ? 'rgba(136, 117, 235,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${selected ? 'rgba(136, 117, 235,0.45)' : 'rgba(255,255,255,0.15)'}`,
                     minHeight: touchUi ? 34 : undefined,
                   }}
                 />
@@ -1519,7 +1519,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
       {/* ── Script + Storyboard ── */}
       <Paper sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 2 }}>
         <Box sx={{ px: 2, py: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <ScriptIcon sx={{ fontSize: 16, color: '#9e93ed' }} />
+          <ScriptIcon sx={{ fontSize: 16, color: '#9e8cf8' }} />
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, fontWeight: 700 }}>
             Script og tilknyttede storyboards
           </Typography>
@@ -1665,9 +1665,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         sx={{
                           height: 18,
                           fontSize: 10,
-                          color: '#c4b5fd',
-                          border: '1px solid rgba(157, 151, 238,0.42)',
-                          bgcolor: 'rgba(41, 29, 149,0.3)',
+                          color: '#c6bdf4',
+                          border: '1px solid rgba(158, 140, 248,0.42)',
+                          bgcolor: 'rgba(48, 31, 132,0.3)',
                         }}
                       />
                     ) : null}
@@ -1717,7 +1717,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     {frame.title}
                   </Typography>
                   {storyboardScope === 'project' && frame.sourceSceneId ? (
-                    <Typography variant="caption" sx={{ color: 'rgba(196,181,253,0.88)', display: 'block', mt: 0.1 }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(198, 189, 244,0.88)', display: 'block', mt: 0.1 }}>
                       {sceneLabelById[frame.sourceSceneId] || frame.sourceSceneId}
                     </Typography>
                   ) : null}
@@ -1747,13 +1747,13 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
             sx: {
               bgcolor: 'rgba(4,10,21,0.98)',
               border: previewHiDpi ? '1px solid rgba(56,189,248,0.5)' : '1px solid rgba(56,189,248,0.35)',
-              boxShadow: '0 28px 72px rgba(2,6,23,0.72)',
+              boxShadow: '0 28px 72px rgba(10, 5, 21,0.72)',
               borderRadius: 2,
               width: previewDialogWidth,
               maxWidth: 'none',
               backgroundImage: `
                 radial-gradient(circle at 88% 10%, rgba(56,189,248,0.16), transparent 52%),
-                linear-gradient(160deg, rgba(8,47,73,0.16) 0%, rgba(2,6,23,0.85) 58%)
+                linear-gradient(160deg, rgba(8,47,73,0.16) 0%, rgba(10, 5, 21,0.85) 58%)
               `,
             },
           }}
@@ -1763,7 +1763,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               borderBottom: '1px solid rgba(56,189,248,0.2)',
               color: '#bae6fd',
               fontWeight: 800,
-              background: 'linear-gradient(135deg, rgba(8,47,73,0.45), rgba(2,6,23,0.72) 72%)',
+              background: 'linear-gradient(135deg, rgba(8,47,73,0.45), rgba(10, 5, 21,0.72) 72%)',
             }}
           >
             <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
@@ -1835,7 +1835,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     borderRadius: 1.25,
                     border: previewHiDpi ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.12)',
                     display: 'block',
-                    bgcolor: 'rgba(2,6,23,0.65)',
+                    bgcolor: 'rgba(10, 5, 21,0.65)',
                   }}
                 />
                 {activeStoryboard.description ? (
@@ -1926,7 +1926,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                               borderRadius: 0.6,
                               bgcolor: frameIndex === activeStoryboardIndex
                                 ? 'rgba(2,132,199,0.88)'
-                                : 'rgba(2,6,23,0.72)',
+                                : 'rgba(10, 5, 21,0.72)',
                               border: '1px solid rgba(255,255,255,0.25)',
                             }}
                           >
@@ -2176,7 +2176,7 @@ const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
     <Box
       sx={{
         display: 'flex', flexDirection: 'column',
-        bgcolor: 'rgba(10,10,18,0.92)', borderLeft: '1px solid rgba(255,255,255,0.06)',
+        bgcolor: 'rgba(10, 5, 21,0.92)', borderLeft: '1px solid rgba(255,255,255,0.06)',
         minHeight: 0,
       }}
     >
@@ -3191,7 +3191,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
       sx={{
         display: 'flex', flexDirection: 'column',
         width: '100%', height: '100%', minHeight: '100%',
-        bgcolor: '#08080f', position: 'relative', overflow: 'hidden',
+        bgcolor: '#0a0515', position: 'relative', overflow: 'hidden',
       }}
     >
       {/* ── CUT flash overlay ── */}
@@ -3269,7 +3269,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           >
             {(['live', 'edit', 'review'] as const).map((m) => {
               const isActive = liveSetMode === m;
-              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#9d97ee' : '#22d3ee';
+              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#9e8cf8' : '#22d3ee';
               return (
                 <Box
                   key={m}
@@ -3401,9 +3401,9 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             mx: 'auto',
             px: { xs: 1.5, sm: 2.5 },
             py: 1.2,
-            bgcolor: liveSetMode === 'edit' ? 'rgba(157, 151, 238,0.08)' : 'rgba(34,211,238,0.08)',
+            bgcolor: liveSetMode === 'edit' ? 'rgba(158, 140, 248,0.08)' : 'rgba(34,211,238,0.08)',
             borderBottom: '1px solid',
-            borderColor: liveSetMode === 'edit' ? 'rgba(157, 151, 238,0.24)' : 'rgba(34,211,238,0.24)',
+            borderColor: liveSetMode === 'edit' ? 'rgba(158, 140, 248,0.24)' : 'rgba(34,211,238,0.24)',
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
@@ -3412,7 +3412,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           <Box
             sx={{
               fontSize: 18,
-              color: liveSetMode === 'edit' ? '#9d97ee' : '#22d3ee',
+              color: liveSetMode === 'edit' ? '#9e8cf8' : '#22d3ee',
             }}
           >
             {liveSetMode === 'edit' ? '✎' : '👁'}
@@ -3680,7 +3680,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           sx: {
             bgcolor: 'rgba(4,10,21,0.98)',
             border: '1px solid rgba(56,189,248,0.42)',
-            boxShadow: '0 28px 72px rgba(2,6,23,0.72)',
+            boxShadow: '0 28px 72px rgba(10, 5, 21,0.72)',
             borderRadius: 2,
           },
         }}
@@ -3887,7 +3887,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           sx: {
             bgcolor: 'rgba(8,12,24,0.98)',
             border: '1px solid rgba(59,130,246,0.35)',
-            boxShadow: '0 24px 56px rgba(2,6,23,0.6)',
+            boxShadow: '0 24px 56px rgba(10, 5, 21,0.6)',
           },
         }}
       >
@@ -3975,7 +3975,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           sx: {
             bgcolor: 'rgba(6,18,20,0.98)',
             border: '1px solid rgba(16,185,129,0.35)',
-            boxShadow: '0 24px 56px rgba(2,6,23,0.62)',
+            boxShadow: '0 24px 56px rgba(10, 5, 21,0.62)',
           },
         }}
       >

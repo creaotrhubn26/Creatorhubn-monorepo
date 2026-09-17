@@ -57,7 +57,7 @@ const DEMO_FRAMES = [
     description: 'INT. SOVEROM — NATT. Telefonen ringer brått i mørket.',
     caption: 'KARI (V.O.)\nDet var midt på natten...',
     imageUrl: makePlaceholderSvg({
-      bgColor: '#1a1a2e',
+      bgColor: '#18122b',
       textColor: '#e0e7ff',
       shotNumber: '1',
       description: 'Telefonen ringer',
@@ -70,7 +70,7 @@ const DEMO_FRAMES = [
     description: 'CU på Kari. Hun gisper og setter seg opp i senga.',
     caption: 'KARI\nHallo?',
     imageUrl: makePlaceholderSvg({
-      bgColor: '#201b4e',
+      bgColor: '#261763',
       textColor: '#fde68a',
       shotNumber: '2',
       description: 'Hun gisper',
@@ -96,8 +96,8 @@ const DEMO_FRAMES = [
     description: 'Hun løper mot døra og åpner den voldsomt.',
     caption: '',
     imageUrl: makePlaceholderSvg({
-      bgColor: '#291d95',
-      textColor: '#ede9fe',
+      bgColor: '#301f84',
+      textColor: '#ebe7fd',
       shotNumber: '4',
       description: 'Hun løper',
     }),
@@ -122,8 +122,8 @@ const DEMO_FRAMES = [
     description: 'Wide shot. Hun står alene på gata mens torden ruller.',
     caption: 'KARI\nJeg er for sent ute.',
     imageUrl: makePlaceholderSvg({
-      bgColor: '#1e1b4b',
-      textColor: '#c7d2fe',
+      bgColor: '#211c3b',
+      textColor: '#e0dbfa',
       shotNumber: '6',
       description: 'Alene på gata',
     }),
@@ -217,7 +217,7 @@ export const DemoAnimaticPage: React.FC = () => {
           />
         )}
 
-        <Paper sx={{ p: 2, bgcolor: 'rgba(165,180,252,0.05)', border: '1px solid rgba(165,180,252,0.2)' }}>
+        <Paper sx={{ p: 2, bgcolor: 'rgba(198, 189, 244,0.05)', border: '1px solid rgba(198, 189, 244,0.2)' }}>
           <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, display: 'block', mb: 0.5 }}>
             For markedsføring
           </Typography>

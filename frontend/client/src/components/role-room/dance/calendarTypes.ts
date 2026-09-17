@@ -34,7 +34,7 @@ export interface CalendarEvent {
 }
 
 export const KIND_META: Record<CalendarEventKind, { label: string; color: string; bg: string }> = {
-  rehearsal:    { label: 'Prøver',          color: danceFlowColors.lavender, bg: 'rgba(157, 151, 238,0.18)' },
+  rehearsal:    { label: 'Prøver',          color: danceFlowColors.lavender, bg: 'rgba(158, 140, 248,0.18)' },
   performance:  { label: 'Forestillinger',  color: danceFlowColors.gold, bg: 'rgba(251,191,36,0.18)' },
   class:        { label: 'Klasser',         color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.18)' },
   audition:     { label: 'Auditions',       color: danceFlowColors.infoLight, bg: 'rgba(96,165,250,0.18)' },

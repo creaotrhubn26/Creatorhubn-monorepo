@@ -69,13 +69,13 @@ const PLATFORM_META: Record<Platform, {
 };
 
 const palette = {
-  bg: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
+  accent: '#9e8cf8',
 };
 
 interface ExistingAudience {
@@ -248,7 +248,7 @@ export default function ClientAdsAudiencesPanel({
                 background: `linear-gradient(135deg, ${meta.color} 0%, ${palette.accent} 100%)`,
                 color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '1rem',
                 px: 4, py: 1.4, borderRadius: 1.6,
-                '&.Mui-disabled': { background: 'rgba(118, 102, 230,0.18)', color: 'rgba(245,243,255,0.4)' },
+                '&.Mui-disabled': { background: 'rgba(136, 117, 235,0.18)', color: 'rgba(246, 245, 255,0.4)' },
               }}
             >
               Last opp ny mottakerliste
@@ -269,7 +269,7 @@ export default function ClientAdsAudiencesPanel({
                 <Stack spacing={1}>
                   {audiences.map((a, i) => (
                     <Box key={a.audienceId ?? a.resourceName ?? a.id ?? i} sx={{
-                      bgcolor: 'rgba(118, 102, 230,0.04)',
+                      bgcolor: 'rgba(136, 117, 235,0.04)',
                       border: `1px solid ${palette.border}`,
                       borderRadius: 1.4,
                       p: 1.6,

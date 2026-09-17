@@ -91,7 +91,7 @@ export interface PencilCanvasHandle {
 
 const CanvasContainer = styled(Box)({
   position: 'relative',
-  backgroundColor: '#1a1a2e',
+  backgroundColor: '#18122b',
   borderRadius: 8,
   overflow: 'hidden',
 });
@@ -120,7 +120,7 @@ const Toolbar = styled(Paper, {
   transform: 'translate3d(-50%, 0, 0)',
   padding: '8px 16px',
   borderRadius: 24,
-  backgroundColor: drawing ? 'rgba(18, 20, 36, 0.995)' : 'rgba(26, 26, 46, 0.97)',
+  backgroundColor: drawing ? 'rgba(24, 18, 43, 0.995)' : 'rgba(24, 18, 43, 0.97)',
   backdropFilter: drawing ? 'none' : 'blur(6px)',
   WebkitBackdropFilter: drawing ? 'none' : 'blur(6px)',
   display: 'flex',
@@ -188,7 +188,7 @@ const ColorSwatch = styled(Box, {
 // =============================================================================
 
 const COLORS = [
-  '#000000','#FFFFFF','#FF5252','#FF9800','#FFEB3B','#4CAF50','#2196F3','#4227b0','#795548', '#607D8B',
+  '#000000','#FFFFFF','#FF5252','#FF9800','#FFEB3B','#4CAF50','#2196F3','#3c27a5','#795548', '#607D8B',
 ];
 
 const DEFAULT_BRUSH: BrushSettings = {

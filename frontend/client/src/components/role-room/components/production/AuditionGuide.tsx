@@ -340,7 +340,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
     annPx('planner-stats', 3760, 1520, 3121, 223, 3399, 313, 'Statistikk', '#38bdf8', 'top-center'),
     annPx('planner-new', 3760, 1520, 3413, 223, 3686, 312, 'Ny avtale', '#f59e0b', 'top-center'),
     annPx('planner-project-btn', 3760, 1520, 74, 431, 447, 505, 'Prosjekt', '#f59e0b', 'top-center'),
-    annPx('planner-pool-btn', 3760, 1520, 479, 431, 755, 505, 'Maler', '#9d97ee', 'top-center'),
+    annPx('planner-pool-btn', 3760, 1520, 479, 431, 755, 505, 'Maler', '#9e8cf8', 'top-center'),
     annPx('planner-standard-btn', 3760, 1520, 170, 571, 361, 645, 'Standard', '#60a5fa', 'top-center'),
     annPx('planner-pro-btn', 3760, 1520, 393, 571, 615, 645, 'Pro-visning', '#22c55e', 'top-center'),
   ],
@@ -350,15 +350,15 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
     annPx('header-export', 3760, 640, 2813, 223, 3107, 313, 'Eksporter', '#60a5fa', 'top-center'),
     annPx('header-stats', 3760, 640, 3121, 223, 3399, 313, 'Statistikk', '#38bdf8', 'top-center'),
     annPx('header-new', 3760, 640, 3413, 223, 3686, 312, 'Ny avtale', '#f59e0b', 'top-center'),
-    annPx('header-kbd', 3760, 640, 2739, 247, 2788, 289, 'Snarveier', '#9d97ee', 'top-center'),
+    annPx('header-kbd', 3760, 640, 2739, 247, 2788, 289, 'Snarveier', '#9e8cf8', 'top-center'),
   ],
   'Workspace modes: Standard vs Pro': [
     // standard-vs-pro.png (3760x1800)
     annPx('mode-project-btn', 3760, 1800, 74, 182, 447, 257, 'Prosjekt', '#f59e0b', 'top-center'),
-    annPx('mode-pool-btn', 3760, 1800, 455, 182, 742, 257, 'Maler', '#9d97ee', 'top-center'),
+    annPx('mode-pool-btn', 3760, 1800, 455, 182, 742, 257, 'Maler', '#9e8cf8', 'top-center'),
     annPx('mode-standard-btn', 3760, 1800, 191, 323, 379, 397, 'Standard', '#60a5fa', 'top-center'),
     annPx('mode-pro-btn', 3760, 1800, 393, 323, 614, 396, 'Pro-visning', '#22c55e', 'top-center'),
-    annPx('mode-pipeline-btn', 3760, 1800, 2289, 467, 2502, 548, 'Pipeline', '#9d97ee', 'top-center'),
+    annPx('mode-pipeline-btn', 3760, 1800, 2289, 467, 2502, 548, 'Pipeline', '#9e8cf8', 'top-center'),
     annPx('mode-timeline-btn', 3760, 1800, 2517, 467, 2733, 549, 'Timeline', '#38bdf8', 'top-center'),
   ],
   'Creating a new audition slot': [
@@ -368,7 +368,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
     annPx('create-date', 2240, 2044, 118, 365, 2121, 475, 'Dato', '#38bdf8', 'top-center'),
     annPx('create-time', 2240, 2044, 118, 525, 2121, 635, 'Tid', '#f59e0b', 'top-center'),
     annPx('create-location', 2240, 2044, 118, 685, 2121, 795, 'Lokasjon', '#22c55e', 'top-center'),
-    annPx('create-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#9d97ee', 'top-center'),
+    annPx('create-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#9e8cf8', 'top-center'),
     annPx('create-status', 2240, 2044, 118, 1733, 2121, 1783, 'Status', '#ef4444', 'top-center'),
     annPx('create-save', 2240, 2044, 1708, 1916, 1906, 2012, 'Lagre', '#60a5fa', 'top-center'),
   ],
@@ -377,7 +377,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
     annPx('edit-candidate-role', 2240, 2044, 118, 203, 2121, 315, 'Forhåndsutfylt kandidat/rolle', '#22c55e', 'top-center'),
     annPx('edit-date-time', 2240, 2044, 118, 365, 2121, 635, 'Dato og tid', '#60a5fa', 'top-center'),
     annPx('edit-location-scene', 2240, 2044, 118, 685, 2121, 1115, 'Lokasjon og scene', '#38bdf8', 'top-center'),
-    annPx('edit-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#9d97ee', 'top-center'),
+    annPx('edit-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#9e8cf8', 'top-center'),
     annPx('edit-status', 2240, 2044, 118, 1733, 2121, 1783, 'Status', '#ef4444', 'top-center'),
     annPx('edit-save', 2240, 2044, 1708, 1916, 1906, 2012, 'Lagre endringer', '#f59e0b', 'top-center'),
   ],
@@ -417,7 +417,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
     annPx('filter-search', 3760, 1520, 61, 947, 2682, 1039, 'Søk', '#22c55e', 'top-center'),
     annPx('filter-date', 3760, 1520, 2697, 949, 3037, 1039, 'Dato', '#60a5fa', 'top-center'),
     annPx('filter-sort', 3760, 1520, 3051, 949, 3403, 1039, 'Sortering', '#38bdf8', 'top-center'),
-    annPx('filter-view-list', 3760, 1520, 3417, 949, 3507, 1039, 'List', '#9d97ee', 'top-center'),
+    annPx('filter-view-list', 3760, 1520, 3417, 949, 3507, 1039, 'List', '#9e8cf8', 'top-center'),
     annPx('filter-view-table', 3760, 1520, 3513, 949, 3603, 1039, 'Table', '#60a5fa', 'top-center'),
     annPx('filter-view-grid', 3760, 1520, 3609, 949, 3699, 1039, 'Grid', '#f59e0b', 'top-center'),
   ],
@@ -453,7 +453,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   'What is the Audition Pool?': [
     // pool-view.png (3760x1880)
     annPx('pool-tab', 3760, 1880, 387, 127, 611, 204, 'Maler', '#f59e0b', 'top-center'),
-    annPx('pool-info', 3760, 1880, 22, 768, 3738, 1120, 'Pool-info', '#9d97ee', 'top-center'),
+    annPx('pool-info', 3760, 1880, 22, 768, 3738, 1120, 'Pool-info', '#9e8cf8', 'top-center'),
     annPx('pool-area', 3760, 1880, 22, 1130, 3738, 1870, 'Pool-område', '#60a5fa', 'top-center'),
   ],
   'Managing pool templates': [
@@ -1453,9 +1453,9 @@ const STEPS_EN: Step[] = [
                     label={row.scope}
                     sx={{
                       ml: 'auto',
-                      bgcolor: row.scope === 'Pro view' ? 'rgba(141, 128, 234,0.2)' : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${row.scope === 'Pro view' ? 'rgba(141, 128, 234,0.45)' : 'rgba(255,255,255,0.15)'}`,
-                      color: row.scope === 'Pro view' ? '#c5bff4' : 'rgba(255,255,255,0.72)',
+                      bgcolor: row.scope === 'Pro view' ? 'rgba(136, 117, 235,0.2)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${row.scope === 'Pro view' ? 'rgba(136, 117, 235,0.45)' : 'rgba(255,255,255,0.15)'}`,
+                      color: row.scope === 'Pro view' ? '#c6bdf4' : 'rgba(255,255,255,0.72)',
                     }}
                   />
                 </Box>
@@ -1606,7 +1606,7 @@ export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
         aria-labelledby="audition-guide-title"
         PaperProps={{
           sx: {
-            bgcolor: '#12121e',
+            bgcolor: '#100b1e',
             backgroundImage: 'none',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: isMobile ? 0 : 2,

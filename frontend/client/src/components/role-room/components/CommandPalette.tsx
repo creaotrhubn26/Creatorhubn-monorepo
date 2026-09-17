@@ -160,7 +160,7 @@ export const CommandPalette = ({
         sx: {
           bgcolor: '#0f172a',
           color: '#fff',
-          border: '1px solid rgba(141, 128, 234,0.32)',
+          border: '1px solid rgba(136, 117, 235,0.32)',
           borderRadius: 2,
         },
         onKeyDown: handleKeyDown,
@@ -229,10 +229,10 @@ export const CommandPalette = ({
                           mx: 1,
                           borderRadius: 1,
                           '&.Mui-selected': {
-                            bgcolor: 'rgba(141, 128, 234,0.18)',
+                            bgcolor: 'rgba(136, 117, 235,0.18)',
                           },
                           '&.Mui-selected:hover': {
-                            bgcolor: 'rgba(141, 128, 234,0.24)',
+                            bgcolor: 'rgba(136, 117, 235,0.24)',
                           },
                           '&:hover': {
                             bgcolor: 'rgba(255,255,255,0.05)',

@@ -133,7 +133,7 @@ export default function SelfTapeAIFeedbackCard({ feedback, currentTake, onRegene
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 0.4,
-                '&:hover': canRegenerate ? { background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)' } : undefined,
+                '&:hover': canRegenerate ? { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' } : undefined,
               }}
             >
               {busy

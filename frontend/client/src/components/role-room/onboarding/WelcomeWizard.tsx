@@ -81,7 +81,7 @@ const STEPS: StepDef[] = [
     description:
       'Du kommer til å håndtere klienters passord og API-nøkler. 2FA stopper kontotyveri selv om noen får tak i passordet ditt. Tar 2 min å sette opp med Google Authenticator eller 1Password.',
     Icon: ShieldIcon,
-    iconColor: '#9d97ee',
+    iconColor: '#9e8cf8',
     cta: { label: 'Sett opp 2FA nå', href: '/innstillinger/sikkerhet' },
     whyMatters:
       'Uten 2FA: én lekket passord = full tilgang til alle klient-kontoer du administrerer. Med 2FA: angriperen må også ha telefonen din.',
@@ -128,7 +128,7 @@ const STEPS: StepDef[] = [
     description:
       'Koble GA4, Search Console, Meta Business Manager, LinkedIn, YouTube. KPI-tracker henter automatisk reach, engagement og conversion-data så du ikke trenger å lime CSV-er.',
     Icon: ConnectIcon,
-    iconColor: '#7666e6',
+    iconColor: '#8875eb',
     cta: null,
     whyMatters:
       'Manuell datainnsamling koster typisk 2-4 timer per måned per klient. Automatisk = du kan administrere 3x flere klienter.',

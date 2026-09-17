@@ -418,7 +418,7 @@ function renderAnnotationShape(annotation: GuideStepAnnotation, index: number) {
           inset: 0,
           borderRadius: radius,
           border: `${Math.max(thickness, 2)}px solid ${color}`,
-          boxShadow: `0 0 0 9999px rgba(2,6,23,0.52)`,
+          boxShadow: `0 0 0 9999px rgba(10, 5, 21,0.52)`,
           bgcolor: 'transparent',
         }}
       />

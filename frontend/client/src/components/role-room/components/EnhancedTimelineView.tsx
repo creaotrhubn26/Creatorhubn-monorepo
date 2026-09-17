@@ -37,13 +37,13 @@ interface ShotBlock {
 
 const SHOT_COLORS: Record<string, string> = {
   'Wide': '#4caf50',
-  'Medium': '#523ee0',
+  'Medium': '#6249df',
   'Close-up': '#2196f3',
-  'Extreme Close-up': '#4227b0',
+  'Extreme Close-up': '#3c27a5',
   'Establishing': '#00bcd4',
   'Detail': '#f44336',
   'Two Shot': '#ffc107',
-  'Over Shoulder': '#3f51b5',
+  'Over Shoulder': '#472bd4',
 };
 
 export const EnhancedTimelineView: FC<EnhancedTimelineViewProps> = ({

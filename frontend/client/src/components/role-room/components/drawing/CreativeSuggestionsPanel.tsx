@@ -53,7 +53,7 @@ export interface CreativeSuggestionsPanelProps {
 const PRIORITY_COLOR: Record<ShotSuggestion['priority'], string> = {
   critical: '#ef4444',
   recommended: '#3b82f6',
-  try: '#9d97ee',
+  try: '#9e8cf8',
 };
 
 const PRIORITY_LABEL: Record<ShotSuggestion['priority'], string> = {
@@ -102,7 +102,7 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
 
   if (!activeScene) {
     return (
-      <Paper sx={{ p: 2, bgcolor: 'rgba(20,20,30,0.95)', color: '#fff' }} data-testid="creative-suggestions-empty">
+      <Paper sx={{ p: 2, bgcolor: 'rgba(16, 11, 30,0.95)', color: '#fff' }} data-testid="creative-suggestions-empty">
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
           <AutoAwesome sx={{ color: '#fbbf24' }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Creative Studio</Typography>
@@ -119,7 +119,7 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
       data-testid="creative-suggestions-panel"
       sx={{
         p: compact ? 1.5 : 2,
-        bgcolor: 'rgba(20,20,30,0.95)',
+        bgcolor: 'rgba(16, 11, 30,0.95)',
         color: '#fff',
         maxWidth: 380,
         minWidth: 280,
@@ -176,7 +176,7 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
                 <Typography
                   variant="caption"
                   sx={{
-                    color: 'rgba(157, 151, 238,0.85)',
+                    color: 'rgba(158, 140, 248,0.85)',
                     fontSize: 11,
                     display: 'block',
                     mt: 0.5,
@@ -271,8 +271,8 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
             sx={{
               p: 1,
               borderRadius: 1,
-              bgcolor: 'rgba(157, 151, 238,0.06)',
-              border: '1px solid rgba(157, 151, 238,0.18)',
+              bgcolor: 'rgba(158, 140, 248,0.06)',
+              border: '1px solid rgba(158, 140, 248,0.18)',
             }}
           >
             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12.5 }}>

@@ -95,7 +95,7 @@ export const StripItem: FC<StripItemProps> = React.memo(function StripItem({
           cursor: isMobile ? 'pointer' : 'grab',
           border:
             selectedStrip?.id === strip.id
-              ? '2px solid #5446e1'
+              ? '2px solid #7C3AED'
               : '1px solid rgba(0,0,0,0.1)',
           transition: 'all 0.15s',
           minHeight: 28,
@@ -153,14 +153,14 @@ export const StripItem: FC<StripItemProps> = React.memo(function StripItem({
         color: colorConfig.textColor || 'inherit',
         border:
           selectedStrip?.id === strip.id
-            ? '2px solid #5446e1'
+            ? '2px solid #7C3AED'
             : '1px solid transparent',
         borderRadius: { xs: 1.5, sm: 2, md: 2 },
         transition: 'all 0.2s',
         '&:hover': {
           transform: isMobile ? 'none' : 'translateX(4px)',
           boxShadow: 4,
-          borderColor: alpha('#5446e1', 0.5),
+          borderColor: alpha('#7C3AED', 0.5),
         },
         '&:active': { cursor: isMobile ? 'pointer' : 'grabbing' },
       }}

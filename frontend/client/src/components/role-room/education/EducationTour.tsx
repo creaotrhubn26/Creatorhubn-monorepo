@@ -25,7 +25,7 @@ import {
 } from '@mui/icons-material';
 import type { ReactNode } from 'react';
 
-const ACCENT = '#756be7';
+const ACCENT = '#8875eb';
 const SEEN_KEY = 'role_room_education_tour_seen_v1';
 
 /** Har faglæreren allerede sett touren i denne nettleseren? */
@@ -129,8 +129,8 @@ export function EducationTour({ open, onClose, onNavigate }: EducationTourProps)
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#111018',
-          border: '1px solid rgba(117, 107, 231,0.3)',
+          bgcolor: '#100b1e',
+          border: '1px solid rgba(136, 117, 235,0.3)',
           borderRadius: 3,
           color: '#fff',
         },
@@ -142,7 +142,7 @@ export function EducationTour({ open, onClose, onNavigate }: EducationTourProps)
           display: { xs: 'none', sm: 'flex' },
           '& .MuiStepLabel-label': { color: 'rgba(255,255,255,0.72)', fontSize: 11 },
           '& .MuiStepLabel-label.Mui-active': { color: '#fff' },
-          '& .MuiStepLabel-label.Mui-completed': { color: '#dedbf9' },
+          '& .MuiStepLabel-label.Mui-completed': { color: '#e0dbfa' },
           '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.15)' },
           '& .MuiStepIcon-root.Mui-active': { color: ACCENT },
           '& .MuiStepIcon-root.Mui-completed': { color: ACCENT },
@@ -156,7 +156,7 @@ export function EducationTour({ open, onClose, onNavigate }: EducationTourProps)
           <Box sx={{
             width: 64, height: 64, mx: 'auto', mb: 2, borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            bgcolor: 'rgba(117, 107, 231,0.16)', color: ACCENT, '& svg': { fontSize: 34 },
+            bgcolor: 'rgba(136, 117, 235,0.16)', color: ACCENT, '& svg': { fontSize: 34 },
           }}>
             {step.icon}
           </Box>

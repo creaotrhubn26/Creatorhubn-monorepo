@@ -81,7 +81,7 @@ interface DitBackupJob {
 const DEST_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   original: { label: 'Original', color: '#94a3b8' },
   primary: { label: 'Primary', color: 'var(--role-cyan, #22d3ee)' },
-  secondary: { label: 'Secondary', color: '#9d97ee' },
+  secondary: { label: 'Secondary', color: '#9e8cf8' },
   offsite: { label: 'Offsite', color: '#f59e0b' },
   archive: { label: 'Archive', color: '#10b981' },
 };
@@ -324,7 +324,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     sx={{
                       p: 1.2, borderRadius: 1.5,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      bgcolor: 'rgba(2,6,23,0.42)',
+                      bgcolor: 'rgba(10, 5, 21,0.42)',
                     }}
                   >
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
@@ -399,7 +399,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 {destinations.map((d) => {
                   const meta = DEST_TYPE_LABELS[d.destination_type] ?? { label: d.destination_type, color: '#94a3b8' };
                   return (
-                    <Box key={d.id} sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(2,6,23,0.42)' }}>
+                    <Box key={d.id} sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(10, 5, 21,0.42)' }}>
                       <Stack direction="row" alignItems="center" spacing={1}>
                         <Chip size="small" label={meta.label} sx={{ bgcolor: `${meta.color}26`, color: meta.color, fontWeight: 700, height: 20 }} />
                         <Chip size="small" label={d.storage_type} sx={{ bgcolor: 'rgba(148,163,184,0.10)', color: '#cbd5e1', fontWeight: 600, height: 20 }} />
@@ -529,7 +529,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     <Box key={t.id} sx={{
                       p: 1.2, borderRadius: 1.5,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      bgcolor: 'rgba(2,6,23,0.42)',
+                      bgcolor: 'rgba(10, 5, 21,0.42)',
                       opacity: isActive ? 1 : 0.55,
                     }}>
                       <Stack direction="row" alignItems="center" spacing={1}>

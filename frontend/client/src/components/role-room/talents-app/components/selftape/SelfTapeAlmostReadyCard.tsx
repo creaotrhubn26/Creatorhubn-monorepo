@@ -26,7 +26,7 @@ export default function SelfTapeAlmostReadyCard({ checklist, onSubmit }: Props) 
   return (
     <Box
       sx={{
-        background: 'linear-gradient(135deg, #3c27a5 0%, #6249df 60%, #6e65ec 100%)',
+        background: 'linear-gradient(135deg, #3c27a5 0%, #6249df 60%, #8875eb 100%)',
         borderRadius: radius.lg,
         p: 2.4,
         color: '#fff',

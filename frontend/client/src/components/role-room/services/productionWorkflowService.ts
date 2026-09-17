@@ -1073,7 +1073,7 @@ export const TROLL_STRIPBOARD: StripboardStrip[] = [
     shootingDayId: 'day-1',
     dayNumber: 1,
     sortOrder: 2,
-    color: '#23168a', // INT NIGHT - Purple
+    color: '#4a148c', // INT NIGHT - Purple
     location: 'HULEN - INNE I FJELLET',
     pages: 2.5,
     cast: ['ARBEIDER 1', 'ARBEIDER 2'],
@@ -1624,7 +1624,7 @@ class ProductionWorkflowService {
         sceneNumber: s.sceneNumber,
         description: `Scene ${s.sceneNumber}`,
         location: s.location,
-        intExt: s.color === '#fff9c4' || s.color === '#23168a' ? 'INT' : 'EXT',
+        intExt: s.color === '#fff9c4' || s.color === '#4a148c' ? 'INT' : 'EXT',
         timeOfDay: s.color.includes('1a237e') ? 'NIGHT' : s.color.includes('ffccbc') ? 'DAWN' : 'DAY',
         pages: s.pages,
         cast: s.cast,
@@ -1926,8 +1926,10 @@ class ProductionWorkflowService {
   // ============================================
 
   getStripColor(intExt: string, timeOfDay: string): string {
+    // 🔑 Bransjekode, ikke merkevare: se stripboard.constants.ts. Hold
+    // disse utenfor palett-ommalinger.
     if (intExt === 'INT' && timeOfDay === 'DAY') return '#fff9c4'; // Light yellow
-    if (intExt === 'INT' && timeOfDay === 'NIGHT') return '#23168a'; // Purple
+    if (intExt === 'INT' && timeOfDay === 'NIGHT') return '#4a148c'; // Purple
     if (intExt === 'EXT' && timeOfDay === 'DAY') return '#e3f2fd'; // Light blue
     if (intExt === 'EXT' && timeOfDay === 'NIGHT') return '#1a237e'; // Dark blue
     if (timeOfDay === 'DAWN' || timeOfDay === 'DUSK') return '#ffccbc'; // Orange tint

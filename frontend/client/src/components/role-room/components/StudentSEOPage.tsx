@@ -426,15 +426,15 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* Hero */}
         <Stack spacing={2} sx={{ maxWidth: 820 }}>
           <Chip
-            icon={<SchoolIcon sx={{ color: '#ddd6fe !important' }} />}
+            icon={<SchoolIcon sx={{ color: '#e0dbfa !important' }} />}
             label={config.audience}
             size="small"
             sx={{
               alignSelf: 'flex-start',
-              bgcolor: 'rgba(157, 151, 238,0.16)',
-              color: '#ddd6fe',
+              bgcolor: 'rgba(158, 140, 248,0.16)',
+              color: '#e0dbfa',
               fontWeight: 600,
-              '& .MuiChip-icon': { color: '#ddd6fe' },
+              '& .MuiChip-icon': { color: '#e0dbfa' },
             }}
           />
           <Typography
@@ -457,11 +457,11 @@ function PageView({ config }: { config: StudentPageConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9d97ee',
+                bgcolor: '#9e8cf8',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
-                '&:hover': { bgcolor: '#c4b5fd' },
+                '&:hover': { bgcolor: '#c6bdf4' },
               }}
             >
               {config.ctaLabel}
@@ -507,7 +507,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
               <Card
                 key={ex.title}
                 sx={{
-                  bgcolor: 'rgba(2,6,23,0.42)',
+                  bgcolor: 'rgba(10, 5, 21,0.42)',
                   border: '1px solid rgba(148,163,184,0.16)',
                   height: '100%',
                 }}
@@ -528,7 +528,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* Relevante features */}
         <Box>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <AssignmentIcon sx={{ color: '#9d97ee' }} />
+            <AssignmentIcon sx={{ color: '#9e8cf8' }} />
             <Typography
               component="h2"
               sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.8rem' } }}
@@ -542,9 +542,9 @@ function PageView({ config }: { config: StudentPageConfig }) {
                 key={f}
                 label={f}
                 sx={{
-                  bgcolor: 'rgba(157, 151, 238,0.10)',
-                  color: '#ddd6fe',
-                  border: '1px solid rgba(157, 151, 238,0.32)',
+                  bgcolor: 'rgba(158, 140, 248,0.10)',
+                  color: '#e0dbfa',
+                  border: '1px solid rgba(158, 140, 248,0.32)',
                   fontWeight: 500,
                 }}
               />
@@ -587,7 +587,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     p: 1.5,
                     borderRadius: 1.5,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    bgcolor: 'rgba(2,6,23,0.34)',
+                    bgcolor: 'rgba(10, 5, 21,0.34)',
                   }}
                 >
                   <MovieFilterIcon sx={{ color: 'var(--role-cyan, #22d3ee)', mt: 0.3, fontSize: 20 }} />
@@ -613,8 +613,8 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* CTA */}
         <Card
           sx={{
-            bgcolor: 'rgba(157, 151, 238,0.10)',
-            border: '1px solid rgba(157, 151, 238,0.32)',
+            bgcolor: 'rgba(158, 140, 248,0.10)',
+            border: '1px solid rgba(158, 140, 248,0.32)',
             mt: 2,
           }}
         >
@@ -633,12 +633,12 @@ function PageView({ config }: { config: StudentPageConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9d97ee',
+                bgcolor: '#9e8cf8',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
                 px: 4,
-                '&:hover': { bgcolor: '#c4b5fd' },
+                '&:hover': { bgcolor: '#c6bdf4' },
               }}
             >
               {config.ctaLabel}
@@ -667,7 +667,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     textTransform: 'none',
                     fontWeight: 500,
                     fontSize: '0.82rem',
-                    '&:hover': { borderColor: 'rgba(157, 151, 238,0.48)', bgcolor: 'rgba(157, 151, 238,0.06)' },
+                    '&:hover': { borderColor: 'rgba(158, 140, 248,0.48)', bgcolor: 'rgba(158, 140, 248,0.06)' },
                   }}
                 >
                   {c.h1}

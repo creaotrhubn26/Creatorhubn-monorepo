@@ -269,7 +269,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
               textTransform: 'none', fontWeight: 700, px: 2.4, py: 1, borderRadius: radius.sm,
               background: palette.accentGradient, color: '#fff',
               boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
-              '&:hover': { background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
             }}
           >
             Nytt prosjekt
@@ -305,7 +305,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
             sx={{
               textTransform: 'none', fontWeight: 700, px: 2.4, py: 1, borderRadius: radius.sm,
               background: palette.accentGradient, color: '#fff',
-              '&:hover': { background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
             }}
           >
             Nytt prosjekt

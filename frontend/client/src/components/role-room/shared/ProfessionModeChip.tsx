@@ -51,7 +51,7 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; descript
     label: 'Utdannings-modus',
     icon: <EducationIcon />,
     description: 'Utdanningsinstitusjon — studenter, kurs og portfolio.',
-    color: '#756be7',
+    color: '#8875eb',
   },
   production: {
     label: 'Produksjons-modus',

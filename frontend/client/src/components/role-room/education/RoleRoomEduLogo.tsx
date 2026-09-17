@@ -29,7 +29,7 @@ export function RoleRoomEduLogo({
           backgroundRepeat: 'no-repeat',
           // Lysende lilla glød så merket «synes mer» (som på hero-bildet):
           // radial halo (0 0-blur) i to lag.
-          filter: 'drop-shadow(0 0 13px rgba(117, 107, 231,0.75)) drop-shadow(0 0 5px rgba(196,181,253,0.55))',
+          filter: 'drop-shadow(0 0 13px rgba(136, 117, 235,0.75)) drop-shadow(0 0 5px rgba(198, 189, 244,0.55))',
         }}
       />
       <Box sx={{ minWidth: 0 }}>
@@ -37,7 +37,7 @@ export function RoleRoomEduLogo({
           THE ROLE ROOM
         </Typography>
         {showTagline && (
-          <Typography sx={{ fontSize: markSize * 0.2, color: '#c4b5fd', letterSpacing: 0.4, lineHeight: 1, mt: 0.25 }}>
+          <Typography sx={{ fontSize: markSize * 0.2, color: '#c6bdf4', letterSpacing: 0.4, lineHeight: 1, mt: 0.25 }}>
             Casting. Roles. Together.
           </Typography>
         )}

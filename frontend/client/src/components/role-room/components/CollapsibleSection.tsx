@@ -56,7 +56,7 @@ export function CollapsibleSection({
           fontFamily: 'inherit',
           transition: 'background 120ms',
           '&:hover': { background: 'rgba(255,255,255,0.04)' },
-          '&:focus-visible': { outline: '2px solid rgba(141, 128, 234,0.5)', outlineOffset: -2 },
+          '&:focus-visible': { outline: '2px solid rgba(136, 117, 235,0.5)', outlineOffset: -2 },
         }}
       >
         <ExpandMoreIcon

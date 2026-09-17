@@ -35,7 +35,7 @@ function platformIcon(platform: 'meta' | 'linkedin', assetType: string) {
     return assetType === 'organization' ? <LinkedInIcon sx={{ fontSize: 18, color: '#38bdf8' }} /> : <CampaignIcon sx={{ fontSize: 18, color: '#38bdf8' }} />;
   }
   return assetType.includes('instagram')
-    ? <InstagramIcon sx={{ fontSize: 18, color: '#9b87eb' }} />
+    ? <InstagramIcon sx={{ fontSize: 18, color: '#9e8cf8' }} />
     : <FacebookIcon sx={{ fontSize: 18, color: '#60a5fa' }} />;
 }
 

@@ -214,9 +214,9 @@ export default function YouTubeChannelSetup({
                           sx={{
                             height: 18,
                             fontSize: '0.62rem',
-                            bgcolor: 'rgba(118, 102, 230,0.18)',
-                            color: '#c4bef4',
-                            border: '1px solid rgba(118, 102, 230,0.3)',
+                            bgcolor: 'rgba(136, 117, 235,0.18)',
+                            color: '#c6bdf4',
+                            border: '1px solid rgba(136, 117, 235,0.3)',
                           }}
                         />
                       ) : null}
@@ -488,11 +488,11 @@ function ChannelPlanView({
                   sx={{
                     p: 1,
                     borderRadius: 1.2,
-                    bgcolor: 'rgba(118, 102, 230,0.06)',
-                    border: '1px solid rgba(118, 102, 230,0.2)',
+                    bgcolor: 'rgba(136, 117, 235,0.06)',
+                    border: '1px solid rgba(136, 117, 235,0.2)',
                   }}
                 >
-                  <Typography sx={{ color: '#c4bef4', fontSize: '0.82rem', fontWeight: 700 }}>
+                  <Typography sx={{ color: '#c6bdf4', fontSize: '0.82rem', fontWeight: 700 }}>
                     {p.name}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.76rem', mb: 0.5 }}>
@@ -555,8 +555,8 @@ function ChannelPlanView({
                       label={v.contentPillar}
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(118, 102, 230,0.15)',
-                        color: '#c4bef4',
+                        bgcolor: 'rgba(136, 117, 235,0.15)',
+                        color: '#c6bdf4',
                         fontSize: '0.66rem',
                         height: 18,
                       }}

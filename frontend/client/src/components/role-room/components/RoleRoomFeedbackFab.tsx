@@ -71,7 +71,7 @@ const CATEGORY_CONFIG: Record<FeedbackCategory, { label: string; icon: typeof Bu
   bug: { label: 'Bug', icon: BugIcon, color: '#ef4444' },
   feature: { label: 'Idé / forslag', icon: IdeaIcon, color: '#facc15' },
   question: { label: 'Spørsmål', icon: QuestionIcon, color: '#60a5fa' },
-  other: { label: 'Annet', icon: FeedbackIcon, color: '#9d97ee' },
+  other: { label: 'Annet', icon: FeedbackIcon, color: '#9e8cf8' },
 };
 
 const PRIORITY_OPTIONS: Array<{ value: FeedbackPriority; label: string; color: string }> = [
@@ -223,10 +223,10 @@ export const RoleRoomFeedbackFab = ({
             bottom: { xs: 16, sm: 24 },
             right: { xs: 16, sm: 24 },
             zIndex: 1400,
-            bgcolor: '#9d97ee',
+            bgcolor: '#9e8cf8',
             color: '#0b1120',
-            '&:hover': { bgcolor: 'var(--role-violet, #756be7)' },
-            boxShadow: '0 4px 14px rgba(157, 151, 238,0.45)',
+            '&:hover': { bgcolor: 'var(--role-violet, #8875eb)' },
+            boxShadow: '0 4px 14px rgba(158, 140, 248,0.45)',
           }}
         >
           <FeedbackIcon />
@@ -242,7 +242,7 @@ export const RoleRoomFeedbackFab = ({
           sx: {
             bgcolor: '#0f172a',
             color: '#fff',
-            border: '1px solid rgba(157, 151, 238,0.32)',
+            border: '1px solid rgba(158, 140, 248,0.32)',
           },
         }}
       >
@@ -400,11 +400,11 @@ export const RoleRoomFeedbackFab = ({
                 disabled={!canSubmit}
                 startIcon={submitting ? <CircularProgress size={16} /> : <SendIcon />}
                 sx={{
-                  bgcolor: '#9d97ee',
+                  bgcolor: '#9e8cf8',
                   color: '#0b1120',
                   fontWeight: 700,
-                  '&:hover': { bgcolor: 'var(--role-violet, #756be7)' },
-                  '&:disabled': { bgcolor: 'rgba(157, 151, 238,0.3)' },
+                  '&:hover': { bgcolor: 'var(--role-violet, #8875eb)' },
+                  '&:disabled': { bgcolor: 'rgba(158, 140, 248,0.3)' },
                 }}
               >
                 {submitting ? 'Sender…' : 'Send ticket'}

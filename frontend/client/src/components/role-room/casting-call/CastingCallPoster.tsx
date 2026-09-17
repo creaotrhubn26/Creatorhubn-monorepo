@@ -26,8 +26,8 @@ import {
   RadioButtonChecked as DotIcon,
 } from '@mui/icons-material';
 
-const RR_PURPLE = '#9d97ee';
-const RR_PURPLE_DARK = '#5446e1';
+const RR_PURPLE = '#9e8cf8';
+const RR_PURPLE_DARK = '#6249df';
 
 export interface PosterStat {
   /** Felt-tittel, f.eks. "PRODUKSJON" eller "ALDER" */
@@ -147,9 +147,9 @@ export interface CastingCallPosterProps {
 }
 
 const POSTER_BG =
-  'radial-gradient(circle at 20% 12%, rgba(157, 151, 238,0.30), transparent 45%),' +
-  ' radial-gradient(circle at 95% 90%, rgba(84, 70, 225,0.22), transparent 50%),' +
-  ' linear-gradient(180deg, #0a0a14 0%, #0b0923 50%, #120f2e 100%)';
+  'radial-gradient(circle at 20% 12%, rgba(158, 140, 248,0.30), transparent 45%),' +
+  ' radial-gradient(circle at 95% 90%, rgba(98, 73, 223,0.22), transparent 50%),' +
+  ' linear-gradient(180deg, #0a0515 0%, #100b1e 50%, #18122b 100%)';
 
 export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterProps>(
   function CastingCallPoster({ fields, width = '100%', variant = 'standard' }, ref) {
@@ -189,8 +189,8 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
           overflow: 'hidden',
           position: 'relative',
           fontFamily: '"Inter", "SF Pro Display", system-ui, sans-serif',
-          boxShadow: '0 20px 60px rgba(84, 70, 225,0.25)',
-          border: '1px solid rgba(157, 151, 238,0.18)',
+          boxShadow: '0 20px 60px rgba(98, 73, 223,0.25)',
+          border: '1px solid rgba(158, 140, 248,0.18)',
         }}
       >
         {/* Subtilt scanline/grain ville krevd shader; bruker bare et glow-overlay */}
@@ -199,7 +199,7 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
             position: 'absolute',
             inset: 0,
             background:
-              'radial-gradient(ellipse at 50% 0%, rgba(157, 151, 238,0.10), transparent 35%)',
+              'radial-gradient(ellipse at 50% 0%, rgba(158, 140, 248,0.10), transparent 35%)',
             pointerEvents: 'none',
           }}
         />
@@ -223,11 +223,11 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
                   height: '10cqw',
                   borderRadius: '2cqw',
                   background:
-                    'linear-gradient(135deg, rgba(157, 151, 238,0.45), rgba(84, 70, 225,0.7))',
+                    'linear-gradient(135deg, rgba(158, 140, 248,0.45), rgba(98, 73, 223,0.7))',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1px solid rgba(157, 151, 238,0.5)',
+                  border: '1px solid rgba(158, 140, 248,0.5)',
                 }}
               >
                 <Typography sx={{ fontWeight: 800, fontSize: '5.5cqw', color: '#fff' }}>R</Typography>
@@ -250,8 +250,8 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
                 px: '4cqw',
                 py: '1.2cqw',
                 borderRadius: 99,
-                border: '1px solid rgba(157, 151, 238,0.45)',
-                background: 'rgba(157, 151, 238,0.10)',
+                border: '1px solid rgba(158, 140, 248,0.45)',
+                background: 'rgba(158, 140, 248,0.10)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '1.4cqw',
@@ -286,7 +286,7 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
                 fontSize: '8.4cqw',
                 fontWeight: 800,
                 lineHeight: 1.0,
-                background: `linear-gradient(90deg, ${RR_PURPLE}, #ddd6fe)`,
+                background: `linear-gradient(90deg, ${RR_PURPLE}, #e0dbfa)`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 textAlign: 'center',
@@ -296,9 +296,9 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
             </Typography>
             {/* divider + sparkle */}
             <Stack direction="row" alignItems="center" spacing={1.2} sx={{ width: '60%', mt: '0.6cqw' }}>
-              <Box sx={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(157, 151, 238,0.5))' }} />
+              <Box sx={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(158, 140, 248,0.5))' }} />
               <Box sx={{ color: RR_PURPLE, fontSize: '3cqw' }}>✦</Box>
-              <Box sx={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(157, 151, 238,0.5), transparent)' }} />
+              <Box sx={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(158, 140, 248,0.5), transparent)' }} />
             </Stack>
           </Stack>
 
@@ -309,9 +309,9 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
                 position: 'relative',
                 p: '5cqw',
                 borderRadius: '2.4cqw',
-                border: '1px solid rgba(157, 151, 238,0.28)',
+                border: '1px solid rgba(158, 140, 248,0.28)',
                 background:
-                  'linear-gradient(180deg, rgba(157, 151, 238,0.12), rgba(157, 151, 238,0.04))',
+                  'linear-gradient(180deg, rgba(158, 140, 248,0.12), rgba(158, 140, 248,0.04))',
                 overflow: 'hidden',
               }}
             >
@@ -359,9 +359,9 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
                 position: 'relative',
                 p: '4cqw',
                 borderRadius: '2.4cqw',
-                border: '1px solid rgba(157, 151, 238,0.20)',
+                border: '1px solid rgba(158, 140, 248,0.20)',
                 background:
-                  'linear-gradient(180deg, rgba(157, 151, 238,0.06), rgba(157, 151, 238,0.02))',
+                  'linear-gradient(180deg, rgba(158, 140, 248,0.06), rgba(158, 140, 248,0.02))',
                 overflow: 'hidden',
               }}
             >
@@ -393,7 +393,7 @@ export const CastingCallPoster = forwardRef<HTMLDivElement, CastingCallPosterPro
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '3cqw',
-                boxShadow: `0 8px 32px rgba(84, 70, 225,0.45)`,
+                boxShadow: `0 8px 32px rgba(98, 73, 223,0.45)`,
               }}
             >
               <SendIcon sx={{ color: '#fff', fontSize: '5cqw' }} />
@@ -428,9 +428,9 @@ function StatCard({ stat, fullWidth, compact }: StatCardProps): JSX.Element {
       sx={{
         p: compact ? '2.2cqw' : '3cqw',
         borderRadius: '2.4cqw',
-        border: '1px solid rgba(157, 151, 238,0.20)',
+        border: '1px solid rgba(158, 140, 248,0.20)',
         background:
-          'linear-gradient(180deg, rgba(157, 151, 238,0.08), rgba(157, 151, 238,0.02))',
+          'linear-gradient(180deg, rgba(158, 140, 248,0.08), rgba(158, 140, 248,0.02))',
         display: 'flex',
         alignItems: 'center',
         gap: compact ? '2cqw' : '3cqw',
@@ -443,8 +443,8 @@ function StatCard({ stat, fullWidth, compact }: StatCardProps): JSX.Element {
           width: compact ? '7.5cqw' : '10cqw',
           height: compact ? '7.5cqw' : '10cqw',
           borderRadius: '2cqw',
-          background: 'rgba(157, 151, 238,0.18)',
-          border: '1px solid rgba(157, 151, 238,0.35)',
+          background: 'rgba(158, 140, 248,0.18)',
+          border: '1px solid rgba(158, 140, 248,0.35)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

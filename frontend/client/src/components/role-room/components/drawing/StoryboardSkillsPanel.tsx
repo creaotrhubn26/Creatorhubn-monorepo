@@ -187,15 +187,15 @@ export const StoryboardSkillsPanel: React.FC<StoryboardSkillsPanelProps> = ({
       data-testid="storyboard-skills-panel"
       variant="outlined"
       sx={{
-        bgcolor: 'rgba(15, 13, 25, 0.96)',
-        borderColor: 'rgba(117, 107, 231, 0.3)',
+        bgcolor: 'rgba(16, 11, 30, 0.96)',
+        borderColor: 'rgba(136, 117, 235, 0.3)',
         color: 'common.white',
         minWidth: 0,
       }}
     >
       <CardContent sx={{ p: compact ? 1.5 : 2, '&:last-child': { pb: compact ? 1.5 : 2 } }}>
         <Stack direction="row" alignItems="center" spacing={1} mb={1.25}>
-          <AutoAwesomeIcon sx={{ color: '#9d97ee' }} />
+          <AutoAwesomeIcon sx={{ color: '#9e8cf8' }} />
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="subtitle1" fontWeight={800}>Storyboard Skills</Typography>
             <Typography variant="caption" color="rgba(255,255,255,0.62)">
@@ -271,7 +271,7 @@ export const StoryboardSkillsPanel: React.FC<StoryboardSkillsPanelProps> = ({
             {result.evidence.length > 0 && (
               <Stack spacing={0.75} mt={1.25} data-testid="storyboard-skill-evidence">
                 {result.evidence.map((entry) => (
-                  <Box key={entry.id} sx={{ borderLeft: '2px solid #756be7', pl: 1 }}>
+                  <Box key={entry.id} sx={{ borderLeft: '2px solid #8875eb', pl: 1 }}>
                     <Typography variant="caption" fontWeight={800}>{entry.label}</Typography>
                     <Typography variant="caption" display="block" color="rgba(255,255,255,0.65)">
                       {entry.detail}

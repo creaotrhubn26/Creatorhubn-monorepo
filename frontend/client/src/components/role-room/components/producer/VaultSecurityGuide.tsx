@@ -139,7 +139,7 @@ const SECTIONS: GuideSection[] = [
     id: 'mfa',
     title: '2. 2FA-step-up for hver gang du ser et passord',
     Icon: ShieldIcon,
-    iconColor: '#9d97ee',
+    iconColor: '#9e8cf8',
     oneLineSummary: 'Selv om du er logget inn, må du bekrefte med kode for å se klartekst.',
     details: (
       <Stack spacing={1.4}>
@@ -149,12 +149,12 @@ const SECTIONS: GuideSection[] = [
           identiteten din på nytt — akkurat som 1Password eller Bitwarden.
         </Typography>
         <Box sx={infoBoxSx}>
-          <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#9d97ee', mb: 0.6 }}>
+          <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#9e8cf8', mb: 0.6 }}>
             To måter å bekrefte:
           </Typography>
           <Stack spacing={0.8}>
             <Stack direction="row" spacing={1.2} alignItems="flex-start">
-              <CheckIcon sx={{ color: '#9d97ee', fontSize: 18, mt: 0.2 }} />
+              <CheckIcon sx={{ color: '#9e8cf8', fontSize: 18, mt: 0.2 }} />
               <Box>
                 <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: '#f8fafc' }}>
                   Authenticator-app (TOTP)
@@ -166,7 +166,7 @@ const SECTIONS: GuideSection[] = [
               </Box>
             </Stack>
             <Stack direction="row" spacing={1.2} alignItems="flex-start">
-              <CheckIcon sx={{ color: '#9d97ee', fontSize: 18, mt: 0.2 }} />
+              <CheckIcon sx={{ color: '#9e8cf8', fontSize: 18, mt: 0.2 }} />
               <Box>
                 <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: '#f8fafc' }}>
                   E-post-kode (fallback)
@@ -330,7 +330,7 @@ const SECTIONS: GuideSection[] = [
           <RoleCard
             role="Client Reviewer (klient-kontakt)"
             permissions={['Kan godkjenne reveal-requests fra teamet', 'Kan IKKE selv be om eller se secrets']}
-            color="#9d97ee"
+            color="#9e8cf8"
           />
           <RoleCard
             role="Crew / andre roller"

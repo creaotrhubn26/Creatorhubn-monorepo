@@ -156,7 +156,7 @@ const SCALE_OPTIONS = [
 // =============================================================================
 
 const ExportContainer = styled(Paper)(() => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: 'rgba(16, 11, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',

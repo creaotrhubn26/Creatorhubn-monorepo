@@ -172,11 +172,11 @@ export function ProductionDayCardInfo({
         mt: 1.5,
         p: 1.5,
         bgcolor: stats?.isTimePressure 
-          ? alpha('#523ee0', 0.1) 
+          ? alpha('#6249df', 0.1) 
           : alpha('#4caf50', 0.05),
         border: `1px solid ${
           stats?.isTimePressure 
-            ? alpha('#523ee0', 0.3) 
+            ? alpha('#6249df', 0.3) 
             : alpha('#4caf50', 0.2)
         }`,
         borderRadius: 1.5,
@@ -233,7 +233,7 @@ export function ProductionDayCardInfo({
                 borderRadius: 3,
                 bgcolor: alpha('#fff', 0.1),
                 '& .MuiLinearProgress-bar': {
-                  bgcolor: stats.isTimePressure ? '#523ee0' : '#4caf50',
+                  bgcolor: stats.isTimePressure ? '#6249df' : '#4caf50',
                   borderRadius: 3,
                 },
               }}
@@ -283,7 +283,7 @@ export function ProductionDayCardInfo({
                 <Typography 
                   variant="caption" 
                   sx={{ 
-                    color: stats.isTimePressure ? '#523ee0' : '#4caf50', 
+                    color: stats.isTimePressure ? '#6249df' : '#4caf50', 
                     fontSize: '10px', 
                     fontWeight: 600 
                   }}
@@ -310,7 +310,7 @@ export function ProductionDayCardInfo({
                 <Typography
                   variant="caption"
                   sx={{
-                    color: stats.isTimePressure ? '#523ee0' : '#fff',
+                    color: stats.isTimePressure ? '#6249df' : '#fff',
                     fontSize: '10px',
                     fontWeight: 600,
                   }}
@@ -330,13 +330,13 @@ export function ProductionDayCardInfo({
                     gap: 0.5,
                     mt: 0.5,
                     p: 0.75,
-                    bgcolor: alpha('#523ee0', 0.15),
+                    bgcolor: alpha('#6249df', 0.15),
                     borderRadius: 1,
-                    border: `1px solid ${alpha('#523ee0', 0.3)}`,
+                    border: `1px solid ${alpha('#6249df', 0.3)}`,
                   }}
                 >
-                  <WarningIcon sx={{ fontSize: 14, color: '#523ee0' }} />
-                  <Typography variant="caption" sx={{ color: '#523ee0', fontSize: '10px', fontWeight: 600 }}>
+                  <WarningIcon sx={{ fontSize: 14, color: '#6249df' }} />
+                  <Typography variant="caption" sx={{ color: '#6249df', fontSize: '10px', fontWeight: 600 }}>
                     Tidskonflikt: {formatTimeMinutes(Math.abs(stats.availableTime - stats.estimatedTime))} over realistisk dagslast
                   </Typography>
                 </Box>

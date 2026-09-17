@@ -53,7 +53,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
     >
       <DialogTitle
         sx={{
-          bgcolor: alpha('#5446e1', 0.05),
+          bgcolor: alpha('#6249df', 0.05),
           borderBottom: 1,
           borderColor: 'divider',
           display: 'flex',
@@ -61,7 +61,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
           gap: 1.5,
         }}
       >
-        <PrintIcon sx={{ color: '#5446e1' }} />
+        <PrintIcon sx={{ color: '#6249df' }} />
         <Box>
           <Typography variant="h6" fontWeight={600}>
             Skriv ut / Eksporter
@@ -80,7 +80,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.header}
                 onChange={() => toggle('header')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -99,7 +99,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.stats}
                 onChange={() => toggle('stats')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -118,7 +118,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.legend}
                 onChange={() => toggle('legend')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -141,7 +141,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.scheduledDays}
                 onChange={() => toggle('scheduledDays')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -160,7 +160,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.unassignedScenes}
                 onChange={() => toggle('unassignedScenes')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -179,7 +179,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.castInfo}
                 onChange={() => toggle('castInfo')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -198,7 +198,7 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
               <Checkbox
                 checked={printOptions.notes}
                 onChange={() => toggle('notes')}
-                sx={{ color: '#5446e1', '&.Mui-checked': { color: '#5446e1' } }}
+                sx={{ color: '#6249df', '&.Mui-checked': { color: '#6249df' } }}
               />
             }
             label={
@@ -254,8 +254,8 @@ export const PrintExportDialog: FC<PrintExportDialogProps> = ({
           startIcon={<PrintIcon />}
           sx={{
             fontSize: responsive.fontSize.body,
-            bgcolor: '#5446e1',
-            '&:hover': { bgcolor: '#3928d9' },
+            bgcolor: '#6249df',
+            '&:hover': { bgcolor: '#472bd4' },
           }}
         >
           Skriv ut PDF

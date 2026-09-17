@@ -3,10 +3,17 @@ import { Home as IntIcon, Landscape as ExtIcon, WbTwilight as TwilightIcon, Even
 import type { StripColorConfig } from "./stripboard.types";
 
 // ─── Norwegian Film Standard colour codes ─────────────────────────────────────
+//
+// 🔑 Disse fargene er IKKE merkevare og skal ikke males om med resten av
+// Role Room. De er bransjekoden for en stripboard: INT/NATT (lilla) og
+// EXT/NATT (mørk blå) er to ulike farger fordi de betyr to ulike ting for
+// den som leser brettet. En palett-ommaling som samlet dem i samme indigo
+// gjorde scenetypene umulige å skille — og brøt reverse-oppslaget under,
+// der to case-etiketter ble like.
 
 export const STRIP_COLORS: Record<string, StripColorConfig> = {
   INT_DAY:   { bg: '#fff9c4', label: 'INT/DAG',      icon: React.createElement(IntIcon),      textColor: '#1a1a1a' }, // 7.8:1
-  INT_NIGHT: { bg: '#4227b0', label: 'INT/NATT',     icon: React.createElement(IntIcon),      textColor: '#ffffff' }, // 5.4:1
+  INT_NIGHT: { bg: '#9c27b0', label: 'INT/NATT',     icon: React.createElement(IntIcon),      textColor: '#ffffff' }, // 5.4:1
   EXT_DAY:   { bg: '#e3f2fd', label: 'EXT/DAG',      icon: React.createElement(ExtIcon),      textColor: '#1a1a1a' }, // 8.5:1
   EXT_NIGHT: { bg: '#1a237e', label: 'EXT/NATT',     icon: React.createElement(ExtIcon),      textColor: '#ffffff' }, // 10.2:1
   EXT_DAWN:  { bg: '#ffccbc', label: 'EXT/GRYNING',  icon: React.createElement(TwilightIcon), textColor: '#1a1a1a' }, // 6.1:1
@@ -17,8 +24,8 @@ export const STRIP_COLORS: Record<string, StripColorConfig> = {
 export function getStripColorFromHex(hex: string): keyof typeof STRIP_COLORS {
   switch (hex) {
     case '#fff9c4':             return 'INT_DAY';
-    case '#23168a':
-    case '#4227b0':             return 'INT_NIGHT';
+    case '#4a148c':
+    case '#9c27b0':             return 'INT_NIGHT';
     case '#e3f2fd':             return 'EXT_DAY';
     case '#1a237e':             return 'EXT_NIGHT';
     case '#ffccbc':             return 'EXT_DAWN';

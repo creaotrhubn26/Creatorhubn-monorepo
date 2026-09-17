@@ -17,13 +17,13 @@ import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import TrendingDownOutlinedIcon from '@mui/icons-material/TrendingDownOutlined';
 
 const palette = {
-  bg: '#0e0b2e',
-  border: 'rgba(118, 102, 230,0.18)',
-  borderStrong: 'rgba(118, 102, 230,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#9e93ed',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
 };
 
@@ -177,7 +177,7 @@ export default function ClientTiktokSpendPanel({
               gap: 1.4,
               mb: 2,
             }}>
-              <Box sx={{ bgcolor: 'rgba(118, 102, 230,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
+              <Box sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
                   Siste uke
                 </Typography>
@@ -185,7 +185,7 @@ export default function ClientTiktokSpendPanel({
                   {fmtNok(data.spendLast7d)}
                 </Typography>
               </Box>
-              <Box sx={{ bgcolor: 'rgba(118, 102, 230,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
+              <Box sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
                   Klikk på annonser
                 </Typography>
@@ -193,7 +193,7 @@ export default function ClientTiktokSpendPanel({
                   {Math.round(data.clicks).toLocaleString('nb-NO')}
                 </Typography>
               </Box>
-              <Box sx={{ bgcolor: 'rgba(118, 102, 230,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
+              <Box sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
                   Pris per kunde
                 </Typography>
@@ -214,7 +214,7 @@ export default function ClientTiktokSpendPanel({
                     const pct = data.spendLast28d > 0 ? Math.round((c.spend / data.spendLast28d) * 100) : 0;
                     return (
                       <Box key={c.campaignName || i} sx={{
-                        bgcolor: 'rgba(118, 102, 230,0.04)',
+                        bgcolor: 'rgba(136, 117, 235,0.04)',
                         border: `1px solid ${palette.border}`,
                         borderRadius: 1.2,
                         p: 1.4,

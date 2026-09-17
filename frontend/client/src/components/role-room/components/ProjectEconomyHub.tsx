@@ -2212,7 +2212,7 @@ export default function ProjectEconomyHub({
           p: { xs: 1.5, md: 2 },
           borderRadius: 2,
           border: '1px solid rgba(148,163,184,0.22)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.82) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(10, 5, 21,0.82) 100%)',
         }}
       >
         <Stack spacing={1.5}>
@@ -2306,7 +2306,7 @@ export default function ProjectEconomyHub({
         sx={{
           borderRadius: 2,
           border: '1px solid rgba(148,163,184,0.18)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(2,6,23,0.78) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(10, 5, 21,0.78) 100%)',
           overflow: 'hidden',
         }}
       >
@@ -2573,7 +2573,7 @@ export default function ProjectEconomyHub({
                             p: 1.25,
                             borderRadius: 1.5,
                             border: isActive ? '1px solid rgba(251,191,36,0.42)' : '1px solid rgba(148,163,184,0.14)',
-                            background: isActive ? 'rgba(251,191,36,0.08)' : 'rgba(2,6,23,0.54)',
+                            background: isActive ? 'rgba(251,191,36,0.08)' : 'rgba(10, 5, 21,0.54)',
                             cursor: 'pointer',
                             transition: 'border-color 0.2s ease, background 0.2s ease',
                             '&:hover': {
@@ -2656,7 +2656,7 @@ export default function ProjectEconomyHub({
                           p: 1.15,
                           borderRadius: 1.4,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(2,6,23,0.54)',
+                          background: 'rgba(10, 5, 21,0.54)',
                         }}
                       >
                         <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.8rem', fontWeight: 700 }}>
@@ -2685,7 +2685,7 @@ export default function ProjectEconomyHub({
                           p: 1.1,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(2,6,23,0.54)',
+                          background: 'rgba(10, 5, 21,0.54)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3020,7 +3020,7 @@ export default function ProjectEconomyHub({
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={1} flexWrap="wrap">
-                        <Chip size="small" label={splitSheetStatusLabel} sx={{ bgcolor: 'rgba(118, 102, 230,0.16)', color: '#c4bef4' }} />
+                        <Chip size="small" label={splitSheetStatusLabel} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4' }} />
                         <Chip size="small" label={`${splitSheetContributorCount} bidragsytere`} sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
                       </Stack>
                     </Stack>
@@ -3042,7 +3042,7 @@ export default function ProjectEconomyHub({
                                 p: 1,
                                 borderRadius: 1.25,
                                 border: '1px solid rgba(148,163,184,0.18)',
-                                background: 'rgba(2,6,23,0.54)',
+                                background: 'rgba(10, 5, 21,0.54)',
                               }}
                             >
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3352,7 +3352,7 @@ export default function ProjectEconomyHub({
                       <Chip
                         size="small"
                         label={`Signatur ${agreementSignatureSummary.inFlight} ute`}
-                        sx={{ bgcolor: 'rgba(158, 147, 237,0.14)', color: '#dedbf9' }}
+                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
                       />
                     </Stack>
                   </Stack>
@@ -3799,7 +3799,7 @@ export default function ProjectEconomyHub({
                               p: 1.15,
                               borderRadius: 1.5,
                               border: '1px solid rgba(148,163,184,0.16)',
-                              background: 'rgba(2,6,23,0.54)',
+                              background: 'rgba(10, 5, 21,0.54)',
                             }}
                           >
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3889,7 +3889,7 @@ export default function ProjectEconomyHub({
                           p: 1.15,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.16)',
-                          background: 'rgba(2,6,23,0.54)',
+                          background: 'rgba(10, 5, 21,0.54)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3972,7 +3972,7 @@ export default function ProjectEconomyHub({
                                 p: 1.15,
                                 borderRadius: 1.5,
                                 border: '1px solid rgba(148,163,184,0.16)',
-                                background: 'rgba(2,6,23,0.54)',
+                                background: 'rgba(10, 5, 21,0.54)',
                               }}
                             >
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3988,7 +3988,7 @@ export default function ProjectEconomyHub({
                                       <Chip
                                         size="small"
                                         label={`Avtale ${linkedAgreement.title}`}
-                                        sx={{ bgcolor: 'rgba(158, 147, 237,0.14)', color: '#dedbf9' }}
+                                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
                                       />
                                       <Chip
                                         size="small"
@@ -4186,7 +4186,7 @@ export default function ProjectEconomyHub({
                           p: 1.1,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(2,6,23,0.54)',
+                          background: 'rgba(10, 5, 21,0.54)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">

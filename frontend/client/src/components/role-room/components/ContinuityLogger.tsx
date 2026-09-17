@@ -143,9 +143,9 @@ export const ContinuityLogger: FC<ContinuityLoggerProps> = ({
 
   const categoryConfig: Record<ContinuityEntry['category'], { icon: IconWithSx; label: string; color: string }> = {
     costume: { icon: <CostumeIcon />, label: 'Kostyme', color: '#e91e63' },
-    hair: { icon: <FaceIcon />, label: 'Hår', color: '#4227b0' },
+    hair: { icon: <FaceIcon />, label: 'Hår', color: '#3c27a5' },
     makeup: { icon: <MakeupIcon />, label: 'Sminke', color: '#ec407a' },
-    props: { icon: <PropsIcon />, label: 'Rekvisitter', color: '#523ee0' },
+    props: { icon: <PropsIcon />, label: 'Rekvisitter', color: '#6249df' },
     set: { icon: <LocationIcon />, label: 'Set/Lokasjon', color: '#4caf50' },
     lighting: { icon: <ImageIcon />, label: 'Lys', color: '#ffeb3b' },
     position: { icon: <LocationIcon />, label: 'Posisjon', color: '#2196f3' },

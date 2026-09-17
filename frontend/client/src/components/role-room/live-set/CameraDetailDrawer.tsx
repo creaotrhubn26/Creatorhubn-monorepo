@@ -57,7 +57,7 @@ const VENDOR_COLORS: Record<CameraVendor, string> = {
   blackmagic: "#0288d1",
   sony: "#000000",
   arri: "#f5a623",
-  zcam: "#4227b0",
+  zcam: "#3c27a5",
   gopro: "#212121",
   red: "#dc2626",
   dji: "#37474f",

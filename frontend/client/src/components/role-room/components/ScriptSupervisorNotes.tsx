@@ -191,7 +191,7 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
 
   const getStatusConfig = (status: TakeLog['status']) => {
     const configs = {
-      print: { label: 'PRINT', color: 'var(--role-violet, #756be7)', icon: <StarIcon /> },
+      print: { label: 'PRINT', color: 'var(--role-violet, #8875eb)', icon: <StarIcon /> },
       good: { label: 'GOOD', color: '#10b981', icon: <CheckIcon /> },
       hold: { label: 'HOLD', color: '#f59e0b', icon: <FlagIcon /> },
       ng: { label: 'NG', color: '#ef4444', icon: <ErrorIcon /> },
@@ -385,8 +385,8 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
           </Paper>
         </Grid>
         <Grid size={{ xs: 4 }}>
-          <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'rgba(117, 107, 231, 0.1)' }}>
-            <Typography variant="h3" sx={{ color: 'var(--role-violet, #756be7)' }}>{printTakes}</Typography>
+          <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'rgba(136, 117, 235, 0.1)' }}>
+            <Typography variant="h3" sx={{ color: 'var(--role-violet, #8875eb)' }}>{printTakes}</Typography>
             <Typography variant="caption" color="text.secondary">Print Takes</Typography>
           </Paper>
         </Grid>
@@ -436,7 +436,7 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
                         <TableRow 
                           key={log.id}
                           sx={{ 
-                            bgcolor: log.circled ? 'rgba(117, 107, 231, 0.1)' : 'transparent',
+                            bgcolor: log.circled ? 'rgba(136, 117, 235, 0.1)' : 'transparent',
                             '&:hover': { bgcolor: 'action.hover' },
                           }}
                         >

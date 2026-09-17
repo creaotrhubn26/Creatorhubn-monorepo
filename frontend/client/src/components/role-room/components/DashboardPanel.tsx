@@ -54,7 +54,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #756be7',
+    outline: '3px solid #8875eb',
     outlineOffset: 2,
   },
 };
@@ -215,7 +215,7 @@ function DashboardPanelInner({
     }, {});
     return [
       { status: 'confirmed', color: '#10b981', label: 'Bekreftet' },
-      { status: 'selected', color: 'var(--role-violet, #756be7)', label: 'Valgt' },
+      { status: 'selected', color: 'var(--role-violet, #8875eb)', label: 'Valgt' },
       { status: 'shortlist', color: '#ffb800', label: 'Shortlist' },
       { status: 'requested', color: 'var(--role-cyan, #00d4ff)', label: 'Forespurt' },
       { status: 'pending', color: '#6b7280', label: 'Venter' },
@@ -235,7 +235,7 @@ function DashboardPanelInner({
       { status: 'pending',   label: 'Ingen status', color: '#6b7280', tabIndex: 3 },
       { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)', tabIndex: 3 },
       { status: 'shortlist', label: 'Vurderes',     color: '#ffb800', tabIndex: 3 },
-      { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #756be7)', tabIndex: 3 },
+      { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #8875eb)', tabIndex: 3 },
       { status: 'confirmed', label: 'Bekreftet',    color: '#10b981', tabIndex: 3 },
       { status: 'rejected',  label: 'Avvist',       color: '#ef4444', tabIndex: 3 },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }));
@@ -252,7 +252,7 @@ function DashboardPanelInner({
       return acc;
     }, {});
     return [
-      { status: 'open',    label: 'Åpen',    color: '#9d97ee', tabIndex: 2 },
+      { status: 'open',    label: 'Åpen',    color: '#9e8cf8', tabIndex: 2 },
       { status: 'casting', label: 'Casting', color: '#fbbf24', tabIndex: 2 },
       { status: 'filled',  label: 'Besatt',  color: '#10b981', tabIndex: 2 },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }));
@@ -268,9 +268,9 @@ function DashboardPanelInner({
   const _quickLinks = [
     { title: 'Team', description: 'Administrer crew', color: 'var(--role-cyan, #00d4ff)', icon: TeamIcon, tabIndex: 7 },
     { title: 'Lokasjoner', description: 'Lokasjoner', color: '#4caf50', icon: LocationIcon, tabIndex: 5 },
-    { title: 'Utstyr', description: 'Rekvisitter', color: '#523ee0', icon: PropsIcon, tabIndex: 8 },
+    { title: 'Utstyr', description: 'Rekvisitter', color: '#6249df', icon: PropsIcon, tabIndex: 8 },
     { title: 'Kamera', description: 'Shot lists', color: '#e91e63', icon: ShotListIcon, tabIndex: 9 },
-    { title: 'Kalender', description: 'Produksjonsplan', color: '#4227b0', icon: CalendarIcon, tabIndex: 6 },
+    { title: 'Kalender', description: 'Produksjonsplan', color: '#3c27a5', icon: CalendarIcon, tabIndex: 6 },
   ];
 
   return (
@@ -287,13 +287,13 @@ function DashboardPanelInner({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: 2,
-              bgcolor: 'rgba(117, 107, 231, 0.15)',
+              bgcolor: 'rgba(136, 117, 235, 0.15)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <DashboardIcon sx={{ fontSize: { xs: 24, sm: 28, md: 26, lg: 30, xl: 36 }, color: 'var(--role-violet, #756be7)' }} />
+            <DashboardIcon sx={{ fontSize: { xs: 24, sm: 28, md: 26, lg: 30, xl: 36 }, color: 'var(--role-violet, #8875eb)' }} />
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {isEditingTitle ? (
@@ -500,7 +500,7 @@ function DashboardPanelInner({
               p: 0.75,
               minWidth: TOUCH_TARGET_SIZE,
               minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { color: 'var(--role-violet, #756be7)', borderColor: 'var(--role-violet, #756be7)', bgcolor: 'rgba(117, 107, 231,0.1)' },
+              '&:hover': { color: 'var(--role-violet, #8875eb)', borderColor: 'var(--role-violet, #8875eb)', bgcolor: 'rgba(136, 117, 235,0.1)' },
               ...focusVisibleStyles,
             }}
             aria-label="Åpne guide"
@@ -520,7 +520,7 @@ function DashboardPanelInner({
               minHeight: TOUCH_TARGET_SIZE,
               px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-              '&:hover': { borderColor: 'var(--role-violet, #756be7)', bgcolor: 'rgba(117, 107, 231,0.1)' },
+              '&:hover': { borderColor: 'var(--role-violet, #8875eb)', bgcolor: 'rgba(136, 117, 235,0.1)' },
               ...focusVisibleStyles,
             }}
           >
@@ -820,7 +820,7 @@ function DashboardPanelInner({
                 width: { xs: 36, sm: 42 },
                 height: { xs: 36, sm: 42 },
                 borderRadius: 1.5,
-                bgcolor: 'rgba(117, 107, 231, 0.15)',
+                bgcolor: 'rgba(136, 117, 235, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -828,7 +828,7 @@ function DashboardPanelInner({
               }}
             >
               <BoltIcon
-                sx={{ color: 'var(--role-violet, #756be7)', fontSize: { xs: 20, sm: 24 } }}
+                sx={{ color: 'var(--role-violet, #8875eb)', fontSize: { xs: 20, sm: 24 } }}
               />
             </Box>
             <Typography
@@ -848,8 +848,8 @@ function DashboardPanelInner({
                 label={`${stats.castingProgress}% fullført`}
                 size="small"
                 sx={{
-                  bgcolor: 'rgba(117, 107, 231,0.2)',
-                  color: 'var(--role-violet, #756be7)',
+                  bgcolor: 'rgba(136, 117, 235,0.2)',
+                  color: 'var(--role-violet, #8875eb)',
                   height: { xs: 22, sm: 26 },
                   fontSize: { xs: '0.7rem', sm: '0.8rem' },
                   fontWeight: 600,

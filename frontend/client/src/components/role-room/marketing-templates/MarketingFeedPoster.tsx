@@ -513,7 +513,7 @@ function BriefCard({
         borderRadius: '2.4cqw',
         border: `1px solid rgba(${glowRgb},0.22)`,
         background: card.bgImageUrl
-          ? `linear-gradient(180deg, rgba(10,10,20,0.55), rgba(10,10,20,0.85)), url(${card.bgImageUrl})`
+          ? `linear-gradient(180deg, rgba(10, 5, 21,0.55), rgba(10, 5, 21,0.85)), url(${card.bgImageUrl})`
           : `linear-gradient(180deg, rgba(${glowRgb},0.10), rgba(${glowRgb},0.02))`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',

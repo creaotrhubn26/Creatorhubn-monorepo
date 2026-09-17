@@ -1318,7 +1318,7 @@ function drawingStateValueEqual<Key extends keyof DrawingState>(
 
 const CanvasContainer = styled(Box)({
   position: 'relative',
-  backgroundColor: '#1a1a2e',
+  backgroundColor: '#18122b',
   borderRadius: 12,
   overflow: 'hidden',
   boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
@@ -1358,7 +1358,7 @@ const ProToolbar = styled(Paper, {
   maxWidth: 'calc(100% - 16px)',
   padding: '6px 14px',
   borderRadius: 28,
-  backgroundColor: drawing ? 'rgba(14, 18, 30, 0.995)' : 'rgba(20, 20, 30, 0.97)',
+  backgroundColor: drawing ? 'rgba(14, 18, 30, 0.995)' : 'rgba(16, 11, 30, 0.97)',
   backdropFilter: drawing ? 'none' : 'blur(8px)',
   WebkitBackdropFilter: drawing ? 'none' : 'blur(8px)',
   display: 'flex',
@@ -3007,12 +3007,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       ctx.save();
 
       if (frameY > 0) {
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.42)';
+        ctx.fillStyle = 'rgba(10, 5, 21, 0.42)';
         ctx.fillRect(0, 0, width, frameY);
         ctx.fillRect(0, bottomEdge, width, Math.max(0, height - bottomEdge));
       }
       if (frameX > 0) {
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.42)';
+        ctx.fillStyle = 'rgba(10, 5, 21, 0.42)';
         ctx.fillRect(0, frameY, frameX, frameSize.height);
         ctx.fillRect(rightEdge, frameY, Math.max(0, width - rightEdge), frameSize.height);
       }
@@ -3939,7 +3939,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   // Color presets
   const COLOR_PRESETS = [
     '#000000', '#FFFFFF', '#FF5252', '#FF9800', '#FFEB3B',
-    '#4CAF50', '#2196F3', '#4227b0', '#795548', '#607D8B',
+    '#4CAF50', '#2196F3', '#3c27a5', '#795548', '#607D8B',
   ];
   const QUICK_BRUSH_TYPES: ProBrushType[] = ['pen', 'marker', 'highlighter', 'eraser'];
   const EXTRA_BRUSH_TYPES: ProBrushType[] = PRO_BRUSH_TYPES.filter(
@@ -4255,7 +4255,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           Flow {(activeBrushConfig.flow * 100).toFixed(0)}%
         </Typography>
         {symmetrySettings.type !== 'none' && (
-          <Typography variant="caption" sx={{ color: '#9e93ed' }}>
+          <Typography variant="caption" sx={{ color: '#9e8cf8' }}>
             Symmetry
           </Typography>
         )}

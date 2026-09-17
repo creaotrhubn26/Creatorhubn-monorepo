@@ -307,8 +307,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
                 p: 1.4,
                 borderRadius: 2.2,
                 border: '1px solid',
-                borderColor: isUser ? 'rgba(99,102,241,0.32)' : 'rgba(148,163,184,0.16)',
-                bgcolor: isUser ? 'rgba(99,102,241,0.16)' : 'rgba(15,23,42,0.56)',
+                borderColor: isUser ? 'rgba(136, 117, 235,0.32)' : 'rgba(148,163,184,0.16)',
+                bgcolor: isUser ? 'rgba(136, 117, 235,0.16)' : 'rgba(15,23,42,0.56)',
                 // Leaves breathing room on iPad so message bubbles don't
                 // stretch across the whole dialog width and look like a
                 // wall of text.
@@ -319,7 +319,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             >
               <Typography
                 sx={{
-                  color: isUser ? '#c7d2fe' : '#a5f3fc',
+                  color: isUser ? '#e0dbfa' : '#a5f3fc',
                   fontSize: '0.68rem',
                   fontWeight: 700,
                   textTransform: 'uppercase',
@@ -466,7 +466,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
     <Box
       sx={{
         flexShrink: 0,
-        bgcolor: 'rgba(2,6,23,0.82)',
+        bgcolor: 'rgba(10, 5, 21,0.82)',
         borderTop: '1px solid rgba(148,163,184,0.18)',
         pt: 1.2,
         pb: 'calc(var(--rr-safe-bottom, 0px) + 10px)',
@@ -562,7 +562,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           // dark RoleRoomAgentDialog *and* the light RoleRoomDashboard
           // Card. Before this wrap the agent bubbles blended into the
           // Dialog's own light-wrapper and the text was unreadable.
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(2,6,23,0.98) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
           borderRadius: { xs: 0, md: 2 },
           border: { xs: 'none', md: '1px solid rgba(148,163,184,0.14)' },
           overflow: 'hidden',

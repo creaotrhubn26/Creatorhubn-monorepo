@@ -40,7 +40,7 @@ type MobileShotStatus = 'planned' | 'shot' | 'selected' | 'missing';
 const STATUS_META: Record<MobileShotStatus, { label: string; icon: React.ReactNode; color: string; bg: string }> = {
   planned: { label: 'Planlagt', icon: <PlannedIcon fontSize="small" />, color: '#475569', bg: 'rgba(100,116,139,0.12)' },
   shot: { label: 'Tatt', icon: <CheckCircleIcon fontSize="small" />, color: '#047857', bg: 'rgba(16,185,129,0.16)' },
-  selected: { label: 'Valgt', icon: <SelectedIcon fontSize="small" />, color: '#3928d9', bg: 'rgba(84, 70, 225,0.16)' },
+  selected: { label: 'Valgt', icon: <SelectedIcon fontSize="small" />, color: '#472bd4', bg: 'rgba(98, 73, 223,0.16)' },
   missing: { label: 'Mangler', icon: <MissingIcon fontSize="small" />, color: '#b91c1c', bg: 'rgba(239,68,68,0.16)' },
 };
 
@@ -135,7 +135,7 @@ export const RoleRoomMobileShotListView: React.FC<RoleRoomMobileShotListViewProp
               p: 1.5,
               borderRadius: 'var(--rr-card-radius, 12px)',
               border: '1px solid',
-              borderColor: selected ? '#6366f1' : 'divider',
+              borderColor: selected ? '#8875eb' : 'divider',
               bgcolor: 'background.paper',
               cursor: 'pointer',
             }}

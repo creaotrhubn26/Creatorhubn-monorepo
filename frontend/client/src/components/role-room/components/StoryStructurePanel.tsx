@@ -115,7 +115,7 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
   conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
   rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
   climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
-  falling_action: { color: 'var(--role-violet, #756be7)', label: 'Fallende handling', Icon: FallingActionIcon },
+  falling_action: { color: 'var(--role-violet, #8875eb)', label: 'Fallende handling', Icon: FallingActionIcon },
   resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
   transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
   character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
@@ -125,8 +125,8 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
 // Generate character color
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#756be7',
-    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1',
+    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8875eb',
+    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#8875eb',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
@@ -192,7 +192,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#1a1a2e',
+        bgcolor: '#18122b',
         overflow: 'hidden',
       }}
     >
@@ -202,7 +202,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         sx={{
           p: 1.5,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(30,30,50,0.9)',
+          bgcolor: 'rgba(33, 28, 59,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -248,7 +248,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         scrollButtons="auto"
         sx={{
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(25,25,45,0.8)',
+          bgcolor: 'rgba(24, 18, 43,0.8)',
           minHeight: 42,
           '& .MuiTab-root': { minHeight: 42, py: 1 },
         }}
@@ -379,7 +379,7 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
                 mb: 0.5,
                 cursor: 'pointer',
                 borderLeft: `3px solid ${purposeConfig?.color || '#6b7280'}`,
-                bgcolor: 'rgba(30,30,50,0.5)',
+                bgcolor: 'rgba(33, 28, 59,0.5)',
                 '&:hover': {
                   bgcolor: 'rgba(59,130,246,0.1)',
                 },
@@ -507,7 +507,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
             key={act.actNumber}
             sx={{
               p: 1.5,
-              bgcolor: 'rgba(30,30,50,0.5)',
+              bgcolor: 'rgba(33, 28, 59,0.5)',
             }}
           >
             <Stack direction="row" alignItems="center" spacing={2}>
@@ -557,7 +557,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
               key={seq.id}
               sx={{
                 p: 1,
-                bgcolor: 'rgba(30,30,50,0.3)',
+                bgcolor: 'rgba(33, 28, 59,0.3)',
                 borderLeft: `3px solid ${purposeConfig?.color || '#6b7280'}`,
                 cursor: 'pointer',
                 '&:hover': {
@@ -700,7 +700,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
           expanded={expanded === arc.character}
           onChange={(_, isExpanded) => setExpanded(isExpanded ? arc.character : false)}
           sx={{
-            bgcolor: 'rgba(30,30,50,0.5)',
+            bgcolor: 'rgba(33, 28, 59,0.5)',
             '&:before': { display: 'none' },
             mb: 0.5,
           }}
@@ -838,8 +838,8 @@ const PacingPanel: FC<PacingPanelProps> = ({
             sx={{
               height: 16,
               borderRadius: 2,
-              bgcolor: 'rgba(117, 107, 231,0.2)',
-              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #756be7)' },
+              bgcolor: 'rgba(136, 117, 235,0.2)',
+              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #8875eb)' },
             }}
           />
         </Box>

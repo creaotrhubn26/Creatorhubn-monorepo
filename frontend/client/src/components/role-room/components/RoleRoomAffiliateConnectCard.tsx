@@ -125,8 +125,8 @@ export const RoleRoomAffiliateConnectCard: React.FC<
         mt: 2,
         p: 2,
         borderRadius: 2,
-        border: "1px solid rgba(196,181,253,0.24)",
-        bgcolor: "rgba(41, 29, 149,0.16)",
+        border: "1px solid rgba(198, 189, 244,0.24)",
+        bgcolor: "rgba(48, 31, 132,0.16)",
       }}
     >
       <Stack spacing={1.5}>
@@ -137,7 +137,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
           justifyContent="space-between"
         >
           <Stack direction="row" spacing={1} alignItems="center">
-            <AccountBalanceOutlinedIcon sx={{ color: "#c4b5fd" }} />
+            <AccountBalanceOutlinedIcon sx={{ color: "#c6bdf4" }} />
             <Typography variant="subtitle2" fontWeight={800}>
               Affiliate-utbetalinger
             </Typography>
@@ -176,7 +176,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
               <Box sx={{ flex: 1 }}>
                 <Typography
                   variant="caption"
-                  sx={{ color: "rgba(245,243,255,0.66)" }}
+                  sx={{ color: "rgba(246, 245, 255,0.66)" }}
                 >
                   Tilgjengelig etter 30 dagers sikkerhetsperiode
                 </Typography>
@@ -190,7 +190,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
               <Box sx={{ flex: 1 }}>
                 <Typography
                   variant="caption"
-                  sx={{ color: "rgba(245,243,255,0.66)" }}
+                  sx={{ color: "rgba(246, 245, 255,0.66)" }}
                 >
                   Minste utbetaling
                 </Typography>
@@ -204,7 +204,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
             </Stack>
             <Typography
               variant="caption"
-              sx={{ color: "rgba(245,243,255,0.66)" }}
+              sx={{ color: "rgba(246, 245, 255,0.66)" }}
             >
               Månedlig utbetaling til organisasjonens Stripe-konto. Refusjoner
               og chargebacks trekkes fra neste oppgjør.

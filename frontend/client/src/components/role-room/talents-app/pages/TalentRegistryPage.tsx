@@ -209,7 +209,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
                     background: palette.accentGradient, color: '#fff',
                     boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
                     '&:hover': {
-                      background: 'linear-gradient(135deg, #5628c3 0%, #3c27a5 100%)',
+                      background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)',
                       boxShadow: '0 6px 18px rgba(98, 73, 223,0.52)',
                     },
                     // Overstyr MUI sin default disabled-stil (lys grå) — beholder
@@ -697,7 +697,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
             <PersonOutlineIcon sx={{ fontSize: 80, color: palette.textMuted }} />
           </Box>
         )}
-        <IconButton sx={{ position: 'absolute', top: 8, right: 8, color: palette.accentBright, bgcolor: 'rgba(15,7,33,0.7)', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.3)' } }}>
+        <IconButton sx={{ position: 'absolute', top: 8, right: 8, color: palette.accentBright, bgcolor: 'rgba(16, 11, 30,0.7)', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.3)' } }}>
           <BookmarkIcon fontSize="small" />
         </IconButton>
       </Box>

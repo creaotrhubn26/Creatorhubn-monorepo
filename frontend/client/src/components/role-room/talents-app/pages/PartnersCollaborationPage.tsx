@@ -249,7 +249,7 @@ export default function PartnersCollaborationPage() {
               px: 2,
               py: 1.2,
               borderRadius: radius.sm,
-              background: 'linear-gradient(90deg, rgba(98, 73, 223,0.18), rgba(110, 101, 236,0.12))',
+              background: 'linear-gradient(90deg, rgba(98, 73, 223,0.18), rgba(136, 117, 235,0.12))',
               border: `1px solid ${palette.borderStrong}`,
               display: 'flex',
               alignItems: 'center',

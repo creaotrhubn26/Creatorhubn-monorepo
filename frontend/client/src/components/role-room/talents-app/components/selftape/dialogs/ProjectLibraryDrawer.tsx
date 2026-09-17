@@ -92,7 +92,7 @@ export default function ProjectLibraryDrawer({
                       width: 36,
                       height: 46,
                       borderRadius: 0.6,
-                      bgcolor: p.poster_color ?? '#1c1733',
+                      bgcolor: p.poster_color ?? '#18122b',
                       backgroundImage: p.poster_url ? `url(${p.poster_url})` : undefined,
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',

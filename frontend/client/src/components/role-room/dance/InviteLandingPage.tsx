@@ -41,11 +41,11 @@ import * as svc from './danceTeamService';
 import type { InvitePublicInfo } from './danceTeamService';
 
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
-const PURPLE_DEEP   = '#291d95';
+const PURPLE_DEEP   = '#301f84';
 const PURPLE_LIGHT  = danceFlowColors.lavender;
 const TEXT_DIM      = 'rgba(229,231,235,0.78)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.55)';
-const PANEL_BORDER  = 'rgba(157, 151, 238,0.18)';
+const PANEL_BORDER  = 'rgba(158, 140, 248,0.18)';
 
 interface Props {
   token: string;
@@ -166,7 +166,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
       <Layout>
         <Stack alignItems="center" spacing={2}>
           <TeamIcon sx={{ fontSize: 56, color: PURPLE_LIGHT }} />
-          <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(237,233,254,0.95)' }}>
+          <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(235, 231, 253,0.95)' }}>
             Velkommen til teamet!
           </Typography>
           <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>Tar deg til workspace…</Typography>
@@ -195,18 +195,18 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
           <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700 }}>
             DANSESTUDIO · INVITASJON
           </Typography>
-          <Typography sx={{ fontSize: 26, fontWeight: 700, color: 'rgba(237,233,254,0.95)', lineHeight: 1.2 }}>
+          <Typography sx={{ fontSize: 26, fontWeight: 700, color: 'rgba(235, 231, 253,0.95)', lineHeight: 1.2 }}>
             Du er invitert
           </Typography>
           <Typography sx={{ fontSize: 14, color: TEXT_DIM }}>
             som <Box component="span" sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>{info.invitedRoleLabel}</Box> i et dansestudio på CreatorHub.
           </Typography>
 
-          <Box sx={{ width: '100%', mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(117, 107, 231,0.06)', border: `1px solid ${PANEL_BORDER}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{ width: '100%', mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${PANEL_BORDER}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <MailIcon sx={{ color: PURPLE_LIGHT, fontSize: 22 }} />
             <Box sx={{ textAlign: 'left' }}>
               <Typography sx={{ fontSize: 12, color: TEXT_MUTED, letterSpacing: 0.5 }}>SENDES TIL</Typography>
-              <Typography sx={{ fontSize: 14, color: 'rgba(237,233,254,0.92)', fontVariantNumeric: 'tabular-nums' }}>
+              <Typography sx={{ fontSize: 14, color: 'rgba(235, 231, 253,0.92)', fontVariantNumeric: 'tabular-nums' }}>
                 {info.invitedEmailMasked}
               </Typography>
             </Box>
@@ -254,7 +254,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
           <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700 }}>
             BEKREFT MED PIN
           </Typography>
-          <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(237,233,254,0.95)', textAlign: 'center', lineHeight: 1.3 }}>
+          <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(235, 231, 253,0.95)', textAlign: 'center', lineHeight: 1.3 }}>
             Sjekk e-posten din
           </Typography>
           <Typography sx={{ fontSize: 12, color: TEXT_DIM, textAlign: 'center' }}>
@@ -272,7 +272,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
           autoFocus
           inputMode="numeric"
           inputProps={{ maxLength: 6, style: { fontSize: 26, letterSpacing: 8, textAlign: 'center', fontFamily: 'monospace' } }}
-          sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
+          sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(235, 231, 253,0.9)' } }}
         />
 
         <TextField
@@ -281,11 +281,11 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
           onChange={(e) => setFullName(e.target.value)}
           fullWidth
           placeholder="Slik vil teamet ditt se navnet ditt"
-          sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
+          sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(235, 231, 253,0.9)' } }}
         />
 
         {/* GDPR consent */}
-        <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(117, 107, 231,0.04)', border: `1px solid ${PANEL_BORDER}` }}>
+        <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(136, 117, 235,0.04)', border: `1px solid ${PANEL_BORDER}` }}>
           <FormControlLabel
             control={
               <Checkbox
@@ -348,14 +348,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'radial-gradient(ellipse at 50% 30%, rgba(41, 29, 149,0.18) 0%, #0a0a0a 70%)',
+      background: 'radial-gradient(ellipse at 50% 30%, rgba(48, 31, 132,0.18) 0%, #0a0a0a 70%)',
       p: 3,
     }}
   >
     <Paper
       elevation={0}
       sx={{
-        bgcolor: 'rgba(15,12,28,0.78)',
+        bgcolor: 'rgba(16, 11, 30,0.78)',
         border: `1px solid ${PANEL_BORDER}`,
         borderRadius: 3,
         p: { xs: 3, md: 5 },

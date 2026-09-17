@@ -148,7 +148,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout ─────────────────────────────────────────────────────────────────
 
 function Callout({
-  color = '#756be7',
+  color = '#8875eb',
   children,
 }: {
   color?: string;
@@ -205,7 +205,7 @@ function StatPill({
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
-const ACCENT = '#756be7';
+const ACCENT = '#8875eb';
 
 const STEPS: Step[] = [
   // ── 1. Overview ──────────────────────────────────────────────────────────
@@ -326,7 +326,7 @@ const STEPS: Step[] = [
             >
               {[
                 { color: '#10b981', label: 'Bekreftet', desc: 'Cast confirmed and locked in.' },
-                { color: 'var(--role-violet, #756be7)', label: 'Valgt', desc: 'Selected by the team, pending confirmation.' },
+                { color: 'var(--role-violet, #8875eb)', label: 'Valgt', desc: 'Selected by the team, pending confirmation.' },
                 { color: '#ffb800', label: 'Shortlist', desc: 'On the shortlist for consideration.' },
                 { color: 'var(--role-cyan, #00d4ff)', label: 'Forespurt', desc: 'An offer or request has been sent.' },
                 { color: '#6b7280', label: 'Venter', desc: 'No action taken yet.' },
@@ -373,7 +373,7 @@ const STEPS: Step[] = [
               {[
                 { label: 'Ny rolle', color: 'var(--role-cyan, #00d4ff)', desc: 'Opens the role creation form. Add a character name, gender notes, and casting status.' },
                 { label: 'Ny kandidat', color: '#10b981', desc: 'Opens the candidate form. Add name, contact details, and attach to a role.' },
-                { label: 'Ny timeplan', color: 'var(--role-violet, #756be7)', desc: 'Opens the audition scheduler. Requires at least one role and one candidate to be created first.' },
+                { label: 'Ny timeplan', color: 'var(--role-violet, #8875eb)', desc: 'Opens the audition scheduler. Requires at least one role and one candidate to be created first.' },
               ].map(a => (
                 <Box key={a.label} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.25, '&:last-child': { mb: 0 } }}>
                   <Box

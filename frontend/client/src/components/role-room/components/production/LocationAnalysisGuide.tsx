@@ -386,7 +386,7 @@ const STEPS: Step[] = [
       {
         heading: 'Anbefalt arbeidsflyt',
         body: (
-          <Callout color="#7666e6">
+          <Callout color="#8875eb">
             Arbeid i denne rekkefolgen: KPI/filtre, manuell kvalitetssikring, tillatelser/kontakter,
             deretter lagre. Da holder du analyse og operativ plan i synk.
           </Callout>
@@ -402,7 +402,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('ao-title', 13, 6.1, 9.5, 3, 'Dialog', 'var(--role-cyan, #22d3ee)'),
-      ann('ao-kpi-row', 12.4, 14.5, 75.7, 8.5, 'Analyse-KPI', '#7666e6'),
+      ann('ao-kpi-row', 12.4, 14.5, 75.7, 8.5, 'Analyse-KPI', '#8875eb'),
       ann('ao-guide', 82.8, 7, 4.2, 3.1, 'Guide', '#34d399', 'top-right'),
     ],
   },
@@ -410,7 +410,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('ao-presets', 14.2, 20.8, 12.2, 3.1, 'Preset-filter', 'var(--role-cyan, #22d3ee)'),
-      ann('ao-ops-filter', 14.7, 23.6, 10.1, 3.1, 'Operasjonelt filter', '#7666e6'),
+      ann('ao-ops-filter', 14.7, 23.6, 10.1, 3.1, 'Operasjonelt filter', '#8875eb'),
       ann('ao-risk-mode', 21.6, 23.7, 2.8, 2.8, 'Risiko-modus', '#f59e0b'),
     ],
   },
@@ -420,14 +420,14 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
       ann('sf-ready', 12.6, 14.8, 14.2, 6.8, 'Klarhet', '#34d399'),
       ann('sf-risk', 27.8, 14.8, 14.2, 6.8, 'Risiko', '#ef4444'),
       ann('sf-cost', 58.2, 14.8, 14.2, 6.8, 'Kost', 'var(--role-cyan, #22d3ee)'),
-      ann('sf-actions', 73.4, 14.8, 14.2, 6.8, 'Tiltak', '#7666e6'),
+      ann('sf-actions', 73.4, 14.8, 14.2, 6.8, 'Tiltak', '#8875eb'),
     ],
   },
   'score-filters.1': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('sf-op-filter-row', 14.6, 23.6, 15.2, 3.1, 'Klar / tiltak / risiko', 'var(--role-cyan, #22d3ee)'),
-      ann('sf-tech-scout', 14.4, 20.9, 4.1, 2.5, 'Tech Scout', '#7666e6'),
+      ann('sf-tech-scout', 14.4, 20.9, 4.1, 2.5, 'Tech Scout', '#8875eb'),
       ann('sf-permits', 18.4, 20.9, 3.8, 2.5, 'Tillatelser', '#34d399'),
     ],
   },
@@ -442,7 +442,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('me-edit-flow', 80.9, 32.5, 7, 3, 'Start overstyring', '#34d399', 'top-right'),
-      ann('me-permit-section', 14.5, 42.2, 20.4, 3.1, 'Tillatelser og kontakter', '#7666e6'),
+      ann('me-permit-section', 14.5, 42.2, 20.4, 3.1, 'Tillatelser og kontakter', '#8875eb'),
     ],
   },
   'permits-contacts.0': {
@@ -450,7 +450,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     annotations: [
       ann('pc-section', 14.5, 42.2, 20.4, 3.1, 'Kontaktmodul', 'var(--role-cyan, #22d3ee)'),
       ann('pc-dovre', 12.5, 60.5, 7.4, 2.1, 'Dovre kommune', '#34d399'),
-      ann('pc-luftfart', 12.5, 79.9, 6.8, 2.1, 'Luftfartstilsynet', '#7666e6'),
+      ann('pc-luftfart', 12.5, 79.9, 6.8, 2.1, 'Luftfartstilsynet', '#8875eb'),
     ],
   },
   'permits-contacts.1': {
@@ -458,14 +458,14 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     annotations: [
       ann('pc-save-status', 80.2, 42.9, 7.6, 3, 'Lagre tillatelsesstatus', '#34d399', 'top-right'),
       ann('pc-status-select', 12.5, 69.7, 8.2, 3.1, 'Status', 'var(--role-cyan, #22d3ee)'),
-      ann('pc-copy-template', 16.7, 73.1, 4.2, 2.5, 'Kopier mal', '#7666e6'),
+      ann('pc-copy-template', 16.7, 73.1, 4.2, 2.5, 'Kopier mal', '#8875eb'),
     ],
   },
   'permit-timeline.0': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('pt-planned-date', 12.7, 54, 5, 2, 'Planlagt opptaksdato', 'var(--role-cyan, #22d3ee)'),
-      ann('pt-chip-public', 25, 54.8, 5.9, 2.8, 'Offentlig område', '#7666e6'),
+      ann('pt-chip-public', 25, 54.8, 5.9, 2.8, 'Offentlig område', '#8875eb'),
       ann('pt-chip-drone', 30.8, 54.8, 3.5, 2.8, 'Drone', '#34d399'),
       ann('pt-chip-traffic', 34.2, 54.8, 3.6, 2.8, 'Trafikk', '#f59e0b'),
     ],
@@ -488,7 +488,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     screenshotUrl: '/guide/location/analysis-bottom.png',
     annotations: [
       ann('rf-fallback-actions', 57, 10.1, 30.8, 13.2, 'Reserveplaner', '#ef4444'),
-      ann('rf-permit-cards', 12.4, 0.2, 44.1, 42.4, 'Tillatelseskontakter', '#7666e6'),
+      ann('rf-permit-cards', 12.4, 0.2, 44.1, 42.4, 'Tillatelseskontakter', '#8875eb'),
     ],
   },
   'technical-sections.0': {
@@ -504,7 +504,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     annotations: [
       ann('ts-max-height', 13, 55, 74, 4, 'Maks høyde', 'var(--role-cyan, #22d3ee)'),
       ann('ts-drone-allowed', 84.7, 43.5, 3.2, 2.3, 'Tillatt', '#34d399', 'top-right'),
-      ann('ts-tech-card', 12.3, 39.8, 75.5, 20.6, 'Teknisk vurdering', '#7666e6'),
+      ann('ts-tech-card', 12.3, 39.8, 75.5, 20.6, 'Teknisk vurdering', '#8875eb'),
     ],
   },
   'save-sync.0': {
@@ -517,7 +517,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'save-sync.1': {
     screenshotUrl: '/guide/location/analysis-technical.png',
     annotations: [
-      ann('ss-close', 83.4, 89.2, 5.6, 4.2, 'Lukk / fullfør', '#7666e6', 'top-right'),
+      ann('ss-close', 83.4, 89.2, 5.6, 4.2, 'Lukk / fullfør', '#8875eb', 'top-right'),
       ann('ss-check', 12.3, 12.8, 75.6, 74.6, 'Kjør kvalitetssjekk før lagring', 'var(--role-cyan, #22d3ee)'),
     ],
   },
@@ -604,7 +604,7 @@ export function LocationAnalysisGuide({ open, onClose, initialStepId }: Location
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#12121e',
+          bgcolor: '#100b1e',
           backgroundImage: 'none',
           border: '1px solid rgba(255,255,255,0.1)',
           borderRadius: isNarrow ? 0 : 2,
