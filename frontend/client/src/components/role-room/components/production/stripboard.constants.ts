@@ -3,6 +3,13 @@ import { Home as IntIcon, Landscape as ExtIcon, WbTwilight as TwilightIcon, Even
 import type { StripColorConfig } from "./stripboard.types";
 
 // ─── Norwegian Film Standard colour codes ─────────────────────────────────────
+//
+// 🔑 Disse fargene er IKKE merkevare og skal ikke males om med resten av
+// Role Room. De er bransjekoden for en stripboard: INT/NATT (lilla) og
+// EXT/NATT (mørk blå) er to ulike farger fordi de betyr to ulike ting for
+// den som leser brettet. En palett-ommaling som samlet dem i samme indigo
+// gjorde scenetypene umulige å skille — og brøt reverse-oppslaget under,
+// der to case-etiketter ble like.
 
 export const STRIP_COLORS: Record<string, StripColorConfig> = {
   INT_DAY:   { bg: '#fff9c4', label: 'INT/DAG',      icon: React.createElement(IntIcon),      textColor: '#1a1a1a' }, // 7.8:1

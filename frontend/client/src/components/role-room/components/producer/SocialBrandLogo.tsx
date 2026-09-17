@@ -54,8 +54,8 @@ export function InstagramBrandLogo({
           <stop offset="0%" stopColor="#FEDA77" />
           <stop offset="25%" stopColor="#F58529" />
           <stop offset="50%" stopColor="#DD2A7B" />
-          <stop offset="75%" stopColor="#8134AF" />
-          <stop offset="100%" stopColor="#515BD4" />
+          <stop offset="75%" stopColor="#3c27a5" />
+          <stop offset="100%" stopColor="#6249df" />
         </radialGradient>
       </defs>
       <rect x="2" y="2" width="60" height="60" rx="16" fill={`url(#${gradientId})`} />

@@ -27,15 +27,15 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
 const palette = {
-  bgCard: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bgCard: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 interface Advertiser { id: string; name: string; currency: string; }
@@ -298,7 +298,7 @@ export default function ClientTiktokSuitePanel({
               mt: 1,
               background: palette.accentGradient,
               color: '#fff', textTransform: 'none', fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             {provisioning ? 'Klargjør…' : pixelMode === 'existing' ? 'Bruk valgt pixel' : `Opprett pixel for ${clientName}`}
@@ -313,7 +313,7 @@ export default function ClientTiktokSuitePanel({
                 <>
                   <Box sx={{
                     mt: 1.2,
-                    bgcolor: '#0a0a1a',
+                    bgcolor: '#100b1e',
                     border: `1px solid ${palette.borderStrong}`,
                     borderRadius: 1,
                     p: 1.2,
@@ -355,7 +355,7 @@ export default function ClientTiktokSuitePanel({
             startIcon={syncing ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
             sx={{
               background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
-              color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
+              color: '#100b1e', textTransform: 'none', fontWeight: 800,
             }}
           >
             {syncing ? 'Synker…' : 'Sync til TikTok'}
@@ -410,7 +410,7 @@ export default function ClientTiktokSuitePanel({
                 '&:hover': {
                   background: capiSaved
                     ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
+                    : 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
                 },
               }}
             >

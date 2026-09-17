@@ -10,7 +10,7 @@ import AVFoundation
 // frame-felter rett mot samme scene-upsert som web.
 
 enum BoardBrand {
-    static let accent = Color(red: 0.545, green: 0.361, blue: 0.965)      // #8b5cf6
+    static let accent = Color(red: 0.384, green: 0.286, blue: 0.875)      // #6249df
     static let chrome = Color(red: 0.043, green: 0.043, blue: 0.055)      // #0b0b0e
     static let panel = Color(red: 0.078, green: 0.082, blue: 0.098)
     static let border = Color.white.opacity(0.07)
@@ -1922,12 +1922,12 @@ struct NativeBoardView: View {
     @State private var selectionDragOffset: CGSize = .zero
 
     private func annotationStroke(points: [StrokePoint], text: String? = nil) -> PencilStroke {
-        var brush = BrushSpec.preset(.ink, size: 7, color: "#8b5cf6", opacity: 0.95)
+        var brush = BrushSpec.preset(.ink, size: 7, color: "#6249df", opacity: 0.95)
         brush.grain = 0
         return PencilStroke(
             id: "board-\(Int(Date().timeIntervalSince1970 * 1000))-\(Int.random(in: 100...999))",
             points: points, inputType: "pencil",
-            color: "#8b5cf6", width: 7, opacity: 0.95,
+            color: "#6249df", width: 7, opacity: 0.95,
             brush: brush, boardLayer: "Camera / Arrows", textAnnotation: text)
     }
 

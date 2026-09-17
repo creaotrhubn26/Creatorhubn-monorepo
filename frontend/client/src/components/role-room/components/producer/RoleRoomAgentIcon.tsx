@@ -35,16 +35,16 @@ export function RoleRoomAgentIcon({
               animation: 'rrAgentWorking 1.5s ease-in-out infinite',
               '@keyframes rrAgentWorking': {
                 '0%, 100%': {
-                  filter: 'drop-shadow(0 0 2px rgba(168,85,247,0.45))',
+                  filter: 'drop-shadow(0 0 2px rgba(136, 117, 235,0.45))',
                   transform: 'scale(1)',
                 },
                 '50%': {
-                  filter: 'drop-shadow(0 0 11px rgba(192,96,241,0.95))',
+                  filter: 'drop-shadow(0 0 11px rgba(136, 117, 235,0.95))',
                   transform: 'scale(1.07)',
                 },
               },
             }
-          : { filter: 'drop-shadow(0 0 3px rgba(168,85,247,0.3))' }),
+          : { filter: 'drop-shadow(0 0 3px rgba(136, 117, 235,0.3))' }),
         ...sx,
       }}
     />

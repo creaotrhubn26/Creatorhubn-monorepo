@@ -126,7 +126,7 @@ export default function AgentCommandPalette({
       maxWidth="xs"
       PaperProps={{
         sx: {
-          bgcolor: 'rgba(2,6,23,0.98)',
+          bgcolor: 'rgba(10, 5, 21,0.98)',
           border: RR_COLORS.accentBorder,
           borderRadius: 2,
           backgroundImage: 'none',

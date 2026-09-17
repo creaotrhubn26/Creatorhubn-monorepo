@@ -160,7 +160,7 @@ export function AssessmentTab() {
   const kpis = [
     { id: 'kø', label: 'Til vurdering', value: pendingCount, hint: 'Innleveringer venter', icon: <PendingIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
     { id: 'vurdert', label: 'Vurdert denne uken', value: reviewedThisWeek, hint: 'Fullførte vurderinger', icon: <DoneIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
-    { id: 'snitt', label: 'Snittkarakter', value: avgGrade, hint: 'Der karakter er tallfestet', icon: <AvgIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
+    { id: 'snitt', label: 'Snittkarakter', value: avgGrade, hint: 'Der karakter er tallfestet', icon: <AvgIcon />, bg: 'rgba(136, 117, 235,0.16)', c: '#c6bdf4' },
     { id: 'lms', label: 'Sendt til LMS', value: pushedIds.size, hint: 'Karakterer via AGS', icon: <LmsIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
   ];
 
@@ -169,7 +169,7 @@ export function AssessmentTab() {
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssessmentIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssessmentIcon /></Box>
           <Box>
             <T eid="edu-vu-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Vurdering</T>
             <T eid="edu-vu-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Formativ, produksjonsnær tilbakemelding på leveransene — offisiell karakter føres i skolens system.</T>
@@ -186,7 +186,7 @@ export function AssessmentTab() {
           </Tooltip>
           {launchId && (
             <Button variant="contained" startIcon={<LmsPushIcon />} onClick={pushAllToLms}
-              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
               <T eid="edu-vu-btn-pushall" component="span" sx={{ fontWeight: 700 }}>Send alle til LMS</T>
             </Button>
           )}
@@ -208,7 +208,7 @@ export function AssessmentTab() {
       </Box>
 
       <Alert severity="info" icon={<AssessmentIcon fontSize="inherit" />}
-        sx={{ bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
+        sx={{ bgcolor: 'rgba(136, 117, 235,0.08)', border: '1px solid rgba(136, 117, 235,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
         <T eid="edu-vu-info" component="span">Dette er formativ vurdering knyttet til det ekte produksjonsarbeidet. Offisielle karakterer føres i skolens eget system — bruk «Eksporter CSV» eller «Send til LMS».</T>
       </Alert>
 
@@ -253,7 +253,7 @@ export function AssessmentTab() {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
           <T eid="edu-vu-queue-title" sx={{ fontWeight: 700, fontSize: 17 }}>Vurderingskø</T>
           <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_e, v: Filter | null) => { if (v) setFilter(v); }}
-            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', px: 1.5, borderColor: 'rgba(255,255,255,0.12)' }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
+            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', px: 1.5, borderColor: 'rgba(255,255,255,0.12)' }, '& .Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.28) !important', color: '#fff !important' } }}>
             <ToggleButton value="submitted">Til vurdering{pendingCount > 0 ? ` (${pendingCount})` : ''}</ToggleButton>
             <ToggleButton value="reviewed">Vurdert</ToggleButton>
             <ToggleButton value="all">Alle</ToggleButton>
@@ -281,7 +281,7 @@ export function AssessmentTab() {
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 700 }}>{it.studentName}</Typography>
                         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
-                          <Chip size="small" label={it.assignmentTitle} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+                          <Chip size="small" label={it.assignmentTitle} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(136, 117, 235,0.22)', color: '#e0dbfa' }} />
                           {it.isArbeidskrav && <Chip size="small" label="Arbeidskrav" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(245,158,11,0.16)', color: '#f59e0b' }} />}
                           {it.isExam && <Chip size="small" label="Eksamen" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(236,72,153,0.16)', color: '#ec4899' }} />}
                           {it.cohortName && <Chip size="small" label={it.cohortName} sx={{ height: 20, fontSize: 10 }} />}
@@ -290,13 +290,13 @@ export function AssessmentTab() {
                       </Box>
                       {it.productionProjectId && (
                         <Button size="small" variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(it.productionProjectId as string)}
-                          sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                          sx={{ borderColor: 'rgba(136, 117, 235,0.5)', color: '#e0dbfa', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(136, 117, 235,0.08)' } }}>
                           Åpne produksjon
                         </Button>
                       )}
                       {it.deliverableId && it.productionProjectId && (
                         <Button size="small" variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(it.productionProjectId as string, 'delivery')}
-                          sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                          sx={{ borderColor: 'rgba(136, 117, 235,0.5)', color: '#e0dbfa', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(136, 117, 235,0.08)' } }}>
                           Åpne leveranse
                         </Button>
                       )}
@@ -351,7 +351,7 @@ export function AssessmentTab() {
                             <Button size="small" variant="outlined"
                               startIcon={pushedIds.has(it.submissionId) ? <DoneIcon /> : <LmsPushIcon />}
                               onClick={() => pushToLms(it)} disabled={pushingId === it.submissionId}
-                              sx={{ borderColor: 'rgba(139,92,246,0.5)', color: pushedIds.has(it.submissionId) ? '#10b981' : '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                              sx={{ borderColor: 'rgba(136, 117, 235,0.5)', color: pushedIds.has(it.submissionId) ? '#10b981' : '#e0dbfa', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(136, 117, 235,0.08)' } }}>
                               {pushingId === it.submissionId ? 'Sender…' : pushedIds.has(it.submissionId) ? 'Sendt til LMS' : 'Send til LMS'}
                             </Button>
                           </span>
@@ -423,10 +423,10 @@ function RubricScoring({ assignmentId, studentId, onError }: { assignmentId: str
   const pct = max ? Math.round((total / max) * 100) : 0;
 
   return (
-    <Box sx={{ display: 'grid', gap: 1, p: 1.5, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)' }}>
+    <Box sx={{ display: 'grid', gap: 1, p: 1.5, borderRadius: 2, bgcolor: 'rgba(136, 117, 235,0.06)', border: '1px solid rgba(136, 117, 235,0.2)' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: 0.5 }}>Rubrikk</Typography>
-        <Chip size="small" label={`${total} / ${max} poeng · ${pct}%`} sx={{ height: 22, fontSize: 11, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
+        <Chip size="small" label={`${total} / ${max} poeng · ${pct}%`} sx={{ height: 22, fontSize: 11, fontWeight: 700, bgcolor: 'rgba(136, 117, 235,0.22)', color: '#e0dbfa' }} />
       </Stack>
       {criteria.map((c) => (
         <Stack key={c.id} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={0.5}>
@@ -436,7 +436,7 @@ function RubricScoring({ assignmentId, studentId, onError }: { assignmentId: str
           </Box>
           <ToggleButtonGroup size="small" exclusive value={scores[c.id] ?? 0}
             onChange={(_e, v: number | null) => { if (v !== null) void setLevel(c.id, v as 0 | 1 | 2); }}
-            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', fontSize: 11, py: 0.25, px: 1 }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
+            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', fontSize: 11, py: 0.25, px: 1 }, '& .Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.28) !important', color: '#fff !important' } }}>
             {RUBRIC_LEVELS.map((l) => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
           </ToggleButtonGroup>
         </Stack>

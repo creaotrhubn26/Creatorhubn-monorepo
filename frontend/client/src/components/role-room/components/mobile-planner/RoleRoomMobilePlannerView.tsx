@@ -182,7 +182,7 @@ export const RoleRoomMobilePlannerView: React.FC<RoleRoomMobilePlannerViewProps>
                   value={p.percent}
                   size={44}
                   thickness={4}
-                  sx={{ color: '#6366f1' }}
+                  sx={{ color: '#8875eb' }}
                 />
                 <Box
                   sx={{
@@ -384,7 +384,7 @@ const PlannerCard: React.FC<{ item: any; tone: string }> = ({ item, tone }) => {
           <Chip
             size="small"
             label={dueLabel}
-            sx={{ bgcolor: 'rgba(99,102,241,0.1)', color: '#4338ca', fontWeight: 600 }}
+            sx={{ bgcolor: 'rgba(136, 117, 235,0.1)', color: '#472bd4', fontWeight: 600 }}
           />
         ) : null}
         <Chip
@@ -405,15 +405,15 @@ interface DecisionCardProps {
 }
 
 const DecisionCard: React.FC<DecisionCardProps> = ({ title, body, subtext, severity }) => {
-  const color = severity === 'info' ? '#6d28d9' : '#b45309';
-  const bg = severity === 'info' ? 'rgba(124,58,237,0.08)' : 'rgba(245,158,11,0.1)';
+  const color = severity === 'info' ? '#472bd4' : '#b45309';
+  const bg = severity === 'info' ? 'rgba(98, 73, 223,0.08)' : 'rgba(245,158,11,0.1)';
   return (
     <Box
       sx={{
         p: 1.5,
         borderRadius: 'var(--rr-card-radius, 12px)',
         border: '1px solid',
-        borderColor: severity === 'info' ? 'rgba(124,58,237,0.24)' : 'rgba(245,158,11,0.32)',
+        borderColor: severity === 'info' ? 'rgba(98, 73, 223,0.24)' : 'rgba(245,158,11,0.32)',
         bgcolor: bg,
       }}
     >

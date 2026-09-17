@@ -33,12 +33,12 @@ const WARN_GRADES = new Set(['fair']);
 const BAD_GRADES = new Set(['needs work', 'needs_work', 'poor']);
 
 function gradeTone(grade: string | null | undefined): { bg: string; fg: string; label: string } {
-  if (!grade) return { bg: 'rgba(168,85,247,0.16)', fg: palette.accentBright, label: '—' };
+  if (!grade) return { bg: 'rgba(98, 73, 223,0.16)', fg: palette.accentBright, label: '—' };
   const v = grade.toLowerCase();
   if (POSITIVE_GRADES.has(v)) return { bg: 'rgba(52,211,153,0.16)', fg: '#34d399', label: grade };
   if (WARN_GRADES.has(v)) return { bg: 'rgba(251,191,36,0.18)', fg: '#fbbf24', label: grade };
   if (BAD_GRADES.has(v)) return { bg: 'rgba(248,113,113,0.18)', fg: '#f87171', label: 'trenger arbeid' };
-  return { bg: 'rgba(168,85,247,0.16)', fg: palette.accentBright, label: grade };
+  return { bg: 'rgba(98, 73, 223,0.16)', fg: palette.accentBright, label: grade };
 }
 
 function Grade({ grade }: { grade: string | null | undefined }) {
@@ -133,7 +133,7 @@ export default function SelfTapeAIFeedbackCard({ feedback, currentTake, onRegene
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 0.4,
-                '&:hover': canRegenerate ? { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' } : undefined,
+                '&:hover': canRegenerate ? { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' } : undefined,
               }}
             >
               {busy

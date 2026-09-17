@@ -36,7 +36,7 @@ function resourceType(r: Resource): { label: string; icon: React.ReactNode; colo
   if (/youtu|vimeo|\.mp4|video/.test(u)) return { label: 'VIDEO', icon: <VideoIcon sx={{ fontSize: 15 }} />, color: '#ec4899' };
   if (/\.pdf/.test(u)) return { label: 'PDF', icon: <PdfIcon sx={{ fontSize: 15 }} />, color: '#f59e0b' };
   if (r.body) return { label: 'ARTIKKEL', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: '#38bdf8' };
-  if (r.url) return { label: 'LENKE', icon: <GenericLinkIcon sx={{ fontSize: 15 }} />, color: '#c4b5fd' };
+  if (r.url) return { label: 'LENKE', icon: <GenericLinkIcon sx={{ fontSize: 15 }} />, color: '#c6bdf4' };
   return { label: 'NOTAT', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: 'rgba(255,255,255,0.75)' };
 }
 
@@ -98,7 +98,7 @@ export function FagstoffTab() {
   const stegDekket = new Set(resources.map((r) => r.category)).size;
   const medLenke = resources.filter((r) => r.url).length;
   const kpis = [
-    { id: 'leksjoner', label: 'Leksjoner', value: resources.length, hint: `På tvers av ${grouped.length || RESOURCE_CATEGORIES.length} produksjonssteg`, icon: <LibraryIcon />, bg: 'rgba(139,92,246,0.16)', c: '#c4b5fd' },
+    { id: 'leksjoner', label: 'Leksjoner', value: resources.length, hint: `På tvers av ${grouped.length || RESOURCE_CATEGORIES.length} produksjonssteg`, icon: <LibraryIcon />, bg: 'rgba(136, 117, 235,0.16)', c: '#c6bdf4' },
     { id: 'video', label: 'Videoleksjoner', value: videoCount, hint: 'Korte «hvordan»-videoer', icon: <VideoIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
     { id: 'steg', label: 'Produksjonssteg dekket', value: `${stegDekket}/${RESOURCE_CATEGORIES.length}`, hint: 'Steg med fagstoff', icon: <ViewsIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
     { id: 'lenker', label: 'Med lenke/ressurs', value: medLenke, hint: 'Video, PDF eller artikkel', icon: <DoneIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
@@ -112,7 +112,7 @@ export function FagstoffTab() {
         {/* Header */}
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
           <Stack direction="row" spacing={1.75} alignItems="flex-start">
-            <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><LibraryIcon /></Box>
+            <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><LibraryIcon /></Box>
             <Box>
               <T eid="edu-fs-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Fagstoff</T>
               <T eid="edu-fs-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.</T>
@@ -122,7 +122,7 @@ export function FagstoffTab() {
             <Button variant="outlined" startIcon={<UploadIcon />} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
               <T eid="edu-fs-btn-upload" component="span" sx={{ fontWeight: 600 }}>Last opp ressurs</T>
             </Button>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
               <T eid="edu-fs-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny leksjon</T>
             </Button>
           </Stack>
@@ -131,7 +131,7 @@ export function FagstoffTab() {
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
         <Collapse in={creating}>
-          <Panel sx={{ border: '1px solid rgba(139,92,246,0.35)' }}>
+          <Panel sx={{ border: '1px solid rgba(136, 117, 235,0.35)' }}>
             <Stack spacing={1.5}>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <TextField size="small" label="Tittel" value={f.title} onChange={(e) => setField('title', e.target.value)} fullWidth />
@@ -143,7 +143,7 @@ export function FagstoffTab() {
               <TextField size="small" label="Lenke (video / PDF / artikkel — valgfritt)" value={f.url} onChange={(e) => setField('url', e.target.value)} fullWidth />
               <Stack direction="row" justifyContent="flex-end" spacing={1}>
                 <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-                <Button variant="contained" onClick={handleCreate} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none' }}>{busy ? 'Lagrer…' : 'Legg til leksjon'}</Button>
+                <Button variant="contained" onClick={handleCreate} disabled={!f.title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none' }}>{busy ? 'Lagrer…' : 'Legg til leksjon'}</Button>
               </Stack>
             </Stack>
           </Panel>
@@ -191,14 +191,14 @@ export function FagstoffTab() {
               {g.items.map((r) => {
                 const t = resourceType(r);
                 return (
-                  <Panel key={r.id} sx={{ p: 2, position: 'relative', '&:hover': { borderColor: 'rgba(139,92,246,0.4)' } }}>
+                  <Panel key={r.id} sx={{ p: 2, position: 'relative', '&:hover': { borderColor: 'rgba(136, 117, 235,0.4)' } }}>
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                       <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.35, borderRadius: 1.5, bgcolor: `${t.color}22`, color: t.color, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{t.icon}{t.label}</Box>
                     </Stack>
                     <Typography sx={{ fontSize: 14.5, fontWeight: 700, pr: 3 }}>{r.title}</Typography>
                     {r.description && <Typography sx={{ fontSize: 12.5, color: 'text.secondary', mt: 0.5, lineHeight: 1.45 }}>{r.description}</Typography>}
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.25 }}>
-                      {r.url && <Button size="small" href={r.url} target="_blank" rel="noopener" startIcon={<LinkIcon sx={{ fontSize: '14px !important' }} />} sx={{ color: '#c4b5fd', textTransform: 'none', fontSize: 12 }}>Åpne</Button>}
+                      {r.url && <Button size="small" href={r.url} target="_blank" rel="noopener" startIcon={<LinkIcon sx={{ fontSize: '14px !important' }} />} sx={{ color: '#c6bdf4', textTransform: 'none', fontSize: 12 }}>Åpne</Button>}
                     </Stack>
                     <IconButton size="small" onClick={() => handleDelete(r.id)} sx={{ position: 'absolute', top: 8, right: 8, color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton>
                   </Panel>
@@ -211,9 +211,9 @@ export function FagstoffTab() {
 
       {/* Høyre skinne — startforslag */}
       <Stack spacing={2}>
-        <Panel sx={{ bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.28)' }}>
+        <Panel sx={{ bgcolor: 'rgba(136, 117, 235,0.08)', border: '1px solid rgba(136, 117, 235,0.28)' }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-            <SuggestIcon sx={{ fontSize: 18, color: '#c4b5fd' }} />
+            <SuggestIcon sx={{ fontSize: 18, color: '#c6bdf4' }} />
             <T eid="edu-fs-rail-sugg-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>Kuraterte startforslag</T>
           </Stack>
           <T eid="edu-fs-rail-sugg-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', mb: 1.5 }}>Ett-klikks leksjoner knyttet til ekte Role Room-funksjoner.</T>
@@ -224,11 +224,11 @@ export function FagstoffTab() {
               <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{categoryLabel(s.category)}</Typography>
               <Typography sx={{ fontSize: 13, fontWeight: 600, mt: 0.25 }}>{s.title}</Typography>
               <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.25, lineHeight: 1.4 }}>{s.description}</Typography>
-              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '14px !important' }} />} onClick={() => handleAddSuggested(s)} disabled={busy} sx={{ color: '#c4b5fd', textTransform: 'none', fontSize: 12, mt: 0.5, px: 0 }}>Legg til</Button>
+              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '14px !important' }} />} onClick={() => handleAddSuggested(s)} disabled={busy} sx={{ color: '#c6bdf4', textTransform: 'none', fontSize: 12, mt: 0.5, px: 0 }}>Legg til</Button>
             </Box>
           ))}
         </Panel>
-        <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
+        <Panel sx={{ bgcolor: 'rgba(136, 117, 235,0.09)', border: '1px solid rgba(136, 117, 235,0.26)' }}>
           <T eid="edu-fs-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>
           <T eid="edu-fs-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.76)', lineHeight: 1.5 }}>Hold leksjonene korte (3–6 min) og knytt dem til steget studentene er i akkurat nå.</T>
         </Panel>

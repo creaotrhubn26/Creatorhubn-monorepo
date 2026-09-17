@@ -138,7 +138,7 @@ export default function AcceptTesterInvite() {
   if (loading) {
     return (
       <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
-        <CircularProgress sx={{ color: '#b86bff' }} />
+        <CircularProgress sx={{ color: '#8875eb' }} />
         <Typography sx={{ mt: 2, color: 'rgba(255,255,255,0.7)' }}>
           Laster invitasjon…
         </Typography>
@@ -200,8 +200,8 @@ export default function AcceptTesterInvite() {
         <Paper
           sx={{
             p: { xs: 2.5, sm: 3.5 },
-            bgcolor: 'rgba(184,107,255,0.06)',
-            border: '1px solid rgba(184,107,255,0.32)',
+            bgcolor: 'rgba(136, 117, 235,0.06)',
+            border: '1px solid rgba(136, 117, 235,0.32)',
           }}
         >
           <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
@@ -218,7 +218,7 @@ export default function AcceptTesterInvite() {
               sx={{
                 p: 2,
                 bgcolor: 'rgba(2,6,15,0.5)',
-                borderLeft: '3px solid #b86bff',
+                borderLeft: '3px solid #8875eb',
                 borderRadius: 1,
                 mb: 2,
               }}
@@ -243,9 +243,9 @@ export default function AcceptTesterInvite() {
                   label={area}
                   size="small"
                   sx={{
-                    bgcolor: 'rgba(184,107,255,0.18)',
-                    color: '#e9d5ff',
-                    border: '1px solid rgba(184,107,255,0.4)',
+                    bgcolor: 'rgba(136, 117, 235,0.18)',
+                    color: '#e0dbfa',
+                    border: '1px solid rgba(136, 117, 235,0.4)',
                     fontWeight: 600,
                   }}
                 />
@@ -273,14 +273,14 @@ export default function AcceptTesterInvite() {
             disabled={!canSubmit}
             onClick={handleAccept}
             sx={{
-              bgcolor: '#b86bff',
+              bgcolor: '#8875eb',
               color: '#0b1120',
               fontWeight: 800,
               px: 4,
               py: 1.5,
               minHeight: 48,
-              '&:hover': { bgcolor: '#a855f7' },
-              '&:disabled': { bgcolor: 'rgba(184,107,255,0.3)', color: 'rgba(11,17,32,0.7)' },
+              '&:hover': { bgcolor: '#8875eb' },
+              '&:disabled': { bgcolor: 'rgba(136, 117, 235,0.3)', color: 'rgba(11,17,32,0.7)' },
             }}
           >
             {submitting

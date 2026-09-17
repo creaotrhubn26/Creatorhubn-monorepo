@@ -441,8 +441,8 @@ export const WrapReport: React.FC<WrapReportProps> = ({
               <Typography variant="h3" sx={{ color: '#000' }}>{report.totalTakes}</Typography>
               <Typography variant="caption" sx={{ color: '#666' }}>Totale Takes</Typography>
             </Paper>
-            <Paper variant="outlined" sx={{ p: 2, flex: 1, textAlign: 'center', bgcolor: '#f3e8ff' }}>
-              <Typography variant="h3" sx={{ color: 'var(--role-violet, #8b5cf6)' }}>{report.printTakes}</Typography>
+            <Paper variant="outlined" sx={{ p: 2, flex: 1, textAlign: 'center', bgcolor: '#ebe7fd' }}>
+              <Typography variant="h3" sx={{ color: 'var(--role-violet, #8875eb)' }}>{report.printTakes}</Typography>
               <Typography variant="caption" sx={{ color: '#666' }}>Print Takes</Typography>
             </Paper>
             <Paper variant="outlined" sx={{ p: 2, flex: 1, textAlign: 'center', bgcolor: '#fef2f2' }}>

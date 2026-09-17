@@ -222,14 +222,14 @@ export const CastingCallPosterPanel: React.FC<CastingCallPosterPanelProps> = ({
       onClose={onClose}
       maxWidth="lg"
       fullWidth
-      slotProps={{ paper: { sx: { bgcolor: '#0f0f1a', color: '#fff' } } }}
+      slotProps={{ paper: { sx: { bgcolor: '#100b1e', color: '#fff' } } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Stack direction="row" spacing={1.2} alignItems="center">
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Del som casting call
           </Typography>
-          <Chip size="small" label="9:16 · PNG · Story/Reel" sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ddd6fe' }} />
+          <Chip size="small" label="9:16 · PNG · Story/Reel" sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa' }} />
         </Stack>
         <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.6)' }}>
           <CloseIcon />
@@ -260,10 +260,10 @@ export const CastingCallPosterPanel: React.FC<CastingCallPosterPanelProps> = ({
                     clickable
                     onClick={() => setVariant(v.id)}
                     sx={{
-                      bgcolor: variant === v.id ? 'rgba(167,139,250,0.30)' : 'rgba(255,255,255,0.05)',
+                      bgcolor: variant === v.id ? 'rgba(158, 140, 248,0.30)' : 'rgba(255,255,255,0.05)',
                       color: variant === v.id ? '#fff' : 'rgba(255,255,255,0.7)',
                       fontWeight: 700,
-                      border: variant === v.id ? '1px solid rgba(167,139,250,0.65)' : '1px solid transparent',
+                      border: variant === v.id ? '1px solid rgba(158, 140, 248,0.65)' : '1px solid transparent',
                     }}
                   />
                 ))}
@@ -416,7 +416,7 @@ export const CastingCallPosterPanel: React.FC<CastingCallPosterPanelProps> = ({
           startIcon={exporting ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : <DownloadIcon />}
           disabled={exporting}
           onClick={() => { void handleExport(); }}
-          sx={{ bgcolor: '#7c3aed', fontWeight: 700, textTransform: 'none' }}
+          sx={{ bgcolor: '#6249df', fontWeight: 700, textTransform: 'none' }}
         >
           {exporting ? 'Eksporterer…' : 'Last ned PNG'}
         </Button>
@@ -466,8 +466,8 @@ function StatRow({ stat, onChange, onRemove }: StatRowProps): JSX.Element {
         label={stat.fullWidth ? 'Full bredde' : 'Halv bredde'}
         onClick={() => onChange({ ...stat, fullWidth: !stat.fullWidth })}
         sx={{
-          bgcolor: stat.fullWidth ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.05)',
-          color: stat.fullWidth ? '#ddd6fe' : 'rgba(255,255,255,0.7)',
+          bgcolor: stat.fullWidth ? 'rgba(158, 140, 248,0.25)' : 'rgba(255,255,255,0.05)',
+          color: stat.fullWidth ? '#e0dbfa' : 'rgba(255,255,255,0.7)',
         }}
       />
       <Chip
@@ -476,8 +476,8 @@ function StatRow({ stat, onChange, onRemove }: StatRowProps): JSX.Element {
         label={stat.verifiedBadge ? '✓ badge' : '− badge'}
         onClick={() => onChange({ ...stat, verifiedBadge: !stat.verifiedBadge })}
         sx={{
-          bgcolor: stat.verifiedBadge ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.05)',
-          color: stat.verifiedBadge ? '#ddd6fe' : 'rgba(255,255,255,0.7)',
+          bgcolor: stat.verifiedBadge ? 'rgba(158, 140, 248,0.25)' : 'rgba(255,255,255,0.05)',
+          color: stat.verifiedBadge ? '#e0dbfa' : 'rgba(255,255,255,0.7)',
         }}
       />
       <IconButton size="small" onClick={onRemove}>

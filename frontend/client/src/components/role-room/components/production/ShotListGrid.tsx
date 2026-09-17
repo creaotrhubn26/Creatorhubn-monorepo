@@ -346,7 +346,7 @@ export function ShotListGrid({
           return (
             <Box
               sx={{
-                bgcolor: '#1e1e2e',
+                bgcolor: '#211c3b',
                 border: '2px solid #3b82f6',
                 borderRadius: 2,
                 p: 1.5,
@@ -370,7 +370,7 @@ export function ShotListGrid({
           return (
             <Box
               sx={{
-                bgcolor: '#1e1e2e',
+                bgcolor: '#211c3b',
                 border: '2px solid #e91e63',
                 borderRadius: 2,
                 p: 1.5,

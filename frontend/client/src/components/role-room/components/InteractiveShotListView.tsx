@@ -584,7 +584,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
             <ToggleButton value="shooting" sx={{ color: productionPhase === 'shooting' ? '#4caf50' : 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)' }}>
               <Tooltip title="Opptak"><Visibility sx={{ fontSize: 18 }} /></Tooltip>
             </ToggleButton>
-            <ToggleButton value="review" sx={{ color: productionPhase === 'review' ? '#9c27b0' : 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)' }}>
+            <ToggleButton value="review" sx={{ color: productionPhase === 'review' ? '#3c27a5' : 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)' }}>
               <Tooltip title="Gjennomgang"><CheckCircle sx={{ fontSize: 18 }} /></Tooltip>
             </ToggleButton>
           </ToggleButtonGroup>
@@ -622,7 +622,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
           sx={{
             px: 2,
             py: 2,
-            bgcolor: 'rgba(10,10,15,0.98)',
+            bgcolor: 'rgba(10, 5, 21,0.98)',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',

@@ -66,7 +66,7 @@ const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
 };
 
 const STATUS_COLORS: Record<MarketingPlanPost['status'], { bg: string; fg: string; icon: typeof CheckCircleIcon }> = {
-  proposed: { bg: 'rgba(168,85,247,0.16)', fg: '#c084fc', icon: LightbulbIcon },
+  proposed: { bg: 'rgba(136, 117, 235,0.16)', fg: '#9e8cf8', icon: LightbulbIcon },
   scheduled: { bg: 'rgba(34,211,238,0.16)', fg: '#67e8f9', icon: ScheduleIcon },
   published: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', icon: CheckCircleIcon },
   skipped: { bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8', icon: BlockIcon },
@@ -273,8 +273,8 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
             </Typography>
             <Chip size="small" label={plan.status.toUpperCase()}
                   sx={{
-                    bgcolor: plan.status === 'active' ? 'rgba(34,197,94,0.2)' : 'rgba(168,85,247,0.2)',
-                    color: plan.status === 'active' ? '#86efac' : '#c084fc',
+                    bgcolor: plan.status === 'active' ? 'rgba(34,197,94,0.2)' : 'rgba(136, 117, 235,0.2)',
+                    color: plan.status === 'active' ? '#86efac' : '#9e8cf8',
                     fontWeight: 700, fontSize: '0.66rem',
                   }} />
           </Stack>
@@ -730,7 +730,7 @@ const FORMAT_COLOR_FALLBACK: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
   image: 'var(--role-cyan, #22d3ee)',
-  story: '#a855f7',
+  story: '#8875eb',
   tiktok: '#ec4899',
   linkedin_post: '#3b82f6',
   youtube_short: '#ef4444',
@@ -752,7 +752,7 @@ function formatTimeAgo(iso: string): string {
 
 const containerSx = {
   p: { xs: 2, md: 3 },
-  background: 'radial-gradient(circle at top right, rgba(236,72,153,0.10) 0%, rgba(15,23,42,0.96) 36%, rgba(2,6,23,0.98) 100%)',
+  background: 'radial-gradient(circle at top right, rgba(236,72,153,0.10) 0%, rgba(15,23,42,0.96) 36%, rgba(10, 5, 21,0.98) 100%)',
   borderRadius: 3,
   border: '1px solid rgba(236,72,153,0.16)',
   minHeight: 600,
@@ -804,7 +804,7 @@ const thSx = {
   textTransform: 'uppercase' as const,
   letterSpacing: '0.06em',
   borderBottom: '1px solid rgba(148,163,184,0.18)',
-  bgcolor: 'rgba(2,6,23,0.9)',
+  bgcolor: 'rgba(10, 5, 21,0.9)',
 };
 
 const mutedSx = {

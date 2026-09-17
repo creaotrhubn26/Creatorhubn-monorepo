@@ -50,14 +50,14 @@ import type { DanceTeamRole, DanceTeamMember, DanceTeamInvite, DanceTeamSummary,
 
 // ─── Branding tokens ────────────────────────────────────────────────────
 
-const PURPLE_DEEP   = '#4c1d95';
+const PURPLE_DEEP   = '#301f84';
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT  = danceFlowColors.lavender;
-const PURPLE_GLASS  = 'rgba(139,92,246,0.10)';
+const PURPLE_GLASS  = 'rgba(136, 117, 235,0.10)';
 const TEXT_DIM      = 'rgba(229,231,235,0.65)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.45)';
-const PANEL_BG      = 'rgba(15,12,28,0.62)';
-const PANEL_BORDER  = 'rgba(167,139,250,0.18)';
+const PANEL_BG      = 'rgba(16, 11, 30,0.62)';
+const PANEL_BORDER  = 'rgba(158, 140, 248,0.18)';
 
 const sectionLabel: React.CSSProperties = {
   fontSize: 10,
@@ -273,14 +273,14 @@ const TeamHeader: React.FC<{
     sx={{
       p: { xs: 2, md: 3 },
       borderRadius: 2,
-      background: `linear-gradient(135deg, ${PURPLE_GLASS}, rgba(76,29,149,0.06))`,
+      background: `linear-gradient(135deg, ${PURPLE_GLASS}, rgba(48, 31, 132,0.06))`,
       border: `1px solid ${PANEL_BORDER}`,
     }}
   >
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between">
       <Stack spacing={0.5}>
         <Typography sx={sectionLabel}>Dansestudio · Team</Typography>
-        <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(237,233,254,0.95)' }}>
+        <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(235, 231, 253,0.95)' }}>
           {summary.activeMemberCount} aktiv{summary.activeMemberCount === 1 ? '' : 'e'} medlem{summary.activeMemberCount === 1 ? '' : 'mer'}
         </Typography>
         <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>
@@ -380,7 +380,7 @@ const MemberRow: React.FC<{
     <Stack direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }} data-testid={`team-member-row-${member.memberRowId}`}>
       <StatusIcon sx={{ fontSize: 18, color: member.status === 'active' ? '#22c55e' : TEXT_MUTED }} />
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography sx={{ fontSize: 13, color: 'rgba(237,233,254,0.92)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Typography sx={{ fontSize: 13, color: 'rgba(235, 231, 253,0.92)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {member.email}
         </Typography>
         <Typography sx={{ fontSize: 11, color: TEXT_MUTED }}>
@@ -412,7 +412,7 @@ const MemberRow: React.FC<{
               minWidth: 140,
               '& .MuiOutlinedInput-root': {
                 fontSize: 12,
-                color: 'rgba(237,233,254,0.9)',
+                color: 'rgba(235, 231, 253,0.9)',
                 '& fieldset': { borderColor: PANEL_BORDER },
               },
             }}
@@ -473,7 +473,7 @@ const InvitesList: React.FC<{
         <Stack key={i.token} direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }} data-testid={`team-invite-row-${i.token}`}>
           <PendingIcon sx={{ fontSize: 18, color: TEXT_MUTED }} />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography sx={{ fontSize: 13, color: 'rgba(237,233,254,0.92)', fontWeight: 500 }}>
+            <Typography sx={{ fontSize: 13, color: 'rgba(235, 231, 253,0.92)', fontWeight: 500 }}>
               {i.invitedEmail}
             </Typography>
             <Typography sx={{ fontSize: 11, color: TEXT_MUTED }}>
@@ -532,7 +532,7 @@ const RolesList: React.FC<{
         <Stack key={r.id} direction="row" alignItems="center" spacing={2} sx={{ py: 1.25 }} data-testid={`team-role-row-${r.id}`}>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontSize: 14, color: 'rgba(237,233,254,0.95)', fontWeight: 600 }}>
+              <Typography sx={{ fontSize: 14, color: 'rgba(235, 231, 253,0.95)', fontWeight: 600 }}>
                 {r.label}
               </Typography>
               {r.isOwnerRole ? (
@@ -611,8 +611,8 @@ const InviteDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
-      <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>Inviter medlem</DialogTitle>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#100b1e', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
+      <DialogTitle sx={{ color: 'rgba(235, 231, 253,0.95)' }}>Inviter medlem</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>
           {err ? <Alert severity="error">{err}</Alert> : null}
@@ -626,7 +626,7 @@ const InviteDialog: React.FC<{
             variant="outlined"
             placeholder="navn@dansestudio.no"
             inputProps={{ 'data-testid': 'team-invite-email' }}
-            sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
+            sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(235, 231, 253,0.9)' } }}
           />
           <TextField
             select
@@ -636,7 +636,7 @@ const InviteDialog: React.FC<{
             fullWidth
             variant="outlined"
             inputProps={{ 'data-testid': 'team-invite-role' }}
-            sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
+            sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(235, 231, 253,0.9)' } }}
           >
             {inviteableRoles.map((r) => (
               <MenuItem key={r.id} value={r.id}>
@@ -713,8 +713,8 @@ const RoleEditorDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#0f0a1c', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
-      <DialogTitle sx={{ color: 'rgba(237,233,254,0.95)' }}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#100b1e', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
+      <DialogTitle sx={{ color: 'rgba(235, 231, 253,0.95)' }}>
         {role ? `Rediger rolle: ${role.label}` : 'Ny rolle'}
         {isOwner ? <Chip label="Eier — capabilities er låst til alt" size="small" sx={{ ml: 2, bgcolor: 'rgba(245,158,11,0.18)', color: danceFlowColors.amber, fontWeight: 700 }} /> : null}
       </DialogTitle>
@@ -729,7 +729,7 @@ const RoleEditorDialog: React.FC<{
             variant="outlined"
             disabled={isOwner}
             inputProps={{ 'data-testid': 'team-role-label' }}
-            sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
+            sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(235, 231, 253,0.9)' } }}
           />
           <FormControlLabel
             control={
@@ -769,7 +769,7 @@ const RoleEditorDialog: React.FC<{
                         />
                       }
                       label={
-                        <Typography sx={{ fontSize: 13, color: 'rgba(237,233,254,0.85)' }}>
+                        <Typography sx={{ fontSize: 13, color: 'rgba(235, 231, 253,0.85)' }}>
                           {svc.CAPABILITY_LABELS[key] ?? key}
                         </Typography>
                       }

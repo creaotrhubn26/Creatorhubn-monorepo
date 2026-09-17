@@ -49,7 +49,7 @@ const PLATFORM_COLOR: Record<string, string> = {
   linkedin: '#0a66c2',
   youtube: '#ef4444',
   x: '#94a3b8',
-  threads: '#a855f7',
+  threads: '#8875eb',
 };
 
 const PLATFORM_LABEL: Record<string, string> = {

@@ -208,7 +208,7 @@ export default function AnnotateCategoryToolsPanel({
               '&:hover': {
                 color: danceFlowColors.lavender,
                 borderColor: danceFlowColors.lavender,
-                bgcolor: 'rgba(167,139,250,0.06)',
+                bgcolor: 'rgba(158, 140, 248,0.06)',
               },
             }}
           >

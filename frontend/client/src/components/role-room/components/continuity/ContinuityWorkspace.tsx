@@ -142,9 +142,9 @@ function MediaReference({
   return (
     <Box sx={{ mt: .8, maxWidth: 420 }}>
       {reference.kind === 'photo'
-        ? <Box component="img" src={signedUrl} alt={reference.label || 'Kontinuitetsreferanse'} sx={{ display: 'block', width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 1.5, bgcolor: '#020617' }} />
+        ? <Box component="img" src={signedUrl} alt={reference.label || 'Kontinuitetsreferanse'} sx={{ display: 'block', width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 1.5, bgcolor: '#0a0515' }} />
         : reference.kind === 'video'
-          ? <Box component="video" src={signedUrl} controls preload="metadata" sx={{ display: 'block', width: '100%', maxHeight: 280, borderRadius: 1.5, bgcolor: '#020617' }} />
+          ? <Box component="video" src={signedUrl} controls preload="metadata" sx={{ display: 'block', width: '100%', maxHeight: 280, borderRadius: 1.5, bgcolor: '#0a0515' }} />
           : null}
       <Typography component="a" href={signedUrl} target="_blank" rel="noreferrer" sx={{ display: 'block', mt: .5, color: '#5eead4', fontSize: '.76rem' }}>
         {reference.label || 'Åpne referanse'}

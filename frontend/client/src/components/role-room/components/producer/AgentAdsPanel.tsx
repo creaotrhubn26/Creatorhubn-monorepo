@@ -54,16 +54,16 @@ import ClientAiPromptsPanel from './ClientAiPromptsPanel';
 import ClientInsightsPanel from './ClientInsightsPanel';
 
 const palette = {
-  bgCard: '#150b2e',
-  bgElevated: '#1a0f3a',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
-  borderSubtle: 'rgba(168,85,247,0.08)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bgCard: '#18122b',
+  bgElevated: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  borderSubtle: 'rgba(136, 117, 235,0.08)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accent: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 interface PageSnapshot {
@@ -518,8 +518,8 @@ export default function AgentAdsPanel({
                   textTransform: 'none',
                   fontWeight: 700,
                   py: 1.2,
-                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
-                  '&:disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.5)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                  '&:disabled': { background: 'rgba(136, 117, 235,0.32)', color: 'rgba(255,255,255,0.5)' },
                 }}
               >
                 {discovering ? 'Claude analyserer…' : 'Analyser klient'}
@@ -559,11 +559,11 @@ export default function AgentAdsPanel({
               <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1, mb: 1.4 }}>
                 <Chip
                   label={`Bransje: ${discoveryResult.business_type}`}
-                  sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.78rem' }}
+                  sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.78rem' }}
                 />
                 <Chip
                   label={discoveryResult.business_subcategory}
-                  sx={{ bgcolor: 'rgba(168,85,247,0.08)', color: palette.textSecondary, fontSize: '0.78rem' }}
+                  sx={{ bgcolor: 'rgba(136, 117, 235,0.08)', color: palette.textSecondary, fontSize: '0.78rem' }}
                 />
                 {discoveryResult.detected_gtag_id ? (
                   <Chip label={`GA4: ${discoveryResult.detected_gtag_id}`} size="small" sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontSize: '0.74rem' }} />
@@ -705,8 +705,8 @@ export default function AgentAdsPanel({
                     textTransform: 'none',
                     fontWeight: 700,
                     px: 3,
-                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
-                    '&:disabled': { background: 'rgba(168,85,247,0.32)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                    '&:disabled': { background: 'rgba(136, 117, 235,0.32)' },
                   }}
                 >
                   {saving ? 'Lagrer…' : 'Lagre + gå videre til OAuth'}
@@ -758,7 +758,7 @@ export default function AgentAdsPanel({
                   3 business-dager → auto-godkjent (per MedInnova §5.2).
                 </Typography>
                 <Box sx={{
-                  bgcolor: 'rgba(168,85,247,0.10)',
+                  bgcolor: 'rgba(136, 117, 235,0.10)',
                   border: `1px solid ${palette.borderStrong}`,
                   borderRadius: 1.2,
                   p: 1.4,
@@ -839,7 +839,7 @@ export default function AgentAdsPanel({
                     textTransform: 'none',
                     fontWeight: 700,
                     px: 3,
-                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                   }}
                 >
                   {sendingForApproval ? 'Sender…' : 'Send til klient'}
@@ -930,7 +930,7 @@ export default function AgentAdsPanel({
                       color: '#fff',
                       textTransform: 'none',
                       fontWeight: 700,
-                      '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                      '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                     }}
                   >
                     Lagre
@@ -962,7 +962,7 @@ export default function AgentAdsPanel({
                   startIcon={syncing ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
                   sx={{
                     background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
-                    color: '#0a0a1a',
+                    color: '#100b1e',
                     textTransform: 'none',
                     fontWeight: 800,
                   }}
@@ -1174,13 +1174,13 @@ function DeploymentGuide({
   };
 
   const codeBoxSx = {
-    bgcolor: '#0a0118',
+    bgcolor: '#0a0515',
     border: `1px solid ${palette.borderSubtle}`,
     borderRadius: 1.2,
     p: 2,
     fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: '0.78rem',
-    color: '#c4b5fd',
+    color: '#c6bdf4',
     lineHeight: 1.55,
     overflow: 'auto',
     maxHeight: 480,
@@ -1363,10 +1363,10 @@ function tabBtnSx(active: boolean) {
     px: 1.6,
     py: 0.6,
     borderRadius: 999,
-    bgcolor: active ? 'rgba(168,85,247,0.18)' : 'transparent',
+    bgcolor: active ? 'rgba(136, 117, 235,0.18)' : 'transparent',
     color: active ? palette.accent : palette.textMuted,
     border: `1px solid ${active ? palette.borderStrong : palette.borderSubtle}`,
-    '&:hover': { bgcolor: 'rgba(168,85,247,0.10)', color: palette.textPrimary },
+    '&:hover': { bgcolor: 'rgba(136, 117, 235,0.10)', color: palette.textPrimary },
   };
 }
 
@@ -1893,7 +1893,7 @@ function ActionCard({
               <Chip
                 label={action.goal_category}
                 size="small"
-                sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: palette.accent, fontSize: '0.7rem', height: 18 }}
+                sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: palette.accent, fontSize: '0.7rem', height: 18 }}
               />
               <Chip
                 label={`${action.default_value} ${action.currency}`}
@@ -2018,7 +2018,7 @@ function ActionCard({
               color: '#fff',
               textTransform: 'none',
               fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             Lagre endring

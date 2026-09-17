@@ -86,7 +86,7 @@ export function AIShotSuggestions({
       case 'lighting':
         return '#F59E0B';
       case 'composition':
-        return '#8B5CF6';
+        return '#8875eb';
       default:
         return '#9E9E9E';
     }

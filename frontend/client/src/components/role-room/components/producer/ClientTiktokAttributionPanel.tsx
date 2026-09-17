@@ -24,13 +24,13 @@ import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
 
 const palette = {
-  bg: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
 };
 
@@ -195,7 +195,7 @@ export default function ClientTiktokAttributionPanel({
               gap: 1.4,
               mb: 2,
             }}>
-              <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
+              <Box sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                   Annonse-spend
                 </Typography>
@@ -203,7 +203,7 @@ export default function ClientTiktokAttributionPanel({
                   {fmtNok(data.totalAdSpend)}
                 </Typography>
               </Box>
-              <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
+              <Box sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                   Konverteringer
                 </Typography>
@@ -214,7 +214,7 @@ export default function ClientTiktokAttributionPanel({
                   {fmtInt(data.clickConversions)} fra klikk · {fmtInt(data.viewThroughConversions)} etter visning
                 </Typography>
               </Box>
-              <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
+              <Box sx={{ bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                   Pris per konvertering
                 </Typography>

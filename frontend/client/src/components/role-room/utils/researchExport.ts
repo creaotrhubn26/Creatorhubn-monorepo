@@ -165,7 +165,7 @@ export function exportResearchAsPdf(
   const margin = 40;
   const usable = pageWidth - margin * 2;
   const palette = result.planningDraft?.brandGuide?.colors ?? [];
-  const primaryHex = palette[0]?.hex ?? '#6366f1';
+  const primaryHex = palette[0]?.hex ?? '#8875eb';
   const accentHex = palette[1]?.hex ?? '#0f172a';
 
   const hexToRgb = (hex: string): [number, number, number] => {

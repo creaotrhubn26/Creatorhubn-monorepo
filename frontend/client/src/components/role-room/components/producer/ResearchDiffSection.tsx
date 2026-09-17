@@ -80,7 +80,7 @@ const ResearchDiffSection: React.FC<ResearchDiffSectionProps> = ({ diff }) => {
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-        <CompareArrowsIcon sx={{ color: '#a5b4fc', fontSize: 18 }} />
+        <CompareArrowsIcon sx={{ color: '#c6bdf4', fontSize: 18 }} />
         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
           Endringer siden forrige research
         </Typography>

@@ -462,14 +462,14 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
         onClose={onClose}
         maxWidth="lg"
         fullWidth
-        slotProps={{ paper: { sx: { bgcolor: '#0f0f1a', color: '#fff' } } }}
+        slotProps={{ paper: { sx: { bgcolor: '#100b1e', color: '#fff' } } }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" sx={{ rowGap: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Marketing-poster
             </Typography>
-            <Chip size="small" label="4:5 · PNG · LinkedIn/IG feed" sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ddd6fe' }} />
+            <Chip size="small" label="4:5 · PNG · LinkedIn/IG feed" sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa' }} />
             {posterId && (
               <Chip
                 size="small"
@@ -554,7 +554,7 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
               disabled={autoFilling}
               startIcon={autoFilling ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
               variant="outlined"
-              sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)', textTransform: 'none', fontWeight: 600 }}
+              sx={{ color: '#9e8cf8', borderColor: 'rgba(158, 140, 248,0.5)', textTransform: 'none', fontWeight: 600 }}
             >
               {autoFilling ? 'Auto-fyller…' : 'Auto-fyll fra siste utgave'}
             </Button>
@@ -623,10 +623,10 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
                       clickable
                       onClick={() => setTheme(th.id)}
                       sx={{
-                        bgcolor: theme === th.id ? 'rgba(167,139,250,0.30)' : 'rgba(255,255,255,0.05)',
+                        bgcolor: theme === th.id ? 'rgba(158, 140, 248,0.30)' : 'rgba(255,255,255,0.05)',
                         color: theme === th.id ? '#fff' : 'rgba(255,255,255,0.7)',
                         fontWeight: 700,
-                        border: theme === th.id ? '1px solid rgba(167,139,250,0.65)' : '1px solid transparent',
+                        border: theme === th.id ? '1px solid rgba(158, 140, 248,0.65)' : '1px solid transparent',
                       }}
                     />
                   ))}
@@ -639,10 +639,10 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
                       clickable
                       onClick={() => setVariant(v.id)}
                       sx={{
-                        bgcolor: variant === v.id ? 'rgba(167,139,250,0.30)' : 'rgba(255,255,255,0.05)',
+                        bgcolor: variant === v.id ? 'rgba(158, 140, 248,0.30)' : 'rgba(255,255,255,0.05)',
                         color: variant === v.id ? '#fff' : 'rgba(255,255,255,0.7)',
                         fontWeight: 700,
-                        border: variant === v.id ? '1px solid rgba(167,139,250,0.65)' : '1px solid transparent',
+                        border: variant === v.id ? '1px solid rgba(158, 140, 248,0.65)' : '1px solid transparent',
                       }}
                     />
                   ))}
@@ -796,7 +796,7 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
                           setFields({ ...fields, socialIcons: next });
                         }}
                         sx={{
-                          bgcolor: active ? 'rgba(167,139,250,0.30)' : 'rgba(255,255,255,0.05)',
+                          bgcolor: active ? 'rgba(158, 140, 248,0.30)' : 'rgba(255,255,255,0.05)',
                           color: active ? '#fff' : 'rgba(255,255,255,0.7)',
                           fontWeight: 700,
                         }}
@@ -836,7 +836,7 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
             startIcon={exportingSvg ? <CircularProgress size={16} /> : <ImageIcon />}
             disabled={exportingSvg}
             onClick={() => { void handleExportSvg(); }}
-            sx={{ color: '#ddd6fe', borderColor: 'rgba(167,139,250,0.5)', textTransform: 'none', fontWeight: 600 }}
+            sx={{ color: '#e0dbfa', borderColor: 'rgba(158, 140, 248,0.5)', textTransform: 'none', fontWeight: 600 }}
           >
             {exportingSvg ? 'SVG…' : 'Last ned SVG'}
           </Button>
@@ -846,7 +846,7 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
             startIcon={exporting ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : <DownloadIcon />}
             disabled={exporting}
             onClick={() => { void handleExport(); }}
-            sx={{ bgcolor: '#7c3aed', fontWeight: 700, textTransform: 'none' }}
+            sx={{ bgcolor: '#6249df', fontWeight: 700, textTransform: 'none' }}
           >
             {exporting ? 'Eksporterer…' : 'Last ned PNG'}
           </Button>
@@ -859,7 +859,7 @@ export const WeeklyBriefEditor: React.FC<WeeklyBriefEditorProps> = ({
         onClose={() => setOpenPickerOpen(false)}
         maxWidth="sm"
         fullWidth
-        slotProps={{ paper: { sx: { bgcolor: '#0f0f1a', color: '#fff' }, 'data-testid': 'poster-picker-dialog' } }}
+        slotProps={{ paper: { sx: { bgcolor: '#100b1e', color: '#fff' }, 'data-testid': 'poster-picker-dialog' } }}
       >
         <DialogTitle data-testid="poster-picker-title" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           Lagrede posters
@@ -908,8 +908,8 @@ function CardRow({ card, onChange, onRemove }: CardRowProps): JSX.Element {
       sx={{
         p: 1.5,
         borderRadius: 1,
-        border: '1px solid rgba(167,139,250,0.18)',
-        bgcolor: 'rgba(167,139,250,0.04)',
+        border: '1px solid rgba(158, 140, 248,0.18)',
+        bgcolor: 'rgba(158, 140, 248,0.04)',
       }}
     >
       <Stack spacing={1}>

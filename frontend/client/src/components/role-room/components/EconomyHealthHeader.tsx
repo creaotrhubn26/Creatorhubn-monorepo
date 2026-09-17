@@ -67,7 +67,7 @@ export default function EconomyHealthHeader({
       sx={{
         borderRadius: '16px',
         border: '1px solid rgba(148,163,184,0.14)',
-        background: 'linear-gradient(180deg,#0c0a18,#0a0a14)',
+        background: 'linear-gradient(180deg,#100b1e,#0a0515)',
         p: { xs: 2, md: 2.5 },
         mb: 2,
         boxShadow: '0 14px 36px rgba(0,0,0,0.4)',
@@ -86,7 +86,7 @@ export default function EconomyHealthHeader({
       {/* Nøkkeltall */}
       <Box sx={{ mt: 1.5, display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' } }}>
         <Metric label="Totalbudsjett" value={hasRamme ? formatKr(ramme, currency) : 'Ikke satt'} sub={budget > 0 ? 'Godkjent ramme' : approved > 0 ? 'Sum godkjent' : 'Sett en ramme for å spore'} />
-        <Metric label="Brukt" value={formatKr(spent, currency)} sub={hasRamme ? `${pct}% av ramme` : 'faktisk forbruk'} valueColor={overBudget ? '#fca5a5' : '#f5f3ff'} />
+        <Metric label="Brukt" value={formatKr(spent, currency)} sub={hasRamme ? `${pct}% av ramme` : 'faktisk forbruk'} valueColor={overBudget ? '#fca5a5' : '#f6f5ff'} />
         <Metric label="Margin igjen" value={formatKr(margin, currency)} sub={hasRamme ? (margin < 0 ? 'over rammen' : `${Math.max(0, 100 - pct)}% buffer`) : '—'} valueColor={margin < 0 ? '#fca5a5' : '#86efac'} />
       </Box>
 
@@ -128,7 +128,7 @@ export default function EconomyHealthHeader({
   );
 }
 
-function Metric({ label, value, sub, valueColor = '#f5f3ff' }: { label: string; value: string; sub: string; valueColor?: string }) {
+function Metric({ label, value, sub, valueColor = '#f6f5ff' }: { label: string; value: string; sub: string; valueColor?: string }) {
   return (
     <Box sx={{ p: 1.2, borderRadius: '12px', border: '1px solid rgba(148,163,184,0.12)', background: 'rgba(255,255,255,0.02)' }}>
       <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</Typography>

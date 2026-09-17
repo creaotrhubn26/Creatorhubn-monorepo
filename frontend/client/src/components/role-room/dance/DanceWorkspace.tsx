@@ -145,7 +145,7 @@ const FEATURE_COLOR: Record<NonNullable<TabConfig['feature']>, string> = {
   resources: danceFlowColors.successDark,
   on_set: danceFlowColors.amber,
   finance: danceFlowColors.pinkAccent,
-  union: '#a855f7',
+  union: '#8875eb',
 };
 
 interface PlaceholderProps {
@@ -156,10 +156,10 @@ interface PlaceholderProps {
 
 const ComingSoonCard: React.FC<PlaceholderProps> = ({ title, body, feature }) => (
   <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: danceFlowColors.bgBase, minHeight: '100%' }}>
-    <Card sx={{ maxWidth: 720, mx: 'auto', bgcolor: danceFlowColors.bgCard, border: '1px solid rgba(139,92,246,0.25)', color: danceFlowColors.textSecondary }}>
+    <Card sx={{ maxWidth: 720, mx: 'auto', bgcolor: danceFlowColors.bgCard, border: '1px solid rgba(136, 117, 235,0.25)', color: danceFlowColors.textSecondary }}>
       <CardContent>
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.18)', color: danceFlowColors.lavender, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'rgba(136, 117, 235,0.18)', color: danceFlowColors.lavender, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ConstructionIcon />
           </Box>
           <Box>
@@ -444,7 +444,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
               position: 'fixed', bottom: 16, left: '50%',
               transform: 'translateX(-50%)',
               bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.lavender,
-              border: '1px solid #a78bfa', borderRadius: 1,
+              border: '1px solid #9e8cf8', borderRadius: 1,
               px: 2, py: 1, fontSize: 12, fontWeight: 600,
               zIndex: 2000,
               boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
@@ -509,7 +509,7 @@ const FormationsTabBody: React.FC<FormationsTabBodyProps> = ({ projectId }) => {
             transform: 'translateX(-50%)',
             bgcolor: danceFlowColors.borderStrong,
             color: danceFlowColors.lavender,
-            border: '1px solid #a78bfa',
+            border: '1px solid #9e8cf8',
             borderRadius: 1,
             px: 2,
             py: 1,
@@ -893,9 +893,9 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               aria-label="Åpne profil"
               size="small"
               sx={{
-                bgcolor: 'rgba(139,92,246,0.95)',
+                bgcolor: 'rgba(136, 117, 235,0.95)',
                 color: '#fff',
-                '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,1)' },
               }}
             >
               {profileInitials ? (
@@ -916,9 +916,9 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               aria-label="Åpne profil"
               size="small"
               sx={{
-                bgcolor: 'rgba(139,92,246,0.95)',
+                bgcolor: 'rgba(136, 117, 235,0.95)',
                 color: '#fff',
-                '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,1)' },
               }}
             >
               {profileInitials ? (
@@ -960,7 +960,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           zIndex: 10,
           bgcolor: 'rgba(10,10,10,0.95)',
           backdropFilter: 'blur(8px)',
-          borderBottom: '1px solid rgba(139,92,246,0.18)',
+          borderBottom: '1px solid rgba(136, 117, 235,0.18)',
         }}
       >
         {/* Permanent mode-chip øverst — bruker vet alltid hvilken

@@ -228,7 +228,7 @@ export default function SelectionMeetPlannerCard({
           sx={{
             borderRadius: 1.15,
             border: '1px solid rgba(96,165,250,0.22)',
-            bgcolor: 'rgba(2,6,23,0.34)',
+            bgcolor: 'rgba(10, 5, 21,0.34)',
             p: compact ? 0.68 : 0.75,
           }}
         >

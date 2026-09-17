@@ -240,7 +240,7 @@ export default function ClipsSidebar({
               minHeight: 26,
               px: 0.75,
               '&:hover': {
-                bgcolor: 'rgba(167,139,250,0.1)',
+                bgcolor: 'rgba(158, 140, 248,0.1)',
               },
             }}
           >
@@ -346,7 +346,7 @@ export default function ClipsSidebar({
                 color: danceFlowColors.lavender,
                 '&:hover': {
                   borderColor: danceFlowColors.lavender,
-                  bgcolor: 'rgba(167,139,250,0.08)',
+                  bgcolor: 'rgba(158, 140, 248,0.08)',
                 },
               }}
             >
@@ -413,14 +413,14 @@ const ClipCard: React.FC<{
         border: 'none',
         borderLeft: `3px solid ${isSelected ? danceFlowColors.lavender : 'transparent'}`,
         borderRadius: 1,
-        bgcolor: isSelected ? 'rgba(167,139,250,0.12)' : 'transparent',
+        bgcolor: isSelected ? 'rgba(158, 140, 248,0.12)' : 'transparent',
         color: danceFlowColors.textSecondary,
         cursor: 'pointer',
         font: 'inherit',
         transition: 'background-color 120ms, border-color 120ms',
         '&:hover': {
           bgcolor: isSelected
-            ? 'rgba(167,139,250,0.16)'
+            ? 'rgba(158, 140, 248,0.16)'
             : 'rgba(255,255,255,0.04)',
         },
         '&:focus-visible': {

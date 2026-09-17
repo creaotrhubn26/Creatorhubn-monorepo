@@ -88,7 +88,7 @@ export default function SelfTapeSubmissionTargets({ submissions, onChange }: Pro
                 borderRadius: radius.sm,
                 border: `1px solid ${palette.borderSubtle}`,
                 transition: 'background-color 0.18s, border-color 0.18s',
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.06)', borderColor: palette.borderStrong },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.06)', borderColor: palette.borderStrong },
               }}
             >
               <Box
@@ -96,7 +96,7 @@ export default function SelfTapeSubmissionTargets({ submissions, onChange }: Pro
                   width: 36,
                   height: 36,
                   borderRadius: '50%',
-                  bgcolor: 'rgba(168,85,247,0.16)',
+                  bgcolor: 'rgba(98, 73, 223,0.16)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -147,7 +147,7 @@ export default function SelfTapeSubmissionTargets({ submissions, onChange }: Pro
                     fontSize: '0.78rem',
                     fontFamily: 'inherit',
                     flexShrink: 0,
-                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
                   }}
                 >
                   Send

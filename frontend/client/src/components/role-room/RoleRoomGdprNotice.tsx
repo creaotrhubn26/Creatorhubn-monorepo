@@ -49,13 +49,13 @@ interface CookieConsentSettings {
 // strukturelle form) — derfor ingen ny `declare global` her.
 
 const palette = {
-  bgCard: 'rgba(21, 11, 46, 0.96)',
-  border: 'rgba(168, 85, 247, 0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: 'rgba(196, 181, 253, 0.85)',
-  textMuted: 'rgba(139, 126, 196, 0.85)',
-  accentBright: '#c084fc',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  bgCard: 'rgba(24, 18, 43, 0.96)',
+  border: 'rgba(136, 117, 235, 0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: 'rgba(198, 189, 244, 0.85)',
+  textMuted: 'rgba(98, 73, 223, 0.85)',
+  accentBright: '#9e8cf8',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 const DEFAULT_SETTINGS: CookieConsentSettings = {
@@ -125,14 +125,14 @@ const CATEGORY = {
   },
   marketing: {
     label: 'Markedsføring',
-    color: '#d946ef',
+    color: '#6249df',
     title: 'Markedsføringscookies',
     desc: 'For å måle effekten av kampanjer og vise relevant innhold (Google Ads, Meta, TikTok). Brukes til å forstå hvilke kanaler som fungerer.',
     meta: 'Tjenester: Google Ads, Meta, TikTok • Lagring: 1–2 år • Grunnlag: Samtykke',
   },
   preferences: {
     label: 'Preferanser',
-    color: '#a855f7',
+    color: '#8875eb',
     title: 'Preferansecookies',
     desc: 'Husker valgene dine (språk, visning) for å tilpasse opplevelsen.',
     meta: 'Lagring: 1 år • Grunnlag: Berettiget interesse',
@@ -233,7 +233,7 @@ export default function RoleRoomGdprNotice() {
           backgroundImage: 'none',
           backdropFilter: 'blur(24px)',
           border: `1px solid ${palette.border}`,
-          boxShadow: '0 24px 80px rgba(0,0,0,0.5), 0 0 40px rgba(168,85,247,0.12)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.5), 0 0 40px rgba(136, 117, 235,0.12)',
           pointerEvents: 'auto',
           p: { xs: 2.2, sm: 3 },
         }}
@@ -244,7 +244,7 @@ export default function RoleRoomGdprNotice() {
               sx={{
                 width: 44, height: 44, borderRadius: '12px', background: palette.accentGradient,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-                boxShadow: '0 4px 15px rgba(168,85,247,0.3)',
+                boxShadow: '0 4px 15px rgba(136, 117, 235,0.3)',
               }}
             >
               <CookieOutlinedIcon />
@@ -273,7 +273,7 @@ export default function RoleRoomGdprNotice() {
               label={label}
               size="small"
               sx={{
-                bgcolor: i === 0 ? 'rgba(52,211,153,0.18)' : 'rgba(168,85,247,0.12)',
+                bgcolor: i === 0 ? 'rgba(52,211,153,0.18)' : 'rgba(136, 117, 235,0.12)',
                 color: i === 0 ? '#34d399' : palette.accentBright,
                 fontWeight: 600, fontSize: '0.7rem',
                 border: `1px solid ${i === 0 ? 'rgba(52,211,153,0.3)' : palette.border}`,
@@ -307,7 +307,7 @@ export default function RoleRoomGdprNotice() {
                 sx={{
                   flex: 1, background: palette.accentGradient, color: '#fff', textTransform: 'none',
                   fontWeight: 700, py: 1.3, borderRadius: 2, fontSize: '0.95rem',
-                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                 }}
               >
                 Godta alle
@@ -318,7 +318,7 @@ export default function RoleRoomGdprNotice() {
                 sx={{
                   flex: 1, color: palette.textSecondary, borderColor: palette.border, textTransform: 'none',
                   fontWeight: 700, py: 1.3, borderRadius: 2, fontSize: '0.95rem',
-                  '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(168,85,247,0.08)' },
+                  '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(136, 117, 235,0.08)' },
                 }}
               >
                 Kun nødvendige
@@ -330,7 +330,7 @@ export default function RoleRoomGdprNotice() {
               sx={{
                 background: palette.accentGradient, color: '#fff', textTransform: 'none',
                 fontWeight: 700, py: 1.3, borderRadius: 2, fontSize: '0.95rem',
-                '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
               }}
             >
               Lagre mine valg
@@ -375,8 +375,8 @@ export default function RoleRoomGdprNotice() {
         position: 'fixed', left: { xs: 12, md: 20 }, bottom: { xs: 12, md: 20 }, zIndex: 9998,
         borderRadius: '999px', textTransform: 'none', fontWeight: 700, px: 2, py: 0.8,
         color: palette.accentBright, borderColor: palette.border,
-        bgcolor: 'rgba(10,1,24,0.9)', backdropFilter: 'blur(12px)',
-        '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(10,1,24,0.96)' },
+        bgcolor: 'rgba(10, 5, 21,0.9)', backdropFilter: 'blur(12px)',
+        '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(10, 5, 21,0.96)' },
       }}
     >
       {hasSaved ? 'Administrer cookies' : 'Velg cookies'}

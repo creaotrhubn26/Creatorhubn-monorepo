@@ -189,7 +189,7 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             py: 1,
-            bgcolor: day.isToday ? 'rgba(139,92,246,0.16)' : 'rgba(255,255,255,0.03)',
+            bgcolor: day.isToday ? 'rgba(136, 117, 235,0.16)' : 'rgba(255,255,255,0.03)',
             borderBottom: '1px solid rgba(255,255,255,0.04)',
             borderRight: '1px solid rgba(255,255,255,0.04)',
           }}
@@ -207,7 +207,7 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
             </Typography>
             <Typography
               sx={{
-                color: day.isToday ? '#c4b5fd' : day.isWeekend ? '#fca5a5' : '#fff',
+                color: day.isToday ? '#c6bdf4' : day.isWeekend ? '#fca5a5' : '#fff',
                 fontSize: '1.1rem',
                 fontWeight: 700,
                 lineHeight: 1,
@@ -223,8 +223,8 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                 px: 0.75,
                 py: 0.15,
                 borderRadius: 999,
-                bgcolor: day.isToday ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.06)',
-                color: day.isToday ? '#c4b5fd' : 'rgba(255,255,255,0.62)',
+                bgcolor: day.isToday ? 'rgba(136, 117, 235,0.3)' : 'rgba(255,255,255,0.06)',
+                color: day.isToday ? '#c6bdf4' : 'rgba(255,255,255,0.62)',
                 fontSize: '0.62rem',
                 fontWeight: 600,
                 minWidth: 18,
@@ -325,7 +325,7 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                   minHeight: 76,
                   px: 0.5,
                   py: 0.5,
-                  bgcolor: tint ? tint.bg : day.isToday ? 'rgba(139,92,246,0.04)' : 'transparent',
+                  bgcolor: tint ? tint.bg : day.isToday ? 'rgba(136, 117, 235,0.04)' : 'transparent',
                   borderRight: '1px solid rgba(255,255,255,0.04)',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   cursor: cellEvents.length === 0 ? 'pointer' : 'default',

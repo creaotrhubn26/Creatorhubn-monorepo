@@ -336,7 +336,7 @@ function PostDrawer({
         {post.suggestedPublishTime && post.status !== 'published' && (
           <Box sx={{
             p: 1.5, mt: 1.5, mb: 1.5,
-            background: post.autoPublishEnabled ? 'rgba(168,85,247,0.10)' : adminTokens.bg.panel,
+            background: post.autoPublishEnabled ? 'rgba(136, 117, 235,0.10)' : adminTokens.bg.panel,
             border: `1px solid ${post.autoPublishEnabled ? adminTokens.border.accent : adminTokens.border.subtle}`,
             borderRadius: 1,
           }}>

@@ -48,7 +48,7 @@ function durationLabel(start: number | null | undefined, end: number | null | un
   return `${formatTimecode(end - start)}`;
 }
 
-const STAGE_SVG_BG = '#f6f7fb';
+const STAGE_SVG_BG = '#f6f5ff';
 const STAGE_SVG_BORDER = danceFlowColors.borderStrong;
 
 const StageSvg: React.FC<{
