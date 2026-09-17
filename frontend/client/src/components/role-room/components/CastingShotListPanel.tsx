@@ -164,11 +164,11 @@ const focusVisibleStyles = {
 
 const SHOT_COLOR_TAG_MAP: Record<string, string> = {
   red: '#f44336',
-  orange: '#9333ea',
+  orange: '#6249df',
   yellow: '#ffeb3b',
   green: '#4caf50',
   blue: '#2196f3',
-  purple: '#9c27b0',
+  purple: '#3c27a5',
   gray: '#9e9e9e',
 };
 
@@ -1044,11 +1044,11 @@ export function CastingShotListPanel({
     const colors: Record<ShotType, string> = {
       'Wide': '#4caf50',
       'Medium': '#2196f3',
-      'Close-up': '#9333ea',
+      'Close-up': '#6249df',
       'Extreme Close-up': '#e91e63',
-      'Establishing': '#9c27b0',
+      'Establishing': '#3c27a5',
       'Detail': '#00bcd4',
-      'Two Shot': '#7c3aed',
+      'Two Shot': '#6249df',
       'Over Shoulder': '#795548',
       'Point of View': '#607d8b',
     };
@@ -1058,18 +1058,18 @@ export function CastingShotListPanel({
   const mediaTypeConfig: Record<MediaType, { label: string; color: string; icon: ReactElement }> = {
     photo: { label: 'Foto', color: '#2196f3', icon: <PhotoCameraIcon sx={{ fontSize: 14 }} /> },
     video: { label: 'Video', color: '#e91e63', icon: <VideocamIcon sx={{ fontSize: 14 }} /> },
-    hybrid: { label: 'Hybrid', color: '#9c27b0', icon: <MovieIcon sx={{ fontSize: 14 }} /> },
+    hybrid: { label: 'Hybrid', color: '#3c27a5', icon: <MovieIcon sx={{ fontSize: 14 }} /> },
   };
 
   const priorityConfig: Record<ShotPriority, { label: string; color: string; bgColor: string }> = {
     critical: { label: 'Kritisk', color: '#f44336', bgColor: 'rgba(244,67,54,0.15)' },
-    important: { label: 'Viktig', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
+    important: { label: 'Viktig', color: '#6249df', bgColor: 'rgba(98, 73, 223,0.15)' },
     nice_to_have: { label: 'Bonus', color: '#9e9e9e', bgColor: 'rgba(158,158,158,0.15)' },
   };
 
   const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: string }> = {
     not_started: { label: 'Venter', color: '#78909c', bgColor: 'rgba(120,144,156,0.15)' },
-    in_progress: { label: 'Pågår', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
+    in_progress: { label: 'Pågår', color: '#6249df', bgColor: 'rgba(98, 73, 223,0.15)' },
     completed: { label: 'Fullført', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
   };
 
@@ -3021,12 +3021,12 @@ export function CastingShotListPanel({
               width: { xs: 36, sm: 42 },
               height: { xs: 36, sm: 42 },
               borderRadius: 2,
-              background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-              border: '1px solid rgba(233,213,255,0.34)',
+              background: 'linear-gradient(135deg, #8875eb, #6249df)',
+              border: '1px solid rgba(224, 219, 250,0.34)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
+              boxShadow: '0 8px 20px rgba(98, 73, 223,0.28)',
             }}
           >
             <VideoCallIcon sx={{ color: '#fff', fontSize: { xs: 20, sm: 24 } }} />
@@ -3051,9 +3051,9 @@ export function CastingShotListPanel({
                 label="PRO-VISNING"
                 sx={{
                   height: 20,
-                  bgcolor: 'rgba(192,132,252,0.2)',
-                  color: '#f5d0fe',
-                  border: '1px solid rgba(192,132,252,0.45)',
+                  bgcolor: 'rgba(158, 140, 248,0.2)',
+                  color: '#e0dbfa',
+                  border: '1px solid rgba(158, 140, 248,0.45)',
                   fontSize: '0.62rem',
                   fontWeight: 700,
                   letterSpacing: 0.35,
@@ -3076,7 +3076,7 @@ export function CastingShotListPanel({
                   flexShrink: 0,
                   bgcolor:
                     rt.connectionStatus === 'connected'   ? '#4caf50' :
-                    rt.connectionStatus === 'offline'     ? '#ef5350' : '#9333ea',
+                    rt.connectionStatus === 'offline'     ? '#ef5350' : '#6249df',
                   boxShadow:
                     rt.connectionStatus === 'connected' ? '0 0 0 2px rgba(76,175,80,0.25)' : 'none',
                 }}
@@ -3195,11 +3195,11 @@ export function CastingShotListPanel({
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: '#9333ea',
-                borderColor: '#9333ea',
+                color: '#6249df',
+                borderColor: '#6249df',
                 px: { xs: 1, sm: 2 },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' },
               }}
             >
               <PdfIcon />
@@ -3298,9 +3298,9 @@ export function CastingShotListPanel({
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9c27b0' }} />
+              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#3c27a5' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+            <Typography variant="h4" sx={{ color: '#3c27a5', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {productionDays.length}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Produksjonsdager</Typography>
@@ -3317,9 +3317,9 @@ export function CastingShotListPanel({
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <RefreshIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9333ea' }} />
+              <RefreshIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#6249df' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+            <Typography variant="h4" sx={{ color: '#6249df', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.in_progress}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Pågår</Typography>
@@ -3688,7 +3688,7 @@ export function CastingShotListPanel({
             </MenuItem>
             <MenuItem value="unassigned">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#9333ea' }} />
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#6249df' }} />
                 Ikke tilordnet
               </Box>
             </MenuItem>
@@ -4123,14 +4123,14 @@ export function CastingShotListPanel({
                           <>
                             <Box sx={{ display: 'flex', gap: 0.4, ml: 0.5 }}>
                               {ns > 0 && <Chip label={ns} size="small" sx={{ bgcolor: 'rgba(120,144,156,0.2)', color: '#78909c', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
-                              {ip > 0 && <Chip label={ip} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#9333ea', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
+                              {ip > 0 && <Chip label={ip} size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.2)', color: '#6249df', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
                               {done > 0 && <Chip label={done} size="small" sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#4caf50', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
                             </Box>
                             <Tooltip title={`${pct}% fullført`}>
                               <LinearProgress
                                 variant="determinate"
                                 value={pct}
-                                sx={{ width: 44, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: pct === 100 ? '#4caf50' : '#9333ea', borderRadius: 2 } }}
+                                sx={{ width: 44, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: pct === 100 ? '#4caf50' : '#6249df', borderRadius: 2 } }}
                               />
                             </Tooltip>
                           </>
@@ -4156,7 +4156,7 @@ export function CastingShotListPanel({
                                   icon={<AssignIcon style={{ fontSize: 11 }} />}
                                   label={unassigned}
                                   size="small"
-                                  sx={{ bgcolor: 'rgba(147,51,234,0.18)', color: '#ffa726', height: 18, fontSize: '9px', minWidth: 32, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.5 } }}
+                                  sx={{ bgcolor: 'rgba(98, 73, 223,0.18)', color: '#ffa726', height: 18, fontSize: '9px', minWidth: 32, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.5 } }}
                                 />
                               </Tooltip>
                             )}
@@ -4194,9 +4194,9 @@ export function CastingShotListPanel({
                           size="small"
                           data-testid={`legacy-shotlist-export-trigger-${shotList.id}`}
                           sx={{
-                            color: '#c084fc',
+                            color: '#9e8cf8',
                             ...focusVisibleStyles,
-                            '&:hover': { bgcolor: 'rgba(147,51,234,0.16)' },
+                            '&:hover': { bgcolor: 'rgba(98, 73, 223,0.16)' },
                           }}
                         >
                           <PdfIcon fontSize="small" />
@@ -4369,7 +4369,7 @@ export function CastingShotListPanel({
                             Genererer bilde {storyboardGenerationProgress[shotList.id].current} / {storyboardGenerationProgress[shotList.id].total}
                           </Typography>
                           {storyboardGenerationProgress[shotList.id].current >= storyboardGenerationProgress[shotList.id].total && (
-                            <WarningIcon sx={{ fontSize: 14, color: '#9333ea' }} />
+                            <WarningIcon sx={{ fontSize: 14, color: '#6249df' }} />
                           )}
                         </>
                       ) : (
@@ -4907,8 +4907,8 @@ export function CastingShotListPanel({
                                       label={shot.reservedByName || 'Reservert'}
                                       size="small"
                                       sx={{
-                                        bgcolor: 'rgba(147,51,234,0.15)',
-                                        color: '#9333ea',
+                                        bgcolor: 'rgba(98, 73, 223,0.15)',
+                                        color: '#6249df',
                                         height: 24,
                                         fontSize: '0.65rem',
                                         '& .MuiChip-icon': { color: 'inherit' },
@@ -5389,7 +5389,7 @@ export function CastingShotListPanel({
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#1a1a2e',
+              bgcolor: '#18122b',
               color: '#fff',
               borderRadius: isMobile ? 0 : 2,
               willChange: 'transform, opacity',
@@ -5569,7 +5569,7 @@ export function CastingShotListPanel({
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#1a1a2e',
+              bgcolor: '#18122b',
               color: '#fff',
               borderRadius: isMobile ? 0 : 2,
             },
@@ -5811,11 +5811,11 @@ export function CastingShotListPanel({
                     {[
                       { value: undefined, label: 'Ingen', color: 'rgba(255,255,255,0.2)' },
                       { value: 'red', label: 'Rød', color: '#f44336' },
-                      { value: 'orange', label: 'Oransje', color: '#9333ea' },
+                      { value: 'orange', label: 'Oransje', color: '#6249df' },
                       { value: 'yellow', label: 'Gul', color: '#ffeb3b' },
                       { value: 'green', label: 'Grønn', color: '#4caf50' },
                       { value: 'blue', label: 'Blå', color: '#2196f3' },
-                      { value: 'purple', label: 'Lilla', color: '#9c27b0' },
+                      { value: 'purple', label: 'Lilla', color: '#3c27a5' },
                       { value: 'gray', label: 'Grå', color: '#9e9e9e' },
                     ].map((tag) => (
                       <Tooltip key={tag.label} title={tag.label}>
@@ -6631,7 +6631,7 @@ export function CastingShotListPanel({
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#1a1a2e',
+              bgcolor: '#18122b',
               color: '#fff',
               borderRadius: isMobile ? 0 : 2,
             },
@@ -6801,11 +6801,11 @@ export function CastingShotListPanel({
               disabled={selectedShotsForConversion.size === 0}
               startIcon={<ExportIcon />}
               sx={{
-                color: '#9333ea',
-                borderColor: '#9333ea',
+                color: '#6249df',
+                borderColor: '#6249df',
                 minHeight: TOUCH_TARGET_SIZE,
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' },
                 '&:disabled': { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' },
               }}
             >
@@ -7023,14 +7023,14 @@ export function CastingShotListPanel({
         PaperProps={{
           'data-testid': 'legacy-shotlist-export-dialog',
           sx: {
-            bgcolor: '#1a1a2e',
+            bgcolor: '#18122b',
             backgroundImage: 'none',
             borderRadius: 3,
           },
         }}
       >
         <DialogTitle sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <PdfIcon sx={{ color: '#9333ea' }} />
+          <PdfIcon sx={{ color: '#6249df' }} />
           Eksporter til PDF
         </DialogTitle>
         <DialogContent>
@@ -7131,11 +7131,11 @@ export function CastingShotListPanel({
                     }}
                     sx={{
                       py: 2,
-                      color: '#c4b5fd',
-                      borderColor: 'rgba(139,92,246,0.3)',
+                      color: '#c6bdf4',
+                      borderColor: 'rgba(136, 117, 235,0.3)',
                       justifyContent: 'flex-start',
                       textAlign: 'left',
-                      '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' },
+                      '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(136, 117, 235,0.08)' },
                     }}
                   >
                     <Box>
@@ -7157,11 +7157,11 @@ export function CastingShotListPanel({
                     }}
                     sx={{
                       py: 2,
-                      color: '#f5d0fe',
-                      borderColor: 'rgba(192,132,252,0.3)',
+                      color: '#e0dbfa',
+                      borderColor: 'rgba(158, 140, 248,0.3)',
                       justifyContent: 'flex-start',
                       textAlign: 'left',
-                      '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(192,132,252,0.08)' },
+                      '&:hover': { borderColor: '#c6bdf4', bgcolor: 'rgba(158, 140, 248,0.08)' },
                     }}
                   >
                     <Box>
@@ -7200,7 +7200,7 @@ export function CastingShotListPanel({
                 borderColor: 'rgba(255,255,255,0.2)',
                 justifyContent: 'flex-start',
                 textAlign: 'left',
-                '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
+                '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(98, 73, 223,0.1)' },
               }}
             >
               <Box>
@@ -7248,11 +7248,11 @@ export function CastingShotListPanel({
               }}
               sx={{
                 py: 2,
-                color: '#c4b5fd',
-                borderColor: 'rgba(139,92,246,0.3)',
+                color: '#c6bdf4',
+                borderColor: 'rgba(136, 117, 235,0.3)',
                 justifyContent: 'flex-start',
                 textAlign: 'left',
-                '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' },
+                '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(136, 117, 235,0.08)' },
               }}
             >
               <Box>
@@ -7274,11 +7274,11 @@ export function CastingShotListPanel({
               }}
               sx={{
                 py: 2,
-                color: '#f5d0fe',
-                borderColor: 'rgba(192,132,252,0.3)',
+                color: '#e0dbfa',
+                borderColor: 'rgba(158, 140, 248,0.3)',
                 justifyContent: 'flex-start',
                 textAlign: 'left',
-                '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(192,132,252,0.08)' },
+                '&:hover': { borderColor: '#c6bdf4', bgcolor: 'rgba(158, 140, 248,0.08)' },
               }}
             >
               <Box>
@@ -7348,7 +7348,7 @@ export function CastingShotListPanel({
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a2e',
+            bgcolor: '#18122b',
             backgroundImage: 'none',
             borderRadius: isMobile ? 0 : 3,
             minHeight: isMobile ? '100%' : '80vh',
@@ -7841,7 +7841,7 @@ export function CastingShotListPanel({
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a2e',
+            bgcolor: '#18122b',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
             width: 380,
@@ -7860,7 +7860,7 @@ export function CastingShotListPanel({
             {/* Live connection dot */}
             <Box sx={{
               width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-              bgcolor: rt.connectionStatus === 'connected' ? '#4caf50' : rt.connectionStatus === 'offline' ? '#ef5350' : '#9333ea',
+              bgcolor: rt.connectionStatus === 'connected' ? '#4caf50' : rt.connectionStatus === 'offline' ? '#ef5350' : '#6249df',
             }} />
             <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
               {rt.connectionStatus === 'connected' ? 'Live' : rt.connectionStatus === 'offline' ? 'Offline' : 'Kobler til…'}

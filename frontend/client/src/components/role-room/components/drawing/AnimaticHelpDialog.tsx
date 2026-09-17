@@ -76,7 +76,7 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
     >
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <HelpOutline sx={{ color: '#a5b4fc' }} />
+          <HelpOutline sx={{ color: '#c6bdf4' }} />
           <Typography variant="h6" sx={{ flex: 1 }}>
             Animatic-spilleren
           </Typography>
@@ -106,8 +106,8 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
                       width: 22,
                       height: 22,
                       borderRadius: '50%',
-                      bgcolor: 'rgba(165,180,252,0.2)',
-                      color: '#a5b4fc',
+                      bgcolor: 'rgba(198, 189, 244,0.2)',
+                      color: '#c6bdf4',
                       fontSize: 11,
                       fontWeight: 700,
                       display: 'flex',

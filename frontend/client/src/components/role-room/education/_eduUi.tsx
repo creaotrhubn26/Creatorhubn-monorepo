@@ -9,7 +9,7 @@
 import { Box, Stack, Typography, Card, type TypographyProps } from '@mui/material';
 import { ChevronRight as ChevronIcon } from '@mui/icons-material';
 
-export const ACCENT = '#8B5CF6';
+export const ACCENT = '#8875eb';
 export const CARD = 'rgba(255,255,255,0.035)';
 export const BORDER = '1px solid rgba(255,255,255,0.08)';
 
@@ -26,7 +26,7 @@ export function Panel({ children, sx }: { children: React.ReactNode; sx?: object
 export function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
   return (
     <Stack direction="row" alignItems="center" spacing={1.25} onClick={onClick} sx={{ py: 1.1, cursor: 'pointer', color: 'rgba(255,255,255,0.85)', '&:hover': { color: '#fff' } }}>
-      <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', flexShrink: 0, '& svg': { fontSize: 16 } }}>{icon}</Box>
+      <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', flexShrink: 0, '& svg': { fontSize: 16 } }}>{icon}</Box>
       <T eid={eid} sx={{ fontSize: 13, flex: 1 }}>{label}</T>
       <ChevronIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }} />
     </Stack>
@@ -37,7 +37,7 @@ export function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: 
  *  når det ikke finnes et ekte mål (unngår døde lenker). */
 export function RailTips({ idPrefix, title, body, link, onLink }: { idPrefix: string; title: string; body: string; link?: string; onLink?: () => void }) {
   return (
-    <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
+    <Panel sx={{ bgcolor: 'rgba(136, 117, 235,0.09)', border: '1px solid rgba(136, 117, 235,0.26)' }}>
       <T eid={`${idPrefix}-tips-title`} sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>{title}</T>
       <T eid={`${idPrefix}-tips-body`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.76)', lineHeight: 1.5, mb: link ? 1 : 0 }}>{body}</T>
       {link && <T eid={`${idPrefix}-tips-link`} sx={{ color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}><span onClick={onLink} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onLink?.(); }}>{link}</span></T>}

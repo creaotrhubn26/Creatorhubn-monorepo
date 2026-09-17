@@ -598,7 +598,7 @@ export default function ProducerGoogleWorkspacePanel({
                   gap: 0.85,
                 }}
               >
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Drive-rot
                   </Typography>
@@ -606,7 +606,7 @@ export default function ProducerGoogleWorkspacePanel({
                     {binding?.driveRootFolderId || 'Ikke opprettet'}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Kalender
                   </Typography>
@@ -614,7 +614,7 @@ export default function ProducerGoogleWorkspacePanel({
                     {binding?.calendarId || 'Ikke opprettet'}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Siste Drive-sync
                   </Typography>
@@ -622,7 +622,7 @@ export default function ProducerGoogleWorkspacePanel({
                     {formatDateTime(binding?.lastDriveSyncAt)}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Siste kalendersync
                   </Typography>
@@ -682,7 +682,7 @@ export default function ProducerGoogleWorkspacePanel({
                         p: 0.95,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.12)',
-                        bgcolor: 'rgba(2,6,23,0.48)',
+                        bgcolor: 'rgba(10, 5, 21,0.48)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75} justifyContent="space-between">
@@ -785,7 +785,7 @@ export default function ProducerGoogleWorkspacePanel({
                         p: 0.95,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.12)',
-                        bgcolor: 'rgba(2,6,23,0.48)',
+                        bgcolor: 'rgba(10, 5, 21,0.48)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75} justifyContent="space-between">

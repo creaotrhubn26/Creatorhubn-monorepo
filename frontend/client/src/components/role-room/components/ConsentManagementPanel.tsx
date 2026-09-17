@@ -61,7 +61,7 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
 export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: ConsentManagementPanelProps) {
   const consentModalZIndex = Z_INDEX.dialog + 50;
   const consentModalBackdropZIndex = consentModalZIndex - 1;
-  const consentDialogAccentColor = 'var(--role-accent, #b86bff)';
+  const consentDialogAccentColor = 'var(--role-accent, #8875eb)';
   const consentMenuProps = {
     container: typeof document !== 'undefined' ? document.body : undefined,
     sx: { zIndex: Z_INDEX.dialogSelect + 50 },
@@ -71,17 +71,17 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
   };
   const consentDialogPaperSx = {
     '--dialog-accent-color': consentDialogAccentColor,
-    '--dialog-accent-hover': 'rgba(184,107,255,0.15)',
-    '--dialog-border-color': 'rgba(184,107,255,0.34)',
+    '--dialog-accent-hover': 'rgba(136, 117, 235,0.15)',
+    '--dialog-border-color': 'rgba(136, 117, 235,0.34)',
     '--dialog-text': '#ffffff',
-    bgcolor: 'rgba(20,14,48,0.94)',
+    bgcolor: 'rgba(24, 18, 43,0.94)',
     color: 'var(--dialog-text)',
     border: '1px solid var(--dialog-border-color)',
     borderRadius: 2.5,
     backgroundImage: [
-      'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
-      'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
-      'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+      'linear-gradient(180deg, rgba(10, 5, 21,0.9) 0%, rgba(16, 11, 30,0.9) 100%)',
+      'radial-gradient(circle at 16% -24%, rgba(136, 117, 235,0.28), transparent 55%)',
+      'radial-gradient(circle at 82% -10%, rgba(98, 73, 223,0.24), transparent 48%)',
     ].join(', '),
     backgroundRepeat: 'no-repeat, no-repeat, no-repeat',
     boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
@@ -434,7 +434,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                             <IconButton
                               size="small"
                               onClick={() => handleOpenInviteDialog(consent)}
-                              sx={{ color: '#9c27b0' }}
+                              sx={{ color: '#3c27a5' }}
                             >
                               <SendIcon fontSize="small" />
                             </IconButton>
@@ -486,7 +486,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   )}
 
                   {consent.accessCode && !consent.signed && (
-                    <Typography variant="caption" sx={{ color: '#9c27b0', display: 'block', mb: 1 }}>
+                    <Typography variant="caption" sx={{ color: '#3c27a5', display: 'block', mb: 1 }}>
                       Kode: {consent.accessCode}
                     </Typography>
                   )}
@@ -520,7 +520,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           zIndex: consentModalZIndex,
           '& .MuiBackdrop-root': {
             zIndex: consentModalBackdropZIndex,
-            bgcolor: 'rgba(8,5,20,0.86)',
+            bgcolor: 'rgba(10, 5, 21,0.86)',
             backdropFilter: 'blur(3px)',
           },
         }}
@@ -536,7 +536,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           justifyContent: 'space-between',
           py: 2.5,
           px: 3.5,
-          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
+          background: 'linear-gradient(180deg, rgba(136, 117, 235,0.14) 0%, rgba(136, 117, 235,0.04) 100%)',
         }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <DescriptionIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: 24 }} />
@@ -563,7 +563,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               p: { xs: 2, sm: 2.5, md: 2.75 },
               borderRadius: 2.25,
               border: '1px solid var(--dialog-border-color)',
-              bgcolor: 'rgba(33,24,70,0.74)',
+              bgcolor: 'rgba(33, 28, 59,0.74)',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
             }}
           >
@@ -716,7 +716,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           zIndex: consentModalZIndex,
           '& .MuiBackdrop-root': {
             zIndex: consentModalBackdropZIndex,
-            bgcolor: 'rgba(8,5,20,0.86)',
+            bgcolor: 'rgba(10, 5, 21,0.86)',
             backdropFilter: 'blur(3px)',
           },
         }}
@@ -732,7 +732,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           justifyContent: 'space-between',
           py: 2.5,
           px: 3.5,
-          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
+          background: 'linear-gradient(180deg, rgba(136, 117, 235,0.14) 0%, rgba(136, 117, 235,0.04) 100%)',
         }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <SendIcon sx={{ color: 'var(--dialog-accent-color)' }} />
@@ -760,7 +760,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 p: { xs: 2, sm: 2.5, md: 2.75 },
                 borderRadius: 2.25,
                 border: '1px solid var(--dialog-border-color)',
-                bgcolor: 'rgba(33,24,70,0.74)',
+                bgcolor: 'rgba(33, 28, 59,0.74)',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
               }}
             >
@@ -768,9 +768,9 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               <Alert 
                 severity="info" 
                 sx={{ 
-                  bgcolor: 'rgba(156, 39, 176, 0.1)', 
-                  color: '#ce93d8',
-                  '& .MuiAlert-icon': { color: '#ce93d8' },
+                  bgcolor: 'rgba(60, 39, 165, 0.1)', 
+                  color: '#8875eb',
+                  '& .MuiAlert-icon': { color: '#8875eb' },
                 }}
               >
                 Generer en unik tilgangskode som kandidaten kan bruke for å signere {getTypeLabel(invitingConsent.type)} digitalt.
@@ -786,7 +786,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&:hover fieldset': { borderColor: '#ce93d8' },
+                    '&:hover fieldset': { borderColor: '#8875eb' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                   '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.87)' },
@@ -803,7 +803,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&:hover fieldset': { borderColor: '#ce93d8' },
+                    '&:hover fieldset': { borderColor: '#8875eb' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                   '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.87)' },
@@ -820,7 +820,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   sx={{
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ce93d8' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#8875eb' },
                   }}
                 >
                   <MenuItem value={7}>7 dager</MenuItem>
@@ -834,9 +834,9 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               {generatedAccessCode && (
                 <Box sx={{ 
                   p: 3, 
-                  bgcolor: 'rgba(156, 39, 176, 0.15)', 
+                  bgcolor: 'rgba(60, 39, 165, 0.15)', 
                   borderRadius: 2,
-                  border: '1px solid rgba(156, 39, 176, 0.3)',
+                  border: '1px solid rgba(60, 39, 165, 0.3)',
                 }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Tilgangskode:
@@ -846,7 +846,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                     sx={{ 
                       fontFamily: 'monospace', 
                       fontWeight: 700, 
-                      color: '#ce93d8',
+                      color: '#8875eb',
                       letterSpacing: '0.1em',
                       mb: 2,
                     }}
@@ -860,8 +860,8 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       startIcon={copySuccess ? <CheckCircleIcon /> : <CopyIcon />}
                       onClick={handleCopyLink}
                       sx={{ 
-                        color: copySuccess ? '#10b981' : '#ce93d8', 
-                        borderColor: copySuccess ? '#10b981' : '#ce93d8',
+                        color: copySuccess ? '#10b981' : '#8875eb', 
+                        borderColor: copySuccess ? '#10b981' : '#8875eb',
                       }}
                     >
                       {copySuccess ? 'Kopiert!' : 'Kopier lenke'}
@@ -873,7 +873,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                         const url = `${window.location.origin}/consent-portal?consent_code=${generatedAccessCode}`;
                         window.open(url, '_blank');
                       }}
-                      sx={{ color: '#ce93d8', borderColor: '#ce93d8' }}
+                      sx={{ color: '#8875eb', borderColor: '#8875eb' }}
                     >
                       Åpne portal
                     </Button>

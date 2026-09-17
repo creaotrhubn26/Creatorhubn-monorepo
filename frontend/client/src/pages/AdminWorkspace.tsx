@@ -126,25 +126,25 @@ const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 // i alle tilfeller i dag — flateringen er klargjort for når Forretningsplan
 // + Outreach faktisk tar imot et produkt-filter.
 const ADMIN_PRODUCTS = [
-  { id: 'roleroom', label: 'The Role Room', color: '#a78bfa' },
+  { id: 'roleroom', label: 'The Role Room', color: '#9e8cf8' },
   { id: 'leadgrid', label: 'Leadgrid', color: '#22d3ee' },
 ] as const;
 type AdminProductId = (typeof ADMIN_PRODUCTS)[number]['id'];
 
 // Branding — deep purple gradient + violet accent for Leadgrid-look.
 const BRAND = {
-  bgGradient: 'linear-gradient(180deg, #0b0518 0%, #1a0a2e 100%)',
-  sidebarBg: 'rgba(11, 5, 24, 0.92)',
-  panelBg: 'rgba(26, 10, 46, 0.72)',
-  accent: '#a78bfa',
-  accentStrong: '#7c3aed',
-  border: 'rgba(167, 139, 250, 0.2)',
-  borderHover: 'rgba(167, 139, 250, 0.4)',
+  bgGradient: 'linear-gradient(180deg, #0a0515 0%, #18122b 100%)',
+  sidebarBg: 'rgba(10, 5, 21, 0.92)',
+  panelBg: 'rgba(24, 18, 43, 0.72)',
+  accent: '#9e8cf8',
+  accentStrong: '#6249df',
+  border: 'rgba(158, 140, 248, 0.2)',
+  borderHover: 'rgba(158, 140, 248, 0.4)',
   text: '#f1f5f9',
   textMuted: 'rgba(241, 245, 249, 0.78)',
   textDim: 'rgba(241, 245, 249, 0.55)',
-  hoverBg: 'rgba(167, 139, 250, 0.08)',
-  selectedBg: 'rgba(167, 139, 250, 0.16)',
+  hoverBg: 'rgba(158, 140, 248, 0.08)',
+  selectedBg: 'rgba(158, 140, 248, 0.16)',
 };
 
 // Lokal mørk MUI-theme i BRAND-paletten: paneler som bruker MUI-defaults
@@ -155,7 +155,7 @@ const workspaceTheme = createTheme({
     mode: 'dark',
     primary: { main: BRAND.accent },
     secondary: { main: BRAND.accentStrong },
-    background: { default: '#0b0518', paper: '#1a0a2e' },
+    background: { default: '#0a0515', paper: '#18122b' },
     text: { primary: BRAND.text, secondary: BRAND.textMuted },
     divider: BRAND.border,
     success: { main: '#22c55e' },
@@ -319,7 +319,7 @@ function EmptyState({ title, description, icon, todo }: EmptyStateProps) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'rgba(167, 139, 250, 0.12)',
+          bgcolor: 'rgba(158, 140, 248, 0.12)',
           color: BRAND.accent,
           '& svg': { fontSize: 32 },
         }}
@@ -336,7 +336,7 @@ function EmptyState({ title, description, icon, todo }: EmptyStateProps) {
         label="Kommer snart — under utvikling"
         sx={{
           mt: 1,
-          bgcolor: 'rgba(167, 139, 250, 0.16)',
+          bgcolor: 'rgba(158, 140, 248, 0.16)',
           color: '#ddd6fe',
           fontWeight: 700,
           border: `1px solid ${BRAND.border}`,
@@ -821,7 +821,7 @@ function TeamchatPanel() {
           sx={{
             height: 18,
             fontSize: '0.66rem',
-            bgcolor: 'rgba(167, 139, 250, 0.16)',
+            bgcolor: 'rgba(158, 140, 248, 0.16)',
             color: '#ddd6fe',
           }}
         />
@@ -861,7 +861,7 @@ function TeamchatPanel() {
           px: 1.5,
           py: 1.25,
           borderTop: `1px solid ${BRAND.border}`,
-          bgcolor: 'rgba(11,5,24,0.5)',
+          bgcolor: 'rgba(10, 5, 21,0.5)',
         }}
       >
         <InputBase
@@ -873,7 +873,7 @@ function TeamchatPanel() {
             flex: 1,
             color: BRAND.text,
             fontSize: '0.84rem',
-            bgcolor: 'rgba(167, 139, 250, 0.06)',
+            bgcolor: 'rgba(158, 140, 248, 0.06)',
             border: `1px solid ${BRAND.border}`,
             borderRadius: 1.5,
             px: 1,
@@ -965,9 +965,9 @@ function TodayAgendaSection() {
                 sx={{
                   p: 0.75,
                   borderRadius: 1.5,
-                  bgcolor: 'rgba(167,139,250,0.04)',
-                  border: '1px solid rgba(167,139,250,0.12)',
-                  '&:hover': { bgcolor: 'rgba(167,139,250,0.10)' },
+                  bgcolor: 'rgba(158, 140, 248,0.04)',
+                  border: '1px solid rgba(158, 140, 248,0.12)',
+                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.10)' },
                 }}
               >
                 <Box
@@ -1024,7 +1024,7 @@ function TodayAgendaSection() {
 
 const DEADLINE_SOURCE_COLOR: Record<DeadlineItem['source'], string> = {
   funding_app: '#fbbf24', // amber — søknader
-  case: '#a78bfa',        // violet — saker (Leadgrid-accent)
+  case: '#9e8cf8',        // violet — saker (Leadgrid-accent)
   meeting: '#22d3ee',     // cyan — møter
 };
 
@@ -1112,9 +1112,9 @@ function UpcomingDeadlinesSection() {
                 sx={{
                   p: 0.75,
                   borderRadius: 1.5,
-                  bgcolor: 'rgba(167,139,250,0.04)',
-                  border: '1px solid rgba(167,139,250,0.12)',
-                  '&:hover': { bgcolor: 'rgba(167,139,250,0.10)' },
+                  bgcolor: 'rgba(158, 140, 248,0.04)',
+                  border: '1px solid rgba(158, 140, 248,0.12)',
+                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.10)' },
                   cursor: item.link_path ? 'pointer' : 'default',
                 }}
                 onClick={item.link_path ? () => {
@@ -1265,7 +1265,7 @@ function NotificationsAgendaPanel({
                   px: 1,
                   py: 0.75,
                   borderRadius: 1.5,
-                  bgcolor: 'rgba(167, 139, 250, 0.06)',
+                  bgcolor: 'rgba(158, 140, 248, 0.06)',
                   border: `1px solid ${BRAND.border}`,
                 }}
               >
@@ -1533,8 +1533,8 @@ function OverviewView({
           borderRadius: 3,
           background:
             product === 'leadgrid'
-              ? 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(167,139,250,0.10))'
-              : 'linear-gradient(135deg, rgba(167,139,250,0.18), rgba(124,58,237,0.08))',
+              ? 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(158, 140, 248,0.10))'
+              : 'linear-gradient(135deg, rgba(158, 140, 248,0.18), rgba(98, 73, 223,0.08))',
           border: `1px solid ${BRAND.border}`,
         }}
       >
@@ -1584,7 +1584,7 @@ function OverviewView({
                 '&:hover': {
                   borderColor: BRAND.borderHover,
                   transform: 'translateY(-2px)',
-                  boxShadow: '0 8px 24px rgba(124, 58, 237, 0.18)',
+                  boxShadow: '0 8px 24px rgba(98, 73, 223, 0.18)',
                 },
               }}
             >
@@ -1594,7 +1594,7 @@ function OverviewView({
                     width: 32,
                     height: 32,
                     borderRadius: 1.5,
-                    bgcolor: 'rgba(167, 139, 250, 0.14)',
+                    bgcolor: 'rgba(158, 140, 248, 0.14)',
                     color: BRAND.accent,
                     display: 'flex',
                     alignItems: 'center',
@@ -2061,7 +2061,7 @@ function TopBar({
         pt: 2,
         pb: 1.5,
         borderBottom: `1px solid ${BRAND.border}`,
-        bgcolor: 'rgba(11, 5, 24, 0.55)',
+        bgcolor: 'rgba(10, 5, 21, 0.55)',
         backdropFilter: 'blur(8px)',
         position: 'sticky',
         top: 0,
@@ -2117,7 +2117,7 @@ function TopBar({
               px: 1.25,
               py: 0.5,
               borderRadius: 1.5,
-              bgcolor: 'rgba(167, 139, 250, 0.06)',
+              bgcolor: 'rgba(158, 140, 248, 0.06)',
               border: `1px solid ${BRAND.border}`,
               minWidth: 180,
               display: { xs: 'none', md: 'flex' },
@@ -2140,7 +2140,7 @@ function TopBar({
               sx={{
                 height: 16,
                 fontSize: '0.62rem',
-                bgcolor: 'rgba(167, 139, 250, 0.16)',
+                bgcolor: 'rgba(158, 140, 248, 0.16)',
                 color: '#ddd6fe',
               }}
             />
@@ -2325,7 +2325,7 @@ export default function AdminWorkspace() {
           <Alert
             severity="info"
             sx={{
-              bgcolor: 'rgba(167, 139, 250, 0.10)',
+              bgcolor: 'rgba(158, 140, 248, 0.10)',
               color: '#ddd6fe',
               border: `1px solid ${BRAND.border}`,
             }}

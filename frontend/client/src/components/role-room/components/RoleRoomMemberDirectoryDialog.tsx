@@ -196,14 +196,14 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
         display: 'flex', gap: 1.5, alignItems: 'flex-start', p: 1.5,
         border: '1px solid rgba(0,0,0,0.08)', borderRadius: 2, cursor: 'pointer',
         transition: 'all 0.15s ease',
-        '&:hover': { borderColor: 'rgba(139,92,246,0.4)', bgcolor: 'rgba(139,92,246,0.04)' },
+        '&:hover': { borderColor: 'rgba(136, 117, 235,0.4)', bgcolor: 'rgba(136, 117, 235,0.04)' },
       }}
     >
       <Avatar
         src={member.profileImageUrl ?? undefined}
         imgProps={{ style: { objectPosition: focalToObjectPosition(
           member.profileImageFocalX, member.profileImageFocalY) } }}
-        sx={{ width: 48, height: 48, bgcolor: '#6366f1', flexShrink: 0 }}
+        sx={{ width: 48, height: 48, bgcolor: '#8875eb', flexShrink: 0 }}
       >
         {member.displayName?.[0] ?? <Person />}
       </Avatar>
@@ -289,7 +289,7 @@ function PublicProfileView({ userId }: { userId: string }) {
         height: 100,
         background: profile.bannerImageUrl
           ? `url(${profile.bannerImageUrl}) center/cover`
-          : 'linear-gradient(135deg, #1e1a2e 0%, #2d1b4e 50%, #4c1d95 100%)',
+          : 'linear-gradient(135deg, #18122b 0%, #261763 50%, #301f84 100%)',
       }} />
       <Box sx={{ px: 3, pt: 0, pb: 3 }}>
         <Avatar
@@ -298,7 +298,7 @@ function PublicProfileView({ userId }: { userId: string }) {
             profile.profileImageFocalX, profile.profileImageFocalY) } }}
           sx={{
             width: 100, height: 100, mt: -6, mb: 1.5,
-            bgcolor: '#6366f1', fontSize: 32,
+            bgcolor: '#8875eb', fontSize: 32,
             border: '4px solid #fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           }}
         >
@@ -499,8 +499,8 @@ function PublicProfileView({ userId }: { userId: string }) {
             <Stack spacing={0.75} sx={{ mt: 0.5 }}>
               {sharedProjects.map((proj) => (
                 <Stack key={proj.id} direction="row" spacing={1} alignItems="center"
-                       sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(139,92,246,0.06)' }}>
-                  <WorkOutline sx={{ fontSize: 18, color: 'rgba(139,92,246,0.8)', flexShrink: 0 }} />
+                       sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(136, 117, 235,0.06)' }}>
+                  <WorkOutline sx={{ fontSize: 18, color: 'rgba(136, 117, 235,0.8)', flexShrink: 0 }} />
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
                       {proj.name}

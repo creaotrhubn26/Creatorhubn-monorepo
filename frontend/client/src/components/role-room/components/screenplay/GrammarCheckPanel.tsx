@@ -117,7 +117,7 @@ const getSeverityIcon = (severity: GrammarError['severity']) => {
 const getSeverityColor = (severity: GrammarError['severity']): string => {
   switch (severity) {
     case 'error': return '#f44336';
-    case 'warning': return '#9333ea';
+    case 'warning': return '#6249df';
     case 'suggestion': return '#2196f3';
     default: return '#9e9e9e';
   }
@@ -137,11 +137,11 @@ const getTypeLabel = (type: GrammarError['type']): string => {
 
 const getTypeColor = (type: GrammarError['type']): string => {
   const colors: Record<GrammarError['type'], string> = {
-    grammar: '#9c27b0',
+    grammar: '#3c27a5',
     spelling: '#f44336',
     punctuation: '#607d8b',
     style: '#00bcd4',
-    agreement: '#7c3aed',
+    agreement: '#6249df',
     tense: '#4caf50',
   };
   return colors[type] || '#9e9e9e';
@@ -317,7 +317,7 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
   }, [result]);
 
   // Styles
-  const bgColor = 'rgba(20, 20, 35, 0.95)';
+  const bgColor = 'rgba(24, 18, 43, 0.95)';
   const textColor = '#fff';
   const borderColor = 'rgba(255,255,255,0.1)';
 

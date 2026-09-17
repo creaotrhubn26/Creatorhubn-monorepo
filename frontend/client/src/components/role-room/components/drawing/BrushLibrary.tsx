@@ -132,7 +132,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
   {
     id: 'calligraphy',
     name: 'Calligraphy',
-    config: { ...DEFAULT_BRUSH_CONFIG, type: 'pen', size: 6, color: '#1a1a2e', tiltSensitivity: 1, pressureSensitivity: 1 },
+    config: { ...DEFAULT_BRUSH_CONFIG, type: 'pen', size: 6, color: '#18122b', tiltSensitivity: 1, pressureSensitivity: 1 },
     favorite: true,
     category: 'Drawing',
     icon: '✒️',
@@ -141,7 +141,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
   {
     id: 'airbrush',
     name: 'Airbrush',
-    config: { ...DEFAULT_BRUSH_CONFIG, type: 'brush', size: 40, color: 'var(--role-violet, #8b5cf6)', hardness: 0.1, flow: 0.3, opacity: 0.2 },
+    config: { ...DEFAULT_BRUSH_CONFIG, type: 'brush', size: 40, color: 'var(--role-violet, #8875eb)', hardness: 0.1, flow: 0.3, opacity: 0.2 },
     favorite: false,
     category: 'Painting',
     icon: '🌫️',
@@ -412,7 +412,7 @@ function mergeWithDefaultPresets(existingPresets: BrushPreset[]): BrushPreset[] 
 // =============================================================================
 
 const LibraryContainer = styled(Paper)(() => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: 'rgba(16, 11, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',

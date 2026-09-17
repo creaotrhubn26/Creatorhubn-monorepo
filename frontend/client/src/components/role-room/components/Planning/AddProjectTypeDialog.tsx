@@ -49,7 +49,7 @@ const AddProjectTypeDialog: React.FC<AddProjectTypeDialogProps> = ({
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#1a1a2e',
+          bgcolor: '#18122b',
           color: '#fff',
           borderRadius: 2,
         },

@@ -42,8 +42,8 @@ export const EmptyProjectsHero = ({
           maxWidth: 560,
           textAlign: 'center',
           p: { xs: 3, sm: 5 },
-          bgcolor: 'rgba(184,107,255,0.06)',
-          border: '1px dashed rgba(184,107,255,0.32)',
+          bgcolor: 'rgba(136, 117, 235,0.06)',
+          border: '1px dashed rgba(136, 117, 235,0.32)',
           borderRadius: 3,
         }}
       >
@@ -52,7 +52,7 @@ export const EmptyProjectsHero = ({
             width: 72,
             height: 72,
             borderRadius: '50%',
-            bgcolor: 'rgba(184,107,255,0.18)',
+            bgcolor: 'rgba(136, 117, 235,0.18)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -60,7 +60,7 @@ export const EmptyProjectsHero = ({
             mb: 2.5,
           }}
         >
-          <SparkleIcon sx={{ fontSize: 36, color: 'var(--role-accent, #b86bff)' }} />
+          <SparkleIcon sx={{ fontSize: 36, color: 'var(--role-accent, #8875eb)' }} />
         </Box>
 
         <Typography
@@ -95,14 +95,14 @@ export const EmptyProjectsHero = ({
             startIcon={<AddIcon />}
             onClick={onCreateProject}
             sx={{
-              bgcolor: 'var(--role-accent, #b86bff)',
+              bgcolor: 'var(--role-accent, #8875eb)',
               color: '#fff',
               fontWeight: 700,
               px: 3.5,
               py: 1.5,
               fontSize: '1rem',
               minHeight: 48,
-              '&:hover': { bgcolor: '#a855f7', transform: 'translateY(-1px)' },
+              '&:hover': { bgcolor: '#8875eb', transform: 'translateY(-1px)' },
               transition: 'all 0.18s',
             }}
           >
@@ -114,16 +114,16 @@ export const EmptyProjectsHero = ({
               size="large"
               onClick={onOpenDemo}
               sx={{
-                color: 'var(--role-accent, #b86bff)',
-                borderColor: 'rgba(184,107,255,0.5)',
+                color: 'var(--role-accent, #8875eb)',
+                borderColor: 'rgba(136, 117, 235,0.5)',
                 fontWeight: 600,
                 px: 3.5,
                 py: 1.5,
                 fontSize: '0.95rem',
                 minHeight: 48,
                 '&:hover': {
-                  borderColor: 'var(--role-accent, #b86bff)',
-                  bgcolor: 'rgba(184,107,255,0.08)',
+                  borderColor: 'var(--role-accent, #8875eb)',
+                  bgcolor: 'rgba(136, 117, 235,0.08)',
                 },
               }}
             >

@@ -65,8 +65,8 @@ final class StrokeParityTests: XCTestCase {
     func testBoardLayerAndTextAnnotationRoundtrip() throws {
         var stroke = PencilStroke(
             id: "board-1", points: [StrokePoint(x: 1, y: 2, pressure: 0.85, tiltX: 0, tiltY: 0, timestamp: 1)],
-            inputType: "pencil", color: "#8b5cf6", width: 7, opacity: 0.95,
-            brush: BrushSpec.preset(.ink, size: 7, color: "#8b5cf6", opacity: 0.95))
+            inputType: "pencil", color: "#6249df", width: 7, opacity: 0.95,
+            brush: BrushSpec.preset(.ink, size: 7, color: "#6249df", opacity: 0.95))
         stroke.boardLayer = "Camera / Arrows"
         stroke.textAnnotation = "PUSH IN"
         let json = try StrokeSerialization.encodeToWebJSON([stroke])

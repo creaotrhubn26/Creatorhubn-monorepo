@@ -51,7 +51,7 @@ const ICON_BY_TYPE: Record<string, typeof PersonAddAlt1OutlinedIcon> = {
 };
 
 const COLOR_BY_TYPE: Record<string, string> = {
-  lead_assigned: '#c084fc',
+  lead_assigned: '#9e8cf8',
   lead_status_changed: '#60a5fa',
   lead_won_on_team: '#34d399',
   follow_up_due: '#f87171',
@@ -203,8 +203,8 @@ export default function LeadMapNotificationBell() {
                 sx={{
                   alignItems: 'flex-start',
                   py: 1.5,
-                  bgcolor: isUnread ? 'rgba(192,132,252,0.06)' : 'transparent',
-                  '&:hover': { bgcolor: 'rgba(192,132,252,0.10)' },
+                  bgcolor: isUnread ? 'rgba(158, 140, 248,0.06)' : 'transparent',
+                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.10)' },
                   whiteSpace: 'normal',
                 }}
               >

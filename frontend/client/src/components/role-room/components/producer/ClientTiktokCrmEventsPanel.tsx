@@ -28,13 +28,13 @@ import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 
 const palette = {
-  bg: '#150b2e',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bg: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e8cf8',
   tiktok: '#ff0050',
 };
 
@@ -211,14 +211,14 @@ export default function ClientTiktokCrmEventsPanel({
             disabled={!advertiserId}
             startIcon={<SendOutlinedIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #ff0050 0%, #d946ef 100%)',
+              background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
               color: '#fff',
               textTransform: 'none',
               fontWeight: 700,
               fontSize: '0.96rem',
               px: 3, py: 1.2,
               borderRadius: 1.6,
-              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
             }}
           >
             Send testhandling
@@ -244,7 +244,7 @@ export default function ClientTiktokCrmEventsPanel({
                 const status = STATUS_LABEL[ev.delivery_status] ?? STATUS_LABEL.pending;
                 return (
                   <Box key={ev.id} sx={{
-                    bgcolor: 'rgba(168,85,247,0.04)',
+                    bgcolor: 'rgba(136, 117, 235,0.04)',
                     border: `1px solid ${palette.border}`,
                     borderRadius: 1.2,
                     p: 1.4,
@@ -348,9 +348,9 @@ export default function ClientTiktokCrmEventsPanel({
             disabled={!testEmail || sending}
             startIcon={sending ? <CircularProgress size={16} /> : <SendOutlinedIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #ff0050 0%, #d946ef 100%)',
+              background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
               color: '#fff', textTransform: 'none', fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
             }}
           >
             {sending ? 'Sender…' : 'Send til TikTok'}

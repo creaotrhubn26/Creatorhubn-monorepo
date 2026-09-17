@@ -218,7 +218,7 @@ export function createEducationProductionMembersRouter(
           <p>Hei ${name},</p>
           <p>Du er satt opp som medlem av produksjonen <b>«${title}»</b> i The Role Room, og får tilgang til de ekte produksjonsverktøyene.</p>
           <p>For å få tilgang: registrer deg / logg inn med <b>denne e-postadressen</b> (${String(student.email)}). Da kobles kontoen din automatisk til produksjonen.</p>
-          <p style="margin:24px 0"><a href="${base}" style="background:#8B5CF6;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Kom i gang</a></p>
+          <p style="margin:24px 0"><a href="${base}" style="background:#8875eb;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Kom i gang</a></p>
           <p>Mvh,<br>The Role Room</p>
         </div>`;
       void sendTransactionalEmail({ to: String(student.email), subject: `Tilgang til produksjonen «${title}»`, html, text, fromLabel: "The Role Room", kind: "production_access_invite", pool })

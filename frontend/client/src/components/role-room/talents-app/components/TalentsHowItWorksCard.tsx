@@ -146,7 +146,7 @@ export default function TalentsHowItWorksCard({
                     height: 34,
                     flexShrink: 0,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(168,85,247,0.14)',
+                    bgcolor: 'rgba(98, 73, 223,0.14)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',

@@ -178,7 +178,7 @@ final class ReviewState: ObservableObject {
                 reviewDueAt: "2026-09-14T10:00:00Z", reviewApprovedBy: nil,
                 reviewApprovedAt: nil, reviewStarred: variant == 0,
                 reviewAssignee: variant == 0 ? "Mina" : "Kari",
-                reviewColorLabel: variant == 0 ? "#8b5cf6" : "#3bb8c4",
+                reviewColorLabel: variant == 0 ? "#6249df" : "#3bb8c4",
                 reviewSnoozedUntil: nil, setLocation: "Togvogn A", stageUnit: "Stage 2",
                 reviewFollowers: ["Kari", "Mina"])
         }
@@ -2054,7 +2054,7 @@ struct ReviewView: View {
 
     static func roleColor(_ role: String) -> Color {
         switch role {
-        case "Director": return Color(hex: "#8b5cf6") ?? .purple
+        case "Director": return Color(hex: "#6249df") ?? .indigo
         case "Cinematographer", "DoP": return .orange
         case "Editor": return Color(hex: "#3bb8c4") ?? .teal
         case "Producer": return Color(hex: "#4caf7d") ?? .green
@@ -2315,7 +2315,7 @@ struct ReviewView: View {
 
     @State private var newTag = ""
 
-    static let colorLabels = ["#ffffff", "#8b5cf6", "#ef6a6a", "#f0c243",
+    static let colorLabels = ["#ffffff", "#6249df", "#ef6a6a", "#f0c243",
                               "#4caf7d", "#3bb8c4"]
 
     private func addTag(_ pair: (scene: SceneSummary, frame: FrameSummary)) {

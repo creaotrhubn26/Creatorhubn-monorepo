@@ -326,7 +326,7 @@ function CampaignActionsPanel({ onAction }: { onAction: () => void }) {
 const cockpitDarkTheme = createTheme({
   palette: {
     mode: 'dark',
-    primary: { main: '#7c3aed' },
+    primary: { main: '#6249df' },
     background: { default: '#0b1120', paper: 'rgba(15,23,42,0.72)' },
     text: { primary: '#e2e8f0', secondary: 'rgba(203,213,225,0.68)' },
   },
@@ -458,7 +458,7 @@ export default function MarketingCockpitTab() {
           borderBottom: '1px solid rgba(148,163,184,0.16)',
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.72)', minHeight: 40 },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+          '& .MuiTabs-indicator': { backgroundColor: '#9e8cf8' },
         }}
       >
         {COCKPIT_TABS.map((t) => (
@@ -558,7 +558,7 @@ export default function MarketingCockpitTab() {
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
             <Card sx={PANEL_SX} data-testid="panel-mentions">
               <CardContent sx={{ p: 2 }}>
-                <SectionHeader icon={<TagIcon sx={{ color: '#a78bfa', fontSize: 20 }} />}
+                <SectionHeader icon={<TagIcon sx={{ color: '#9e8cf8', fontSize: 20 }} />}
                   title="Mentions" sectionOk={data.mentions.ok} testid="mentions" />
                 {!data.mentions.ok ? <ErrorBody section={data.mentions} /> :
                   data.mentions.data && (Array.isArray(data.mentions.data.recent) ? data.mentions.data.recent : []).length === 0 ? (
@@ -567,7 +567,7 @@ export default function MarketingCockpitTab() {
                     </Typography>
                   ) : (Array.isArray(data.mentions.data?.recent) ? data.mentions.data.recent : []).map((m) => (
                     <Box key={m.id} sx={{ py: 1, borderBottom: '1px solid rgba(148,163,184,0.10)' }} data-testid="mention-row">
-                      <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 600 }}>
+                      <Typography variant="caption" sx={{ color: '#9e8cf8', fontWeight: 600 }}>
                         {m.fromName || '(unknown)'} · {m.createdTime ? new Date(m.createdTime).toLocaleDateString('nb-NO') : ''}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.85)', mt: 0.3 }}>
@@ -697,13 +697,13 @@ export default function MarketingCockpitTab() {
       </>)}
 
       {cockpitTab === 'b2b' && (<>
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.32)' }}>
           <Chip label="B2B-AKKVISISJON" size="small"
-            sx={{ background: 'rgba(217,70,239,0.18)', color: '#e879f9', fontSize: '0.7rem', fontWeight: 700 }} />
+            sx={{ background: 'rgba(98, 73, 223,0.18)', color: '#9e8cf8', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
         <AgencyAcquisitionDashboard />
         <B2BAcquisitionPanel />
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.32)' }}>
           <Chip label="CUSTOMER SUCCESS" size="small"
             sx={{ background: 'rgba(52,211,153,0.18)', color: '#34d399', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
@@ -711,22 +711,22 @@ export default function MarketingCockpitTab() {
       </>)}
 
       {cockpitTab === 'leads' && (<>
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.32)' }}>
           <Chip label="MIN DAG" size="small"
-            sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
+            sx={{ background: 'rgba(158, 140, 248,0.18)', color: '#9e8cf8', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
         <LeadMapMyDayPanel />
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.32)' }}>
           <Chip label="TEAM-LEADERBOARD" size="small"
             sx={{ background: 'rgba(249,115,22,0.18)', color: '#f97316', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
         <LeadMapLeaderboardPanel />
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.32)' }}>
           <Chip label="LEAD MAP" size="small"
             sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
         <LeadMapPanel />
-        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+        <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.32)' }}>
           <Chip label="GRIDS / TERRITORIER" size="small"
             sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
@@ -738,7 +738,7 @@ export default function MarketingCockpitTab() {
       {cockpitTab === 'anbud' && (<>
         <Divider textAlign="left">
           <Chip label="ANBUD — TRIAGE / FRISTER / RADAR" size="small"
-            sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
+            sx={{ background: 'rgba(158, 140, 248,0.18)', color: '#9e8cf8', fontSize: '0.7rem', fontWeight: 700 }} />
         </Divider>
         <TenderBoardPanel />
         <TenderIntelPanel />

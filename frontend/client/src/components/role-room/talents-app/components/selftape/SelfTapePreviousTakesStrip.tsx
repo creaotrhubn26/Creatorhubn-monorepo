@@ -59,7 +59,7 @@ export default function SelfTapePreviousTakesStrip({
                 overflow: 'hidden',
                 cursor: 'pointer',
                 transition: 'transform 0.18s, border-color 0.18s, box-shadow 0.18s',
-                boxShadow: isCurrent ? '0 4px 18px rgba(168,85,247,0.32)' : 'none',
+                boxShadow: isCurrent ? '0 4px 18px rgba(98, 73, 223,0.32)' : 'none',
                 '&:hover': { transform: 'translateY(-2px)', borderColor: palette.accentBright },
               }}
             >
@@ -82,7 +82,7 @@ export default function SelfTapePreviousTakesStrip({
                     position: 'absolute',
                     top: 6,
                     left: 6,
-                    bgcolor: 'rgba(168,85,247,0.85)',
+                    bgcolor: 'rgba(98, 73, 223,0.85)',
                     color: '#fff',
                     fontWeight: 800,
                     fontSize: '0.7rem',

@@ -63,18 +63,18 @@ export default function RoleRoomChatBubble({
             height: { xs: 'calc(100dvh - 16px)', sm: 'min(620px, 80vh)' },
             display: 'flex', flexDirection: 'column',
             borderRadius: 3, overflow: 'hidden',
-            background: 'linear-gradient(180deg,#0c0a18,#0a0a14)',
-            border: '1px solid rgba(168,85,247,0.3)',
+            background: 'linear-gradient(180deg,#100b1e,#0a0515)',
+            border: '1px solid rgba(136, 117, 235,0.3)',
             boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
           }}
         >
           <Stack
             direction="row" alignItems="center" spacing={1}
             sx={{ px: 1.5, py: 1.25, borderBottom: '1px solid rgba(148,163,184,0.14)', flexShrink: 0,
-              background: 'linear-gradient(135deg, rgba(124,58,237,0.25), rgba(168,85,247,0.12))' }}
+              background: 'linear-gradient(135deg, rgba(98, 73, 223,0.25), rgba(136, 117, 235,0.12))' }}
           >
-            <ChatIcon sx={{ fontSize: 18, color: '#c4b5fd' }} />
-            <Typography sx={{ color: '#f5f3ff', fontWeight: 800, fontSize: '0.92rem', flex: 1 }}>
+            <ChatIcon sx={{ fontSize: 18, color: '#c6bdf4' }} />
+            <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '0.92rem', flex: 1 }}>
               Samtale
             </Typography>
             {onOpenFullTab ? (
@@ -88,7 +88,7 @@ export default function RoleRoomChatBubble({
           </Stack>
           <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', p: 1.5 }}>
             <ErrorBoundary componentName="role-room-chat-conversation">
-            <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={22} sx={{ color: '#a855f7' }} /></Box>}>
+            <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={22} sx={{ color: '#8875eb' }} /></Box>}>
               <ClientConversationView projectId={projectId} canUseInternal={canUseInternal} />
             </Suspense>
             </ErrorBoundary>
@@ -110,10 +110,10 @@ export default function RoleRoomChatBubble({
             onClick={() => (open ? handleClose() : setOpen(true))}
             sx={{
               width: 64, height: 64, p: 0,
-              background: open ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : '#140a2e',
-              color: '#fff', boxShadow: '0 10px 30px rgba(124,58,237,0.5)',
-              border: open ? 'none' : '1px solid rgba(168,85,247,0.45)',
-              '&:hover': { background: open ? 'linear-gradient(135deg,#6d28d9,#9333ea)' : '#1c1040' },
+              background: open ? 'linear-gradient(135deg,#6249df,#8875eb)' : '#18122b',
+              color: '#fff', boxShadow: '0 10px 30px rgba(98, 73, 223,0.5)',
+              border: open ? 'none' : '1px solid rgba(136, 117, 235,0.45)',
+              '&:hover': { background: open ? 'linear-gradient(135deg,#472bd4,#6249df)' : '#211c3b' },
               '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 3 },
             }}
           >

@@ -34,7 +34,7 @@ export const ROLE_ROOM_TIERS: Record<RoleRoomTierSlug, RoleRoomTierInfo> = {
     name: 'Role Room Headliner',
     shortName: 'Headliner',
     tagline: 'Full tilgang til alle AI-anbefalinger og planleggingsverktøy.',
-    accentHex: '#a855f7',
+    accentHex: '#8875eb',
     level: 2,
   },
   showrunner: {

@@ -263,7 +263,7 @@ export default function EconomyReportsPanel({ projectId }: EconomyReportsPanelPr
               const v = variancePct(row.approved, row.actual);
               const tone = varianceTone(v);
               return (
-                <TableRow key={row.key} sx={{ '&:hover': { background: 'rgba(168,85,247,0.05)' } }}>
+                <TableRow key={row.key} sx={{ '&:hover': { background: 'rgba(136, 117, 235,0.05)' } }}>
                   <TableCell>{labelFor(row.key)}</TableCell>
                   <TableCell align="right">{row.lineCount}</TableCell>
                   <TableCell align="right">{formatCurrency(row.estimate)}</TableCell>

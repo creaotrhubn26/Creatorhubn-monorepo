@@ -808,7 +808,7 @@ final class CompositionRenderTests: XCTestCase {
     func testExportIncludesTextAnnotations() throws {
         let base = stroke(.pencil, size: 5, opacity: 0.9, line(200, 200, 900, 700))
         var annotation = stroke(.pencil, size: 4, opacity: 1,
-                                points([(960, 300)], pressure: 0.7), color: "#8b5cf6")
+                                points([(960, 300)], pressure: 0.7), color: "#6249df")
         annotation.textAnnotation = "PUSH IN"
         let plain = FrameRenderService.image(for: makeFrame(strokes: [base]), maxWidth: 400)
         let annotated = FrameRenderService.image(
@@ -961,7 +961,7 @@ final class CompositionRenderTests: XCTestCase {
         }
         let starDataURL = "data:image/png;base64," + starImage.pngData()!.base64EncodedString()
         // Hvert tap = ett avtrykk (1-punkts strøk — stamp-semantikk).
-        var stampBrush = BrushSpec.preset(.stamp, size: 60, color: "#5a3a7a", opacity: 0.9)
+        var stampBrush = BrushSpec.preset(.stamp, size: 60, color: "#3c3a6e", opacity: 0.9)
         stampBrush.stampDataURL = starDataURL
         for step in 0..<5 {
             t += 200
@@ -970,7 +970,7 @@ final class CompositionRenderTests: XCTestCase {
                 points: [StrokePoint(x: 950 + Double(step) * 110,
                                      y: 700 + Double(step % 2) * 90,
                                      pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: t)],
-                inputType: "pencil", color: "#5a3a7a", width: 60, opacity: 0.9,
+                inputType: "pencil", color: "#3c3a6e", width: 60, opacity: 0.9,
                 brush: stampBrush))
         }
 

@@ -280,11 +280,11 @@ function MemberRow({ member, actions, busy, availabilityLabel }: {
               label={availabilityLabel}
               size="small"
               variant="outlined"
-              sx={{ height: 18, fontSize: 11, borderColor: '#a030c0', color: '#c07fe0' }}
+              sx={{ height: 18, fontSize: 11, borderColor: '#472bd4', color: '#8875eb' }}
             />
             <Tooltip title="Synket fra medlemmets egen kalender" arrow>
-              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#a030c0',
-                         boxShadow: '0 0 4px rgba(160,48,192,0.9)' }} />
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#472bd4',
+                         boxShadow: '0 0 4px rgba(71, 43, 212,0.9)' }} />
             </Tooltip>
           </Stack>
         )}

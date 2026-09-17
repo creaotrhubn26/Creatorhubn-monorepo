@@ -11,7 +11,7 @@ import { Box, Typography, CircularProgress, Button, Stack, TextField } from '@mu
 import { School as StudentIcon, CheckCircle as DoneIcon, ErrorOutline as ErrorIcon } from '@mui/icons-material';
 import { educationStudentViewService } from '@/components/role-room/education/educationStudentViewService';
 
-const ACCENT = '#8B5CF6';
+const ACCENT = '#8875eb';
 
 export default function ClaimStudentAccess() {
   const token = new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
@@ -41,7 +41,7 @@ export default function ClaimStudentAccess() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
       <Stack spacing={2} alignItems="center" sx={{ maxWidth: 440, textAlign: 'center' }}>
-        <Box sx={{ width: 72, height: 72, borderRadius: '50%', bgcolor: 'rgba(139,92,246,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: ACCENT }}>
+        <Box sx={{ width: 72, height: 72, borderRadius: '50%', bgcolor: 'rgba(136, 117, 235,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: ACCENT }}>
           {state === 'loading' ? <CircularProgress sx={{ color: ACCENT }} />
             : state === 'ok' ? <DoneIcon sx={{ fontSize: 40, color: '#10b981' }} />
             : state === 'form' ? <StudentIcon sx={{ fontSize: 40, color: ACCENT }} />
@@ -56,11 +56,11 @@ export default function ClaimStudentAccess() {
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
               placeholder="din@epost.no"
-              sx={{ mt: 1, input: { color: '#fff' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(139,92,246,0.4)' } }}
+              sx={{ mt: 1, input: { color: '#fff' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.4)' } }}
             />
             {message && <Typography sx={{ color: '#f87171', fontSize: 13 }}>{message}</Typography>}
             <Button variant="contained" onClick={submit} fullWidth
-              sx={{ mt: 1, bgcolor: ACCENT, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#7c3aed' } }}>
+              sx={{ mt: 1, bgcolor: ACCENT, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#6249df' } }}>
               Aktiver tilgang
             </Button>
           </>
@@ -86,7 +86,7 @@ export default function ClaimStudentAccess() {
             <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>{message}</Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Be faglæreren din om en ny invitasjonslenke.</Typography>
             <Button variant="outlined" onClick={() => { window.location.href = '/'; }}
-              sx={{ mt: 1, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none' }}>
+              sx={{ mt: 1, borderColor: 'rgba(136, 117, 235,0.5)', color: '#e0dbfa', textTransform: 'none' }}>
               Til forsiden
             </Button>
           </>
