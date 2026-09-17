@@ -50,6 +50,7 @@ on:
       - 'backend/migrations/0608_game_billing.sql'
       - 'backend/migrations/0609_game_plan_export_pdf.sql'
       - 'backend/migrations/0610_narrative_scenes_and_reviews.sql'
+      - 'backend/migrations/0611_narrative_production_os.sql'
       - 'backend/server/role-room-editor-comments-routes.ts'
       - 'backend/server/role-room-editor-comments-routes.test.ts'
       - 'backend/server/narrative-pdf.ts'

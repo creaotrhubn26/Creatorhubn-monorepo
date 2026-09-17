@@ -118,7 +118,8 @@ function escapeHtml(s: string): string {
 }
 
 export type GraphChangeKind =
-  | 'settings' | 'board' | 'element' | 'connection' | 'component' | 'attribute' | 'variable' | 'asset' | 'graph' | 'translation' | 'scene';
+  | 'settings' | 'board' | 'element' | 'connection' | 'component' | 'attribute' | 'variable' | 'asset' | 'graph' | 'translation' | 'scene'
+  | 'production';
 
 const idSchema = z.string().min(1).max(200);
 const nullableStr = (max: number) => z.string().max(max).nullable().optional();
@@ -206,12 +207,16 @@ const connectionBody = z.object({
   i18n: connectionI18n,
 });
 
+const componentKind = z.enum(['character', 'location', 'item', 'faction', 'other']);
 const componentBody = z.object({
   name: z.string().min(1).max(200),
   folderPath: z.string().max(500).optional(),
   coverAssetId: nullableStr(200),
   customId: nullableStr(120),
   sortOrder: z.number().int().optional(),
+  // Fase 7: karakter/lokasjon/gjenstand/fraksjon + typet profil (fri JSON, ≤ 64 kB).
+  kind: componentKind.optional(),
+  profile: z.record(jsonValueSchema).optional(),
 });
 
 const elementComponentsBody = z.object({
@@ -267,6 +272,12 @@ const shareLinkBody = z.object({
 
 // ─── Fase 6: scener, rammer, oppgaver, review ──────────────────────────
 const isoDate = z.string().datetime({ offset: true }).nullable().optional();
+const sourceRefSchema = z.object({
+  tag: z.enum(['W', 'K', 'U', 'A', 'E', 'T']),
+  ref: z.string().trim().min(1).max(120),
+  field: z.string().max(60).optional(),
+  note: z.string().max(1000).optional(),
+});
 const sceneStatus = z.enum(['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented']);
 const sceneBody = z.object({
   code: z.string().trim().regex(svc.NARRATIVE_SCENE_CODE_RE, 'Kode: 1–3 bokstaver + 1–4 sifre, f.eks. S12').nullable().optional(),
@@ -281,9 +292,28 @@ const sceneBody = z.object({
   dueAt: isoDate,
   heroAssetId: nullableStr(200),
   sortOrder: z.number().int().optional(),
+  // Fase 7: scenekort v2 (Før / Handling / Kontroll / Etter / Lyd …), kildemerker, epoke.
+  beforeState: z.string().max(20_000).optional(),
+  action: z.string().max(20_000).optional(),
+  control: z.string().max(20_000).optional(),
+  afterState: z.string().max(20_000).optional(),
+  audio: z.string().max(20_000).optional(),
+  changeNote: z.string().max(20_000).optional(),
+  bridge: z.string().max(20_000).optional(),
+  timeNote: z.string().max(2000).optional(),
+  knowledge: z.object({
+    actualPast: z.string().max(5000).optional(), recollection: z.string().max(5000).optional(),
+    ownerPerspective: z.string().max(5000).optional(), othersObserve: z.string().max(5000).optional(),
+    audienceKnows: z.string().max(5000).optional(), saidAloud: z.string().max(5000).optional(),
+  }).optional(),
+  era: z.enum(['pre', '1797', '1802', '1817', 'other']).optional(),
+  episodeId: nullableStr(200),
+  startAt: isoDate,
+  sourceRefs: z.array(sourceRefSchema).max(100).optional(),
+  workingId: nullableStr(40),
 });
 const sceneLinksBody = z.object({
-  links: z.array(z.object({ ownerKind: z.enum(['element', 'board']), ownerId: idSchema })).max(200),
+  links: z.array(z.object({ ownerKind: z.enum(['element', 'board', 'component']), ownerId: idSchema })).max(200),
 });
 const sceneFrameBody = z.object({
   assetId: nullableStr(200),
@@ -307,6 +337,100 @@ const reviewDecisionBody = z.object({
   note: z.string().max(5000).nullable().optional(),
   expectedSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
 });
+
+// ─── Fase 7: produksjons-OS (gater, replikker, episoder, spørsmål, kilder, milepæler, plattform) ──
+const gateBody = z.object({
+  status: z.enum(['not_started', 'in_progress', 'passed', 'failed']),
+  evidence: z.string().max(5000).optional(),
+  evidenceRefs: z.array(z.string().max(500)).max(50).optional(),
+});
+const lineBody = z.object({
+  cueId: z.string().trim().regex(svc.NARRATIVE_CUE_ID_RE, 'Replikk-ID: f.eks. W01.01, U04.02 eller G03A.1'),
+  speakerComponentId: nullableStr(200),
+  speakerLabel: z.string().max(200).optional(),
+  perspective: z.string().max(500).optional(),
+  textEn: z.string().max(5000).optional(),
+  textNb: z.string().max(5000).optional(),
+  sourceType: z.enum(['E', 'T', 'E+T', 'U', 'A']).optional(),
+  recordingStatus: z.enum(['none', 'needs_take', 'recorded', 'approved']).optional(),
+  note: z.string().max(2000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+const linePatch = lineBody.partial();
+const shortCode = z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/, 'Kode: bokstav + inntil 39 tegn, f.eks. E01, Q07, W');
+const episodeBody = z.object({
+  code: shortCode,
+  title: z.string().max(300).optional(),
+  summary: z.string().max(20_000).optional(),
+  playersLearn: z.string().max(20_000).optional(),
+  sourceNote: z.string().max(5000).optional(),
+  status: z.enum(['draft', 'locked']).optional(),
+  sortOrder: z.number().int().optional(),
+});
+const episodePatch = episodeBody.partial();
+const openQuestionBody = z.object({
+  code: shortCode,
+  kind: z.enum(['question', 'check']).optional(),
+  question: z.string().trim().min(1).max(5000),
+  context: z.string().max(20_000).optional(),
+  status: z.enum(['open', 'done', 'dropped']).optional(),
+  decision: z.string().max(20_000).optional(),
+  sourceRefs: z.array(sourceRefSchema).max(100).optional(),
+  sortOrder: z.number().int().optional(),
+});
+const openQuestionPatch = openQuestionBody.partial();
+const sourceBody = z.object({
+  code: shortCode,
+  label: z.string().trim().min(1).max(300),
+  kind: z.enum(['docx', 'pdf', 'md', 'txt', 'other']).optional(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'SHA-256: 64 hex-tegn').nullable().optional(),
+  pathHint: z.string().max(1000).optional(),
+  notes: z.string().max(5000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+const sourcePatch = sourceBody.partial().extend({ verified: z.boolean().optional() });
+const milestoneBody = z.object({
+  title: z.string().trim().min(1).max(300),
+  lane: z.enum(['story', 'greybox', 'characters', 'playtest', 'picture_audio', 'engineering', 'other']).optional(),
+  startAt: isoDate,
+  dueAt: isoDate,
+  status: z.enum(['planned', 'in_progress', 'done', 'blocked']).optional(),
+  ownerUserId: nullableStr(200),
+  description: z.string().max(20_000).optional(),
+  acceptance: z.string().max(20_000).optional(),
+  evidence: z.string().max(20_000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+const milestonePatch = milestoneBody.partial();
+const milestoneScenesBody = z.object({ sceneIds: z.array(idSchema).max(500) });
+const platformRequirementSchema = z.object({
+  code: z.string().trim().min(1).max(60),
+  text: z.string().max(2000),
+  status: z.enum(['unverified', 'verified', 'failed']),
+  evidence: z.string().max(2000).optional(),
+  source: z.string().max(300).optional(),
+});
+const platformTargetBody = z.object({
+  name: z.string().trim().min(1).max(200),
+  platform: z.enum(['ipad', 'iphone', 'mac', 'pc', 'console', 'web', 'other']).optional(),
+  isPrimary: z.boolean().optional(),
+  engine: z.string().max(200).optional(),
+  osMin: z.string().max(200).optional(),
+  deviceMin: z.string().max(200).optional(),
+  inputModel: z.string().max(2000).optional(),
+  budgets: z.record(jsonValueSchema).optional(),
+  requirements: z.array(platformRequirementSchema).max(200).optional(),
+  visualDirection: z.record(jsonValueSchema).optional(),
+  notes: z.string().max(20_000).optional(),
+  sortOrder: z.number().int().optional(),
+});
+const platformTargetPatch = platformTargetBody.partial();
+
+/** Ruteparameter som streng (Express 5 typer `req.params.x` som `string | string[]`). */
+function param(req: Request, key: string): string {
+  const v = (req.params as Record<string, string | string[] | undefined>)[key];
+  return Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '');
+}
 
 function readExpectedVersion(req: Request): number | null {
   const header = req.headers['if-match'];
@@ -378,6 +502,7 @@ export function createRoleRoomNarrativeRouter(
       case 'translations': return 'translation';
       case 'revisions': return seg[4] === 'restore' ? 'graph' : null;
       case 'scenes': return 'scene';
+      case 'episodes': case 'open-questions': case 'sources': case 'milestones': case 'platform-targets': return 'production';
       default: return null;
     }
   };
@@ -862,6 +987,249 @@ export function createRoleRoomNarrativeRouter(
       }
       throw err;
     }
+  }));
+
+  // ─── Fase 7: produksjons-OS ─────────────────────────────────────────
+  // Gater: én PUT per gate; «bestått» krever bevis (400 gate_evidence_required).
+  router.get('/projects/:projectId/scenes/:sceneId/gates', ...guard, wrap(async (req, res) => {
+    const scene = await svc.getScene(pool, req.projectId, param(req, 'sceneId'));
+    if (!scene) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: await svc.listSceneGates(pool, req.projectId, scene.id) });
+  }));
+  router.put('/projects/:projectId/scenes/:sceneId/gates/:gateKey', ...guard, wrap(async (req, res) => {
+    const gateKey = param(req, 'gateKey');
+    if (!(svc.NARRATIVE_GATE_KEYS as readonly string[]).includes(gateKey)) { res.status(400).json({ error: 'invalid_request', message: `Ukjent gate «${gateKey}».` }); return; }
+    const parsed = gateBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const gate = await svc.setSceneGate(pool, req.projectId, param(req, 'sceneId'), gateKey as svc.NarrativeGateKey, req.userId, parsed.data);
+      if (!gate) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: gate });
+    } catch (err) {
+      if (err instanceof svc.GateEvidenceRequiredError) { res.status(400).json({ error: err.code, message: err.message }); return; }
+      throw err;
+    }
+  }));
+
+  // Replikker (dialog-linjer som data).
+  router.get('/projects/:projectId/scenes/:sceneId/lines', ...guard, wrap(async (req, res) => {
+    const scene = await svc.getScene(pool, req.projectId, param(req, 'sceneId'));
+    if (!scene) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: await svc.listSceneLines(pool, req.projectId, scene.id) });
+  }));
+  router.post('/projects/:projectId/scenes/:sceneId/lines', ...guard, wrap(async (req, res) => {
+    const parsed = lineBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const line = await svc.createSceneLine(pool, req.projectId, param(req, 'sceneId'), req.userId, parsed.data);
+      if (!line) { res.status(404).json({ error: 'not_found' }); return; }
+      res.status(201).json({ success: true, data: line });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCueError) { res.status(409).json({ error: err.code, cueId: err.cueId, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.put('/projects/:projectId/scenes/:sceneId/lines/order', ...guard, wrap(async (req, res) => {
+    const parsed = orderBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await svc.reorderSceneLines(pool, req.projectId, param(req, 'sceneId'), parsed.data.orderedIds);
+    res.json({ success: true, data: await svc.listSceneLines(pool, req.projectId, param(req, 'sceneId')) });
+  }));
+  router.patch('/projects/:projectId/scenes/:sceneId/lines/:lineId', ...guard, wrap(async (req, res) => {
+    const parsed = linePatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const line = await svc.patchSceneLine(pool, req.projectId, param(req, 'sceneId'), param(req, 'lineId'), parsed.data);
+      if (!line) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: line });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCueError) { res.status(409).json({ error: err.code, cueId: err.cueId, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.delete('/projects/:projectId/scenes/:sceneId/lines/:lineId', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteSceneLine(pool, req.projectId, param(req, 'sceneId'), param(req, 'lineId'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+  // Replikker på tvers av scener for én taler (Karakterer-visningen).
+  router.get('/projects/:projectId/lines', ...guard, wrap(async (req, res) => {
+    const speaker = typeof req.query.speakerComponentId === 'string' ? req.query.speakerComponentId : '';
+    if (!speaker) { res.status(400).json({ error: 'invalid_request', message: 'speakerComponentId mangler.' }); return; }
+    res.json({ success: true, data: await svc.listLinesBySpeaker(pool, req.projectId, speaker) });
+  }));
+  // Scener koblet til en komponent (karakter/lokasjon) — reverse-oppslag.
+  router.get('/projects/:projectId/components/:id/scenes', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listScenesForOwner(pool, req.projectId, 'component', param(req, 'id')) });
+  }));
+
+  // Episoder (E01–E12).
+  router.get('/projects/:projectId/episodes', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listEpisodes(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/episodes', ...guard, wrap(async (req, res) => {
+    const parsed = episodeBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      res.status(201).json({ success: true, data: await svc.createEpisode(pool, req.projectId, req.userId, parsed.data) });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCodeError) { res.status(409).json({ error: err.code, entity: err.entity, value: err.value, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.patch('/projects/:projectId/episodes/:id', ...guard, wrap(async (req, res) => {
+    const parsed = episodePatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const ep = await svc.patchEpisode(pool, req.projectId, param(req, 'id'), parsed.data);
+      if (!ep) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: ep });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCodeError) { res.status(409).json({ error: err.code, entity: err.entity, value: err.value, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.delete('/projects/:projectId/episodes/:id', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteEpisode(pool, req.projectId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  // Åpne spørsmål og sjekklister (kind = question | check).
+  router.get('/projects/:projectId/open-questions', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listOpenQuestions(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/open-questions', ...guard, wrap(async (req, res) => {
+    const parsed = openQuestionBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      res.status(201).json({ success: true, data: await svc.createOpenQuestion(pool, req.projectId, req.userId, parsed.data) });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCodeError) { res.status(409).json({ error: err.code, entity: err.entity, value: err.value, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.patch('/projects/:projectId/open-questions/:id', ...guard, wrap(async (req, res) => {
+    const parsed = openQuestionPatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const q = await svc.patchOpenQuestion(pool, req.projectId, param(req, 'id'), req.userId, parsed.data);
+      if (!q) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: q });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCodeError) { res.status(409).json({ error: err.code, entity: err.entity, value: err.value, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.delete('/projects/:projectId/open-questions/:id', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteOpenQuestion(pool, req.projectId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  // Kilderegister (dokumenter med SHA-256).
+  router.get('/projects/:projectId/sources', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listSources(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/sources', ...guard, wrap(async (req, res) => {
+    const parsed = sourceBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      res.status(201).json({ success: true, data: await svc.createSource(pool, req.projectId, req.userId, parsed.data) });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCodeError) { res.status(409).json({ error: err.code, entity: err.entity, value: err.value, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.patch('/projects/:projectId/sources/:id', ...guard, wrap(async (req, res) => {
+    const parsed = sourcePatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const src = await svc.patchSource(pool, req.projectId, param(req, 'id'), req.userId, parsed.data);
+      if (!src) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: src });
+    } catch (err) {
+      if (err instanceof svc.DuplicateCodeError) { res.status(409).json({ error: err.code, entity: err.entity, value: err.value, message: err.message }); return; }
+      throw err;
+    }
+  }));
+  router.delete('/projects/:projectId/sources/:id', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deleteSource(pool, req.projectId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  // Milepæler (produksjonsplan). Lesing er åpen; mutasjoner krever `production_plan` (Pro/Studio).
+  router.get('/projects/:projectId/milestones', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listMilestones(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/milestones', ...guard, wrap(async (req, res) => {
+    const parsed = milestoneBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'production_plan');
+    res.status(201).json({ success: true, data: await svc.createMilestone(pool, req.projectId, req.userId, parsed.data) });
+  }));
+  router.patch('/projects/:projectId/milestones/:id', ...guard, wrap(async (req, res) => {
+    const parsed = milestonePatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'production_plan');
+    const m = await svc.patchMilestone(pool, req.projectId, param(req, 'id'), parsed.data);
+    if (!m) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: m });
+  }));
+  router.delete('/projects/:projectId/milestones/:id', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'production_plan');
+    const ok = await svc.deleteMilestone(pool, req.projectId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+  router.put('/projects/:projectId/milestones/:id/scenes', ...guard, wrap(async (req, res) => {
+    const parsed = milestoneScenesBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'production_plan');
+    const sceneIds = await svc.setMilestoneScenes(pool, req.projectId, param(req, 'id'), parsed.data.sceneIds);
+    if (!sceneIds) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: { sceneIds } });
+  }));
+
+  // Plattformmål (iPad/iPhone/… med budsjetter, krav og visuell retning). Alle planer.
+  router.get('/projects/:projectId/platform-targets', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listPlatformTargets(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/platform-targets', ...guard, wrap(async (req, res) => {
+    const parsed = platformTargetBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    res.status(201).json({ success: true, data: await svc.createPlatformTarget(pool, req.projectId, req.userId, parsed.data) });
+  }));
+  router.patch('/projects/:projectId/platform-targets/:id', ...guard, wrap(async (req, res) => {
+    const parsed = platformTargetPatch.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const t = await svc.patchPlatformTarget(pool, req.projectId, param(req, 'id'), parsed.data);
+    if (!t) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: t });
+  }));
+  router.delete('/projects/:projectId/platform-targets/:id', ...guard, wrap(async (req, res) => {
+    const ok = await svc.deletePlatformTarget(pool, req.projectId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
+  }));
+
+  // Hjem: ett aggregat (server teller) + innboks over prosjektets narrative varsler.
+  router.get('/projects/:projectId/overview', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.getProjectOverview(pool, req.projectId, req.userId) });
+  }));
+  router.get('/projects/:projectId/inbox', ...guard, wrap(async (req, res) => {
+    const limitRaw = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const max = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    res.json({ success: true, data: await svc.listInbox(pool, req.projectId, req.userId, max) });
+  }));
+  router.post('/projects/:projectId/inbox/read-all', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: { marked: await svc.markAllInboxRead(pool, req.projectId, req.userId) } });
+  }));
+  router.post('/projects/:projectId/inbox/:id/read', ...guard, wrap(async (req, res) => {
+    const ok = await svc.markInboxRead(pool, req.projectId, req.userId, param(req, 'id'));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true });
   }));
 
   // Lettvekts medlemsliste (eier + aktive medlemmer) for «Ansvarlig»-velgeren.

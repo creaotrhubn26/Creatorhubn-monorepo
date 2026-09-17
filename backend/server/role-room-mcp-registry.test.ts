@@ -63,8 +63,9 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   });
   it("modus-filter «game_studio» → Story Graph-verktøy + globale, ikke casting/dans", () => {
     const names = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
-    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_game_scenes", "rr_game_scene_review_status", "rr_list_projects"]));
+    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_game_scenes", "rr_game_scene_review_status", "rr_get_scene_card", "rr_project_overview", "rr_list_projects"]));
     expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_list_game_scenes");
+    expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_project_overview");
     expect(names).not.toContain("rr_list_auditions");
     expect(names).not.toContain("rr_list_dance_pieces");
     expect(names).not.toContain("rr_list_cohorts");
@@ -246,5 +247,28 @@ describe("Fase 6: scene-verktøy (game_studio)", () => {
     const out = await findCapability("rr_game_scene_review_status")!.handler(pool, CTX, { projectId: "p1", sceneId: "nsc_1" }) as { openRound: { round: number; stale: boolean } | null; rounds: unknown[] };
     expect(out.openRound).toMatchObject({ round: 1, stale: true });
     expect(out.rounds).toHaveLength(1);
+  });
+  it("rr_get_scene_card → manusfelt, replikker og alle seks gater (manglende = not_started)", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [{ ...sceneRow, code: "P01", working_id: "P01", era: "1797", before_state: "Skoleveien", action: "Bok og skolisse" }] },
+      { match: /FROM narrative_scene_lines WHERE scene_id/, rows: [{ id: "nsl_1", scene_id: "nsc_1", project_id: "p1", cue_id: "W01.01", speaker_component_id: null, speaker_label: "NORA", perspective: "", text_en: "Must you read all the way home?", text_nb: "", source_type: "E", recording_status: "none", note: "", sort_order: 0, created_by: "u1", created_at: new Date(), updated_at: new Date() }] },
+      { match: /FROM narrative_scene_gates WHERE scene_id/, rows: [{ scene_id: "nsc_1", project_id: "p1", gate_key: "greybox", status: "passed", evidence: "68 bestått", evidence_refs: [], checked_by: "u1", checked_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const out = await findCapability("rr_get_scene_card")!.handler(pool, CTX, { projectId: "p1", sceneId: "nsc_1" }) as { scene: { code: string; era: string; beforeState: string }; lines: Array<{ cueId: string }>; gates: Array<{ gateKey: string; status: string }> };
+    expect(out.scene).toMatchObject({ code: "P01", era: "1797", beforeState: "Skoleveien" });
+    expect(out.lines.map((l) => l.cueId)).toEqual(["W01.01"]);
+    expect(out.gates).toHaveLength(6);
+    expect(out.gates.find((g) => g.gateKey === "greybox")).toMatchObject({ status: "passed" });
+    expect(out.gates.find((g) => g.gateKey === "audio")).toMatchObject({ status: "not_started" });
+  });
+  it("rr_project_overview → aggregat med scener per status og gater", async () => {
+    const pool = makePool([access,
+      { match: /SELECT status, era, start_at, due_at FROM narrative_scenes/, rows: [{ status: "idea", era: "1797", start_at: null, due_at: null }, { status: "approved", era: "1817", start_at: null, due_at: null }] },
+      { match: /FROM narrative_scene_gates WHERE project_id = \$1 GROUP BY/, rows: [{ gate_key: "greybox", status: "passed", n: 1 }] },
+    ]);
+    const out = await findCapability("rr_project_overview")!.handler(pool, CTX, { projectId: "p1" }) as { scenes: { total: number; byStatus: Record<string, number> }; gates: { passed: number; total: number } };
+    expect(out.scenes.total).toBe(2);
+    expect(out.scenes.byStatus.approved).toBe(1);
+    expect(out.gates).toMatchObject({ passed: 1, total: 12 });
   });
 });

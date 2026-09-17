@@ -25,7 +25,7 @@ function makePool(handlers: Handler[] = []) {
 /** Testplaner: `studio` (alt) som standard så eksisterende tester er upåvirket; `solo` for gating-tester. */
 const TEST_PLANS = {
   solo: { slug: 'solo', features: ['play', 'export_json', 'export_md'], limits: { maxProjects: 3, maxElements: 200 } },
-  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf', 'scene_review'], limits: {} },
+  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf', 'scene_review', 'production_plan', 'team_seats', 'guest_reviewers'], limits: { seats: 5 } },
 } as const;
 
 function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number; plan?: keyof typeof TEST_PLANS } = {}) {
@@ -772,5 +772,209 @@ describe('narrative routes — Fase 6: scener, oppgaver, review', () => {
       { userId: 'u1', displayName: 'Daniel', profileImageUrl: 'https://x.test/d.png', isOwner: true },
       { userId: 'u2', displayName: 'kari@x.test', profileImageUrl: null, isOwner: false },
     ]);
+  });
+});
+
+describe('narrative routes — Fase 7: produksjons-OS (gater, replikker, episoder, plan, plattform, hjem)', () => {
+  const auth = (r: request.Test) => r.set('Authorization', `Bearer ${SESSION_TOKEN}`);
+  const base = `/api/role-room/narrative/projects/${PROJECT_ID}`;
+  const sceneRow = (over: Record<string, unknown> = {}) => ({
+    id: 'nsc_1', project_id: PROJECT_ID, code: 'P01', title: 'Skoleveien', subtitle: '', location: 'Skoleveien', challenge: '', gameplay_mechanic: '',
+    environment: '', status: 'idea', assignee_user_id: null, due_at: null, hero_asset_id: null, sort_order: 0, created_by: 'u1',
+    created_at: new Date('2026-09-17T08:00:00Z'), updated_at: new Date('2026-09-17T08:00:00Z'),
+    before_state: 'Fire barn på vei hjem', action: 'Bok og skolisse', control: 'Berøring', after_state: 'Leken starter', audio: 'Foley: papir',
+    change_note: '', bridge: '', time_note: '', knowledge: {}, era: '1797', episode_id: 'nep_1', start_at: null, source_refs: [{ tag: 'W', ref: 'W', field: 'action' }], working_id: 'P01',
+    ...over,
+  });
+  const sceneSelect = { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow()] };
+
+  it('POST scenes med kode «G03A» godtas (bokstav-suffiks) og scenekort v2-felt returneres', async () => {
+    const pool = makePool([
+      { match: /SELECT code FROM narrative_scenes/, rows: [] },
+      { match: /INSERT INTO narrative_scenes/, rows: (p) => [sceneRow({ id: p[0], code: p[2], title: p[3], era: p[24] ?? '1817', before_state: p[15] ?? '' })] },
+    ]);
+    const res = await auth(request(createApp(pool)).post(`${base}/scenes`)).send({ code: 'g03a', title: 'Første bundne møte', era: '1817', beforeState: 'Skogsvei', sourceRefs: [{ tag: 'K', ref: 'K' }] });
+    expect(res.status).toBe(201);
+    expect(res.body.data.code).toBe('G03A');
+    expect(res.body.data).toHaveProperty('beforeState');
+    expect(res.body.data).toHaveProperty('sourceRefs');
+    const badEra = await auth(request(createApp(pool)).post(`${base}/scenes`)).send({ title: 'x', era: '1850' });
+    expect(badEra.status).toBe(400);
+    const badTag = await auth(request(createApp(pool)).post(`${base}/scenes`)).send({ title: 'x', sourceRefs: [{ tag: 'Z', ref: 'W' }] });
+    expect(badTag.status).toBe(400);
+  });
+
+  it('PUT scenes/:id/links → komponent-lenker valideres mot narrative_components', async () => {
+    const pool = makePool([
+      sceneSelect,
+      { match: /SELECT id FROM narrative_components WHERE project_id = \$1 AND id = ANY/, rows: [{ id: 'ncp_elise' }] },
+    ]);
+    const res = await auth(request(createApp(pool)).put(`${base}/scenes/nsc_1/links`))
+      .send({ links: [{ ownerKind: 'component', ownerId: 'ncp_elise' }, { ownerKind: 'component', ownerId: 'ncp_ukjent' }] });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ sceneId: 'nsc_1', ownerKind: 'component', ownerId: 'ncp_elise', sortOrder: 0 }]);
+  });
+
+  it('PUT gates/:gateKey → passed uten bevis = 400 gate_evidence_required; med bevis = 200; ukjent gate = 400', async () => {
+    const pool = makePool([
+      sceneSelect,
+      { match: /INSERT INTO narrative_scene_gates/, rows: (p) => [{ scene_id: p[0], project_id: p[1], gate_key: p[2], status: p[3], evidence: p[4], evidence_refs: JSON.parse(String(p[5])), checked_by: p[6], checked_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const noEvidence = await auth(request(createApp(pool)).put(`${base}/scenes/nsc_1/gates/greybox`)).send({ status: 'passed', evidence: '   ' });
+    expect(noEvidence.status).toBe(400);
+    expect(noEvidence.body.error).toBe('gate_evidence_required');
+    const ok = await auth(request(createApp(pool)).put(`${base}/scenes/nsc_1/gates/greybox`)).send({ status: 'passed', evidence: 'build/Prologue-P01-Final.xcresult: 68 bestått', evidenceRefs: ['PROLOGUE-IMPLEMENTATION-v1'] });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data).toMatchObject({ gateKey: 'greybox', status: 'passed', evidence: 'build/Prologue-P01-Final.xcresult: 68 bestått', evidenceRefs: ['PROLOGUE-IMPLEMENTATION-v1'], checkedBy: 'u1' });
+    const unknown = await auth(request(createApp(pool)).put(`${base}/scenes/nsc_1/gates/vibes`)).send({ status: 'passed', evidence: 'x' });
+    expect(unknown.status).toBe(400);
+    const inProgress = await auth(request(createApp(pool)).put(`${base}/scenes/nsc_1/gates/audio`)).send({ status: 'in_progress' });
+    expect(inProgress.status).toBe(200);
+  });
+
+  it('GET scenes/:id → detalj har seks gater (manglende = not_started) og replikker', async () => {
+    const pool = makePool([
+      sceneSelect,
+      { match: /FROM narrative_scene_gates WHERE scene_id/, rows: [{ scene_id: 'nsc_1', project_id: PROJECT_ID, gate_key: 'script_coverage', status: 'passed', evidence: 'Word 01 lest', evidence_refs: [], checked_by: 'u1', checked_at: new Date(), updated_at: new Date() }] },
+      { match: /FROM narrative_scene_lines WHERE scene_id/, rows: [{ id: 'nsl_1', scene_id: 'nsc_1', project_id: PROJECT_ID, cue_id: 'W01.01', speaker_component_id: 'ncp_nora', speaker_label: 'NORA', perspective: '', text_en: 'Must you read all the way home?', text_nb: '', source_type: 'E', recording_status: 'none', note: '', sort_order: 0, created_by: 'u1', created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const res = await auth(request(createApp(pool)).get(`${base}/scenes/nsc_1`));
+    expect(res.status).toBe(200);
+    expect(res.body.data.gates).toHaveLength(6);
+    expect(res.body.data.gates.map((g: { gateKey: string; status: string }) => `${g.gateKey}:${g.status}`)).toEqual([
+      'script_coverage:passed', 'greybox:not_started', 'characters_animation:not_started', 'playthrough:not_started', 'picture:not_started', 'audio:not_started',
+    ]);
+    expect(res.body.data.lines[0]).toMatchObject({ cueId: 'W01.01', speakerLabel: 'NORA', sourceType: 'E' });
+    expect(res.body.data.scene).toMatchObject({ era: '1797', workingId: 'P01', beforeState: 'Fire barn på vei hjem' });
+  });
+
+  it('replikker: POST → 201 (cue oppercase), ugyldig cue → 400, duplikat → 409 duplicate_cue', async () => {
+    const pool = makePool([
+      sceneSelect,
+      { match: /MAX\(sort_order\), -1\) \+ 1 AS next FROM narrative_scene_lines/, rows: [{ next: 3 }] },
+      { match: /INSERT INTO narrative_scene_lines/, rows: (p) => [{ id: p[0], scene_id: p[1], project_id: p[2], cue_id: p[3], speaker_component_id: p[4], speaker_label: p[5], perspective: p[6], text_en: p[7], text_nb: p[8], source_type: p[9], recording_status: p[10], note: p[11], sort_order: p[12], created_by: p[13], created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const ok = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/lines`)).send({ cueId: 'w01.02', speakerLabel: 'ELISE', textEn: 'You will not drop my book, will you?', sourceType: 'E' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.data).toMatchObject({ cueId: 'W01.02', speakerLabel: 'ELISE', sourceType: 'E', recordingStatus: 'none', sortOrder: 3 });
+    const bad = await auth(request(createApp(pool)).post(`${base}/scenes/nsc_1/lines`)).send({ cueId: 'replikk 1', textEn: 'x' });
+    expect(bad.status).toBe(400);
+    const dupPool = makePool([sceneSelect, { match: /INSERT INTO narrative_scene_lines/, rows: () => { throw Object.assign(new Error('dup'), { code: '23505' }); } }]);
+    const dup = await auth(request(createApp(dupPool)).post(`${base}/scenes/nsc_1/lines`)).send({ cueId: 'W01.01', textEn: 'x' });
+    expect(dup.status).toBe(409);
+    expect(dup.body).toMatchObject({ error: 'duplicate_cue', cueId: 'W01.01' });
+  });
+
+  it('episoder: POST → 201, duplikat kode → 409 duplicate_code; sanntids-push kind=production', async () => {
+    const broadcast = vi.fn(() => 1);
+    const pool = makePool([
+      { match: /INSERT INTO narrative_episodes/, rows: (p) => [{ id: p[0], project_id: p[1], code: p[2], title: p[3], summary: p[4], players_learn: p[5], source_note: p[6], status: p[7], sort_order: p[8], created_by: p[9], created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const res = await auth(request(createApp(pool, { broadcast })).post(`${base}/episodes`)).send({ code: 'e01', title: 'Skoleveien og leken', playersLearn: 'Fire barn, én lek, én stemme fra skogen' });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ code: 'E01', title: 'Skoleveien og leken', status: 'draft' });
+    expect(broadcast).toHaveBeenCalledWith(`narrative:${PROJECT_ID}`, expect.objectContaining({ payload: expect.objectContaining({ kind: 'production' }) }));
+    const dupPool = makePool([{ match: /INSERT INTO narrative_episodes/, rows: () => { throw Object.assign(new Error('dup'), { code: '23505' }); } }]);
+    const dup = await auth(request(createApp(dupPool)).post(`${base}/episodes`)).send({ code: 'E01' });
+    expect(dup.status).toBe(409);
+    expect(dup.body).toMatchObject({ error: 'duplicate_code', entity: 'episode', value: 'E01' });
+  });
+
+  it('kilder: sha256 valideres (64 hex); åpne spørsmål: kind=check godtas', async () => {
+    const pool = makePool([
+      { match: /INSERT INTO narrative_sources/, rows: (p) => [{ id: p[0], project_id: p[1], code: p[2], label: p[3], kind: p[4], sha256: p[5], path_hint: p[6], notes: p[7], sort_order: p[8], created_by: p[9], verified_at: null, verified_by: null, created_at: new Date(), updated_at: new Date() }] },
+      { match: /INSERT INTO narrative_open_questions/, rows: (p) => [{ id: p[0], project_id: p[1], code: p[2], kind: p[3], question: p[4], context: p[5], status: p[6], decision: p[7], source_refs: [], sort_order: p[9], decided_by: null, decided_at: null, created_by: 'u1', created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const badSha = await auth(request(createApp(pool)).post(`${base}/sources`)).send({ code: 'W', label: 'Original Word-manus', kind: 'docx', sha256: 'abc' });
+    expect(badSha.status).toBe(400);
+    const ok = await auth(request(createApp(pool)).post(`${base}/sources`)).send({ code: 'W', label: 'Original Word-manus', kind: 'docx', sha256: '553a5e2f0ea0a8302e6981f4a219c4ef8329b1226803c7259885aa26e6201633' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.data).toMatchObject({ code: 'W', kind: 'docx', sha256: '553a5e2f0ea0a8302e6981f4a219c4ef8329b1226803c7259885aa26e6201633', verifiedAt: null });
+    const check = await auth(request(createApp(pool)).post(`${base}/open-questions`)).send({ code: 'C03', kind: 'check', question: 'Tellerunden 1–50 verifisert mot faktisk tilbakeplassering' });
+    expect(check.status).toBe(201);
+    expect(check.body.data).toMatchObject({ code: 'C03', kind: 'check', status: 'open' });
+  });
+
+  it('milepæler: solo → 402 production_plan på mutasjon, GET er åpen; studio → 201', async () => {
+    const pool = makePool([
+      { match: /INSERT INTO narrative_milestones/, rows: (p) => [{ id: p[0], project_id: p[1], title: p[2], lane: p[3], start_at: p[4], due_at: p[5], status: p[6], owner_user_id: p[7], description: p[8], acceptance: p[9], evidence: p[10], sort_order: p[11], created_by: p[12], created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const soloGet = await auth(request(createApp(pool, { plan: 'solo' })).get(`${base}/milestones`));
+    expect(soloGet.status).toBe(200);
+    const solo = await auth(request(createApp(pool, { plan: 'solo' })).post(`${base}/milestones`)).send({ title: 'M1-varmtest', lane: 'engineering' });
+    expect(solo.status).toBe(402);
+    expect(solo.body.feature).toBe('production_plan');
+    const ok = await auth(request(createApp(pool)).post(`${base}/milestones`)).send({ title: 'M1-varmtest', lane: 'engineering', dueAt: '2026-10-15T00:00:00Z' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.data).toMatchObject({ title: 'M1-varmtest', lane: 'engineering', status: 'planned', sceneIds: [] });
+    const badLane = await auth(request(createApp(pool)).post(`${base}/milestones`)).send({ title: 'x', lane: 'marketing' });
+    expect(badLane.status).toBe(400);
+  });
+
+  it('plattformmål: POST → 201 med budsjetter/krav; ugyldig plattform → 400', async () => {
+    const pool = makePool([
+      { match: /INSERT INTO narrative_platform_targets/, rows: (p) => [{ id: p[0], project_id: p[1], name: p[2], platform: p[3], is_primary: p[4], engine: p[5], os_min: p[6], device_min: p[7], input_model: p[8], budgets: JSON.parse(String(p[9])), requirements: JSON.parse(String(p[10])), visual_direction: JSON.parse(String(p[11])), notes: p[12], sort_order: p[13], created_by: p[14], created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const res = await auth(request(createApp(pool)).post(`${base}/platform-targets`)).send({
+      name: 'iPad Pro M1 12,9″', platform: 'ipad', isPrimary: true, engine: 'SwiftUI/RealityKit', osMin: 'iPadOS 17', deviceMin: 'iPad Pro M1 8 GB',
+      budgets: { fps: 30, frameMs: 33.3, gpuMs: '25–28' },
+      requirements: [{ code: 'R1', text: 'Varmtest 30–45 min uten throttling', status: 'unverified', source: 'CINEMATIC-M1-QUALITY-v1' }],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ name: 'iPad Pro M1 12,9″', platform: 'ipad', isPrimary: true, budgets: { fps: 30 }, requirements: [{ code: 'R1', status: 'unverified' }] });
+    const bad = await auth(request(createApp(pool)).post(`${base}/platform-targets`)).send({ name: 'x', platform: 'gameboy' });
+    expect(bad.status).toBe(400);
+  });
+
+  it('GET overview → aggregat (scener per status/epoke, gater, oppgaver forfalt, plattformkrav)', async () => {
+    const pool = makePool([
+      { match: /SELECT status, era, start_at, due_at FROM narrative_scenes/, rows: [{ status: 'idea', era: '1797', start_at: null, due_at: null }, { status: 'approved', era: '1817', start_at: new Date(), due_at: null }] },
+      { match: /FROM narrative_scene_gates WHERE project_id = \$1 GROUP BY/, rows: [{ gate_key: 'greybox', status: 'passed', n: 1 }, { gate_key: 'audio', status: 'failed', n: 1 }] },
+      { match: /SELECT status, due_at FROM narrative_scene_tasks/, rows: [{ status: 'todo', due_at: '2020-01-01T00:00:00Z' }, { status: 'done', due_at: null }] },
+      { match: /FROM narrative_scene_reviews WHERE project_id = \$1 AND status = 'in_review'/, rows: [{ n: 1 }] },
+      { match: /SELECT name, requirements FROM narrative_platform_targets/, rows: [{ name: 'iPad Pro M1', requirements: [{ code: 'R1', text: 'x', status: 'verified' }, { code: 'R2', text: 'y', status: 'unverified' }] }] },
+    ]);
+    const res = await auth(request(createApp(pool)).get(`${base}/overview`));
+    expect(res.status).toBe(200);
+    expect(res.body.data.scenes).toMatchObject({ total: 2, byStatus: { idea: 1, approved: 1 }, byEra: { '1797': 1, '1817': 1 }, withoutDates: 1 });
+    expect(res.body.data.gates).toMatchObject({ total: 12, passed: 1, failed: 1 });
+    expect(res.body.data.tasks).toEqual({ open: 1, overdue: 1, done: 1 });
+    expect(res.body.data.reviews).toEqual({ open: 1 });
+    expect(res.body.data.platform).toEqual({ requirements: 2, verified: 1, primaryName: 'iPad Pro M1' });
+  });
+
+  it('innboks: GET filtrerer narrative-varsler; POST :id/read → 404 for fremmed varsel, 200 ellers; read-all teller', async () => {
+    const pool = makePool([
+      { match: /SELECT n\.\*, rd\.read_at FROM role_room_project_notifications/, rows: [{ id: 'n1', event_type: 'narrative_scene_review_requested', title: 'Review: P01', message: null, linked_entity_type: 'narrative_scene', linked_entity_id: 'nsc_1', created_by_user_id: 'u2', created_at: new Date(), updated_at: new Date(), read_at: null }] },
+      { match: /SELECT id FROM role_room_project_notifications WHERE id = \$1 AND project_id = \$2/, rows: (p) => (p[0] === 'n1' ? [{ id: 'n1' }] : []) },
+      { match: /INSERT INTO role_room_project_notification_reads \(notification_id, user_id, read_at\)\s+SELECT/, rows: [{}, {}] },
+    ]);
+    const list = await auth(request(createApp(pool)).get(`${base}/inbox`));
+    expect(list.status).toBe(200);
+    expect(list.body.data[0]).toMatchObject({ id: 'n1', eventType: 'narrative_scene_review_requested', readAt: null });
+    const listSql = String(pool.query.mock.calls.find(([s]) => /rd\.read_at FROM role_room_project_notifications/.test(String(s)))?.[0]);
+    expect(listSql).toMatch(/event_type LIKE 'narrative_%'/);
+    const foreign = await auth(request(createApp(pool)).post(`${base}/inbox/n_fremmed/read`));
+    expect(foreign.status).toBe(404);
+    const ok = await auth(request(createApp(pool)).post(`${base}/inbox/n1/read`));
+    expect(ok.status).toBe(200);
+    const all = await auth(request(createApp(pool)).post(`${base}/inbox/read-all`));
+    expect(all.status).toBe(200);
+    expect(all.body.data.marked).toBe(2);
+  });
+
+  it('snapshot v2: manusfelt inngår i hashen; v1-runde avgjøres fortsatt med v1-hash', async () => {
+    const { hashSceneSnapshot, buildSceneSnapshot, mapSceneRow } = await import('./role-room-narrative-service.js');
+    const scene = mapSceneRow(sceneRow());
+    const pool = makePool([{ match: /FROM narrative_scene_lines WHERE scene_id/, rows: [] }]);
+    const v1 = await buildSceneSnapshot(pool, PROJECT_ID, scene, [], [], { version: 1 });
+    const v2 = await buildSceneSnapshot(pool, PROJECT_ID, scene, [], []);
+    expect(v1).not.toHaveProperty('v');
+    expect(v2).toMatchObject({ v: 2, era: '1797', script: { beforeState: 'Fire barn på vei hjem' } });
+    const v2b = await buildSceneSnapshot(pool, PROJECT_ID, { ...scene, beforeState: 'Endret' }, [], []);
+    expect(hashSceneSnapshot(v2b)).not.toBe(hashSceneSnapshot(v2));
+    // v1-hash er upåvirket av manusfeltene (åpne runder fra før Fase 7 forblir gyldige).
+    const v1b = await buildSceneSnapshot(pool, PROJECT_ID, { ...scene, beforeState: 'Endret' }, [], [], { version: 1 });
+    expect(hashSceneSnapshot(v1b)).toBe(hashSceneSnapshot(v1));
   });
 });

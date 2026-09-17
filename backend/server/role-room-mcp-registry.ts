@@ -29,6 +29,7 @@ import {
   createBoard as createNarrativeBoard,
   listScenes as listNarrativeScenes,
   getSceneDetail as getNarrativeSceneDetail,
+  getProjectOverview as getNarrativeProjectOverview,
   createElement as createNarrativeElement,
 } from "./role-room-narrative-service.js";
 import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
@@ -673,6 +674,52 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
           id: r.id, round: r.round, status: r.status, requestedBy: r.requestedBy, requestedAt: r.requestedAt, requestNote: r.requestNote,
           decidedByLabel: r.decidedByLabel, decidedAt: r.decidedAt, decisionNote: r.decisionNote,
         })),
+      };
+    },
+  },
+
+  {
+    name: "rr_get_scene_card",
+    description: "Hele scenekortet for én scene i Story Graph (Fase 7): manusfelt (Før/Handling/Kontroll/Etter/Lyd/Endring/Bro), epoke, episode, kildemerker, replikker (cue-ID, taler, type, EN/NB, opptaksstatus), leveransegater med bevis, koblinger, rammer, oppgaver og review-runder. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID"), sceneId: STR("Scene-ID (nsc_…)") }, ["projectId", "sceneId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const sceneId = typeof args.sceneId === "string" ? args.sceneId.trim() : "";
+      if (!sceneId) throw new McpToolError(-32602, "sceneId er påkrevd.");
+      const detail = await getNarrativeSceneDetail(pool, projectId, sceneId);
+      if (!detail) throw new McpToolError(-32602, "Scenen finnes ikke i prosjektet.");
+      const s = detail.scene;
+      return {
+        scene: {
+          id: s.id, code: s.code, workingId: s.workingId, title: s.title, subtitle: s.subtitle, status: s.status, era: s.era, episodeId: s.episodeId,
+          location: s.location, challenge: s.challenge, gameplayMechanic: s.gameplayMechanic, environment: s.environment,
+          beforeState: s.beforeState, action: s.action, control: s.control, afterState: s.afterState, audio: s.audio,
+          changeNote: s.changeNote, bridge: s.bridge, timeNote: s.timeNote, knowledge: s.knowledge, sourceRefs: s.sourceRefs,
+          assigneeUserId: s.assigneeUserId, startAt: s.startAt, dueAt: s.dueAt,
+        },
+        lines: detail.lines.map((l) => ({ id: l.id, cueId: l.cueId, speakerLabel: l.speakerLabel, speakerComponentId: l.speakerComponentId, perspective: l.perspective, sourceType: l.sourceType, textEn: l.textEn, textNb: l.textNb, recordingStatus: l.recordingStatus, note: l.note })),
+        gates: detail.gates.map((g) => ({ gateKey: g.gateKey, status: g.status, evidence: g.evidence, evidenceRefs: g.evidenceRefs, checkedAt: g.checkedAt })),
+        links: detail.links, frames: detail.frames.map((f) => ({ id: f.id, assetId: f.assetId, externalUrl: f.externalUrl, caption: f.caption })),
+        tasks: detail.tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, assigneeUserId: t.assigneeUserId, dueAt: t.dueAt })),
+        reviews: detail.reviews.map((r) => ({ id: r.id, round: r.round, status: r.status, requestedAt: r.requestedAt, decidedAt: r.decidedAt, decidedByLabel: r.decidedByLabel, decisionNote: r.decisionNote })),
+        currentSnapshotHash: detail.currentSnapshotHash,
+      };
+    },
+  },
+  {
+    name: "rr_project_overview",
+    description: "Prosjektoversikt for Story Graph (Hjem, Fase 7): scener per status/epoke, gater bestått/feilet, oppgaver åpne/forfalt, åpne review-runder, replikker, åpne spørsmål, plattformkrav verifisert, episoder med fremdrift, milepæler og siste aktivitet. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const o = await getNarrativeProjectOverview(pool, projectId, ctx.userId);
+      return {
+        scenes: o.scenes, gates: o.gates, tasks: o.tasks, reviews: o.reviews, lines: o.lines, questions: o.questions, platform: o.platform,
+        episodes: o.episodes,
+        milestones: o.milestones.map((m) => ({ id: m.id, title: m.title, lane: m.lane, status: m.status, startAt: m.startAt, dueAt: m.dueAt, sceneIds: m.sceneIds })),
+        activity: o.activity,
       };
     },
   },

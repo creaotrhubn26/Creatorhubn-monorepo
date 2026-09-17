@@ -27,7 +27,8 @@ export type BillingPeriod = 'monthly' | 'yearly' | 'tester' | 'comp';
 /** Feature-nøkler Story Graph gater på (speiler backend game-billing-service). */
 export type GameFeature =
   | 'play' | 'export_json' | 'export_md' | 'share_links' | 'export_html'
-  | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages' | 'export_pdf' | 'scene_review';
+  | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages' | 'export_pdf' | 'scene_review'
+  | 'production_plan' | 'team_seats' | 'guest_reviewers';
 
 export const GAME_FEATURE_LABEL: Record<GameFeature, string> = {
   play: 'Play Mode med debugger',
@@ -41,6 +42,9 @@ export const GAME_FEATURE_LABEL: Record<GameFeature, string> = {
   runtime_packages: 'Runtime-pakker for Unity og Godot',
   export_pdf: 'PDF-eksport (lesbart manus)',
   scene_review: 'Review-runder med godkjenning per scene',
+  production_plan: 'Produksjonsplan med milepæler og Gantt',
+  team_seats: 'Team, roller og seter',
+  guest_reviewers: 'Gjeste-reviewere uten konto',
 };
 
 export interface GamePlan {

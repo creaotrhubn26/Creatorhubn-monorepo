@@ -104,6 +104,9 @@ export interface NarrativeConnection {
   i18n: Record<string, { labelHtml?: string }>;
 }
 
+export type NarrativeComponentKind = 'character' | 'location' | 'item' | 'faction' | 'other';
+export const NARRATIVE_COMPONENT_KINDS: readonly NarrativeComponentKind[] = ['character', 'location', 'item', 'faction', 'other'];
+
 export interface NarrativeComponent {
   id: string;
   projectId: string;
@@ -112,6 +115,10 @@ export interface NarrativeComponent {
   coverAssetId: string | null;
   customId: string | null;
   sortOrder: number;
+  /** Fase 7: karakter / lokasjon / gjenstand / fraksjon / annet. */
+  kind: NarrativeComponentKind;
+  /** Fase 7: typet profil per kind (drivkraft, forfatterfasit, minnespor, epoker …). */
+  profile: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -335,6 +342,8 @@ export function mapComponentRow(row: Row): NarrativeComponent {
     coverAssetId: strOrNull(row.cover_asset_id),
     customId: strOrNull(row.custom_id),
     sortOrder: num(row.sort_order),
+    kind: (NARRATIVE_COMPONENT_KINDS as readonly string[]).includes(String(row.kind)) ? String(row.kind) as NarrativeComponentKind : 'other',
+    profile: jsonObject(row.profile),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
   };
@@ -712,14 +721,16 @@ export interface ComponentInput {
   coverAssetId?: string | null;
   customId?: string | null;
   sortOrder?: number;
+  kind?: NarrativeComponentKind;
+  profile?: Record<string, unknown>;
 }
 export type ComponentPatch = Partial<ComponentInput>;
 
 export async function createComponent(db: Queryable, projectId: string, userId: string, input: ComponentInput): Promise<NarrativeComponent> {
   const { rows } = await db.query(
-    `INSERT INTO narrative_components (id, project_id, name, folder_path, cover_asset_id, custom_id, sort_order, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [generateId('ncp'), projectId, input.name, input.folderPath ?? '', input.coverAssetId ?? null, input.customId ?? null, input.sortOrder ?? 0, userId],
+    `INSERT INTO narrative_components (id, project_id, name, folder_path, cover_asset_id, custom_id, sort_order, created_by, kind, profile)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING *`,
+    [generateId('ncp'), projectId, input.name, input.folderPath ?? '', input.coverAssetId ?? null, input.customId ?? null, input.sortOrder ?? 0, userId, input.kind ?? 'other', JSON.stringify(input.profile ?? {})],
   );
   return mapComponentRow(rows[0] as Row);
 }
@@ -732,12 +743,15 @@ export async function patchComponent(db: Queryable, projectId: string, id: strin
        cover_asset_id = CASE WHEN $5::boolean THEN $6 ELSE cover_asset_id END,
        custom_id = CASE WHEN $7::boolean THEN $8 ELSE custom_id END,
        sort_order = COALESCE($9, sort_order),
+       kind = COALESCE($10, kind),
+       profile = CASE WHEN $11::boolean THEN $12::jsonb ELSE profile END,
        updated_at = now()
      WHERE id = $1 AND project_id = $2 RETURNING *`,
     [
       id, projectId, patch.name ?? null, patch.folderPath ?? null,
       patch.coverAssetId !== undefined, patch.coverAssetId ?? null,
       patch.customId !== undefined, patch.customId ?? null, patch.sortOrder ?? null,
+      patch.kind ?? null, patch.profile !== undefined, JSON.stringify(patch.profile ?? {}),
     ],
   );
   return rows[0] ? mapComponentRow(rows[0] as Row) : null;
@@ -745,6 +759,7 @@ export async function patchComponent(db: Queryable, projectId: string, id: strin
 
 export async function deleteComponent(db: Queryable, projectId: string, id: string): Promise<boolean> {
   await db.query(`DELETE FROM narrative_attributes WHERE project_id = $1 AND owner_kind = 'component' AND owner_id = $2`, [projectId, id]);
+  await db.query(`DELETE FROM narrative_scene_links WHERE project_id = $1 AND owner_kind = 'component' AND owner_id = $2`, [projectId, id]);
   const r = await db.query(`DELETE FROM narrative_components WHERE id = $1 AND project_id = $2`, [id, projectId]);
   return (r.rowCount ?? 0) > 0;
 }
@@ -1033,9 +1048,9 @@ export async function replaceGraph(pool: Pool, projectId: string, userId: string
     }
     for (const c of graph.components ?? []) {
       await client.query(
-        `INSERT INTO narrative_components (id, project_id, name, folder_path, cover_asset_id, custom_id, sort_order, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [c.id, projectId, c.name, c.folderPath ?? '', c.coverAssetId, c.customId, c.sortOrder ?? 0, userId],
+        `INSERT INTO narrative_components (id, project_id, name, folder_path, cover_asset_id, custom_id, sort_order, created_by, kind, profile)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+        [c.id, projectId, c.name, c.folderPath ?? '', c.coverAssetId, c.customId, c.sortOrder ?? 0, userId, c.kind ?? 'other', JSON.stringify(c.profile ?? {})],
       );
     }
     for (const e of graph.elements ?? []) {
@@ -1092,6 +1107,15 @@ export async function replaceGraph(pool: Pool, projectId: string, userId: string
       [projectId, s?.title ?? null, s?.startingElementId ?? null, s?.coverAssetId ?? null, userId,
         JSON.stringify(normalizeLocales(s?.locales ?? ['nb'])), JSON.stringify(s?.i18n ?? {})],
     );
+    // Fase 7: scene-lenker som peker på elementer/brett/komponenter som ikke
+    // lenger finnes (import genererer nye ider) ryddes så kortene ikke viser «(slettet)».
+    await client.query(
+      `DELETE FROM narrative_scene_links l WHERE l.project_id = $1 AND (
+         (l.owner_kind = 'element' AND NOT EXISTS (SELECT 1 FROM narrative_elements e WHERE e.id = l.owner_id AND e.project_id = $1))
+         OR (l.owner_kind = 'board' AND NOT EXISTS (SELECT 1 FROM narrative_boards b WHERE b.id = l.owner_id AND b.project_id = $1))
+         OR (l.owner_kind = 'component' AND NOT EXISTS (SELECT 1 FROM narrative_components c WHERE c.id = l.owner_id AND c.project_id = $1)))`,
+      [projectId],
+    );
     if (tx) await client.query('COMMIT');
   } catch (err) {
     if (tx) await client.query('ROLLBACK').catch(() => undefined);
@@ -1137,11 +1161,17 @@ export interface ImportOutcome {
  * egne feilklasser (Arcweave/Twee/InkImportError) som ruten svarer 400 på.
  */
 export async function importProject(pool: Pool, projectId: string, userId: string, input: ImportInput): Promise<ImportOutcome> {
-  const parsed = input.format === 'twee'
-    ? fromTwee(input.source, { projectId, title: input.title ?? undefined })
-    : input.format === 'ink'
-      ? fromInk(input.source, { projectId, title: input.title ?? undefined })
-      : fromArcweaveProject(input.project, { projectId });
+  // Eksplisitt innsnevring: prosjektets tsconfig snevrer ikke inn den
+  // diskriminerte unionen i et betinget uttrykk her.
+  let parsed: ReturnType<typeof fromTwee> | ReturnType<typeof fromInk> | ReturnType<typeof fromArcweaveProject>;
+  if (input.format === 'twee' || input.format === 'ink') {
+    const text = input as Extract<ImportInput, { source: string }>;
+    parsed = input.format === 'twee'
+      ? fromTwee(text.source, { projectId, title: text.title ?? undefined })
+      : fromInk(text.source, { projectId, title: text.title ?? undefined });
+  } else {
+    parsed = fromArcweaveProject((input as Extract<ImportInput, { format: 'arcweave' }>).project, { projectId });
+  }
   const backup = await createRevision(pool, projectId, userId, `Før import ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`);
   await replaceGraph(pool, projectId, userId, parsed.graph as NarrativeGraph);
   return {
@@ -1354,13 +1384,20 @@ export async function getPublicStory(db: Queryable, rawToken: string): Promise<P
 export type NarrativeSceneStatus = 'idea' | 'in_progress' | 'in_review' | 'changes_requested' | 'approved' | 'implemented';
 export type NarrativeSceneTaskStatus = 'todo' | 'doing' | 'done';
 export type NarrativeSceneReviewStatus = 'in_review' | 'changes_requested' | 'approved' | 'superseded';
-export type NarrativeSceneLinkKind = 'element' | 'board';
+export type NarrativeSceneLinkKind = 'element' | 'board' | 'component';
 
 export const NARRATIVE_SCENE_STATUSES: readonly NarrativeSceneStatus[] =
   ['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented'];
 export const NARRATIVE_SCENE_TASK_STATUSES: readonly NarrativeSceneTaskStatus[] = ['todo', 'doing', 'done'];
 /** Scenekode: 1–3 bokstaver + 1–4 sifre (speiler CHECK-en i 0610). */
-export const NARRATIVE_SCENE_CODE_RE = /^[A-Za-z]{1,3}[0-9]{1,4}$/;
+export const NARRATIVE_SCENE_CODE_RE = /^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?$/;
+export type NarrativeSceneEra = 'pre' | '1797' | '1802' | '1817' | 'other';
+export const NARRATIVE_SCENE_ERAS: readonly NarrativeSceneEra[] = ['pre', '1797', '1802', '1817', 'other'];
+export type NarrativeSourceTag = 'W' | 'K' | 'U' | 'A' | 'E' | 'T';
+export const NARRATIVE_SOURCE_TAGS: readonly NarrativeSourceTag[] = ['W', 'K', 'U', 'A', 'E', 'T'];
+export interface NarrativeSourceRef { tag: NarrativeSourceTag; ref: string; field?: string; note?: string }
+/** Seks kunnskapsfelt per scene (SCENE-PLAN §E). */
+export interface NarrativeSceneKnowledge { actualPast?: string; recollection?: string; ownerPerspective?: string; othersObserve?: string; audienceKnows?: string; saidAloud?: string }
 
 export interface NarrativeScene {
   id: string;
@@ -1380,6 +1417,21 @@ export interface NarrativeScene {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  // Fase 7: scenekort v2
+  beforeState: string;
+  action: string;
+  control: string;
+  afterState: string;
+  audio: string;
+  changeNote: string;
+  bridge: string;
+  timeNote: string;
+  knowledge: NarrativeSceneKnowledge;
+  era: NarrativeSceneEra;
+  episodeId: string | null;
+  startAt: string | null;
+  sourceRefs: NarrativeSourceRef[];
+  workingId: string | null;
 }
 
 export interface NarrativeSceneLink {
@@ -1444,6 +1496,9 @@ export interface NarrativeSceneDetail {
   frames: NarrativeSceneFrame[];
   tasks: NarrativeSceneTask[];
   reviews: NarrativeSceneReview[];
+  /** Fase 7 */
+  gates: NarrativeSceneGate[];
+  lines: NarrativeSceneLine[];
   /** Hash av scenen slik den er nå — klienten sammenligner med åpen rundes hash. */
   currentSnapshotHash: string;
 }
@@ -1470,7 +1525,7 @@ export class SceneReviewClosedError extends Error {
   constructor(readonly status: NarrativeSceneReviewStatus) { super('Runden er allerede avgjort.'); }
 }
 
-function mapSceneRow(row: Row): NarrativeScene {
+export function mapSceneRow(row: Row): NarrativeScene {
   return {
     id: String(row.id),
     projectId: String(row.project_id),
@@ -1489,7 +1544,39 @@ function mapSceneRow(row: Row): NarrativeScene {
     createdBy: strOrNull(row.created_by),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
+    beforeState: String(row.before_state ?? ''),
+    action: String(row.action ?? ''),
+    control: String(row.control ?? ''),
+    afterState: String(row.after_state ?? ''),
+    audio: String(row.audio ?? ''),
+    changeNote: String(row.change_note ?? ''),
+    bridge: String(row.bridge ?? ''),
+    timeNote: String(row.time_note ?? ''),
+    knowledge: jsonObject(row.knowledge) as NarrativeSceneKnowledge,
+    era: (NARRATIVE_SCENE_ERAS as readonly string[]).includes(String(row.era)) ? String(row.era) as NarrativeSceneEra : 'other',
+    episodeId: strOrNull(row.episode_id),
+    startAt: isoTsOrNull(row.start_at),
+    sourceRefs: normalizeSourceRefs(row.source_refs),
+    workingId: strOrNull(row.working_id),
   };
+}
+
+export function normalizeSourceRefs(value: unknown): NarrativeSourceRef[] {
+  const raw = typeof value === 'string' ? jsonValue(value) : value;
+  if (!Array.isArray(raw)) return [];
+  const out: NarrativeSourceRef[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const tag = String(rec.tag ?? '').toUpperCase();
+    const ref = typeof rec.ref === 'string' ? rec.ref.trim() : '';
+    if (!(NARRATIVE_SOURCE_TAGS as readonly string[]).includes(tag) || !ref) continue;
+    const entry: NarrativeSourceRef = { tag: tag as NarrativeSourceTag, ref };
+    if (typeof rec.field === 'string' && rec.field) entry.field = rec.field;
+    if (typeof rec.note === 'string' && rec.note) entry.note = rec.note;
+    out.push(entry);
+  }
+  return out;
 }
 
 function mapSceneLinkRow(row: Row): NarrativeSceneLink {
@@ -1608,21 +1695,27 @@ export async function getScene(db: Queryable, projectId: string, id: string): Pr
 export async function getSceneDetail(db: Queryable, projectId: string, id: string): Promise<NarrativeSceneDetail | null> {
   const scene = await getScene(db, projectId, id);
   if (!scene) return null;
-  const [links, frames, tasks, reviews] = await Promise.all([
+  const [links, frames, tasks, reviews, gates] = await Promise.all([
     db.query(`SELECT * FROM narrative_scene_links WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, owner_kind, owner_id`, [id, projectId]),
     db.query(`SELECT * FROM narrative_scene_frames WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, created_at`, [id, projectId]),
     db.query(`SELECT * FROM narrative_scene_tasks WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, created_at`, [id, projectId]),
     db.query(`SELECT * FROM narrative_scene_reviews WHERE scene_id = $1 AND project_id = $2 ORDER BY round DESC`, [id, projectId]),
+    db.query(`SELECT * FROM narrative_scene_gates WHERE scene_id = $1 AND project_id = $2`, [id, projectId]),
   ]);
   const mappedLinks = (links.rows as Row[]).map(mapSceneLinkRow);
   const mappedFrames = (frames.rows as Row[]).map(mapSceneFrameRow);
-  const snapshot = await buildSceneSnapshot(db, projectId, scene, mappedFrames, mappedLinks);
+  const mappedReviews = (reviews.rows as Row[]).map(mapSceneReviewRow);
+  // Gjeldende hash bygges med samme versjon som den åpne runden (ellers v2).
+  const openRaw = (reviews.rows as Row[]).find((r) => r.status === 'in_review');
+  const snapshot = await buildSceneSnapshot(db, projectId, scene, mappedFrames, mappedLinks, { version: openRaw ? snapshotVersionOf(openRaw.snapshot) : 2 });
   return {
     scene,
     links: mappedLinks,
     frames: mappedFrames,
     tasks: (tasks.rows as Row[]).map(mapSceneTaskRow),
-    reviews: (reviews.rows as Row[]).map(mapSceneReviewRow),
+    reviews: mappedReviews,
+    gates: fillGates(id, projectId, (gates.rows as Row[]).map(mapSceneGateRow)),
+    lines: await listSceneLines(db, projectId, id),
     currentSnapshotHash: hashSceneSnapshot(snapshot),
   };
 }
@@ -1640,6 +1733,21 @@ export interface SceneInput {
   dueAt?: string | null;
   heroAssetId?: string | null;
   sortOrder?: number;
+  // Fase 7
+  beforeState?: string;
+  action?: string;
+  control?: string;
+  afterState?: string;
+  audio?: string;
+  changeNote?: string;
+  bridge?: string;
+  timeNote?: string;
+  knowledge?: NarrativeSceneKnowledge;
+  era?: NarrativeSceneEra;
+  episodeId?: string | null;
+  startAt?: string | null;
+  sourceRefs?: NarrativeSourceRef[];
+  workingId?: string | null;
 }
 export type ScenePatch = SceneInput;
 
@@ -1656,13 +1764,20 @@ export async function createScene(db: Queryable, projectId: string, userId: stri
     const { rows } = await db.query(
       `INSERT INTO narrative_scenes
          (id, project_id, code, title, subtitle, location, challenge, gameplay_mechanic, environment,
-          status, assignee_user_id, due_at, hero_asset_id, sort_order, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+          status, assignee_user_id, due_at, hero_asset_id, sort_order, created_by,
+          before_state, action, control, after_state, audio, change_note, bridge, time_note, knowledge,
+          era, episode_id, start_at, source_refs, working_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+               $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25, $26, $27, $28::jsonb, $29) RETURNING *`,
       [
         generateId('nsc'), projectId, code, input.title ?? '', input.subtitle ?? '', input.location ?? '',
         input.challenge ?? '', input.gameplayMechanic ?? '', input.environment ?? '',
         input.status ?? 'idea', input.assigneeUserId ?? null, input.dueAt ?? null, input.heroAssetId ?? null,
         sortOrder, userId,
+        input.beforeState ?? '', input.action ?? '', input.control ?? '', input.afterState ?? '', input.audio ?? '',
+        input.changeNote ?? '', input.bridge ?? '', input.timeNote ?? '', JSON.stringify(input.knowledge ?? {}),
+        input.era ?? 'other', input.episodeId ?? null, input.startAt ?? null, JSON.stringify(normalizeSourceRefs(input.sourceRefs ?? [])),
+        input.workingId ?? null,
       ],
     );
     return mapSceneRow(rows[0] as Row);
@@ -1689,6 +1804,20 @@ export async function patchScene(db: Queryable, projectId: string, id: string, p
          due_at = CASE WHEN $13::boolean THEN $14::timestamptz ELSE due_at END,
          hero_asset_id = CASE WHEN $15::boolean THEN $16 ELSE hero_asset_id END,
          sort_order = COALESCE($17, sort_order),
+         before_state = COALESCE($18, before_state),
+         action = COALESCE($19, action),
+         control = COALESCE($20, control),
+         after_state = COALESCE($21, after_state),
+         audio = COALESCE($22, audio),
+         change_note = COALESCE($23, change_note),
+         bridge = COALESCE($24, bridge),
+         time_note = COALESCE($25, time_note),
+         knowledge = CASE WHEN $26::boolean THEN $27::jsonb ELSE knowledge END,
+         era = COALESCE($28, era),
+         episode_id = CASE WHEN $29::boolean THEN $30 ELSE episode_id END,
+         start_at = CASE WHEN $31::boolean THEN $32::timestamptz ELSE start_at END,
+         source_refs = CASE WHEN $33::boolean THEN $34::jsonb ELSE source_refs END,
+         working_id = CASE WHEN $35::boolean THEN $36 ELSE working_id END,
          updated_at = now()
        WHERE id = $1 AND project_id = $2 RETURNING *`,
       [
@@ -1698,6 +1827,14 @@ export async function patchScene(db: Queryable, projectId: string, id: string, p
         patch.dueAt !== undefined, patch.dueAt ?? null,
         patch.heroAssetId !== undefined, patch.heroAssetId ?? null,
         patch.sortOrder ?? null,
+        patch.beforeState ?? null, patch.action ?? null, patch.control ?? null, patch.afterState ?? null, patch.audio ?? null,
+        patch.changeNote ?? null, patch.bridge ?? null, patch.timeNote ?? null,
+        patch.knowledge !== undefined, JSON.stringify(patch.knowledge ?? {}),
+        patch.era ?? null,
+        patch.episodeId !== undefined, patch.episodeId ?? null,
+        patch.startAt !== undefined, patch.startAt ?? null,
+        patch.sourceRefs !== undefined, JSON.stringify(normalizeSourceRefs(patch.sourceRefs ?? [])),
+        patch.workingId !== undefined, patch.workingId ?? null,
       ],
     );
     return rows[0] ? mapSceneRow(rows[0] as Row) : null;
@@ -1739,6 +1876,11 @@ export async function setSceneLinks(db: Queryable, projectId: string, sceneId: s
   if (boardIds.length) {
     const { rows } = await db.query(`SELECT id FROM narrative_boards WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, boardIds]);
     for (const r of rows as Row[]) valid.add(`board:${String(r.id)}`);
+  }
+  const componentIds = links.filter((l) => l.ownerKind === 'component').map((l) => l.ownerId);
+  if (componentIds.length) {
+    const { rows } = await db.query(`SELECT id FROM narrative_components WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, componentIds]);
+    for (const r of rows as Row[]) valid.add(`component:${String(r.id)}`);
   }
   await db.query(`DELETE FROM narrative_scene_links WHERE scene_id = $1 AND project_id = $2`, [sceneId, projectId]);
   const out: NarrativeSceneLink[] = [];
@@ -1880,7 +2022,11 @@ export async function deleteSceneTask(db: Queryable, projectId: string, sceneId:
 
 // ─── Review-runder ───────────────────────────────────────────────────
 
+export type SceneSnapshotVersion = 1 | 2;
+
 export interface SceneSnapshot {
+  /** v1 = Fase 6-form; v2 (Fase 7) = + manusfelt, kildemerker, epoke og replikker. Mangler = 1. */
+  v?: SceneSnapshotVersion;
   code: string;
   title: string;
   subtitle: string;
@@ -1891,6 +2037,11 @@ export interface SceneSnapshot {
   heroAssetId: string | null;
   frames: Array<{ assetId: string | null; externalUrl: string | null; caption: string }>;
   links: Array<{ ownerKind: NarrativeSceneLinkKind; ownerId: string; title: string }>;
+  // v2
+  script?: { beforeState: string; action: string; control: string; afterState: string; audio: string; changeNote: string; bridge: string; timeNote: string; knowledge: NarrativeSceneKnowledge };
+  era?: NarrativeSceneEra;
+  sourceRefs?: NarrativeSourceRef[];
+  lines?: Array<{ cueId: string; speakerLabel: string; textEn: string; textNb: string; sourceType: string; perspective: string }>;
 }
 
 /** Stabil JSON (sorterte nøkler) → sha256. Samme input gir alltid samme hash. */
@@ -1905,13 +2056,25 @@ export function hashSceneSnapshot(snapshot: SceneSnapshot): string {
   return createHash('sha256').update(JSON.stringify(stable(snapshot))).digest('hex');
 }
 
-/** Snapshot = felter + rammer + lenkede elementers/bretts titler (slettet mål → «(slettet)»). */
+/**
+ * Snapshot = felter + rammer + lenkede elementers/bretts/komponenters titler
+ * (slettet mål → «(slettet)»). v2 tar med manusfelt, kildemerker, epoke og
+ * replikker; gater og oppgaver inngår ikke (QA-bevis endres etter godkjenning).
+ * Versjonen følger runden som ble sendt, så åpne v1-runder avgjøres riktig.
+ */
 export async function buildSceneSnapshot(
   db: Queryable, projectId: string, scene: NarrativeScene, frames: NarrativeSceneFrame[], links: NarrativeSceneLink[],
+  options: { version?: SceneSnapshotVersion } = {},
 ): Promise<SceneSnapshot> {
+  const version = options.version ?? 2;
   const elementIds = links.filter((l) => l.ownerKind === 'element').map((l) => l.ownerId);
   const boardIds = links.filter((l) => l.ownerKind === 'board').map((l) => l.ownerId);
+  const componentIds = links.filter((l) => l.ownerKind === 'component').map((l) => l.ownerId);
   const titles = new Map<string, string>();
+  if (componentIds.length) {
+    const { rows } = await db.query(`SELECT id, name FROM narrative_components WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, componentIds]);
+    for (const r of rows as Row[]) titles.set(`component:${String(r.id)}`, String(r.name ?? ''));
+  }
   if (elementIds.length) {
     const { rows } = await db.query(`SELECT id, title_html FROM narrative_elements WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, elementIds]);
     for (const r of rows as Row[]) titles.set(`element:${String(r.id)}`, String(r.title_html ?? ''));
@@ -1920,7 +2083,7 @@ export async function buildSceneSnapshot(
     const { rows } = await db.query(`SELECT id, name FROM narrative_boards WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, boardIds]);
     for (const r of rows as Row[]) titles.set(`board:${String(r.id)}`, String(r.name ?? ''));
   }
-  return {
+  const base: SceneSnapshot = {
     code: scene.code,
     title: scene.title,
     subtitle: scene.subtitle,
@@ -1932,14 +2095,33 @@ export async function buildSceneSnapshot(
     frames: frames.map((f) => ({ assetId: f.assetId, externalUrl: f.externalUrl, caption: f.caption })),
     links: links.map((l) => ({ ownerKind: l.ownerKind, ownerId: l.ownerId, title: titles.get(`${l.ownerKind}:${l.ownerId}`) ?? '(slettet)' })),
   };
+  if (version === 1) return base;
+  const lines = await listSceneLines(db, projectId, scene.id);
+  return {
+    ...base,
+    v: 2,
+    script: {
+      beforeState: scene.beforeState, action: scene.action, control: scene.control, afterState: scene.afterState, audio: scene.audio,
+      changeNote: scene.changeNote, bridge: scene.bridge, timeNote: scene.timeNote, knowledge: scene.knowledge,
+    },
+    era: scene.era,
+    sourceRefs: scene.sourceRefs,
+    lines: lines.map((l) => ({ cueId: l.cueId, speakerLabel: l.speakerLabel, textEn: l.textEn, textNb: l.textNb, sourceType: l.sourceType, perspective: l.perspective })),
+  };
 }
 
-async function currentSceneSnapshot(db: Queryable, projectId: string, scene: NarrativeScene): Promise<SceneSnapshot> {
+async function currentSceneSnapshot(db: Queryable, projectId: string, scene: NarrativeScene, version: SceneSnapshotVersion = 2): Promise<SceneSnapshot> {
   const [links, frames] = await Promise.all([
     db.query(`SELECT * FROM narrative_scene_links WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, owner_kind, owner_id`, [scene.id, projectId]),
     db.query(`SELECT * FROM narrative_scene_frames WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, created_at`, [scene.id, projectId]),
   ]);
-  return buildSceneSnapshot(db, projectId, scene, (frames.rows as Row[]).map(mapSceneFrameRow), (links.rows as Row[]).map(mapSceneLinkRow));
+  return buildSceneSnapshot(db, projectId, scene, (frames.rows as Row[]).map(mapSceneFrameRow), (links.rows as Row[]).map(mapSceneLinkRow), { version });
+}
+
+/** Versjonen en lagret runde ble bygget med (rader fra før Fase 7 mangler `v`). */
+function snapshotVersionOf(raw: unknown): SceneSnapshotVersion {
+  const v = jsonObject(raw).v;
+  return v === 2 ? 2 : 1;
 }
 
 export async function listSceneReviews(db: Queryable, projectId: string, sceneId: string): Promise<NarrativeSceneReview[]> {
@@ -1999,7 +2181,7 @@ export async function decideSceneReview(
   if (review.status !== 'in_review') throw new SceneReviewClosedError(review.status);
   const scene = await getScene(db, projectId, sceneId);
   if (!scene) return null;
-  const currentHash = hashSceneSnapshot(await currentSceneSnapshot(db, projectId, scene));
+  const currentHash = hashSceneSnapshot(await currentSceneSnapshot(db, projectId, scene, snapshotVersionOf((rows[0] as Row).snapshot)));
   if (currentHash !== review.snapshotHash) throw new SceneReviewStaleError(currentHash, review.snapshotHash);
   if (input.expectedSnapshotHash && input.expectedSnapshotHash !== review.snapshotHash) {
     throw new SceneReviewStaleError(currentHash, review.snapshotHash);
@@ -2050,4 +2232,859 @@ export async function listMembersLite(db: Queryable, projectId: string): Promise
     profileImageUrl: strOrNull(r.profile_image_url),
     isOwner: r.is_owner === true,
   }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Fase 7: Produksjons-OS — gater, replikker, episoder, åpne spørsmål,
+//  kilder, milepæler, plattformmål, oversikt og innboks
+//  (tabeller i 0611_narrative_production_os.sql)
+// ═══════════════════════════════════════════════════════════════════════
+
+export type NarrativeGateKey = 'script_coverage' | 'greybox' | 'characters_animation' | 'playthrough' | 'picture' | 'audio';
+export const NARRATIVE_GATE_KEYS: readonly NarrativeGateKey[] = ['script_coverage', 'greybox', 'characters_animation', 'playthrough', 'picture', 'audio'];
+export type NarrativeGateStatus = 'not_started' | 'in_progress' | 'passed' | 'failed';
+export const NARRATIVE_GATE_STATUSES: readonly NarrativeGateStatus[] = ['not_started', 'in_progress', 'passed', 'failed'];
+export type NarrativeLineSourceType = 'E' | 'T' | 'E+T' | 'U' | 'A';
+export type NarrativeLineRecordingStatus = 'none' | 'needs_take' | 'recorded' | 'approved';
+export type NarrativeEpisodeStatus = 'draft' | 'locked';
+export type NarrativeQuestionKind = 'question' | 'check';
+export type NarrativeQuestionStatus = 'open' | 'done' | 'dropped';
+export type NarrativeSourceKind = 'docx' | 'pdf' | 'md' | 'txt' | 'other';
+export type NarrativeMilestoneLane = 'story' | 'greybox' | 'characters' | 'playtest' | 'picture_audio' | 'engineering' | 'other';
+export const NARRATIVE_MILESTONE_LANES: readonly NarrativeMilestoneLane[] = ['story', 'greybox', 'characters', 'playtest', 'picture_audio', 'engineering', 'other'];
+export type NarrativeMilestoneStatus = 'planned' | 'in_progress' | 'done' | 'blocked';
+export type NarrativePlatform = 'ipad' | 'iphone' | 'mac' | 'pc' | 'console' | 'web' | 'other';
+export const NARRATIVE_PLATFORMS: readonly NarrativePlatform[] = ['ipad', 'iphone', 'mac', 'pc', 'console', 'web', 'other'];
+/** Replikk-ID: W01.01, U04.02, K03.01, G03A.04 — kilde-/scenekode + løpenummer. */
+export const NARRATIVE_CUE_ID_RE = /^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?(\.[0-9]{1,3})?$/;
+
+export interface NarrativeSceneGate {
+  sceneId: string;
+  projectId: string;
+  gateKey: NarrativeGateKey;
+  status: NarrativeGateStatus;
+  evidence: string;
+  evidenceRefs: string[];
+  checkedBy: string | null;
+  checkedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface NarrativeSceneLine {
+  id: string;
+  sceneId: string;
+  projectId: string;
+  cueId: string;
+  speakerComponentId: string | null;
+  speakerLabel: string;
+  perspective: string;
+  textEn: string;
+  textNb: string;
+  sourceType: NarrativeLineSourceType;
+  recordingStatus: NarrativeLineRecordingStatus;
+  note: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeEpisode {
+  id: string;
+  projectId: string;
+  code: string;
+  title: string;
+  summary: string;
+  playersLearn: string;
+  sourceNote: string;
+  status: NarrativeEpisodeStatus;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeOpenQuestion {
+  id: string;
+  projectId: string;
+  code: string;
+  kind: NarrativeQuestionKind;
+  question: string;
+  context: string;
+  status: NarrativeQuestionStatus;
+  decision: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  sourceRefs: NarrativeSourceRef[];
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeSource {
+  id: string;
+  projectId: string;
+  code: string;
+  label: string;
+  kind: NarrativeSourceKind;
+  sha256: string | null;
+  pathHint: string;
+  notes: string;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeMilestone {
+  id: string;
+  projectId: string;
+  title: string;
+  lane: NarrativeMilestoneLane;
+  startAt: string | null;
+  dueAt: string | null;
+  status: NarrativeMilestoneStatus;
+  ownerUserId: string | null;
+  description: string;
+  acceptance: string;
+  evidence: string;
+  sortOrder: number;
+  sceneIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativePlatformRequirement {
+  code: string;
+  text: string;
+  status: 'unverified' | 'verified' | 'failed';
+  evidence?: string;
+  source?: string;
+}
+
+export interface NarrativePlatformTarget {
+  id: string;
+  projectId: string;
+  name: string;
+  platform: NarrativePlatform;
+  isPrimary: boolean;
+  engine: string;
+  osMin: string;
+  deviceMin: string;
+  inputModel: string;
+  budgets: Record<string, unknown>;
+  requirements: NarrativePlatformRequirement[];
+  visualDirection: Record<string, unknown>;
+  notes: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapSceneGateRow(row: Row): NarrativeSceneGate {
+  const refs = jsonValue(row.evidence_refs);
+  return {
+    sceneId: String(row.scene_id),
+    projectId: String(row.project_id),
+    gateKey: String(row.gate_key) as NarrativeGateKey,
+    status: String(row.status ?? 'not_started') as NarrativeGateStatus,
+    evidence: String(row.evidence ?? ''),
+    evidenceRefs: Array.isArray(refs) ? refs.map(String) : [],
+    checkedBy: strOrNull(row.checked_by),
+    checkedAt: isoTsOrNull(row.checked_at),
+    updatedAt: isoTsOrNull(row.updated_at),
+  };
+}
+
+/** Alle seks gater finnes alltid i svaret (manglende rad = not_started). */
+function fillGates(sceneId: string, projectId: string, stored: NarrativeSceneGate[]): NarrativeSceneGate[] {
+  const byKey = new Map(stored.map((g) => [g.gateKey, g]));
+  return NARRATIVE_GATE_KEYS.map((gateKey) => byKey.get(gateKey) ?? ({
+    sceneId, projectId, gateKey, status: 'not_started', evidence: '', evidenceRefs: [], checkedBy: null, checkedAt: null, updatedAt: null,
+  }));
+}
+
+function mapSceneLineRow(row: Row): NarrativeSceneLine {
+  return {
+    id: String(row.id),
+    sceneId: String(row.scene_id),
+    projectId: String(row.project_id),
+    cueId: String(row.cue_id),
+    speakerComponentId: strOrNull(row.speaker_component_id),
+    speakerLabel: String(row.speaker_label ?? ''),
+    perspective: String(row.perspective ?? ''),
+    textEn: String(row.text_en ?? ''),
+    textNb: String(row.text_nb ?? ''),
+    sourceType: String(row.source_type ?? 'T') as NarrativeLineSourceType,
+    recordingStatus: String(row.recording_status ?? 'none') as NarrativeLineRecordingStatus,
+    note: String(row.note ?? ''),
+    sortOrder: num(row.sort_order),
+    createdAt: isoTs(row.created_at),
+    updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapEpisodeRow(row: Row): NarrativeEpisode {
+  return {
+    id: String(row.id), projectId: String(row.project_id), code: String(row.code), title: String(row.title ?? ''),
+    summary: String(row.summary ?? ''), playersLearn: String(row.players_learn ?? ''), sourceNote: String(row.source_note ?? ''),
+    status: String(row.status ?? 'draft') as NarrativeEpisodeStatus, sortOrder: num(row.sort_order),
+    createdAt: isoTs(row.created_at), updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapOpenQuestionRow(row: Row): NarrativeOpenQuestion {
+  return {
+    id: String(row.id), projectId: String(row.project_id), code: String(row.code),
+    kind: String(row.kind ?? 'question') as NarrativeQuestionKind, question: String(row.question ?? ''), context: String(row.context ?? ''),
+    status: String(row.status ?? 'open') as NarrativeQuestionStatus, decision: String(row.decision ?? ''),
+    decidedBy: strOrNull(row.decided_by), decidedAt: isoTsOrNull(row.decided_at), sourceRefs: normalizeSourceRefs(row.source_refs),
+    sortOrder: num(row.sort_order), createdAt: isoTs(row.created_at), updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapSourceRow(row: Row): NarrativeSource {
+  return {
+    id: String(row.id), projectId: String(row.project_id), code: String(row.code), label: String(row.label ?? ''),
+    kind: String(row.kind ?? 'other') as NarrativeSourceKind, sha256: strOrNull(row.sha256), pathHint: String(row.path_hint ?? ''),
+    notes: String(row.notes ?? ''), verifiedAt: isoTsOrNull(row.verified_at), verifiedBy: strOrNull(row.verified_by),
+    sortOrder: num(row.sort_order), createdAt: isoTs(row.created_at), updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function mapMilestoneRow(row: Row, sceneIds: string[] = []): NarrativeMilestone {
+  return {
+    id: String(row.id), projectId: String(row.project_id), title: String(row.title ?? ''),
+    lane: String(row.lane ?? 'other') as NarrativeMilestoneLane, startAt: isoTsOrNull(row.start_at), dueAt: isoTsOrNull(row.due_at),
+    status: String(row.status ?? 'planned') as NarrativeMilestoneStatus, ownerUserId: strOrNull(row.owner_user_id),
+    description: String(row.description ?? ''), acceptance: String(row.acceptance ?? ''), evidence: String(row.evidence ?? ''),
+    sortOrder: num(row.sort_order), sceneIds, createdAt: isoTs(row.created_at), updatedAt: isoTs(row.updated_at),
+  };
+}
+
+function normalizeRequirements(value: unknown): NarrativePlatformRequirement[] {
+  const raw = typeof value === 'string' ? jsonValue(value) : value;
+  if (!Array.isArray(raw)) return [];
+  const out: NarrativePlatformRequirement[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const code = typeof rec.code === 'string' ? rec.code.trim() : '';
+    const text = typeof rec.text === 'string' ? rec.text : '';
+    if (!code || !text) continue;
+    const status = rec.status === 'verified' || rec.status === 'failed' ? rec.status : 'unverified';
+    const entry: NarrativePlatformRequirement = { code, text, status };
+    if (typeof rec.evidence === 'string' && rec.evidence) entry.evidence = rec.evidence;
+    if (typeof rec.source === 'string' && rec.source) entry.source = rec.source;
+    out.push(entry);
+  }
+  return out;
+}
+
+function mapPlatformTargetRow(row: Row): NarrativePlatformTarget {
+  return {
+    id: String(row.id), projectId: String(row.project_id), name: String(row.name ?? ''),
+    platform: (NARRATIVE_PLATFORMS as readonly string[]).includes(String(row.platform)) ? String(row.platform) as NarrativePlatform : 'other',
+    isPrimary: row.is_primary === true, engine: String(row.engine ?? ''), osMin: String(row.os_min ?? ''), deviceMin: String(row.device_min ?? ''),
+    inputModel: String(row.input_model ?? ''), budgets: jsonObject(row.budgets), requirements: normalizeRequirements(row.requirements),
+    visualDirection: jsonObject(row.visual_direction), notes: String(row.notes ?? ''), sortOrder: num(row.sort_order),
+    createdAt: isoTs(row.created_at), updatedAt: isoTs(row.updated_at),
+  };
+}
+
+// ─── Gater ───────────────────────────────────────────────────────────
+
+export class GateEvidenceRequiredError extends Error {
+  readonly code = 'gate_evidence_required';
+  constructor() { super('En gate kan ikke settes «bestått» uten bevis.'); }
+}
+
+export async function listSceneGates(db: Queryable, projectId: string, sceneId: string): Promise<NarrativeSceneGate[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_gates WHERE scene_id = $1 AND project_id = $2`, [sceneId, projectId]);
+  return fillGates(sceneId, projectId, (rows as Row[]).map(mapSceneGateRow));
+}
+
+export interface SceneGateInput { status: NarrativeGateStatus; evidence?: string; evidenceRefs?: string[] }
+
+/** Upsert av én gate. «passed» uten bevis avvises FØR databasen (samme regel som CHECK-en). */
+export async function setSceneGate(
+  db: Queryable, projectId: string, sceneId: string, gateKey: NarrativeGateKey, userId: string, input: SceneGateInput,
+): Promise<NarrativeSceneGate | null> {
+  const evidence = (input.evidence ?? '').trim();
+  if (input.status === 'passed' && !evidence) throw new GateEvidenceRequiredError();
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  const { rows } = await db.query(
+    `INSERT INTO narrative_scene_gates (scene_id, project_id, gate_key, status, evidence, evidence_refs, checked_by, checked_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, now(), now())
+     ON CONFLICT (scene_id, gate_key) DO UPDATE SET
+       status = EXCLUDED.status, evidence = EXCLUDED.evidence, evidence_refs = EXCLUDED.evidence_refs,
+       checked_by = EXCLUDED.checked_by, checked_at = now(), updated_at = now()
+     RETURNING *`,
+    [sceneId, projectId, gateKey, input.status, evidence, JSON.stringify(input.evidenceRefs ?? []), userId],
+  );
+  return mapSceneGateRow(rows[0] as Row);
+}
+
+// ─── Replikker ───────────────────────────────────────────────────────
+
+export class DuplicateCueError extends Error {
+  readonly code = 'duplicate_cue';
+  constructor(readonly cueId: string) { super(`Replikk-ID «${cueId}» finnes allerede i scenen.`); }
+}
+
+export async function listSceneLines(db: Queryable, projectId: string, sceneId: string): Promise<NarrativeSceneLine[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_lines WHERE scene_id = $1 AND project_id = $2 ORDER BY sort_order, cue_id`, [sceneId, projectId]);
+  return (rows as Row[]).map(mapSceneLineRow);
+}
+
+/** Replikker der en karakter er taler (Karakterer-siden). */
+export async function listLinesBySpeaker(db: Queryable, projectId: string, componentId: string): Promise<Array<NarrativeSceneLine & { sceneCode: string; sceneTitle: string }>> {
+  const { rows } = await db.query(
+    `SELECT l.*, s.code AS scene_code, s.title AS scene_title FROM narrative_scene_lines l
+       JOIN narrative_scenes s ON s.id = l.scene_id
+      WHERE l.project_id = $1 AND l.speaker_component_id = $2
+      ORDER BY s.sort_order, s.code, l.sort_order`,
+    [projectId, componentId],
+  );
+  return (rows as Row[]).map((r) => ({ ...mapSceneLineRow(r), sceneCode: String(r.scene_code), sceneTitle: String(r.scene_title ?? '') }));
+}
+
+export interface SceneLineInput {
+  cueId: string;
+  speakerComponentId?: string | null;
+  speakerLabel?: string;
+  perspective?: string;
+  textEn?: string;
+  textNb?: string;
+  sourceType?: NarrativeLineSourceType;
+  recordingStatus?: NarrativeLineRecordingStatus;
+  note?: string;
+  sortOrder?: number;
+}
+export type SceneLinePatch = Partial<SceneLineInput>;
+
+export async function createSceneLine(db: Queryable, projectId: string, sceneId: string, userId: string, input: SceneLineInput): Promise<NarrativeSceneLine | null> {
+  const scene = await getScene(db, projectId, sceneId);
+  if (!scene) return null;
+  const cueId = input.cueId.trim().toUpperCase();
+  const sortOrder = input.sortOrder ?? num((await db.query(
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM narrative_scene_lines WHERE scene_id = $1`, [sceneId],
+  )).rows[0]?.next);
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO narrative_scene_lines
+         (id, scene_id, project_id, cue_id, speaker_component_id, speaker_label, perspective, text_en, text_nb, source_type, recording_status, note, sort_order, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+      [
+        generateId('nsl'), sceneId, projectId, cueId, input.speakerComponentId ?? null, input.speakerLabel ?? '', input.perspective ?? '',
+        input.textEn ?? '', input.textNb ?? '', input.sourceType ?? 'T', input.recordingStatus ?? 'none', input.note ?? '', sortOrder, userId,
+      ],
+    );
+    return mapSceneLineRow(rows[0] as Row);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new DuplicateCueError(cueId);
+    throw err;
+  }
+}
+
+export async function patchSceneLine(db: Queryable, projectId: string, sceneId: string, lineId: string, patch: SceneLinePatch): Promise<NarrativeSceneLine | null> {
+  const cueId = typeof patch.cueId === 'string' && patch.cueId.trim() ? patch.cueId.trim().toUpperCase() : null;
+  try {
+    const { rows } = await db.query(
+      `UPDATE narrative_scene_lines SET
+         cue_id = COALESCE($4, cue_id),
+         speaker_component_id = CASE WHEN $5::boolean THEN $6 ELSE speaker_component_id END,
+         speaker_label = COALESCE($7, speaker_label),
+         perspective = COALESCE($8, perspective),
+         text_en = COALESCE($9, text_en),
+         text_nb = COALESCE($10, text_nb),
+         source_type = COALESCE($11, source_type),
+         recording_status = COALESCE($12, recording_status),
+         note = COALESCE($13, note),
+         sort_order = COALESCE($14, sort_order),
+         updated_at = now()
+       WHERE id = $1 AND scene_id = $2 AND project_id = $3 RETURNING *`,
+      [
+        lineId, sceneId, projectId, cueId, patch.speakerComponentId !== undefined, patch.speakerComponentId ?? null,
+        patch.speakerLabel ?? null, patch.perspective ?? null, patch.textEn ?? null, patch.textNb ?? null,
+        patch.sourceType ?? null, patch.recordingStatus ?? null, patch.note ?? null, patch.sortOrder ?? null,
+      ],
+    );
+    return rows[0] ? mapSceneLineRow(rows[0] as Row) : null;
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new DuplicateCueError(cueId ?? '');
+    throw err;
+  }
+}
+
+export async function deleteSceneLine(db: Queryable, projectId: string, sceneId: string, lineId: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_scene_lines WHERE id = $1 AND scene_id = $2 AND project_id = $3`, [lineId, sceneId, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function reorderSceneLines(db: Queryable, projectId: string, sceneId: string, orderedIds: string[]): Promise<void> {
+  for (let i = 0; i < orderedIds.length; i += 1) {
+    await db.query(`UPDATE narrative_scene_lines SET sort_order = $4, updated_at = now() WHERE id = $1 AND scene_id = $2 AND project_id = $3`, [orderedIds[i], sceneId, projectId, i]);
+  }
+}
+
+// ─── Episoder ────────────────────────────────────────────────────────
+
+export class DuplicateCodeError extends Error {
+  readonly code = 'duplicate_code';
+  constructor(readonly entity: string, readonly value: string) { super(`Koden «${value}» er allerede i bruk (${entity}).`); }
+}
+
+export interface EpisodeInput { code: string; title?: string; summary?: string; playersLearn?: string; sourceNote?: string; status?: NarrativeEpisodeStatus; sortOrder?: number }
+export type EpisodePatch = Partial<EpisodeInput>;
+
+export async function listEpisodes(db: Queryable, projectId: string): Promise<NarrativeEpisode[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_episodes WHERE project_id = $1 ORDER BY sort_order, code`, [projectId]);
+  return (rows as Row[]).map(mapEpisodeRow);
+}
+
+export async function createEpisode(db: Queryable, projectId: string, userId: string, input: EpisodeInput): Promise<NarrativeEpisode> {
+  const code = input.code.trim().toUpperCase();
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO narrative_episodes (id, project_id, code, title, summary, players_learn, source_note, status, sort_order, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [generateId('nep'), projectId, code, input.title ?? '', input.summary ?? '', input.playersLearn ?? '', input.sourceNote ?? '', input.status ?? 'draft', input.sortOrder ?? 0, userId],
+    );
+    return mapEpisodeRow(rows[0] as Row);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new DuplicateCodeError('episode', code);
+    throw err;
+  }
+}
+
+export async function patchEpisode(db: Queryable, projectId: string, id: string, patch: EpisodePatch): Promise<NarrativeEpisode | null> {
+  const code = typeof patch.code === 'string' && patch.code.trim() ? patch.code.trim().toUpperCase() : null;
+  try {
+    const { rows } = await db.query(
+      `UPDATE narrative_episodes SET code = COALESCE($3, code), title = COALESCE($4, title), summary = COALESCE($5, summary),
+         players_learn = COALESCE($6, players_learn), source_note = COALESCE($7, source_note), status = COALESCE($8, status),
+         sort_order = COALESCE($9, sort_order), updated_at = now()
+       WHERE id = $1 AND project_id = $2 RETURNING *`,
+      [id, projectId, code, patch.title ?? null, patch.summary ?? null, patch.playersLearn ?? null, patch.sourceNote ?? null, patch.status ?? null, patch.sortOrder ?? null],
+    );
+    return rows[0] ? mapEpisodeRow(rows[0] as Row) : null;
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new DuplicateCodeError('episode', code ?? '');
+    throw err;
+  }
+}
+
+export async function deleteEpisode(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  await db.query(`UPDATE narrative_scenes SET episode_id = NULL WHERE project_id = $1 AND episode_id = $2`, [projectId, id]);
+  const r = await db.query(`DELETE FROM narrative_episodes WHERE id = $1 AND project_id = $2`, [id, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+// ─── Åpne spørsmål / sjekklister ─────────────────────────────────────
+
+export interface OpenQuestionInput {
+  code: string; kind?: NarrativeQuestionKind; question: string; context?: string; status?: NarrativeQuestionStatus;
+  decision?: string; sourceRefs?: NarrativeSourceRef[]; sortOrder?: number;
+}
+export type OpenQuestionPatch = Partial<OpenQuestionInput>;
+
+export async function listOpenQuestions(db: Queryable, projectId: string): Promise<NarrativeOpenQuestion[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_open_questions WHERE project_id = $1 ORDER BY sort_order, code`, [projectId]);
+  return (rows as Row[]).map(mapOpenQuestionRow);
+}
+
+export async function createOpenQuestion(db: Queryable, projectId: string, userId: string, input: OpenQuestionInput): Promise<NarrativeOpenQuestion> {
+  const code = input.code.trim().toUpperCase();
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO narrative_open_questions (id, project_id, code, kind, question, context, status, decision, source_refs, sort_order, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11) RETURNING *`,
+      [generateId('noq'), projectId, code, input.kind ?? 'question', input.question, input.context ?? '', input.status ?? 'open', input.decision ?? '',
+        JSON.stringify(normalizeSourceRefs(input.sourceRefs ?? [])), input.sortOrder ?? 0, userId],
+    );
+    return mapOpenQuestionRow(rows[0] as Row);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new DuplicateCodeError('open_question', code);
+    throw err;
+  }
+}
+
+export async function patchOpenQuestion(db: Queryable, projectId: string, id: string, userId: string, patch: OpenQuestionPatch): Promise<NarrativeOpenQuestion | null> {
+  const { rows } = await db.query(
+    `UPDATE narrative_open_questions SET
+       kind = COALESCE($3, kind), question = COALESCE($4, question), context = COALESCE($5, context),
+       status = COALESCE($6, status), decision = COALESCE($7, decision),
+       decided_by = CASE WHEN $6 IS NOT NULL AND $6 <> 'open' THEN $8 ELSE decided_by END,
+       decided_at = CASE WHEN $6 IS NOT NULL AND $6 <> 'open' THEN now() WHEN $6 = 'open' THEN NULL ELSE decided_at END,
+       source_refs = CASE WHEN $9::boolean THEN $10::jsonb ELSE source_refs END,
+       sort_order = COALESCE($11, sort_order), updated_at = now()
+     WHERE id = $1 AND project_id = $2 RETURNING *`,
+    [id, projectId, patch.kind ?? null, patch.question ?? null, patch.context ?? null, patch.status ?? null, patch.decision ?? null, userId,
+      patch.sourceRefs !== undefined, JSON.stringify(normalizeSourceRefs(patch.sourceRefs ?? [])), patch.sortOrder ?? null],
+  );
+  return rows[0] ? mapOpenQuestionRow(rows[0] as Row) : null;
+}
+
+export async function deleteOpenQuestion(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_open_questions WHERE id = $1 AND project_id = $2`, [id, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+// ─── Kilderegister ───────────────────────────────────────────────────
+
+export interface SourceInput { code: string; label: string; kind?: NarrativeSourceKind; sha256?: string | null; pathHint?: string; notes?: string; sortOrder?: number }
+export type SourcePatch = Partial<SourceInput> & { verified?: boolean };
+
+export async function listSources(db: Queryable, projectId: string): Promise<NarrativeSource[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_sources WHERE project_id = $1 ORDER BY sort_order, code`, [projectId]);
+  return (rows as Row[]).map(mapSourceRow);
+}
+
+export async function createSource(db: Queryable, projectId: string, userId: string, input: SourceInput): Promise<NarrativeSource> {
+  const code = input.code.trim().toUpperCase();
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO narrative_sources (id, project_id, code, label, kind, sha256, path_hint, notes, sort_order, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [generateId('nso'), projectId, code, input.label, input.kind ?? 'other', input.sha256 ? input.sha256.toLowerCase() : null, input.pathHint ?? '', input.notes ?? '', input.sortOrder ?? 0, userId],
+    );
+    return mapSourceRow(rows[0] as Row);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new DuplicateCodeError('source', code);
+    throw err;
+  }
+}
+
+export async function patchSource(db: Queryable, projectId: string, id: string, userId: string, patch: SourcePatch): Promise<NarrativeSource | null> {
+  const { rows } = await db.query(
+    `UPDATE narrative_sources SET
+       label = COALESCE($3, label), kind = COALESCE($4, kind),
+       sha256 = CASE WHEN $5::boolean THEN $6 ELSE sha256 END,
+       path_hint = COALESCE($7, path_hint), notes = COALESCE($8, notes), sort_order = COALESCE($9, sort_order),
+       verified_at = CASE WHEN $10::boolean THEN now() ELSE verified_at END,
+       verified_by = CASE WHEN $10::boolean THEN $11 ELSE verified_by END,
+       updated_at = now()
+     WHERE id = $1 AND project_id = $2 RETURNING *`,
+    [id, projectId, patch.label ?? null, patch.kind ?? null, patch.sha256 !== undefined, patch.sha256 ? patch.sha256.toLowerCase() : null,
+      patch.pathHint ?? null, patch.notes ?? null, patch.sortOrder ?? null, patch.verified === true, userId],
+  );
+  return rows[0] ? mapSourceRow(rows[0] as Row) : null;
+}
+
+export async function deleteSource(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_sources WHERE id = $1 AND project_id = $2`, [id, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+// ─── Milepæler ───────────────────────────────────────────────────────
+
+export interface MilestoneInput {
+  title: string; lane?: NarrativeMilestoneLane; startAt?: string | null; dueAt?: string | null; status?: NarrativeMilestoneStatus;
+  ownerUserId?: string | null; description?: string; acceptance?: string; evidence?: string; sortOrder?: number;
+}
+export type MilestonePatch = Partial<MilestoneInput>;
+
+export async function listMilestones(db: Queryable, projectId: string): Promise<NarrativeMilestone[]> {
+  const [{ rows }, links] = await Promise.all([
+    db.query(`SELECT * FROM narrative_milestones WHERE project_id = $1 ORDER BY lane, start_at NULLS LAST, due_at NULLS LAST, sort_order`, [projectId]),
+    db.query(`SELECT ms.milestone_id, ms.scene_id FROM narrative_milestone_scenes ms JOIN narrative_milestones m ON m.id = ms.milestone_id WHERE m.project_id = $1`, [projectId]),
+  ]);
+  const scenesBy = new Map<string, string[]>();
+  for (const l of links.rows as Row[]) {
+    const list = scenesBy.get(String(l.milestone_id)) ?? [];
+    list.push(String(l.scene_id));
+    scenesBy.set(String(l.milestone_id), list);
+  }
+  return (rows as Row[]).map((r) => mapMilestoneRow(r, scenesBy.get(String(r.id)) ?? []));
+}
+
+export async function createMilestone(db: Queryable, projectId: string, userId: string, input: MilestoneInput): Promise<NarrativeMilestone> {
+  const { rows } = await db.query(
+    `INSERT INTO narrative_milestones (id, project_id, title, lane, start_at, due_at, status, owner_user_id, description, acceptance, evidence, sort_order, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+    [generateId('nms'), projectId, input.title, input.lane ?? 'other', input.startAt ?? null, input.dueAt ?? null, input.status ?? 'planned',
+      input.ownerUserId ?? null, input.description ?? '', input.acceptance ?? '', input.evidence ?? '', input.sortOrder ?? 0, userId],
+  );
+  return mapMilestoneRow(rows[0] as Row);
+}
+
+export async function patchMilestone(db: Queryable, projectId: string, id: string, patch: MilestonePatch): Promise<NarrativeMilestone | null> {
+  const { rows } = await db.query(
+    `UPDATE narrative_milestones SET
+       title = COALESCE($3, title), lane = COALESCE($4, lane),
+       start_at = CASE WHEN $5::boolean THEN $6::timestamptz ELSE start_at END,
+       due_at = CASE WHEN $7::boolean THEN $8::timestamptz ELSE due_at END,
+       status = COALESCE($9, status),
+       owner_user_id = CASE WHEN $10::boolean THEN $11 ELSE owner_user_id END,
+       description = COALESCE($12, description), acceptance = COALESCE($13, acceptance), evidence = COALESCE($14, evidence),
+       sort_order = COALESCE($15, sort_order), updated_at = now()
+     WHERE id = $1 AND project_id = $2 RETURNING *`,
+    [id, projectId, patch.title ?? null, patch.lane ?? null, patch.startAt !== undefined, patch.startAt ?? null, patch.dueAt !== undefined, patch.dueAt ?? null,
+      patch.status ?? null, patch.ownerUserId !== undefined, patch.ownerUserId ?? null, patch.description ?? null, patch.acceptance ?? null, patch.evidence ?? null, patch.sortOrder ?? null],
+  );
+  if (!rows[0]) return null;
+  const links = await db.query(`SELECT scene_id FROM narrative_milestone_scenes WHERE milestone_id = $1`, [id]);
+  return mapMilestoneRow(rows[0] as Row, (links.rows as Row[]).map((l) => String(l.scene_id)));
+}
+
+export async function deleteMilestone(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_milestones WHERE id = $1 AND project_id = $2`, [id, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+/** Erstatter scenene en milepæl dekker; scener utenfor prosjektet forkastes stille. */
+export async function setMilestoneScenes(db: Queryable, projectId: string, milestoneId: string, sceneIds: string[]): Promise<string[] | null> {
+  const ms = await db.query(`SELECT id FROM narrative_milestones WHERE id = $1 AND project_id = $2 LIMIT 1`, [milestoneId, projectId]);
+  if (!ms.rows[0]) return null;
+  const valid = sceneIds.length
+    ? (await db.query(`SELECT id FROM narrative_scenes WHERE project_id = $1 AND id = ANY($2::text[])`, [projectId, sceneIds])).rows as Row[]
+    : [];
+  const keep = new Set(valid.map((r) => String(r.id)));
+  await db.query(`DELETE FROM narrative_milestone_scenes WHERE milestone_id = $1`, [milestoneId]);
+  const out: string[] = [];
+  for (const id of sceneIds) {
+    if (!keep.has(id) || out.includes(id)) continue;
+    await db.query(`INSERT INTO narrative_milestone_scenes (milestone_id, scene_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [milestoneId, id]);
+    out.push(id);
+  }
+  return out;
+}
+
+// ─── Plattformmål ────────────────────────────────────────────────────
+
+export interface PlatformTargetInput {
+  name: string; platform?: NarrativePlatform; isPrimary?: boolean; engine?: string; osMin?: string; deviceMin?: string; inputModel?: string;
+  budgets?: Record<string, unknown>; requirements?: NarrativePlatformRequirement[]; visualDirection?: Record<string, unknown>; notes?: string; sortOrder?: number;
+}
+export type PlatformTargetPatch = Partial<PlatformTargetInput>;
+
+export async function listPlatformTargets(db: Queryable, projectId: string): Promise<NarrativePlatformTarget[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_platform_targets WHERE project_id = $1 ORDER BY is_primary DESC, sort_order, name`, [projectId]);
+  return (rows as Row[]).map(mapPlatformTargetRow);
+}
+
+async function clearPrimaryPlatform(db: Queryable, projectId: string, exceptId: string | null): Promise<void> {
+  await db.query(`UPDATE narrative_platform_targets SET is_primary = FALSE, updated_at = now() WHERE project_id = $1 AND is_primary AND ($2::text IS NULL OR id <> $2)`, [projectId, exceptId]);
+}
+
+export async function createPlatformTarget(db: Queryable, projectId: string, userId: string, input: PlatformTargetInput): Promise<NarrativePlatformTarget> {
+  if (input.isPrimary) await clearPrimaryPlatform(db, projectId, null);
+  const { rows } = await db.query(
+    `INSERT INTO narrative_platform_targets
+       (id, project_id, name, platform, is_primary, engine, os_min, device_min, input_model, budgets, requirements, visual_direction, notes, sort_order, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14, $15) RETURNING *`,
+    [generateId('npt'), projectId, input.name, input.platform ?? 'other', input.isPrimary === true, input.engine ?? '', input.osMin ?? '', input.deviceMin ?? '',
+      input.inputModel ?? '', JSON.stringify(input.budgets ?? {}), JSON.stringify(normalizeRequirements(input.requirements ?? [])),
+      JSON.stringify(input.visualDirection ?? {}), input.notes ?? '', input.sortOrder ?? 0, userId],
+  );
+  return mapPlatformTargetRow(rows[0] as Row);
+}
+
+export async function patchPlatformTarget(db: Queryable, projectId: string, id: string, patch: PlatformTargetPatch): Promise<NarrativePlatformTarget | null> {
+  if (patch.isPrimary === true) await clearPrimaryPlatform(db, projectId, id);
+  const { rows } = await db.query(
+    `UPDATE narrative_platform_targets SET
+       name = COALESCE($3, name), platform = COALESCE($4, platform),
+       is_primary = COALESCE($5, is_primary),
+       engine = COALESCE($6, engine), os_min = COALESCE($7, os_min), device_min = COALESCE($8, device_min), input_model = COALESCE($9, input_model),
+       budgets = CASE WHEN $10::boolean THEN $11::jsonb ELSE budgets END,
+       requirements = CASE WHEN $12::boolean THEN $13::jsonb ELSE requirements END,
+       visual_direction = CASE WHEN $14::boolean THEN $15::jsonb ELSE visual_direction END,
+       notes = COALESCE($16, notes), sort_order = COALESCE($17, sort_order), updated_at = now()
+     WHERE id = $1 AND project_id = $2 RETURNING *`,
+    [id, projectId, patch.name ?? null, patch.platform ?? null, patch.isPrimary ?? null, patch.engine ?? null, patch.osMin ?? null, patch.deviceMin ?? null, patch.inputModel ?? null,
+      patch.budgets !== undefined, JSON.stringify(patch.budgets ?? {}), patch.requirements !== undefined, JSON.stringify(normalizeRequirements(patch.requirements ?? [])),
+      patch.visualDirection !== undefined, JSON.stringify(patch.visualDirection ?? {}), patch.notes ?? null, patch.sortOrder ?? null],
+  );
+  return rows[0] ? mapPlatformTargetRow(rows[0] as Row) : null;
+}
+
+export async function deletePlatformTarget(db: Queryable, projectId: string, id: string): Promise<boolean> {
+  const r = await db.query(`DELETE FROM narrative_platform_targets WHERE id = $1 AND project_id = $2`, [id, projectId]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+// ─── Komponenter per kind (Karakterer / Lokasjoner) ──────────────────
+
+export async function listComponentsByKind(db: Queryable, projectId: string, kind: NarrativeComponentKind): Promise<NarrativeComponent[]> {
+  const { rows } = await db.query(`SELECT * FROM narrative_components WHERE project_id = $1 AND kind = $2 ORDER BY sort_order, name`, [projectId, kind]);
+  return (rows as Row[]).map(mapComponentRow);
+}
+
+// ─── Prosjektoversikt (hjem) ─────────────────────────────────────────
+
+export interface NarrativeActivityItem {
+  kind: 'scene' | 'review' | 'task' | 'gate' | 'milestone' | 'revision';
+  id: string;
+  title: string;
+  detail: string;
+  at: string;
+  sceneId: string | null;
+}
+
+export interface NarrativeProjectOverview {
+  scenes: { total: number; byStatus: Record<NarrativeSceneStatus, number>; byEra: Record<string, number>; withoutDates: number };
+  gates: { total: number; passed: number; failed: number; byKey: Record<NarrativeGateKey, { passed: number; total: number }> };
+  tasks: { open: number; overdue: number; done: number };
+  reviews: { open: number };
+  lines: { total: number; approved: number };
+  questions: { open: number; checksOpen: number };
+  platform: { requirements: number; verified: number; primaryName: string | null };
+  milestones: NarrativeMilestone[];
+  episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;
+  activity: NarrativeActivityItem[];
+  unreadInbox: number;
+}
+
+export async function getProjectOverview(db: Queryable, projectId: string, userId: string): Promise<NarrativeProjectOverview> {
+  const [scenes, gates, tasks, reviews, lines, questions, platform, milestones, episodes, activity, unread] = await Promise.all([
+    db.query(`SELECT status, era, start_at, due_at FROM narrative_scenes WHERE project_id = $1`, [projectId]),
+    db.query(`SELECT gate_key, status, COUNT(*)::int AS n FROM narrative_scene_gates WHERE project_id = $1 GROUP BY gate_key, status`, [projectId]),
+    db.query(`SELECT status, due_at FROM narrative_scene_tasks WHERE project_id = $1`, [projectId]),
+    db.query(`SELECT COUNT(*)::int AS n FROM narrative_scene_reviews WHERE project_id = $1 AND status = 'in_review'`, [projectId]),
+    db.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE recording_status = 'approved')::int AS approved FROM narrative_scene_lines WHERE project_id = $1`, [projectId]),
+    db.query(`SELECT kind, COUNT(*)::int AS n FROM narrative_open_questions WHERE project_id = $1 AND status = 'open' GROUP BY kind`, [projectId]),
+    db.query(`SELECT name, requirements FROM narrative_platform_targets WHERE project_id = $1 ORDER BY is_primary DESC, sort_order LIMIT 1`, [projectId]),
+    listMilestones(db, projectId),
+    db.query(
+      `SELECT e.id, e.code, e.title, COUNT(s.id)::int AS scene_count, COUNT(s.id) FILTER (WHERE s.status IN ('approved','implemented'))::int AS approved_count
+         FROM narrative_episodes e LEFT JOIN narrative_scenes s ON s.episode_id = e.id AND s.project_id = e.project_id
+        WHERE e.project_id = $1 GROUP BY e.id ORDER BY e.sort_order, e.code`,
+      [projectId],
+    ),
+    db.query(
+      `SELECT * FROM (
+         SELECT 'scene' AS kind, id, code || ' – ' || title AS title, 'Scene oppdatert' AS detail, updated_at AS at, id AS scene_id FROM narrative_scenes WHERE project_id = $1
+         UNION ALL
+         SELECT 'review', r.id, s.code || ' – ' || s.title, 'Runde ' || r.round || ': ' || r.status, COALESCE(r.decided_at, r.requested_at), r.scene_id
+           FROM narrative_scene_reviews r JOIN narrative_scenes s ON s.id = r.scene_id WHERE r.project_id = $1
+         UNION ALL
+         SELECT 'task', t.id, t.title, 'Oppgave ferdig (' || s.code || ')', t.completed_at, t.scene_id
+           FROM narrative_scene_tasks t JOIN narrative_scenes s ON s.id = t.scene_id WHERE t.project_id = $1 AND t.completed_at IS NOT NULL
+         UNION ALL
+         SELECT 'gate', g.scene_id || ':' || g.gate_key, s.code || ' – ' || s.title, 'Gate ' || g.gate_key || ': ' || g.status, g.checked_at, g.scene_id
+           FROM narrative_scene_gates g JOIN narrative_scenes s ON s.id = g.scene_id WHERE g.project_id = $1 AND g.checked_at IS NOT NULL
+         UNION ALL
+         SELECT 'milestone', id, title, 'Milepæl: ' || status, updated_at, NULL FROM narrative_milestones WHERE project_id = $1
+         UNION ALL
+         SELECT 'revision', id, COALESCE(label, 'Revisjon'), 'Ny revisjon av grafen', created_at, NULL FROM narrative_revisions WHERE project_id = $1
+       ) a WHERE at IS NOT NULL ORDER BY at DESC LIMIT 20`,
+      [projectId],
+    ),
+    db.query(
+      `SELECT COUNT(*)::int AS n FROM role_room_project_notifications n
+         LEFT JOIN role_room_project_notification_reads rd ON rd.notification_id = n.id AND rd.user_id = $2
+        WHERE n.project_id = $1 AND n.archived_at IS NULL AND rd.notification_id IS NULL
+          AND n.audience IN ('producer_team', 'all') AND (n.event_type LIKE 'narrative_%' OR n.linked_entity_type LIKE 'narrative_%')`,
+      [projectId, userId],
+    ),
+  ]);
+  const byStatus: Record<NarrativeSceneStatus, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
+  const byEra: Record<string, number> = {};
+  let withoutDates = 0;
+  for (const r of scenes.rows as Row[]) {
+    const st = String(r.status) as NarrativeSceneStatus;
+    if (st in byStatus) byStatus[st] += 1;
+    const era = String(r.era ?? 'other');
+    byEra[era] = (byEra[era] ?? 0) + 1;
+    if (!r.start_at && !r.due_at) withoutDates += 1;
+  }
+  const byKey = Object.fromEntries(NARRATIVE_GATE_KEYS.map((k) => [k, { passed: 0, total: scenes.rows.length }])) as Record<NarrativeGateKey, { passed: number; total: number }>;
+  let passed = 0; let failed = 0;
+  for (const g of gates.rows as Row[]) {
+    const key = String(g.gate_key) as NarrativeGateKey;
+    if (g.status === 'passed') { passed += num(g.n); if (byKey[key]) byKey[key].passed += num(g.n); }
+    if (g.status === 'failed') failed += num(g.n);
+  }
+  const now = Date.now();
+  let open = 0; let overdue = 0; let done = 0;
+  for (const t of tasks.rows as Row[]) {
+    if (t.status === 'done') { done += 1; continue; }
+    open += 1;
+    const due = t.due_at ? new Date(t.due_at as string).getTime() : NaN;
+    if (Number.isFinite(due) && due < now) overdue += 1;
+  }
+  const qOpen = (questions.rows as Row[]).find((q) => q.kind === 'question');
+  const cOpen = (questions.rows as Row[]).find((q) => q.kind === 'check');
+  const primary = (platform.rows as Row[])[0];
+  const reqs = primary ? normalizeRequirements(primary.requirements) : [];
+  return {
+    scenes: { total: scenes.rows.length, byStatus, byEra, withoutDates },
+    gates: { total: scenes.rows.length * NARRATIVE_GATE_KEYS.length, passed, failed, byKey },
+    tasks: { open, overdue, done },
+    reviews: { open: num(reviews.rows[0]?.n) },
+    lines: { total: num(lines.rows[0]?.total), approved: num(lines.rows[0]?.approved) },
+    questions: { open: num(qOpen?.n), checksOpen: num(cOpen?.n) },
+    platform: { requirements: reqs.length, verified: reqs.filter((r) => r.status === 'verified').length, primaryName: primary ? String(primary.name) : null },
+    milestones,
+    episodes: (episodes.rows as Row[]).map((e) => ({ id: String(e.id), code: String(e.code), title: String(e.title ?? ''), sceneCount: num(e.scene_count), approvedCount: num(e.approved_count) })),
+    activity: (activity.rows as Row[]).map((a) => ({
+      kind: String(a.kind) as NarrativeActivityItem['kind'], id: String(a.id), title: String(a.title ?? ''), detail: String(a.detail ?? ''),
+      at: isoTs(a.at), sceneId: strOrNull(a.scene_id),
+    })),
+    unreadInbox: num(unread.rows[0]?.n),
+  };
+}
+
+// ─── Innboks (narrative-varsler over role_room_project_notifications) ──
+
+export interface NarrativeInboxItem {
+  id: string;
+  eventType: string;
+  title: string;
+  message: string | null;
+  linkedEntityType: string | null;
+  linkedEntityId: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
+}
+
+function mapInboxRow(row: Row): NarrativeInboxItem {
+  return {
+    id: String(row.id), eventType: String(row.event_type ?? ''), title: String(row.title ?? ''), message: strOrNull(row.message),
+    linkedEntityType: strOrNull(row.linked_entity_type), linkedEntityId: strOrNull(row.linked_entity_id), createdByUserId: strOrNull(row.created_by_user_id),
+    createdAt: isoTs(row.created_at), updatedAt: isoTs(row.updated_at), readAt: isoTsOrNull(row.read_at),
+  };
+}
+
+/**
+ * Producer-varsel-ACL-en (`canReadProducerNotifications`) avviser spillstudio-
+ * eiere uten film-rolle; derfor egen lesesti for narrative-hendelser,
+ * gated av prosjekt-tilgangen som resten av Story Graph.
+ */
+export async function listInbox(db: Queryable, projectId: string, userId: string, limit = 50): Promise<NarrativeInboxItem[]> {
+  const { rows } = await db.query(
+    `SELECT n.*, rd.read_at FROM role_room_project_notifications n
+       LEFT JOIN role_room_project_notification_reads rd ON rd.notification_id = n.id AND rd.user_id = $2
+      WHERE n.project_id = $1 AND n.archived_at IS NULL
+        AND n.audience IN ('producer_team', 'all') AND (n.event_type LIKE 'narrative_%' OR n.linked_entity_type LIKE 'narrative_%')
+      ORDER BY n.updated_at DESC, n.created_at DESC LIMIT $3`,
+    [projectId, userId, limit],
+  );
+  return (rows as Row[]).map(mapInboxRow);
+}
+
+export async function markInboxRead(db: Queryable, projectId: string, userId: string, notificationId: string): Promise<boolean> {
+  const { rows } = await db.query(`SELECT id FROM role_room_project_notifications WHERE id = $1 AND project_id = $2 LIMIT 1`, [notificationId, projectId]);
+  if (!rows[0]) return false;
+  await db.query(
+    `INSERT INTO role_room_project_notification_reads (notification_id, user_id, read_at) VALUES ($1, $2, now()) ON CONFLICT (notification_id, user_id) DO NOTHING`,
+    [notificationId, userId],
+  );
+  return true;
+}
+
+export async function markAllInboxRead(db: Queryable, projectId: string, userId: string): Promise<number> {
+  const r = await db.query(
+    `INSERT INTO role_room_project_notification_reads (notification_id, user_id, read_at)
+       SELECT n.id, $2, now() FROM role_room_project_notifications n
+        WHERE n.project_id = $1 AND n.archived_at IS NULL
+          AND n.audience IN ('producer_team', 'all') AND (n.event_type LIKE 'narrative_%' OR n.linked_entity_type LIKE 'narrative_%')
+       ON CONFLICT (notification_id, user_id) DO NOTHING`,
+    [projectId, userId],
+  );
+  return r.rowCount ?? 0;
 }
