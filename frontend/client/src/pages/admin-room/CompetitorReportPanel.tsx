@@ -339,7 +339,7 @@ export default function CompetitorReportPanel() {
             sx={{
               height: 36, width: 'auto', maxWidth: 180,
               objectFit: 'contain',
-              filter: 'drop-shadow(0 0 12px rgba(168,85,247,0.25))',
+              filter: 'drop-shadow(0 0 12px rgba(136, 117, 235,0.25))',
             }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />

@@ -410,7 +410,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
                 <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontWeight: 600, fontSize: '0.86rem' }}>Søknadstekst</Typography>
                 <Stack direction="row" spacing={0.5}>
-                  <Button size="small" startIcon={<AutoAwesomeIcon />} onClick={handleGenerate} sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa' }}>
+                  <Button size="small" startIcon={<AutoAwesomeIcon />} onClick={handleGenerate} sx={{ textTransform: 'none', fontWeight: 700, color: '#9e8cf8' }}>
                     Skjelett-mal
                   </Button>
                   {initial ? (
@@ -432,7 +432,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
                         }
                       }}
                       disabled={generating}
-                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}
                     >
                       {generating ? 'Genererer…' : 'Generer via Claude'}
                     </Button>
@@ -455,7 +455,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
               Skriv ut / PDF
             </Button>
           ) : null}
-          <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ flex: 1, textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+          <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ flex: 1, textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
             {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett'}
           </Button>
           <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', fontWeight: 700 }} className="no-print">Avbryt</Button>
@@ -533,7 +533,7 @@ export function FundingAppsTab() {
         <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem' }}>
           {items.length} søknad{items.length === 1 ? '' : 'er'} registrert
         </Typography>
-        <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setEditing(null); setDrawerOpen(true); }} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setEditing(null); setDrawerOpen(true); }} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
           Ny søknad
         </Button>
       </Stack>
@@ -556,7 +556,7 @@ export function FundingAppsTab() {
                       {item.scheme_label} · {formatCurrency(item.amount_requested, item.currency)}
                     </Typography>
                     <Stack direction="row" spacing={0.6} flexWrap="wrap" sx={{ mt: 0.6 }}>
-                      <Chip size="small" label={FUNDING_STATUS_LABELS[item.status]} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
+                      <Chip size="small" label={FUNDING_STATUS_LABELS[item.status]} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#ddd6fe' }} />
                       {(() => {
                         if (!item.deadline || item.status === 'approved' || item.status === 'rejected') return null;
                         const deadlineDate = new Date(item.deadline);
@@ -796,7 +796,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
                         console.warn('Deck create failed', err);
                       }
                     }}
-                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
+                    sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}
                   >
                     Generer fra Forretningsplan
                   </Button>
@@ -839,7 +839,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
                       ...p,
                       ddChecklist: [...(p.ddChecklist ?? []), { label: 'Nytt punkt', done: false }],
                     }))}
-                    sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa' }}
+                    sx={{ textTransform: 'none', fontWeight: 700, color: '#9e8cf8' }}
                   >
                     Nytt punkt
                   </Button>
@@ -854,7 +854,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
                           ...p,
                           ddChecklist: (p.ddChecklist ?? []).map((d, i) => i === idx ? { ...d, done: e.target.checked } : d),
                         }))}
-                        style={{ width: 18, height: 18, accentColor: '#a78bfa' }}
+                        style={{ width: 18, height: 18, accentColor: '#9e8cf8' }}
                       />
                       <TextField
                         size="small"
@@ -891,7 +891,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
               </Button>
             ) : null}
             <Box sx={{ flex: 1 }} />
-            <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+            <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
               {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett'}
             </Button>
             <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', fontWeight: 700 }}>Avbryt</Button>
@@ -921,7 +921,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setComposerOpen(false)}>Avbryt</Button>
-          <Button variant="contained" component="a" href={buildMailtoLink()} onClick={() => setComposerOpen(false)} sx={{ bgcolor: '#7c3aed' }}>
+          <Button variant="contained" component="a" href={buildMailtoLink()} onClick={() => setComposerOpen(false)} sx={{ bgcolor: '#6249df' }}>
             Åpne i e-postklient
           </Button>
         </DialogActions>
@@ -980,7 +980,7 @@ export function InvestorContactsTab() {
         <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem' }}>
           {items.length} investor{items.length === 1 ? '' : 'er'} i pipeline
         </Typography>
-        <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setEditing(null); setDrawerOpen(true); }} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setEditing(null); setDrawerOpen(true); }} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
           Ny investor
         </Button>
       </Stack>
@@ -995,7 +995,7 @@ export function InvestorContactsTab() {
           if (list.length === 0) return null;
           return (
             <Box key={statusKey}>
-              <Typography sx={{ color: '#a78bfa', fontWeight: 800, fontSize: '0.88rem', mb: 0.6 }}>
+              <Typography sx={{ color: '#9e8cf8', fontWeight: 800, fontSize: '0.88rem', mb: 0.6 }}>
                 {INVESTOR_STATUS_LABELS[statusKey]} ({list.length})
               </Typography>
               <Stack spacing={1}>
@@ -1024,7 +1024,7 @@ export function InvestorContactsTab() {
                                 target="_blank"
                                 rel="noreferrer"
                                 clickable
-                                sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#ddd6fe', cursor: 'pointer' }}
+                                sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#ddd6fe', cursor: 'pointer' }}
                               />
                             ) : (
                               <Chip size="small" label="Ingen deck" sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
@@ -1213,7 +1213,7 @@ function PartnerDrawer({ open, initial, onClose, onSaved }: PartnerDrawerProps) 
           </Stack>
         </Box>
         <Stack direction="row" spacing={1} sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(148,163,184,0.14)' }}>
-          <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ flex: 1, textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+          <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ flex: 1, textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
             {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett'}
           </Button>
           <Button variant="text" onClick={onClose} sx={{ textTransform: 'none', fontWeight: 700 }}>Avbryt</Button>
@@ -1263,7 +1263,7 @@ export function PartnerContactsTab() {
         <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem' }}>
           {items.length} partner{items.length === 1 ? '' : 'e'} registrert
         </Typography>
-        <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setEditing(null); setDrawerOpen(true); }} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setEditing(null); setDrawerOpen(true); }} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#6249df' }}>
           Ny partner
         </Button>
       </Stack>
@@ -1285,7 +1285,7 @@ export function PartnerContactsTab() {
                       {item.contact_email ? ` · ${item.contact_email}` : ''}
                     </Typography>
                     <Stack direction="row" spacing={0.6} flexWrap="wrap" sx={{ mt: 0.6 }}>
-                      <Chip size="small" label={PARTNERSHIP_TYPE_LABELS[item.partnership_type]} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
+                      <Chip size="small" label={PARTNERSHIP_TYPE_LABELS[item.partnership_type]} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#ddd6fe' }} />
                       <Chip size="small" label={PARTNER_STATUS_LABELS[item.status]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                       {item.contract_status && item.contract_status !== 'none' ? (
                         <Chip
@@ -1728,7 +1728,7 @@ export function BusinessPlanTab() {
                   startIcon={generatingField === field.dbKey ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
                   onClick={() => { void handleGenerate(field); }}
                   disabled={generatingField !== null || savingField !== null}
-                  sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa', mt: 0.5 }}
+                  sx={{ textTransform: 'none', fontWeight: 700, color: '#9e8cf8', mt: 0.5 }}
                 >
                   {generatingField === field.dbKey ? 'Genererer…' : 'Generer via Claude'}
                 </Button>
@@ -1793,7 +1793,7 @@ export function ActivityLogTab() {
           {entries.map((e) => {
             const tone = e.action === 'created' ? { bg: 'rgba(52,211,153,0.16)', fg: '#86efac' }
               : e.action === 'deleted' ? { bg: 'rgba(248,113,113,0.16)', fg: '#fca5a5' }
-              : e.action === 'generated' ? { bg: 'rgba(168,85,247,0.16)', fg: '#ddd6fe' }
+              : e.action === 'generated' ? { bg: 'rgba(136, 117, 235,0.16)', fg: '#ddd6fe' }
               : { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe' };
             return (
               <Stack
@@ -1948,7 +1948,7 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
         }}
       >
         {[
-          { label: 'Søknader', value: funding.length, sub: `${formatCurrency(totalAsk)} forespurt`, tab: 'funding' as const, color: '#a78bfa' },
+          { label: 'Søknader', value: funding.length, sub: `${formatCurrency(totalAsk)} forespurt`, tab: 'funding' as const, color: '#9e8cf8' },
           { label: 'Investorer', value: investors.length, sub: `${investorsByStatus.get('term_sheet') ?? 0} i term sheet`, tab: 'investors' as const, color: '#60a5fa' },
           { label: 'Partnere', value: partners.length, sub: `${partnersByStatus.get('active') ?? 0} aktive`, tab: 'partners' as const, color: '#34d399' },
           { label: 'Forretningsplan', value: `${planCompletion.pct}%`, sub: `${planCompletion.filled} / ${planCompletion.total} felt`, tab: 'business-plan' as const, color: '#fbbf24' },
@@ -1963,7 +1963,7 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
               background: 'rgba(15,23,42,0.42)',
               cursor: 'pointer',
               transition: 'background 0.15s',
-              '&:hover': { background: 'rgba(168,85,247,0.08)' },
+              '&:hover': { background: 'rgba(136, 117, 235,0.08)' },
             }}
           >
             <Typography sx={{ color: card.color, fontSize: '0.78rem', fontWeight: 700, mb: 0.4, opacity: 0.86 }}>
@@ -2014,7 +2014,7 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
                       border: '1px solid rgba(148,163,184,0.14)',
                       background: 'rgba(2,6,23,0.34)',
                       cursor: 'pointer',
-                      '&:hover': { background: 'rgba(168,85,247,0.08)' },
+                      '&:hover': { background: 'rgba(136, 117, 235,0.08)' },
                     }}
                   >
                     <Chip size="small" label={label} sx={{ bgcolor: tone.bg, color: tone.fg, fontWeight: 700, minWidth: 70 }} />
@@ -2057,7 +2057,7 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
                       </Typography>
                     </Stack>
                     <Box sx={{ height: 6, bgcolor: 'rgba(148,163,184,0.16)', borderRadius: 3, overflow: 'hidden' }}>
-                      <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: '#a78bfa', transition: 'width 0.2s' }} />
+                      <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: '#9e8cf8', transition: 'width 0.2s' }} />
                     </Box>
                   </Box>
                 );
@@ -2306,7 +2306,7 @@ function AnalyticsTab() {
             <Chip
               size="small"
               label={`${recentEvents.length} totalt / ${roleRoomEventCount} role_room_*`}
-              sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 600 }}
+              sx={{ bgcolor: 'rgba(158, 140, 248,0.16)', color: '#ddd6fe', fontWeight: 600 }}
             />
           </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mb: 1 }}>
@@ -2321,7 +2321,7 @@ function AnalyticsTab() {
               {recentEvents.map((ev, idx) => {
                 const isRoleRoom = ev.name.startsWith('role_room_');
                 const tone = isRoleRoom
-                  ? { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe' }
+                  ? { bg: 'rgba(158, 140, 248,0.16)', fg: '#ddd6fe' }
                   : { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' };
                 return (
                   <Stack
@@ -2569,7 +2569,7 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
                     variant="contained"
                     onClick={() => onEdit(e.slug)}
                     sx={{
-                      bgcolor: '#a78bfa',
+                      bgcolor: '#9e8cf8',
                       color: '#0b1120',
                       textTransform: 'none',
                       fontWeight: 700,
@@ -2949,7 +2949,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
               size="small"
               label={blocks ? 'Block-CMS' : 'Legacy'}
               sx={{
-                bgcolor: blocks ? 'rgba(167,139,250,0.16)' : 'rgba(148,163,184,0.16)',
+                bgcolor: blocks ? 'rgba(158, 140, 248,0.16)' : 'rgba(148,163,184,0.16)',
                 color: blocks ? '#ddd6fe' : '#cbd5e1',
                 fontWeight: 700,
               }}
@@ -2977,7 +2977,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
                 variant="outlined"
                 startIcon={<AutoAwesomeMosaicIcon sx={{ fontSize: 14 }} />}
                 onClick={() => setTemplatePickerOpen(true)}
-                sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none', fontSize: '0.78rem' }}
+                sx={{ color: '#9e8cf8', borderColor: 'rgba(158, 140, 248,0.32)', textTransform: 'none', fontSize: '0.78rem' }}
               >
                 Bruk mal
               </Button>
@@ -2990,7 +2990,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
           direction={{ xs: 'column', sm: 'row' }}
           spacing={1.5}
           alignItems={{ sm: 'center' }}
-          sx={{ p: 1.5, borderRadius: 1.5, border: '1px dashed rgba(167,139,250,0.32)', bgcolor: 'rgba(167,139,250,0.04)' }}
+          sx={{ p: 1.5, borderRadius: 1.5, border: '1px dashed rgba(158, 140, 248,0.32)', bgcolor: 'rgba(158, 140, 248,0.04)' }}
         >
           <Typography sx={{ color: 'rgba(203,213,225,0.86)', fontSize: '0.84rem', flex: 1 }}>
             Vil du redigere med block-CMS (Webflow-stil)? Konverter eksisterende innhold eller start fra en mal.
@@ -3002,8 +3002,8 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
               startIcon={<AutoAwesomeMosaicIcon sx={{ fontSize: 14 }} />}
               onClick={() => setTemplatePickerOpen(true)}
               sx={{
-                color: '#a78bfa',
-                borderColor: 'rgba(167,139,250,0.32)',
+                color: '#9e8cf8',
+                borderColor: 'rgba(158, 140, 248,0.32)',
                 textTransform: 'none',
                 fontWeight: 600,
               }}
@@ -3015,7 +3015,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
               variant="contained"
               onClick={convertToBlocks}
               sx={{
-                bgcolor: '#a78bfa',
+                bgcolor: '#9e8cf8',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -3137,7 +3137,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
           onClick={handleSave}
           disabled={saving}
           sx={{
-            bgcolor: '#a78bfa',
+            bgcolor: '#9e8cf8',
             color: '#0b1120',
             textTransform: 'none',
             fontWeight: 700,
@@ -3191,13 +3191,13 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
               size="small"
               onClick={() => setPreviewMode(mode)}
               sx={{
-                color: previewMode === mode ? '#a78bfa' : 'rgba(148,163,184,0.85)',
-                bgcolor: previewMode === mode ? 'rgba(167,139,250,0.10)' : 'transparent',
+                color: previewMode === mode ? '#9e8cf8' : 'rgba(148,163,184,0.85)',
+                bgcolor: previewMode === mode ? 'rgba(158, 140, 248,0.10)' : 'transparent',
                 textTransform: 'capitalize',
                 minWidth: 0,
                 px: 1.2,
                 fontSize: '0.74rem',
-                '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
+                '&:hover': { bgcolor: 'rgba(158, 140, 248,0.08)' },
               }}
             >
               {mode}
@@ -3256,7 +3256,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
       >
         <DialogTitle sx={{ color: '#f8fafc', borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
           <Stack direction="row" spacing={1} alignItems="center">
-            <AutoAwesomeMosaicIcon sx={{ color: '#a78bfa' }} />
+            <AutoAwesomeMosaicIcon sx={{ color: '#9e8cf8' }} />
             <Box>Velg mal</Box>
           </Stack>
         </DialogTitle>
@@ -3277,8 +3277,8 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
                   bgcolor: 'rgba(2,6,23,0.34)',
                   transition: 'all 0.18s ease',
                   '&:hover': {
-                    border: '1px solid rgba(167,139,250,0.5)',
-                    bgcolor: 'rgba(167,139,250,0.06)',
+                    border: '1px solid rgba(158, 140, 248,0.5)',
+                    bgcolor: 'rgba(158, 140, 248,0.06)',
                   },
                 }}
               >
@@ -3383,7 +3383,7 @@ function CmsListEditor<T>({
           startIcon={<AddIcon />}
           onClick={() => onChange([...items, emptyItem])}
           sx={{
-            color: '#a78bfa',
+            color: '#9e8cf8',
             textTransform: 'none',
             alignSelf: 'flex-start',
           }}
@@ -3423,9 +3423,9 @@ function CmsChipListEditor({
             label={item}
             onDelete={() => onChange(items.filter((_, i) => i !== idx))}
             sx={{
-              bgcolor: 'rgba(167,139,250,0.16)',
+              bgcolor: 'rgba(158, 140, 248,0.16)',
               color: '#ddd6fe',
-              border: '1px solid rgba(167,139,250,0.32)',
+              border: '1px solid rgba(158, 140, 248,0.32)',
             }}
           />
         ))}
@@ -3445,7 +3445,7 @@ function CmsChipListEditor({
             '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
           }}
         />
-        <Button onClick={add} size="small" variant="outlined" sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}>
+        <Button onClick={add} size="small" variant="outlined" sx={{ color: '#9e8cf8', borderColor: 'rgba(158, 140, 248,0.32)', textTransform: 'none' }}>
           Legg til
         </Button>
       </Stack>
@@ -3505,7 +3505,7 @@ const CHANNEL_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   linkedin: { label: 'LinkedIn', color: '#0a66c2' },
   tiktok: { label: 'TikTok', color: '#000000' },
   youtube: { label: 'YouTube', color: '#ff0000' },
-  blog: { label: 'Blogg/Presse', color: '#a78bfa' },
+  blog: { label: 'Blogg/Presse', color: '#9e8cf8' },
   other: { label: 'Annet', color: '#94a3b8' },
 };
 
@@ -3513,18 +3513,18 @@ const STATUS_TONES: Record<string, { bg: string; fg: string; label: string }> = 
   planned: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1', label: 'Planlagt' },
   active: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', label: 'Aktiv' },
   paused: { bg: 'rgba(249,115,22,0.16)', fg: '#fdba74', label: 'Pause' },
-  won: { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe', label: 'Vunnet' },
+  won: { bg: 'rgba(158, 140, 248,0.16)', fg: '#ddd6fe', label: 'Vunnet' },
   lost: { bg: 'rgba(239,68,68,0.16)', fg: '#fca5a5', label: 'Tapt' },
   draft: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1', label: 'Utkast' },
   review: { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe', label: 'Til review' },
   scheduled: { bg: 'rgba(251,191,36,0.16)', fg: '#fcd34d', label: 'Planlagt' },
   published: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', label: 'Publisert' },
-  responded: { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe', label: 'Respons' },
+  responded: { bg: 'rgba(158, 140, 248,0.16)', fg: '#ddd6fe', label: 'Respons' },
   archived: { bg: 'rgba(148,163,184,0.12)', fg: 'rgba(203,213,225,0.65)', label: 'Arkivert' },
   not_contacted: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1', label: 'Ikke kontaktet' },
   reached_out: { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe', label: 'Pitched' },
   meeting_scheduled: { bg: 'rgba(251,191,36,0.16)', fg: '#fcd34d', label: 'Møte avtalt' },
-  covered: { bg: 'rgba(167,139,250,0.16)', fg: '#ddd6fe', label: 'Dekket' },
+  covered: { bg: 'rgba(158, 140, 248,0.16)', fg: '#ddd6fe', label: 'Dekket' },
   no_response: { bg: 'rgba(148,163,184,0.10)', fg: 'rgba(203,213,225,0.65)', label: 'Ingen respons' },
   not_interested: { bg: 'rgba(239,68,68,0.10)', fg: '#fca5a5', label: 'Ikke interessert' },
 };
@@ -3583,7 +3583,7 @@ function PostAgentSeatsTab() {
       </Typography>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
-        <Card sx={{ background: 'linear-gradient(135deg, rgba(160,48,192,0.18), rgba(110,63,199,0.08))', border: '1px solid rgba(160,48,192,0.35)' }}>
+        <Card sx={{ background: 'linear-gradient(135deg, rgba(71, 43, 212,0.18), rgba(71, 43, 212,0.08))', border: '1px solid rgba(71, 43, 212,0.35)' }}>
           <CardContent>
             <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 1 }}>Aktive seats</Typography>
             <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '2rem' }}>{summary.activeSeatCount}</Typography>
@@ -3659,7 +3659,7 @@ function PresenceTab() {
           borderBottom: '1px solid rgba(148,163,184,0.16)',
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: 'rgba(226,232,240,0.78)', minHeight: 38, fontSize: '0.84rem' },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+          '& .MuiTabs-indicator': { backgroundColor: '#9e8cf8' },
         }}
       >
         <Tab value="channels" label="Kanaler" />
@@ -3726,7 +3726,7 @@ function PresenceChannelsView() {
           variant="outlined"
           startIcon={<AddIcon />}
           onClick={() => setAddOpen(true)}
-          sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+          sx={{ color: '#9e8cf8', borderColor: 'rgba(158, 140, 248,0.32)', textTransform: 'none' }}
         >
           Ny kanal
         </Button>
@@ -3870,7 +3870,7 @@ function PresenceChannelsView() {
             variant="contained"
             disabled={!draft.display_name?.trim()}
             onClick={handleAdd}
-            sx={{ bgcolor: '#a78bfa', color: '#0b1120', '&:hover': { bgcolor: '#c4b5fd' } }}
+            sx={{ bgcolor: '#9e8cf8', color: '#0b1120', '&:hover': { bgcolor: '#c4b5fd' } }}
           >
             Opprett
           </Button>
@@ -3949,7 +3949,7 @@ function PresencePostsView() {
           variant="outlined"
           startIcon={<AddIcon />}
           onClick={() => setAddOpen(true)}
-          sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+          sx={{ color: '#9e8cf8', borderColor: 'rgba(158, 140, 248,0.32)', textTransform: 'none' }}
         >
           Nytt utkast
         </Button>
@@ -3971,7 +3971,7 @@ function PresencePostsView() {
             >
               <Chip size="small" label={statusMeta.label} sx={{ bgcolor: statusMeta.bg, color: statusMeta.fg, fontWeight: 700, height: 22 }} />
               {p.ai_generated ? (
-                <Chip size="small" label="AI" sx={{ bgcolor: 'rgba(167,139,250,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }} />
+                <Chip size="small" label="AI" sx={{ bgcolor: 'rgba(158, 140, 248,0.16)', color: '#ddd6fe', fontWeight: 700, height: 22 }} />
               ) : null}
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -4074,7 +4074,7 @@ function PresencePostsView() {
             onClick={handleAdd}
             disabled={!draft.channel_id || !draft.title}
             variant="contained"
-            sx={{ bgcolor: '#a78bfa', color: '#121218', fontWeight: 600, '&:hover': { bgcolor: '#8b5cf6' } }}
+            sx={{ bgcolor: '#9e8cf8', color: '#121218', fontWeight: 600, '&:hover': { bgcolor: '#8875eb' } }}
           >
             Lagre utkast
           </Button>
@@ -4162,7 +4162,7 @@ function PresenceRedditMentionsView() {
             variant="contained"
             onClick={handleSearch}
             disabled={loading || !query.trim()}
-            sx={{ bgcolor: '#a78bfa', color: '#0b1120', '&:hover': { bgcolor: '#c4b5fd' }, textTransform: 'none' }}
+            sx={{ bgcolor: '#9e8cf8', color: '#0b1120', '&:hover': { bgcolor: '#c4b5fd' }, textTransform: 'none' }}
           >
             {loading ? 'Søker …' : 'Søk'}
           </Button>
@@ -4282,7 +4282,7 @@ function PresenceContactsView() {
     <Stack spacing={1.5}>
       <Alert
         severity="info"
-        sx={{ bgcolor: 'rgba(167,139,250,0.08)', color: 'rgba(226,232,240,0.92)' }}
+        sx={{ bgcolor: 'rgba(158, 140, 248,0.08)', color: 'rgba(226,232,240,0.92)' }}
       >
         <Typography variant="body2" sx={{ mb: 0.3, fontWeight: 700, color: '#fff' }}>
           AI-personaliserte outreach-meldinger
@@ -4303,7 +4303,7 @@ function PresenceContactsView() {
           variant="outlined"
           startIcon={<AddIcon />}
           onClick={() => setAddOpen(true)}
-          sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.32)', textTransform: 'none' }}
+          sx={{ color: '#9e8cf8', borderColor: 'rgba(158, 140, 248,0.32)', textTransform: 'none' }}
         >
           Ny kontakt
         </Button>
@@ -4430,7 +4430,7 @@ function PresenceContactsView() {
             onClick={handleAdd}
             disabled={!draft.name}
             variant="contained"
-            sx={{ bgcolor: '#a78bfa', color: '#121218', fontWeight: 600, '&:hover': { bgcolor: '#8b5cf6' } }}
+            sx={{ bgcolor: '#9e8cf8', color: '#121218', fontWeight: 600, '&:hover': { bgcolor: '#8875eb' } }}
           >
             Lagre kontakt
           </Button>
@@ -4660,7 +4660,7 @@ export default function AdminRoom() {
         // Dette mørke lerretet gir tokens riktig grunn uansett host-tema.
         minHeight: '100vh',
         background:
-          'radial-gradient(1100px 700px at 15% -10%, rgba(124,58,237,0.14), transparent 60%), linear-gradient(180deg, #0b1120 0%, #0a0807 100%)',
+          'radial-gradient(1100px 700px at 15% -10%, rgba(98, 73, 223,0.14), transparent 60%), linear-gradient(180deg, #0b1120 0%, #0a0807 100%)',
         // Body har lys-temaets tekstfarge (#262626); theme-default
         // Typography (uten color-prop) ARVER den og ble usynlig på mørk
         // grunn («Min dag», «Vunnet / Tapt»). Lys arvefarge her gir alle
@@ -4694,7 +4694,7 @@ export default function AdminRoom() {
             borderBottom: '1px solid rgba(148,163,184,0.16)',
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.78)', minHeight: 42 },
             '& .Mui-selected': { color: '#f8fafc' },
-            '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+            '& .MuiTabs-indicator': { backgroundColor: '#9e8cf8' },
           }}
         >
           <Tab value="dashboard" label="Oversikt" />

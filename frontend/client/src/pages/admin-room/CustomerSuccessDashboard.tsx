@@ -90,14 +90,14 @@ const INTERACTION_TYPES = [
 ];
 
 const palette = {
-  bg: '#150b2e',
-  bgSubtle: 'rgba(168,85,247,0.04)',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
+  bg: '#18122b',
+  bgSubtle: 'rgba(136, 117, 235,0.04)',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accent: '#c084fc',
+  accent: '#9e8cf8',
 };
 
 export default function CustomerSuccessDashboard() {
@@ -210,7 +210,7 @@ export default function CustomerSuccessDashboard() {
           <Stack direction="row" alignItems="center" spacing={1.4}>
             <Box sx={{
               width: 40, height: 40, borderRadius: 1.4,
-              bgcolor: 'rgba(168,85,247,0.12)',
+              bgcolor: 'rgba(136, 117, 235,0.12)',
               border: `1px solid ${palette.borderStrong}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
@@ -310,7 +310,7 @@ export default function CustomerSuccessDashboard() {
                   bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}`,
                   display: 'flex', alignItems: 'center', gap: 1.4,
                   cursor: 'pointer',
-                  '&:hover': { borderColor: palette.borderStrong, bgcolor: 'rgba(168,85,247,0.08)' },
+                  '&:hover': { borderColor: palette.borderStrong, bgcolor: 'rgba(136, 117, 235,0.08)' },
                 }} onClick={() => openCustomer(c)}>
                   <GroupOutlinedIcon sx={{ color: meta.color, fontSize: 22 }} />
                   <Stack sx={{ flex: 1, minWidth: 0 }}>
@@ -331,7 +331,7 @@ export default function CustomerSuccessDashboard() {
                         variant="determinate" value={c.overallScore}
                         sx={{
                           height: 4, borderRadius: 2,
-                          bgcolor: 'rgba(168,85,247,0.10)',
+                          bgcolor: 'rgba(136, 117, 235,0.10)',
                           '& .MuiLinearProgress-bar': { bgcolor: meta.color, borderRadius: 2 },
                         }}
                       />
@@ -381,7 +381,7 @@ export default function CustomerSuccessDashboard() {
                       key={k}
                       label={`${label}: ${interactionsFor[k]}`}
                       size="small"
-                      sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent, fontWeight: 700 }}
+                      sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent, fontWeight: 700 }}
                     />
                   );
                 })}
@@ -389,7 +389,7 @@ export default function CustomerSuccessDashboard() {
               {(interactionsFor.aiSummary || interactionsFor.aiNextAction) && (
                 <Box sx={{
                   p: 1.4, borderRadius: 1.4,
-                  bgcolor: 'rgba(192,132,252,0.06)',
+                  bgcolor: 'rgba(158, 140, 248,0.06)',
                   border: `1px dashed ${palette.borderStrong}`,
                 }}>
                   <Typography sx={{ fontSize: '0.7rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', mb: 0.6 }}>
