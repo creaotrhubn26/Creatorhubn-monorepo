@@ -277,6 +277,20 @@ const roleRoomTalentsService = {
     return payload.credit as TalentCredit;
   },
 
+  /** Hele rekkefølgen sendes inn, ikke «flytt denne hit» — samme svar uansett. */
+  async reorderCredits(ids: string[]): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${BASE}/me/credits/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Klarte ikke å lagre rekkefølgen' };
+    }
+    return { ok: true };
+  },
+
   async deleteCredit(id: string): Promise<{ ok: boolean; error?: string }> {
     const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (!r.ok) {
