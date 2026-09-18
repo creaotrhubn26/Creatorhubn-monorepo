@@ -4,9 +4,9 @@
  * ett aggregat-endepunkt (GET /overview). Alle states: laster/feil/tom.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, LinearProgress, Skeleton, Stack, Typography } from '@mui/material';
-import { Add as AddIcon, AutoStoriesOutlined as StoryIcon, DevicesOutlined as PlatformIcon, Refresh as RefreshIcon, TimelineOutlined as PlanIcon } from '@mui/icons-material';
-import { getProjectOverview } from '../narrativeService';
+import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, Skeleton, Stack, Typography } from '@mui/material';
+import { Add as AddIcon, AutoStoriesOutlined as StoryIcon, AutoAwesomeMosaicOutlined as TemplateIcon, DevicesOutlined as PlatformIcon, Refresh as RefreshIcon, TimelineOutlined as PlanIcon } from '@mui/icons-material';
+import { applyProjectTemplate, getProjectOverview, NarrativeApiError, type ProjectTemplate } from '../narrativeService';
 import type { NarrativeProjectOverview } from '../narrativeTypes';
 import { NARRATIVE_LANE_LABELS, NARRATIVE_MILESTONE_STATUS_LABELS, NARRATIVE_SCENE_ERA_LABELS, type NarrativeSceneEra } from '../narrativeTypes';
 import { narrativeColors } from '../narrativeTheme';
@@ -30,6 +30,10 @@ export interface ProjectHomePanelProps {
 }
 
 export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNavigate }: ProjectHomePanelProps): React.ReactElement {
+  // Fase 8g: «Start fra mal» (blank / demo-adventure / wfu-sample) — skrives gjennom service-funksjonene, revisjon «Før mal» først.
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState<{ text: string; severity: 'success' | 'warning' | 'error' } | null>(null);
   const [overview, setOverview] = useState<NarrativeProjectOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +44,19 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
     finally { setLoading(false); }
   }, [projectId]);
   useEffect(() => { void load(); }, [load, refreshKey]);
+  const applyTemplate = useCallback(async (template: ProjectTemplate) => {
+    setTemplateBusy(true);
+    try {
+      const r = await applyProjectTemplate(projectId, template);
+      const n = r.report ? Object.values(r.report).reduce((acc, c) => acc + c.inserted, 0) : 0;
+      setTemplateNotice({ text: template === 'blank' ? 'Tomt prosjekt — begynn med Historie eller en scene.' : `Mal «${template}» lagt inn (${n} rader).`, severity: 'success' });
+      setTemplateOpen(false);
+      await load();
+    } catch (err) {
+      const msg = err instanceof NarrativeApiError && err.code === 'plan_limit' ? 'Planen din har nådd grensen for antall Story Graph-prosjekter — oppgrader eller tøm et prosjekt.' : err instanceof Error ? err.message : 'Kunne ikke bruke malen.';
+      setTemplateNotice({ text: msg, severity: 'error' });
+    } finally { setTemplateBusy(false); }
+  }, [projectId, load]);
 
   const kpis = useMemo(() => (overview ? homeKpis(overview) : []), [overview]);
   const nextUp = useMemo(() => (overview ? sortNextUp(nextUpFromMilestones(overview.milestones)) : []), [overview]);
@@ -67,15 +84,18 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
   if (isEmptyProject(overview)) {
     return (
       <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 820 }} data-testid="narrative-home-empty">
+        <TemplateDialog open={templateOpen} busy={templateBusy} onClose={() => setTemplateOpen(false)} onPick={(t) => void applyTemplate(t)} />
         <Typography sx={{ fontSize: 22, fontWeight: 800 }}>{projectTitle}</Typography>
         <Typography sx={{ fontSize: 14, color: narrativeColors.textDim, mt: 1 }}>
           Prosjektet er tomt. Start med historien (episoder og kilder), legg inn scenekort med manusfelt, og sett målplattformen så alle vet hva spillet skal kjøre på.
         </Typography>
         <Stack direction="row" spacing={1} sx={{ mt: 3, flexWrap: 'wrap' }} useFlexGap>
-          <Button variant="contained" startIcon={<StoryIcon />} onClick={() => onNavigate('story')} sx={{ bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700 }} data-testid="narrative-home-cta-story">Historie</Button>
+          <Button variant="contained" startIcon={<TemplateIcon />} onClick={() => setTemplateOpen(true)} sx={{ bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700 }} data-testid="narrative-home-cta-template">Start fra mal</Button>
+          <Button variant="outlined" startIcon={<StoryIcon />} onClick={() => onNavigate('story')} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderSoft }} data-testid="narrative-home-cta-story">Historie</Button>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => onNavigate('scenes')} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderSoft }} data-testid="narrative-home-cta-scene">Ny scene</Button>
           <Button variant="outlined" startIcon={<PlatformIcon />} onClick={() => onNavigate('platform')} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderSoft }} data-testid="narrative-home-cta-platform">Plattform</Button>
         </Stack>
+        {templateNotice ? <Alert severity={templateNotice.severity} sx={{ mt: 2 }} data-testid="narrative-home-template-notice" onClose={() => setTemplateNotice(null)}>{templateNotice.text}</Alert> : null}
         <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mt: 3 }}>
           Har studioet et manus-uttrekk? Seed prosjektet fra kommandolinjen: <code>npm run seed:story-graph -- --project {projectId}</code>
         </Typography>
@@ -92,6 +112,7 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
         <Button size="small" startIcon={<RefreshIcon />} onClick={() => void load()} sx={{ color: narrativeColors.textDim }} aria-label="Oppdater">Oppdater</Button>
       </Stack>
       {error ? <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert> : null}
+      {templateNotice ? <Alert severity={templateNotice.severity} sx={{ mb: 2 }} data-testid="narrative-home-template-notice" onClose={() => setTemplateNotice(null)}>{templateNotice.text}</Alert> : null}
 
       {/* KPI-kort */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' }, gap: 1.5 }}>
@@ -221,3 +242,33 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
 }
 
 export default ProjectHomePanel;
+
+const TEMPLATES: Array<{ id: ProjectTemplate; title: string; body: string }> = [
+  { id: 'blank', title: 'Tomt', body: 'Bare skallet. Du legger inn historie, scener og plattform selv.' },
+  { id: 'demo-adventure', title: 'Demo-eventyr', body: '«Lykten i Dalen»: 1 episode, 6 scener, 4 karakterer, 2 lokasjoner — uten IP, fritt å endre.' },
+  { id: 'wfu-sample', title: 'WFU-utdrag', body: 'Tre scenekort fra What Follows Us (uten replikker) som viser Før/Handling/Kontroll/Etter/Lyd, kildemerker og epoke.' },
+];
+
+function TemplateDialog({ open, busy, onClose, onPick }: { open: boolean; busy: boolean; onClose: () => void; onPick: (t: ProjectTemplate) => void }): React.ReactElement {
+  return (
+    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` }, 'data-testid': 'narrative-template-dialog' } as never}>
+      <DialogTitle sx={{ fontSize: 15, fontWeight: 800 }}>Start fra mal</DialogTitle>
+      <DialogContent>
+        <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mb: 1.5 }}>Malen skrives gjennom de vanlige funksjonene og tas en revisjon av først — ingenting overskrives.</Typography>
+        <Stack spacing={1}>
+          {TEMPLATES.map((t) => (
+            <Card key={t.id} sx={{ bgcolor: 'transparent', border: `1px solid ${narrativeColors.borderSoft}` }} data-testid={`narrative-template-${t.id}`}>
+              <CardActionArea disabled={busy} onClick={() => onPick(t.id)}>
+                <CardContent sx={{ py: 1.25 }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 800 }}>{t.title}</Typography>
+                  <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>{t.body}</Typography>
+                </CardContent>
+              </CardActionArea>
+            </Card>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions><Button onClick={onClose} disabled={busy} sx={{ color: narrativeColors.textDim }}>{busy ? 'Legger inn…' : 'Avbryt'}</Button></DialogActions>
+    </Dialog>
+  );
+}

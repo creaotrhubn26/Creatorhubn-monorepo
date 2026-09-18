@@ -604,6 +604,7 @@ import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
 import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
 import { setupRoleRoomSceneRoleCardsRoutes } from "./role-room-scene-role-cards-routes";
+import { setupRoleRoomProductionPhaseRoutes } from "./role-room-production-phase-routes";
 import { setupRoleRoomEidRoutes } from "./role-room-eid-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
@@ -25778,6 +25779,14 @@ setupRoleRoomTalentCreditsRoutes({
 // Rollekort for settet (migrasjon 0628): produksjonen ser alle kortene i en
 // scene, personen åpner sin egen lenke og ser bare sitt eget.
 setupRoleRoomSceneRoleCardsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Produksjonsfase og «produksjoner på vei» (migrasjon 0633): overgangen fra
+// utvikling til pre-produksjon er den skuespillere vil vite om, og den varsles
+// bare for produksjoner som er annonsert.
+setupRoleRoomProductionPhaseRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,
