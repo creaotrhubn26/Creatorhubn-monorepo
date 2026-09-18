@@ -293,7 +293,15 @@ vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis �
   (`role-room-narrative-frames-ai.ts`): objektlager → `narrative_assets.storage_key` → ramme «KI-referanse»;
   `ai_assist`-gate + daglig tak 10 per prosjekt (generate-frame mangler kostnadskontroll). Rammer i objektlager
   vises via kortlevd signert URL. Ingen migrasjon. e2e `game-scene-ai.spec.ts`.
-- **8g:** se planen i sesjonsloggen; oppdateres her når delen leveres.
+- **8g Salgsklar (LEVERT):** migrasjon `0645_game_plan_fase8_features.sql` gir Studio `ci_evidence`
+  og `playtest_telemetry` (opprettelse av hooks/tokens gates; eksisterende fortsetter). Prosjektmaler
+  `POST /projects/:id/apply-template` (`blank` / `demo-adventure` uten IP / `wfu-sample` = tre WFU-scener
+  uten replikker) gjennom `seedStoryGraphFixture` — revisjon «Før mal» først; Hjem-hero har «Start fra mal».
+  Hardening: 300 mutasjoner/min per bruker (429), `maxProjects` håndheves ved første Story Graph-skriving
+  i et nytt prosjekt (402 `plan_limit`), revisjons-retensjon (siste 50 + én per dag i 90 dager).
+  Docs: `STORY_GRAPH_STUDIO_GUIDE.md` (onboarding), `STORY_GRAPH_API.md` (ruter, MCP, webhook, telemetri,
+  eksport); landingskortet «Spillstudio» nevner manusimport, CI-bevis, telemetri og manusvakt. Evidens
+  `docs/evidence/2026-09-story-graph-fase8-decisions.yaml`.
 
 
 ## Researchprogram

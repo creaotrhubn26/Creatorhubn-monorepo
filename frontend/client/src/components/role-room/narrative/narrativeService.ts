@@ -797,3 +797,10 @@ export async function generateStoryboardImage(projectId: string, prompt: string,
 export function createAiReferenceFrame(projectId: string, sceneId: string, input: { imageBase64: string; caption?: string; prompt?: string; model?: string }): Promise<AiReferenceFrameResult> {
   return request(`/projects/${encodeURIComponent(projectId)}/scenes/${encodeURIComponent(sceneId)}/frames/from-base64`, { method: 'POST', body: JSON.stringify(input) });
 }
+
+// ─── Fase 8g: prosjektmaler ─────────────────────────────────────────
+export type ProjectTemplate = 'blank' | 'demo-adventure' | 'wfu-sample';
+export interface ApplyTemplateResult { template: ProjectTemplate; revisionId: string | null; report: Record<string, { inserted: number; updated: number; skipped: number }> | null }
+export function applyProjectTemplate(projectId: string, template: ProjectTemplate): Promise<ApplyTemplateResult> {
+  return request(`/projects/${encodeURIComponent(projectId)}/apply-template`, { method: 'POST', body: JSON.stringify({ template }) });
+}

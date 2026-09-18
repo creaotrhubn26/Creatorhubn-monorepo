@@ -17,6 +17,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { narrativeColors } from '../narrativeTheme';
 import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook, createPlaytestToken, listPlaytestTokens, revokePlaytestToken, type NarrativeCiDelivery, type NarrativeCiHook, type NarrativePlaytestToken } from '../narrativeService';
 import { sceneFieldSx } from '../scenes/sceneUi';
+import { useGamePlanGate } from '../../game/useGamePlanGate';
+import { PlanGateBanner } from '../../game/GameBillingPanels';
 
 export interface IntegrationsPanelProps {
   projectId: string;
@@ -48,6 +50,10 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
   const [creating, setCreating] = useState(false);
   const [fresh, setFresh] = useState<{ hook: NarrativeCiHook; secret: string; webhookPath: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // Fase 8g: Studio-gating for hooks og tokens (eksisterende fortsetter å virke).
+  const gate = useGamePlanGate();
+  const canCi = gate.has('ci_evidence');
+  const canTelemetry = gate.has('playtest_telemetry');
   // Fase 8e: spilltest-tokens (råtoken vises én gang).
   const [tokens, setTokens] = useState<NarrativePlaytestToken[] | null>(null);
   const [tokenLabel, setTokenLabel] = useState('');
@@ -144,8 +150,9 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
         <Typography sx={{ fontSize: 13, fontWeight: 800, mb: 1 }}>Ny CI-hook</Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <TextField size="small" label="Etikett" placeholder="F.eks. Xcode Cloud – prolog" value={label} onChange={(e) => setLabel(e.target.value)} inputProps={{ 'data-testid': 'narrative-ci-hook-label', maxLength: 200 }} sx={{ ...sceneFieldSx, flex: 1 }} disabled={creating} />
-          <Button variant="contained" startIcon={creating ? <CircularProgress size={14} sx={{ color: '#04140a' }} /> : <AddIcon />} onClick={() => void create()} disabled={creating} data-testid="narrative-ci-hook-create" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, whiteSpace: 'nowrap', '&:hover': { bgcolor: narrativeColors.accentDark } }}>Opprett hook</Button>
+          <Button variant="contained" startIcon={creating ? <CircularProgress size={14} sx={{ color: '#04140a' }} /> : <AddIcon />} onClick={() => void create()} disabled={creating || !canCi} data-locked={canCi ? undefined : 'plan'} data-testid="narrative-ci-hook-create" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, whiteSpace: 'nowrap', '&:hover': { bgcolor: narrativeColors.accentDark } }}>Opprett hook</Button>
         </Stack>
+      <PlanGateBanner feature="ci_evidence" compact />
       </Box>
 
       {/* ── Hook-liste ───────────────────────────────────────────────── */}
@@ -209,8 +216,9 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
       </Typography>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
         <TextField size="small" label="Etikett" placeholder="iPad testrunde uke 40" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} inputProps={{ 'data-testid': 'narrative-playtest-token-label' }} sx={{ ...sceneFieldSx, minWidth: 260 }} />
-        <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => void createToken()} disabled={creatingToken} data-testid="narrative-playtest-token-create" sx={{ bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700 }}>Opprett token</Button>
+        <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => void createToken()} disabled={creatingToken || !canTelemetry} data-locked={canTelemetry ? undefined : 'plan'} data-testid="narrative-playtest-token-create" sx={{ bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700 }}>Opprett token</Button>
       </Stack>
+      <PlanGateBanner feature="playtest_telemetry" compact />
       {tokens === null ? null : activeTokens.length === 0 ? (
         <Box sx={{ color: narrativeColors.textDim, fontSize: 12, p: 2, border: `1px dashed ${narrativeColors.borderSoft}`, borderRadius: 2, mb: 2 }} data-testid="narrative-playtest-tokens-empty">Ingen aktive tokens. Tokens utløper etter 90 dager og kan tilbakekalles når som helst.</Box>
       ) : (

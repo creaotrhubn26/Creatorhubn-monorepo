@@ -25,7 +25,7 @@ function makePool(handlers: Handler[] = []) {
 /** Testplaner: `studio` (alt) som standard så eksisterende tester er upåvirket; `solo` for gating-tester. */
 const TEST_PLANS = {
   solo: { slug: 'solo', features: ['play', 'export_json', 'export_md'], limits: { maxProjects: 3, maxElements: 200 } },
-  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf', 'scene_review', 'production_plan', 'team_seats', 'guest_reviewers'], limits: { seats: 5 } },
+  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages', 'export_pdf', 'scene_review', 'production_plan', 'team_seats', 'guest_reviewers', 'ci_evidence', 'playtest_telemetry'], limits: { seats: 5 } },
 } as const;
 
 function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number; plan?: keyof typeof TEST_PLANS } = {}) {
@@ -942,6 +942,24 @@ describe('narrative routes — Fase 7: produksjons-OS (gater, replikker, episode
     expect(res.body.data.tasks).toEqual({ open: 1, overdue: 1, done: 1 });
     expect(res.body.data.reviews).toEqual({ open: 1 });
     expect(res.body.data.platform).toEqual({ requirements: 2, verified: 1, primaryName: 'iPad Pro M1' });
+  });
+
+  it('Fase 8g: apply-template → 400 ukjent mal, 402 plan_limit når eierens Story Graph-kvote er brukt, 201 blank uten skriving; ci-hooks/playtest-tokens gates på Studio', async () => {
+    const quota = (n: number, hasSelf: boolean) => makePool([{ match: /bool_or\(id = \$1\) AS has_self FROM used/, rows: [{ n, has_self: hasSelf }] }]);
+    const url = `${base}/apply-template`;
+    expect((await auth(request(createApp(quota(0, false))).post(url)).send({ template: 'nope' })).status).toBe(400);
+    // Solo: maxProjects 3 → tredje nye prosjekt stoppes (kvoten teller prosjekter med narrative-data).
+    const full = await auth(request(createApp(quota(3, false), { plan: 'solo' })).post(url)).send({ template: 'blank' });
+    expect(full.status).toBe(402);
+    expect(full.body.error).toBe('plan_limit');
+    // Samme prosjekt har data fra før → teller ikke som nytt.
+    expect((await auth(request(createApp(quota(3, true), { plan: 'solo' })).post(url)).send({ template: 'blank' })).status).toBe(201);
+    const blank = await auth(request(createApp(quota(0, false))).post(url)).send({ template: 'blank' });
+    expect(blank.status).toBe(201);
+    expect(blank.body.data).toEqual({ template: 'blank', revisionId: null, report: null });
+    // Studio-gating (0645): pro får 402 på hooks og tokens.
+    expect((await auth(request(createApp(makePool(), { plan: 'solo' })).post(`${base}/ci-hooks`)).send({ label: 'x' })).status).toBe(402);
+    expect((await auth(request(createApp(makePool(), { plan: 'solo' })).post(`${base}/playtest-tokens`)).send({ label: 'x' })).status).toBe(402);
   });
 
   it('Fase 8f: frames/from-base64 → 402 uten ai_assist, 400 ugyldig bilde, 429 daglig tak, 201 med ramme', async () => {

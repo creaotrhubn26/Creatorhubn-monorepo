@@ -42,6 +42,7 @@ import { applyDocumentImport, listExistingScenesForImport } from './narrative-do
 import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook } from './role-room-narrative-ci-hooks.js';
 import { createPlaytestIngestHandler, createPlaytestToken, getPlaytestSummary, listPlaytestTokens, revokePlaytestToken } from './role-room-narrative-playtest.js';
 import { AiFrameError, createAiReferenceFrame } from './role-room-narrative-frames-ai.js';
+import { PROJECT_TEMPLATES, applyProjectTemplate } from './narrative-templates.js';
 import { presignCreatorHubObjectDownload } from './creatorhub-object-storage.js';
 import {
   PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
@@ -486,6 +487,14 @@ export function createRoleRoomNarrativeRouter(
   };
 
   const guard = [auth, requireProject];
+  // Fase 8g: 300 mutasjoner/min per bruker (ikke IP — bak proxy). Av i vitest.
+  const mutationLimiter = createTokenRateLimiter({ windowMs: 60_000, max: 300, maxKeys: 20_000 });
+  router.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS' || process.env.NODE_ENV === 'test') { next(); return; }
+    const key = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim() || req.ip || 'anon';
+    if (mutationLimiter.hit(key)) { res.status(429).set('Retry-After', '60').json({ error: 'rate_limited' }); return; }
+    next();
+  });
   const broadcast = deps.broadcast ?? broadcastEventToRoom;
   const resolvePlan = deps.resolveProjectPlan ?? resolveGamePlanForProject;
   // Plan-gating (Fase 4d): 402 { error: 'plan_required' | 'plan_limit' } fra game-plan-gate.
@@ -602,6 +611,7 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/boards', ...guard, wrap(async (req, res) => {
     const parsed = boardBody.safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
+    await assertProjectQuota(req.projectId); // Fase 8g
     res.status(201).json({ success: true, data: await svc.createBoard(pool, req.projectId, req.userId, parsed.data) });
   }));
   router.patch('/projects/:projectId/boards/:id', ...guard, wrap(async (req, res) => {
@@ -894,6 +904,7 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/scenes', ...guard, wrap(async (req, res) => {
     const parsed = sceneBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
+    await assertProjectQuota(req.projectId); // Fase 8g: maxProjects ved første Story Graph-skriving
     try {
       const scene = await svc.createScene(pool, req.projectId, req.userId, parsed.data);
       res.status(201).json({ success: true, data: scene });
@@ -1402,6 +1413,7 @@ export function createRoleRoomNarrativeRouter(
     res.json({ success: true, data: await listCiHooks(pool, req.projectId) });
   }));
   router.post('/projects/:projectId/ci-hooks', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'ci_evidence'); // Fase 8g: Studio
     const parsed = z.object({ label: z.string().trim().max(200).optional() }).safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     const { hook, secret } = await createCiHook(pool, req.projectId, req.userId, parsed.data.label ?? '');
@@ -1419,6 +1431,37 @@ export function createRoleRoomNarrativeRouter(
   router.get('/projects/:projectId/ci-deliveries', ...guard, wrap(async (req, res) => {
     res.json({ success: true, data: await listCiDeliveries(pool, req.projectId, { limit: 200 }) });
   }));
+  // ─── Fase 8g: prosjektkvote + maler ──────────────────────────────────────
+  /**
+   * `maxProjects` håndheves ved første Story Graph-skriving i et NYTT prosjekt (prosjektopprettelsen
+   * ligger i den delte film-ruten og kjenner ikke spillplanen): teller eierens prosjekter som
+   * allerede har narrative-data. Har dette prosjektet data fra før, teller det ikke som nytt.
+   */
+  const assertProjectQuota = async (projectId: string) => {
+    const { rows } = await pool.query(
+      `WITH owner AS (SELECT created_by FROM casting_projects WHERE id = $1),
+            used AS (
+              SELECT DISTINCT p.id FROM casting_projects p, owner
+               WHERE p.created_by = owner.created_by
+                 AND (EXISTS (SELECT 1 FROM narrative_boards b WHERE b.project_id = p.id)
+                   OR EXISTS (SELECT 1 FROM narrative_scenes s WHERE s.project_id = p.id)
+                   OR EXISTS (SELECT 1 FROM narrative_episodes e WHERE e.project_id = p.id)))
+       SELECT COUNT(*)::int AS n, bool_or(id = $1) AS has_self FROM used`,
+      [projectId],
+    );
+    const row = (rows[0] ?? {}) as { n?: number; has_self?: boolean | null };
+    if (row.has_self) return;
+    await limit(projectId, 'maxProjects', Number(row.n ?? 0) || 0);
+  };
+  router.post('/projects/:projectId/apply-template', ...guard, wrap(async (req, res) => {
+    const parsed = z.object({ template: z.enum(PROJECT_TEMPLATES) }).safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    await assertProjectQuota(req.projectId);
+    const result = await applyProjectTemplate(pool, req.projectId, req.userId, parsed.data.template);
+    notifyGraphChanged(req as AuthedRequest, 'production');
+    res.status(201).json({ success: true, data: result });
+  }));
+
   // ─── Fase 8f: KI-referansebilde → objektlager → narrative_assets(storage_key) → scene-ramme ──
   // Bildet genereres av /api/storyboards/generate-frame (persisterer ingenting); ai_assist-gate + daglig tak her.
   router.post('/projects/:projectId/scenes/:sceneId/frames/from-base64', ...guard, wrap(async (req, res) => {
@@ -1448,6 +1491,7 @@ export function createRoleRoomNarrativeRouter(
     res.json({ success: true, data: await listPlaytestTokens(pool, req.projectId) });
   }));
   router.post('/projects/:projectId/playtest-tokens', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'playtest_telemetry'); // Fase 8g: Studio
     const parsed = z.object({ label: z.string().trim().max(200).optional(), ttlDays: z.number().int().min(1).max(365).nullable().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     const { token, rawToken } = await createPlaytestToken(pool, req.projectId, req.userId, parsed.data);

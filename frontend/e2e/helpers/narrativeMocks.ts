@@ -697,6 +697,20 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
 
     // ── Fase 8c: CI-bevis-hooks ────────────────────────────────────────
+    // Fase 8g: prosjektmaler (mock: legger inn en episode + tre scener + to karakterer for demo/WFU-utdrag).
+    if (m(/\/projects\/[^/]+\/apply-template$/) && method === 'POST') {
+      const template = String(body.template ?? '');
+      if (!['blank', 'demo-adventure', 'wfu-sample'].includes(template)) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_body"}' });
+      if (gamePlan === 'solo' && url.searchParams.get('quota') === 'full') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_limit', limit: 'maxProjects', max: 3, planSlug: 'solo' }) });
+      if (template === 'blank') return route.fulfill(ok({ template, revisionId: null, report: null }, 201));
+      const demo = template === 'demo-adventure';
+      const ep = { id: nextId('nep'), projectId, code: 'E01', title: demo ? 'Lykten i Dalen' : 'Skoleveien', summary: '', playersLearn: '', sourceNote: '', status: 'draft', sortOrder: episodes.length, createdAt: now(), updatedAt: now() };
+      episodes.push(ep);
+      const codes = demo ? ['S01', 'S02', 'S03'] : ['P01', 'P02', 'P03'];
+      for (const code of codes) scenes.push({ id: nextId('nsc'), projectId, code, workingId: code, title: demo ? `Demo ${code}` : `WFU ${code}`, subtitle: '', location: '', challenge: '', gameplayMechanic: '', environment: '', beforeState: 'Før.', action: 'Handling.', control: '', afterState: '', audio: '', changeNote: '', bridge: '', timeNote: '', knowledge: {}, era: '1797', episodeId: ep.id, startAt: null, dueAt: null, sourceRefs: [{ tag: 'A', ref: 'D' }], status: 'idea', assigneeUserId: null, heroAssetId: null, sortOrder: scenes.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() });
+      for (const name of demo ? ['Mira', 'Tor'] : ['Nora', 'Elise']) g.components.push({ id: nextId('ncp'), projectId, name, folderPath: '', coverAssetId: null, customId: `char_${name.toLowerCase()}`, kind: 'character', profile: {}, sortOrder: g.components.length, createdAt: now(), updatedAt: now() } as never);
+      return route.fulfill(ok({ template, revisionId: nextId('nrv'), report: { episodes: { inserted: 1, updated: 0, skipped: 0 }, scenes: { inserted: 3, updated: 0, skipped: 0 }, components: { inserted: 2, updated: 0, skipped: 0 } } }, 201));
+    }
     // Fase 8f: KI-referansebilde → asset (storage_key, ingen external_url) + ramme.
     mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/frames\/from-base64$/);
     if (mm && method === 'POST') {

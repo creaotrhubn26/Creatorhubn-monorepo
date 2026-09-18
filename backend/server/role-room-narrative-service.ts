@@ -1003,7 +1003,29 @@ export async function createRevision(db: Queryable, projectId: string, userId: s
        VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING *`,
     [generateId('nrv'), projectId, label, JSON.stringify(graph), userId],
   );
+  await pruneRevisions(db, projectId).catch((err) => console.warn('[narrative] pruneRevisions', err));
   return revisionMetaFromRow(rows[0] as Row);
+}
+
+/**
+ * Fase 8g: revisjons-retensjon — behold de 50 nyeste, og deretter én per dag (den nyeste den dagen)
+ * i 90 dager. Eldre enn 90 dager slettes uansett (utover de 50 nyeste). Kjøres etter hver ny revisjon.
+ */
+export async function pruneRevisions(db: Queryable, projectId: string, opts: { keepLatest?: number; keepDays?: number } = {}): Promise<number> {
+  const keepLatest = opts.keepLatest ?? 50;
+  const keepDays = opts.keepDays ?? 90;
+  const { rowCount } = await db.query(
+    `DELETE FROM narrative_revisions r
+      WHERE r.project_id = $1
+        AND r.id NOT IN (SELECT id FROM narrative_revisions WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2)
+        AND r.id NOT IN (
+          SELECT DISTINCT ON (date_trunc('day', created_at)) id FROM narrative_revisions
+           WHERE project_id = $1 AND created_at > now() - ($3::int * interval '1 day')
+           ORDER BY date_trunc('day', created_at), created_at DESC
+        )`,
+    [projectId, keepLatest, keepDays],
+  );
+  return rowCount ?? 0;
 }
 
 export async function getRevision(db: Queryable, projectId: string, id: string): Promise<{ meta: NarrativeRevisionMeta; snapshot: NarrativeGraph } | null> {
