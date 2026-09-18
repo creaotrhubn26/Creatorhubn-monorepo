@@ -7,16 +7,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 
-import {
-  buildPoiView,
-  mediaUrl,
-  parseLang,
-  registerReiseguideRoutes,
-  resolveLang,
-  type PoiRow,
-  type ScriptRow,
-  type TranslationRow,
-} from "./reiseguide-routes.js";
+import { buildPoiView, mediaUrl, parseLang, registerReiseguideRoutes, requestApiBase, resolveLang, type PoiRow, type ScriptRow, type TranslationRow } from "./reiseguide-routes.js";
 
 type Handler = { match: RegExp; rows: unknown[] | ((params: unknown[]) => unknown[]) };
 
@@ -33,9 +24,14 @@ function makePool(handlers: Handler[]) {
   return { query } as unknown as Pick<Pool, "query"> & { query: typeof query };
 }
 
-function makeApp(pool: Pick<Pool, "query">) {
+function makeApp(pool: Pick<Pool, "query">, presigned: string | null = "https://s3.test/signed?sig=1") {
   const app = express();
-  registerReiseguideRoutes(app, { pool, mediaUrlBase: "https://media.test/" });
+  registerReiseguideRoutes(app, {
+    pool,
+    mediaUrlBase: "https://media.test/",
+    publicApiBase: "https://api.test",
+    presignMedia: async (key) => (presigned ? `${presigned}&key=${encodeURIComponent(key)}` : null),
+  });
   return app;
 }
 
@@ -185,6 +181,47 @@ const scriptRows: ScriptRow[] = [
     estimated_duration_s: 90,
   }),
 ];
+
+const S3_AUDIO_KEY = "products/senseaid-explore/areas/kvadraturen/pois/akershus-festning/audio/narration-1-nb-v1.mp3";
+
+describe("lyd i CreatorHub S3", () => {
+  it("gir appen en API-URL for S3-nøkler og lar eldre nøkler gå mot mediebasen", () => {
+    expect(mediaUrl(S3_AUDIO_KEY, MEDIA, "https://api.test/")).toBe(`https://api.test/api/guide/media/${S3_AUDIO_KEY}`);
+    expect(mediaUrl("reiseguide/akershus/nb/narration-1.m4a", MEDIA, "https://api.test")).toBe(
+      `${MEDIA}/reiseguide/akershus/nb/narration-1.m4a`,
+    );
+    expect(mediaUrl("https://cdn.example/ad.m4a", MEDIA, "https://api.test")).toBe("https://cdn.example/ad.m4a");
+    expect(mediaUrl(S3_AUDIO_KEY, MEDIA)).toBe(`${MEDIA}/${S3_AUDIO_KEY}`);
+  });
+
+  it("requestApiBase bruker X-Forwarded-Proto og host", () => {
+    const req = { protocol: "http", get: (h: string) => ({ "x-forwarded-proto": "https", host: "creatorhub.test" })[h.toLowerCase()] };
+    expect(requestApiBase(req as never)).toBe("https://creatorhub.test");
+    const plain = { protocol: "http", get: (h: string) => ({ host: "localhost:3000" })[h.toLowerCase()] };
+    expect(requestApiBase(plain as never)).toBe("http://localhost:3000");
+  });
+
+  it("omdirigerer /api/guide/media/{key} til en signert, kortlevd URL", async () => {
+    const res = await request(makeApp(makePool([]))).get(`/api/guide/media/${S3_AUDIO_KEY}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`https://s3.test/signed?sig=1&key=${encodeURIComponent(S3_AUDIO_KEY)}`);
+    expect(res.headers["cache-control"]).toBe("private, no-store");
+  });
+
+  it("avviser nøkler utenfor SenseAid-hierarkiet uten å presignere", async () => {
+    const app = makeApp(makePool([]));
+    for (const key of ["organizations/x/users/y/file.mp3", "products/senseaid-explore/../secret", "platform/releases/x"]) {
+      const res = await request(app).get(`/api/guide/media/${key}`);
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("svarer 503 når S3 ikke er konfigurert", async () => {
+    const res = await request(makeApp(makePool([]), null)).get(`/api/guide/media/${S3_AUDIO_KEY}`);
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: "media_storage_unavailable" });
+  });
+});
 
 describe("språkvalg", () => {
   it("parseLang normaliserer og avviser søppel", () => {

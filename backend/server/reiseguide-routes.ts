@@ -25,11 +25,21 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { presignCreatorHubObjectDownload } from "./creatorhub-object-storage.js";
+import { isSenseAidStorageKey, senseAidMediaUrl } from "./reiseguide-storage.js";
 
 interface Deps {
   pool: Pick<Pool, "query">;
+  /** Base for eldre/offentlige nøkler (bilder i R2). */
   mediaUrlBase?: string;
+  /** Absolutt base for dette API-et i lyd-URL-er; standard utledes fra forespørselen. */
+  publicApiBase?: string;
+  /** Presignering av en S3-nøkkel; standard er CreatorHub S3. Byttes ut i tester. */
+  presignMedia?: (key: string) => Promise<string | null>;
 }
+
+/** Signerte lyd-URL-er lever kort; appen henter en ny via omdirigeringen ved hver avspilling. */
+const MEDIA_SIGNED_URL_TTL_S = 15 * 60;
 
 const DEFAULT_MEDIA_URL_BASE = "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev";
 const LANG_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/;
@@ -196,11 +206,23 @@ export function resolveLang(
   return null;
 }
 
-/** Bygger absolutt URL for en lagringsnøkkel; http(s)-nøkler sendes uendret. */
-export function mediaUrl(key: string | null | undefined, base: string): string | null {
+/**
+ * Bygger absolutt URL for en lagringsnøkkel: http(s)-nøkler sendes uendret,
+ * nøkler i CreatorHub S3 (products/senseaid-explore/…) går via
+ * /api/guide/media, alt annet mot den offentlige mediebasen.
+ */
+export function mediaUrl(key: string | null | undefined, base: string, publicApiBase?: string): string | null {
   if (!key) return null;
   if (/^https?:\/\//i.test(key)) return key;
+  if (publicApiBase && isSenseAidStorageKey(key)) return senseAidMediaUrl(key, publicApiBase);
   return `${base.replace(/\/+$/, "")}/${key.replace(/^\/+/, "")}`;
+}
+
+/** Utleder https://host fra forespørselen (Render setter X-Forwarded-Proto). */
+export function requestApiBase(req: Pick<Request, "get" | "protocol">): string {
+  const forwarded = req.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto = forwarded || req.protocol || "https";
+  return `${proto}://${req.get("host") ?? "localhost"}`;
 }
 
 function toNumber(value: number | string | null | undefined): number | null {
@@ -227,6 +249,7 @@ function buildVariant(
   lang: string,
   rows: ScriptRow[],
   mediaBase: string,
+  publicApiBase?: string,
 ): VariantView | null {
   const chapters = rows
     .filter((r) => r.kind === kind && r.lang === lang)
@@ -240,13 +263,13 @@ function buildVariant(
 
   const views: ChapterView[] = chapters.map((r) => {
     const audioDuration = toNumber(r.audio_duration_s);
-    const audioUrl = mediaUrl(r.audio_key, mediaBase);
+    const audioUrl = mediaUrl(r.audio_key, mediaBase, publicApiBase);
     const audio =
       audioUrl && audioDuration != null
         ? { url: audioUrl, format: r.audio_format ?? "m4a", durationS: audioDuration }
         : null;
     const cues = Array.isArray(r.captions_cues) ? r.captions_cues : [];
-    const captionsUrl = mediaUrl(r.captions_key, mediaBase);
+    const captionsUrl = mediaUrl(r.captions_key, mediaBase, publicApiBase);
     const captions = audio && (captionsUrl || cues.length > 0) ? { url: captionsUrl, cues } : null;
 
     const chapterDuration = audio?.durationS ?? r.estimated_duration_s ?? null;
@@ -259,7 +282,7 @@ function buildVariant(
       no: r.chapter_no,
       title: r.title,
       scriptText: r.script_text,
-      imageUrl: mediaUrl(r.image_key, mediaBase),
+      imageUrl: mediaUrl(r.image_key, mediaBase, publicApiBase),
       imageAlt: r.image_alt,
       version: r.version,
       editorialStatus: r.editorial_status,
@@ -291,8 +314,9 @@ export function buildPoiView(args: {
   requestedLang: string;
   defaultLang: string;
   mediaBase: string;
+  publicApiBase?: string;
 }): PoiView {
-  const { poi, requestedLang, defaultLang, mediaBase } = args;
+  const { poi, requestedLang, defaultLang, mediaBase, publicApiBase } = args;
   const translations = args.translations.filter((t) => t.poi_id === poi.id);
   const scripts = args.scripts.filter((s) => s.poi_id === poi.id);
   const available = Array.from(new Set(translations.map((t) => t.lang.toLowerCase()))).sort();
@@ -321,7 +345,7 @@ export function buildPoiView(args: {
     priority: poi.priority,
     sortOrder: poi.sort_order,
     freePreview: poi.free_preview,
-    heroImageUrl: mediaUrl(poi.hero_image_key, mediaBase),
+    heroImageUrl: mediaUrl(poi.hero_image_key, mediaBase, publicApiBase),
     heroImageAlt: translation?.hero_image_alt ?? null,
     title: translation?.title ?? poi.slug,
     subtitle: translation?.subtitle ?? null,
@@ -337,9 +361,9 @@ export function buildPoiView(args: {
       available,
     },
     variants: {
-      narration: scriptLang ? buildVariant("narration", scriptLang, scripts, mediaBase) : null,
+      narration: scriptLang ? buildVariant("narration", scriptLang, scripts, mediaBase, publicApiBase) : null,
       audioDescription: scriptLang
-        ? buildVariant("audio_description", scriptLang, scripts, mediaBase)
+        ? buildVariant("audio_description", scriptLang, scripts, mediaBase, publicApiBase)
         : null,
     },
   };
@@ -412,6 +436,10 @@ const SCRIPT_SELECT = `
 export function registerReiseguideRoutes(app: Express, deps: Deps): void {
   const { pool } = deps;
   const mediaBase = (deps.mediaUrlBase ?? process.env.REISEGUIDE_MEDIA_URL_BASE ?? DEFAULT_MEDIA_URL_BASE).trim();
+  const presignMedia =
+    deps.presignMedia ?? ((key: string) => presignCreatorHubObjectDownload(key, undefined, MEDIA_SIGNED_URL_TTL_S));
+  const apiBase = (req: Request): string =>
+    (deps.publicApiBase ?? (process.env.REISEGUIDE_PUBLIC_API_BASE?.trim() || requestApiBase(req))).replace(/\/+$/, "");
 
   const publicCache = (res: Response) => {
     res.setHeader("Cache-Control", "public, max-age=60");
@@ -453,6 +481,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
     poiRows: PoiRow[],
     requestedLang: string,
     defaultLang: string,
+    publicApiBase: string,
   ): Promise<PoiView[]> {
     if (poiRows.length === 0) return [];
     const ids = poiRows.map((p) => p.id);
@@ -468,9 +497,28 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
         requestedLang,
         defaultLang,
         mediaBase,
+        publicApiBase,
       }),
     );
   }
+
+  app.get(
+    "/api/guide/media/*",
+    wrap(async (req, res) => {
+      const key = String((req.params as Record<string, string>)[0] ?? "");
+      if (!isSenseAidStorageKey(key)) {
+        res.status(404).json({ error: "media_not_found" });
+        return;
+      }
+      const signed = await presignMedia(key);
+      if (!signed) {
+        res.status(503).json({ error: "media_storage_unavailable" });
+        return;
+      }
+      res.setHeader("Cache-Control", "private, no-store");
+      res.redirect(302, signed);
+    }),
+  );
 
   app.get(
     "/api/guide/areas",
@@ -510,7 +558,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
           [area.id],
         ),
       ]);
-      const poiViews = await loadPoiViews(pois.rows, lang, area.default_lang);
+      const poiViews = await loadPoiViews(pois.rows, lang, area.default_lang, apiBase(req));
       const usedCategories = new Set(poiViews.map((p) => p.categoryId).filter(Boolean));
 
       publicCache(res);
@@ -548,7 +596,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
       }
       const lang = readLang(req, res, poi.default_lang);
       if (!lang) return;
-      const [view] = await loadPoiViews([poi], lang, poi.default_lang);
+      const [view] = await loadPoiViews([poi], lang, poi.default_lang, apiBase(req));
       publicCache(res);
       res.json({ requestedLang: lang, poi: view });
     }),

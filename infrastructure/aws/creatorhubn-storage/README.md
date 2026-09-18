@@ -41,6 +41,30 @@ Operational prefixes are deliberately outside tenant storage:
 The zero-byte prefix markers in S3 exist for console discoverability only.
 Objects must always use the complete canonical hierarchy above.
 
+## Product media
+
+Product-owned media that belongs to no tenant lives under `products/{product}/`,
+one folder per product so the bucket stays tidy. Each product gets its own IAM
+statement in `application-policy.json` scoped to its prefix; never widen
+`organizations/*` for product media.
+
+```text
+products/senseaid-explore/
+  areas/{areaSlug}/
+    pois/{poiSlug}/
+      audio/{kind}-{chapterNo}-{lang}-v{version}.mp3
+      captions/{kind}-{chapterNo}-{lang}-v{version}.vtt
+      images/{objectId}-{filename}
+```
+
+SenseAid Explore (the audio guide app, `backend/server/reiseguide-storage.ts`)
+writes narration and audio-description files here with the backend's CreatorHub
+credentials (statement `SenseAidExploreMediaAccess`). Objects stay private: the
+app only ever receives `/api/guide/media/{key}`, which validates the key against
+the hierarchy above and redirects to a 15-minute presigned URL. Re-apply
+`application-policy.json` to the CreatorHub backend IAM identity when this
+prefix is introduced.
+
 ## Application distribution
 
 Pro Tools Companion is distributed from the private prefix

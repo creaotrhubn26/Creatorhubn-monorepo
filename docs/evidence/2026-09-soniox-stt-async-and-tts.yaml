@@ -70,11 +70,20 @@ decision: >
   SENSEAID_ELEVENLABS_API_KEY er fjernet. STT async holdes i reserve for
   eksternt produsert lyd. Stemme: standard «Adrian» (Soniox' eksempelstemme)
   til Daniel har lyttet på norsk og satt SENSEAID_SONIOX_VOICE.
+  Lagring (Daniel 18.09.2026, «bruk creatorhub S3 … riktig hierarki, mappestruktur og
+  IAM … egen mappe for SenseAid Explore»): lydfilene ligger i CreatorHubs private S3-bøtte
+  under products/senseaid-explore/areas/{area}/pois/{poi}/audio/…, med egen IAM-setning
+  SenseAidExploreMediaAccess i infrastructure/aws/creatorhubn-storage/application-policy.json
+  (må re-appliseres på backend-IAM-brukeren). Appen får /api/guide/media/{key} som
+  omdirigerer til 15-minutters signert URL; R2 brukes ikke til lyd.
 affected:
   - backend/server/reiseguide-soniox-tts.ts (WebSocket-protokoll, verifisert mot @soniox/node 2.3.0 dist/index.mjs)
   - backend/server/reiseguide-captions.ts
   - backend/server/reiseguide-content-pipeline.ts
   - backend/scripts/reiseguide-generate-audio.ts
+  - backend/server/reiseguide-storage.ts (S3-hierarki og nøkkelvalidering)
+  - backend/server/reiseguide-routes.ts (/api/guide/media/*)
+  - infrastructure/aws/creatorhubn-storage/application-policy.json + README.md
   - backend/server/reiseguide-config.ts
   - backend/server/reiseguide-routes.ts (captions.cues-kontrakten)
   - backend/migrations/0628_reiseguide_poc.sql (guide_poi_audio.tts_provider, guide_poi_captions.source)

@@ -68,7 +68,7 @@ function fakeDb(rows: unknown[] = []) {
 describe("audioStorageKey", () => {
   it("er deterministisk og versjonert", () => {
     expect(audioStorageKey(job)).toBe(
-      "reiseguide/audio/oslo-kvadraturen-festningen-operaen/akershus-festning/narration-1-nb-v2.mp3",
+      "products/senseaid-explore/areas/oslo-kvadraturen-festningen-operaen/pois/akershus-festning/audio/narration-1-nb-v2.mp3",
     );
   });
 });

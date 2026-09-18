@@ -8,10 +8,11 @@
  *   --poi akershus-festning   bare én severdighet
  *   --voice <navn>            Soniox-stemme (ellers SENSEAID_SONIOX_VOICE / standard)
  *   --force                   lag ny lyd selv om versjonen allerede har lyd
- *   --dry-run                 vis hva som ville blitt laget, uten Soniox/R2/DB
- *   --out <mappe>             lyttetest: skriv mp3 + cues.json lokalt, ingen R2/DB
+ *   --dry-run                 vis hva som ville blitt laget, uten Soniox/S3/DB
+ *   --out <mappe>             lyttetest: skriv mp3 + cues.json lokalt, ingen S3/DB
  *
- * R2 leses fra CMS_R2_* → CLOUDFLARE_R2_* → R2_* (samme bøtte som /cdn/*).
+ * Lyd lagres i CreatorHubs S3-bøtte (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+ * CREATORHUB_S3_BUCKET) under products/senseaid-explore/….
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -21,7 +22,7 @@ import pg from "pg";
 import { buildCaptionCues } from "../server/reiseguide-captions.js";
 import { SENSEAID_ENV, requireSenseAidEnv } from "../server/reiseguide-config.js";
 import {
-  createR2MediaStore,
+  createCreatorHubMediaStore,
   generateAreaAudio,
   listScriptAudioJobs,
   type GenerateResult,
@@ -96,7 +97,7 @@ async function main(): Promise<void> {
     const results = await generateAreaAudio(filter, {
       db: pool,
       tts,
-      store: createR2MediaStore(),
+      store: createCreatorHubMediaStore(),
       voice,
       force: values.force,
       onResult: (r) => console.log(describe(r)),

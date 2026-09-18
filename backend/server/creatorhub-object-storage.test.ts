@@ -38,6 +38,13 @@ describe("CreatorHub object storage", () => {
       "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/platform/releases/*",
     );
     expect(applicationReleases.Action).not.toContain("s3:PutObject");
+    const senseAid = policy.Statement.find((statement: any) => statement.Sid === "SenseAidExploreMediaAccess");
+    expect(senseAid.Action).toEqual(expect.arrayContaining(["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]));
+    expect(senseAid.Resource).toBe(
+      "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/products/senseaid-explore/*",
+    );
+    const metadata = policy.Statement.find((statement: any) => statement.Sid === "CreatorHubBucketMetadata");
+    expect(metadata.Condition.StringLike["s3:prefix"]).toContain("products/senseaid-explore/*");
     expect(cors.CORSRules[0]).toMatchObject({
       AllowedOrigins: ["*"],
       AllowedMethods: expect.arrayContaining(["GET", "HEAD", "PUT"]),

@@ -1,6 +1,7 @@
 /**
- * Innholdspipeline for SenseAid Explore: manus → Soniox TTS → mp3 i R2 +
- * tekstingscues i databasen.
+ * Innholdspipeline for SenseAid Explore: manus → Soniox TTS → mp3 i
+ * CreatorHubs S3-bøtte (products/senseaid-explore/…) + tekstingscues i
+ * databasen.
  *
  * Kjøres av backend/scripts/reiseguide-generate-audio.ts. Ett manus
  * (guide_poi_scripts-rad) gir én aktiv guide_poi_audio-rad og én
@@ -9,10 +10,11 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { Pool } from "pg";
+import { putCreatorHubObject } from "./creatorhub-object-storage.js";
 import { buildCaptionCues, type CaptionCue } from "./reiseguide-captions.js";
 import type { SpeechSynthesizer } from "./reiseguide-soniox-tts.js";
+import { senseAidAudioKey } from "./reiseguide-storage.js";
 
 export interface MediaStore {
   put(object: { key: string; body: Buffer; contentType: string }): Promise<void>;
@@ -46,7 +48,7 @@ export interface JobFilter {
 type Db = Pick<Pool, "query" | "connect">;
 
 export function audioStorageKey(job: Pick<ScriptAudioJob, "areaSlug" | "poiSlug" | "kind" | "chapterNo" | "lang" | "version">): string {
-  return `reiseguide/audio/${job.areaSlug}/${job.poiSlug}/${job.kind}-${job.chapterNo}-${job.lang}-v${job.version}.mp3`;
+  return senseAidAudioKey(job);
 }
 
 export async function listScriptAudioJobs(db: Pick<Pool, "query">, filter: JobFilter): Promise<ScriptAudioJob[]> {
@@ -152,31 +154,20 @@ export async function generateAreaAudio(
 }
 
 /**
- * R2-lager for lydfiler. Samme bøtte og env-kjede som CMS-media
- * (cms-media-service.ts), fordi /cdn/* og REISEGUIDE_MEDIA_URL_BASE peker på
- * dens offentlige URL.
+ * Lydfiler lagres i CreatorHubs private S3-bøtte med den dedikerte
+ * CreatorHub-IAM-brukeren (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY +
+ * CREATORHUB_S3_BUCKET), under products/senseaid-explore/…. Objektene er
+ * private; appen får dem via /api/guide/media/{key} som presignerer.
  */
-export function createR2MediaStore(env: NodeJS.ProcessEnv = process.env): MediaStore {
-  const pick = (...names: string[]) => names.map((n) => env[n]?.trim()).find((v) => v);
-  const endpoint = pick("CMS_R2_ENDPOINT", "CLOUDFLARE_R2_ENDPOINT", "R2_ENDPOINT");
-  const bucket = pick("CMS_R2_BUCKET", "CLOUDFLARE_R2_BUCKET", "R2_BUCKET");
-  const accessKeyId = pick("CMS_R2_ACCESS_KEY_ID", "CLOUDFLARE_R2_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID");
-  const secretAccessKey = pick("CMS_R2_SECRET_ACCESS_KEY", "CLOUDFLARE_R2_SECRET_ACCESS_KEY", "R2_SECRET_ACCESS_KEY");
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
-    throw new Error("R2 er ikke konfigurert (CMS_R2_*/CLOUDFLARE_R2_*/R2_* endpoint, bucket, access key, secret).");
-  }
-  const client = new S3Client({ region: "auto", endpoint, credentials: { accessKeyId, secretAccessKey } });
+export function createCreatorHubMediaStore(): MediaStore {
   return {
     async put({ key, body, contentType }) {
-      await client.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: body,
-          ContentType: contentType,
-          CacheControl: "public, max-age=31536000, immutable",
-        }),
-      );
+      const stored = await putCreatorHubObject(key, body, contentType, { product: "senseaid-explore" });
+      if (!stored) {
+        throw new Error(
+          "CreatorHub S3 er ikke konfigurert (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY og CREATORHUB_S3_BUCKET må være satt).",
+        );
+      }
     },
   };
 }
