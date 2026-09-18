@@ -1,0 +1,38 @@
+:: StoryTitle
+Pungen
+
+:: StoryData
+{
+	"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",
+	"format": "SugarCube",
+	"format-version": "2.37.3",
+	"start": "Landsbyen",
+	"zoom": 1
+}
+
+:: StoryInit [script]
+State.variables.gold = 0;
+
+:: Landsbyen {"position":"100,100","size":"100,100"}
+<<set $gold to 0>>
+Du våkner i en stille landsby.
+
+[[Gå til markedet->Markedet]]
+[[Sov videre|Landsbyen]]
+
+:: Markedet [green] {"position":"300,100","size":"100,100"}
+<<set $gold += 10>>
+Boder i alle farger. <<if $gold gte 10>>Du har råd til et sverd.<<else>>Tomme lommer.<</if>>
+<<link "Kjøp sverd" "Smeden">><<set $sword to true>><</link>>
+[[Gå hjem->Landsbyen][$gold -= 5]]
+<<nobr>><<unknownmacro "x">><</nobr>>
+
+:: Smeden {"position":"500,100","size":"100,100"}
+Smeden nikker.
+[[Slutt]]
+
+:: Slutt
+<<goto "Landsbyen">>
+
+:: Ukjent
+[[Til passasje som ikke finnes->Mangler]]

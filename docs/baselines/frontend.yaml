@@ -120,7 +120,7 @@ components:
       - { name: "react-router-dom", declared: "^7.9.4", resolved: "7.9.6" }
       - { name: "react-signature-canvas", declared: "^1.1.0-alpha.2", resolved: "1.1.0-alpha.2" }
       - { name: "react-virtuoso", declared: "^4.14.1", resolved: "4.14.1" }
-      - { name: "reactflow", declared: "^11.11.4", resolved: "11.11.4" }
+      - { name: "@xyflow/react", declared: "^12.11.6", resolved: "12.11.6" }  # erstattet reactflow 11 (Fase 5d, 2026-09-16)
       - { name: "recharts", declared: "^3.5.1", resolved: "3.5.1" }
       - { name: "socket.io-client", declared: "^4.8.3", resolved: "4.8.3" }
       - { name: "tailwindcss", declared: "^4.1.13", resolved: "4.1.17" }

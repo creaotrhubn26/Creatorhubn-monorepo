@@ -1,0 +1,35 @@
+claim: >
+  Story Graph's node canvas is built on reactflow 11.11.4, which is already a frontend
+  dependency (used read-only by admin/CustomerJourneyBuilder.tsx); upgrading to
+  @xyflow/react v12 is deferred to a separate change.
+source_type: changelog
+source: "frontend/package.json (reactflow ^11.11.4); https://reactflow.dev/learn/troubleshooting/migrate-to-v12"
+authority_tier: 2
+vendor: xyflow
+product: reactflow / @xyflow/react
+version_scope: "reactflow 11.11.4 (installed); @xyflow/react 12.x (migration target)"
+publication_date: "2026-09-14"
+valid_from: "2026-09"
+valid_to: "2026-09-16 — superseded by 2026-09-narrative-canvas-xyflow-12.yaml (migrated to @xyflow/react 12.11.6, reactflow 11 removed)"
+evidence_summary: >
+  reactflow 11 is installed and bundled; its global CSS (reactflow/dist/style.css) is
+  already imported by CustomerJourneyBuilder. v12 renames the package to @xyflow/react,
+  changes several prop/type names (NodeProps generics, onNodesChange typings) and drops
+  the default export.
+interpretation: >
+  Zero dependency change is the safest first step for a beta vertical; the canvas
+  wrapper (narrative/board/NarrativeCanvas.tsx) isolates reactflow imports so the v12
+  migration touches one file plus nodes.tsx.
+project_impact: >
+  frontend/client/src/components/role-room/narrative/board/NarrativeCanvas.tsx and
+  nodes.tsx are the only reactflow consumers in the vertical; a v12 upgrade must also
+  update admin/CustomerJourneyBuilder.tsx.
+confidence: verified
+decision: Stay on reactflow 11 for Fase 1–3; evaluate @xyflow/react 12 in Fase 4.
+affected:
+  - frontend/client/src/components/role-room/narrative/board/NarrativeCanvas.tsx
+  - frontend/client/src/components/role-room/narrative/board/nodes.tsx
+  - frontend/client/src/components/admin/CustomerJourneyBuilder.tsx
+lesson: >
+  Reuse an installed graph library through a thin wrapper so the vertical ships without
+  a dependency review and the later upgrade is a two-file change.

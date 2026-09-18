@@ -1356,6 +1356,47 @@ export type BrandingTextTokenKey =
   | 'danceTabGrantsDescription'
   | 'danceTabUnionDescription'
 
+  // Spillstudio — Story Graph (narrativ design). Faner definert i
+  // professionTabs.ts GAME_STUDIO_TABS.
+  | 'gameTabHome'                 // 'Hjem'
+  | 'gameTabHomeDescription'
+  | 'gameTabStory'                // 'Historie'
+  | 'gameTabStoryDescription'
+  | 'gameTabCharacters'           // 'Karakterer'
+  | 'gameTabCharactersDescription'
+  | 'gameTabLocations'            // 'Lokasjoner'
+  | 'gameTabLocationsDescription'
+  | 'gameTabPlatform'             // 'Plattform'
+  | 'gameTabPlatformDescription'
+  | 'gameTabPlan'                 // 'Produksjonsplan'
+  | 'gameTabPlanDescription'
+  | 'gameTabTeam'                 // 'Team'
+  | 'gameTabTeamDescription'
+  | 'gameTabBoards'               // 'Brett'
+  | 'gameTabBoardsDescription'
+  | 'gameTabScenes'               // 'Scener & gameplay'
+  | 'gameTabScenesDescription'
+  | 'gameTabComponents'           // 'Komponenter'
+  | 'gameTabComponentsDescription'
+  | 'gameTabVariables'            // 'Variabler'
+  | 'gameTabVariablesDescription'
+  | 'gameTabAssets'               // 'Ressurser'
+  | 'gameTabAssetsDescription'
+  | 'gameTabPlay'                 // 'Spill'
+  | 'gameTabPlayDescription'
+  | 'gameTabTranslations'         // 'Oversettelser'
+  | 'gameTabTranslationsDescription'
+  | 'gameTabExports'              // 'Eksport'
+  | 'gameTabExportsDescription'
+  | 'gameTabHistory'              // 'Historikk'
+  | 'gameTabHistoryDescription'
+  | 'gameTabPricing'              // 'Pris'
+  | 'gameTabPricingDescription'
+  | 'gameTabBilling'              // 'Abonnement'
+  | 'gameTabBillingDescription'
+  | 'gameTabAdminPlans'           // 'Admin · Planer'
+  | 'gameTabAdminPlansDescription'
+
   // Read Through-modulen — for dans bytter den fra TTS-dialog til musikk-count-in
   | 'danceReadThroughHeader'      // 'Musikk-gjennomgang' (vs 'Read Through')
   | 'danceReadThroughStartButton' // 'Start gjennomgang'
@@ -2993,6 +3034,45 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabInjuriesDescription: 'Logg skader og rehab — dokumentasjon klar for NAV-søknader.',
     danceTabGrantsDescription: 'Søknadsmaler for Kulturrådet, Fond for lyd og bilde, og kommunale midler.',
     danceTabUnionDescription: 'Status i Skuda/NoDa, tariff-anvendelse og automatisk arbeidsdags-loggføring.',
+
+    gameTabHome: 'Hjem',
+    gameTabHomeDescription: 'Prosjektets puls: scener per status, gater bestått, oppgaver, åpne runder, neste milepæler og siste aktivitet.',
+    gameTabStory: 'Historie',
+    gameTabStoryDescription: 'Episoder og beats med «hva spillerne lærer», tidslinje med låste beslutninger, åpne spørsmål og kilderegister med sjekksummer.',
+    gameTabCharacters: 'Karakterer',
+    gameTabCharactersDescription: 'Karakterarkivet: drivkraft, forfatterfasit vs. det spillerne kan observere, stemmecast, minnespor, kraftprogresjon og replikker.',
+    gameTabLocations: 'Lokasjoner',
+    gameTabLocationsDescription: 'Steder med epoke, kontinuitetskrav, geometri-status og scenene de brukes i.',
+    gameTabPlatform: 'Plattform',
+    gameTabPlatformDescription: 'Målplattform (iPad, iPhone, PC …), ytelsesbudsjett, krav med status og bevis, og hvordan spillet skal se ut.',
+    gameTabPlan: 'Produksjonsplan',
+    gameTabPlanDescription: 'Milepæler per bane (manus, gråboks, karakterer, gjennomspilling, bilde/lyd, teknikk) i Gantt og liste, koblet til scener.',
+    gameTabTeam: 'Team',
+    gameTabTeamDescription: 'Roller, kapabiliteter, invitasjoner og seter for studioet.',
+    gameTabBoards: 'Brett',
+    gameTabBoardsDescription: 'Tegn historien som noder og koblinger: elementer, forgreninger, jumpere og notater på et fritt lerret.',
+    gameTabScenes: 'Scener & gameplay',
+    gameTabScenesDescription: 'Produksjonsenheter rundt historien: scenekort med lokasjon, utfordring, spillmekanikk, storyboard, oppgaver og review-runder med godkjenning.',
+    gameTabComponents: 'Komponenter',
+    gameTabComponentsDescription: 'Karakterer, steder og gjenstander med egne attributter som kan festes på elementer.',
+    gameTabVariables: 'Variabler',
+    gameTabVariablesDescription: 'Globale variabler (bool, heltall, desimal, tekst) som forgreninger og skript leser og skriver.',
+    gameTabAssets: 'Ressurser',
+    gameTabAssetsDescription: 'Bilder, lyd og video som kan brukes som cover eller festes på elementer.',
+    gameTabPlay: 'Spill',
+    gameTabPlayDescription: 'Spill gjennom historien som en spiller, med debugger som viser brett, element og variabler live.',
+    gameTabTranslations: 'Oversettelser',
+    gameTabTranslationsDescription: 'Oversett historien til flere språk med KI-forslag; skript beholdes fra kilden.',
+    gameTabExports: 'Eksport',
+    gameTabExportsDescription: 'JSON kompatibel med Arcweave-plugins for Unity, Unreal og Godot, samt import fra Arcweave, Twine og Ink.',
+    gameTabHistory: 'Historikk',
+    gameTabHistoryDescription: 'Versjoner av hele grafen med ikke-destruktiv gjenoppretting.',
+    gameTabPricing: 'Pris',
+    gameTabPricingDescription: 'Solo gratis; Pro og Studio åpner deling, KI, oversettelser, import og runtime-pakker.',
+    gameTabBilling: 'Abonnement',
+    gameTabBillingDescription: 'Din plan, prøveperiode og Stripe-kundeportal.',
+    gameTabAdminPlans: 'Admin · Planer',
+    gameTabAdminPlansDescription: 'Planer, priser, Stripe-IDer, tester-invites og innstillinger for spillstudio.',
 
     danceReadThroughHeader: 'Musikk-gjennomgang',
     danceReadThroughStartButton: 'Start gjennomgang',

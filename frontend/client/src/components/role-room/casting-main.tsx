@@ -82,6 +82,7 @@ const WELCOME_SUBTITLE_BY_MODE: Record<ProfessionMode, string> = {
   dance_freelance: 'Dans (frilans) — her holder du oversikt over oppdrag, tilgjengelighet og produksjonene du er med i. Vi tar deg gjennom 3 viktige snarveier.',
   education: 'Utdanningsmodus — her underviser du: kull, studentproduksjoner, oppgaver og vurdering. Vi tar deg gjennom 3 viktige snarveier.',
   student: 'Studentmodus — her ser du produksjonene, oppgavene og tilbakemeldingene dine. Vi tar deg gjennom 3 viktige snarveier.',
+  game_studio: 'Spillstudio — her designer du historien som en graf: brett, elementer, forgreninger, komponenter og variabler, og spiller den gjennom. Vi tar deg gjennom 3 viktige snarveier.',
 };
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
@@ -148,6 +149,7 @@ const RrTesterInviteLanding = React.lazy(() =>
   import('@/components/role-room/dance/BillingPanels').then((m) => ({ default: m.TesterInviteLanding })),
 );
 const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dance/InviteLandingPage'));
+const RrGameInviteLanding = React.lazy(() => import('@/components/role-room/game/GameInviteLandingPage').then((m) => ({ default: m.GameInviteLandingPage })));
 const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
 const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
@@ -170,14 +172,20 @@ const LeadgridTermsAndConditions = React.lazy(() => import('@/pages/terms-and-co
 // dedikerte bootstrapen i stedet for App.tsx, så ruten må finnes begge steder.
 const RrMockupReview = React.lazy(() => import('@/pages/mockup-review'));
 const RrStoryboardReview = React.lazy(() => import('@/pages/storyboard-review'));
+// Story Graph (game_studio): offentlig spill-lenke — samme rute finnes i App.tsx.
+const RrStoryPlay = React.lazy(() => import('@/pages/story-play'));
+const RrStoryReview = React.lazy(() => import('@/pages/story-review'));
 
 const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
   { test: /^\/privacy-policy$/, path: '/privacy-policy', component: RrPrivacyPolicy },
   { test: /^\/personvern$/, path: '/personvern', component: RrPrivacyPolicy },
   { test: /^\/mockup-review\/[^/]+$/, path: '/mockup-review/:token', component: RrMockupReview },
   { test: /^\/storyboard-review\/[^/]+$/, path: '/storyboard-review/:token', component: RrStoryboardReview },
+  { test: /^\/story\/[^/]+$/, path: '/story/:token', component: RrStoryPlay },
+  { test: /^\/story-review\/[^/]+$/, path: '/story-review/:token', component: RrStoryReview },
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
+  { test: /^\/game\/invite\/[^/]+$/, path: '/game/invite/:token', component: RrGameInviteLanding },
   { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
   { test: /^\/role-room\/student\/claim$/, path: '/role-room/student/claim', component: RrClaimStudentAccess },
   { test: /^\/role-room\/censor\/claim$/, path: '/role-room/censor/claim', component: RrClaimCensorAccess },

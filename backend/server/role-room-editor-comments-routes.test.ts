@@ -147,3 +147,40 @@ describe('Role Room screenplay comments contract', () => {
     expect(String(update?.[0])).toContain('resolved_at = NULL');
   });
 });
+
+describe('Story Graph scene comments (narrative_scene / narrative_scene_frame)', () => {
+  it('accepts a scene anchor when the scene belongs to the project', async () => {
+    const { app, query } = createApp(async (sql) => {
+      if (sql.includes('FROM narrative_scenes WHERE id = $1 AND project_id = $2')) return { rows: [{ found: true }] };
+      return undefined as any;
+    });
+    const response = await request(app)
+      .post('/api/role-room/editor-comments')
+      .set('Authorization', 'Bearer team-token')
+      .send({ projectId: 'project-1', anchorType: 'narrative_scene', anchorRef: 'nsc_1', commentText: 'Bra tempo i åpningen.' });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ ok: true, id: 'comment-1' });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('AS can_comment'))).toBe(false);
+    const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO role_room_editor_comments'));
+    expect(insert?.[1]).toEqual(expect.arrayContaining(['project-1', 'narrative_scene', 'nsc_1']));
+  });
+
+  it('rejects a scene-frame anchor from another project (or without ref)', async () => {
+    const { app, query } = createApp(async (sql) => {
+      if (sql.includes('FROM narrative_scene_frames WHERE id = $1 AND project_id = $2')) return { rows: [{ found: false }] };
+      return undefined as any;
+    });
+    const foreign = await request(app)
+      .post('/api/role-room/editor-comments')
+      .set('Authorization', 'Bearer team-token')
+      .send({ projectId: 'project-1', anchorType: 'narrative_scene_frame', anchorRef: 'nsf_fremmed', commentText: 'x' });
+    expect(foreign.status).toBe(400);
+    expect(foreign.body.error).toBe('scene_anker_ikke_i_prosjekt');
+    const noRef = await request(app)
+      .post('/api/role-room/editor-comments')
+      .set('Authorization', 'Bearer team-token')
+      .send({ projectId: 'project-1', anchorType: 'narrative_scene', commentText: 'x' });
+    expect(noRef.status).toBe(400);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_editor_comments'))).toBe(false);
+  });
+});

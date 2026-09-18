@@ -35,6 +35,7 @@ const ROLE_ROOM_SEGMENTS = new Set([
   "affiliate",
   "content",
   "education",
+  "game_studio",
   "other",
 ]);
 const LEADGRID_SEGMENTS = new Set([

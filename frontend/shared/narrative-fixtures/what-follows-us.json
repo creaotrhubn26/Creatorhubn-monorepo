@@ -1,0 +1,4331 @@
+{
+ "meta": {
+  "slug": "what-follows-us",
+  "title": "What Follows Us — Episode One: The Seeker",
+  "version": "2026-09-17.1",
+  "extractedAt": "2026-09-17",
+  "documents": [
+   "ikke committet; kun kontrollsum",
+   "ikke committet; kun kontrollsum",
+   "../Film/Intro-Continuity-v4/DIALOGUE-EN-1817.md",
+   "../Film/P04-P05-Story-Bridge-v1/DIALOGUE-AND-SOUND.md",
+   "OPENING-HYBRID-v2.md",
+   "SCENE-PLAN-v3.md",
+   "Storyline-v2.md",
+   "OPENING-DIALOGUE-v2.md",
+   "FIRST-BOUND-ENCOUNTER-v1.md",
+   "HUMAN-SHELTERS-AND-ESCAPE-v1.md",
+   "POWER-PROGRESSION-v1.md",
+   "WEAPONS-1817-AND-FACTION-NAMES.md",
+   "CINEMATIC-M1-QUALITY-v1.md",
+   "MOVEMENT-ANIMATION-CONTRACT-v1.md",
+   "PROLOGUE-IMPLEMENTATION-v1.md",
+   "P01-STAGING-v1.md",
+   "P01-SCHOOL-DETAILS-v1.md",
+   "Elise-source.txt",
+   "Elise-opening-source.txt",
+   "AGENTS.md"
+  ],
+  "notes": "Strukturert uttrekk av studioets 16 kildedokumenter (md/txt) samt sjekksummer for Word-manus (W) og kult-PDF (K), som ikke er committet. Episodetilordning (E01: P01–P06, E02: P07–P09+G01, E03: P10–P12+G02, E04: G03+G03A, E05: G04, E06: G05, E07: G06, E08: G08, E10: G09, E11: G10, E12: K07–K08) er redaksjonell og ikke eksplisitt i kildene; G07, H01–H03 og K01–K06 er bevisst uten episode. Uttrekket er gjort mekanisk per dokumentgruppe og verifisert mot kildene etter AGENTS.md: kildehendelse (W/K), brukertillegg (U), iscenesettelsesforslag (A), bevart engelsk (E) og ny oversettelse (T) holdes fra hverandre; ingen replikk er strøket; ingen gate er «bestått» uten sitert bevis."
+ },
+ "sources": [
+  {
+   "code": "W",
+   "label": "Campfire Games – Elise spillmanus v1 (Word-manus)",
+   "kind": "docx",
+   "sha256": "553a5e2f0ea0a8302e6981f4a219c4ef8329b1226803c7259885aa26e6201633",
+   "pathHint": "ikke committet; kun kontrollsum",
+   "notes": "Original: /Users/danielqazi/Downloads/Campfire_Games_Elise_spillmanus_v1.docx (AGENTS.md). Tekstkopi finnes i ../Film/Intro-Continuity-v5/source-v4/original-manus.txt."
+  },
+  {
+   "code": "K",
+   "label": "The Seeker – Kultens opprinnelse og cliffhanger (PDF)",
+   "kind": "pdf",
+   "sha256": "aef8dde76b8db133548da056bd0547bdfbbc3823c67de333e700c9168d0988c7",
+   "pathHint": "ikke committet; kun kontrollsum",
+   "notes": "Original: /Users/danielqazi/Downloads/The_Seeker_Kultens_opprinnelse_og_cliffhanger (1).pdf (AGENTS.md). Refererer et 35-scenes hovedmanus som ikke er samme nummerering som det 26-scenes Word-manuset."
+  },
+  {
+   "code": "EN-MASTER",
+   "label": "Tidligere engelsk master (DIALOGUE-EN-1817)",
+   "kind": "other",
+   "sha256": null,
+   "pathHint": "../Film/Intro-Continuity-v4/DIALOGUE-EN-1817.md",
+   "notes": "Fra Kilder-avsnittet i OPENING-DIALOGUE-v2.md: 'tidligere engelsk master'."
+  },
+  {
+   "code": "FLOW4",
+   "label": "P04/P05-tillegg (Flow v4-opptaksgrunnlag for lykt/omsorgsreplikker)",
+   "kind": "other",
+   "sha256": null,
+   "pathHint": "../Film/P04-P05-Story-Bridge-v1/DIALOGUE-AND-SOUND.md",
+   "notes": "Fra Kilder-avsnittet i OPENING-DIALOGUE-v2.md: 'P04/P05-tillegg'. Omtalt andre steder (OPENING-HYBRID-v2, U05) som 'Flow v4s opptaksgrunnlag'/'Flow-utdraget'; OPENING-HYBRID-v2 oppgir også en annen sti for det samme Flow v4-materialet: ../Film/Flow-v4/SHOT-LOCK.md — usikkert om det er samme dokument, se Usikkerheter."
+  },
+  {
+   "code": "OPENING-HYBRID-v2",
+   "label": "WHAT FOLLOWS US — spillåpning v2",
+   "kind": "md",
+   "sha256": "68bcc63b3904053c86572f8dbc62c3ed7987090148843a2f6a0ec8f804e2ffcc",
+   "pathHint": "OPENING-HYBRID-v2.md",
+   "notes": "Episode One — The Seeker · 13. september 2026. Samlet manus- og byggegrunnlag, ikke ferdig film."
+  },
+  {
+   "code": "SCENE-PLAN-v3",
+   "label": "WHAT FOLLOWS US — Sceneplan v3",
+   "kind": "md",
+   "sha256": "43d82c5091cf77ce8b2deab1a0c29431b38835d103c5f1fe3d11d8c165ebdb5e",
+   "pathHint": "SCENE-PLAN-v3.md",
+   "notes": "13. september 2026. Plan for kultfilmen og videre karakteroppbygging. Finnes to ganger i mappen (identisk), begge kontrollert like."
+  },
+  {
+   "code": "STORYLINE-v2",
+   "label": "WHAT FOLLOWS US — Episode One: The Seeker, samlet storyline v2",
+   "kind": "md",
+   "sha256": "681c4337deaeda62dd88c8c05bd038cbe2685a7acb0d92d3b725e6db587a0354",
+   "pathHint": "Storyline-v2.md",
+   "notes": "Samlet storyline v2 · 11. september 2026 · arbeidsutkast, ikke implementeringsstatus."
+  },
+  {
+   "code": "OPENING-DIALOGUE-v2",
+   "label": "Åpning v2 — engelsk replikkgrunnlag",
+   "kind": "md",
+   "sha256": "ffe8049f4a9a01ceb2c0c4c9e18d6946a7ae1625ea3720e4b89cf9e98c5d270c",
+   "pathHint": "OPENING-DIALOGUE-v2.md",
+   "notes": "13. september 2026. Til hybridåpningen. Tekstgrunnlag, ikke bestilte eller synkgodkjente opptak."
+  },
+  {
+   "code": "FIRST-BOUND-ENCOUNTER-v1",
+   "label": "WHAT FOLLOWS US — Det første møtet med The Bound",
+   "kind": "md",
+   "sha256": "0785d92b20a2587b5757d4ccb835f02ed02ff1083f3f47160d8734751f553bfd",
+   "pathHint": "FIRST-BOUND-ENCOUNTER-v1.md",
+   "notes": "13. september 2026. Nytt scene- og gameplayutkast, ikke godkjent opptaksmanus. Ikke lest i sin helhet for denne delen (utenfor tildelt lesing)."
+  },
+  {
+   "code": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+   "label": "WHAT FOLLOWS US — Ly hos fremmede",
+   "kind": "md",
+   "sha256": "ac1eeedd485f1d04849d5f0d22ec8641d7e50a287a9cf04fdc3c7b346dda96d7",
+   "pathHint": "HUMAN-SHELTERS-AND-ESCAPE-v1.md",
+   "notes": "13. september 2026. Historie- og gameplayplan, ikke implementert system. Finnes to ganger i mappen (identisk). Ikke lest i sin helhet for denne delen (utenfor tildelt lesing)."
+  },
+  {
+   "code": "POWER-PROGRESSION-v1",
+   "label": "WHAT FOLLOWS US — Kraftprogresjon v1",
+   "kind": "md",
+   "sha256": "c3adf898d93043eeaf084e6ca92ffc88dfe2786cae0dfadc13e0b6bd51821b3a",
+   "pathHint": "POWER-PROGRESSION-v1.md",
+   "notes": "13. september 2026. Historie- og gameplayforslag, ikke implementert spill. Ikke lest i sin helhet for denne delen (utenfor tildelt lesing)."
+  },
+  {
+   "code": "WEAPONS-1817-AND-FACTION-NAMES",
+   "label": "WHAT FOLLOWS US — Våpen i 1817 og nytt navn på kultfølgerne",
+   "kind": "md",
+   "sha256": "f782814440f1fb477da06fb7f685832bec3128fd0f784b483599f646589174a6",
+   "pathHint": "WEAPONS-1817-AND-FACTION-NAMES.md",
+   "notes": "13. september 2026. Historisk kartlegging og designforslag. Ikke lest i sin helhet for denne delen (utenfor tildelt lesing)."
+  },
+  {
+   "code": "CINEMATIC-M1-QUALITY-v1",
+   "label": "Filmisk gameplay — M1, kontakt og situasjonsmakt",
+   "kind": "md",
+   "sha256": "411cfac3f19883741d54ff4d47b3d637252f3ef2f11b6ad05354837d5123f7ae",
+   "pathHint": "CINEMATIC-M1-QUALITY-v1.md",
+   "notes": "13. september 2026. Minste målmodell: iPad Pro M1, bestemt av brukeren. Byggeplan med ett implementert grunnlagstrinn."
+  },
+  {
+   "code": "MOVEMENT-ANIMATION-CONTRACT-v1",
+   "label": "Bevegelse og animasjon — én spillposisjon, en troverdig kropp",
+   "kind": "md",
+   "sha256": "2fa25f969c7787f2c102953481cd40b1ce776a6de3f1cde5cbcae35af536ca7c",
+   "pathHint": "MOVEMENT-ANIMATION-CONTRACT-v1.md",
+   "notes": "13. september 2026. Arkitektur- og testplan, ikke ny implementasjon."
+  },
+  {
+   "code": "PROLOGUE-IMPLEMENTATION-v1",
+   "label": "P01–P03 — første spillbare regelprøve",
+   "kind": "md",
+   "sha256": "bca56b2c27b916a84c1632be445420a116c2ea344cdeabe1f70edb413586ae55",
+   "pathHint": "PROLOGUE-IMPLEMENTATION-v1.md",
+   "notes": "13. september 2026 · iPad · lokal RealityKit-prøve, ikke ferdig åpningsproduksjon."
+  },
+  {
+   "code": "P01-STAGING-v1",
+   "label": "P01 — boken, skolissen og veien til leken",
+   "kind": "md",
+   "sha256": "57da1e6143811ae2a4ca72d01c404554ff9f6e6d704da3b11cb485b489c2ff20",
+   "pathHint": "P01-STAGING-v1.md",
+   "notes": "Senere oppfølging til PROLOGUE-IMPLEMENTATION-v1. Ikke lest i sin helhet for denne delen (utenfor tildelt lesing)."
+  },
+  {
+   "code": "P01-SCHOOL-DETAILS-v1",
+   "label": "P01 — tre hverdagsdetaljer på skoleveien",
+   "kind": "md",
+   "sha256": "b07eb6d6af7dd256f5d342238a8ca27cce5e57e8ad97ea9f5c356b8a44669d5e",
+   "pathHint": "P01-SCHOOL-DETAILS-v1.md",
+   "notes": "13. september 2026. Fortsettelse av bok-/skolissesekvensen (P01-STAGING-v1). Ikke lest i sin helhet for denne delen (utenfor tildelt lesing)."
+  },
+  {
+   "code": "ELISE-SOURCE",
+   "label": "Elise — karakterkilde (forfatterforslag)",
+   "kind": "txt",
+   "sha256": "0a14ea20c031b99fdbcbcbc6e0e0846a02965b50f2a8d71a50a1ea87ec6e31e5",
+   "pathHint": "Elise-source.txt",
+   "notes": "Ingen dato i kilden. Forslagstekst ('Jeg foreslår...'), inkluderer forfatterfasit om brevet/festen og Elises fire minnespor."
+  },
+  {
+   "code": "ELISE-OPENING-SOURCE",
+   "label": "Elise — vei inn i skogen (forfatterforslag, åpningsscener)",
+   "kind": "txt",
+   "sha256": "08b9d2405e8df55ed97ad72a01325668db45503a3731271ff5aea3175cffaa2a",
+   "pathHint": "Elise-opening-source.txt",
+   "notes": "Ingen dato i kilden. Forslagstekst for Elises vei inn i skogen, første møte med The Seeker og angrepet på Jamie."
+  },
+  {
+   "code": "AGENTS",
+   "label": "AGENTS.md — Verify story work against the screenplay",
+   "kind": "md",
+   "sha256": "a901636dd3e45cfb9e2b688f48d5c5093e8605225f29436c41f3a28885a61dd8",
+   "pathHint": "AGENTS.md",
+   "notes": "Studioets regelverk for manusverifisering, kildeadskillelse og gate-rapportering."
+  }
+ ],
+ "episodes": [
+  {
+   "code": "E01",
+   "title": "Da alle kunne bli fri",
+   "summary": "Lys barndomslek. Gruppen gjennomfører en ekte frigjøring. Nora, husken og kartet får en god betydning. En annen teller høres ved gjerdet. Alle går hjem.",
+   "playersLearn": "Redning er en handling, ikke en belønning fra en voksen. Skogen var også et godt sted.",
+   "sourceNote": "Word 01–05; husken innarbeides fra brukerens tidligere føring.",
+   "status": "draft"
+  },
+  {
+   "code": "E02",
+   "title": "Den gamle invitasjonen",
+   "summary": "Tjue år senere åpner Elise kopien av kartet. De fire møtes igjen med ulike grunner til å ha kommet.",
+   "playersLearn": "Hun håper Nora har skrevet. Verken hun eller vi har bevis.",
+   "sourceNote": "Word 06–08, datert 1817.",
+   "status": "draft"
+  },
+  {
+   "code": "E03",
+   "title": "Et lys føres hjem",
+   "summary": "Første gnist leveres ved det lille bålet og åpner en fysisk passasje. Nora ses på barndomshusken; de andre ser et tomt sete. Ved vindusrammen begynner ulike opplevelser av samme rom.",
+   "playersLearn": "En gjennomført handling endrer et sted. Elises gjenkjennelse er ikke bevis på at Nora er til stede.",
+   "sourceNote": "Word 09–10; foreslått huskebro. Piloten slutter her, før den fulle bakhistorien.",
+   "status": "draft"
+  },
+  {
+   "code": "E04",
+   "title": "Før de kalte det et møte",
+   "summary": "Gruppen finner den gamle navneplaten i søkeskuret. Et kort, fast ekko viser en virkelig leteplass og en mann med varm lykt. Den strøkne veien kan åpnes i nåtiden.",
+   "playersLearn": "Kultens sted begynte med praktisk hjelp og savn. Minnet gir en brukbar retrettvei.",
+   "sourceNote": "PDF K01–K03 legges etter den første romundersøkelsen, før ungdomssekvensen. Ny overgang må skrives.",
+   "status": "draft"
+  },
+  {
+   "code": "E05",
+   "title": "Døren Elise lukket",
+   "summary": "Ungdomsminnet viser brevet, festen og valget Elise tok. Nora går hjem. Deretter blir den første voksne som går inn i korridoren avskåret.",
+   "playersLearn": "Fortiden kan ikke gjøres ugjort, men en medspiller kan hjelpes nå.",
+   "sourceNote": "Word 11–14, ungdom 1802. Ikke alltid Jamie; dialog følger faktisk rollefordeling.",
+   "status": "draft"
+  },
+  {
+   "code": "E06",
+   "title": "Jegeren følger en regel",
+   "summary": "Gruppen redder medspilleren via kulisserammen. The Seeker reagerer med vrede. De kommer til ringen og gjenkjenner lekens forvrengte regler. Et frigjøringsspark gir et reelt arbeidsvindu.",
+   "playersLearn": "Fare har varsling og en motmulighet. Sinne opphever ikke markering, retur eller telling.",
+   "sourceNote": "Word 15–18.",
+   "status": "draft"
+  },
+  {
+   "code": "E07",
+   "title": "Håpet blir laget her",
+   "summary": "Kopier og trykkmerker avslører invitasjonene. Den eldre frakken viser hvordan en gjentatt stemme ble brukt til å holde en kvinne igjen.",
+   "playersLearn": "Et tydeligere minnebilde er ikke det samme som en tilbakevendt person.",
+   "sourceNote": "Word 19 + PDF K04–K06. Nisje og lager kan være sammenhengende rom, ikke to like avsløringsscener.",
+   "status": "draft"
+  },
+  {
+   "code": "E08",
+   "title": "Den festen hun ønsket seg",
+   "summary": "En falsk Nora tilbyr den tilgivelsen Elise ønsker. De andre ser gjentakelsen og et rom som ikke stemmer med målene. Gruppen finner den virkelige åpningen.",
+   "playersLearn": "Bildet er bygget rundt Elises behov, ikke Noras nåværende liv.",
+   "sourceNote": "Word 20–21. Elises valg endrer nåtid, aldri den ekte Noras følelser.",
+   "status": "draft"
+  },
+  {
+   "code": "E09",
+   "title": "Den første som ikke fikk gå",
+   "summary": "Under den nyere tegningen ligger et eldre feste. Ekkoet viser den fastholdte varsleren og den særpregede knuten. Gruppen ser forbindelsen til sin egen utgang.",
+   "playersLearn": "De fire bindingene ligger oppå en eldre kontroll. De vet at inngrepet er risikabelt, ikke nøyaktig hva han vil huske.",
+   "sourceNote": "PDF K07–K09 før sluttplanen; ikke bokstavelig 'inne i scene 25' i Word.",
+   "status": "draft"
+  },
+  {
+   "code": "E10",
+   "title": "Alle skal ut",
+   "summary": "Elise sier hva hun gjorde uten å be gruppen frikjenne henne. De skaper et tellevindu, avlaster festene og låser den fysiske utveien. Den gamle forbindelsen ryker; knuten forblir hel.",
+   "playersLearn": "Elises ansvar er reelt. Kultens handlinger er ikke hennes skyld. Samarbeidet har en varig fysisk konsekvens.",
+   "sourceNote": "Word 22–24 + PDF K10; mekanisk sammenkobling foreslås i Storyline-v2.",
+   "status": "draft"
+  },
+  {
+   "code": "E11",
+   "title": "En virkelig morgen",
+   "summary": "Alle kommer over grensen. Elise skriver et ærlig brev. Nora har eget verksted og eget liv.",
+   "playersLearn": "Flukten og Elises handling står ved lag, uansett om Nora svarer.",
+   "sourceNote": "Word 25–26.",
+   "status": "draft"
+  },
+  {
+   "code": "E12",
+   "title": "Den første knuten",
+   "summary": "Etter Noras scene vender bildet tilbake til fluktnatten. Lederen prøver å reparere kontrollen. The Seeker viser knuten: 'Jeg husker knuten.' Døren lukkes.",
+   "playersLearn": "Jakob kan huske hvem som bandt ham. Han er fortsatt farlig, og lederen er ikke lenger sikker på kontrollen.",
+   "sourceNote": "PDF K11–K12 erstatter Word-manusets enklere avsluttende blå glød.",
+   "status": "draft"
+  }
+ ],
+ "components": [
+  {
+   "customId": "char_elise",
+   "name": "Elise",
+   "kind": "character",
+   "profile": {
+    "drive": "Finne Nora, få en åpning tilbake til vennskapet.",
+    "changeAction": "Ber Jamie vise målingen hun avviste; deler hele kartet; navngir sitt eget svik.",
+    "establishNow": "32 år, arbeider med turstier, kartlegging og sesongbasert guiding; vant til å lese terreng og finne alternative ruter. Raskest til å få fremmede til å snakke sammen; avvæpner Marcus med en kommentar, venter stille på Jamie, merker Sages uro. Virker selvstendig, varm og vanskelig å vippe av pinnen.",
+    "firstPersonalScene": "Minne 1: Kartet på gulvet — et ungdomsrom hvor Nora sitter med kart, tusjer og to krus ('Du kan ikke tegne en snarvei gjennom en innsjø.'). Rommet er varmt og bebodd for Elise; de andre tre ser et rom som har stått tomt lenge (kart, stol, fastsittende skuff, vindu mot skogen felles).",
+    "revealLater": "Brevet på festen i 1802 og at Elise lot Nora bli avvist avdekkes gradvis gjennom fire minnespor (Minne 1–4), ikke i én forklaring. Piloten røper ikke selve brevet, forfalskningens verksted, Jakobs identitet eller den første knuten.",
+    "sourceStatus": "ELISE-SOURCE/ELISE-OPENING-SOURCE er forfatterens forslag ('Jeg foreslår...'), ikke låst manustekst. Tidslinjen (12/17/32) og engelsk tale er brukerbekreftet i STORYLINE-v2/CINEMATIC-M1-QUALITY-v1.",
+    "authorTruth": "[INTERN] 17 år gammel begynte Elise å gå med en annen vennegjeng. Før en fest i det gamle forsamlingslokalet ga Nora henne et brev om vennskapet og sin frykt for at det forsvant. På festen lot Elise andre lese brevet og lo med dem i stedet for å ta det tilbake. Da Nora kom for å hente henne ut, sa Elise 'Du gjør jo alltid alt så alvorlig,' fulgte bare til trappen og gikk inn igjen. Nora kom seg hjem uskadd — ingen skjult dødsulykke — men tilliten mellom dem ble ødelagt, og Nora flyttet og bygde et liv uten Elise. Elise har siden beskrevet det som 'Vi vokste fra hverandre.'",
+    "observable": "Finner raskt ut hva andre vil høre og gir dem ofte akkurat det (ikke nødvendigvis manipulativt — hun tåler dårlig øyeblikket der noen blir skuffet over henne). Tegner små kommentarer i margen på kartene sine; flink til å fikse utstyr, men nekter å skifte ut en utslitt jakke. I begynnelsen av spillet toner hun ned uenighet, svarer før hun har undersøkt, og velger den letteste versjonen av en hendelse.",
+    "ages": {
+     "1797": "12",
+     "1802": "17",
+     "1817": "32"
+    },
+    "voiceCast": {
+     "child": "Annie"
+    },
+    "notes": "Kilder: STORYLINE-v2 karaktertabell og tidslinje; ELISE-SOURCE; ELISE-OPENING-SOURCE; OPENING-DIALOGUE-v2 W06/W07/W08/W09; OPENING-HYBRID-v2 P07/P11. Utviklingen handler om å tåle at andre ser henne tydelig, ikke om en synlig 'skyld/tilgivelse'-måler (ELISE-SOURCE).",
+    "memoryTrack": [
+     {
+      "code": "R01",
+      "title": "Noe hun kjenner",
+      "image": "Husken og Nora som barn; ekte vennskap og vanlig latter før noen skyldforklaring.",
+      "knownAfter": "G02"
+     },
+     {
+      "code": "R02",
+      "title": "Et bruddstykke hun ikke kan plassere",
+      "image": "Ny kort Seeker-påminnelse: hennes egen hånd på kanten av et brev, en annen hånd, latter uten hele rommet; materialet tas fra den senere faktiske scenen, ikke fra et nytt svik."
+     },
+     {
+      "code": "R03",
+      "title": "Det Nora ba om",
+      "image": "Word 11: Nora gir brevet og ber henne lese det når de andre har gått; Maren roper; Elise vil inn.",
+      "knownAfter": "G04"
+     },
+     {
+      "code": "R04",
+      "title": "Hånden som kunne tatt brevet tilbake",
+      "image": "Word 13 i sammenheng: hun holder fortsatt brevet, lar det leses, ler med og vender tilbake inn etter samtalen ute.",
+      "knownAfter": "G04"
+     },
+     {
+      "code": "R05",
+      "title": "Den lette forklaringen",
+      "image": "Word 20: den gjentatte Nora-skikkelsen sier at det ikke gjorde noe; de andre ser bruddene i gjenskapningen.",
+      "knownAfter": "G08"
+     },
+     {
+      "code": "R06",
+      "title": "Ansvaret hun kan ta nå",
+      "image": "I G09 navngir Elise handlingen og sin egen fordel; i flukten lar hun andres behov og observasjoner få faktisk betydning.",
+      "knownAfter": "G09"
+     }
+    ],
+    "powers": {
+     "mental": [
+      "Sinnvern (Mindshield) - «I won't let you in.»: bevare egen oppmerksomhet mot et påtrengende ekko/inntrenging uten å fornekte det sanne minnet; trinn 0-3 fra kort avvergelse til bevart fokus under sterkere press og støtte til andre.",
+      "Forankring (Anchoring) - «I still know who I am.»: holde fast ved et selvvalgt, etterprøvbart holdepunkt når fortid, nåtid og Seekers fremstilling blandes; trinn 0-3 fra usikker gjenkjenning til selvstendig orientering og deling av holdepunkter.",
+      "Egenvilje (Free Will) - «You don't get to control me.»: motstå Seekers lokking lenge nok til å gjennomføre en egen valgt handling, selv om frykt og minne ikke er borte; trinn 0-3 fra oppdaget fristelse til å hjelpe en annen finne sitt handlingsrom."
+     ],
+     "active": {
+      "name": "Veifeste",
+      "tier": 1
+     }
+    }
+   }
+  },
+  {
+   "customId": "char_nora",
+   "name": "Nora",
+   "kind": "character",
+   "profile": {
+    "drive": "Et eget menneske, ikke Elises belønning.",
+    "changeAction": "Forlater festen i 1802; arbeider og velger selv hva hun gjør med brevet i 1817.",
+    "establishNow": "Vennskapet med Elise skal oppleves før sviket; Nora skal ikke introduseres som en trist skikkelse som venter på at Elise skal utvikle seg. De ble venner fordi de begge likte å gå steder de ikke hadde grunn til å være.",
+    "firstPersonalScene": "P04 — Nora på husken (1797): setter seg, tar begge hamptau, gir avspark med skoen; ekte vennskap får plass.",
+    "revealLater": "I 1817 har Nora eget verksted og eget liv (E11); hun skylder ikke Elise svar eller tilgivelse (STORYLINE-v2, tidslinjens 'Etter flukten'-rad).",
+    "sourceStatus": "ELISE-SOURCE er forfatterforslag; tidslinje og at Nora lever/ikke står bak invitasjonen er brukerbekreftet (STORYLINE-v2, ELISE-OPENING-SOURCE).",
+    "authorTruth": "[INTERN] Nora passet dårligere inn i den nye vennegjengen og prøvde ikke særlig hardt. Hun ville arbeide med scenografi. Nora lever fortsatt i 1817 og står ikke bak kultens invitasjon — kulten har brukt minnene og håndskriften hennes uten hennes viten.",
+    "observable": "Direkte, morsom og litt utålmodig; ble irritert når Elise brukte lang tid på å bestemme seg. Maler kulisser (penselklikk mot malingsboks er et gjenkjennelig lydvarsel for Elise).",
+    "ages": {
+     "1797": "12",
+     "1802": "17"
+    },
+    "voiceCast": {
+     "child": "Luna"
+    },
+    "notes": "Kilder: STORYLINE-v2 karaktertabell; ELISE-SOURCE; ELISE-OPENING-SOURCE; OPENING-DIALOGUE-v2 W01/W02/W04/W05/W10; OPENING-HYBRID-v2 P04/P06/P12."
+   }
+  },
+  {
+   "customId": "char_oskar",
+   "name": "Oskar",
+   "kind": "character",
+   "profile": {
+    "observable": "Tegner ringen med hælen, legger ballen i midten, forklarer navneregelen og at alle blir fri; teller til femti etter at ballen er lagt tilbake; leter deretter, ser seg for ved patruljepunkter, bekrefter fangst først ved ringen.",
+    "ages": {
+     "1797": "barn (ingen eksakt alder oppgitt i lest kildemateriale)"
+    },
+    "voiceCast": {
+     "child": "Cody"
+    },
+    "notes": "NPC, ikke en av de fire spillerrollene (OPENING-HYBRID-v2: 'Nora og Oskar er NPC-er'). Ingen drive/changeAction er oppgitt for Oskar i STORYLINE-v2s karaktertabell — feltene er derfor utelatt. Kilder: OPENING-HYBRID-v2 P02/P03; PROLOGUE-IMPLEMENTATION-v1; OPENING-DIALOGUE-v2 W02/W03."
+   }
+  },
+  {
+   "customId": "char_marcus",
+   "name": "Marcus",
+   "kind": "character",
+   "profile": {
+    "drive": "Holde en konkret vei og en medspiller tilgjengelig.",
+    "changeAction": "Bruker kunnskap og vern, ikke en påtvunget helteofring. Egen fortid røpes ikke her.",
+    "observable": "Tar ansvar for lyset (bærer den varme lykten); minner Oskar på forrige runde; krever femti i tellingen. I voksenhistorien holder han lykten ved serveringsluken og prøver håndtaket når Jamie stenges inne.",
+    "sourceStatus": "STORYLINE-v2 karaktertabell (brukerbekreftet retning); scenehandling fra ELISE-OPENING-SOURCE og OPENING-HYBRID-v2/OPENING-DIALOGUE-v2 er forfatterforslag.",
+    "notes": "Fysiske roller kan byttes — 'Marcus skal ikke være den eneste som kan holde en lykt' (STORYLINE-v2). Kilder: STORYLINE-v2; OPENING-DIALOGUE-v2 W01/W02/W07/W10; ELISE-OPENING-SOURCE.",
+    "powers": {
+     "mental": [
+      "Sinnvern (Mindshield) - «I won't let you in.»: bevare egen oppmerksomhet mot et påtrengende ekko/inntrenging uten å fornekte det sanne minnet; trinn 0-3 fra kort avvergelse til bevart fokus under sterkere press og støtte til andre.",
+      "Forankring (Anchoring) - «I still know who I am.»: holde fast ved et selvvalgt, etterprøvbart holdepunkt når fortid, nåtid og Seekers fremstilling blandes; trinn 0-3 fra usikker gjenkjenning til selvstendig orientering og deling av holdepunkter.",
+      "Egenvilje (Free Will) - «You don't get to control me.»: motstå Seekers lokking lenge nok til å gjennomføre en egen valgt handling, selv om frykt og minne ikke er borte; trinn 0-3 fra oppdaget fristelse til å hjelpe en annen finne sitt handlingsrom."
+     ],
+     "active": {
+      "name": "Vern",
+      "tier": 1
+     }
+    }
+   }
+  },
+  {
+   "customId": "char_sage",
+   "name": "Sage",
+   "kind": "character",
+   "profile": {
+    "drive": "Skille det som faktisk blir sagt fra det noen håper å høre.",
+    "changeAction": "Oppdager gjentakelsen; støtter Elise uten å tilgi på Noras vegne.",
+    "observable": "Hører samtalebrudd gjennom forskjellige vegger og hjelper gruppen plassere dem riktig; spør Elise direkte ('Hvor er den andre utgangen?') for å bryte fastlåsthet i stedet for en 'magisk' trøstereplikk.",
+    "sourceStatus": "STORYLINE-v2 karaktertabell (brukerbekreftet retning); scenehandling fra ELISE-SOURCE/ELISE-OPENING-SOURCE er forfatterforslag.",
+    "notes": "Kilder: STORYLINE-v2; OPENING-DIALOGUE-v2 W02/W07/W08; ELISE-SOURCE (minnespor-tabell); ELISE-OPENING-SOURCE (scene 7).",
+    "powers": {
+     "mental": [
+      "Sinnvern (Mindshield) - «I won't let you in.»: bevare egen oppmerksomhet mot et påtrengende ekko/inntrenging uten å fornekte det sanne minnet; trinn 0-3 fra kort avvergelse til bevart fokus under sterkere press og støtte til andre.",
+      "Forankring (Anchoring) - «I still know who I am.»: holde fast ved et selvvalgt, etterprøvbart holdepunkt når fortid, nåtid og Seekers fremstilling blandes; trinn 0-3 fra usikker gjenkjenning til selvstendig orientering og deling av holdepunkter.",
+      "Egenvilje (Free Will) - «You don't get to control me.»: motstå Seekers lokking lenge nok til å gjennomføre en egen valgt handling, selv om frykt og minne ikke er borte; trinn 0-3 fra oppdaget fristelse til å hjelpe en annen finne sitt handlingsrom."
+     ],
+     "active": {
+      "name": "Motklang",
+      "tier": 1
+     }
+    }
+   }
+  },
+  {
+   "customId": "char_jamie",
+   "name": "Jamie",
+   "kind": "character",
+   "profile": {
+    "drive": "Forstå det rommet og terrenget faktisk viser.",
+    "changeAction": "Tegningen og de beholdte målene gir gruppen en utvei når minnets overflate endres.",
+    "observable": "Dokumenterer ting gruppen kan trenge å se på igjen (tegning, fotografier); bruker synlige bygningsdetaljer til å finne riktig vindu/luke. Går inn i korridoren bak scenen og stenges inne av The Seeker; reddes via en løsnet kulisseramme.",
+    "sourceStatus": "STORYLINE-v2 karaktertabell (brukerbekreftet retning: 'Ikke alltid Jamie; dialog følger faktisk rollefordeling'); den konkrete Jamie-hendelsen er fra ELISE-OPENING-SOURCE (forfatterforslag).",
+    "notes": "Kilder: STORYLINE-v2; OPENING-DIALOGUE-v2 W02/W03/W07; ELISE-OPENING-SOURCE (scene 5–7); ELISE-SOURCE (minnespor-tabell).",
+    "powers": {
+     "mental": [
+      "Sinnvern (Mindshield) - «I won't let you in.»: bevare egen oppmerksomhet mot et påtrengende ekko/inntrenging uten å fornekte det sanne minnet; trinn 0-3 fra kort avvergelse til bevart fokus under sterkere press og støtte til andre.",
+      "Forankring (Anchoring) - «I still know who I am.»: holde fast ved et selvvalgt, etterprøvbart holdepunkt når fortid, nåtid og Seekers fremstilling blandes; trinn 0-3 fra usikker gjenkjenning til selvstendig orientering og deling av holdepunkter.",
+      "Egenvilje (Free Will) - «You don't get to control me.»: motstå Seekers lokking lenge nok til å gjennomføre en egen valgt handling, selv om frykt og minne ikke er borte; trinn 0-3 fra oppdaget fristelse til å hjelpe en annen finne sitt handlingsrom."
+     ],
+     "active": {
+      "name": "Avtrykk",
+      "tier": 1
+     }
+    }
+   }
+  },
+  {
+   "customId": "char_mor",
+   "name": "Mor (Elises mor)",
+   "kind": "character",
+   "profile": {
+    "observable": "Syr mens Elise setter frem skåler og forteller om lyset; legger arbeidet fra seg og ber Elise vise stedet på papiret; ber Nora og Elise gjøre plass til en nabo som kommer for å spise.",
+    "sourceStatus": "Word 05 / P06, brukerbekreftet 1797.",
+    "notes": "Kilder: OPENING-HYBRID-v2 P06; OPENING-DIALOGUE-v2 W05 (MOR-replikker W05.01, W05.05)."
+   }
+  },
+  {
+   "customId": "char_vertinnen",
+   "name": "Vertinnen",
+   "kind": "character",
+   "profile": {
+    "observable": "Spør Elise om hun vet hvem som sendte invitasjonen og ber henne være sikker før hun drar.",
+    "sourceStatus": "Word 06 / P07, brukerbekreftet 1817.",
+    "notes": "Kilder: OPENING-HYBRID-v2 P07 ('forteller vertinnen hvor hun går'); OPENING-DIALOGUE-v2 W06 (VERTINNEN-replikker W06.01, W06.03)."
+   }
+  },
+  {
+   "customId": "char_gideon",
+   "name": "Gideon (forteller)",
+   "kind": "character",
+   "profile": {
+    "observable": "Fem godkjente fortellercues plassert i åpningen: N01 før skoleveisamtalen, N04 etter huskens gode øyeblikk og før tellingene, N02 ved tidshoppet, N05 ved voksnes felles avgang, N03 ved ordløs avslutning/tittel. Ingen narrator over regelreplikker, telling eller Noras svar.",
+    "sourceStatus": "Godkjente opptak (fem cues) beholdes uendret; ombestilles ikke selv om manusversjonen er ny.",
+    "notes": "Kilder: OPENING-HYBRID-v2 §5 ('Forteller, lyd og kontrollstatus'); gjeldende fortellergrunnlag ../Film/Gideon-Five-Cues-v1/README.md (referert, ikke lest her)."
+   }
+  },
+  {
+   "customId": "char_the_seeker",
+   "name": "The Seeker (Jakob)",
+   "kind": "character",
+   "profile": {
+    "drive": "Først en letemann som prøver å hjelpe; senere en farlig, bundet jeger.",
+    "changeAction": "Kjenner til slutt igjen sin egen knute og nekter å følge lederens ordre. Jakob er fortsatt arbeidsnavnet fra PDF-en.",
+    "observable": "Bærer et blått lys; taus skikkelse som lokker og observerer før den blir fysisk truende ('Du går ikke.'). Slår mot kulisserammen for å komme gjennom en nettopp åpnet passasje; blafrer den varme lykten og gjør én innsamlet gnist mørk. Sterkest i direkte overnaturlig makt, men holdt i en særskilt binding av kultlederen.",
+    "revealLater": "Cliffhanger: knuten i hånden → 'Jeg husker knuten' → døren lukkes med 'Denne gangen blir du.' Den egentlige vendingen er at han selv husker, og at lederen merker at ordrene ikke lenger virker.",
+    "sourceStatus": "Jaktregler og maktforhold er delvis nye forslag (CINEMATIC-M1-QUALITY-v1: 'foreslått AI-kontrakt', ikke implementert); PDF K-materialet og STORYLINE-v2s tidslinjerad er brukerbekreftet grunnlag.",
+    "authorTruth": "[INTERN] Før 1797 (nøyaktig år åpent) ble leteplassen til en kult; Jakob forsøkte å varsle utenforstående og ble bundet. Den første knuten sperrer blant annet tilgangen til hans egne minner. At Jakob ble utsatt for overgrep forklarer bakgrunnen, men frikjenner ikke hans nåværende handlinger som The Seeker.",
+    "notes": "Kilder: STORYLINE-v2 karaktertabell, 'Makthierarki uten selvmotsigelse', 'Cliffhangeren skal utvide, ikke annullere'; ELISE-OPENING-SOURCE scene 3, 5–6; CINEMATIC-M1-QUALITY-v1 'Situasjonsmakt i voksenhistorien'."
+   }
+  },
+  {
+   "customId": "char_cult_leader",
+   "name": "Kultlederen",
+   "kind": "character",
+   "profile": {
+    "drive": "Gjøre andres håp til varig avhengighet og kontroll.",
+    "changeAction": "Fortsetter å nære en gjentakelse han ikke kan love er et virkelig gjensyn.",
+    "observable": "Rødkledd, ved bålet blant mørkkledde skikkelser; sier 'The Seeker. Han slipper ikke det han finner' og 'Dere har noe å levere' når gruppen ankommer bålstedet.",
+    "authorTruth": "[INTERN] Separat og nest sterkest etter The Seeker; kan holde The Seeker i en særskilt binding uten selv å være sterkere enn ham (CINEMATIC-M1-QUALITY-v1).",
+    "sourceStatus": "STORYLINE-v2 karaktertabell (brukerbekreftet retning); scenedialog fra ELISE-OPENING-SOURCE (forfatterforslag).",
+    "notes": "Kilder: STORYLINE-v2; ELISE-OPENING-SOURCE scene 8; CINEMATIC-M1-QUALITY-v1 'Makthierarki'/'Situasjonsmakt'."
+   }
+  },
+  {
+   "customId": "char_unknown_adult",
+   "name": "Ukjent voksen (Desmond-stemmen)",
+   "kind": "character",
+   "profile": {
+    "observable": "Stemme som teller i skogen mens Oskar teller i leken: 'Twenty-eight. Twenty-nine.' Godkjent brukertillegg fortsetter: 'Thirty. Thirty-one. Thirty-two. Thirty-three. Thirty-four. Thirty-five.'",
+    "voiceCast": {
+     "adult": "Desmond"
+    },
+    "sourceStatus": "W04/P05, brukerbekreftet 1797; telleavstand og sammenheng med spilltilstand gjenstår å kontrollere (OPENING-HYBRID-v2).",
+    "notes": "Kilder: OPENING-DIALOGUE-v2 W04.01; OPENING-HYBRID-v2 P05, §5 (stemmecast); Storyline-v2 tidslinjens 'Før 1797'-rad (samme figur kan være relatert til den bundne varsleren, ikke bekreftet identisk i lest kildemateriale)."
+   }
+  },
+  {
+   "customId": "loc_school_road",
+   "name": "Skoleveien",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797"
+    ],
+    "continuity": "Flere småstier møtes ved veiskillet; fører til den store roten/lekeplassen. Varm ettermiddag uten truende musikk — skal ikke få voksenjaktens mørke, fare eller overnaturlige krefter for å demonstrere grafikk (CINEMATIC-M1-QUALITY-v1).",
+    "geometryStatus": "Bygget: dagslys, seks enkle barneplassholdere, fire styrbare roller, fri gange (PROLOGUE-IMPLEMENTATION-v1, W01-raden). Gjenstår: individuelle barnekarakterer, småstier, bokutveksling, knyting, tistel, pinne og undersøkbar tegning.",
+    "props": [
+     "bok (Elise)",
+     "løs skolisse",
+     "filleball (Oskar)",
+     "avbarket pinne (Marcus)",
+     "tistel i skjørtet (Sage)",
+     "tegning (Jamie)"
+    ],
+    "notes": "Kilder: OPENING-HYBRID-v2 P01; PROLOGUE-IMPLEMENTATION-v1 (manusbindingstabell W01)."
+   }
+  },
+  {
+   "customId": "loc_ring_root",
+   "name": "Ringen ved den store roten",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797"
+    ],
+    "continuity": "Bar jordflekk etablert der Oskar tegner ringen med hælen og legger ballen i midten før telling starter.",
+    "geometryStatus": "Bygget: progressiv ring og Oskars hælbevegelse, én ballentitet (PROLOGUE-IMPLEMENTATION-v1, W02-raden). Gjenstår: naturtro hånd-/fotkontakter og ferdig filleballmodell.",
+    "props": [
+     "filleball",
+     "hæltegnet ring"
+    ],
+    "notes": "Kilder: OPENING-HYBRID-v2 P02/P03; PROLOGUE-IMPLEMENTATION-v1."
+   }
+  },
+  {
+   "customId": "loc_swing",
+   "name": "Husken",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797",
+     "1817"
+    ],
+    "continuity": "P04 (1797, barn) og P11 (1817, voksen-Elises private minne) er samme gjenkjennelige sted: begge tau, setets reparerte kant, hender og sko bevares mellom bildene. I 1817 ser de andre tre bare det tomme setet med tau/trelyder, ikke Nora.",
+    "props": [
+     "to hamptau",
+     "sete med reparert kant"
+    ],
+    "notes": "Kilder: OPENING-HYBRID-v2 P04, P11; OPENING-DIALOGUE-v2 U04, U11."
+   }
+  },
+  {
+   "customId": "loc_stone_fence",
+   "name": "Steingjerdet",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797",
+     "1817"
+    ],
+    "continuity": "P05 (1797): steingjerdet og kulljorden etableres med to forskjellige telleretninger og et lite blått lys bak en stamme. P09 (1817): hullet i steingjerdet er vokst igjen; de voksne gjenkjenner tellingen fra barndommen. Brukes også som fysisk holdepunkt i bakgrunnen av et fotografi (ELISE-OPENING-SOURCE).",
+    "props": [
+     "kulljord"
+    ],
+    "notes": "Kilder: OPENING-HYBRID-v2 P05, P09; OPENING-DIALOGUE-v2 W04; ELISE-OPENING-SOURCE punkt 7."
+   }
+  },
+  {
+   "customId": "loc_assembly_house",
+   "name": "Grendehuset / forsamlingslokalet",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1802",
+     "1817"
+    ],
+    "continuity": "Forandrer seg mens gruppen beveger seg gjennom det i 1817: noen rom fulle av musikk og mennesker (festminnet, 1802), andre tomme, fuktige og delvis overtatt av skogen (nåtid). To spillere på innsiden, to på utsiden kan overlevere den varme lykten gjennom en serveringsluke.",
+    "geometryStatus": "Ikke dekket i lest kildemateriale for denne delen utover scenebeskrivelsene.",
+    "props": [
+     "fotografi fra festen",
+     "garderobe",
+     "kulisseramme (backstage)",
+     "serveringsluke",
+     "brev"
+    ],
+    "notes": "Kilder: ELISE-SOURCE (Minne 2–3); ELISE-OPENING-SOURCE punkt 5–7; OPENING-HYBRID-v2 P06 (festen som bakgrunn)."
+   }
+  },
+  {
+   "customId": "loc_fire_site",
+   "name": "Bålstedet",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1817"
+    ],
+    "continuity": "Ved første besøk (P10): liten ild, fire stolper, jernskål og plate. Ingen mennesker rundt bålet ved dette første besøket. Spilleren fører én gnist fra lykten til bålet, deretter åpnes greinporten synlig. Senere i historien (ELISE-OPENING-SOURCE scene 8) møter gruppen kultlederen og mørkkledde skikkelser her.",
+    "props": [
+     "fire stolper",
+     "jernskål",
+     "plate",
+     "greinport",
+     "skjev pil (Noras)"
+    ],
+    "notes": "Kilder: OPENING-HYBRID-v2 P10; ELISE-OPENING-SOURCE punkt 8; OPENING-DIALOGUE-v2 W09."
+   }
+  },
+  {
+   "customId": "loc_painted_window",
+   "name": "Det malte vinduet (kulisse)",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797",
+     "1817"
+    ],
+    "continuity": "Malt vinduskulisse fra barndommen (skjev ramme, malingsstripe langs kanten) som dukker opp mellom trærne i skogen i 1817 og fungerer som portal inn til minnet av Nora som maler. Pensel og krukke ved bålstedet (P10) varsler dette stedet.",
+    "props": [
+     "skjev ramme",
+     "malingsstripe",
+     "pensel",
+     "krukke"
+    ],
+    "notes": "Grensen mot loc_workroom (rommet man ser gjennom vinduet) er en tolkning basert på lest kildemateriale — se Usikkerheter. Kilder: ELISE-OPENING-SOURCE punkt 4; OPENING-HYBRID-v2 P10 ('Etter')."
+   }
+  },
+  {
+   "customId": "loc_seeker_shed",
+   "name": "Søkeskuret",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "pre"
+    ],
+    "continuity": "Sted hvor gruppen finner den gamle navneplaten; et kort, fast ekko viser en virkelig leteplass og en mann med varm lykt (E04).",
+    "props": [
+     "gammel navneplate"
+    ],
+    "notes": "Kun kort omtalt i STORYLINE-v2 E04; ikke utdypet i det materialet som er lest for denne delen (FIRST-BOUND-ENCOUNTER-v1 kan ha mer detalj, men er utenfor tildelt lesing). Kilde: STORYLINE-v2 E04."
+   }
+  },
+  {
+   "customId": "loc_kitchen",
+   "name": "Kjøkkenet (Elises hjem, 1817)",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1817"
+    ],
+    "continuity": "Elise, 32 år, bretter ut kartkopien ved kjøkkenbordet hjemme og mottar sendingen med invitasjonen.",
+    "props": [
+     "kjøkkenbord",
+     "kart/kartkopi",
+     "flat konvolutt uten avsender"
+    ],
+    "notes": "Kilder: ELISE-OPENING-SOURCE punkt 1; OPENING-HYBRID-v2 P07."
+   }
+  },
+  {
+   "customId": "loc_forest_road",
+   "name": "Den gamle skogsveien",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1817"
+    ],
+    "continuity": "Møtestedet for de fire i 1817: liten grusplass med gammelt informasjonsskilt og en bom over skogsveien. Ved stiens begynnelse henger en gammel lykt under en treplate med fire navn skåret inn.",
+    "props": [
+     "informasjonsskilt",
+     "bom",
+     "gammel lykt",
+     "treplate med fire navn"
+    ],
+    "notes": "Kilder: ELISE-OPENING-SOURCE punkt 2; OPENING-HYBRID-v2 P08 (invitasjonsteksten: 'Oppmøte ved den gamle skogsveien etter mørkets frembrudd')."
+   }
+  },
+  {
+   "customId": "loc_workroom",
+   "name": "Arbeidsrommet",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797",
+     "1817"
+    ],
+    "continuity": "P12/W10: voksen-Elise ser 'det varme arbeidsrommet' hvor Nora (12) står med maling på håndleddet og unge Elise (12) sitter; de andre tre ser et forfalt lager med samme geometri. Alle undersøker ramme, plugg, tegning og åpning bak forhenget (vareinngang) her.",
+    "geometryStatus": "Voksenprøven bruker enkle fargede PBR-materialer og retningsbestemt lyskilde med skygger; ikke ferdig kostyme/rekvisitt (CINEMATIC-M1-QUALITY-v1, generell status for prologen/voksenmiljøet).",
+    "props": [
+     "ramme",
+     "plugg",
+     "tegning",
+     "forheng (skjuler vareinngang)"
+    ],
+    "notes": "Grensen mot loc_painted_window er en tolkning basert på lest kildemateriale — se Usikkerheter. Kilder: OPENING-HYBRID-v2 P12; OPENING-DIALOGUE-v2 W10."
+   }
+  },
+  {
+   "customId": "item_knife",
+   "name": "Kniv / jaktkniv",
+   "kind": "item",
+   "profile": {
+    "summary": "The Met har en sveitsisk jaktkniv med slire datert til 1700-tallet (museumsobjekt: metmuseum.org/art/collection/search/35164).",
+    "rules": [
+     "Kan være gruppens første redskap og senere et begrenset nærvåpen.",
+     "Sveitsisk samlerobjekt er ikke automatisk riktig norsk brukskniv; lokalt snitt og slire må velges før modellering."
+    ],
+    "notes": "Historisk kartlegging, ikke implementert våpen. Ingen referansebilder lastet ned eller rettighetsklarert."
+   }
+  },
+  {
+   "customId": "item_axe",
+   "name": "Arbeidsøks / liten øks",
+   "kind": "item",
+   "profile": {
+    "summary": "Fort Ticonderogas museumsformidling knytter økser/redskaper til arbeidet ved stedet i 1776 (fortticonderoga.org/objectlessons/axe/; indeksert tekst, full side tilgangsbegrenset ved kontroll).",
+    "rules": [
+     "God kandidat som redskap funnet ved en arbeidsplass, senere nærvåpen.",
+     "Eksemplet dokumenterer typen, ikke en skandinavisk øksemodell; velg arbeidsøks, ikke automatisk vikingøks."
+    ]
+   }
+  },
+  {
+   "customId": "item_flintlock_pistol",
+   "name": "Flintlåspistol",
+   "kind": "item",
+   "profile": {
+    "summary": "The Met daterer en fransk lommepistol til ca. 1800 (metmuseum.org/art/collection/search/27485).",
+    "rules": [
+     "Et senere, betydningsfullt funn; en enkel modell passer bedre enn å kopiere et luksusvåpen til alle fire.",
+     "Foreslått begrenset ammunisjon og tydelig avbrudd mellom skudd.",
+     "Ikke legg inn en Colt-revolver som vanlig 1817-våpen (Colts patent kom 1836); flintlås er foreslått visuelt grunnlag."
+    ]
+   }
+  },
+  {
+   "customId": "item_flintlock_long_gun",
+   "name": "Langt jaktvåpen med flintlås",
+   "kind": "item",
+   "profile": {
+    "summary": "Et fransk flintlåsgevær ved The Met er datert ca. 1750 (metmuseum.org/art/collection/search/24942).",
+    "rules": [
+     "En jakthytte eller et hjem kan gi en mulig funnkontekst, men ingen slik scene eller eier er vedtatt.",
+     "Ikke gi et gammelt jaktgevær moderne pumpehagleutseende."
+    ]
+   }
+  },
+  {
+   "customId": "item_rifled_flintlock",
+   "name": "Riflet flintlåsvåpen",
+   "kind": "item",
+   "profile": {
+    "summary": "The Met har et fransk sett med rifle og pistoler fra ca. 1800 (metmuseum.org/art/collection/search/24861).",
+    "rules": [
+     "Rifler er ikke i seg selv for sene for 1817.",
+     "Et avansert/verdifullt våpen krever en troverdig eierhistorie og skal ikke gjøre karakteren til trent skytter ved funnet."
+    ]
+   }
+  },
+  {
+   "customId": "item_military_musket",
+   "name": "Militær flintlåsmuskett",
+   "kind": "item",
+   "profile": {
+    "summary": "National Army Museum har et East India Company-eksemplar fra ca. 1779, knyttet til den senere India Pattern-familien (collection.nam.ac.uk/detail.php?acc=1981-07-24-1).",
+    "rules": [
+     "Mulig militært etterlatenskap, ikke automatisk standardutstyr for fire sivile.",
+     "Britisk eksempel er teknologireferanse, ikke valgt lokal modell."
+    ]
+   }
+  },
+  {
+   "customId": "item_sabre",
+   "name": "Sabel",
+   "kind": "item",
+   "profile": {
+    "summary": "National Army Museum registrerer en britisk Pattern 1796 light cavalry-sabel fra ca. 1805 (collection.nam.ac.uk/detail.php?acc=1989-06-46-1).",
+    "rules": [
+     "Mulig senere våpen med en tydelig tidligere eier.",
+     "Ikke tildel Marcus en ukjent soldatfortid bare for å forklare den; hvem som finner eller bruker den er åpent."
+    ]
+   }
+  },
+  {
+   "customId": "item_bayonet",
+   "name": "Bajonett",
+   "kind": "item",
+   "profile": {
+    "summary": "National Army Museum registrerer en Henry Nock Pattern 1796-bajonett fra ca. 1800 (collection.nam.ac.uk/detail.php?acc=1980-12-71--2).",
+    "rules": [
+     "Historisk mulig, men et særskilt militært alternativ.",
+     "Bajonetter er ikke universelle deler som passer ethvert gevær, og alle typer er ikke vanlige håndkniver."
+    ]
+   }
+  },
+  {
+   "customId": "fac_the_bound",
+   "name": "The Bound (De bundne)",
+   "kind": "faction",
+   "profile": {
+    "summary": "Kultfølgere som handler under The Seekers grep; bundet til fortiden han utnytter, ikke bare ansatt for å passe en port.",
+    "rules": [
+     "Ikke alle som har gjort noe galt blir automatisk en av dem.",
+     "Fastsetter ikke en ny sjelskontrakt eller en presis forvandlingsmekanisme; deres menneskelige identitet og minner består.",
+     "Adskilt fra Captives/fangene, som fortsatt holdes igjen mens Seeker leter etter minner å utnytte."
+    ],
+    "notes": "Vedtatt 13. september 2026, erstatter arbeidsbetegnelsen «vokterne». Ett medlem: «a Bound One» / «en av de bundne». Tidligere alternativer The Burdened og The Penitent er ikke valgt. Navnebegrunnelse: peker mot mennesker bundet til egne skadelige handlinger som Seeker utnytter, ikke en tittel for en jobb."
+   }
+  },
+  {
+   "customId": "fac_whisperer",
+   "name": "The Whisperer",
+   "kind": "faction",
+   "profile": {
+    "summary": "Type innenfor The Bound; bruker personlige hviskinger og kjente stemmer for å lokke en spiller bort fra gruppen.",
+    "rules": [
+     "Ikke tre nye ledernivåer eller ferdig navngitte personer; en konkret Whisperer har også sitt menneskelige navn og egen historie, avdekket gradvis.",
+     "Tilgang til konkrete private minner må begrunnes; navnet gjør ikke alle følgerne allvitende.",
+     "I G03A-utkastet: begrenset anvendelse (etterligner én nettopp sagt setning), ikke vedtatt tilgang til alles minner."
+    ],
+    "notes": "Navnebegrunnelse: funksjonsnavn for hvisking/lokking, ikke et vedtatt egennavn for en bestemt person."
+   }
+  },
+  {
+   "customId": "fac_binder",
+   "name": "The Binder",
+   "kind": "faction",
+   "profile": {
+    "summary": "Type innenfor The Bound; sperrer veier eller holder en spiller igjen slik at de andre må hjelpe.",
+    "rules": [
+     "Tilbakeholding må skilles tydelig fra Seekers bekreftede ritualfangst; typen gir ikke automatisk en snarvei forbi Word 14-18s markering/retur/tellevindu."
+    ],
+    "notes": "Navnebegrunnelse: funksjonsnavn for å sperre/holde igjen. Introduseres senere enn Whisperer, ikke samtidig."
+   }
+  },
+  {
+   "customId": "fac_husher",
+   "name": "The Husher",
+   "kind": "faction",
+   "profile": {
+    "summary": "Type innenfor The Bound; demper omgivelseslyder og gjør det vanskeligere å orientere seg.",
+    "rules": [
+     "Gir ikke tillatelse til å slå av medspillernes stemmesamtale eller skjule nødvendige, tilgjengelige farevarsler."
+    ],
+    "notes": "Navnebegrunnelse: funksjonsnavn for lyddemping/desorientering. Introduseres senere enn Whisperer, ikke samtidig."
+   }
+  },
+  {
+   "customId": "fac_captives",
+   "name": "Captives / fangene",
+   "kind": "faction",
+   "profile": {
+    "summary": "De som fortsatt holdes igjen mens The Seeker leter etter minner han kan utnytte.",
+    "rules": [
+     "Skal ikke få samme gruppenavn som The Bound bare fordi de er fysisk innesperret.",
+     "Ikke gjør alle senere til «egentlig skyldige»."
+    ],
+    "notes": "Holdes tydelig atskilt fra The Bound i planen (SCENE-PLAN-v3, WEAPONS-1817-AND-FACTION-NAMES)."
+   }
+  },
+  {
+   "customId": "loc_search_creek",
+   "name": "Bekken ved leteplassen",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "pre"
+    ],
+    "continuity": "Jakob vasker hendene her før samtalen om spor (K02); ligger ved bålstedet/skuret i kultens tidlige fase, flere tiår før 1817.",
+    "geometryStatus": "Ikke bygget; kun beskrevet i kultfilmens klipperekkefølge (K01-K02).",
+    "props": [
+     "vann",
+     "spor etter letere"
+    ]
+   }
+  },
+  {
+   "customId": "loc_search_bench",
+   "name": "Benken ved bålstedet",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "pre"
+    ],
+    "continuity": "Kvinnen som skjærer brød sitter her i K01; gjenbrukes som fast visuelt anker gjennom K01-K05 (samme benk hver kveld, med færre tepper/nesten tom kurv som tegn på tidsforløp).",
+    "geometryStatus": "Ikke bygget; kun beskrevet i kultfilmens klipperekkefølge (K01-K05).",
+    "props": [
+     "tom støvel (K01)",
+     "tepper (avtagende antall)",
+     "kurv (nesten tom mot slutten)"
+    ]
+   }
+  }
+ ],
+ "scenes": [
+  {
+   "code": "P01",
+   "workingId": "P01",
+   "title": "Skoleveien",
+   "subtitle": "W01 · 1797, ettermiddag",
+   "era": "1797",
+   "status": "in_progress",
+   "location": "Skoleveien / veiskillet, 1797",
+   "beforeState": "Bok hos Elise, løs skolisse, Oskar har filleballen. Marcus har en avbarket pinne, Sage en tistel i skjørtet, Jamie en tegning. Flere småstier møtes ved veiskillet. Vis barnekarakterer, ikke voksne modeller gjort mindre.",
+   "action": "Nora tar boken, gir den tilbake og knyter skolissen. Oskar inviterer til leken. Marcus minner ham på forrige runde; Nora inviterer Elise. Alle sju kilde-replikkene står i W01.01–W01.07.",
+   "control": "Rolig bevegelse, se seg rundt, snakke, undersøke tegningen og gå til den store roten. Første måltekst, nytt UI-forslag: «Join the others at the big root.» Ingen fareklokke eller barn som forsvinner ved utforsking.",
+   "afterState": "Alle fire har nådd lekeplassen. Boken følger Elise; Oskar bærer fremdeles den samme ballen. Ingen usett ball på bakken.",
+   "audio": "Skoleveisamtale, sko, stoff og naturlig miljø. Ingen skrekkdrone.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P01 Før"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P01 Handling, W01.01-W01.07"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P01 Kontroll (iscenesettelsesforslag)"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P01 Etter/utløser"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "audio",
+     "note": "P01 Lyd"
+    },
+    {
+     "tag": "A",
+     "ref": "PROLOGUE-IMPLEMENTATION-v1",
+     "field": "status",
+     "note": "Play the prologue · 1797, P01-P03 rule prototype"
+    },
+    {
+     "tag": "A",
+     "ref": "P01-STAGING-v1",
+     "field": "status",
+     "note": "P01-iscenesettelse: bok/skolisse-utveksling"
+    },
+    {
+     "tag": "A",
+     "ref": "P01-SCHOOL-DETAILS-v1",
+     "field": "status",
+     "note": "P01-rekvisitter: pinne, tistel, tegning"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_nora",
+    "char_oskar",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_school_road"
+   ],
+   "lines": [
+    {
+     "cueId": "W01.01",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "Must you read all the way home?"
+    },
+    {
+     "cueId": "W01.02",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "You will not drop my book, will you?"
+    },
+    {
+     "cueId": "W01.03",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "T",
+     "textEn": "The kicking game. By the big root.",
+     "note": "W01.03 er arbeidslokalisering av lekens navn, ikke en påstand om et historisk engelsk navn; må vurderes sammen med ropet «Everyone is free!» før opptak (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W01.04",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "T",
+     "textEn": "You did not finish your turn last time."
+    },
+    {
+     "cueId": "W01.05",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "T",
+     "textEn": "I can take a turn now."
+    },
+    {
+     "cueId": "W01.06",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "One game?"
+    },
+    {
+     "cueId": "W01.07",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "Two, if you run fast."
+    }
+   ],
+   "gates": [
+    {
+     "key": "script_coverage",
+     "status": "passed",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Original Word 01–03 er lest på nytt, og DOCX-kontrollsummen er uendret: 553a5e2f...». P01-STAGING-v1: «Word scene 01 og overgangen til scene 02 er lest på nytt. Original DOCX er uendret: SHA-256 553a5e2f...». P01-SCHOOL-DETAILS-v1 bekrefter samme kontrollsum for scene 01–03.",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1",
+      "P01-STAGING-v1",
+      "P01-SCHOOL-DETAILS-v1"
+     ]
+    },
+    {
+     "key": "greybox",
+     "status": "passed",
+     "evidence": "P01-STAGING-v1: «Siste kjøring: 68 bestått, 0 feil, 0 hoppet over» i build/Prologue-P01-Final.xcresult (65 enhetstester, hvorav 21 for prologen, tre UI-forløp). Tidligere: «20 prologtester består i build/Prologue-P01-Unit-03.xcresult».",
+     "evidenceRefs": [
+      "P01-STAGING-v1",
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "characters_animation",
+     "status": "in_progress",
+     "evidence": "P01-STAGING-v1: «Barna, klærne, håret, huden, hendene, terrenget og roten er fortsatt prototypegeometri... Bevegelse er nå iscenesatt, men skal ikke omtales som ferdig film- eller AAA-animasjon.» MOVEMENT-ANIMATION-CONTRACT-v1 er «arkitektur- og testplan, ikke ny implementasjon»; visuell rotforskyvning er «nye startforslag ... og er ikke implementert».",
+     "evidenceRefs": [
+      "P01-STAGING-v1",
+      "MOVEMENT-ANIMATION-CONTRACT-v1"
+     ]
+    },
+    {
+     "key": "playthrough",
+     "status": "not_started",
+     "evidence": "P01-STAGING-v1: «Fysisk iPad-ytelse og ferdig lyd er ikke verifisert.»",
+     "evidenceRefs": [
+      "P01-STAGING-v1"
+     ]
+    },
+    {
+     "key": "picture",
+     "status": "not_started",
+     "evidence": "P01-SCHOOL-DETAILS-v1: «Ingen film-, Higgsfield-, stemme- eller SFX-jobber er bestilt.»",
+     "evidenceRefs": [
+      "P01-SCHOOL-DETAILS-v1"
+     ]
+    },
+    {
+     "key": "audio",
+     "status": "not_started",
+     "evidence": "P01-STAGING-v1: «Tale og Foley er ikke lagt på denne nye fremføringen.» P01-SCHOOL-DETAILS-v1: «Ingen film-, Higgsfield-, stemme- eller SFX-jobber er bestilt.»",
+     "evidenceRefs": [
+      "P01-STAGING-v1",
+      "P01-SCHOOL-DETAILS-v1"
+     ]
+    }
+   ],
+   "tasks": [
+    {
+     "title": "Bygg småstiene ved veiskillet (gjenstår)",
+     "status": "todo"
+    },
+    {
+     "title": "Lag individuelle barnekarakterer/-modeller (klær, hår, hud, hender) — fortsatt prototypegeometri",
+     "status": "todo"
+    },
+    {
+     "title": "Fullfør Foley for bok, stoff, skritt, pust og knyting før lydmiks",
+     "status": "todo"
+    },
+    {
+     "title": "Koble Nora-huske (P04) til P01-forløpet",
+     "status": "todo"
+    },
+    {
+     "title": "Legg til Foley for papir, stoff og fingre mot tre for skoleveisrekvisittene (pinne, tistel, tegning)",
+     "status": "todo"
+    },
+    {
+     "title": "Isoler visuell rot og koble samme transform til føtter/hender/bok/skolisse (byggetrinn 2, MOVEMENT-ANIMATION-CONTRACT-v1)",
+     "status": "todo"
+    },
+    {
+     "title": "Hent Gideons fem godkjente cue-tekster fra Gideon-Five-Cues-v1 (N01, plassert før skoleveisamtalen)",
+     "status": "todo"
+    }
+   ],
+   "episode": "E01"
+  },
+  {
+   "code": "P02",
+   "workingId": "P02",
+   "title": "Ringen",
+   "subtitle": "W02 · samme ettermiddag, 1797",
+   "era": "1797",
+   "status": "in_progress",
+   "location": "Ringen / bar jordflekk, 1797",
+   "beforeState": "Oskar kommer frem med ballen. En bar jordflekk er etablert.",
+   "action": "Han tegner ringen med hælen, legger ballen i midten, viser navneregel og forklarer sammen med barna hvordan alle blir fri. Behold Marcus' krav om femti og utvekslingen «Jeg kan telle / Da får vi høre».",
+   "control": "En av de fire sparker ballen. Oskar løper bort, løfter den, bærer den tilbake, legger den i ringen og begynner først da å telle. Spillerne kan gjemme seg allerede mens han henter. Ingen film utfører sparket.",
+   "afterState": "Oskar når femti før han snur seg for å lete.",
+   "audio": "Spark ved fotkontakt, ballens faktiske landing, skritt og telling fra Oskars aktuelle plass. Ingen tilfeldig reprise av tall over en annen handling.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P02 Før"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P02 Handling, W02.01-W02.09"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P02 Kontroll"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P02 Etter/utløser"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "audio",
+     "note": "P02 Lyd"
+    },
+    {
+     "tag": "A",
+     "ref": "PROLOGUE-IMPLEMENTATION-v1",
+     "field": "status",
+     "note": "P01-P03 rule prototype"
+    }
+   ],
+   "components": [
+    "char_oskar",
+    "char_elise",
+    "char_nora",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_ring_root"
+   ],
+   "lines": [
+    {
+     "cueId": "W02.01",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "E",
+     "textEn": "I must come back here when I see someone. I cannot call from the woods."
+    },
+    {
+     "cueId": "W02.02",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "T",
+     "textEn": "The name first. Then “at the circle”."
+    },
+    {
+     "cueId": "W02.03",
+     "speaker": "char_jamie",
+     "speakerLabel": "JAMIE",
+     "sourceType": "E",
+     "textEn": "And if we are caught?"
+    },
+    {
+     "cueId": "W02.04",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "We wait here, until someone kicks the ball out."
+    },
+    {
+     "cueId": "W02.05",
+     "speaker": "char_sage",
+     "speakerLabel": "SAGE",
+     "sourceType": "E",
+     "textEn": "All of us are free?"
+    },
+    {
+     "cueId": "W02.06",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "All of us."
+    },
+    {
+     "cueId": "W02.07",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "T",
+     "textEn": "To fifty. Do not skip any numbers."
+    },
+    {
+     "cueId": "W02.08",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "T",
+     "textEn": "I can count."
+    },
+    {
+     "cueId": "W02.09",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "T",
+     "textEn": "Then let us hear you.",
+     "note": "Oskars aktive telling er én til femti etter faktisk tilbakeplassering — spillhandling/egen lydavhengighet, ikke bevis for komplett Cody-opptak av alle tall (OPENING-DIALOGUE-v2)."
+    }
+   ],
+   "gates": [
+    {
+     "key": "script_coverage",
+     "status": "passed",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Original Word 01–03 er lest på nytt, og DOCX-kontrollsummen er uendret: 553a5e2f...». P01-SCHOOL-DETAILS-v1 bekrefter samme for overgangene 02–03.",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1",
+      "P01-SCHOOL-DETAILS-v1"
+     ]
+    },
+    {
+     "key": "greybox",
+     "status": "passed",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Siste samlede kjøring, build/Prologue-Handoff.xcresult, har 60 beståtte tester og ingen registrerte runtime-advarsler»; «13 nye regeltester passerer i build/Prologue-Unit-02.xcresult».",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "characters_animation",
+     "status": "in_progress",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1, tabell W02: gjenstår «Naturtro hånd-/fotkontakter og ferdig filleballmodell» og «Demonstrasjonsgestene, Oskars fot på ballen og endelig fremføring».",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "playthrough",
+     "status": "not_started",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Ingen påstand om film-/lydkvalitet eller fysisk iPad-ytelse følger av at modelltestene består.»",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "picture",
+     "status": "not_started",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Ingen ny musikk, Foley, stemme eller Higgsfield-generering er lagt over prøven.»",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "audio",
+     "status": "not_started",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Godkjente opptak er ikke erstattet med syntetiske reserveopptak.» Ingen ny stemme/Foley lagt til.",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    }
+   ],
+   "tasks": [
+    {
+     "title": "Bygg naturtro hånd-/fotkontakter og ferdig filleballmodell",
+     "status": "todo"
+    },
+    {
+     "title": "Fullfør demonstrasjonsgestene, Oskars fot på ballen og endelig fremføring",
+     "status": "todo"
+    },
+    {
+     "title": "Bygg komplett godkjent telling, skritt, ballkontakter og romlig lyd",
+     "status": "todo"
+    }
+   ],
+   "episode": "E01"
+  },
+  {
+   "code": "P03",
+   "workingId": "P03",
+   "title": "Alle blir fri",
+   "subtitle": "W03 · lek som faktisk spilles, 1797",
+   "era": "1797",
+   "status": "in_progress",
+   "location": "Ringen / skogkanten, 1797",
+   "beforeState": "Ballen er i ringen, Oskar leter og spillerne har valgt gjemmesteder. Noras erting høres hvis Elise faktisk er nær henne ved stammen. En fjern spiller får ikke den private samtalen som om hen sto ved siden av.",
+   "action": "Nora beveger seg, oppdages og blir først bekreftet fanget når Oskar har løpt tilbake til ballen. Hun venter ved roten. Det samme prinsippet gjelder en oppdaget spiller; sikt alene er ikke bekreftet fangst.",
+   "control": "Gjem, hold oversikt, avled, gå rundt og spark ballen ut når fangede barn venter. Fysiske roller er frie. Den som faktisk sparker roper «Everyone is free!» Fangede kan observere og formidle det de ser.",
+   "afterState": "Et spillerutløst frigjøringsspark har frigitt minst ett fanget barn. Registrer hvem som reddet og hvem som ble fri. Oskar henter ballen og må begynne tellingen på nytt. Neste runde åpner det større området.",
+   "changeNote": "Ingen krav om at alle fire skal fanges. Hvis alle fire blir tatt, foreslås at et av de andre NPC-barna kan befri dem eller at runden startes vennlig på nytt (A: en løsning som må prøves, ikke en allerede bestemt ekstra regel).",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P03 Før"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P03 Handling, W03.01-W03.02"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P03 Kontroll, spillrop"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P03 Etter/utløser"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "changeNote",
+     "note": "P03 fallback ved alle fanget"
+    },
+    {
+     "tag": "A",
+     "ref": "PROLOGUE-IMPLEMENTATION-v1",
+     "field": "status",
+     "note": "P01-P03 rule prototype: redning/registrering"
+    }
+   ],
+   "components": [
+    "char_nora",
+    "char_oskar",
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_ring_root"
+   ],
+   "lines": [
+    {
+     "cueId": "W03.01",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "You sound as though you have run all the way to the church."
+    },
+    {
+     "cueId": "W03.02",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "E",
+     "textEn": "Nora at the circle!"
+    },
+    {
+     "cueId": "W03.90",
+     "speaker": null,
+     "speakerLabel": "SPILL",
+     "sourceType": "E",
+     "textEn": "Everyone is free!",
+     "note": "Spillrop fra Word 03s SPILL-avsnitt, fremføres av den faktiske redderen. Variant for en oppdaget spiller bruker riktig karakternavn ved ringen; Nora-replikken kan ikke gjenbrukes for alle (OPENING-DIALOGUE-v2)."
+    }
+   ],
+   "gates": [
+    {
+     "key": "script_coverage",
+     "status": "passed",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Original Word 01–03 er lest på nytt, og DOCX-kontrollsummen er uendret: 553a5e2f...».",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "greybox",
+     "status": "passed",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Siste samlede kjøring, build/Prologue-Handoff.xcresult, har 60 beståtte tester og ingen registrerte runtime-advarsler, inkludert en faktisk Jamie-redning».",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "characters_animation",
+     "status": "in_progress",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1, tabell W03: gjenstår «Skjulende positurer, albuedytt, latter og rotens sitteanimasjon» og «Endelige rop, blikk og håndsignaler».",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "playthrough",
+     "status": "not_started",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Ingen påstand om film-/lydkvalitet eller fysisk iPad-ytelse følger av at modelltestene består.»",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "picture",
+     "status": "not_started",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Ingen ny musikk, Foley, stemme eller Higgsfield-generering er lagt over prøven.»",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    },
+    {
+     "key": "audio",
+     "status": "not_started",
+     "evidence": "PROLOGUE-IMPLEMENTATION-v1: «Godkjente opptak er ikke erstattet med syntetiske reserveopptak.»",
+     "evidenceRefs": [
+      "PROLOGUE-IMPLEMENTATION-v1"
+     ]
+    }
+   ],
+   "tasks": [
+    {
+     "title": "Bygg skjulende positurer, albuedytt, latter og rotens sitteanimasjon",
+     "status": "todo"
+    },
+    {
+     "title": "Fullfør endelige rop, blikk og håndsignaler",
+     "status": "todo"
+    },
+    {
+     "title": "Bygg nettverksco-op og privat kommunikasjon/perspektiv",
+     "status": "todo"
+    },
+    {
+     "title": "Utvid til større område, koble P04-husken og forbindelsen videre",
+     "status": "todo"
+    }
+   ],
+   "episode": "E01"
+  },
+  {
+   "code": "P04",
+   "workingId": "P04",
+   "title": "Nora på husken",
+   "subtitle": "U, bearbeidet fra Pilot v1, 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Husken (loc_swing), 1797",
+   "beforeState": "En pause i leken, fortsatt 1797. Nora setter seg, tar begge hamptau og gir avspark med skoen. Et lett dytt er valgfritt og må utføres fysisk.",
+   "action": "De tre engelske replikkene og latteren er ført som U04. Begge tau, setets reparerte kant, hender og sko bevares mellom bildene. Latteren kommer etter replikkvekslingen og ved en naturlig vending. Ekte vennskap skal få plass.",
+   "control": "Undersøk eller gå videre; Nora kan svinge selv. Den senere husken må være gjenkjennelig som dette stedet. Tau/grein, sete, sko og pust har egne synlige lydkontakter; ingen kjeder eller latterløkke.",
+   "changeNote": "Dette er ikke en scene som beviser Noras død.",
+   "sourceRefs": [
+    {
+     "tag": "U",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P04 Før/Handling"
+    },
+    {
+     "tag": "U",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P04, replikker U04"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P04 Kontroll/utgang"
+    }
+   ],
+   "components": [
+    "char_nora",
+    "char_elise",
+    "loc_swing"
+   ],
+   "lines": [
+    {
+     "cueId": "U04.01",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "U",
+     "textEn": "Just a little. I want to see over the fence."
+    },
+    {
+     "cueId": "U04.02",
+     "speaker": "char_elise",
+     "speakerLabel": "UNGE ELISE",
+     "sourceType": "U",
+     "textEn": "You could walk round it."
+    },
+    {
+     "cueId": "U04.03",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "U",
+     "textEn": "It would not be the same.",
+     "note": "Én motivert latter ved vendingen følger her, ikke nye ord (OPENING-DIALOGUE-v2)."
+    }
+   ],
+   "gates": [],
+   "episode": "E01"
+  },
+  {
+   "code": "P05",
+   "workingId": "P05",
+   "title": "To tellinger og skogens uro",
+   "subtitle": "W04 + U, 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Steingjerdet / kulljorden / lekeområdet, 1797",
+   "beforeState": "Steingjerdet, kulljorden og lekeområdet etableres med to forskjellige retninger. Den ukjente voksne sier «Twenty-eight. Twenty-nine.» Oskar høres fra leken med «Sixteen! Seventeen!». Et lite blått lys passerer bak en stamme. Det henger ikke som en vanlig lampe i et tre.",
+   "action": "Bevegelse kommer fra et etablert område langt inne i skogen; kråkene letter fra samme område og trekronene rører seg. Årsaken vises før fuglereaksjonen. Det subjektive lyktetillegget følger Flow v4s opptaksgrunnlag: fjern figur, fast lyktestørrelse, kamera inn, intens blå flamme og abstrakte sjelslys; ingen synlige barn i glasset. Noras håndkontakt og alle tre originalreplikkene (ingen leker der / hørte noen / går tilbake) beholdes.",
+   "control": "Oskars stemme må komme fra hans faktiske lekerunde; ikke spill 16–17 mens han egentlig leter eller har nådd femti. Planlagt synlig nytt spillforløp med henting, tilbakeplassering og telling før tallparet. Ingen falsk lydløkke.",
+   "afterState": "Alle barna samles og går hjem. Den ukjente stemmen varer litt lenger enn Oskars mot avgangen. Godkjent fortsettelse 30–35 kan brukes der.",
+   "bridge": "Nøyaktig filmplassering, fortellerperspektiv og overlevering til kontroll må prøves mot naboklipp; Flow v4 er ikke en ferdig godkjent bildeleveranse.",
+   "knowledge": {
+    "audienceKnows": "Publikum trenger ikke få vite identiteten bak bevegelsen/lyset i skogen. Ingen slik sekvens gjør jentene allvitende eller avslører den skjulte identiteten."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P05 Før, W04"
+    },
+    {
+     "tag": "U",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P05 brukertillegg: bevegelse/kråker/lykt"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P05 spillavhengighet"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P05 Etter"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "bridge",
+     "note": "P05 filmplassering/overlevering"
+    },
+    {
+     "tag": "U",
+     "ref": "FLOW4",
+     "field": "action",
+     "note": "Subjektivt lyktetillegg, Flow v4s opptaksgrunnlag"
+    }
+   ],
+   "components": [
+    "char_oskar",
+    "char_unknown_adult",
+    "char_nora",
+    "char_elise",
+    "loc_stone_fence"
+   ],
+   "lines": [
+    {
+     "cueId": "W04.01",
+     "speaker": "char_unknown_adult",
+     "speakerLabel": "STEMMEN",
+     "sourceType": "E",
+     "textEn": "Twenty-eight. Twenty-nine."
+    },
+    {
+     "cueId": "W04.02",
+     "speaker": "char_oskar",
+     "speakerLabel": "OSKAR",
+     "sourceType": "E",
+     "textEn": "Sixteen! Seventeen!"
+    },
+    {
+     "cueId": "W04.03",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "There is no one playing there.",
+     "note": "W04.03 er med fra det senere P05-opptaksgrunnlaget, selv om den manglet i den eldre engelske oversikten (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W04.04",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "I heard someone."
+    },
+    {
+     "cueId": "W04.05",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "Then let us go back to the others."
+    },
+    {
+     "cueId": "W04.90",
+     "speaker": "char_unknown_adult",
+     "speakerLabel": "STEMMEN",
+     "sourceType": "U",
+     "textEn": "Thirty. Thirty-one. Thirty-two. Thirty-three. Thirty-four. Thirty-five.",
+     "note": "Godkjent brukertillegg til Desmonds fortsettelse. Telleavstand, halelengde og sammenheng med spilltilstanden må fortsatt kontrolleres (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "U05.01",
+     "speaker": "char_elise",
+     "speakerLabel": "UNGE ELISE / Annie",
+     "sourceType": "U",
+     "textEn": "Are you all right?"
+    },
+    {
+     "cueId": "U05.02",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA / Luna",
+     "sourceType": "U",
+     "textEn": "Yes… it's nothing. I'm all right."
+    }
+   ],
+   "gates": [],
+   "tasks": [
+    {
+     "title": "Bygg konkret runtime-/filmtilpasning for Oskars tellerunde (synlig/forståelig nytt spillforløp)",
+     "status": "todo"
+    },
+    {
+     "title": "Prøv filmplassering/overlevering til kontroll for lyktetillegget mot naboklipp — Flow v4 er ikke godkjent bildeleveranse",
+     "status": "todo"
+    },
+    {
+     "title": "Lag sammenhengende telleplan for P05 før bygging/klipping",
+     "status": "todo"
+    },
+    {
+     "title": "Hent Gideons fem godkjente cue-tekster fra Gideon-Five-Cues-v1 (N04, plassert etter huskens gode øyeblikk og før tellingene)",
+     "status": "todo"
+    }
+   ],
+   "episode": "E01"
+  },
+  {
+   "code": "P06",
+   "workingId": "P06",
+   "title": "En plass på gulvet",
+   "subtitle": "W05 · 1797, kveld",
+   "era": "1797",
+   "status": "idea",
+   "location": "Hjemme hos Elise, kjøkken/stue, 1797, kveld",
+   "beforeState": "Mor syr; Elise setter frem skåler og forteller om lyset.",
+   "action": "Mor spør og lytter, legger arbeidet fra seg og ber henne vise stedet på papiret. Nora og Elise tegner. Flere kan hjelpe med papir og merker. En nabo kommer for å spise; mor ber dem gjøre plass. Nora tilbyr en plass på gulvet med «I have kept a place for you.» Alle seks originalreplikkene er med i W05-blokken.",
+   "afterState": "Kartet har Noras skjeve pil. Barnet bretter papiret; voksne hender åpner et annet papir med tilsvarende bretter. Det er et motivert tidshopp, ikke en påstand om at originalkartet magisk skifter eier.",
+   "changeNote": "Originalens senere voksenundersøkelse uten funn av person beholdes som en historieopplysning som må plasseres; ikke erstatt den med «ingen trodde henne».",
+   "knowledge": {
+    "actualPast": "En senere voksenundersøkelse fant ikke personen (historieopplysning som må plasseres i spillet, ikke enda gjort)."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P06 Før"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P06 Handling, W05.01-W05.06"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P06 Etter"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "changeNote",
+     "note": "P06 historieopplysning"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_nora",
+    "char_mor",
+    "loc_kitchen"
+   ],
+   "lines": [
+    {
+     "cueId": "W05.01",
+     "speaker": "char_mor",
+     "speakerLabel": "MOR",
+     "sourceType": "T",
+     "textEn": "Were there any grown-ups with you?"
+    },
+    {
+     "cueId": "W05.02",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "T",
+     "textEn": "I do not know. We came home together."
+    },
+    {
+     "cueId": "W05.03",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "There is no castle there."
+    },
+    {
+     "cueId": "W05.04",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "Not yet."
+    },
+    {
+     "cueId": "W05.05",
+     "speaker": "char_mor",
+     "speakerLabel": "MOR",
+     "sourceType": "T",
+     "textEn": "There is room. Move your things a little."
+    },
+    {
+     "cueId": "W05.06",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "I have kept a place for you."
+    }
+   ],
+   "gates": [],
+   "episode": "E01"
+  },
+  {
+   "code": "P07",
+   "workingId": "P07",
+   "title": "Papiret",
+   "subtitle": "W06 · 1817, tjue år senere",
+   "era": "1817",
+   "status": "idea",
+   "location": "Elises rom/losji, 1817",
+   "timeNote": "Tidshopp: «Twenty years later» / 1817.",
+   "beforeState": "Elise er 32, arbeider med et rutekart og mottar sendingen.",
+   "action": "Hun leser kartkopi og beskjed, sammenholder håndskrift og vet ikke sikkert hvem som sendte den. Hun skriver til Noras sist kjente adresse, forteller vertinnen hvor hun går og pakker kart, kullstift og kappe. Glemselen er delvis; hun kjenner Nora.",
+   "bridge": "De andre tre skal ha korte parallelle ankomster som i originalen. Deres private motiver og rom er ikke ferdig skrevet: dette er en åpen manusoppgave, ikke tillatelse til å finne på tre skyldmontasjer.",
+   "afterState": "Alle fire er klare og møtestedet er kjent: den gamle skogsveien etter solnedgang. Ingen Nora-signatur eller bekreftet avsender på konvolutten.",
+   "knowledge": {
+    "ownerPerspective": "Elise vet ikke sikkert hvem som sendte kartkopien og beskjeden, selv om hun sammenholder håndskriften.",
+    "audienceKnows": "Ingen avsenderbekreftelse er lagt til; å lese og sammenligne brevet er ikke det samme som å få bevist hvem som skrev det."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P07 Før"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P07 Handling, W06"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "bridge",
+     "note": "P07 åpen manusoppgave: tre parallelle ankomster"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P07 Etter"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "timeNote",
+     "note": "Tidshopp-påskrift"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_vertinnen"
+   ],
+   "lines": [
+    {
+     "cueId": "W06.01",
+     "speaker": "char_vertinnen",
+     "speakerLabel": "VERTINNEN",
+     "sourceType": "E",
+     "textEn": "Do you know who sent it?"
+    },
+    {
+     "cueId": "W06.02",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "I think I do."
+    },
+    {
+     "cueId": "W06.03",
+     "speaker": "char_vertinnen",
+     "speakerLabel": "VERTINNEN",
+     "sourceType": "E",
+     "textEn": "Be certain before you go."
+    },
+    {
+     "cueId": "W06.90",
+     "speaker": null,
+     "speakerLabel": "PÅSKRIFT",
+     "sourceType": "E",
+     "textEn": "Twenty years later",
+     "note": "Tidshopp-påskrift, eksisterende engelsk bearbeiding (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W06.91",
+     "speaker": null,
+     "speakerLabel": "PÅSKRIFT",
+     "sourceType": "E",
+     "textEn": "I have kept a place for you.",
+     "note": "Kartets bakside, eksisterende engelsk bearbeiding (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W06.92",
+     "speaker": null,
+     "speakerLabel": "PÅSKRIFT",
+     "sourceType": "E",
+     "textEn": "At the old forest road after sunset. Four names. One light.",
+     "note": "Møtebeskjed, eksisterende engelsk bearbeiding (OPENING-DIALOGUE-v2)."
+    }
+   ],
+   "gates": [],
+   "tasks": [
+    {
+     "title": "Skriv private motiver/bakgrunnsrom for Marcus, Sage og Jamies parallelle ankomster (åpen manusoppgave)",
+     "status": "todo"
+    },
+    {
+     "title": "Hent Gideons fem godkjente cue-tekster fra Gideon-Five-Cues-v1 (N02, plassert ved tidshoppet)",
+     "status": "todo"
+    }
+   ],
+   "episode": "E02"
+  },
+  {
+   "code": "P08",
+   "workingId": "P08",
+   "title": "De samme fire",
+   "subtitle": "W07 · 1817, kveld",
+   "era": "1817",
+   "status": "idea",
+   "location": "Møtestedet ved den gamle skogsveien, 1817, kveld",
+   "beforeState": "Fire gamle bekjente møtes.",
+   "action": "Marcus kjenner Elise igjen, Jamie undersøker merket og Sage arket. Samtalen om gjerdet, Oskar og avsenderens usikkerhet beholdes i sin helhet; også Jamies «Tror?» og Elises svar er med i W07-blokken.",
+   "control": "Del invitasjonenes felles deler, undersøk og velg hvem som tar den varme lykten fra stolpen. Bare én fysisk lykt går inn med gruppen. Ingen automatisk løgn om private motiver og ingen full forklaring av fortiden.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P08 Før"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P08 Handling, W07.01-W07.08"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P08 Kontroll: lykt fra stolpen"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "lines": [
+    {
+     "cueId": "W07.01",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "E",
+     "textEn": "You always found a way round the fence."
+    },
+    {
+     "cueId": "W07.02",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "You always ran straight through."
+    },
+    {
+     "cueId": "W07.03",
+     "speaker": "char_jamie",
+     "speakerLabel": "JAMIE",
+     "sourceType": "E",
+     "textEn": "Did we not play here as children?"
+    },
+    {
+     "cueId": "W07.04",
+     "speaker": "char_sage",
+     "speakerLabel": "SAGE",
+     "sourceType": "E+T",
+     "textEn": "Yes. Oskar did the counting. He never seemed to finish.",
+     "note": "Sages avslutning er gjeninnført fra originalen (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W07.05",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "E",
+     "textEn": "Who sent for us?"
+    },
+    {
+     "cueId": "W07.06",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "I may know who sent for us."
+    },
+    {
+     "cueId": "W07.07",
+     "speaker": "char_jamie",
+     "speakerLabel": "JAMIE",
+     "sourceType": "T",
+     "textEn": "May?",
+     "note": "«May?» viderefører Jamies spørsmål ved å vise tilbake til eksisterende Elise-ordlyd, ikke ved å erstatte et godkjent opptak (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W07.08",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "T",
+     "textEn": "That is why I came."
+    }
+   ],
+   "gates": [],
+   "tasks": [
+    {
+     "title": "Hent Gideons fem godkjente cue-tekster fra Gideon-Five-Cues-v1 (N05, plassert ved voksnes felles avgang)",
+     "status": "todo"
+    }
+   ],
+   "episode": "E02"
+  },
+  {
+   "code": "P09",
+   "workingId": "P09",
+   "title": "Terskelen",
+   "subtitle": "W08 + U om lysforbruk · 1817",
+   "era": "1817",
+   "status": "idea",
+   "location": "Steingjerdet, hullet i gjerdet, 1817",
+   "beforeState": "Hullet i steingjerdet er vokst igjen. En fjern blå lykt beveger seg bort uten svar. De voksne gjenkjenner tellingen fra barndommen, ikke hele forklaringen.",
+   "control": "Overlever eller heng fra dere gruppelykten, se kartet sammen og samle én gnist ved å holde lysåpningen rolig mot den. Flammen og sikten endrer seg. Mer samlet lys gjør gruppen mer synlig, og reserven avtar under aktiv spilling. Eksakt forbrukskurve er fortsatt forslag i kraftplanen.",
+   "afterState": "Forsøk på retur fører til samme stolpe, med et fysisk merke som lar dem etterprøve det. Ikke bare flytt en oppdragsmarkør. Tom lykt skal ikke skape en permanent umulig åpning; varsling og mulighet til å finne mer lys må prøves.",
+   "knowledge": {
+    "othersObserve": "De voksne kjenner igjen tellingen fra barndommen, men ikke hele forklaringen bak den."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P09 Før, W08"
+    },
+    {
+     "tag": "U",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P09 lysforbruk (brukertillegg)"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P09 retur/merke"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_stone_fence"
+   ],
+   "lines": [
+    {
+     "cueId": "W08.01",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "Who is there? Are you waiting for us?"
+    },
+    {
+     "cueId": "W08.02",
+     "speaker": "char_sage",
+     "speakerLabel": "SAGE",
+     "sourceType": "E",
+     "textEn": "That counting, when we were children..."
+    },
+    {
+     "cueId": "W08.03",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "I heard it too."
+    }
+   ],
+   "gates": [],
+   "tasks": [
+    {
+     "title": "Fastsett eksakt lysforbrukskurve for gruppelykten (foreløpig forslag i kraftplanen)",
+     "status": "todo"
+    },
+    {
+     "title": "Bygg varsling og mulighet for å finne mer lys ved tom gruppelykt",
+     "status": "todo"
+    }
+   ],
+   "episode": "E02"
+  },
+  {
+   "code": "P10",
+   "workingId": "P10",
+   "title": "Det tomme bålstedet",
+   "subtitle": "W09 · 1817",
+   "era": "1817",
+   "status": "idea",
+   "location": "Bålstedet, 1817",
+   "beforeState": "Liten ild, fire stolper, jernskål og plate. Ingen mennesker står rundt bålet ved dette første besøket. Vis den skjeve pilen og den lesbare oppfordringen.",
+   "control": "Spilleren fører én gnist fra lykten til bålet. Deretter åpnes greinporten synlig. Ingen automatisk tapping av hele reserven ved nærhet. Å undersøke først er mulig; å gå videre krever originalens første innlevering.",
+   "afterState": "Porten er åpen, reserven er redusert med faktisk innlevering, og forbindelsene mellom stolper og bom kan ses. Pensel og krukke varsler det malte vinduet. Nye utvidelser rundt dette stedet må bevare denne forbindelsen.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P10 Før, W09"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P10 Kontroll: gnist til bål"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P10 Etter"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_fire_site",
+    "loc_painted_window"
+   ],
+   "lines": [
+    {
+     "cueId": "W09.01",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "E",
+     "textEn": "Nora always drew the arrow like that."
+    },
+    {
+     "cueId": "W09.02",
+     "speaker": "char_jamie",
+     "speakerLabel": "JAMIE",
+     "sourceType": "E",
+     "textEn": "That does not mean she is here."
+    },
+    {
+     "cueId": "W09.90",
+     "speaker": null,
+     "speakerLabel": "PÅSKRIFT",
+     "sourceType": "E",
+     "textEn": "BRING THE WANDERING LIGHT HOME.",
+     "note": "Påskrift ved bålet. Én faktisk gnist leveres før greinporten åpnes; ingen narrator erstatter det (OPENING-DIALOGUE-v2)."
+    }
+   ],
+   "gates": [],
+   "episode": "E03"
+  },
+  {
+   "code": "P11",
+   "workingId": "P11",
+   "title": "Husken igjen",
+   "subtitle": "U, voksen-Elises private minne · 1817",
+   "era": "1817",
+   "status": "idea",
+   "location": "Husken (loc_swing), 1817 — barndomsminne fra P04",
+   "beforeState": "Den gjenkjennelige husken fra P04. Elise ser og hører Nora som barn. De andre ser det samme setet tomt, med tau og trelyder, ikke Nora i hemmelighet.",
+   "action": "Elise kjenner husken, men forstår ikke hvorfor minnet er i skogen.",
+   "control": "Undersøk, sammenhold perspektiv og gå videre. Ingen død, tvungen fangst eller nytt barndomssvik oppstår ved å gi minnet oppmerksomhet.",
+   "changeNote": "Romlig plassering mellom bål og vindu er A og må kontrolleres i brettoppsettet.",
+   "knowledge": {
+    "ownerPerspective": "Elise ser og hører Nora som barn ved husken.",
+    "othersObserve": "De andre ser det samme, tomme setet med tau og trelyder, ikke Nora i hemmelighet."
+   },
+   "sourceRefs": [
+    {
+     "tag": "U",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P11 Før"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "control",
+     "note": "P11 Kontroll"
+    },
+    {
+     "tag": "A",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "changeNote",
+     "note": "P11 romlig plassering (A)"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_nora",
+    "char_marcus",
+    "loc_swing"
+   ],
+   "lines": [
+    {
+     "cueId": "U11.01",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "U",
+     "textEn": "Nora? You were... We were children."
+    },
+    {
+     "cueId": "U11.02",
+     "speaker": "char_nora",
+     "speakerLabel": "MINNET AV NORA",
+     "sourceType": "U",
+     "textEn": "Will you give me a push?",
+     "perspective": "Bare i Elises perspektiv"
+    },
+    {
+     "cueId": "U11.03",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "U",
+     "textEn": "Elise. There is no one on the swing."
+    },
+    {
+     "cueId": "U11.04",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "sourceType": "U",
+     "textEn": "I know this swing."
+    }
+   ],
+   "gates": [],
+   "tasks": [
+    {
+     "title": "Kontroller romlig plassering av husken mellom bålsted og vindu i brettoppsettet (forslag A)",
+     "status": "todo"
+    }
+   ],
+   "episode": "E03"
+  },
+  {
+   "code": "P12",
+   "workingId": "P12",
+   "title": "Vinduet ser tilbake",
+   "subtitle": "W10 + ordløs Seeker-avslutning U",
+   "era": "1817",
+   "status": "idea",
+   "location": "Arbeidsrommet / det malte vinduet",
+   "timeNote": "Nåtid 1817 / barndomsminne 1797 (jf. W10-overskriften «nåtid 1817 / barndomsminne 1797»). Åpningsdelen kan avgrenses her med det ordløse Seeker-bildet og tittel.",
+   "beforeState": "Nora står med maling på håndleddet; unge Elise sitter.",
+   "action": "Voksen-Elise ser det varme arbeidsrommet, de andre det forfalne laget med samme geometri. Alle undersøker ramme, plugg, tegning og åpning bak forhenget. Fysiske oppgaver kan byttes. De lærer vareinngangen i ro før den senere skal brukes til redning. Nora vender seg mot den voksne betrakteren og spør om hun vil sette seg. Marcus får kalle henne tilbake. Det tidligere engelske «Look at me» beholdes som en merket bearbeiding; originalens beskjed om å gå videre er også ført.",
+   "afterState": "Den virkelige vareinngangen finnes og åpnes ved spillerhandling. Fortsettelsen er det faste ungdomstilbakeblikket i 1802, ikke en ny valgmulighet til å gjøre sviket ugjort. Et ordløst Seeker-bilde skal ikke flytte de fire, endre lyktens tilstand eller starte en usett markering.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "beforeState",
+     "note": "P12 Før, W10"
+    },
+    {
+     "tag": "U",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "action",
+     "note": "P12 Handling + ordløs Seeker-avslutning"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "afterState",
+     "note": "P12 Etter"
+    },
+    {
+     "tag": "W",
+     "ref": "OPENING-HYBRID-v2",
+     "field": "timeNote",
+     "note": "W10-overskrift: nåtid 1817 / barndomsminne 1797"
+    }
+   ],
+   "components": [
+    "char_nora",
+    "char_elise",
+    "char_marcus",
+    "loc_workroom",
+    "loc_painted_window"
+   ],
+   "lines": [
+    {
+     "cueId": "W10.01",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA, 12",
+     "sourceType": "E",
+     "textEn": "Hold it there. Not there. Now the whole house looks as though it will fall."
+    },
+    {
+     "cueId": "W10.02",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE, 12",
+     "sourceType": "E",
+     "textEn": "You painted it."
+    },
+    {
+     "cueId": "W10.03",
+     "speaker": "char_nora",
+     "speakerLabel": "NORA",
+     "sourceType": "E",
+     "textEn": "Will you not sit with me?"
+    },
+    {
+     "cueId": "W10.90",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "E",
+     "textEn": "Elise. Look at me.",
+     "note": "Tidligere engelsk bearbeiding, beholdes som egen replikk før W10.04 når Marcus forsøker å få kontakt; ikke en ordrett oversettelse av «Vi må videre». Forslag til ny plassering, ikke endring av allerede innspilt lyd (OPENING-DIALOGUE-v2)."
+    },
+    {
+     "cueId": "W10.04",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "sourceType": "T",
+     "textEn": "Elise. We must go on."
+    }
+   ],
+   "gates": [],
+   "tasks": [
+    {
+     "title": "Hent Gideons fem godkjente cue-tekster fra Gideon-Five-Cues-v1 (N03, plassert ved ordløs avslutning/tittel)",
+     "status": "todo"
+    }
+   ],
+   "episode": "E03"
+  },
+  {
+   "code": "G01",
+   "title": "Fire ankomster og møtet ved stien",
+   "era": "1817",
+   "status": "idea",
+   "action": "Fire ankomster og møtet ved stien. Elise undersøker kartet; alle får en egen kort ankomsthandling med ulik grunn til å møte.",
+   "knowledge": {
+    "ownerPerspective": "Personlig grunn og bevart gjenkjennelse introduseres i aktuell karakters perspektiv; deler av egne handlinger er glemt.",
+    "audienceKnows": "Ingen karakter gjennomgår alle hemmeligheter i en indre monolog."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 06-07"
+    },
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "action",
+     "note": "brukerens delvise glemsel; dramaturgisk plassering"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "episode": "E02"
+  },
+  {
+   "code": "G02",
+   "title": "Første lys, husken og det malte vinduet",
+   "era": "1817",
+   "status": "idea",
+   "location": "loc_swing",
+   "action": "Første lys, Nora på barndomshusken og vindusrammen. De andre observerer samme fysiske sted, men ikke Elises private innhold.",
+   "knowledge": {
+    "ownerPerspective": "Elise: gjenkjennelse.",
+    "othersObserve": "Bevegelse, sted og hennes reaksjon.",
+    "audienceKnows": "Ingen får vite brevsviket her."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 08-10"
+    },
+    {
+     "tag": "U",
+     "ref": "SCENE-PLAN-v3",
+     "field": "location",
+     "note": "brukerens huske"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_nora",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_swing",
+    "loc_painted_window"
+   ],
+   "episode": "E03"
+  },
+  {
+   "code": "G03",
+   "title": "Den gamle navneplaten",
+   "era": "1817",
+   "status": "idea",
+   "action": "Den gamle navneplaten. Et avgrenset ekko viser leteplassen; terrengsporet åpner en faktisk retrettvei.",
+   "knowledge": {
+    "audienceKnows": "Gruppen får samme etterprøvbare spor, ikke hverandres biografier."
+   },
+   "changeNote": "Ikke vis hele P01/P02 på nytt dersom samlet kultfilm allerede er vist.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K01-K03"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "episode": "E04"
+  },
+  {
+   "code": "G03A",
+   "workingId": "G03A",
+   "title": "Bring the Light — det første møtet med The Bound",
+   "era": "1817",
+   "status": "idea",
+   "location": "loc_seeker_shed",
+   "challenge": "Vurdere om mannens veivisning og kvinnens hjelp er oppriktig, mens en Whisperer etterligner mannens stemme fra skogen for å lokke en spiller bort, og mannen prøver å ta lykten.",
+   "gameplayMechanic": "Utforsk, snakk, hold avstand eller gå samlet; lysbærer kan trekke seg unna eller gi lykten videre; en spiller kan holdes under oppsikt; tyveriforsøk avverges ved avstand/oversikt; ta imot eller avslå kvinnens hjelp med plankene ved bakpassasjen.",
+   "environment": "Søkeskuret, den åpne bakpassasjen og steinparet fra K03, med tett vegetasjon som gir Whisperer dekning; den kjente retrettveien er fortsatt farbar.",
+   "beforeState": "Skuret, bakpassasje og steinpar er etablert i sammenheng; K03s flyttede planker står ved veggen. Mannen er synlig ved steinene, kvinnen står ved skurveggen med en bylt utenfor døråpningen. Gruppen har full kontroll og fører videre lysbærer/reserve fra K03.",
+   "action": "Mannen viser en reell sti og tilbyr veivisning mot lykten; en Whisperer etterligner hans stemme fra vegetasjonen mens en hettekledd skikkelse skimtes; mannen forsøker å gripe lykten hvis lysbæreren nærmer seg uovervåket; kvinnen holder plankene til side og lar gruppen passere samlet.",
+   "control": "Spillerne styrer utforskning, dialog, avstand og hvem som bærer lykten; å avbryte tyveriforsøket krever avstand/oversikt, ikke kamp; en avdreven spiller beholder kontroll og en fysisk retrett.",
+   "afterState": "Alle fire samles ved steinparet; kvinnen legger plankene tilbake og henter bylten; mannen trekker seg langs skuret om han ble stanset. Ingen blir tatt, forvandlet eller drept; Whisperer er fortsatt mellom trærne, men gruppen kjenner veien videre.",
+   "audio": "Mannens replikk høres tydelig før etterligningen fra separat romlig kilde; Foley ved synlig kontakt (håndtak, bylt, planker); sparsom stigende musikalsk spenning uten impact-akkorder; teksting angir observerbar kilde («Voice from the trees»), ikke Whisperer-navnet.",
+   "knowledge": {
+    "actualPast": "Mannen er et fritt menneske som ønsker lykten for egen ferd og velger å sette gruppen i fare for å få den; kvinnen er også fri og velger å hjelpe selv om hun har egeninteresse; Whisperer er et Bound-medlem som etterligner mannens setning.",
+    "othersObserve": "Spillerne ser mannen vise en reell sti, følge lykten med blikket og forsøke å ta den; de ser kvinnen holde passasjen åpen; de hører den kjente stemmen fra feil sted og skimter en hettekledd skikkelse.",
+    "audienceKnows": "Verken spillere eller karakterer kjenner NPC-enes navn, bakhistorie eller videre skjebne; ingen vet at det finnes en Whisperer-betegnelse."
+   },
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "scene",
+     "note": "helt nytt scene-/gameplayutkast, ikke godkjent opptaksmanus"
+    },
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "environment",
+     "note": "K01-K03: skur, bakdør, steinpar, retrettvei"
+    },
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "beforeState",
+     "note": "Word 08-09 delt lykt/lysinnlevering; Word 14-18 senere markering/redning"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "loc_seeker_shed"
+   ],
+   "lines": [
+    {
+     "cueId": "G03A.1",
+     "speaker": null,
+     "speakerLabel": "MANNEN",
+     "textEn": "Bring the light. I know this path.",
+     "sourceType": "A",
+     "recordingStatus": "none"
+    },
+    {
+     "cueId": "G03A.2",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "textEn": "Where does it lead?",
+     "sourceType": "A",
+     "recordingStatus": "none"
+    },
+    {
+     "cueId": "G03A.3",
+     "speaker": null,
+     "speakerLabel": "MANNEN",
+     "textEn": "Round the shed. The stones mark it.",
+     "sourceType": "A",
+     "recordingStatus": "none"
+    },
+    {
+     "cueId": "G03A.4",
+     "speaker": "char_marcus",
+     "speakerLabel": "MARCUS",
+     "textEn": "We shall carry it.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "perspective": "dersom han ser bevegelsen"
+    },
+    {
+     "cueId": "G03A.5",
+     "speaker": null,
+     "speakerLabel": "STEMME FRA SKOGEN",
+     "textEn": "Bring the light.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "note": "Whisperer etterligner mannens setning fra annet romlig sted"
+    },
+    {
+     "cueId": "G03A.6",
+     "speaker": "char_sage",
+     "speakerLabel": "SAGE",
+     "textEn": "He did not speak.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "perspective": "bare hvis hun har observert begge"
+    },
+    {
+     "cueId": "G03A.7",
+     "speaker": "char_jamie",
+     "speakerLabel": "JAMIE",
+     "textEn": "The path is here. Between the stones.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "perspective": "dersom han peker på kartsporet"
+    },
+    {
+     "cueId": "G03A.8",
+     "speaker": null,
+     "speakerLabel": "MANNEN",
+     "textEn": "You have four pairs of hands. I have none to help me.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "note": "mannens replikk hvis tyveriforsøket avbrytes; betinget replikkoverskrift i kilden, ikke talerbetegnelse Kilden skriver replikken under overskriften «BLIR HAN AVBRUTT»; taler = mannen som avbrytes (redaksjonell tolkning).",
+     "perspective": "Blir han avbrutt"
+    },
+    {
+     "cueId": "G03A.9",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "textEn": "Then ask. Do not take it.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "perspective": "om hun er til stede"
+    },
+    {
+     "cueId": "G03A.10",
+     "speaker": null,
+     "speakerLabel": "KVINNEN",
+     "textEn": "This way. I shall hold it.",
+     "sourceType": "A",
+     "recordingStatus": "none"
+    },
+    {
+     "cueId": "G03A.11",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "textEn": "Why did you wait?",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "perspective": "hvis hjelpen ble brukt og situasjonen gir rom"
+    },
+    {
+     "cueId": "G03A.12",
+     "speaker": null,
+     "speakerLabel": "KVINNEN",
+     "textEn": "You had not all come through.",
+     "sourceType": "A",
+     "recordingStatus": "none"
+    }
+   ],
+   "episode": "E04"
+  },
+  {
+   "code": "G04",
+   "title": "Brevet og sammenkomsten",
+   "era": "1802",
+   "status": "idea",
+   "action": "Brevet og sammenkomsten i 1802. Først Noras fortrolighet, så situasjonen hvor Elise kunne ha tatt brevet tilbake. Nora ber henne komme ut.",
+   "knowledge": {
+    "audienceKnows": "Etter tidlige private fragmenter gir den fulle, kildebestemte vitnescenen også gruppen ny kunnskap. Elise gjenvinner sammenheng; de andre kjente ikke automatisk sviket fra før."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 11-13"
+    },
+    {
+     "tag": "U",
+     "ref": "SCENE-PLAN-v3",
+     "field": "action",
+     "note": "brukerens delvise glemsel"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_nora"
+   ],
+   "episode": "E05"
+  },
+  {
+   "code": "G05",
+   "title": "Avskjæring og redning",
+   "era": "1817",
+   "status": "idea",
+   "action": "En medspiller avskjæres; de tre andre redder vedkommende. Marcus', Sages og Jamies kompetanse får konkrete utslag. Korte egne spor kan følge etter tryggere overgang, ikke avbryte redningen.",
+   "knowledge": {
+    "othersObserve": "Alle ser handlingen nå.",
+    "ownerPerspective": "Private spor gjør bare den aktuelle bakhistorien tilgjengelig i utpekt perspektiv."
+   },
+   "changeNote": "Hvem som fanges er ikke automatisk Jamie.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 14-18"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "episode": "E06"
+  },
+  {
+   "code": "G06",
+   "title": "Invitasjonskopiene og frakken",
+   "era": "1817",
+   "status": "idea",
+   "action": "Invitasjonskopiene og frakken. Den gjentatte mannen avslører hvordan håpet ble utnyttet.",
+   "knowledge": {
+    "audienceKnows": "Felles bevis om kulten. Ingen slutning om at sorg i seg selv gjør noen til vokter."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 19"
+    },
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K04-K06"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "episode": "E07"
+  },
+  {
+   "code": "G07",
+   "title": "Resultatet av utvelgelsen",
+   "era": "1817",
+   "status": "idea",
+   "action": "Gruppen møter resultatet av utvelgelsen: én fortsatt fange og en gjenkjennelig vokter. De kan undersøke hvorfor noen blir holdt igjen uten å bli følgere.",
+   "knowledge": {
+    "audienceKnows": "Karakterene får først nå egne bevis for noe publikum kan ha sett i filmen."
+   },
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "action",
+     "note": "ny scene etter K06; fysisk adgang og eventuell redning må skrives uten å bryte jaktreglene"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ]
+  },
+  {
+   "code": "G08",
+   "title": "Den falske festen",
+   "era": "1817",
+   "status": "idea",
+   "action": "Den falske festen tilbyr Elise den tilgivelsen hun ønsker. De andre finner at rommet og svarene ikke stemmer.",
+   "knowledge": {
+    "ownerPerspective": "Elise opplever fristelsen.",
+    "othersObserve": "Andre leverer observasjoner, ikke moralske dommer om hennes fortid."
+   },
+   "changeNote": "Å sette seg gir ikke automatisk straff.",
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 20-21"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie",
+    "char_nora"
+   ],
+   "episode": "E08"
+  },
+  {
+   "code": "G09",
+   "title": "Ansvaret hun kan ta nå",
+   "era": "1817",
+   "status": "idea",
+   "action": "Etter at gruppen har funnet utveien, setter Elise ord på det hun nå husker om egen handling og hensikt. Ikke en «tilgi meg»-knapp for å åpne en dør.",
+   "knowledge": {
+    "saidAloud": "Det hun faktisk sier deles. Ingen taler på Noras vegne eller får automatisk vite de tre andres historier."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 22, bearbeides etter bekreftet delvis glemsel"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "lines": [
+    {
+     "cueId": "G09.90",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "textEn": "I let them read her letter. I laughed with them. Then I left her outside.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "note": "ny engelsk arbeidsreplikk til R06, ikke originaloversettelse eller bestilt tale; talerbetegnelse ikke eksplisitt i kilden, utledet fra kontekst"
+    },
+    {
+     "cueId": "G09.91",
+     "speaker": "char_elise",
+     "speakerLabel": "ELISE",
+     "textEn": "I wanted a place among them.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "note": "valgfritt tillegg om motiv, forslag; bygger på Word 11 men ny ordlyd"
+    }
+   ],
+   "episode": "E10"
+  },
+  {
+   "code": "G10",
+   "title": "Den fysiske flukten",
+   "era": "1817",
+   "status": "idea",
+   "action": "Alle fire gjennomfører den fysiske flukten. Elise bruker kunnskap uten å avvise andres. De andre får handlingsrom som senere kan speiles mot egne fortider.",
+   "knowledge": {
+    "audienceKnows": "Felles nåtidige valg. En vunnet flukt er ikke bevis på at alle fire er ferdig forsonet."
+   },
+   "sourceRefs": [
+    {
+     "tag": "W",
+     "ref": "W",
+     "field": "action",
+     "note": "Word 23-26"
+    },
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K10"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ],
+   "episode": "E11"
+  },
+  {
+   "code": "H01",
+   "title": "Hjelp med et ærlig vilkår",
+   "era": "1817",
+   "status": "idea",
+   "challenge": "Vurdere om en vert som tilbyr tørt arbeidssted og ber om reell gjenytelse er til å stole på, uten en tvunget mistankeprøve.",
+   "gameplayMechanic": "Gruppen hjelper til med en reell oppgave for avtalt arbeidsro; et merkelig lydspor utenfor kan være ekstern fare, ikke bevis på vertsforræderi.",
+   "beforeState": "En vert tilbyr et tørt arbeidssted og viser hva som må gjøres for at det skal kunne brukes.",
+   "action": "Gruppen hjelper til med en reell oppgave og får avtalt arbeidsro; verten har nytte av samarbeidet.",
+   "afterState": "Verten endrer ikke prisen etterpå eller stjeler utstyret; gruppen lærer én ting vedkommende er til å stole på i, ikke hele personens fortid.",
+   "audio": "Et merkelig lydspor utenfor kan varsle fare fra skogen; det er ikke bevis på at verten samarbeider med kulten.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "scene",
+     "note": "situasjonsskisse H01, ikke plassert i episode ennå"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ]
+  },
+  {
+   "code": "H02",
+   "title": "Oppholdet som blir et overfall",
+   "era": "1817",
+   "status": "idea",
+   "challenge": "Oppdage vertens og en medhjelpers planer om å ta gruppens utstyr og stenge en utgang, og enten avverge det tidlig eller kjempe seg fri.",
+   "gameplayMechanic": "Tre faser: før avstengning (oppdage bevegelser, avbryte, ta utstyr, gå ut fri utgang); mens utgangen stenges (reagere, holde en vei åpen); etter at overfallet er i gang (kjempe frem en åpning og komme seg ut sammen). Målet er å stanse angrepet, hjelpe en medspiller og nå en utgang, ikke drepe alle motstandere.",
+   "beforeState": "En vert lar gruppen bruke et arbeidssted; det første verktøyet virker faktisk nyttig.",
+   "action": "Verten har sett det verdifulle utstyret, velger å ta det og får en medhjelper til å stenge en utgang.",
+   "control": "Kampen krever kun grunnleggende, allerede lært forsvar og minimumsutstyret gruppen faktisk kan ha; en fraværende spesialist eller oppbrukt ressurs skal ikke gjøre situasjonen umulig.",
+   "afterState": "Gruppen kjemper frem en åpning og kommer seg ut sammen om overfallet rekker å starte; ingen bestemt høflig replikk løser automatisk et pågående overfall.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "scene",
+     "note": "situasjonsskisse H02; ny person, ikke automatisk våpensmeden eller kvinnen fra G03A"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ]
+  },
+  {
+   "code": "H03",
+   "title": "Verten hjelper selv når det koster",
+   "era": "1817",
+   "status": "idea",
+   "challenge": "Stole på en vert som varsler ekte fare og hjelper gruppen ut selv om det koster vedkommende noe.",
+   "beforeState": "En ytre fare oppstår under et opphold hos en vert.",
+   "action": "Verten varsler gruppen, viser en reell utvei og gir dem tid til å hente utstyret, i stedet for å stenge dem ute for å beskytte seg selv.",
+   "afterState": "Spillerne kan hjelpe tilbake uten et påtvunget offer eller automatisk død for hjelperen; dette er motstykket til H02, ikke en ny obligatorisk felle.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "scene",
+     "note": "situasjonsskisse H03"
+    }
+   ],
+   "components": [
+    "char_elise",
+    "char_marcus",
+    "char_sage",
+    "char_jamie"
+   ]
+  },
+  {
+   "code": "K01",
+   "workingId": "P01 (kultfilm)",
+   "title": "Før det fantes en kult",
+   "era": "pre",
+   "status": "idea",
+   "environment": "Skuret, bekken, benken, veien og det lille bålet i ett oversiktsbilde; en kvinne skjærer brød ved benken der en tom støvel ligger; mannen i falmet rødt fører navn og behandler et merket skjerf varsomt.",
+   "action": "Etabler oversiktsbildet, gå nærmere kvinnen som skjærer brød og mannen i rødt som fører navn og behandler skjerfet.",
+   "changeNote": "Publikum ser en leteplass og mennesker med savn, ikke fiender i uniform.",
+   "audio": "Regn mot blader, brødkniv, vått stoff og begrenset ild. Ingen kultkor.",
+   "bridge": "Fottrinn høres fra den etablerte stien før leterne kommer inn i bildet.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K02"
+    },
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "scene",
+     "note": "klipperekkefølge, nytt planforslag"
+    }
+   ],
+   "components": [
+    "loc_seeker_shed",
+    "loc_fire_site",
+    "loc_search_creek",
+    "loc_search_bench",
+    "char_gideon"
+   ],
+   "lines": [
+    {
+     "cueId": "K01.1",
+     "speaker": "char_gideon",
+     "speakerLabel": "GIDEON",
+     "textEn": "They kept a fire for those who had not come home.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "note": "nytt forslag, ikke bestilt tale eller valgt stemme",
+     "perspective": "nytt forslag før dialog"
+    }
+   ]
+  },
+  {
+   "code": "K02",
+   "workingId": "P02 (kultfilm)",
+   "title": "De kommer tilbake uten svar",
+   "era": "pre",
+   "status": "idea",
+   "environment": "Bekken der Jakob vasker hendene før samtalen om spor; bålsted og benk fra P01.",
+   "action": "Tre letere kommer tilbake; Jakob går sist med varm lykt. Kvinnens spørsmål får konkrete svar; Jakob ber dem holde bålet i live. Lederen sier én natt til. Lykten settes på stubben før håndtaket gir lyd.",
+   "changeNote": "Bålet blir et løfte om at de savnede kan finne hjem.",
+   "audio": "Skritt nærmer seg, vann, dialog, metallkontakt. Ingen narrator over samtalen.",
+   "bridge": "Samme bål og benk en senere kveld; færre tepper og nesten tom kurv viser tiden.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "resten av K02"
+    }
+   ],
+   "components": [
+    "loc_fire_site",
+    "loc_search_creek",
+    "loc_search_bench"
+   ]
+  },
+  {
+   "code": "K03",
+   "workingId": "P03 (kultfilm)",
+   "title": "Et menneske som ikke svarer",
+   "era": "pre",
+   "status": "idea",
+   "environment": "Kjøkkenbord som kommer til syne gjennom røyken; kvinnen våkner med frakken på fanget.",
+   "action": "Kvinnen stiller nye spørsmål, men samme setning og bevegelse kommer tilbake. Mannen setter ned kruset. Jakob griper forsiktig håndleddet før hun når flammene. Vis hennes håp før fortvilelsen.",
+   "changeNote": "Publikum oppdager at gjenkjennelse ikke er en gjenforening.",
+   "audio": "Identisk kruslyd og samme replikkopptak ved hver minnegjentakelse. Ingen musikkaksent, hvisking eller Gideon skjuler spørsmålet og det feilaktige svaret.",
+   "bridge": "Jakob peker på gjentakelsen; mannen i rødt svarer ved å legge på ved.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K05, første samtale"
+    }
+   ],
+   "components": [
+    "loc_kitchen"
+   ],
+   "lines": [
+    {
+     "cueId": "K03.1",
+     "speaker": null,
+     "speakerLabel": "UKJENT (kult-PDF)",
+     "textEn": "You have laid a place for one too many.",
+     "sourceType": "T",
+     "recordingStatus": "none",
+     "note": "arbeidsoversettelse, kilde K05 Arbeidsoversettelse fra kult-PDF-en; taler ikke navngitt i SCENE-PLAN-v3."
+    }
+   ]
+  },
+  {
+   "code": "K04",
+   "workingId": "P04 (kultfilm)",
+   "title": "Omsorgen får en annen betydning",
+   "era": "pre",
+   "status": "idea",
+   "environment": "Kjøkkenbildet styrkes idet ved legges på.",
+   "action": "Jakob protesterer. Mannen i rødt børster jord av frakken og gir den tilbake; han ber henne komme igjen med flere eiendeler, uten et sant svar på om mannen kan høre henne.",
+   "changeNote": "Den omsorgsfulle fremtoningen settes opp mot hva han faktisk får henne til å gjøre; ikke legg inn et ondskapsfullt smil eller en forhåndsplan.",
+   "audio": "Vedkontakt og rolig dialog; temaets varme frase får en uavklart avslutning.",
+   "bridge": "Frakken og samme benk binder bildet til hennes neste besøk med trekassen.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K05, lederen gjør minnet tydeligere"
+    }
+   ],
+   "components": [
+    "loc_kitchen",
+    "loc_fire_site",
+    "loc_search_bench"
+   ]
+  },
+  {
+   "code": "K05",
+   "workingId": "P05 (kultfilm)",
+   "title": "Flere kvelder, færre utveier",
+   "era": "pre",
+   "status": "idea",
+   "environment": "Samme utsnitt: kvinnen med kassen; en annen voksen legger fra seg barnevotten og venter; stolper slås ned og snor trekkes.",
+   "action": "Ansikter og reaksjoner viser utmattelse. Votten møtes ikke av en barnehånd. Hver gjenstands ankomst vises før nærbildet; ingen rekvisitter oppstår mellom klipp.",
+   "changeNote": "Frivillig venting får en organisert fysisk grense.",
+   "audio": "Penn, kasse mot benk, stolpe mot jord, stram snor; en sammenhengende musikalsk frase gjennom kveldene, ikke nytt impact per bilde.",
+   "bridge": "Den unge kvinnen tar eiendelene sine og går mot åpningen vi allerede kjenner.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "K05, tidsmontasjen"
+    }
+   ],
+   "components": [
+    "loc_search_bench"
+   ],
+   "lines": [
+    {
+     "cueId": "K05.1",
+     "speaker": "char_gideon",
+     "speakerLabel": "GIDEON",
+     "textEn": "Night after night, they returned with what the missing had left behind.",
+     "sourceType": "A",
+     "recordingStatus": "none",
+     "note": "valgfritt forslag",
+     "perspective": "valgfritt nytt forslag"
+    }
+   ]
+  },
+  {
+   "code": "K06",
+   "workingId": "P06 (kultfilm)",
+   "title": "«Jeg må hjem»",
+   "era": "pre",
+   "status": "idea",
+   "environment": "Kvinnen følges helt frem til hjelperen stanser henne; senere trekkes hetter over ansikter.",
+   "action": "Hun ser mot mannen i rødt; ingen tillatelse kommer. Overskriften om leting strykes ut, Jakob skjuler brevet og snoren lukkes.",
+   "changeNote": "Publikum ser at mennesker nå holdes igjen. Dette er ikke bevis på at alle disse tidlige hjelperne ble utvalgt av The Seeker.",
+   "audio": "Musikken trekker seg tilbake ved nektelsen. Hør pust, steget som stanser og snoren. Ingen narrator forklarer at hun er fanget.",
+   "bridge": "Avslutt fortidsdelen. En uttrykkelig overgang til 1817 innleder P07.",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "K",
+     "field": "action",
+     "note": "slutten av K05"
+    }
+   ],
+   "components": [],
+   "lines": [
+    {
+     "cueId": "K06.1",
+     "speaker": null,
+     "speakerLabel": "KVINNEN (antatt)",
+     "textEn": "I must go home.",
+     "sourceType": "T",
+     "recordingStatus": "none",
+     "note": "Arbeidsoversettelse fra kult-PDF-en; taler ikke navngitt i SCENE-PLAN-v3."
+    },
+    {
+     "cueId": "K06.2",
+     "speaker": null,
+     "speakerLabel": "UKJENT (kult-PDF)",
+     "textEn": "He has not finished.",
+     "sourceType": "T",
+     "recordingStatus": "none",
+     "note": "Arbeidsoversettelse fra kult-PDF-en; taler ikke navngitt i SCENE-PLAN-v3."
+    }
+   ]
+  },
+  {
+   "code": "K07",
+   "workingId": "P07 (kultfilm)",
+   "title": "Det han finner, og den han beholder",
+   "era": "1817",
+   "status": "idea",
+   "environment": "Samme bålsted, med tydelig eldre treverk; to voksne fanger uten kulthetter, ikke de fire hovedkarakterene og ikke automatisk de samme unge menneskene fra P06.",
+   "action": "The Seeker oppsøker den ene; et kort minnefragment treffer noe personlig. Hos den andre finner han ikke et slikt minne. Når han vender seg bort, prøver denne fangen å gå; vokteren sperrer fortsatt veien.",
+   "changeNote": "To forskjellige utfall, men ingen frihet for den han ikke finner noe hos.",
+   "audio": "Personlig minnemotiv hos den første; hos den andre blir pust, vind og venting stående. Ingen moralbedømmende farge, skrekklyd eller narratorfasit.",
+   "sourceRefs": [
+    {
+     "tag": "U",
+     "ref": "SCENE-PLAN-v3",
+     "field": "scene",
+     "note": "ny brukerbestemt historieregel, bearbeiding av V01-V03; foreslått plassering"
+    }
+   ],
+   "components": [
+    "loc_fire_site",
+    "char_the_seeker"
+   ],
+   "episode": "E12"
+  },
+  {
+   "code": "K08",
+   "workingId": "P08 (kultfilm)",
+   "title": "Under hetten er det fortsatt et menneske",
+   "era": "1817",
+   "status": "idea",
+   "environment": "Åpningen der den første fangen nå ses; draktkjennetegn og ansikt gjør gjenkjennelsen mulig; den andre fangen fra P07 sitter fortsatt uten hette.",
+   "action": "Personen stanser nå en annen før hetten trekkes opp. I siste bilde vender The Seeker tilbake mot denne personen med den blå lykten: letingen fortsetter.",
+   "changeNote": "Vi vet at en fange kan bli vokter, og at manglende funn ikke gir løslatelse.",
+   "audio": "Snor og stoff, samme skogsluft, et avgrenset lyktemetall. Ingen triumf ved kappen, ingen forklaring av identitet eller automatisk tilgivelse.",
+   "bridge": "Skogslyden fortsetter over et tydelig perspektivskifte. De fire har ikke sett denne publikumssekvensen. Ved deres første bålbesøk er plassen tom som i Word 09.",
+   "sourceRefs": [
+    {
+     "tag": "U",
+     "ref": "SCENE-PLAN-v3",
+     "field": "scene",
+     "note": "brukerutvidelse og V04; ny iscenesettelse"
+    }
+   ],
+   "components": [
+    "char_the_seeker"
+   ],
+   "episode": "E12"
+  }
+ ],
+ "openQuestions": [
+  {
+   "code": "Q01",
+   "kind": "question",
+   "question": "Hvorfor akkurat disse fire? Elises kart forklarer hennes lokking, ikke alene hvorfor de tre andre er valgt.",
+   "context": "Skriv avgrensede forfattergrunner før deres invitasjoner får konkrete private løfter. Ikke gjør Nora til avsender.",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "openQuestions",
+     "note": "Spørsmål for neste manusgjennomgang"
+    }
+   ]
+  },
+  {
+   "code": "Q02",
+   "kind": "question",
+   "question": "Hvorfor bruker bindingen akkurat lekens regler?",
+   "context": "Likheten er sterk, men dokumentene fastsetter ikke årsaken. Ikke hev at kulten oppfant leken, at barna skapte ondskapen, eller at skyld gir makt, uten en uttrykkelig beslutning. Piloten kan etablere likheten uten å forklare mekanismen.",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "openQuestions"
+    }
+   ]
+  },
+  {
+   "code": "Q03",
+   "kind": "question",
+   "question": "Hva var overnaturlig før lederen grep inn?",
+   "context": "K05 viser ekkoer før Jakobs binding. Det må ikke senere sies at The Seeker alene skapte alle minneekkoer.",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "STORYLINE-v2",
+     "field": "openQuestions"
+    }
+   ]
+  },
+  {
+   "code": "Q04",
+   "kind": "question",
+   "question": "Hva gjenstår av knuten etter bruddet?",
+   "context": "Bildemanus og rekvisitt må følge samme konkrete festemåte hele veien frem til hånden i K12.",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "STORYLINE-v2",
+     "field": "openQuestions"
+    }
+   ]
+  },
+  {
+   "code": "Q05",
+   "kind": "question",
+   "question": "Hva står i 35-sceners versjonen?",
+   "context": "Innhent den før vi fastsetter de to sluttløypene, eventuell brevgren og de endelige scenenumrene.",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "K",
+     "ref": "STORYLINE-v2",
+     "field": "openQuestions"
+    }
+   ]
+  },
+  {
+   "code": "D01",
+   "kind": "question",
+   "question": "Når ble leteplassen til kult, og hvilket år bindes Jakob?",
+   "context": "Tidslinjens låste beslutninger ('Hva vi låser').",
+   "status": "done",
+   "decision": "Ukjent, nøyaktig år åpent. Må være før barndommens blå lys; vi fastsetter ikke et nytt opprinnelsesår.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "tidslinjen"
+    }
+   ]
+  },
+  {
+   "code": "D02",
+   "kind": "question",
+   "question": "Er det en skjult barndomsdød eller forbannelse i 1797?",
+   "context": "Tidslinjens låste beslutninger ('Hva vi låser').",
+   "status": "done",
+   "decision": "Nei. Ingen skjult barndomsdød eller forbannelse som straff for utforskning. Elise og Nora er 12; de fire leker 'boksen går', hører to tellinger og går hjem sammen.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "tidslinjen"
+    }
+   ]
+  },
+  {
+   "code": "D03",
+   "kind": "question",
+   "question": "Er 1802-hendelsen (brevet/festen) fast fortid eller spillerstyrt?",
+   "context": "Tidslinjens låste beslutninger ('Hva vi låser').",
+   "status": "done",
+   "decision": "Fast fortid, ikke et nytt spillerstyrt svik. Elise og Nora er 17; Elise lar andre lese brevet og ler med dem.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "tidslinjen"
+    }
+   ]
+  },
+  {
+   "code": "D04",
+   "kind": "question",
+   "question": "Hvilket tidspunkt gjelder for voksenhistorien og cliffhangeren?",
+   "context": "Tidslinjens låste beslutninger ('Hva vi låser').",
+   "status": "done",
+   "decision": "1817, nåtid gjennom hele voksenhistorien og cliffhangeren. Invitasjonen fører de fire tilbake; Elise er 32.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "tidslinjen"
+    }
+   ]
+  },
+  {
+   "code": "D05",
+   "kind": "question",
+   "question": "Er flukten i 1817 reell, og skylder Nora Elise noe etterpå?",
+   "context": "Tidslinjens låste beslutninger ('Hva vi låser').",
+   "status": "done",
+   "decision": "Flukten er virkelig; Nora skylder ikke Elise svar eller tilgivelse. Elise skriver ærlig; Nora lever videre på egne premisser.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "STORYLINE-v2",
+     "field": "tidslinjen"
+    }
+   ]
+  },
+  {
+   "code": "C01",
+   "kind": "check",
+   "question": "Les de relevante originalscenene før du skriver, planlegger gameplay eller forbereder produksjon.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C02",
+   "kind": "check",
+   "question": "Verifiser Word-originalens kontrollsum før du stoler på en hurtigbufret tekstkopi.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C03",
+   "kind": "check",
+   "question": "Kartlegg kult-PDF-ens hendelser etter innhold; dens referanser til et 35-scenes hovedmanus er ikke samme nummerering som det leverte 26-scenes Word-manuset.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C04",
+   "kind": "check",
+   "question": "Senere eksplisitte brukerbeslutninger går foran: bruk barndom 1797, ungdom 1802, voksne 1817 og engelsk dialog.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C05",
+   "kind": "check",
+   "question": "Konsulter gjeldende INTERNAL-STORY-CANON-REPENTANCE.md for narrative beslutninger.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C06",
+   "kind": "check",
+   "question": "Identitetssensitivt arbeid må også sjekke den interne identitetsnotisen; ikke kopier skjulte identiteter inn i spillerflater eller prompter.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C07",
+   "kind": "check",
+   "question": "Skill kildehendelser, brukertillegg, eksisterende engelsk tilpasning og nye forslag fra hverandre.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C08",
+   "kind": "check",
+   "question": "En tidligere plan er ikke bevis på brukergodkjenning.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C09",
+   "kind": "check",
+   "question": "Bevar kildedialog, eller registrer eksplisitt et foreslått tillegg; stryk aldri en linje stille.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C10",
+   "kind": "check",
+   "question": "Utelat aldri replikker stille fordi et eldre engelsk sammendrag manglet dem.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C11",
+   "kind": "check",
+   "question": "Registrer kilde, før/etter-tilstand, spillerhandling, kunnskap, rekvisitter, lyd og kontinuitet.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C12",
+   "kind": "check",
+   "question": "En hoppet film må ikke fullføre en uutført spilleroppgave.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C13",
+   "kind": "check",
+   "question": "Skill skrevet dekning, implementert oppførsel, faktisk spilltesting, bildegodkjenning og endelig lydgodkjenning fra hverandre.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C14",
+   "kind": "check",
+   "question": "Sjekklister må rapportere reelle kontroller.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C15",
+   "kind": "check",
+   "question": "Bevar originalmanuskripter, historiske utkast, godkjente opptak og urelaterte arbeidsromredigeringer.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C16",
+   "kind": "check",
+   "question": "Historieplanlegging gir ikke i seg selv fullmakt til betalte mediejobber.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C17",
+   "kind": "check",
+   "question": "Følg også ../Film/AGENTS.md og ../Film/PRODUCTION-STANDARD.md for medieproduksjon.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C18",
+   "kind": "check",
+   "question": "Verifiser kontrollsummer mot README i ../References/-mappen når de opprinnelige Downloads-stiene ikke er tilgjengelige.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "C19",
+   "kind": "check",
+   "question": "Bruk de portable håndteringskopiene i ../References/ og ../CLAUDE-HANDOFF.md for å kartlegge gjeldende beslutninger og status.",
+   "context": "AGENTS.md",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "AGENTS",
+     "field": "sjekkpunkter"
+    }
+   ]
+  },
+  {
+   "code": "Q20",
+   "kind": "question",
+   "question": "Prøv kraftplanens evner, læringskrav og Seekers vekstutløser før de låses.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "gjenstående-liste"
+    }
+   ]
+  },
+  {
+   "code": "Q21",
+   "kind": "question",
+   "question": "Skriv/innhent konkrete bakhistorier for Marcus, Sage og Jamie.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "gjenstående-liste"
+    }
+   ]
+  },
+  {
+   "code": "Q22",
+   "kind": "question",
+   "question": "Skriv den aktuelle vokterens minne og pressmekanisme før P07/P08.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "gjenstående-liste"
+    }
+   ]
+  },
+  {
+   "code": "Q23",
+   "kind": "question",
+   "question": "Velg samlet film eller minneekko-plassering i det endelige forløpet.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "gjenstående-liste"
+    }
+   ]
+  },
+  {
+   "code": "Q24",
+   "kind": "question",
+   "question": "Lås full engelsk dialog, stemmer, bildeplan, varighet og kostnad før opptak.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "gjenstående-liste"
+    }
+   ]
+  },
+  {
+   "code": "C20",
+   "kind": "check",
+   "question": "Original K02/K05 og Word 11-13, 20-22 lest; nye forslag skilt fra kildene.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C21",
+   "kind": "check",
+   "question": "Fire individuelle historier; andre karakterer får ikke ufortjent allvitenhet.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C22",
+   "kind": "check",
+   "question": "Voktere og vedvarende fanger er ikke forklart med mat alene eller sorg alene.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C23",
+   "kind": "check",
+   "question": "Kultens tidlige fase er skilt fra Seekers utvelgelse i 1817.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C24",
+   "kind": "check",
+   "question": "Identitetshemmelighold, periode, lydføring og originalfiler bevart.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C25",
+   "kind": "check",
+   "question": "Delvis glemsel av egen fortid og Seekers påminnelser er bekreftet.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C26",
+   "kind": "check",
+   "question": "Elises foreslåtte erindringskurve skiller fragment, sammenheng og ansvar.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C27",
+   "kind": "check",
+   "question": "Brukerens doble maktutvikling og krav om opparbeidede krefter er ført.",
+   "context": "SCENE-PLAN-v3 §Kontrollert og gjenstående (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "SCENE-PLAN-v3",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C28",
+   "kind": "check",
+   "question": "K01-K03 og Word 08-10, 14-18 sammenholdt med lokal plassering og regler.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C29",
+   "kind": "check",
+   "question": "Brukerens menneskelige farer og mulig oppriktige hjelp ført separat fra forslag.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C30",
+   "kind": "check",
+   "question": "Ingen omskriving av Elises svik, Seeker-identiteten eller faktisk sluttflukt.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C31",
+   "kind": "check",
+   "question": "Den kjente retrettveien og mulighet for å lykkes uten tap er bevart i utkastet.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C32",
+   "kind": "check",
+   "question": "Samordne hele rekkefølgen rundt K03, husken og vindusminnet i samlet manus.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C33",
+   "kind": "check",
+   "question": "Gi nye NPC-er navn, egne bakhistorier og videre plassering; skriv Whisperers historie.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C34",
+   "kind": "check",
+   "question": "Prøv lys, varsling, gjenfinning, avskjæring og tilgjengelighet i en spillbar gråboks.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C35",
+   "kind": "check",
+   "question": "Lås dialogvarianter, kamera, stemmer og lydtiming før produksjon.",
+   "context": "FIRST-BOUND-ENCOUNTER-v1 §Kontrollstatus (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "FIRST-BOUND-ENCOUNTER-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C36",
+   "kind": "check",
+   "question": "Brukerens avhengighet, ukjente hensikter, tidsfare og kampflukt ført.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C37",
+   "kind": "check",
+   "question": "Faktisk hjelp og menneskelig egeninteresse holdt fra hverandre.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C38",
+   "kind": "check",
+   "question": "Nye opphold skilt fra originalens jaktregler og avsluttende flukt.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (kontrollert)",
+   "status": "done",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C39",
+   "kind": "check",
+   "question": "Velg første vert og sted med tydelig adkomst innenfor den gjeldende ruten.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C40",
+   "kind": "check",
+   "question": "Skriv vertens kunnskap, hensikt, avtale og konkrete utløsere før klippekort.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C41",
+   "kind": "check",
+   "question": "Fastsett minste forsvarsutstyr før et kampnødvendig møte tas i bruk.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C42",
+   "kind": "check",
+   "question": "Prøv tid, utganger, avbrutt arbeid, inventar og kontrollpunkt i gråboks.",
+   "context": "HUMAN-SHELTERS-AND-ESCAPE-v1 §Kontroll og neste arbeid (gjenstående)",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "HUMAN-SHELTERS-AND-ESCAPE-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C43",
+   "kind": "check",
+   "question": "Hver evne gjør en tydelig forskjell på trinn 1 og ved oppgradering.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C44",
+   "kind": "check",
+   "question": "Spilleren kan forklare hva som gjorde evnen bedre og hvorfor den stoppet.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C45",
+   "kind": "check",
+   "question": "Ingen skyldscore, automatisk tilgivelse eller omskriving av fortiden.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C46",
+   "kind": "check",
+   "question": "Sinnvern, Forankring og Egenvilje har forskjellige virkninger og lesbare grenser.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C47",
+   "kind": "check",
+   "question": "Hver karakter får oppdage og arbeide med motstanden; ingen automatisk felles opplåsning.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C48",
+   "kind": "check",
+   "question": "Motstandskreftene frikjenner ikke fortiden og gjør ikke manglende mestring til skyld.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C49",
+   "kind": "check",
+   "question": "Egenvilje innfører ikke automatisk besettelse, tvunget angrep på medspillere eller skjult kontrolltap.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C50",
+   "kind": "check",
+   "question": "Markering -> fysisk retur -> bekreftelse gjelder; skålen bryter fangst.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C51",
+   "kind": "check",
+   "question": "The Seeker kan ikke markere under henting/telling; sluttruten forblir åpen.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C52",
+   "kind": "check",
+   "question": "Fysiske grunnløsninger finnes ved ulik progresjon og alle rollebytter.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C53",
+   "kind": "check",
+   "question": "Ingen uendelig beskyttelseskjede, progresjonsfarming eller fastlåst fremdrift.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C54",
+   "kind": "check",
+   "question": "Nytt forsøk gjenoppretter konsistent evne-, verdens- og kontrollpunkttilstand.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  },
+  {
+   "code": "C55",
+   "kind": "check",
+   "question": "Lyd, tekst og bilde gir tilsvarende handlingsinformasjon uten spoilers.",
+   "context": "POWER-PROGRESSION-v1 §7 Lyd, bilde og kontroll før bygging",
+   "status": "open",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "POWER-PROGRESSION-v1",
+     "field": "openQuestions",
+     "note": "sjekklistepunkt"
+    }
+   ]
+  }
+ ],
+ "milestones": [
+  {
+   "title": "M1-varmtest — repeterbar protokoll",
+   "lane": "engineering",
+   "status": "blocked",
+   "description": "Foreslått protokoll for gjentatt 30–45 minutters spilling på fysisk M1 iPad for å dokumentere varmtilstand, bildelevering (median/p95/p99), CPU/GPU og minnetopper. Ennå ikke fullført.",
+   "acceptance": "Stabilt 30 fps (kvalitetsmodus), GPU ~25–28 ms, CPU kritisk sti ~8–12 ms, intern oppløsning 65–80% bredde/høyde, 30–45 minutters gjentatt spilling uten termisk varsel.",
+   "evidence": "'Usman sin iPad' (12,9\" iPad Pro 5. gen., 16 GB) godkjent og tilkoblet; Release installert, kort UI-rute bestått, tidlige GPU-data samlet. Begge 31-minutters varmtestforsøk stoppet med signal kill; rotårsak uavklart. Full varmtest, 8 GB-variant og endelig innhold ikke godkjent. Se ../Verification/M1-Device-Baseline-2026-09-13.md.",
+   "scenes": [
+    "P01"
+   ]
+  },
+  {
+   "title": "Bevegelseskontrakt trinn 1: målelag for kontroll",
+   "lane": "characters",
+   "status": "planned",
+   "description": "Behold dagens simulering og lag et målelag for faktisk/ønsket fart, spillretning/kroppsretning, rotavvik og kontaktfeil. Ingen animasjonsdatabase kreves for denne første kontraktsprøven.",
+   "scenes": []
+  },
+  {
+   "title": "Bevegelseskontrakt trinn 2: visuell rot og transformkjede",
+   "lane": "characters",
+   "status": "planned",
+   "description": "Isoler den visuelle roten og koble samme transform til føtter, hender, bok og skolisse. Tilfør begrenset kroppsvending uten å endre synsregler.",
+   "scenes": []
+  },
+  {
+   "title": "Bevegelseskontrakt trinn 3: baneprognose og klippgrunnlag",
+   "lane": "characters",
+   "status": "planned",
+   "description": "Innfør baneprognose og et lite godkjent klippgrunnlag. Sammenlign kontroll, kontakt og overgang før et eventuelt motion-matching-forsøk.",
+   "scenes": []
+  },
+  {
+   "title": "Bevegelseskontrakt trinn 4: generell interaksjon",
+   "lane": "characters",
+   "status": "planned",
+   "description": "Prøv en generell interaksjon med eierskap, sikre avbrudd og kontaktlyd. Deretter ujevnt underlag, flere vinkler og samtidige deltakere.",
+   "scenes": []
+  },
+  {
+   "title": "Bevegelseskontrakt trinn 5: voksenprøve under M1-belastning",
+   "lane": "characters",
+   "status": "planned",
+   "description": "Samle voksenprøven i 3–5 minutter med lykt, miljø og forståelig fiendereaksjon. Gjenta den under M1-planens varme-/flerspillerbelastning.",
+   "scenes": []
+  },
+  {
+   "title": "P01–P03 spillbar regelgråboks",
+   "lane": "greybox",
+   "status": "done",
+   "description": "Ny inngang 'Play the prologue · 1797' i iPad-menyen. Spilleren går skoleveien, samles ved roten, ser Oskar tegne ringen og lærer reglene; et faktisk spark starter leken, Oskar henter/legger tilbake/teller til femti, leter, bekrefter fangst ved ringen; et frigjøringsspark frir fangede og registrerer faktisk redder.",
+   "acceptance": "10 foreslåtte kontrollkrav i OPENING-HYBRID-v2 §4 (bl.a. bare én ball, telling starter ikke før ballen er tilbake, oppdagelse bekreftes først ved ringen, redning tilskrives faktisk spiller).",
+   "evidence": "60 beståtte tester og ingen registrerte runtime-advarsler i build/Prologue-Handoff.xcresult (inkl. faktisk Jamie-redning, lagringsherding, rettet avslutning). Tidligere 13 nye regeltester i build/Prologue-Unit-02.xcresult. Se ../Verification/Prologue.md.",
+   "scenes": [
+    "P01",
+    "P02",
+    "P03"
+   ]
+  },
+  {
+   "title": "Første produksjonsprøve fra P03",
+   "lane": "playtest",
+   "status": "planned",
+   "description": "Regelgråboksen slutter etter at Oskar har hentet ballen på nytt, lagt den tilbake og startet ny telling; sluttkortet sier uttrykkelig at P04 og videre ikke er tilkoblet. Neste steg er en produksjonsprøve som fortsetter fra dette punktet (P04 husken og videre).",
+   "scenes": [
+    "P03"
+   ]
+  },
+  {
+   "title": "Leveransegate: Manusdekning",
+   "lane": "story",
+   "status": "planned",
+   "description": "Leveransegate 'Manusdekning' i rekken manusdekning → gråboks/test av regler → karakterer og animasjon → faktisk iPad-gjennomspilling → bilde/Foley/dialog/miks. Ingen av gjennomføringsgatene er bestått bare fordi planleggingsdokumentet finnes (OPENING-HYBRID-v2). AGENTS.md krever at skrevet dekning, implementert oppførsel, faktisk spilltesting, bildegodkjenning og endelig lydgodkjenning holdes atskilt og rapporteres ærlig.",
+   "scenes": []
+  },
+  {
+   "title": "Leveransegate: Gråboks / regelprøve",
+   "lane": "greybox",
+   "status": "planned",
+   "description": "Leveransegate 'Gråboks / regelprøve' i rekken manusdekning → gråboks/test av regler → karakterer og animasjon → faktisk iPad-gjennomspilling → bilde/Foley/dialog/miks. Ingen av gjennomføringsgatene er bestått bare fordi planleggingsdokumentet finnes (OPENING-HYBRID-v2). AGENTS.md krever at skrevet dekning, implementert oppførsel, faktisk spilltesting, bildegodkjenning og endelig lydgodkjenning holdes atskilt og rapporteres ærlig.",
+   "scenes": []
+  },
+  {
+   "title": "Leveransegate: Karakterer og animasjon",
+   "lane": "characters",
+   "status": "planned",
+   "description": "Leveransegate 'Karakterer og animasjon' i rekken manusdekning → gråboks/test av regler → karakterer og animasjon → faktisk iPad-gjennomspilling → bilde/Foley/dialog/miks. Ingen av gjennomføringsgatene er bestått bare fordi planleggingsdokumentet finnes (OPENING-HYBRID-v2). AGENTS.md krever at skrevet dekning, implementert oppførsel, faktisk spilltesting, bildegodkjenning og endelig lydgodkjenning holdes atskilt og rapporteres ærlig.",
+   "scenes": []
+  },
+  {
+   "title": "Leveransegate: Faktisk iPad-gjennomspilling",
+   "lane": "playtest",
+   "status": "planned",
+   "description": "Leveransegate 'Faktisk iPad-gjennomspilling' i rekken manusdekning → gråboks/test av regler → karakterer og animasjon → faktisk iPad-gjennomspilling → bilde/Foley/dialog/miks. Ingen av gjennomføringsgatene er bestått bare fordi planleggingsdokumentet finnes (OPENING-HYBRID-v2). AGENTS.md krever at skrevet dekning, implementert oppførsel, faktisk spilltesting, bildegodkjenning og endelig lydgodkjenning holdes atskilt og rapporteres ærlig.",
+   "scenes": []
+  },
+  {
+   "title": "Leveransegate: Bilde / Foley / dialog / miks",
+   "lane": "picture_audio",
+   "status": "planned",
+   "description": "Leveransegate 'Bilde / Foley / dialog / miks' i rekken manusdekning → gråboks/test av regler → karakterer og animasjon → faktisk iPad-gjennomspilling → bilde/Foley/dialog/miks. Ingen av gjennomføringsgatene er bestått bare fordi planleggingsdokumentet finnes (OPENING-HYBRID-v2). AGENTS.md krever at skrevet dekning, implementert oppførsel, faktisk spilltesting, bildegodkjenning og endelig lydgodkjenning holdes atskilt og rapporteres ærlig.",
+   "scenes": []
+  }
+ ],
+ "platformTargets": [
+  {
+   "name": "iPad Pro M1 (minste målmodell)",
+   "platform": "ipad",
+   "isPrimary": true,
+   "engine": "RealityKit (Swift 5, SwiftUI); project.yml inneholder ingen tredjeparts spillmotor eller animasjonsplugin",
+   "osMin": "iOS/iPadOS 17",
+   "deviceMin": "iPad Pro 12,9\", 5. generasjon (M1); planlegg for 8 GB-varianten, ikke bare 16 GB",
+   "inputModel": "Venstre styrespak for bevegelse; dra i scenen for kamera rundt styrt figur; assisterte, kollisjonssjekkede gåruter ('Walk to the root / circle / cover') som teleporterer/sparker/redder ikke selv og kan avbrytes med manuell gange eller 'Stop walking'.",
+   "budgets": {
+    "fps": "Stabilt 30 fps (kvalitetsmodus)",
+    "frameMs": "~33.3 ms mellom leverte bilder (gjennomsnitt alene er utilstrekkelig)",
+    "gpuMs": "~25-28 ms, representativ varm belastning inkl. oppskalering og etterbehandling",
+    "cpuMs": "~8-12 ms kritisk sti",
+    "internalResolutionPct": "65-80% av bredde og høyde (42.25-64% av pikselantallet)",
+    "memoryGb": 8,
+    "warmTestMinutes": "30-45",
+    "filmFormat": "4K / 25 fps (eksisterende filmstandard; fastsetter ikke spillets oppdateringsfrekvens)"
+   },
+   "requirements": [
+    {
+     "code": "MTLFX-device",
+     "text": "MTLFXTemporalScalerDescriptor.supportsDevice() må bekrefte MetalFX-støtte, tillatt skaleringsområde og vellykket scaler-opprettelse på mål-iPaden.",
+     "status": "unverified",
+     "evidence": "Ikke kjørt på mål-iPaden; at appen bruker Metal er ikke et positivt resultat fra denne sjekken.",
+     "source": "CINEMATIC-M1-QUALITY-v1"
+    },
+    {
+     "code": "MTLFX-pipeline",
+     "text": "Motor/dataflyt for temporal oppskalering (farge, dybde, bevegelsesdata, kamerajitter, historikkhåndtering ved scenekutt) må implementeres og prøves.",
+     "status": "unverified",
+     "evidence": "Ingen MetalFX-integrasjon finnes i Sources; ForestAtmosphere.swift bruker kun RealityKits PostProcessContext med farge og dybde. Dette er et integrasjonsgap, ikke bevis på at RealityKit aldri kan støtte det.",
+     "source": "CINEMATIC-M1-QUALITY-v1"
+    },
+    {
+     "code": "warm-test-31min",
+     "text": "31-minutters varmtestforsøk på fysisk M1-iPad ('Usman sin iPad', 16 GB).",
+     "status": "failed",
+     "evidence": "Begge 31-minutters forsøk stoppet med 'signal kill'; rotårsaken er uavklart. Se ../Verification/M1-Device-Baseline-2026-09-13.md.",
+     "source": "CINEMATIC-M1-QUALITY-v1"
+    },
+    {
+     "code": "release-ui-smoke",
+     "text": "Kort UI-rute på fysisk M1-iPad etter godkjent Release-installasjon.",
+     "status": "verified",
+     "evidence": "Release installert, en kort UI-rute bestått og tidlige GPU-data samlet.",
+     "source": "CINEMATIC-M1-QUALITY-v1"
+    },
+    {
+     "code": "unity-urp-ios",
+     "text": "Unity 6.0 (6000.0) oppgir iOS-støtte for URP, ikke HDRP (versjonsavgrenset dokumentasjonskontroll, ikke et motorvalg for prosjektet).",
+     "status": "verified",
+     "evidence": "Unity plattformtabell, førstehåndskilde lest 13.09.2026.",
+     "source": "CINEMATIC-M1-QUALITY-v1"
+    }
+   ],
+   "visualDirection": {
+    "lookAndFeel": "Filmisk gameplay skal oppstå i den spillbare scenen selv, med samme figurer, rekvisitter og lys før og etter at kameraet gir kontroll tilbake. Prioriterer contextual animation og situasjonsstyrt maktbalanse over en generell AAA-påstand.",
+    "lighting": "Forhåndsberegnet indirekte lys/refleksjonsdata kombinert med dynamisk direkte lys nær spilleren; lyktens kontakt med ansikt, hender og nærmiljø prioriteres. Små vandrende lys får først emissive materialer og avgrensede effekter, ikke egne skyggeleggende lyskilder hver.",
+    "materials": "Gode materialfamilier for hud, stoff, våt jord, bark, stein og metall, vurdert under en bevegelig lykt; vått tre og metall skal ikke dele samme blanke innstilling. ForestGeometry bruker allerede PBR/normal-/ruhetskart; prologen bruker foreløpig enklere fargede PBR-materialer og én retningsbestemt lyskilde med skygger.",
+    "camera": "Filmspråket ligger i framing, blikk, pust, kontakt og timing — ikke permanent låst kamera. Spillerens handling skal fortsatt kunne endre tidspunkt og utfall. Behold kamerakollisjon og lesbar styring.",
+    "fog": "Tåke skal bevare nære silhuetter, mørke partier og lesbare rømningsveier; ikke løft hele bildet til grått. Tåke alene er ikke en kullingsstrategi.",
+    "ui": "Behold kontrast og lesbar styring. Permanent uskarphet, bloom eller løftede svarte partier skal ikke skjule modell-/lysproblemer.",
+    "audio": "Foley/dialog skal måles mot kontaktøyeblikk under varmtest-protokollen (ikke bare visuell kvalitet). Ingen egen bredere lyd-/miksretning er beskrevet i det leste kildematerialet for denne delen."
+   },
+   "notes": "MetalFX er uverifisert langs to atskilte kontrollporter (enhet/OS og motor/dataflyt, se requirements). 8 GB-varianten er ikke bekreftet fysisk testet; kun en 16 GB-enhet ('Usman sin iPad') er i bruk så langt. Unity/URP-vurderingen er en dokumentasjonskontroll for et mulig fremtidig motorbytte, ikke et migrasjonsvedtak — et eget RealityKit-spill finnes allerede.",
+   "source": "CINEMATIC-M1-QUALITY-v1"
+  }
+ ]
+}
