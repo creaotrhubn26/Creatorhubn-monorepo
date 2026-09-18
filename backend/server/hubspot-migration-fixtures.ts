@@ -240,6 +240,118 @@ export const DEAL_UTVIDELSE: HubSpotObject = {
   archived: false,
 };
 
+/* ── Produkter og linjer ────────────────────────────────────────────────── */
+
+/** Katalogprodukt. Gjenbrukes på tvers av avtaler. */
+export const PRODUCT_LISENS: HubSpotObject = {
+  id: "P100",
+  properties: {
+    name: "Leadgrid lisens",
+    hs_sku: "LG-LIC",
+    description: "Per bruker, per måned",
+    price: "990",
+    hs_cost_of_goods_sold: "120",
+  },
+  createdAt: ISO,
+  updatedAt: ISO,
+  archived: false,
+};
+
+export const PRODUCT_ONBOARDING: HubSpotObject = {
+  id: "P200",
+  properties: {
+    name: "Onboarding",
+    hs_sku: null, // uten SKU — vanlig for tjenester
+    description: "Engangs oppsett",
+    price: "15000",
+  },
+  createdAt: ISO,
+  updatedAt: ISO,
+  archived: false,
+};
+
+/** Månedlig abonnement som løper til det sies opp (ingen term). */
+export const LINE_LISENS: HubSpotObject = {
+  id: "L1",
+  properties: {
+    name: "Leadgrid lisens",
+    hs_product_id: "P100",
+    quantity: "25",
+    price: "990",
+    discount: null,
+    hs_discount_percentage: "10",
+    recurringbillingfrequency: "monthly",
+    hs_recurring_billing_start_date: "2027-02-01",
+  },
+  createdAt: ISO,
+  updatedAt: ISO,
+  archived: false,
+};
+
+/** Engangslinje koblet til katalogen. */
+export const LINE_ONBOARDING: HubSpotObject = {
+  id: "L2",
+  properties: {
+    name: "Onboarding",
+    hs_product_id: "P200",
+    quantity: "1",
+    price: "15000",
+    discount: "2500", // fast rabatt i kroner
+    hs_discount_percentage: null,
+    recurringbillingfrequency: null,
+  },
+  createdAt: ISO,
+  updatedAt: ISO,
+  archived: false,
+};
+
+/** Fritekstlinje uten katalogprodukt. HubSpot tillater det. */
+export const LINE_FRITEKST: HubSpotObject = {
+  id: "L3",
+  properties: {
+    name: "Tilpasset integrasjon",
+    hs_product_id: null,
+    quantity: "1",
+    price: "48000",
+    discount: null,
+    hs_discount_percentage: null,
+    recurringbillingfrequency: null,
+  },
+  createdAt: ISO,
+  updatedAt: ISO,
+  archived: false,
+};
+
+/** Linje på en avtale som IKKE blir med (bare én deal per kunde hos oss). */
+export const LINE_PAA_DROPPET_DEAL: HubSpotObject = {
+  id: "L9",
+  properties: {
+    name: "Serviceavtale timer",
+    hs_product_id: null,
+    quantity: "120",
+    price: "2000",
+    discount: null,
+    hs_discount_percentage: null,
+    recurringbillingfrequency: "annually",
+  },
+  createdAt: ISO,
+  updatedAt: ISO,
+  archived: false,
+};
+
+export const ALL_PRODUCTS: HubSpotObject[] = [PRODUCT_LISENS, PRODUCT_ONBOARDING];
+
+export const ALL_LINE_ITEMS: HubSpotObject[] = [
+  LINE_LISENS, LINE_ONBOARDING, LINE_FRITEKST, LINE_PAA_DROPPET_DEAL,
+];
+
+/** Hvilke linjer henger på hvilken avtale. */
+export const DEAL_TO_LINE_ITEMS: Record<string, string[]> = {
+  "9001": ["L1", "L2", "L3"], // rammeavtalen, den som blir med
+  "9002": ["L9"],             // serviceavtalen, som droppes
+  "9003": [],
+};
+
 /* ── Eiere, pipeline og assosiasjoner ───────────────────────────────────── */
 
 export const OWNERS: HubSpotOwner[] = [
