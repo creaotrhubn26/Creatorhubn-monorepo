@@ -5,16 +5,19 @@
  * CreatorHub (Daniel 18.09.2026). Navnene følger repoets mønster
  * <produkt>_<tjeneste>_API_KEY (jf. ROLE_ROOM_RESEND_API_KEY) og settes i
  * Render på backend-tjenesten. Det er bevisst ingen fallback til de delte
- * nøklene (ELEVENLABS_API_KEY, OPENAI_API_KEY): mangler SenseAid-nøkkelen,
+ * nøklene (OPENAI_API_KEY, ELEVENLABS_API_KEY): mangler SenseAid-nøkkelen,
  * skal steget feile med en feilmelding som navngir variabelen, ikke bruke
  * feil konto i det stille.
  */
 
 export const SENSEAID_ENV = {
-  /** Soniox: transkribering/ordtider for teksting av fortelling og synstolking. */
+  /**
+   * Soniox: én leverandør for alt (Daniel 18.09.2026): TTS-stemmen som leser
+   * fortelling og synstolking (tts-rt-v2) og ordtider/teksting.
+   */
   sonioxApiKey: "SENSEAID_SONIOX_API_KEY",
-  /** ElevenLabs: TTS-stemmen som leser både fortelling og synstolking. */
-  elevenLabsApiKey: "SENSEAID_ELEVENLABS_API_KEY",
+  /** Valgfri: Soniox-stemmenavn (standard i reiseguide-soniox-tts.ts). */
+  sonioxVoice: "SENSEAID_SONIOX_VOICE",
   /** Valgfri: base-URL for lyd/bilder (standard er R2-bøtta bak /cdn/*). */
   mediaUrlBase: "REISEGUIDE_MEDIA_URL_BASE",
 } as const;

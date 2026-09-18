@@ -39,8 +39,14 @@ evidence_summary: >
   forbehandlede tekst). tts-rt-v2: 60+ språk, samme stemme på alle språk, stemmekloning fra
   ≤20 s klipp, speed/reduce_silence. Pris (søkeutdrag): ca. 0,70 USD per generert time.
   Ingen innebygd SRT/VTT-eksport (ikke forveksle med Sonix.ai); cues bygges av oss fra tokens.
+  Wire-format for TTS-WebSocket (fra @soniox/node 2.3.0 dist/index.mjs, Tier 1): første
+  melding {api_key, model, language, voice, audio_format, sample_rate?, bitrate?, speed?,
+  reduce_silence?, return_timestamps?, stream_id}; deretter {text, text_end, stream_id};
+  server sender {audio: base64, timestamps?: {characters[], character_start_times_seconds[],
+  character_end_times_seconds[]}}, {audio_end}, {terminated} eller {error_code, error_message}.
   Ikke verifisert: eksakt prisliste, oppbevaringsregel, om «no» også er koden for TTS-language
-  (TTS-siden var bare tilgjengelig som søkeutdrag).
+  (TTS-siden var bare tilgjengelig som søkeutdrag; koden brukes i reiseguide-soniox-tts.ts og
+  må bekreftes ved første ekte kjøring), og hvilke stemmer som låter best på norsk.
 interpretation: >
   To gyldige pipeliner. (A) Vedtatt 17.09: ElevenLabs-TTS → Soniox STT async for ordtider →
   cues. Fungerer, men er en omvei: vi transkriberer vår egen syntetiske tale for å finne
@@ -57,11 +63,18 @@ project_impact: >
   involvert i manus, men Daniel ønsker EU).
 confidence: verified
 decision: >
-  Åpen per 18.09.2026: Daniel må velge TTS-leverandør (ElevenLabs som vedtatt, eller Soniox
-  TTS v2). Anbefaling: prøv Soniox TTS v2 på ett norsk manus og sammenlign med ElevenLabs
-  før pipelinen bygges ferdig; STT-async-steget beholdes uansett som kvalitetskontroll og for
-  eksternt produsert lyd.
+  Vedtatt 18.09.2026 (Daniel): «bruk alt med Soniox», én leverandør for både
+  TTS og teksting. Pipeline B er valgt: Soniox TTS v2 over WebSocket med
+  return_timestamps gir mp3 + tegntider i ett kall; tekstingscues bygges av
+  tidsstemplene (backend/server/reiseguide-captions.ts). ElevenLabs og
+  SENSEAID_ELEVENLABS_API_KEY er fjernet. STT async holdes i reserve for
+  eksternt produsert lyd. Stemme: standard «Adrian» (Soniox' eksempelstemme)
+  til Daniel har lyttet på norsk og satt SENSEAID_SONIOX_VOICE.
 affected:
+  - backend/server/reiseguide-soniox-tts.ts (WebSocket-protokoll, verifisert mot @soniox/node 2.3.0 dist/index.mjs)
+  - backend/server/reiseguide-captions.ts
+  - backend/server/reiseguide-content-pipeline.ts
+  - backend/scripts/reiseguide-generate-audio.ts
   - backend/server/reiseguide-config.ts
   - backend/server/reiseguide-routes.ts (captions.cues-kontrakten)
   - backend/migrations/0628_reiseguide_poc.sql (guide_poi_audio.tts_provider, guide_poi_captions.source)

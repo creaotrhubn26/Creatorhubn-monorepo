@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS guide_poi_audio (
     CONSTRAINT guide_poi_audio_bitrate_chk CHECK (bitrate_kbps IS NULL OR bitrate_kbps > 0),
   duration_s NUMERIC(8, 2) NOT NULL
     CONSTRAINT guide_poi_audio_duration_chk CHECK (duration_s > 0),
-  tts_provider TEXT NOT NULL DEFAULT 'elevenlabs',
+  tts_provider TEXT NOT NULL DEFAULT 'soniox',
   voice_id TEXT NOT NULL,
   checksum_sha256 CHAR(64)
     CONSTRAINT guide_poi_audio_checksum_chk CHECK (checksum_sha256 IS NULL OR checksum_sha256 ~ '^[0-9a-f]{64}$'),

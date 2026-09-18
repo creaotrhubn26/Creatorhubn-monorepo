@@ -16,6 +16,7 @@
     "ml:install": "python3 -m pip install -r python-services/requirements.txt",
     "seed:story-graph": "tsx scripts/seed-what-follows-us.ts",
     "seed:reiseguide": "tsx scripts/seed-reiseguide-demo.ts",
+    "reiseguide:audio": "tsx scripts/reiseguide-generate-audio.ts",
     "sfx:build": "tsx scripts/build-sfx-library.ts",
     "sfx:gen-synthetic": "tsx scripts/generate-synthetic-sfx.ts",
     "sfx:curate-freesound": "tsx scripts/curate-from-freesound.ts",
