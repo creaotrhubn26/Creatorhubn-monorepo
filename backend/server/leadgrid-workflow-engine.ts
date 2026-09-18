@@ -958,14 +958,116 @@ async function runAction(
       };
     }
 
+    case "notify_channel": {
+      // Varsler teamet, ikke leadet. Derfor ingen lead-compliance-sjekk her:
+      // meldingen går til organisasjonens egen kanal.
+      const text = renderTemplate(action.message_template, event, lead);
+
+      if (action.channel === "email_admin") {
+        if (!isTransactionalEmailConfigured()) {
+          return { status: "deferred", message: "email_not_configured", data: { action } };
+        }
+        const orgRes = await pool.query<{ contact_email: string | null; name: string | null }>(
+          `SELECT contact_email, name FROM organizations WHERE id = $1::uuid LIMIT 1`,
+          [event.organizationId],
+        );
+        const to = (orgRes.rows[0]?.contact_email ?? "").trim();
+        if (!to.includes("@")) {
+          return { status: "skipped", message: "org_has_no_contact_email" };
+        }
+        const sent = await sendTransactionalEmail({
+          to,
+          subject: `Leadgrid-varsel${lead?.business_name ? `: ${lead.business_name}` : ""}`.slice(0, 200),
+          html: `<p>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")}</p>`,
+          text,
+        });
+        return sent.sent
+          ? { status: "ok", message: "notified:email_admin" }
+          : { status: "error", message: `email_failed:${sent.reason ?? "unknown"}`.slice(0, 200) };
+      }
+
+      // Slack og Teams går via de webhook-destinasjonene organisasjonen
+      // allerede har satt opp selv. Finnes ingen, sier vi det rett ut i
+      // stedet for å late som meldingen er lagt i kø.
+      const destRes = await pool.query<{ id: string; url: string; hmac_secret: string | null }>(
+        `SELECT id, url, hmac_secret
+           FROM leadgrid_workflow_webhook_destinations
+          WHERE organization_id = $1::uuid
+            AND destination_type = $2
+            AND is_active = TRUE
+          ORDER BY created_at
+          LIMIT 1`,
+        [event.organizationId, action.channel],
+      );
+      const dest = destRes.rows[0];
+      if (!dest) {
+        return {
+          status: "skipped",
+          message: `no_${action.channel}_destination`,
+          data: { channel: action.channel },
+        };
+      }
+      if (!checkWebhookRate(dest.id)) {
+        return { status: "skipped", message: "rate_limited", data: { destination_id: dest.id } };
+      }
+      if (!isSafeWebhookUrl(dest.url)) {
+        return { status: "error", message: "ssrf_blocked" };
+      }
+
+      // Både Slack og Teams godtar { text }. Resten er kontekst for den som
+      // vil bygge noe rikere på mottakersiden.
+      const payload = {
+        text,
+        source: "leadgrid",
+        workflow_id: workflowId,
+        event: event.type,
+        lead: lead ? { id: lead.id, name: lead.business_name, city: lead.city } : null,
+      };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "User-Agent": "Leadgrid-Workflow/0350",
+      };
+      if (dest.hmac_secret) {
+        headers["X-Signature-Sha256"] = createHmac("sha256", dest.hmac_secret)
+          .update(JSON.stringify(payload))
+          .digest("hex");
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      let httpStatus = 0;
+      try {
+        const response = await fetch(dest.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        httpStatus = response.status;
+      } catch (err) {
+        clearTimeout(timer);
+        return { status: "error", message: String((err as Error)?.message ?? err).slice(0, 200) };
+      } finally {
+        clearTimeout(timer);
+      }
+      pool
+        .query(
+          `UPDATE leadgrid_workflow_webhook_destinations
+              SET last_invoked_at = NOW(), last_status_code = $2,
+                  invocation_count = invocation_count + 1, updated_at = NOW()
+            WHERE id = $1::uuid`,
+          [dest.id, httpStatus],
+        )
+        .catch(() => { /* best effort */ });
+      return httpStatus >= 200 && httpStatus < 300
+        ? { status: "ok", message: `notified:${action.channel}:${httpStatus}` }
+        : { status: "error", message: `http_${httpStatus}` };
+    }
+
     case "send_sms":
     case "send_whatsapp":
-    case "notify_channel":
     case "ai_pitch_generate": {
-      // Disse er marked som "scheduled" — produksjons-implementasjon ville
-      // pushe inn i en dedicated queue (sms/wa/claude-jobs). send_email er
-      // wiret til Resend over; disse logger fortsatt "deferred" så
-      // execution-historikken er nyttig.
+      // Fortsatt uimplementert. De logger deferred slik at
+      // execution-historikken viser hva som VILLE blitt sendt.
       return {
         status: "deferred",
         message: `${action.type}_queued`,
@@ -1142,18 +1244,10 @@ async function runAction(
             data: { destination_id: action.destination_id },
           };
         }
-        // SSRF guard: defence-in-depth in case DB has a pre-guard URL
-        try {
-          const _wu = new URL(dest.url);
-          const _wh = _wu.hostname.toLowerCase();
-          if (!["http:", "https:"].includes(_wu.protocol) ||
-              _wh === "localhost" || _wh === "127.0.0.1" || _wh === "::1" ||
-              /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(_wh) ||
-              _wh === "169.254.169.254" || _wh.endsWith(".internal") || _wh.endsWith(".local")) {
-            return { status: "error", message: "ssrf_blocked" };
-          }
-        } catch {
-          return { status: "error", message: "invalid_destination_url" };
+        // SSRF-vern, i tilfelle databasen har en URL fra før vernet fantes.
+        // Samme hjelper som notify_channel, så begge veier er like strenge.
+        if (!isSafeWebhookUrl(dest.url)) {
+          return { status: "error", message: "ssrf_blocked" };
         }
         const payload = buildWebhookPayload(action, event, lead, workflowId);
         const headers: Record<string, string> = {
@@ -1532,6 +1626,57 @@ export async function resolveRecipient(
  *   {{lead.phone}}           → phone
  *   {{event.<key>}}          → event.data[<key>]
  */
+/**
+ * SSRF-sjekk for utgående webhook-URL-er. Lå inline i post_to_webhook;
+ * notify_channel trenger den samme, så den er delt i stedet for kopiert.
+ *
+ * Merk om IPv6: new URL("http://[::1]/").hostname gir "[::1]" MED klammer.
+ * Den opprinnelige inline-sjekken sammenlignet mot "::1" og traff derfor
+ * aldri. Klammene strippes her før sammenligning.
+ */
+export function isSafeWebhookUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (!["http:", "https:"].includes(url.protocol)) return false;
+
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host) return false;
+
+  // Navn som alltid peker innover.
+  if (host === "localhost" || host.endsWith(".localhost")) return false;
+  if (host.endsWith(".internal") || host.endsWith(".local")) return false;
+
+  // IPv4. Hele 127-blokken, ikke bare 127.0.0.1.
+  if (/^127\./.test(host)) return false;
+  if (host === "0.0.0.0") return false;
+  if (/^10\./.test(host)) return false;
+  if (/^192\.168\./.test(host)) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+  // Sky-metadata.
+  if (host === "169.254.169.254" || /^169\.254\./.test(host)) return false;
+
+  // IPv6. Loopback, unique-local (fc00::/7) og link-local (fe80::/10).
+  if (host === "::1" || host === "::") return false;
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return false;
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return false;
+  // IPv4-mappet IPv6. Node normaliserer ::ffff:127.0.0.1 til ::ffff:7f00:1,
+  // så både punktum- og hex-formen må dekkes før IPv4-reglene gjenbrukes.
+  const dotted = host.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) return isSafeWebhookUrl(`${url.protocol}//${dotted[1]}`);
+  const hex = host.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hex) {
+    const packed = (parseInt(hex[1], 16) << 16) | parseInt(hex[2], 16);
+    const ipv4 = [packed >>> 24, (packed >>> 16) & 255, (packed >>> 8) & 255, packed & 255].join(".");
+    return isSafeWebhookUrl(`${url.protocol}//${ipv4}`);
+  }
+
+  return true;
+}
+
 export function renderTemplate(
   template: string,
   event: WorkflowEvent,
