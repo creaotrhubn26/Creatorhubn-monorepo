@@ -1872,6 +1872,32 @@ export async function publishEvent(event: WorkflowEvent): Promise<void> {
       console.warn("[lead-rules] canonical event dispatch failed:", error);
       return null;
     });
+
+    // Vunnet avtale meldes tilbake til annonseplattformen. Her, ved siden av
+    // regelmotoren, fordi publishEvent er det ene stedet ALLE skriveveier
+    // for stage-endring passerer — både PATCH-endepunktet og
+    // applyStageChange. Modulen avgjør selv om eventet gjelder oss; den
+    // sender ingenting for andre kunders leads.
+    if (event.type === "pipeline.stage_changed" && event.data.to === "won" && event.leadId) {
+      void (async () => {
+        try {
+          const mod = await import("./leadgrid-vunnet-konvertering.js");
+          await mod.meldVunnetAvtaleTilMeta(event.pool, {
+            leadId: event.leadId as string,
+            dealId: typeof event.data.deal_id === "string" ? event.data.deal_id : null,
+            organizationId: event.organizationId,
+            projectId: event.projectId,
+            belop:
+              typeof event.data.deal_amount === "number"
+                ? event.data.deal_amount
+                : null,
+            valuta: typeof event.data.currency === "string" ? event.data.currency : null,
+          });
+        } catch (err) {
+          console.warn("[workflow-engine] vunnet-konvertering hoppet over:", err);
+        }
+      })();
+    }
     const workflows = await matchWorkflows(
       event.pool,
       event.organizationId,

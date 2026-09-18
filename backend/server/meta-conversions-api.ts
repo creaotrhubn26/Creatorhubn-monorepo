@@ -188,7 +188,7 @@ const ROLE_ROOM_HOSTS = new Set([
 // Samme liste som LEADGRID_ANALYTICS_HOSTS i frontend/client/index.html.
 // Står de fra hverandre, sender nettleseren til én pixel og serveren til en
 // annen — og da stemmer ingen av tallene.
-const LEADGRID_HOSTS = new Set([
+export const LEADGRID_HOSTS = new Set([
   "leadgrid.no",
   "www.leadgrid.no",
   "leadgrid.theroleroom.com",
