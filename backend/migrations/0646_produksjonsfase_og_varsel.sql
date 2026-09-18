@@ -1,5 +1,16 @@
 -- «Si fra når en produksjon går fra utvikling til pre-produksjon.»
 --
+-- Nummerert 0646, ikke 0633, av én grunn: 0640–0645 ble kjørt mot produksjon
+-- av en egen manuell workflow FØR denne rakk å kjøre. Kjøreren krever at det
+-- som er applied utgjør et sammenhengende prefiks av repo-historikken, og med
+-- 0633 liggende i hullet stoppet HELE backend-deployen:
+--
+--   public._migrations_applied repository history is not a contiguous prefix:
+--   missing "0633_produksjonsfase_og_varsel.sql" while later migration(s) are
+--   marked applied: "0640_reiseguide_poc.sql" … "0645_game_plan_fase8_features.sql"
+--
+-- Å flytte denne bak dem lukker hullet uten å skrive noe manuelt i produksjon.
+--
 -- Det er den overgangen som betyr noe for en skuespiller: i utvikling finnes
 -- prosjektet bare på papir, i pre-produksjon begynner casting, opptaksplan og
 -- innspilling å bli virkelige. I dag har casting_projects bare status='active'

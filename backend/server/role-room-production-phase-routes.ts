@@ -22,7 +22,7 @@
  * plattformen nå, NFI-tildelinger og Filmforbundet senere. Da skal ikke
  * tabellene måtte bygges om.
  *
- * Skjema: migrasjon 0633.
+ * Skjema: migrasjon 0646.
  */
 
 import type express from "express";
