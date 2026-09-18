@@ -1,0 +1,77 @@
+diff --git a/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx b/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx
+--- a/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx
++++ b/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx
+@@ -217,32 +217,32 @@
+-  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake.
+-  useEffect(() => {
+-    if (typeof window === 'undefined') return;
+-    const url = new URL(window.location.href);
+-    const success = url.searchParams.get('oauth_success');
+   const restoreConfig = useCallback(async (configId: string) => {
+     setRestoringConfig(true);
+     try {
+       const r = await fetch(`/api/admin-room/agent/ads/configs/${encodeURIComponent(configId)}`, {
+         credentials: 'include',
+       });
+       const data = await r.json();
+       if (!r.ok || !data.config) throw new Error(data.error || `HTTP ${r.status}`);
+       const config = data.config as StoredAdsConfig;
+       const restoredActions = ((data.actions ?? []) as SuggestedAction[]).map((action) => ({
+         ...action,
+         default_value: Number(action.default_value ?? 0),
+       }));
+       setClientName(config.client_name);
+       setClientUrl(config.client_website_url);
+       setDiscoveryResult(restoreDiscoveryResult(config));
+       setActions(restoredActions);
+       setSavedConfigId(config.id);
+       setStage('saved');
+     } catch (err) {
+       setSaveError(err instanceof Error ? err.message : 'Kunne ikke hente Ads-oppsettet');
+     } finally {
+       setRestoringConfig(false);
+     }
+   }, []);
+ 
++  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake.
++  useEffect(() => {
++    if (typeof window === 'undefined') return;
++    const url = new URL(window.location.href);
++    const success = url.searchParams.get('oauth_success');
+     const errParam = url.searchParams.get('oauth_error');
+@@ -450,13 +450,13 @@
+   return (
+     <Box sx={{ color: palette.textPrimary }}>
++      {restoringConfig ? (
++        <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 2 }}>
++          Henter Ads-oppsettet for prosjektet…
++        </Alert>
++      ) : null}
+       <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 2.4 }}>
+         <Box
+           sx={{
+             width: 36, height: 36, borderRadius: 1.6,
+             background: palette.accentGradient,
+-      {restoringConfig ? (
+-        <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 2 }}>
+-          Henter Ads-oppsettet for prosjektet…
+-        </Alert>
+-      ) : null}
+             display: 'flex', alignItems: 'center', justifyContent: 'center',
+diff --git a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
+--- a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
++++ b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
+@@ -1565,12 +1565,12 @@
+         ) : activeTab === 'ads-attribution' ? (
+           <Box sx={{ p: { xs: 1, md: 2 } }}>
+             <AdsAttributionInspector />
+           </Box>
+-        ) : activeTab === 'fb-publish' ? (
+         ) : activeTab === 'ads-setup' ? (
+           <Box sx={{ p: { xs: 1, md: 2 } }}>
+             <AgentAdsPanel clientProjectId={projectId} defaultClientName={projectName} />
+           </Box>
++        ) : activeTab === 'fb-publish' ? (
+           <Box sx={{ p: { xs: 1, md: 2 } }}>
+             <FacebookVideoPublisher />
+           </Box>

@@ -1,0 +1,283 @@
+diff --git a/frontend/client/src/components/role-room/components/producer/agentTabs.ts b/frontend/client/src/components/role-room/components/producer/agentTabs.ts
+--- a/frontend/client/src/components/role-room/components/producer/agentTabs.ts
++++ b/frontend/client/src/components/role-room/components/producer/agentTabs.ts
+@@ -1,5 +1,5 @@
+-/**
+- * agentTabs.ts — Informasjons-arkitektur for de 17 fanene i RoleRoomAgentDialog.
++/**
++ * agentTabs.ts — Informasjons-arkitektur for fanene i RoleRoomAgentDialog.
+@@
+   | 'page-content'
+   | 'ads-attribution'
++  | 'ads-setup'
+   | 'fb-publish'
+@@
+   {
+     id: 'leads',
+     label: 'Leads',
+     primaryTabs: ['leads', 'events'],
+-    advancedTabs: ['ads-attribution'],
++    advancedTabs: ['ads-attribution', 'ads-setup'],
+@@
+   'page-content': 'Page Content',
+   'ads-attribution': 'Ads Attribution',
++  'ads-setup': 'Ads-oppsett',
+   'fb-publish': 'FB Publish',
+diff --git a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentWorkflowStepper.tsx b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentWorkflowStepper.tsx
+--- a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentWorkflowStepper.tsx
++++ b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentWorkflowStepper.tsx
+@@
+-    tabs: ['leads', 'events'],
++    tabs: ['leads', 'events', 'ads-setup'],
+diff --git a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
+--- a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
++++ b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
+@@
+   QueryStats as QueryStatsIcon,
++  PaidOutlined as AdsSetupIcon,
+   Rocket as RocketIcon,
+@@
+ import AgentCommandPalette from './AgentCommandPalette';
+-import { isAdvancedTab } from './agentTabs';
++import { isAdvancedTab, type TabId } from './agentTabs';
+ import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
+ import MerchSuppliersPanel from './MerchSuppliersPanel';
++import AgentAdsPanel from './AgentAdsPanel';
+@@
+-  initialTab?: 'research' | 'marketing-plan' | 'merch' | 'feed-planner' | 'chat';
++  initialTab?: TabId;
+@@
+-  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'events' | 'social-analytics'>(initialTab ?? 'research');
++  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'research');
+@@
+     'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
+-    'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
++    'ads-attribution': 'Ads Attribution', 'ads-setup': 'Ads-oppsett', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
+@@
+         <MenuItem
+           selected={activeTab === 'ads-attribution'}
+           onClick={() => { setActiveTab('ads-attribution'); setAdvancedAnchor(null); }}
+         >
+           <QueryStatsIcon fontSize="small" sx={{ mr: 1 }} /> Ads Attribution
+         </MenuItem>
++        <MenuItem
++          selected={activeTab === 'ads-setup'}
++          onClick={() => { setActiveTab('ads-setup'); setAdvancedAnchor(null); }}
++          data-testid="agent-tab-ads-setup"
++        >
++          <AdsSetupIcon fontSize="small" sx={{ mr: 1 }} /> Ads-oppsett
++        </MenuItem>
+@@
+         ) : activeTab === 'ads-attribution' ? (
+           <Box sx={{ p: { xs: 1, md: 2 } }}>
+             <AdsAttributionInspector />
+           </Box>
++        ) : activeTab === 'ads-setup' ? (
++          <Box sx={{ p: { xs: 1, md: 2 } }}>
++            <AgentAdsPanel clientProjectId={projectId} defaultClientName={projectName} />
++          </Box>
+         ) : activeTab === 'fb-publish' ? (
+diff --git a/frontend/client/src/components/role-room/components/producer/ProducerMediaPanel.tsx b/frontend/client/src/components/role-room/components/producer/ProducerMediaPanel.tsx
+--- a/frontend/client/src/components/role-room/components/producer/ProducerMediaPanel.tsx
++++ b/frontend/client/src/components/role-room/components/producer/ProducerMediaPanel.tsx
+@@
+ import RoleRoomAgentDialog from './RoleRoomAgentDialog';
++import type { TabId as RoleRoomAgentTabId } from './agentTabs';
+@@
+   const [roleRoomAgentDialogInitialTab, setRoleRoomAgentDialogInitialTab] =
+-    useState<'research' | 'marketing-plan'>('research');
++    useState<RoleRoomAgentTabId>('research');
++
++  // LinkedIn Ads OAuth is a full-page redirect. The callback preserves this
++  // marker so content-producer mode can reopen the Agent on the same project
++  // instead of dropping the user into Admin Room.
++  useEffect(() => {
++    if (typeof window === 'undefined') return;
++    const url = new URL(window.location.href);
++    if (url.searchParams.get('roleRoomAgentTab') !== 'ads-setup') return;
++    setRoleRoomAgentDialogInitialTab('ads-setup');
++    setRoleRoomAgentDialogOpen(true);
++    url.searchParams.delete('roleRoomAgentTab');
++    window.history.replaceState({}, '', url.toString());
++  }, []);
+diff --git a/frontend/client/src/components/role-room/components/producer/ClientLinkedinSuitePanel.tsx b/frontend/client/src/components/role-room/components/producer/ClientLinkedinSuitePanel.tsx
+--- a/frontend/client/src/components/role-room/components/producer/ClientLinkedinSuitePanel.tsx
++++ b/frontend/client/src/components/role-room/components/producer/ClientLinkedinSuitePanel.tsx
+@@
+   const connectOAuth = async () => {
+     try {
+-      const browserOrigin = encodeURIComponent(window.location.origin);
+-      const r = await fetch(
+-        `/api/admin-room/agent/ads/oauth/linkedin/start?configId=${encodeURIComponent(configId)}&browserOrigin=${browserOrigin}`,
++      const returnUrl = new URL(window.location.href);
++      returnUrl.searchParams.delete('oauth_success');
++      returnUrl.searchParams.delete('oauth_error');
++      returnUrl.searchParams.delete('config');
++      if (returnUrl.pathname !== '/admin-room') {
++        returnUrl.searchParams.set('roleRoomAgentTab', 'ads-setup');
++      }
++      const params = new URLSearchParams({
++        configId,
++        browserOrigin: window.location.origin,
++        returnPath: `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`,
++      });
++      const r = await fetch(
++        `/api/admin-room/agent/ads/oauth/linkedin/start?${params.toString()}`,
+         { credentials: 'include' },
+       );
+diff --git a/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx b/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx
+--- a/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx
++++ b/frontend/client/src/components/role-room/components/producer/AgentAdsPanel.tsx
+@@
+ interface DiscoveryResult {
+@@
+ }
++
++interface StoredAdsConfig {
++  id: string;
++  client_project_id: string;
++  client_name: string;
++  client_website_url: string;
++  business_type?: string | null;
++  business_subcategory?: string | null;
++  claude_analysis?: Partial<DiscoveryResult> | null;
++}
++
++function restoreDiscoveryResult(config: StoredAdsConfig): DiscoveryResult {
++  const stored = config.claude_analysis ?? {};
++  return {
++    url: stored.url ?? config.client_website_url,
++    fetched_at: stored.fetched_at ?? new Date().toISOString(),
++    business_type: stored.business_type ?? config.business_type ?? 'unknown',
++    business_subcategory: stored.business_subcategory ?? config.business_subcategory ?? 'unknown',
++    business_summary: stored.business_summary ?? '',
++    detected_gtag_id: stored.detected_gtag_id ?? null,
++    detected_gtm_id: stored.detected_gtm_id ?? null,
++    page_snapshot: stored.page_snapshot ?? {
++      url: config.client_website_url,
++      finalUrl: config.client_website_url,
++      httpStatus: 0,
++      title: config.client_name,
++      metaDescription: null,
++      detectedGtagIds: [],
++      formCount: 0,
++      cta_phrases: [],
++      htmlBytes: 0,
++    },
++    suggested_actions: stored.suggested_actions ?? [],
++    notes: stored.notes ?? [],
++    warnings: stored.warnings ?? [],
++  };
++}
+@@
+   const [savedConfigId, setSavedConfigId] = useState<string | null>(null);
++  const [restoringConfig, setRestoringConfig] = useState(false);
+@@
+-  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake
++  const restoreConfig = async (configId: string) => {
++    setRestoringConfig(true);
++    try {
++      const r = await fetch(`/api/admin-room/agent/ads/configs/${encodeURIComponent(configId)}`, {
++        credentials: 'include',
++      });
++      const data = await r.json();
++      if (!r.ok || !data.config) throw new Error(data.error || `HTTP ${r.status}`);
++      const config = data.config as StoredAdsConfig;
++      const restoredActions = ((data.actions ?? []) as SuggestedAction[]).map((action) => ({
++        ...action,
++        default_value: Number(action.default_value ?? 0),
++      }));
++      setClientName(config.client_name);
++      setClientUrl(config.client_website_url);
++      setDiscoveryResult(restoreDiscoveryResult(config));
++      setActions(restoredActions);
++      setSavedConfigId(config.id);
++      setStage('saved');
++    } catch (err) {
++      setSaveError(err instanceof Error ? err.message : 'Kunne ikke hente Ads-oppsettet');
++    } finally {
++      setRestoringConfig(false);
++    }
++  };
++
++  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake.
+   useEffect(() => {
+@@
+       });
+       const cfg = url.searchParams.get('config');
+-      if (cfg) setSavedConfigId(cfg);
++      if (cfg) void restoreConfig(cfg);
+@@
+       url.searchParams.delete('oauth_success');
+       url.searchParams.delete('config');
++      url.searchParams.delete('roleRoomAgentTab');
+@@
+   }, []);
++
++  // Reopen an existing per-project Ads setup on normal Agent visits too.
++  useEffect(() => {
++    if (!clientProjectId || savedConfigId || restoringConfig) return;
++    let cancelled = false;
++    const load = async () => {
++      try {
++        const r = await fetch('/api/admin-room/agent/ads/configs', { credentials: 'include' });
++        const data = await r.json();
++        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
++        const match = ((data.configs ?? []) as StoredAdsConfig[]).find(
++          (config) => config.client_project_id === clientProjectId,
++        );
++        if (!cancelled && match?.id) await restoreConfig(match.id);
++      } catch (err) {
++        if (!cancelled) setSaveError(err instanceof Error ? err.message : 'Kunne ikke hente Ads-oppsettet');
++      }
++    };
++    void load();
++    return () => { cancelled = true; };
++  }, [clientProjectId]);
+@@
+   return (
+     <Box sx={{ color: palette.textPrimary }}>
++      {restoringConfig ? (
++        <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 2 }}>
++          Henter Ads-oppsettet for prosjektet…
++        </Alert>
++      ) : null}
+diff --git a/backend/server/client-ads-routes.oauth.test.ts b/backend/server/client-ads-routes.oauth.test.ts
+--- a/backend/server/client-ads-routes.oauth.test.ts
++++ b/backend/server/client-ads-routes.oauth.test.ts
+@@
+-        "/api/admin-room/agent/ads/oauth/linkedin/start?configId=config-1&browserOrigin=https%3A%2F%2Fwww.theroleroom.com",
++        "/api/admin-room/agent/ads/oauth/linkedin/start?configId=config-1&browserOrigin=https%3A%2F%2Fwww.theroleroom.com&returnPath=%2Frole-room%3Fproject%3Dkunde-1%26roleRoomAgentTab%3Dads-setup",
+@@
+       browserOrigin: "https://www.theroleroom.com",
++      returnPath: "/role-room?project=kunde-1&roleRoomAgentTab=ads-setup",
+@@
+-      "https://www.theroleroom.com/admin-room?adminTab=role-room-agent&oauth_success=linkedin&config=config-1",
++      "https://www.theroleroom.com/role-room?project=kunde-1&roleRoomAgentTab=ads-setup&oauth_success=linkedin&config=config-1",
+@@
+   it("falls back to the Role Room origin for an untrusted browser origin", async () => {
+@@
+   });
++
++  it("rejects an external OAuth return path", async () => {
++    const { app } = buildApp();
++    const started = await request(app)
++      .get(
++        "/api/admin-room/agent/ads/oauth/linkedin/start?returnPath=%2F%2Fevil.example%2Fsteal",
++      )
++      .expect(200);
++    const state = stateFromAuthUrl(started.body.authUrl);
++    const [, , payload] = mocks.persistOauthState.mock.calls[0];
++    expect(payload).toMatchObject({
++      returnPath: "/admin-room?adminTab=role-room-agent",
++    });
++
++    const callbackResponse = await request(app)
++      .get(
++        `/api/admin-room/agent/ads/oauth/linkedin/callback?code=oauth-code&state=${encodeURIComponent(state)}`,
++      )
++      .expect(302);
++    expect(callbackResponse.headers.location).toBe(
++      "https://theroleroom.com/admin-room?adminTab=role-room-agent&oauth_success=linkedin",
++    );
++  });

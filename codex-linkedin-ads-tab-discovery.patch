@@ -1,0 +1,40 @@
+diff --git a/frontend/client/src/components/role-room/components/producer/agentTabs.ts b/frontend/client/src/components/role-room/components/producer/agentTabs.ts
+--- a/frontend/client/src/components/role-room/components/producer/agentTabs.ts
++++ b/frontend/client/src/components/role-room/components/producer/agentTabs.ts
+@@ -94,8 +94,8 @@ export const AGENT_TAB_GROUPS: readonly AgentTabGroup[] = [
+   {
+     id: 'leads',
+     label: 'Leads',
+-    primaryTabs: ['leads', 'events'],
+-    advancedTabs: ['ads-attribution', 'ads-setup'],
++    primaryTabs: ['leads', 'events', 'ads-setup'],
++    advancedTabs: ['ads-attribution'],
+   },
+diff --git a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
+--- a/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
++++ b/frontend/client/src/components/role-room/components/producer/RoleRoomAgentDialog.tsx
+@@ -1181,6 +1181,13 @@ export default function RoleRoomAgentDialog({
+           iconPosition="start"
+           data-testid="agent-tab-events"
+         />
++        <Tab
++          value="ads-setup"
++          label="Ads-oppsett"
++          icon={<AdsSetupIcon fontSize="small" />}
++          iconPosition="start"
++          data-testid="agent-tab-ads-setup"
++        />
+         <Tab
+           value="social-analytics"
+@@ -1231,13 +1238,6 @@ export default function RoleRoomAgentDialog({
+         >
+           <QueryStatsIcon fontSize="small" sx={{ mr: 1 }} /> Ads Attribution
+         </MenuItem>
+-        <MenuItem
+-          selected={activeTab === 'ads-setup'}
+-          onClick={() => { setActiveTab('ads-setup'); setAdvancedAnchor(null); }}
+-          data-testid="agent-tab-ads-setup"
+-        >
+-          <AdsSetupIcon fontSize="small" sx={{ mr: 1 }} /> Ads-oppsett
+-        </MenuItem>
+       </Menu>

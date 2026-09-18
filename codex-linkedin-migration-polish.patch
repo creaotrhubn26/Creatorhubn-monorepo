@@ -1,0 +1,38 @@
+diff --git a/backend/migrations/0498_client_ads_role_room_project_ids.sql b/backend/migrations/0498_client_ads_role_room_project_ids.sql
+--- a/backend/migrations/0498_client_ads_role_room_project_ids.sql
++++ b/backend/migrations/0498_client_ads_role_room_project_ids.sql
+@@ -7,22 +7,20 @@ BEGIN
+     ALTER TABLE client_ads_configs
+       ALTER COLUMN client_project_id TYPE VARCHAR(255)
+       USING client_project_id::text;
++    COMMENT ON COLUMN client_ads_configs.client_project_id IS
++      'Role Room casting_projects.id; text/slug tenant key, not necessarily UUID.';
+   END IF;
+ 
+   IF to_regclass('public.client_authorization_acceptances') IS NOT NULL THEN
+     ALTER TABLE client_authorization_acceptances
+       ALTER COLUMN client_project_id TYPE VARCHAR(255)
+       USING client_project_id::text;
++    COMMENT ON COLUMN client_authorization_acceptances.client_project_id IS
++      'Snapshot of Role Room casting_projects.id for the authorization audit trail.';
+   END IF;
+ END
+ $$;
+ 
+-COMMENT ON COLUMN client_ads_configs.client_project_id IS
+-  'Role Room casting_projects.id; text/slug tenant key, not necessarily UUID.';
+-
+-COMMENT ON COLUMN client_authorization_acceptances.client_project_id IS
+-  'Snapshot of Role Room casting_projects.id for the authorization audit trail.';
+-
+ COMMIT;
+diff --git a/frontend/client/src/components/role-room/components/producer/agentTabs.ts b/frontend/client/src/components/role-room/components/producer/agentTabs.ts
+--- a/frontend/client/src/components/role-room/components/producer/agentTabs.ts
++++ b/frontend/client/src/components/role-room/components/producer/agentTabs.ts
+@@ -62,8 +62,8 @@ export interface AgentTabMeta {
+ /**
+  * De 6 fasene i rekkefølge. Advanced-fanene er de sekundære verktøy-fanene:
+  * discovery, meta-page, page-content, ig-hashtag, fb-publish, mentions,
+- * fb-mention, ads-attribution og ads-setup.
++ * fb-mention og ads-attribution. Ads-oppsett er en synlig Leads-fane.
+  */
