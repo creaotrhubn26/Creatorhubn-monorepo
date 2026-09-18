@@ -61,6 +61,20 @@ describe("hashIp", () => {
   });
 });
 
+describe("innsendingsruta", () => {
+  const route = readFileSync(join(__dirname, "leadgrid-inbound-forms.ts"), "utf8");
+
+  it("plukker klikk-ID-ene ut av kroppen, ikke bare utm", () => {
+    expect(route).toContain("fbclid: str(body.fbclid, 255)");
+    expect(route).toContain("ttclid: str(body.ttclid, 255)");
+  });
+
+  it("sender dem videre til workflows, så en kampanje kan trigge noe", () => {
+    expect(route).toContain("fbclid: attribution.fbclid");
+    expect(route).toContain("ttclid: attribution.ttclid");
+  });
+});
+
 describe("migrasjon 0637", () => {
   const sql = readFileSync(
     join(__dirname, "../migrations/0637_leadgrid_inbound_forms.sql"),
@@ -75,6 +89,16 @@ describe("migrasjon 0637", () => {
   it("gir leadet kampanjesporingen som gjør spørsmålet svarbart", () => {
     for (const column of ["utm_source", "utm_campaign", "gclid", "landing_page_url"]) {
       expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+    }
+  });
+
+  it("tar vare på klikk-ID-ene fra alle tre plattformene", () => {
+    // Uten klikk-id kan en vunnet avtale aldri rapporteres tilbake, og
+    // plattformen fortsetter å optimalisere mot skjema-utfyllinger i stedet
+    // for mot omsetning. fbclid dekker både Facebook og Instagram.
+    for (const column of ["gclid", "fbclid", "ttclid"]) {
+      expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+      expect(sql).toContain(`idx_crm_customers_${column}`);
     }
   });
 

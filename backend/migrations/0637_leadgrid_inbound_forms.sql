@@ -82,6 +82,8 @@ CREATE TABLE IF NOT EXISTS leadgrid_form_submissions (
   utm_term          VARCHAR(200),
   utm_content       VARCHAR(200),
   gclid             VARCHAR(255),
+  fbclid            VARCHAR(255),
+  ttclid            VARCHAR(255),
   referrer_url      TEXT,
   landing_page_url  TEXT,
 
@@ -107,9 +109,15 @@ ALTER TABLE crm_customers
   ADD COLUMN IF NOT EXISTS utm_campaign     VARCHAR(200),
   ADD COLUMN IF NOT EXISTS utm_term         VARCHAR(200),
   ADD COLUMN IF NOT EXISTS utm_content      VARCHAR(200),
-  -- Google Ads' klikk-id. Uten den kan en vunnet avtale aldri rapporteres
-  -- tilbake til Google som offline-konvertering.
+  -- Klikk-ID-ene. Uten dem kan en vunnet avtale aldri rapporteres tilbake
+  -- til annonseplattformen som offline-konvertering, og da optimaliserer
+  -- plattformen fortsatt mot skjema-utfyllinger i stedet for mot omsetning.
+  --   gclid  Google Ads
+  --   fbclid Meta — dekker BÅDE Facebook og Instagram, samme klikk-id
+  --   ttclid TikTok
   ADD COLUMN IF NOT EXISTS gclid            VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS fbclid           VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS ttclid           VARCHAR(255),
   ADD COLUMN IF NOT EXISTS referrer_url     TEXT,
   ADD COLUMN IF NOT EXISTS landing_page_url TEXT;
 
@@ -118,6 +126,15 @@ CREATE INDEX IF NOT EXISTS idx_crm_customers_utm_campaign
   ON crm_customers (organization_id, project_id, utm_campaign)
   WHERE archived_at IS NULL AND utm_campaign IS NOT NULL;
 
+-- Oppslag når en vunnet avtale skal rapporteres tilbake til plattformen.
 CREATE INDEX IF NOT EXISTS idx_crm_customers_gclid
   ON crm_customers (gclid)
   WHERE gclid IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_crm_customers_fbclid
+  ON crm_customers (fbclid)
+  WHERE fbclid IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_crm_customers_ttclid
+  ON crm_customers (ttclid)
+  WHERE ttclid IS NOT NULL;
