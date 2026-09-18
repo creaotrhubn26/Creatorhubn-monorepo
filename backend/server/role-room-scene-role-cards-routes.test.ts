@@ -38,6 +38,8 @@ interface Tilstand {
   offentligRad: Record<string, unknown> | null;
   oppdaterteRader: number;
   utsending?: Record<string, unknown>[];
+  /** Lar «marker som åpnet»-spørringen feile, for å teste at kortet vises likevel. */
+  feilPåMerking?: boolean;
 }
 
 function byggApp(t: Tilstand, innlogget = true) {
@@ -48,6 +50,10 @@ function byggApp(t: Tilstand, innlogget = true) {
     query: async (sql: string, params?: unknown[]) => {
       t.spørringer.push({ sql, params: params ?? [] });
 
+      if (sql.includes("SET opened_at")) {
+        if (t.feilPåMerking) throw new Error("databasen sa nei");
+        return { rows: [], rowCount: 1 };
+      }
       if (sql.includes("INSERT INTO scene_role_cards")) {
         return { rows: [{ id: KORT_ID, token: "hemmelig-token" }], rowCount: 1 };
       }
@@ -193,6 +199,34 @@ describe("statistens side", () => {
     // Hele poenget: statisten skal ikke lete etter seg selv i scenen.
     expect(JSON.stringify(res.body)).not.toContain("cards");
     expect(res.body.card.id).toBeUndefined();
+  });
+
+  it("merker kortet som åpnet — første gang, og bare da", async () => {
+    const app = byggApp(t, false);
+    await request(app).get("/api/role-room/role-cards/r/et-token");
+    // Skrivingen er bevisst ikke ventet på i ruten (kortet skal vises uansett).
+    await new Promise((r) => setTimeout(r, 0));
+
+    const merking = t.spørringer.find((q) => q.sql.includes("SET opened_at"));
+    expect(merking).toBeTruthy();
+    // `opened_at IS NULL` gjør senere åpninger til et no-op: vi teller ikke
+    // hvor mange ganger noen har sett kortet, bare at de har sett det.
+    expect(merking?.sql).toContain("opened_at IS NULL");
+    expect(merking?.params).toEqual([KORT_ID]);
+  });
+
+  it("viser kortet selv om åpnings-merkingen feiler", async () => {
+    // Kvitteringen er mindre viktig enn at personen får se hva hen skal gjøre.
+    const app = byggApp({ ...t, feilPåMerking: true }, false);
+    const res = await request(app).get("/api/role-room/role-cards/r/et-token");
+    expect(res.status).toBe(200);
+    expect(res.body.card.action).toMatch(/bord 3/);
+  });
+
+  it("gir ikke statisten beskjed om at åpningen blir registrert i svaret", async () => {
+    const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
+    // opened_at hører produksjonen til, ikke kortet personen leser.
+    expect(JSON.stringify(res.body)).not.toContain("opened_at");
   });
 
   it("svarer likt for tilbaketrukket og ukjent lenke", async () => {

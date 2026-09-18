@@ -20,7 +20,8 @@ const PLAN = 'https://eksempel.test/plan.png';
 const kort = (over: Partial<Record<string, unknown>> = {}) => ({
   id: 'kort-1', project_id: 'p1', scene_id: 's1', person_name: 'Statist 3', person_kind: 'extra',
   action: 'Du sitter ved bord 3.', cue: null, position: { x: 0.4, y: 0.6 }, wardrobe: null,
-  frame_image_url: null, call_time: null, sort_order: 0, token: 'token-abc', revoked_at: null, ...over,
+  frame_image_url: null, call_time: null, sort_order: 0, token: 'token-abc', revoked_at: null,
+  contact_email: null, sent_at: null, opened_at: null, ...over,
 });
 
 describe('uten plantegning', () => {
@@ -116,6 +117,39 @@ describe('med plantegning', () => {
     vi.spyOn(roleCardService, 'list').mockResolvedValue([kort({ position: null }) as never]);
     render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
     expect(await screen.findByText('Ikke plassert i planen ennå.')).toBeInTheDocument();
+  });
+});
+
+describe('har kortet blitt åpnet?', () => {
+  beforeEach(() => {
+    vi.spyOn(roleCardService, 'getBlocking').mockResolvedValue({ planUrl: PLAN, camera: null });
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([]);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('skiller sendt fra sett', async () => {
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([kort({ sent_at: '2026-10-01T18:00:00Z' }) as never]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    // «Sendt» alene svarer ikke på om personen vet hvor hen skal stå.
+    expect(await screen.findByText(/ikke åpnet ennå/)).toBeInTheDocument();
+  });
+
+  it('sier når kortet ble åpnet', async () => {
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([
+      kort({ sent_at: '2026-10-01T18:00:00Z', opened_at: '2026-10-01T19:14:00Z' }) as never,
+    ]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    expect(await screen.findByText(/^Åpnet /)).toBeInTheDocument();
+    expect(screen.queryByText(/ikke åpnet ennå/)).toBeNull();
+  });
+
+  it('sier ingenting om lenken ikke er sendt', async () => {
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([kort() as never]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    await screen.findByLabelText('Velg ramme for Statist 3');
+    // Et kort som aldri er sendt har ingen status å melde — da er tomt riktigere
+    // enn «ikke åpnet», som ville lest som at noen ignorerte lenken.
+    expect(screen.queryByText(/åpnet/i)).toBeNull();
   });
 });
 
