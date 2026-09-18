@@ -31,6 +31,45 @@ export const LEADGRID_STAGES = [
 ] as const;
 export type LeadgridStage = (typeof LEADGRID_STAGES)[number];
 
+/** Livssyklus-verdiene crm_customers.lifecycle_stage tillater (migrasjon 0631). */
+export const LEADGRID_LIFECYCLE_STAGES = [
+  "subscriber",
+  "lead",
+  "marketing_qualified",
+  "sales_qualified",
+  "opportunity",
+  "customer",
+  "evangelist",
+  "other",
+] as const;
+export type LifecycleStage = (typeof LEADGRID_LIFECYCLE_STAGES)[number];
+
+/**
+ * HubSpots lifecyclestage -> vår. Verdisettet er bevisst det samme, så
+ * dette er stort sett bare navneformatering. HubSpot Enterprise lar kunder
+ * definere EGNE livssyklusstadier, og de kan ikke oversettes; de lander på
+ * "other" og rapporteres, i stedet for å bli stille borte.
+ */
+const HUBSPOT_LIFECYCLE: Record<string, LifecycleStage> = {
+  subscriber: "subscriber",
+  lead: "lead",
+  marketingqualifiedlead: "marketing_qualified",
+  salesqualifiedlead: "sales_qualified",
+  opportunity: "opportunity",
+  customer: "customer",
+  evangelist: "evangelist",
+  other: "other",
+};
+
+export function mapLifecycleStage(
+  raw: string | null | undefined,
+): { stage: LifecycleStage; matched: boolean } {
+  const key = (raw ?? "").trim().toLowerCase();
+  if (!key) return { stage: "lead", matched: true };
+  const mapped = HUBSPOT_LIFECYCLE[key];
+  return mapped ? { stage: mapped, matched: true } : { stage: "other", matched: false };
+}
+
 /** Aktivitetstypene crm_lead_activities tillater (migrasjon 271). */
 export const LEADGRID_ACTIVITY_TYPES = [
   "status_changed",
@@ -56,7 +95,8 @@ export type IssueCode =
   | "duplicate_email"
   | "no_dedupe_key"
   | "calculated_property_skipped"
-  | "missing_deal_amount";
+  | "missing_deal_amount"
+  | "custom_lifecycle_stage";
 
 export interface MigrationIssue {
   code: IssueCode;
@@ -81,6 +121,7 @@ export interface PlannedCustomer {
   websiteUrl: string | null;
   employeeCountEstimate: number | null;
   pipelineStage: LeadgridStage;
+  lifecycleStage: LifecycleStage;
   ownerUserId: string | null;
   dealAmount: number | null;
   expectedCloseDate: string | null;
@@ -215,6 +256,19 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
     return ownerMap[hubspotOwnerId] ?? options.fallbackOwnerUserId;
   };
 
+  const resolveLifecycle = (raw: string | null | undefined, hubspotId: string): LifecycleStage => {
+    const { stage, matched } = mapLifecycleStage(raw);
+    if (!matched) {
+      issues.push({
+        code: "custom_lifecycle_stage",
+        hubspotId,
+        message: `Livssyklusstadiet «${raw}» er egendefinert i HubSpot og finnes ikke i Leadgrid. Settes til «other» så det kan ryddes etterpå.`,
+        silentLoss: false,
+      });
+    }
+    return stage;
+  };
+
   const noteCalculated = (obj: HubSpotObject) => {
     const skipped = Object.keys(obj.properties).filter(isCalculated);
     if (skipped.length > 0) {
@@ -281,6 +335,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
       websiteUrl: company.properties.domain ?? null,
       employeeCountEstimate: toNumber(company.properties.numberofemployees),
       pipelineStage: mapped.stage,
+      lifecycleStage: resolveLifecycle(company.properties.lifecyclestage, company.id),
       ownerUserId: resolveOwner(company.properties.hubspot_owner_id ?? null, company.id),
       dealAmount: primaryDeal ? toNumber(primaryDeal.properties.amount) : null,
       expectedCloseDate: primaryDeal?.properties.closedate ?? null,
@@ -345,6 +400,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
         websiteUrl: null,
         employeeCountEstimate: null,
         pipelineStage: "new",
+        lifecycleStage: resolveLifecycle(contact.properties.lifecyclestage, contact.id),
         ownerUserId: resolveOwner(contact.properties.hubspot_owner_id ?? null, contact.id),
         dealAmount: null,
         expectedCloseDate: null,

@@ -215,7 +215,9 @@ describe("eiere og pipelines", () => {
     const { client } = build(fetchImpl);
 
     const pipelines = await client.listPipelines("deals");
-    expect(String(fetchImpl.mock.calls[0][0])).toContain(`/crm/${HUBSPOT_API_VERSION}/pipelines/deals`);
+    // Stien er /crm/pipelines/<versjon>/<objekt>, ikke /crm/<versjon>/pipelines/...
+    // Den feilen ga 404 mot ekte API og ble fanget først der.
+    expect(String(fetchImpl.mock.calls[0][0])).toContain(`/crm/pipelines/${HUBSPOT_API_VERSION}/deals`);
     expect(pipelines[0].stages.map((s) => s.id)).toContain("kontrakt_til_signering");
   });
 });

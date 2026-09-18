@@ -13,7 +13,9 @@ import {
 } from "./hubspot-migration-fixtures";
 import {
   LEADGRID_ACTIVITY_TYPES,
+  LEADGRID_LIFECYCLE_STAGES,
   LEADGRID_STAGES,
+  mapLifecycleStage,
   mapPipelineStage,
   planHubSpotMigration,
   type MigrationInput,
@@ -208,5 +210,46 @@ describe("planen som helhet", () => {
       { fallbackOwnerUserId: "user-daniel" },
     );
     expect(empty.counts).toEqual({ customers: 0, contacts: 0, merged: 0, issues: 0, silentLossPrevented: 0 });
+  });
+});
+
+describe("livssyklus", () => {
+  it("oversetter HubSpots stadier til våre", () => {
+    expect(mapLifecycleStage("subscriber").stage).toBe("subscriber");
+    expect(mapLifecycleStage("marketingqualifiedlead").stage).toBe("marketing_qualified");
+    expect(mapLifecycleStage("salesqualifiedlead").stage).toBe("sales_qualified");
+    expect(mapLifecycleStage("customer").stage).toBe("customer");
+    expect(mapLifecycleStage("evangelist").stage).toBe("evangelist");
+  });
+
+  it("tåler ulik skrivemåte og tomt felt", () => {
+    expect(mapLifecycleStage("  CUSTOMER  ").stage).toBe("customer");
+    expect(mapLifecycleStage(null)).toEqual({ stage: "lead", matched: true });
+    expect(mapLifecycleStage("")).toEqual({ stage: "lead", matched: true });
+  });
+
+  it("lander alltid på en verdi CHECK-constrainten tillater", () => {
+    const ours = new Set<string>(LEADGRID_LIFECYCLE_STAGES);
+    for (const raw of ["subscriber", "lead", "customer", "partner_prospect", "noe_helt_annet", ""]) {
+      expect(ours.has(mapLifecycleStage(raw).stage)).toBe(true);
+    }
+  });
+
+  it("tar med livssyklusen på kunden som kommer fra et selskap", () => {
+    const p = plan();
+    expect(p.customers.find((c) => c.hubspotId === "7001")?.lifecycleStage).toBe("customer");
+  });
+
+  it("tar med livssyklusen på en kontakt som blir eget lead", () => {
+    const p = plan();
+    expect(p.customers.find((c) => c.hubspotId === "3002")?.lifecycleStage).toBe("lead");
+  });
+
+  it("melder fra om egendefinerte stadier i stedet for å tie", () => {
+    const p = plan();
+    const issue = issuesOf(p, "custom_lifecycle_stage").find((i) => i.hubspotId === "7002");
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("partner_prospect");
+    expect(p.customers.find((c) => c.hubspotId === "7002")?.lifecycleStage).toBe("other");
   });
 });

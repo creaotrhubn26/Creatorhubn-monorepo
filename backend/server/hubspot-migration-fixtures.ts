@@ -70,6 +70,7 @@ export const COMPANY_NORDVIK: HubSpotObject = {
     zip: "5068",
     country: "Norge",
     numberofemployees: "48",
+    lifecyclestage: "customer",
     hubspot_owner_id: "550001",
     // Beregnet av HubSpot. Skal ikke migreres: avledet av logikk vi ikke har.
     hs_predictivecontactscore_v2: "72",
@@ -90,6 +91,9 @@ export const COMPANY_FJELLTEK: HubSpotObject = {
     zip: null,
     country: "Norge",
     numberofemployees: null,
+    // Egendefinert livssyklusstadium. HubSpot Enterprise lar kunder lage
+    // egne, og de har ingen motpart hos oss.
+    lifecyclestage: "partner_prospect",
     hubspot_owner_id: "550999", // eier som IKKE finnes i owners-listen
   },
   createdAt: ISO,
