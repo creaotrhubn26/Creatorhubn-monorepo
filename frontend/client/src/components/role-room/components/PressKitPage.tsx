@@ -48,9 +48,9 @@ const BOILERPLATE_LONG =
 const LOGOS: Array<{ name: string; src: string; alt: string; download: string }> = [
   {
     name: 'The Role Room — App-logo (PNG)',
-    src: '/TheRoleRoom_App_Logo.png',
+    src: '/theroleroom-mark-1024.png',
     alt: 'The Role Room app-logo',
-    download: '/TheRoleRoom_App_Logo.png',
+    download: '/theroleroom-mark-1024.png',
   },
   {
     name: 'Landing backdrop (WEBP)',
@@ -81,7 +81,7 @@ function useOrganizationPressSchema() {
       name: 'The Role Room',
       legalName: 'CreatorHub AS',
       url: 'https://theroleroom.com',
-      logo: 'https://theroleroom.com/TheRoleRoom_App_Logo.png',
+      logo: 'https://theroleroom.com/theroleroom-mark-1024.png',
       sameAs: ['https://creatorhubn.com'],
       contactPoint: [
         {

@@ -546,7 +546,7 @@ const MarketplaceAppEditDialog: React.FC<{
                 <TextField
                   label="Logo URL" size="small" fullWidth
                   value={form.logoSrc || ''} onChange={(e) => updateField('logoSrc', e.target.value)}
-                  placeholder="/TheRoleRoom_App_Logo.png"
+                  placeholder="/theroleroom-mark-1024.png"
                 />
                 <TextField
                   label="Logo alt-tekst" size="small" fullWidth

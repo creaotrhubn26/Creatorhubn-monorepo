@@ -114,7 +114,7 @@ const castingQueryClient = new QueryClient({
 });
 
 const ROLE_ROOM_DOCUMENT_TITLE = 'The Role Room - CreatorHub';
-const ROLE_ROOM_FAVICON_URL = '/TheRoleRoom_App_Logo.png';
+const ROLE_ROOM_FAVICON_URL = '/theroleroom-mark-1024.png';
 
 function upsertHeadLink(rel: string, href: string) {
   if (typeof document === 'undefined') {

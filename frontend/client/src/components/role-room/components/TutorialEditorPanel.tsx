@@ -418,7 +418,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
           }}
         >
           <img
-            src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+            src="/theroleroom-mark-1024.png"
             alt="The Role Room"
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />

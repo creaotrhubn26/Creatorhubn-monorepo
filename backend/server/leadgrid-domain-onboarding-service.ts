@@ -847,8 +847,8 @@ function buildRoleRoomOnboardingPlan(
       text: "#F5F3FF",
     },
     fonts: { heading: "Roboto", body: "Roboto" },
-    logoUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
-    faviconUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+    logoUrl: "https://theroleroom.com/theroleroom-mark-1024.png",
+    faviconUrl: "https://theroleroom.com/theroleroom-mark-1024.png",
     productCategories: [
       "Produksjonsplanlegging",
       "Casting og talentportal",

@@ -1585,7 +1585,7 @@ function Footer({ onAdminLogin }: { onAdminLogin: () => void }) {
           <Box>
             <Box
               component="img"
-              src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+              src="/theroleroom-mark-1024.png"
               alt="The Role Room — Casting. Roles. Together."
               sx={{ height: 44, width: 'auto', objectFit: 'contain', display: 'block', mb: 1 }}
             />
