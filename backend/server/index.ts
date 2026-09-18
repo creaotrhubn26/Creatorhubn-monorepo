@@ -199,6 +199,7 @@ import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
 import { createGameBillingRouter } from "./game-billing-routes.js";
 import { createGameStudioDisabledRouter, isGameStudioEnabled } from "./game-studio-kill-switch.js";
+import { createNarrativeCiHookHandlers } from "./role-room-narrative-ci-hooks.js";
 import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
 import { createNarrativeReviewPublicRouter } from "./role-room-narrative-review-public-routes.js";
 import {
@@ -2252,6 +2253,14 @@ app.use((req, _res, next) => {
   next();
 });
 setupWorkspaceParticipantDocumentBodyParserBoundary(app);
+// Story Graph — CI-bevis-webhook (Fase 8c). MÅ monteres før express.json(): body-parser
+// hopper over når req._body alt er satt, så rå body til HMAC finnes bare her (samme grunn
+// som Stripe-webhookene over). Autentiserte hook-ruter ligger i narrative-routeren.
+{
+  const ciHooks = createNarrativeCiHookHandlers(pool);
+  app.post("/api/role-room/narrative/hooks/ci/:hookId", ...ciHooks.webhook);
+  app.post("/api/role-room/narrative/hooks/ci/:hookId/evidence", ...ciHooks.evidenceUpload);
+}
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Propagate the selected Leadgrid workspace through legacy module helpers.
