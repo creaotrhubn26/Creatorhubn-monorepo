@@ -1,15 +1,12 @@
 /**
  * TalentsLogo.tsx — "The Role Room" logo + "TALENTS" under.
  *
- * Bruker /theroleroom-app-icon-1024-transparent.png — teater-masker,
- * clapperboard og person-ikon.
+ * Bruker MERKE-filen role-room-assets/TheRoleRoom_Logo.webp — masker,
+ * klaffbrett og person-ikon, uten tekst.
  *
- * 🔑 Filen FANTES ikke. Den var referert to steder her, men lå ikke i
- * public/, så serveren svarte med SPA-fallback-HTML der nettleseren ventet
- * et bilde — logoen var et brutt bilde i sidebaren. Den er nå generert fra
- * theroleroom-app-icon-1024.png: hvit bakgrunn fjernet, og fiolett/magenta
- * dreid inn i indigo (hue 250–300 → 238–262), slik at merket følger
- * paletten i theme.ts i stedet for å motsi den.
+ * 🔑 Sto tidligere på app-ikonet, som er hele lockupen med tagline. I 24 px
+ * var teksten uleselig grøt, og taglinen i den filen er dessuten feilstavet
+ * («Casting. Boles. Together.»). Ordmerket «TALENTS» settes som tekst under.
  *
  * Den hvite card-bakgrunnen beholdes: et indigo merke på en mørk indigo
  * sidebar har for lite kontrast alene, og de hvite konturlinjene inne i
@@ -42,7 +39,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
         >
           <Box
             component="img"
-            src="/theroleroom-app-icon-1024-transparent.png"
+            src="/role-room-assets/TheRoleRoom_Logo.webp"
             alt="The Role Room Talents"
             sx={{ height: 24, width: 'auto', objectFit: 'contain', display: 'block' }}
           />
@@ -82,7 +79,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
       >
         <Box
           component="img"
-          src="/theroleroom-app-icon-1024-transparent.png"
+          src="/role-room-assets/TheRoleRoom_Logo.webp"
           alt="The Role Room"
           sx={{
             width: '100%',
