@@ -8,7 +8,14 @@ Markedssjef-modus trenger dem.
 
 ## Flyt
 
-**Web** (`LoginModal`, dekker `/login` og `/leadgrid/login`):
+**Web — kun Leadgrid-flaten.** `LoginModal` er delt mellom CreatorHub (`/login`),
+admin-hosten, Role Room og Leadgrid. LinkedIn-knappen vises bare på Leadgrid:
+`isLeadgridLoginSurface()` (`lib/creatorhubLinkedInAuth.ts`) er sann på en
+Leadgrid-dedikert host (`leadgrid.no`, `www.leadgrid.no`,
+`leadgrid.theroleroom.com` — se `isLeadgridDedicatedHost`) og på `/leadgrid`-stier
+når Leadgrid serveres fra en delt host (`/leadgrid/login`). Andre steder hentes
+ikke engang `login-status`.
+
 
 1. «Fortsett med LinkedIn» → `POST /api/auth/linkedin/oauth/start` `{returnPath, browserOrigin}`
    → `{authorizationUrl}`; state `lgn_<32 hex>` lagres i databasen (10 min).
@@ -60,6 +67,8 @@ forbeholder partnerprogrammet (`docs/evidence/2026-09-linkedin-oidc-login-claims
 - `LINKEDIN_LOGIN_ENABLED=off` skjuler knappene (web og iOS spør `GET /api/auth/linkedin/login-status`)
   og gir 503 på start. Ingen deploy nødvendig.
 - Migrasjon `0627_user_auth_identities.sql`.
+- Backend-rutene er ikke flate-begrenset; det er knappen som er det. Skal LinkedIn
+  åpnes for en annen flate, utvid `isLeadgridLoginSurface()`.
 
 ## Ikke i denne fasen
 
