@@ -598,6 +598,7 @@ import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-ro
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
 import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
+import { setupRoleRoomSceneRoleCardsRoutes } from "./role-room-scene-role-cards-routes";
 import { setupRoleRoomEidRoutes } from "./role-room-eid-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
@@ -25731,6 +25732,13 @@ setupRoleRoomTalentSignupRoutes({
 // Skuespiller-CV: krediteringer (migrasjon 0611). Rolle, produksjon,
 // regissør og år — strukturen resume_url aldri ga oss.
 setupRoleRoomTalentCreditsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Rollekort for settet (migrasjon 0628): produksjonen ser alle kortene i en
+// scene, personen åpner sin egen lenke og ser bare sitt eget.
+setupRoleRoomSceneRoleCardsRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,

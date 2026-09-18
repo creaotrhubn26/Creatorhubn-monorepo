@@ -8,6 +8,7 @@ import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
+import RoleCardPage, { isRoleCardPath } from '@/components/role-room/components/RoleCardPage';
 import LeadgridLanding from '@/pages/leadgrid-landing';
 import LeadgridPricingPage from '@/pages/leadgrid-pricing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
@@ -848,6 +849,10 @@ function CastingStandaloneRuntimeContent() {
   const talentsAppPage = useMemo(() => parseTalentsAppPage(), []);
   const isInviteAcceptPath = useMemo(() => isPartnerInviteAcceptPath(), []);
   const isProposalAcceptPath = useMemo(() => isTalentProposalAcceptPath(), []);
+  // /statist/<token> — rollekortet. Offentlig med vilje: en statist har
+  // sjelden konto, og et innloggingskrav på settet er et krav ingen rekker
+  // å oppfylle.
+  const isRollekortPath = useMemo(() => isRoleCardPath(), []);
   const isSignupPath = useMemo(() => isTalentSignupPath(), []);
   // Talents-appen er hjemmet for et innlogget talent: både /talents-stiene og
   // rot-flaten. Talentportalen (?portal=talent / /talentportal) er prosjekt-
@@ -908,7 +913,9 @@ function CastingStandaloneRuntimeContent() {
                 : 'Laster Role Room…'}
           </Typography>
         </Box>
-      ) : isSignupPath ? (
+      ) : isRollekortPath ? (
+          <RoleCardPage />
+        ) : isSignupPath ? (
           <TalentSignupPage />
         ) : isInviteAcceptPath ? (
           <PartnerInviteAcceptPage />
