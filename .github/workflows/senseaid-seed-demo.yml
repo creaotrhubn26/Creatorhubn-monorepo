@@ -1,0 +1,93 @@
+name: SenseAid Explore seed demo-innhold
+
+# Legger demo-innholdet for SenseAid Explore (Kvadraturen, Akershus festning,
+# Operaen: område, kategorier, seks steder, manus nb/en, quiz) inn i
+# produksjonsdatabasen med `npm run seed:reiseguide`. Idempotent (upsert på
+# id): kan kjøres på nytt etter hver manusendring i
+# backend/server/reiseguide-demo-data.ts. Rører aldri lydfiler, teksting eller
+# brukernes vurderinger og besøkslogg.
+#
+# Manuell trigger, og jobben ligger i Production-miljøet slik at den bruker
+# samme PRODUCTION_MIGRATION_DATABASE_URL som auto-migrate-on-push.yml.
+# Migrasjonene 0640–0642 må være kjørt først (deploy-porten gjør det ved merge).
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: senseaid-seed-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    name: Seed SenseAid Explore demo-innhold
+    environment: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Validate production credentials
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::PRODUCTION_MIGRATION_DATABASE_URL is not configured in the Production environment"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          node -e 'const u=new URL(process.env.DATABASE_URL);if(!["postgres:","postgresql:"].includes(u.protocol)||!u.hostname||!u.username)process.exit(1)'
+
+      # tsx er en devDependency, så dev-pakker må med (i motsetning til
+      # migrasjonsrunneren). --ignore-scripts hopper over puppeteer-nedlasting.
+      - name: Install backend runtime (tsx + pg)
+        run: npm ci --prefix backend --workspaces=false --omit=optional --ignore-scripts
+
+      - name: Verify migration role before writing
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          MIGRATION_LOGIN_ROLE: creatorhub_migration_login
+          MIGRATION_OWNER_ROLE: creatorhub_schema_owner
+          MIGRATION_OWNED_SCHEMAS: public
+        run: node backend/scripts/run-production-migrations.mjs --preflight-only
+
+      - name: Seed demo-innhold (idempotent)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          MIGRATION_OWNER_ROLE: creatorhub_schema_owner
+        run: npm run seed:reiseguide --prefix backend
+
+      - name: Verify public API serves the demo area
+        env:
+          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+        run: |
+          set -euo pipefail
+          areas=$(curl -fsS --connect-timeout 5 --max-time 20 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas")
+          count=$(jq -r '.areas | length' <<<"$areas")
+          slug=$(jq -r '.areas[0].slug // ""' <<<"$areas")
+          echo "Områder i produksjon: $count (første: $slug)"
+          if [ "$count" -lt 1 ]; then
+            echo "::error::GET /api/guide/areas returnerte ingen områder etter seed"
+            exit 1
+          fi
+          area=$(curl -fsS --connect-timeout 5 --max-time 20 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas/$slug?lang=nb")
+          poi_count=$(jq -r '.pois | length' <<<"$area")
+          echo "Steder i $slug: $poi_count"
+          if [ "$poi_count" -lt 6 ]; then
+            echo "::error::Ventet minst 6 steder i $slug, fikk $poi_count"
+            exit 1
+          fi
