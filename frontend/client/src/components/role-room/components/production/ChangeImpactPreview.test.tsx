@@ -361,3 +361,63 @@ describe('emptyImpactText', () => {
       .toBe('Ingenting annet henger på scenene som endres. Endringen berører bare dagen selv.');
   });
 });
+
+describe('ChangeImpactPreview ved rekvisittendring', () => {
+  const propBase = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    currentDate: '2026-09-20',
+    targetDate: '2026-09-20',
+    currentPropIds: ['prop-1'],
+  };
+
+  it('spør ikke når rekvisittene ikke redigeres', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChangeImpactPreview {...propBase} targetPropIds={null} />);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('ber om konsekvensen når en rekvisitt legges til', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromPropIds: ['prop-1'],
+      toPropIds: ['prop-1', 'prop-2'],
+      impacts: [{
+        area: 'prop_availability',
+        severity: 'warning',
+        summary: '1 av rekvisittene som legges til er ikke merket tilgjengelige.',
+        action: 'Bekreft at de kan skaffes til denne dagen.',
+        count: 1,
+      }],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...propBase} targetPropIds={['prop-1', 'prop-2']} />);
+
+    expect(await screen.findByText('1 av rekvisittene som legges til er ikke merket tilgjengelige.'))
+      .toBeInTheDocument();
+    const url = String((globalThis.fetch as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url).toContain('propIds=prop-1%2Cprop-2');
+  });
+
+  it('navngir rekvisitter i overskriften, ikke scener', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromPropIds: ['prop-1'],
+      toPropIds: [],
+      impacts: [{ area: 'prop_load', severity: 'warning', summary: 'Noe overlapper.', count: 1 }],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...propBase} targetPropIds={[]} />);
+
+    expect(await screen.findByText('Endrede rekvisitter påvirker:')).toBeInTheDocument();
+  });
+});
