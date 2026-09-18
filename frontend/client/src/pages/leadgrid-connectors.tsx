@@ -1,5 +1,5 @@
 /**
- * leadgrid-connectors.tsx — Connector Marketplace på /leadgrid/connectors
+ * leadgrid-connectors.tsx — Integrasjoner på /leadgrid/connectors
  *
  * Skiller tydelig mellom implementerte import-/API-flater og planlagte,
  * ferdigpakkede connectorer. Offentlige påstander skal samsvare med
@@ -20,7 +20,6 @@ import {
   FileJson,
   FileSpreadsheet,
   Key,
-  Link2,
   MessageSquare,
   Sparkles,
   Users,
@@ -59,23 +58,6 @@ const CONNECTORS: Connector[] = [
     ],
     docUrl: "/leadgrid/import",
     docLabel: "Åpne import",
-  },
-  {
-    id: "url_research",
-    name: "URL Research",
-    description:
-      "Innebygd research-flyt for innloggede workspaces, med opptil 100 nettadresser per batch.",
-    Icon: Link2,
-    status: "live",
-    category: "automation",
-    features: [
-      "1–100 nettadresser per batch",
-      "Brønnøysund-, nettsted- og kartresearch",
-      "Løpende fremdrift",
-      "Retry eller hopp over per element",
-    ],
-    docUrl: "/leadgrid/import",
-    docLabel: "Åpne URL Research",
   },
   {
     id: "public_api",
@@ -175,7 +157,7 @@ const CONNECTORS: Connector[] = [
     id: "slack",
     name: "Slack",
     description:
-      "Planlagt ferdigpakket connector. Leadgrid har foreløpig ingen offentlig utgående webhook-katalog.",
+      "Planlagt ferdigpakket connector. Utgående webhooks til Slack kan settes opp i workflow-flyten i dag, men inngår ikke i Public API v1-kontrakten.",
     Icon: MessageSquare,
     status: "planned",
     category: "communication",
@@ -189,7 +171,7 @@ const CONNECTORS: Connector[] = [
     id: "teams",
     name: "Microsoft Teams",
     description:
-      "Planlagt ferdigpakket connector. Ingen offentlig Teams-sync er publisert ennå.",
+      "Planlagt ferdigpakket connector. Utgående webhooks til Teams kan settes opp i workflow-flyten i dag, men det finnes ingen toveis Teams-sync.",
     Icon: Users,
     status: "planned",
     category: "communication",
@@ -239,7 +221,7 @@ export default function LeadgridConnectorsPage() {
           Public Leads API v1 · prosjektbundet som standard
         </div>
         <h1 className="mb-4 bg-gradient-to-r from-purple-300 to-pink-400 bg-clip-text text-5xl font-bold text-transparent md:text-6xl">
-          Connector Marketplace
+          Integrasjoner
         </h1>
         <p className="mx-auto mb-4 max-w-2xl text-xl text-purple-100/60">
           Bruk de innebygde importverktøyene eller bygg direkte mot en
@@ -344,9 +326,10 @@ export default function LeadgridConnectorsPage() {
             </span>
           </div>
           <div className="mb-6 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100/80">
-            API v1 har ikke en generell lead-oppdateringsrute eller en offentlig
-            utgående webhook-katalog ennå. Ikke bygg en toveis-sync som
-            forutsetter disse funksjonene.
+            API v1 har ikke en generell lead-oppdateringsrute, og utgående
+            webhooks inngår ikke i API v1-kontrakten. Webhook-destinasjoner
+            settes opp i workflow-flyten. Ikke bygg en toveis-sync som
+            forutsetter en lead-oppdateringsrute.
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/leadgrid/utviklere">

@@ -1,0 +1,71 @@
+claim: >
+  HubSpot CRM-data kan hentes med et Private App-token (Authorization: Bearer
+  mot api.hubapi.com) uten godkjenningsrunde hos HubSpot. Objekt-API-ene ligger
+  på datostemplede stier (i dag /crm/objects/2026-03/{objectType}), lesing
+  krever per-objekt-scopes (crm.objects.contacts.read, crm.objects.deals.read),
+  listing pagineres med limit (maks 100) + after-cursor, og batch/read tar maks
+  100 id-er per kall. Kontakt↔selskap-kobling leses via associations v4.
+  Rate-grenser for privat distribuerte apper er burst per app: 100 kall/10 s på
+  Free/Starter, 190 på Professional/Enterprise, med daglige grenser delt på
+  tvers av alle apper i kundens konto.
+source_type: api_reference
+source: >
+  HubSpot Developer Documentation (developers.hubspot.com), hentet via
+  context7 /websites/developers_hubspot 2026-09-18:
+  https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines
+  https://developers.hubspot.com/docs/api-reference/latest/crm/using-object-apis
+  https://developers.hubspot.com/docs/guides/crm/using-object-apis
+  https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/guide
+  https://developers.hubspot.com/docs/api-reference/latest/crm/objects/deals/get-deals
+  https://developers.hubspot.com/docs/developer-tooling/sdks/node
+authority_tier: 1
+vendor: HubSpot
+product: CRM API (objects, associations, pipelines)
+version_scope: "Datostemplet objekt-API: 2026-03. Private app tokens, associations v4."
+publication_date: "2026-09-18"
+valid_from: "2026-09-18"
+valid_to: "2027-03-18"
+evidence_summary: >
+  Repo-inventar (18.09.2026): NULL HubSpot-integrasjonskode. Ingen OAuth-klient,
+  ingen token-tabell, ingen sync-tjeneste, ingen webhook-mottaker, ingen
+  hubapi.com-kall, ingen npm-avhengighet. De ~15 treffene i levende tre er
+  doc-kommentarer som nevner HubSpot som kilde/mål, konkurrentdeteksjon på
+  prospekters nettsteder (market-intelligence/tech-stack-detection-service.ts),
+  en label i en admin-nedtrekksliste, og SEO/pris-tekst. Connector-siden
+  (leadgrid-connectors.tsx) merker HubSpot "planned", som er korrekt.
+interpretation: >
+  Private App-token er riktig vei for en migreringsjobb: kunden lager tokenet
+  selv i HubSpot, det krever ingen app-review, og en engangs-migrering trenger
+  bare lesescopes. OAuth-app ville kostet en godkjenningsrunde uten å gi
+  migreringen noe den trenger. Burst-grensen på 100-190 kall/10 s betyr at en
+  migrering av et større HubSpot-oppsett ikke kan ligge i en HTTP-request; den
+  må kjøre som bakgrunnsjobb med throttling og gjenopptakelse.
+project_impact: >
+  Migreringen er en ny kilde inn i en eksisterende motor, ikke et nytt
+  subsystem. leadgrid_import_batches (migrasjon 328) har allerede import_source,
+  column_mapping, dedupe_strategy og feiltellere; crm_customers har
+  import_source, import_batch_id og import_raw_data, så rå HubSpot-objekter kan
+  lagres for senere re-mapping uten nytt API-uttak. Prosjektavgrensning finnes
+  i project_id/organization_id/owner_user_id. Deals og pipeline-stadier er den
+  kostbare delen: Leadgrid har ingen pipeline-modell som speiler HubSpot-stadier,
+  og connector-siden lover i dag "Pipeline-mapping".
+confidence: strong_evidence
+decision: >
+  GO for engangs-migrering HubSpot -> Leadgrid på Private App-token, med
+  kontakter og selskaper først. Pipeline-mapping avklares separat før det
+  loves. Ingen toveis sync i denne fasen. Følg opp: den datostemplede
+  API-stien (2026-03) må bumpes når HubSpot ruller ny versjon; sjekk
+  usage-guidelines på nytt før lansering fordi rate-grensene varierer med
+  kundens HubSpot-nivå.
+affected:
+  - backend/server/leadgrid-import-routes.ts
+  - backend/migrations/328_leadgrid_lead_import.sql
+  - backend/server/integrations/integration-registry.ts
+  - frontend/client/src/pages/leadgrid-connectors.tsx
+  - frontend/client/src/pages/leadgrid-pricing.tsx
+lesson: >
+  Sjekk om en "ny integrasjon" egentlig er en ny kilde inn i en motor som
+  allerede finnes. Her var import-sporing, dedup og feltmapping bygget for to
+  år siden; det dyre er ikke uttaket fra vendoren, men målmodellen vi mangler
+  (pipeline-stadier). Avklar hvilke objekter vi faktisk kan ta imot FØR
+  connector-siden lover dem.
