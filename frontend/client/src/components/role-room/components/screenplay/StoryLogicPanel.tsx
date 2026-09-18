@@ -383,7 +383,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   const syncStatusColor = useMemo(() => {
     const status = syncMeta?.status ?? 'idle';
     if (status === 'synced') return '#10b981';
-    if (status === 'saving' || status === 'loading') return '#60a5fa';
+    if (status === 'saving' || status === 'loading') return '#93a4dc';
     if (status === 'conflict') return '#f59e0b';
     if (status === 'local_only') return '#93a4dc';
     if (status === 'error') return '#ef4444';
@@ -429,9 +429,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     return {
       '& .MuiOutlinedInput-root': {
         '& fieldset': {
-          borderColor: '#3b82f6 !important',
+          borderColor: '#3f51b5 !important',
           borderWidth: '2px !important',
-          boxShadow: '0 0 12px rgba(59, 130, 246, 0.4)',
+          boxShadow: '0 0 12px rgba(63, 81, 181, 0.4)',
         },
       },
       transition: 'all 0.3s ease',
@@ -1218,11 +1218,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             transition: 'border-color 220ms ease-out',
           },
           '&.Mui-focused fieldset': {
-            borderColor: '#60a5fa',
+            borderColor: '#93a4dc',
             borderWidth: '1.5px',
           },
           '&.Mui-focused': {
-            boxShadow: '0 0 0 4px rgba(96,165,250,0.16)',
+            boxShadow: '0 0 0 4px rgba(147, 164, 220,0.16)',
           },
         },
         // Scroll-margin slik at jumpToField-feltet ikke ender helt øverst
@@ -1290,7 +1290,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             onClick={saveToStorage}
             disabled={isSaving}
             sx={{
-              bgcolor: '#3b82f6',
+              bgcolor: '#3f51b5',
               '&:hover': { bgcolor: '#2563eb' },
             }}
           >
@@ -1304,7 +1304,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ color: '#fff' }}>Versjonshistorikk</Typography>
-            <Button size="small" onClick={() => saveVersion()} startIcon={<SaveIcon />} sx={{ color: '#60a5fa', textTransform: 'none' }}>
+            <Button size="small" onClick={() => saveVersion()} startIcon={<SaveIcon />} sx={{ color: '#93a4dc', textTransform: 'none' }}>
               Lagre øyeblikksbilde
             </Button>
           </Box>
@@ -1334,11 +1334,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           severity="info"
           onClose={() => setPremiseChangeAlert(null)}
           action={
-            <Button size="small" onClick={() => { saveVersion('Før premissendring'); setPremiseChangeAlert(null); }} sx={{ color: '#60a5fa', textTransform: 'none' }}>
+            <Button size="small" onClick={() => { saveVersion('Før premissendring'); setPremiseChangeAlert(null); }} sx={{ color: '#93a4dc', textTransform: 'none' }}>
               Lagre versjon
             </Button>
           }
-          sx={{ mb: 2, bgcolor: 'rgba(59,130,246,0.08)', color: '#93c5fd', '& .MuiAlert-icon': { color: '#3b82f6' } }}
+          sx={{ mb: 2, bgcolor: 'rgba(63, 81, 181,0.08)', color: '#93c5fd', '& .MuiAlert-icon': { color: '#3f51b5' } }}
         >
           {premiseChangeAlert}
         </Alert>
@@ -1368,7 +1368,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     width: '100%',
                     minHeight: 92,
                     px: 2, py: 1.5,
-                    '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.05)' },
+                    '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(63, 81, 181,0.05)' },
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -1511,8 +1511,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             <Box key={phase.key}>
               <Card
                 sx={{
-                  bgcolor: expandedPhase === phase.index ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)',
-                  border: expandedPhase === phase.index ? '1px solid rgba(59,130,246,0.45)' : '1px solid rgba(255,255,255,0.09)',
+                  bgcolor: expandedPhase === phase.index ? 'rgba(63, 81, 181,0.14)' : 'rgba(255,255,255,0.03)',
+                  border: expandedPhase === phase.index ? '1px solid rgba(63, 81, 181,0.45)' : '1px solid rgba(255,255,255,0.09)',
                   height: '100%',
                 }}
               >
@@ -1615,7 +1615,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     color: '#fff',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3f51b5' },
                   },
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
@@ -1639,7 +1639,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3f51b5' },
                   }}
                 >
                   {GENRES.map((genre) => (
@@ -1660,7 +1660,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3f51b5' },
                   }}
                 >
                   {availableSubGenres.map((sub) => (
@@ -1741,14 +1741,14 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                           }
                         }}
                         sx={{
-                          bgcolor: state.concept.tone.includes(tone) ? '#3b82f620' : 'rgba(255,255,255,0.05)',
-                          color: state.concept.tone.includes(tone) ? '#60a5fa' : '#9ca3af',
-                          border: state.concept.tone.includes(tone) ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                          bgcolor: state.concept.tone.includes(tone) ? '#3f51b520' : 'rgba(255,255,255,0.05)',
+                          color: state.concept.tone.includes(tone) ? '#93a4dc' : '#9ca3af',
+                          border: state.concept.tone.includes(tone) ? '1px solid #3f51b5' : '1px solid rgba(255,255,255,0.1)',
                           cursor: state.locks.concept ? 'not-allowed' : 'pointer',
                           '&:hover': {
-                            bgcolor: state.locks.concept ? undefined : '#3b82f610',
+                            bgcolor: state.locks.concept ? undefined : '#3f51b510',
                           },
-                          '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: 2 },
+                          '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: 2 },
                         }}
                       />
                     ))}
@@ -1935,7 +1935,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             number={2}
             title="Logline"
             purpose="Definer historiens DNA i én setning. Er den svak, bør du ikke gå videre."
-            icon={<CreateIcon sx={{ color: '#60a5fa' }} />}
+            icon={<CreateIcon sx={{ color: '#93a4dc' }} />}
             status={state.phaseStatus.logline}
             locked={state.locks.logline}
             onToggleLock={() => togglePhaseLock('logline')}
@@ -1947,9 +1947,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             severity="info"
             sx={{
               mb: 2,
-              bgcolor: 'rgba(59, 130, 246, 0.1)',
-              color: '#60a5fa',
-              '& .MuiAlert-icon': { color: '#3b82f6' },
+              bgcolor: 'rgba(63, 81, 181, 0.1)',
+              color: '#93a4dc',
+              '& .MuiAlert-icon': { color: '#3f51b5' },
             }}
           >
             <strong>Logline-formel:</strong> Når [HOVEDPERSON] må [MÅL], møter hen [ANTAGONISTISK KRAFT] — ellers [KONSEKVENSER].

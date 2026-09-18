@@ -331,9 +331,9 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                   cursor: cellEvents.length === 0 ? 'pointer' : 'default',
                   transition: 'background-color 160ms ease-out',
                   '&:hover': cellEvents.length === 0
-                    ? { bgcolor: tint ? tint.hover : 'rgba(96,165,250,0.06)' }
+                    ? { bgcolor: tint ? tint.hover : 'rgba(147, 164, 220,0.06)' }
                     : undefined,
-                  '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: -2 },
+                  '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: -2 },
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 0.4,

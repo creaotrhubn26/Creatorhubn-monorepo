@@ -76,7 +76,7 @@ const ROLE_META: Record<string, {
   },
   promotor: {
     label: 'Promotør',
-    color: '#60a5fa',
+    color: '#93a4dc',
     Icon: CampaignOutlinedIcon,
     description: 'Promoterer på event eller feltarbeid.',
   },

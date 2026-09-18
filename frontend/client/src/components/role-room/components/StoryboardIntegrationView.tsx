@@ -212,7 +212,7 @@ const BEAT_TAG_STYLES: Record<StoryboardBeatTag, { bg: string; fg: string }> = {
   BEAT: { bg: 'rgba(93, 118, 203,0.22)', fg: 'rgba(224, 219, 250,0.98)' },
   ACTION: { bg: 'rgba(239,68,68,0.22)', fg: 'rgba(254,202,202,0.98)' },
   DIALOGUE: { bg: 'rgba(16,185,129,0.2)', fg: 'rgba(209,250,229,0.98)' },
-  RESOLUTION: { bg: 'rgba(56,189,248,0.2)', fg: 'rgba(224,242,254,0.98)' },
+  RESOLUTION: { bg: 'rgba(93, 118, 203,0.2)', fg: 'rgba(223, 228, 243,0.98)' },
 };
 const FRAME_STATUS_META: Record<StoryboardFrameStatus, { label: string; color: string }> = {
   planned: { label: 'Planned', color: 'rgba(148,163,184,0.9)' },
@@ -319,8 +319,8 @@ const STYLE_PRESETS: Record<StylePresetId, StylePreset> = {
     id: 'sciFi',
     label: 'Sci-fi neon',
     description: 'Mørk neon-stil for cyberpunk og futuristisk sci-fi.',
-    brush: { type: 'marker', color: '#00d4ff', size: 5 },
-    palette: ['#00d4ff', '#3e3180', '#ffff00', '#00ff00', '#32127a', '#1b122c'],
+    brush: { type: 'marker', color: '#5d76cb', size: 5 },
+    palette: ['#5d76cb', '#3e3180', '#ffff00', '#00ff00', '#32127a', '#1b122c'],
     aiPromptSuffix: 'cyberpunk sci-fi concept art, neon-lit, holographic interfaces, dark atmospheric environment, rim light from magenta and cyan sources, futuristic architecture',
     canvasTint: '#2a3152',
   },
@@ -1459,7 +1459,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
           sx={{ 
             borderRadius: 0, 
             py: 0.5,
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            backgroundColor: 'rgba(63, 81, 181, 0.1)',
           }}
           action={
             <Tooltip title="Koble frame til denne posisjonen i manus">
@@ -1588,10 +1588,10 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 cursor: 'col-resize',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: splitDragging ? 'rgba(96, 165, 250, 0.22)' : 'rgba(148, 163, 184, 0.08)',
+                backgroundColor: splitDragging ? 'rgba(147, 164, 220, 0.22)' : 'rgba(148, 163, 184, 0.08)',
                 transition: 'background-color 120ms ease',
                 '&:hover': {
-                  backgroundColor: 'rgba(96, 165, 250, 0.2)',
+                  backgroundColor: 'rgba(147, 164, 220, 0.2)',
                 },
                 '&::before': {
                   content: '""',
@@ -2649,7 +2649,7 @@ const StoryboardView: React.FC<{
         sx={{
           p: 2,
           mb: 2,
-          border: '1px solid rgba(59, 130, 246, 0.25)',
+          border: '1px solid rgba(63, 81, 181, 0.25)',
           background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.8))',
         }}
       >
@@ -3430,7 +3430,7 @@ const StoryboardView: React.FC<{
                     sx={{
                       border: '1px solid rgba(148,163,184,0.28)',
                       background:
-                        'linear-gradient(180deg, rgba(10, 5, 21,0.96), rgba(15,23,42,0.96))',
+                        'linear-gradient(180deg, rgba(27, 18, 44,0.96), rgba(15,23,42,0.96))',
                     }}
                   >
                     <Box
@@ -3438,7 +3438,7 @@ const StoryboardView: React.FC<{
                         position: 'relative',
                         paddingTop: '56.25%',
                         borderBottom: '1px solid rgba(148,163,184,0.2)',
-                        bgcolor: 'rgba(10, 5, 21,0.6)',
+                        bgcolor: 'rgba(27, 18, 44,0.6)',
                       }}
                     >
                       {previewUrl ? (
@@ -3478,7 +3478,7 @@ const StoryboardView: React.FC<{
                           <Chip
                             label={`Kamera: ${item.frame.cameraAngle}`}
                             size="small"
-                            sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'rgba(224,242,254,0.95)' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: 'rgba(223, 228, 243,0.95)' }}
                           />
                           <Chip
                             label={`Varighet: ${item.frame.duration}s`}
@@ -3609,10 +3609,10 @@ const StoryboardView: React.FC<{
                       minWidth: 320,
                       maxWidth: 320,
                       p: 1.25,
-                      borderColor: isDropTarget ? 'rgba(59,130,246,0.9)' : 'rgba(148,163,184,0.35)',
+                      borderColor: isDropTarget ? 'rgba(63, 81, 181,0.9)' : 'rgba(148,163,184,0.35)',
                       background: isDropTarget
                         ? 'linear-gradient(180deg, rgba(30,58,138,0.28), rgba(15,23,42,0.96))'
-                        : 'linear-gradient(180deg, rgba(10, 5, 21,0.96), rgba(15,23,42,0.96))',
+                        : 'linear-gradient(180deg, rgba(27, 18, 44,0.96), rgba(15,23,42,0.96))',
                     }}
                   >
                     <Stack direction="row" alignItems="center" spacing={1} justifyContent="space-between">
@@ -3687,7 +3687,7 @@ const StoryboardView: React.FC<{
                                       pt: '56.25%',
                                       borderRadius: 1,
                                       overflow: 'hidden',
-                                      bgcolor: 'rgba(10, 5, 21,0.55)',
+                                      bgcolor: 'rgba(27, 18, 44,0.55)',
                                     }}
                                   >
                                     {previewUrl ? (
@@ -3857,7 +3857,7 @@ const StoryboardView: React.FC<{
                   borderRadius: 1,
                   border: '1px solid',
                   borderColor: 'divider',
-                  backgroundColor: 'rgba(10, 5, 21,0.85)',
+                  backgroundColor: 'rgba(27, 18, 44,0.85)',
                 }}
               />
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -4458,16 +4458,16 @@ const StoryboardFrameCard: React.FC<{
         flexDirection: 'column',
         cursor: 'pointer',
         borderRadius: isThumbnailMode ? 2 : 3,
-        border: isActive ? '1px solid rgba(14, 165, 233, 0.95)' : '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(10, 5, 21,0.96), rgba(15,23,42,0.96))',
+        border: isActive ? '1px solid rgba(63, 81, 181, 0.95)' : '1px solid rgba(148,163,184,0.22)',
+        background: 'linear-gradient(180deg, rgba(27, 18, 44,0.96), rgba(15,23,42,0.96))',
         boxShadow: isActive
-          ? '0 0 0 1px rgba(14, 165, 233, 0.45), 0 16px 28px rgba(10, 5, 21,0.46)'
-          : '0 8px 20px rgba(10, 5, 21,0.35)',
+          ? '0 0 0 1px rgba(63, 81, 181, 0.45), 0 16px 28px rgba(27, 18, 44,0.46)'
+          : '0 8px 20px rgba(27, 18, 44,0.35)',
         transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
         '&:hover': {
           transform: 'translateY(-2px)',
-          borderColor: 'rgba(14, 165, 233, 0.75)',
-          boxShadow: '0 14px 24px rgba(10, 5, 21,0.42)',
+          borderColor: 'rgba(63, 81, 181, 0.75)',
+          boxShadow: '0 14px 24px rgba(27, 18, 44,0.42)',
         },
       }}
     >
@@ -4513,13 +4513,13 @@ const StoryboardFrameCard: React.FC<{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              bgcolor: 'rgba(10, 5, 21,0.55)',
+              bgcolor: 'rgba(27, 18, 44,0.55)',
             }}
           >
             <Stack spacing={1} alignItems="center">
               {showDrawButton ? (
                 <>
-                  <BrushIcon sx={{ fontSize: 48, color: 'rgba(56, 189, 248, 0.95)' }} />
+                  <BrushIcon sx={{ fontSize: 48, color: 'rgba(93, 118, 203, 0.95)' }} />
                   <Typography variant="caption" color="rgba(226,232,240,0.88)">
                     {drawPrompt || 'Trykk for å tegne med Apple Pencil'}
                   </Typography>
@@ -4608,12 +4608,12 @@ const StoryboardFrameCard: React.FC<{
                 position: 'absolute',
                 top: 8,
                 right: 8,
-                bgcolor: 'rgba(10, 5, 21,0.82)',
+                bgcolor: 'rgba(27, 18, 44,0.82)',
                 color: 'rgba(226,232,240,0.95)',
                 border: '1px solid rgba(148,163,184,0.38)',
                 '&:hover': {
                   bgcolor: 'rgba(15,23,42,0.95)',
-                  borderColor: 'rgba(56,189,248,0.75)',
+                  borderColor: 'rgba(93, 118, 203,0.75)',
                 },
               }}
             >
@@ -4662,14 +4662,14 @@ const StoryboardFrameCard: React.FC<{
             aria-label="Kamerainnstillinger"
             sx={{
               bgcolor: 'rgba(15,23,42,0.92)',
-              color: 'rgba(125,211,252,0.98)',
-              border: '1px solid rgba(56,189,248,0.65)',
-              boxShadow: '0 4px 12px rgba(10, 5, 21,0.55)',
+              color: 'rgba(147, 164, 220,0.98)',
+              border: '1px solid rgba(93, 118, 203,0.65)',
+              boxShadow: '0 4px 12px rgba(27, 18, 44,0.55)',
               backdropFilter: 'blur(4px)',
               transition: 'all 140ms ease',
               '&:hover': {
                 bgcolor: 'rgba(30,41,59,0.95)',
-                borderColor: 'rgba(56,189,248,0.95)',
+                borderColor: 'rgba(93, 118, 203,0.95)',
                 transform: 'translateY(-1px)',
               },
             }}
@@ -4687,7 +4687,7 @@ const StoryboardFrameCard: React.FC<{
               bgcolor: 'rgba(15,23,42,0.92)',
               color: 'rgba(253,230,138,0.98)',
               border: '1px solid rgba(251,191,36,0.68)',
-              boxShadow: '0 4px 12px rgba(10, 5, 21,0.55)',
+              boxShadow: '0 4px 12px rgba(27, 18, 44,0.55)',
               backdropFilter: 'blur(4px)',
               transition: 'all 140ms ease',
               '&:hover': {
@@ -4862,7 +4862,7 @@ const PHASE_COLORS: Record<string, string> = {
   SETUP: 'rgba(100,116,139,0.75)',
   TENSION: 'rgba(245,158,11,0.8)',
   ACTION: 'rgba(239,68,68,0.8)',
-  RESOLUTION: 'rgba(56,189,248,0.8)',
+  RESOLUTION: 'rgba(93, 118, 203,0.8)',
 };
 
 // Board-strip (mockup 2, kjerne-layouten): én rad per shot — shot-kode-boks,

@@ -259,7 +259,7 @@ export default function PitchDeckPage() {
           px: { xs: 2, md: 4 },
           py: 2,
           borderTop: `1px solid ${palette.borderSubtle}`,
-          bgcolor: 'rgba(16, 11, 30, 0.6)',
+          bgcolor: 'rgba(42, 49, 82, 0.6)',
           backdropFilter: 'blur(8px)',
           zIndex: 5,
         }}

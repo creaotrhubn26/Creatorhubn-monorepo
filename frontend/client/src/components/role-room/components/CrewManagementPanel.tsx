@@ -247,13 +247,13 @@ const DEPT_LABELS: Record<DeptKey, string> = {
 const DEPT_COLORS: Record<DeptKey, string> = {
   production: '#ef4444',
   camera: '#5d76cb',
-  lighting: '#3b82f6',
-  sound: '#06b6d4',
+  lighting: '#3f51b5',
+  sound: '#3f51b5',
   post: '#f59e0b',
   art: '#ec4899',
   wardrobe: '#93a4dc',
   makeup_hair: '#fb7185',
-  transport: 'var(--role-cyan, #22d3ee)',
+  transport: 'var(--role-cyan, #5d76cb)',
   other: '#64748b',
 };
 
@@ -288,7 +288,7 @@ const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
 const STATUS_META: Record<CrewStatus | 'none', { label: string; color: string; bg: string; Icon: React.ElementType }> = {
   confirmed:   { label: 'Bekreftet',    color: '#10b981', bg: 'rgba(16,185,129,0.18)',  Icon: ConfirmedIcon },
   pending:     { label: 'Venter',       color: '#ffb800', bg: 'rgba(255,184,0,0.18)',   Icon: PendingIcon },
-  invited:     { label: 'Invitert',     color: '#3b82f6', bg: 'rgba(59,130,246,0.18)',  Icon: InvitedIcon },
+  invited:     { label: 'Invitert',     color: '#3f51b5', bg: 'rgba(63, 81, 181,0.18)',  Icon: InvitedIcon },
   unavailable: { label: 'Utilgjengelig',color: '#ef4444', bg: 'rgba(239,68,68,0.18)',   Icon: UnavailableIcon },
   none:        { label: '—',            color: '#64748b', bg: 'rgba(100,116,139,0.12)', Icon: PendingIcon },
 };
@@ -392,7 +392,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
       flexDirection: 'column',
       border: '1px solid rgba(93, 118, 203,0.32)',
       borderRadius: 2,
-      bgcolor: 'rgba(24, 18, 43,0.84)',
+      bgcolor: 'rgba(42, 61, 86,0.84)',
       backdropFilter: 'blur(6px)',
       boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
     }}>
@@ -734,8 +734,8 @@ const DOOD_COLORS: Record<CrewDOODCode, { bg: string; text: string }> = {
   WF:  { bg: 'rgba(16,185,129,0.85)',  text: '#fff' },
   SWF: { bg: 'rgba(16,185,129,0.85)',  text: '#fff' },
   H:   { bg: 'rgba(255,184,0,0.85)',   text: '#000' },
-  T:   { bg: 'rgba(59,130,246,0.85)',  text: '#fff' },
-  TF:  { bg: 'rgba(59,130,246,0.85)',  text: '#fff' },
+  T:   { bg: 'rgba(63, 81, 181,0.85)',  text: '#fff' },
+  TF:  { bg: 'rgba(63, 81, 181,0.85)',  text: '#fff' },
   O:   { bg: 'rgba(96,125,139,0.4)',   text: 'rgba(255,255,255,0.5)' },
 };
 
@@ -840,7 +840,7 @@ function AssignShootDayDialog({
       PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 3 } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
-        <CalendarMonthIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+        <CalendarMonthIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
         Tilordne {member.name} til innspillingsdager
       </DialogTitle>
       <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.1)', p: 0 }}>
@@ -848,7 +848,7 @@ function AssignShootDayDialog({
           <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', mb: 0.5 }}>Enhet</Typography>
           <RadioGroup row value={unit} onChange={e => setUnit(e.target.value as 'A' | 'B')}>
             {(['A', 'B'] as const).map(u => (
-              <FormControlLabel key={u} value={u} control={<Radio size="small" sx={{ color: 'var(--role-cyan, #00d4ff)', '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' } }} />}
+              <FormControlLabel key={u} value={u} control={<Radio size="small" sx={{ color: 'var(--role-cyan, #5d76cb)', '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' } }} />}
                 label={<Typography sx={{ fontSize: 13, color: '#fff' }}>{u}-enhet</Typography>} />
             ))}
           </RadioGroup>
@@ -892,7 +892,7 @@ function AssignShootDayDialog({
                           sx={{ fontSize: 11, color: '#ffb800', borderColor: '#ffb800', minWidth: 36, py: 0.25, px: 0.5 }}>H</Button>
                         <Button size="small" variant="outlined"
                           onClick={() => onAssign(member.id, day.id, day.date ?? '', 'travel', unit, day.callTime ?? '07:00')}
-                          sx={{ fontSize: 11, color: '#3b82f6', borderColor: '#3b82f6', minWidth: 36, py: 0.25, px: 0.5 }}>T</Button>
+                          sx={{ fontSize: 11, color: '#3f51b5', borderColor: '#3f51b5', minWidth: 36, py: 0.25, px: 0.5 }}>T</Button>
                       </>
                     ) : (
                       <Tooltip title="Fjern fra denne dagen">
@@ -942,12 +942,12 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
       anchor="bottom"
       open={open}
       onClose={onClose}
-      PaperProps={{ sx: { bgcolor: '#1c2128', borderTop: '2px solid rgba(0,212,255,0.3)', borderRadius: '12px 12px 0 0', maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' } }}
+      PaperProps={{ sx: { bgcolor: '#1c2128', borderTop: '2px solid rgba(93, 118, 203,0.3)', borderRadius: '12px 12px 0 0', maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' } }}
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2.5, pt: 2, pb: 1, flexShrink: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <DoodIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: 22 }} />
+          <DoodIcon sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: 22 }} />
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Days Out Of Days</Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
@@ -1065,11 +1065,11 @@ function CallsheetDrawer({ open, onClose, projectId, crew, selectedDay: initialD
       anchor="right"
       open={open}
       onClose={onClose}
-      PaperProps={{ sx: { width: { xs: '100vw', md: 700, lg: 800 }, bgcolor: '#13181e', borderLeft: '2px solid rgba(0,212,255,0.25)', display: 'flex', flexDirection: 'column' } }}
+      PaperProps={{ sx: { width: { xs: '100vw', md: 700, lg: 800 }, bgcolor: '#13181e', borderLeft: '2px solid rgba(93, 118, 203,0.25)', display: 'flex', flexDirection: 'column' } }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, px: 2, pt: 2, pb: 1, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CallsheetIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+          <CallsheetIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
           <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Callsheet-generator</Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1158,8 +1158,8 @@ export function CrewManagementPanel({
   const roleTabAccent = 'var(--role-accent, #5d76cb)';
   const roleTabAccentHover = '#5d76cb';
   const roleTabAccentSoft = 'rgba(93, 118, 203,0.18)';
-  const roleSurface = 'rgba(24, 18, 43,0.84)';
-  const roleSurfaceMuted = 'rgba(33, 28, 59,0.72)';
+  const roleSurface = 'rgba(42, 61, 86,0.84)';
+  const roleSurfaceMuted = 'rgba(60, 78, 109,0.72)';
   const roleBorder = 'var(--role-border, rgba(93, 118, 203,0.32))';
   const roleText = '#ffffff';
   const roleTextMuted = 'rgba(255,255,255,0.92)';
@@ -2395,10 +2395,10 @@ export function CrewManagementPanel({
       drone_pilot: '#5d76cb', // Purple for camera
       video_editor: '#f59e0b', // Orange for post-production
       colorist: '#f59e0b', // Orange for post-production
-      gaffer: '#3b82f6', // Blue for lighting
-      grip: '#3b82f6', // Blue for grip
-      sound_engineer: '#06b6d4', // Cyan for audio
-      audio_mixer: '#06b6d4', // Cyan for audio
+      gaffer: '#3f51b5', // Blue for lighting
+      grip: '#3f51b5', // Blue for grip
+      sound_engineer: '#3f51b5', // Cyan for audio
+      audio_mixer: '#3f51b5', // Cyan for audio
       vfx_artist: '#f59e0b', // Orange for post-production
       motion_graphics: '#f59e0b', // Orange for post-production
       production_assistant: '#22c55e', // Green for production support
@@ -2408,7 +2408,7 @@ export function CrewManagementPanel({
       makeup_artist: '#ec4899',
       wardrobe: '#ec4899',
       stylist: '#ec4899',
-      collaborator: '#3b82f6',
+      collaborator: '#3f51b5',
       other: '#607d8b',
     };
     return colors[role] || '#607d8b';
@@ -2461,7 +2461,7 @@ export function CrewManagementPanel({
       crewByRole[member.role] = (crewByRole[member.role] || 0) + 1;
     });
 
-    const crewIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const crewIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5d76cb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
       <circle cx="9" cy="7" r="4"/>
       <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
@@ -2478,16 +2478,16 @@ export function CrewManagementPanel({
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
     .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #00d4ff; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #00d4ff; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #5d76cb; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #5d76cb; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
     .title svg { flex-shrink: 0; }
     .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #00d4ff; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #00d4ff; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #5d76cb; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #5d76cb; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
     .summary-title svg { flex-shrink: 0; }
     .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
     .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #00d4ff; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #5d76cb; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
@@ -2497,7 +2497,7 @@ export function CrewManagementPanel({
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #00d4ff 0%, #00b8e6 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #5d76cb 0%, #00b8e6 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -3012,7 +3012,7 @@ export function CrewManagementPanel({
         height: '100%',
         minHeight: 0,
         bgcolor: 'transparent',
-        backgroundImage: `linear-gradient(180deg, rgba(10, 5, 21, 0.9) 0%, rgba(10, 5, 21, 0.94) 100%), ${rolePanelBackdrop}`,
+        backgroundImage: `linear-gradient(180deg, rgba(27, 18, 44, 0.9) 0%, rgba(27, 18, 44, 0.94) 100%), ${rolePanelBackdrop}`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}
@@ -3215,7 +3215,7 @@ export function CrewManagementPanel({
           <Tooltip title="Daglig teknisk callsheet">
             <IconButton
               onClick={() => { setCallsheetCrewScope('technical'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
-              sx={{ color: '#38bdf8', ...focusVisibleStyles }}
+              sx={{ color: '#5d76cb', ...focusVisibleStyles }}
             >
               <MovieIcon sx={{ fontSize: 20 }} />
             </IconButton>
@@ -3555,8 +3555,8 @@ export function CrewManagementPanel({
               { icon: <CheckCircleIcon />, count: stats.availableNow, label: 'Tilgjengelige nå', color: '#10b981' },
               { icon: <ScheduleIcon />, count: stats.busyCount, label: 'Opptatt', color: '#f59e0b' },
               { icon: <HourglassIcon />, count: stats.pendingCount, label: 'Venter på svar', color: '#93a4dc' },
-              { icon: <PersonAddIcon />, count: stats.invitedCount, label: 'Invitert', color: '#60a5fa' },
-              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: 'var(--role-cyan, #22d3ee)' },
+              { icon: <PersonAddIcon />, count: stats.invitedCount, label: 'Invitert', color: '#93a4dc' },
+              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: 'var(--role-cyan, #5d76cb)' },
             ]}
           />
         </Box>
@@ -3731,7 +3731,7 @@ export function CrewManagementPanel({
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                 <Chip label={`Dobbelbooking: ${stats.totalConflicts}`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }} />
                 <Chip label={`Utenfor tilgjengelighet: ${riskInsights.availabilityConflicts.length}`} size="small" sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', border: '1px solid rgba(255,184,0,0.4)' }} />
-                <Chip label={`Overtidsrisiko: ${riskInsights.overtimeRisk.length}`} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }} />
+                <Chip label={`Overtidsrisiko: ${riskInsights.overtimeRisk.length}`} size="small" sx={{ bgcolor: 'rgba(63, 81, 181,0.15)', color: '#93a4dc', border: '1px solid rgba(63, 81, 181,0.4)' }} />
                 <Chip label={`Manglende kontaktinfo: ${riskInsights.missingContact.length}`} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc', border: '1px solid rgba(93, 118, 203,0.4)' }} />
               </Box>
             </Box>
@@ -3904,7 +3904,7 @@ export function CrewManagementPanel({
                               status === 'hold'
                                 ? '#ffb800'
                                 : status === 'travel'
-                                ? '#60a5fa'
+                                ? '#93a4dc'
                                 : status === 'release'
                                 ? '#94a3b8'
                                 : status === 'unknown'
@@ -4020,19 +4020,19 @@ export function CrewManagementPanel({
             // Scroll indicator shadow
             '&::-webkit-scrollbar': { height: 8 },
             '&::-webkit-scrollbar-track': { bgcolor: 'rgba(255,255,255,0.05)' },
-            '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(0,212,255,0.3)', borderRadius: 4 },
+            '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 118, 203,0.3)', borderRadius: 4 },
             ...(pinNameColumn && {
               '& th:nth-of-type(1), & td:nth-of-type(1)': {
                 position: 'sticky',
                 left: 0,
                 zIndex: 4,
-                bgcolor: 'rgba(16, 11, 30, 0.98)',
+                bgcolor: 'rgba(42, 49, 82, 0.98)',
               },
               '& th:nth-of-type(2), & td:nth-of-type(2)': {
                 position: 'sticky',
                 left: 52,
                 zIndex: 3,
-                bgcolor: 'rgba(16, 11, 30, 0.96)',
+                bgcolor: 'rgba(42, 49, 82, 0.96)',
               },
             }),
             ...(pinNameColumn && pinContactColumn && {
@@ -4040,7 +4040,7 @@ export function CrewManagementPanel({
                 position: 'sticky',
                 left: 280,
                 zIndex: 2,
-                bgcolor: 'rgba(16, 11, 30, 0.95)',
+                bgcolor: 'rgba(42, 49, 82, 0.95)',
               },
             }),
             ...(compactMode && {
@@ -4065,7 +4065,7 @@ export function CrewManagementPanel({
                     aria-label="Velg alle crewmedlemmer"
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
-                      '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                      '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                     }}
                   />
                 </TableCell>
@@ -4074,7 +4074,7 @@ export function CrewManagementPanel({
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #5d76cb)' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -4084,7 +4084,7 @@ export function CrewManagementPanel({
                     active={sortField === 'role'}
                     direction={sortField === 'role' ? sortDirection : 'asc'}
                     onClick={() => handleSort('role')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #5d76cb)' } }}
                   >
                     Rolle
                   </TableSortLabel>
@@ -4095,7 +4095,7 @@ export function CrewManagementPanel({
                     active={sortField === 'rate'}
                     direction={sortField === 'rate' ? sortDirection : 'asc'}
                     onClick={() => handleSort('rate')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #5d76cb)' } }}
                   >
                     Fast honorar
                   </TableSortLabel>
@@ -4105,7 +4105,7 @@ export function CrewManagementPanel({
                     active={sortField === 'availability'}
                     direction={sortField === 'availability' ? sortDirection : 'asc'}
                     onClick={() => handleSort('availability')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #5d76cb)' } }}
                   >
                     Tilgjengelighet
                   </TableSortLabel>
@@ -4826,16 +4826,16 @@ export function CrewManagementPanel({
                       )}
                       {/* ── DOOD strip + shoot day assignments ── */}
                       {productionDays.length > 0 && (
-                        <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.12)' }}>
+                        <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'rgba(93, 118, 203,0.06)', border: '1px solid rgba(93, 118, 203,0.12)' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                              <DoodIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #00d4ff)' }} />
-                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'var(--role-cyan, #00d4ff)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              <DoodIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #5d76cb)' }} />
+                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'var(--role-cyan, #5d76cb)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                                 Innspillingsdager
                               </Typography>
                             </Box>
                             <Tooltip title="Administrer tilordninger">
-                              <IconButton size="small" onClick={() => handleAssignToScene(member)} sx={{ color: 'rgba(0,212,255,0.7)', p: 0.5, ...focusVisibleStyles }}>
+                              <IconButton size="small" onClick={() => handleAssignToScene(member)} sx={{ color: 'rgba(93, 118, 203,0.7)', p: 0.5, ...focusVisibleStyles }}>
                                 <ScheduleIcon sx={{ fontSize: 15 }} />
                               </IconButton>
                             </Tooltip>
@@ -4961,8 +4961,8 @@ export function CrewManagementPanel({
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
-                            color: 'rgba(0,212,255,0.7)',
-                            '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                            color: 'rgba(93, 118, 203,0.7)',
+                            '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
                             ...focusVisibleStyles,
                           }}
                         >
@@ -5166,7 +5166,7 @@ export function CrewManagementPanel({
               size="small"
               onClick={handleUndoDelete}
               startIcon={<UndoIcon />}
-              sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}
+              sx={{ color: 'var(--role-cyan, #5d76cb)', fontWeight: 600 }}
             >
               Angre
             </Button>
@@ -5212,7 +5212,7 @@ export function CrewManagementPanel({
           paper: {
             sx: {
               background:
-                'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(16, 11, 30,0.93) 52%, rgba(24, 18, 43,0.9) 100%)',
+                'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(42, 49, 82,0.93) 52%, rgba(42, 61, 86,0.9) 100%)',
               color: '#fff',
               // iPad-friendly: ensure dialog doesn't go off-screen
               maxHeight: { xs: '100%', sm: '90vh' },
@@ -5231,7 +5231,7 @@ export function CrewManagementPanel({
           zIndex: 100000,
           '& .MuiBackdrop-root': {
             zIndex: 99998,
-            bgcolor: 'rgba(10, 5, 21,0.86)',
+            bgcolor: 'rgba(27, 18, 44,0.86)',
             backdropFilter: 'blur(3px)',
             willChange: 'opacity',
           },
@@ -5337,7 +5337,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5346,7 +5346,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5356,7 +5356,7 @@ export function CrewManagementPanel({
                 sx={{
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                  '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                  '&.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                 }}
               >
                 Rolle
@@ -5389,7 +5389,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& .MuiSelect-select': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5443,7 +5443,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5452,7 +5452,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5484,7 +5484,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5493,7 +5493,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5523,7 +5523,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5532,7 +5532,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5557,7 +5557,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5566,7 +5566,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5689,7 +5689,7 @@ export function CrewManagementPanel({
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                       '& input': {
                         py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                       },
@@ -5702,7 +5702,7 @@ export function CrewManagementPanel({
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                     },
-                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                     '& .MuiFormHelperText-root': { 
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' },
@@ -5716,7 +5716,7 @@ export function CrewManagementPanel({
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                      '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                      '&.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                     }}
                   >
                     Invitasjonsstatus
@@ -5755,7 +5755,7 @@ export function CrewManagementPanel({
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                       '& .MuiSelect-select': {
                         py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                       },
@@ -5801,7 +5801,7 @@ export function CrewManagementPanel({
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                       '& textarea': {
                         py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                       },
@@ -5810,7 +5810,7 @@ export function CrewManagementPanel({
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                     },
-                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                   }}
                 />
                 {(() => {
@@ -5879,7 +5879,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5888,7 +5888,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5914,7 +5914,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5923,7 +5923,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
 
@@ -5941,7 +5941,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   '& textarea': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5950,7 +5950,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             />
             <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>

@@ -157,7 +157,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
               <IconButton
                 size="small" onClick={() => setAdding((a) => !a)}
                 aria-label="Ny leveranse"
-                sx={{ width: 44, height: 44, color: '#c3cbe6', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+                sx={{ width: 44, height: 44, color: '#c3cbe6', '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 } }}
               >
                 <AddIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -179,7 +179,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
               <Button
                 onClick={() => void handleCreate()} disabled={creating || !newTitle.trim()}
                 size="small"
-                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
+                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
               >
                 {creating ? 'Legger til…' : 'Legg til'}
               </Button>
@@ -250,7 +250,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
                     color: active ? '#0b1220' : 'rgba(226,232,240,0.86)',
                     background: active ? COLUMN_ACCENT[status] : 'rgba(255,255,255,0.03)',
                     border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.2)'}`,
-                    '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+                    '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 },
                   }}
                 >
                   {DELIVERABLE_STATUS_LABELS[status]} ({byStatus[status].length})
@@ -298,7 +298,7 @@ function DeliverableCard({
   const NextActionIcon = nextPublishes ? PublishIcon : NextIcon;
 
   return (
-    <Box sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.12)', borderLeft: `3px solid ${accent}`, background: 'rgba(10, 5, 21,0.4)', p: 1.1, opacity: busy ? 0.6 : 1 }}>
+    <Box sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.12)', borderLeft: `3px solid ${accent}`, background: 'rgba(27, 18, 44,0.4)', p: 1.1, opacity: busy ? 0.6 : 1 }}>
       <Typography sx={{ color: '#f7f9ff', fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
         {item.title}
       </Typography>
@@ -338,7 +338,7 @@ function DeliverableCard({
           <Tooltip title={prevLabel}>
             <span>
               <IconButton size="small" disabled={!onPrev || busy} onClick={onPrev} aria-label={prevLabel}
-                sx={{ width: 44, height: 44, color: prevRetracts ? '#fbbf24' : 'rgba(226,232,240,0.7)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
+                sx={{ width: 44, height: 44, color: prevRetracts ? '#fbbf24' : 'rgba(226,232,240,0.7)', '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 } }}>
                 <PrevIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </span>
@@ -346,7 +346,7 @@ function DeliverableCard({
           <Tooltip title={nextLabel}>
             <span>
               <IconButton size="small" disabled={!onNext || busy} onClick={onNext} aria-label={nextLabel}
-                sx={{ width: 44, height: 44, color: nextPublishes ? '#6ee7b7' : '#c3cbe6', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
+                sx={{ width: 44, height: 44, color: nextPublishes ? '#6ee7b7' : '#c3cbe6', '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 } }}>
                 <NextActionIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </span>

@@ -165,8 +165,8 @@ export default function CarouselImageSwapDialog({
               color: 'rgba(226,232,240,0.65)',
               textTransform: 'none',
             },
-            '& .Mui-selected': { color: '#22d3ee !important' },
-            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+            '& .Mui-selected': { color: '#5d76cb !important' },
+            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #5d76cb)' },
           }}
         >
           <Tab value="gallery" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Mine galleri" />

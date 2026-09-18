@@ -83,7 +83,7 @@ export function deriveClientNextPoints(
 
 const TONE_ICON: Record<ClientPointTone, React.ReactElement> = {
   action: <ActionIcon sx={{ color: '#fbbf24' }} />,
-  waiting: <WaitingIcon sx={{ color: '#60a5fa' }} />,
+  waiting: <WaitingIcon sx={{ color: '#93a4dc' }} />,
   done: <DoneIcon sx={{ color: '#34d399' }} />,
   info: <ClientIcon sx={{ color: '#93a4dc' }} />,
 };

@@ -126,7 +126,7 @@ export default function ConsentSignatureDialog({
         sx: {
           borderRadius: 4,
           overflow: 'hidden',
-          boxShadow: '0 24px 60px rgba(24, 18, 43, 0.25)',
+          boxShadow: '0 24px 60px rgba(42, 61, 86, 0.25)',
         },
       }}
     >

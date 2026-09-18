@@ -84,8 +84,8 @@ const WAREHOUSE_TAB_PANEL_SX = {
   m: { xs: 1.5, md: 2 },
   borderRadius: 2,
   border: '1px solid rgba(148,163,184,0.22)',
-  background: 'linear-gradient(150deg, rgba(10, 5, 21,0.74) 0%, rgba(15,23,42,0.68) 50%, rgba(30,41,59,0.56) 100%)',
-  boxShadow: '0 12px 30px rgba(10, 5, 21,0.26)',
+  background: 'linear-gradient(150deg, rgba(27, 18, 44,0.74) 0%, rgba(15,23,42,0.68) 50%, rgba(30,41,59,0.56) 100%)',
+  boxShadow: '0 12px 30px rgba(27, 18, 44,0.26)',
 };
 
 const WAREHOUSE_CONTROL_SX = {
@@ -588,8 +588,8 @@ export function WarehouseInventoryDialog({
           overflow: 'hidden',
           border: '1px solid rgba(148,163,184,0.26)',
           background:
-            'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.92) 52%, rgba(30,41,59,0.86) 100%)',
-          boxShadow: '0 26px 70px rgba(10, 5, 21,0.54)',
+            'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.92) 52%, rgba(30,41,59,0.86) 100%)',
+          boxShadow: '0 26px 70px rgba(27, 18, 44,0.54)',
           backdropFilter: 'blur(18px)',
         },
       }}
@@ -604,7 +604,7 @@ export function WarehouseInventoryDialog({
           py: 1.75,
           px: { xs: 2, md: 2.5 },
           background:
-            'linear-gradient(120deg, rgba(75, 61, 143,0.18) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.2) 100%)',
+            'linear-gradient(120deg, rgba(75, 61, 143,0.18) 0%, rgba(63, 81, 181,0.1) 52%, rgba(15,23,42,0.2) 100%)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -907,7 +907,7 @@ export function WarehouseInventoryDialog({
                   startIcon={<QrCodeIcon />}
                   onClick={() => selectedItem && openQrLabel(`${selectedItem.itemType}:${selectedItem.id}`)}
                   disabled={!selectedItem}
-                  sx={{ borderColor: 'rgba(147,197,253,0.52)', color: '#93c5fd', '&:hover': { borderColor: '#93c5fd', bgcolor: 'rgba(59,130,246,0.12)' } }}
+                  sx={{ borderColor: 'rgba(147,197,253,0.52)', color: '#93c5fd', '&:hover': { borderColor: '#93c5fd', bgcolor: 'rgba(63, 81, 181,0.12)' } }}
                 >
                   QR-etikett
                 </Button>
@@ -1340,7 +1340,7 @@ export function WarehouseInventoryDialog({
         fullWidth
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(255,255,255,0.1)',

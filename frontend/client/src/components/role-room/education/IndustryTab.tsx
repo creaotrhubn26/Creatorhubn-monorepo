@@ -153,7 +153,7 @@ export function IndustryTab() {
     { id: 'promotert', label: 'Promoterte', value: pipeline.filter((r) => r.status !== 'none').length, hint: 'På Talents-registeret', icon: <TalentIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
     { id: 'claimet', label: 'Overtatt av student', value: pipeline.filter((r) => r.status === 'claimed').length, hint: 'Studenten styrer selv', icon: <ClaimedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     { id: 'showreel', label: 'Med showreel', value: pipeline.filter((r) => r.hasShowreel).length, hint: 'Klar for visning', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
-    { id: 'sokbar', label: 'Søkbare', value: pipeline.filter((r) => r.searchable).length, hint: 'Dukker opp i casting-søk', icon: <SearchIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'sokbar', label: 'Søkbare', value: pipeline.filter((r) => r.searchable).length, hint: 'Dukker opp i casting-søk', icon: <SearchIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb' },
     { id: 'nsf', label: 'NSF-medlemmer', value: pipeline.filter((r) => r.nsfMember).length, hint: 'Fagforening (manuelt merket)', icon: <NsfIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
   ];
 
@@ -240,7 +240,7 @@ export function IndustryTab() {
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                 <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 10.5, fontWeight: 600, bgcolor: sc.bg, color: sc.color }} />
                 {r.hasShowreel && <Chip icon={<ShowreelIcon sx={{ fontSize: '12px !important' }} />} label="Showreel" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(236,72,153,0.12)', color: '#ec4899', '& .MuiChip-icon': { color: '#ec4899' } }} />}
-                {r.searchable && <Chip icon={<SearchIcon sx={{ fontSize: '12px !important' }} />} label="Søkbar" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(56,189,248,0.12)', color: '#38bdf8', '& .MuiChip-icon': { color: '#38bdf8' } }} />}
+                {r.searchable && <Chip icon={<SearchIcon sx={{ fontSize: '12px !important' }} />} label="Søkbar" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(93, 118, 203,0.12)', color: '#5d76cb', '& .MuiChip-icon': { color: '#5d76cb' } }} />}
                 {r.nsfMember && <Chip icon={<NsfIcon sx={{ fontSize: '12px !important' }} />} label="NSF" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(245,158,11,0.12)', color: '#f59e0b', '& .MuiChip-icon': { color: '#f59e0b' } }} />}
               </Stack>
               <Stack direction="row" spacing={0.25} sx={{ justifySelf: 'end' }} alignItems="center">

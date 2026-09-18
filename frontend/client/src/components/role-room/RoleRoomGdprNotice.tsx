@@ -49,7 +49,7 @@ interface CookieConsentSettings {
 // strukturelle form) — derfor ingen ny `declare global` her.
 
 const palette = {
-  bgCard: 'rgba(24, 18, 43, 0.96)',
+  bgCard: 'rgba(42, 61, 86, 0.96)',
   border: 'rgba(93, 118, 203, 0.32)',
   textPrimary: '#f7f9ff',
   textSecondary: 'rgba(195, 203, 230, 0.85)',
@@ -118,7 +118,7 @@ function persist(settings: CookieConsentSettings, method: string) {
 const CATEGORY = {
   analytics: {
     label: 'Analyse',
-    color: '#60a5fa',
+    color: '#93a4dc',
     title: 'Analysecookies',
     desc: 'Google Analytics (GA4) for å forstå hvordan besøkende bruker The Role Room. Hjelper oss å forbedre produktet. Ingen salg av data til tredjepart.',
     meta: 'Tjeneste: Google Analytics • Lagring: 2 år • Overføring: EU/EØS og USA',
@@ -375,8 +375,8 @@ export default function RoleRoomGdprNotice() {
         position: 'fixed', left: { xs: 12, md: 20 }, bottom: { xs: 12, md: 20 }, zIndex: 9998,
         borderRadius: '999px', textTransform: 'none', fontWeight: 700, px: 2, py: 0.8,
         color: palette.accentBright, borderColor: palette.border,
-        bgcolor: 'rgba(10, 5, 21,0.9)', backdropFilter: 'blur(12px)',
-        '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(10, 5, 21,0.96)' },
+        bgcolor: 'rgba(27, 18, 44,0.9)', backdropFilter: 'blur(12px)',
+        '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(27, 18, 44,0.96)' },
       }}
     >
       {hasSaved ? 'Administrer cookies' : 'Velg cookies'}

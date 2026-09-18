@@ -75,7 +75,7 @@ const ICON_MAP = {
   approval: ApprovalIcon, delivery: DeliveryIcon, meeting: MeetingIcon, activity: ActivityIcon,
 } as const;
 const ICON_COLOR = {
-  message: '#c3cbe6', request: '#fbbf24', upload: 'var(--role-cyan, #7dd3fc)',
+  message: '#c3cbe6', request: '#fbbf24', upload: 'var(--role-cyan, #93a4dc)',
   approval: '#86efac', delivery: '#c3cbe6', meeting: '#c3cbe6', activity: 'rgba(226,232,240,0.7)',
 } as const;
 
@@ -430,7 +430,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
       <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
         <StatChip icon={<UnansweredIcon sx={{ fontSize: 15 }} />} label={`${stats.openRequests} ubesvart`} tone="#fbbf24" />
         <StatChip icon={<PendingIcon sx={{ fontSize: 15 }} />} label={`${stats.pendingApproval} venter godkjenning`} tone="#c3cbe6" />
-        <StatChip icon={<UploadIcon sx={{ fontSize: 15 }} />} label={`${stats.uploads} opplastinger`} tone="#7dd3fc" />
+        <StatChip icon={<UploadIcon sx={{ fontSize: 15 }} />} label={`${stats.uploads} opplastinger`} tone="#93a4dc" />
       </Stack>
 
       {/* Tidslinje */}
@@ -443,7 +443,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           </Typography>
           <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75, justifyContent: 'center' }}>
             <Chip clickable onClick={() => { setProposeOpen(true); }} icon={<ScheduleIcon sx={{ fontSize: 15, color: '#c3cbe6 !important' }} />} label="Book møte" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(75, 61, 143,0.18)', border: '1px solid rgba(93, 118, 203,0.35)' }} />
-            <Chip clickable onClick={() => void requestUpload('brand_logo')} icon={<UploadIcon sx={{ fontSize: 15, color: '#7dd3fc !important' }} />} label="Be om logo" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.32)' }} />
+            <Chip clickable onClick={() => void requestUpload('brand_logo')} icon={<UploadIcon sx={{ fontSize: 15, color: '#93a4dc !important' }} />} label="Be om logo" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(93, 118, 203,0.14)', border: '1px solid rgba(93, 118, 203,0.32)' }} />
             <Chip clickable onClick={() => void sendToApproval()} icon={<ApprovalIcon sx={{ fontSize: 15, color: '#c3cbe6 !important' }} />} label="Send til godkjenning" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(195, 203, 230,0.14)', border: '1px solid rgba(195, 203, 230,0.32)' }} />
           </Stack>
         </Stack>
@@ -461,7 +461,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
       )}
 
       {/* Komposer */}
-      <Box sx={{ position: 'sticky', bottom: 0, pt: 1, background: 'linear-gradient(180deg, transparent, rgba(10, 5, 21,0.6) 30%)' }}>
+      <Box sx={{ position: 'sticky', bottom: 0, pt: 1, background: 'linear-gradient(180deg, transparent, rgba(27, 18, 44,0.6) 30%)' }}>
         <ToggleButtonGroup
           value={kind} exclusive size="small"
           onChange={(_, v) => { if (v) setKind(v); }}
@@ -514,7 +514,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           <IconButton
             ref={actionBtnRef}
             aria-label="Åpne Action (Cmd+K)" onClick={(e) => openActionLauncher(e.currentTarget)} disabled={busyAction}
-            sx={{ width: 46, height: 46, color: '#fff', borderRadius: 2, background: 'linear-gradient(135deg,#4b3d8f,#5d76cb)', boxShadow: actionSpotlight ? '0 0 0 3px rgba(93, 118, 203,0.4)' : 'none', '&:hover': { background: 'linear-gradient(135deg,#3e3180,#4b3d8f)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+            sx={{ width: 46, height: 46, color: '#fff', borderRadius: 2, background: 'linear-gradient(135deg,#4b3d8f,#5d76cb)', boxShadow: actionSpotlight ? '0 0 0 3px rgba(93, 118, 203,0.4)' : 'none', '&:hover': { background: 'linear-gradient(135deg,#3e3180,#4b3d8f)' }, '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 } }}
           >
             {busyAction ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ActionIcon />}
           </IconButton>
@@ -557,13 +557,13 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           {[
             { q: 'start google meet nå instant video', icon: <InstantMeetIcon sx={{ color: '#86efac' }} />, primary: 'Start Google Meet nå', secondary: 'Instant videomøte + del lenke', run: () => void startInstantMeet() },
             { q: 'foreslå book møte tid kalender', icon: <ScheduleIcon sx={{ color: '#c3cbe6' }} />, primary: 'Foreslå & book møte', secondary: 'Velg tid → Google Meet', run: () => { setActionAnchor(null); setProposeOpen(true); } },
-            { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
-            { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
+            { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #93a4dc)' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
+            { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #93a4dc)' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
             { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#c3cbe6' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
             { q: 'referer til leveranse fil møte video godkjenn', icon: <ReferenceIcon sx={{ color: '#fcd34d' }} />, primary: 'Referer til …', secondary: 'Leveranse, fil eller møte → klikkbart kort', run: () => void openReferencePicker() },
             // Produsent-only handlinger (vises kun når canUseInternal).
-            { q: 'ai utkast svar forslag claude', icon: <AiIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />, primary: 'AI: foreslå svar', secondary: 'Claude skriver et utkast i feltet', run: () => void runAiAssist('draft') },
-            { q: 'ai oppsummer sammendrag hva venter', icon: <SummaryIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />, primary: 'AI: oppsummer samtalen', secondary: 'Hva er status / hva venter på meg', run: () => void runAiAssist('summary') },
+            { q: 'ai utkast svar forslag claude', icon: <AiIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />, primary: 'AI: foreslå svar', secondary: 'Claude skriver et utkast i feltet', run: () => void runAiAssist('draft') },
+            { q: 'ai oppsummer sammendrag hva venter', icon: <SummaryIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />, primary: 'AI: oppsummer samtalen', secondary: 'Hva er status / hva venter på meg', run: () => void runAiAssist('summary') },
             // Produsent-only handlinger (vises kun når canUseInternal).
             ...(canUseInternal ? [
               { q: 'del budsjett økonomi publiser klient', icon: <BudgetIcon sx={{ color: '#86efac' }} />, primary: 'Del budsjett med klient', secondary: 'Publiser budsjettlinjer → klientens Økonomi', run: () => void shareBudget() },
@@ -613,7 +613,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
               ))}
               {refTab === 1 && refMaterials.map((m) => (
                 <ListItemButton key={m.id} onClick={() => void pickReference('material', m.id, m.originalName ?? m.title, { originalName: m.originalName })} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon><FileIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} /></ListItemIcon>
+                  <ListItemIcon><FileIcon sx={{ color: 'var(--role-cyan, #93a4dc)' }} /></ListItemIcon>
                   <ListItemText primary={m.originalName ?? m.title} secondary={m.entryType} />
                 </ListItemButton>
               ))}
@@ -689,7 +689,7 @@ function InlineUploadCard({ projectId, category, onUploaded }: { projectId: stri
     );
   }
   return (
-    <Box sx={{ mt: 0.7, p: 1, borderRadius: 1.5, border: '1px dashed rgba(124,211,252,0.4)', background: 'rgba(56,189,248,0.06)' }}>
+    <Box sx={{ mt: 0.7, p: 1, borderRadius: 1.5, border: '1px dashed rgba(124,211,252,0.4)', background: 'rgba(93, 118, 203,0.06)' }}>
       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" rowGap={0.75}>
         <FormControl size="small" sx={{ minWidth: 130 }}>
           <Select value={cat} onChange={(e) => setCat(e.target.value as MaterialCategory)} sx={{ color: '#f1f5f9', fontSize: '0.78rem', background: 'rgba(15,23,42,0.6)', '& .MuiSvgIcon-root': { color: 'rgba(226,232,240,0.6)' } }}>
@@ -697,7 +697,7 @@ function InlineUploadCard({ projectId, category, onUploaded }: { projectId: stri
           </Select>
         </FormControl>
         <Button onClick={() => inputRef.current?.click()} disabled={busy} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : <UploadIcon />}
-          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#082f49', background: 'linear-gradient(135deg,#7dd3fc,#38bdf8)', '&:hover': { background: 'linear-gradient(135deg,#38bdf8,#0ea5e9)' } }}>
+          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#2a3d56', background: 'linear-gradient(135deg,#93a4dc,#5d76cb)', '&:hover': { background: 'linear-gradient(135deg,#5d76cb,#3f51b5)' } }}>
           {busy ? `Laster opp ${pct}%` : 'Last opp her'}
         </Button>
         <input ref={inputRef} type="file" hidden onChange={(e) => { void onPick(e.target.files); e.target.value = ''; }} />
@@ -722,7 +722,7 @@ function FeedRow({ it, projectId, onCloseRequest, onChanged }: { it: FeedItem; p
   const meetLink = typeof it.meta?.meetLink === 'string' ? it.meta.meetLink : null;
   const isMeeting = it.linkedEntityType === 'meeting' || it.action === 'meeting';
   return (
-    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(10, 5, 21,0.4)', p: 1.1, display: 'flex', gap: 1 }}>
+    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(27, 18, 44,0.4)', p: 1.1, display: 'flex', gap: 1 }}>
       <Box sx={{ width: 32, height: 32, flexShrink: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}1a` }}>
         <Icon sx={{ fontSize: 17, color }} />
       </Box>
@@ -763,7 +763,7 @@ function FeedRow({ it, projectId, onCloseRequest, onChanged }: { it: FeedItem; p
           <Button
             onClick={() => void downloadMaterialFile({ id: it.linkedEntityId, projectId, originalName: String(it.meta?.originalName ?? it.meta?.refLabel ?? 'fil'), title: String(it.meta?.refLabel ?? 'fil') } as RoleRoomMaterial)}
             startIcon={<DownloadIcon />} size="small"
-            sx={{ mt: 0.7, textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#082f49', background: 'linear-gradient(135deg,#7dd3fc,#38bdf8)' }}>
+            sx={{ mt: 0.7, textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#2a3d56', background: 'linear-gradient(135deg,#93a4dc,#5d76cb)' }}>
             Last ned fil
           </Button>
         ) : null}

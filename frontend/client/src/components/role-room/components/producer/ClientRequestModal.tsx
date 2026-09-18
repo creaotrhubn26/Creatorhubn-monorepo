@@ -191,7 +191,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
           {template && template.expectedReturnData.length > 0 ? (
             <Alert
               severity="info"
-              sx={{ bgcolor: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}
+              sx={{ bgcolor: 'rgba(147, 164, 220,0.08)', border: '1px solid rgba(147, 164, 220,0.2)' }}
             >
               <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, mb: 0.4 }}>
                 Du venter på følgende fra klienten:
@@ -292,9 +292,9 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: 'var(--role-cyan, #22d3ee)',
+            bgcolor: 'var(--role-cyan, #5d76cb)',
             color: '#0b1226',
-            '&:hover': { bgcolor: '#06b6d4' },
+            '&:hover': { bgcolor: '#3f51b5' },
           }}
         >
           {submitting ? 'Sender…' : 'Send forespørsel'}

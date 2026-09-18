@@ -196,9 +196,9 @@ const getAgreementSignatureStyles = (
     };
   }
   return {
-    background: 'rgba(96,165,250,0.16)',
-    color: '#bfdbfe',
-    border: 'rgba(96,165,250,0.32)',
+    background: 'rgba(147, 164, 220,0.16)',
+    color: '#c3cbe6',
+    border: 'rgba(147, 164, 220,0.32)',
   };
 };
 
@@ -275,8 +275,8 @@ const getPhaseAccentStyles = (
     };
   }
   return {
-    border: emphasized ? 'rgba(56,189,248,0.45)' : 'rgba(148,163,184,0.22)',
-    background: emphasized ? 'rgba(14,116,144,0.22)' : 'rgba(15,23,42,0.45)',
+    border: emphasized ? 'rgba(93, 118, 203,0.45)' : 'rgba(148,163,184,0.22)',
+    background: emphasized ? 'rgba(63, 81, 181,0.22)' : 'rgba(15,23,42,0.45)',
     chipBackground: 'rgba(148,163,184,0.16)',
     chipColor: '#cbd5e1',
   };
@@ -981,12 +981,12 @@ export default function ProducerTimelinePanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(10, 5, 21,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(27, 18, 44,0.82) 100%)',
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
         <Stack direction="row" spacing={1} alignItems="center">
-          <ScheduleIcon sx={{ color: '#38bdf8' }} />
+          <ScheduleIcon sx={{ color: '#5d76cb' }} />
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
             Fase-tidslinje
           </Typography>
@@ -995,15 +995,15 @@ export default function ProducerTimelinePanel({
           size="small"
           label={`${totalItems} milepæler`}
           sx={{
-            bgcolor: 'rgba(56,189,248,0.14)',
-            color: '#bae6fd',
-            border: '1px solid rgba(56,189,248,0.35)',
+            bgcolor: 'rgba(93, 118, 203,0.14)',
+            color: '#c3cbe6',
+            border: '1px solid rgba(93, 118, 203,0.35)',
           }}
         />
       </Stack>
       <Stack direction="row" spacing={1} flexWrap="wrap">
         <Chip size="small" label={`Fullført ${statusSummary.completed}`} sx={{ bgcolor: 'rgba(74,222,128,0.16)', color: '#86efac' }} />
-        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'var(--role-cyan, #7dd3fc)' }} />
+        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: 'var(--role-cyan, #93a4dc)' }} />
         <Chip size="small" label={`Planlagt ${statusSummary.planned}`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
         <Chip size="small" label={`Blokkert ${statusSummary.blocked}`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fca5a5' }} />
         <Chip size="small" label={`Fremdrift ${completionPct}%`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />
@@ -1027,7 +1027,7 @@ export default function ProducerTimelinePanel({
             minHeight: 44,
           },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#38bdf8', height: 3 },
+          '& .MuiTabs-indicator': { backgroundColor: '#5d76cb', height: 3 },
         }}
       >
         <Tab value="tidslinje" label="Tidslinje & fremdrift" />
@@ -1039,7 +1039,7 @@ export default function ProducerTimelinePanel({
           display: plannerView === 'tidslinje' ? 'block' : 'none',
           borderRadius: 1.75,
           border: '1px solid rgba(148,163,184,0.22)',
-          background: 'rgba(10, 5, 21,0.34)',
+          background: 'rgba(27, 18, 44,0.34)',
           p: 1.25,
         }}
       >
@@ -1449,9 +1449,9 @@ export default function ProducerTimelinePanel({
                         p: 1,
                         bgcolor: highlightedItemId === item.id
                           ? 'rgba(251,191,36,0.08)'
-                          : 'rgba(10, 5, 21,0.45)',
+                          : 'rgba(27, 18, 44,0.45)',
                         boxShadow: highlightedItemId === item.id
-                          ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(10, 5, 21,0.22)'
+                          ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(27, 18, 44,0.22)'
                           : 'none',
                         transition: 'border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease',
                       }}
@@ -1529,9 +1529,9 @@ export default function ProducerTimelinePanel({
                             label="Shotlist"
                             sx={{
                               height: 22,
-                              bgcolor: 'rgba(14,165,233,0.18)',
-                              color: '#bae6fd',
-                              border: '1px solid rgba(125,211,252,0.35)',
+                              bgcolor: 'rgba(63, 81, 181,0.18)',
+                              color: '#c3cbe6',
+                              border: '1px solid rgba(147, 164, 220,0.35)',
                             }}
                           />
                         )}

@@ -1099,7 +1099,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               sx={{
                 color: curveMode ? '#fff' : danceFlowColors.textMuted,
                 borderColor: danceFlowColors.borderSoft,
-                bgcolor: curveMode ? 'rgba(96,165,250,0.18)' : 'transparent',
+                bgcolor: curveMode ? 'rgba(147, 164, 220,0.18)' : 'transparent',
                 fontSize: 11, px: 1,
               }}
             >

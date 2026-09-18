@@ -207,9 +207,9 @@ const PROJECT_WORKFLOW_STATUS_COLORS: Record<ProducerWorkflowProjectStatus, { co
     border: 'rgba(148,163,184,0.38)',
   },
   awaiting_client: {
-    color: '#bfdbfe',
-    background: 'rgba(59,130,246,0.14)',
-    border: 'rgba(96,165,250,0.4)',
+    color: '#c3cbe6',
+    background: 'rgba(63, 81, 181,0.14)',
+    border: 'rgba(147, 164, 220,0.4)',
   },
   changes_requested: {
     color: '#fde68a',
@@ -1966,7 +1966,7 @@ export default function ProducerClientReviewPanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(27, 18, 44,0.82) 100%)',
       }}
     >
       <Stack spacing={1}>
@@ -2056,8 +2056,8 @@ export default function ProducerClientReviewPanel({
                       px: 1,
                       py: 0.35,
                       borderRadius: 999,
-                      border: '1px solid rgba(56,189,248,0.45)',
-                      bgcolor: 'rgba(56,189,248,0.14)',
+                      border: '1px solid rgba(93, 118, 203,0.45)',
+                      bgcolor: 'rgba(93, 118, 203,0.14)',
                       cursor: 'help',
                     }}
                   >
@@ -2066,16 +2066,16 @@ export default function ProducerClientReviewPanel({
                         width: 7,
                         height: 7,
                         borderRadius: '50%',
-                        bgcolor: '#38bdf8',
+                        bgcolor: '#5d76cb',
                         animation: 'rrPresencePulse 1.8s ease-out infinite',
                         '@keyframes rrPresencePulse': {
-                          '0%': { boxShadow: '0 0 0 0 rgba(56,189,248,0.55)' },
-                          '70%': { boxShadow: '0 0 0 6px rgba(56,189,248,0)' },
-                          '100%': { boxShadow: '0 0 0 0 rgba(56,189,248,0)' },
+                          '0%': { boxShadow: '0 0 0 0 rgba(93, 118, 203,0.55)' },
+                          '70%': { boxShadow: '0 0 0 6px rgba(93, 118, 203,0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(93, 118, 203,0)' },
                         },
                       }}
                     />
-                    <Typography sx={{ color: '#bae6fd', fontSize: '0.7rem', fontWeight: 700 }}>
+                    <Typography sx={{ color: '#c3cbe6', fontSize: '0.7rem', fontWeight: 700 }}>
                       {`${presentClientLabel} ser på nå`}
                     </Typography>
                   </Box>
@@ -2152,18 +2152,18 @@ export default function ProducerClientReviewPanel({
                       disabled={savingVisibility === opt.key}
                       icon={
                         visible
-                          ? <VisibilityIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />
+                          ? <VisibilityIcon sx={{ fontSize: '0.8rem !important', color: '#93a4dc !important' }} />
                           : <VisibilityOffIcon sx={{ fontSize: '0.8rem !important', color: '#94a3b8 !important' }} />
                       }
                       label={opt.label}
                       sx={{
                         height: 20,
                         cursor: 'pointer',
-                        bgcolor: visible ? 'rgba(56,189,248,0.14)' : 'rgba(148,163,184,0.10)',
-                        color: visible ? '#bae6fd' : '#94a3b8',
+                        bgcolor: visible ? 'rgba(93, 118, 203,0.14)' : 'rgba(148,163,184,0.10)',
+                        color: visible ? '#c3cbe6' : '#94a3b8',
                         fontWeight: 700,
                         fontSize: '0.68rem',
-                        border: visible ? '1px solid rgba(56,189,248,0.35)' : '1px dashed rgba(148,163,184,0.4)',
+                        border: visible ? '1px solid rgba(93, 118, 203,0.35)' : '1px dashed rgba(148,163,184,0.4)',
                         opacity: visible ? 1 : 0.72,
                       }}
                     />
@@ -2232,11 +2232,11 @@ export default function ProducerClientReviewPanel({
                         label={name.length > 26 ? `${name.slice(0, 24)}…` : name}
                         sx={{
                           height: 20,
-                          bgcolor: 'rgba(59,130,246,0.14)',
-                          color: '#bfdbfe',
+                          bgcolor: 'rgba(63, 81, 181,0.14)',
+                          color: '#c3cbe6',
                           fontWeight: 700,
                           fontSize: '0.68rem',
-                          border: '1px solid rgba(59,130,246,0.35)',
+                          border: '1px solid rgba(63, 81, 181,0.35)',
                           cursor: 'pointer',
                         }}
                       />
@@ -2281,12 +2281,12 @@ export default function ProducerClientReviewPanel({
               ? '1px solid rgba(251,191,36,0.22)'
               : projectWorkflowStatus === 'approved'
                 ? '1px solid rgba(16,185,129,0.2)'
-                : '1px solid rgba(96,165,250,0.16)',
+                : '1px solid rgba(147, 164, 220,0.16)',
             background: projectWorkflowStatus === 'changes_requested'
               ? 'rgba(251,191,36,0.08)'
               : projectWorkflowStatus === 'approved'
                 ? 'rgba(16,185,129,0.08)'
-                : 'rgba(59,130,246,0.08)',
+                : 'rgba(63, 81, 181,0.08)',
           }}
         >
           <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
@@ -2354,7 +2354,7 @@ export default function ProducerClientReviewPanel({
             { key: 'open', label: 'Åpne', value: reviewOverviewCounts.open, helper: 'Må følges opp', color: '#fcd34d' },
             { key: 'changes', label: 'Endringer', value: reviewOverviewCounts.changes + reviewOverviewCounts.rejected, helper: 'Krever ny runde', color: '#fb923c' },
             { key: 'approved', label: 'Godkjent', value: reviewOverviewCounts.approved, helper: 'Kan brukes videre', color: '#34d399' },
-            { key: 'total', label: 'Totalt', value: reviewOverviewCounts.total, helper: 'Alle saker', color: '#bfdbfe' },
+            { key: 'total', label: 'Totalt', value: reviewOverviewCounts.total, helper: 'Alle saker', color: '#c3cbe6' },
           ].map((card) => (
             <Box
               key={card.key}
@@ -2392,11 +2392,11 @@ export default function ProducerClientReviewPanel({
                 textTransform: 'none',
                 fontWeight: 800,
                 borderColor: 'rgba(148,163,184,0.28)',
-                bgcolor: reviewStatusFilter === option.value ? 'rgba(96,165,250,0.24)' : 'rgba(15,23,42,0.42)',
+                bgcolor: reviewStatusFilter === option.value ? 'rgba(147, 164, 220,0.24)' : 'rgba(15,23,42,0.42)',
                 color: reviewStatusFilter === option.value ? '#eff6ff' : 'rgba(226,232,240,0.88)',
                 '&:hover': {
-                  borderColor: 'rgba(96,165,250,0.5)',
-                  bgcolor: reviewStatusFilter === option.value ? 'rgba(96,165,250,0.32)' : 'rgba(30,41,59,0.72)',
+                  borderColor: 'rgba(147, 164, 220,0.5)',
+                  bgcolor: reviewStatusFilter === option.value ? 'rgba(147, 164, 220,0.32)' : 'rgba(30,41,59,0.72)',
                 },
               }}
             >
@@ -2473,7 +2473,7 @@ export default function ProducerClientReviewPanel({
         ) : (
           <Stack spacing={1.1} sx={{ mt: 1.1 }}>
             <Stack direction="row" spacing={0.75} flexWrap="wrap">
-              <Chip size="small" label={`Brieffelter ${clientBriefReadyCount}/6`} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#dbeafe' }} />
+              <Chip size="small" label={`Brieffelter ${clientBriefReadyCount}/6`} sx={{ bgcolor: 'rgba(63, 81, 181,0.18)', color: '#dfe4f3' }} />
               <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: '#dfe4f3' }} />
               {Object.entries(clientMaterialsByType).slice(0, 3).map(([type, count]) => (
                 <Chip
@@ -2523,7 +2523,7 @@ export default function ProducerClientReviewPanel({
                   p: 1,
                   borderRadius: 1.25,
                   border: '1px solid rgba(148,163,184,0.14)',
-                  background: 'rgba(10, 5, 21,0.46)',
+                  background: 'rgba(27, 18, 44,0.46)',
                 }}
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -2531,7 +2531,7 @@ export default function ProducerClientReviewPanel({
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                       {review.title}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.78rem', mt: 0.2, lineHeight: 1.4 }}>
+                    <Typography sx={{ color: 'rgba(195, 203, 230,0.9)', fontSize: '0.78rem', mt: 0.2, lineHeight: 1.4 }}>
                       {`${getProducerReviewTypeLabel(review.review_type)} · ${getProducerReviewStatusLabel(review.status)}`}
                     </Typography>
                     {review.description ? (
@@ -2568,7 +2568,7 @@ export default function ProducerClientReviewPanel({
                   p: 1,
                   borderRadius: 1.25,
                   border: '1px solid rgba(148,163,184,0.14)',
-                  background: 'rgba(10, 5, 21,0.46)',
+                  background: 'rgba(27, 18, 44,0.46)',
                 }}
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -2576,7 +2576,7 @@ export default function ProducerClientReviewPanel({
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                       {task.title}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.78rem', mt: 0.2, lineHeight: 1.4 }}>
+                    <Typography sx={{ color: 'rgba(195, 203, 230,0.9)', fontSize: '0.78rem', mt: 0.2, lineHeight: 1.4 }}>
                       {[
                         PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
                         PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status],
@@ -2659,7 +2659,7 @@ export default function ProducerClientReviewPanel({
                           ? 'rgba(48, 31, 132,0.16)'
                           : isAccountAccessMoment
                             ? 'rgba(15,118,110,0.14)'
-                          : 'rgba(10, 5, 21,0.46)',
+                          : 'rgba(27, 18, 44,0.46)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -2669,15 +2669,15 @@ export default function ProducerClientReviewPanel({
                               size="small"
                               label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                               sx={{
-                                bgcolor: isContentLogicMoment ? 'rgba(147, 164, 220,0.18)' : 'rgba(59,130,246,0.14)',
-                                color: isContentLogicMoment ? '#eef1fb' : '#bfdbfe',
+                                bgcolor: isContentLogicMoment ? 'rgba(147, 164, 220,0.18)' : 'rgba(63, 81, 181,0.14)',
+                                color: isContentLogicMoment ? '#eef1fb' : '#c3cbe6',
                               }}
                             />
                             {isContentLogicMoment ? (
                               <Chip
                                 size="small"
                                 label={contentLogicMomentLabel}
-                                sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#cffafe' }}
+                                sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
                               />
                             ) : null}
                             {isAccountAccessMoment && accountAccessPlatform ? (
@@ -2690,7 +2690,7 @@ export default function ProducerClientReviewPanel({
                                 <Chip
                                   size="small"
                                   label={PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[accountAccessPlatform]}
-                                  sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                                  sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                                 />
                               </>
                             ) : null}
@@ -2718,17 +2718,17 @@ export default function ProducerClientReviewPanel({
                             {moment.detail}
                           </Typography>
                           {linkedDeliveryItem && linkedDeliveryVariantResolution ? (
-                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.76rem', mt: 0.32 }}>
+                            <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.76rem', mt: 0.32 }}>
                               {`Logo i leveransen: ${linkedDeliveryVariantResolution.resolvedLabel} · ${linkedDeliveryVariantResolution.selectionLabel}`}
                             </Typography>
                           ) : null}
                           {isContentLogicMoment ? (
-                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.76rem', mt: 0.3 }}>
+                            <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.76rem', mt: 0.3 }}>
                               Klienten godkjenner hook, CTA og proof points her før storyboard og leveranse låses.
                             </Typography>
                           ) : null}
                           {isAccountAccessMoment ? (
-                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.76rem', mt: 0.3 }}>
+                            <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.76rem', mt: 0.3 }}>
                               Klienten må avklare invite, OAuth eller sikker publiseringstilgang før leveransen kan sendes helt videre.
                             </Typography>
                           ) : null}
@@ -2810,7 +2810,7 @@ export default function ProducerClientReviewPanel({
             </FormControl>
             {isEconomyManagedDraftType ? (
               <Box sx={{ flex: 1, minWidth: 280 }}>
-                <Alert severity="info" sx={{ bgcolor: 'rgba(37,99,235,0.12)', color: '#dbeafe', height: '100%' }}>
+                <Alert severity="info" sx={{ bgcolor: 'rgba(37,99,235,0.12)', color: '#dfe4f3', height: '100%' }}>
                   {economyRedirectCopy.title}. {economyRedirectCopy.description}
                 </Alert>
               </Box>
@@ -2845,7 +2845,7 @@ export default function ProducerClientReviewPanel({
                   label={selectedApprovalTemplate
                     ? `${getProducerReviewTypeLabel(selectedApprovalTemplate)} styres i økonomi`
                     : `${getProducerReviewTypeLabel(newType)} styres i økonomi`}
-                  sx={{ bgcolor: 'rgba(96,165,250,0.14)', color: '#bfdbfe' }}
+                  sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#c3cbe6' }}
                 />
                 <Chip
                   size="small"
@@ -2951,8 +2951,8 @@ export default function ProducerClientReviewPanel({
             sx={{
               p: 1.05,
               borderRadius: 1.6,
-              border: '1px solid rgba(96,165,250,0.2)',
-              background: 'rgba(8,47,73,0.28)',
+              border: '1px solid rgba(147, 164, 220,0.2)',
+              background: 'rgba(42, 61, 86,0.28)',
             }}
           >
             <Stack spacing={0.8}>
@@ -2961,14 +2961,14 @@ export default function ProducerClientReviewPanel({
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                     Mobilreview
                   </Typography>
-                  <Typography sx={{ color: 'rgba(191,219,254,0.76)', fontSize: '0.78rem' }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.76)', fontSize: '0.78rem' }}>
                     {`${mobileReviewIndex + 1} av ${visibleReviewItems.length} · Swipe sideveis mellom elementene`}
                   </Typography>
                 </Box>
                 <Chip
                   size="small"
                   label={getProducerReviewStatusLabel(mobileFocusedReview.status)}
-                  sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }}
+                  sx={{ bgcolor: 'rgba(63, 81, 181,0.18)', color: '#c3cbe6' }}
                 />
               </Stack>
               <Stack direction="row" spacing={0.5} alignItems="center">
@@ -3112,7 +3112,7 @@ export default function ProducerClientReviewPanel({
                         ? 'rgba(15,118,110,0.12)'
                       : 'rgba(15,23,42,0.55)',
                   boxShadow: highlightedReviewId === review.id
-                    ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(10, 5, 21,0.22)'
+                    ? '0 0 0 1px rgba(251,191,36,0.12), 0 12px 32px rgba(27, 18, 44,0.22)'
                     : 'none',
                   transition: 'border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease',
                 }}
@@ -3129,7 +3129,7 @@ export default function ProducerClientReviewPanel({
                         <Chip
                           size="small"
                           label={contentLogicMomentLabel}
-                          sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#cffafe' }}
+                          sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
                         />
                       </Stack>
                     ) : null}
@@ -3145,7 +3145,7 @@ export default function ProducerClientReviewPanel({
                             key={platform}
                             size="small"
                             label={PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]}
-                            sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                            sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                           />
                         ))}
                       </Stack>
@@ -3155,7 +3155,7 @@ export default function ProducerClientReviewPanel({
                       {reviewMetaLine}
                     </Typography>
                     {reviewContextLine ? (
-                      <Typography sx={{ color: 'rgba(191,219,254,0.88)', fontSize: '0.78rem', mt: 0.28, lineHeight: 1.45 }}>
+                      <Typography sx={{ color: 'rgba(195, 203, 230,0.88)', fontSize: '0.78rem', mt: 0.28, lineHeight: 1.45 }}>
                         {reviewContextLine}
                       </Typography>
                     ) : null}
@@ -3230,12 +3230,12 @@ export default function ProducerClientReviewPanel({
                             <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem', mt: 0.18 }}>
                               {`${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${entry.accessScope || 'Scope ikke satt'}`}
                             </Typography>
-                            <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.75rem', mt: 0.18 }}>
+                            <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.75rem', mt: 0.18 }}>
                               {`Invite / konto: ${entry.inviteTarget || entry.accountLabel || 'Ikke satt'}${entry.clientOwnerLabel ? ` · Eier: ${entry.clientOwnerLabel}` : ''}`}
                             </Typography>
                           </Box>
                         ))}
-                        <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.75rem', mt: 0.1 }}>
+                        <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.75rem', mt: 0.1 }}>
                           2-faktor skal bli hos kontoeier. Role Room skal bare styre invite, OAuth og status.
                         </Typography>
                       </Stack>
@@ -3249,11 +3249,11 @@ export default function ProducerClientReviewPanel({
                         mt: 0.9,
                         p: 0.85,
                         borderRadius: 1.2,
-                        border: '1px solid rgba(59,130,246,0.2)',
+                        border: '1px solid rgba(63, 81, 181,0.2)',
                         bgcolor: 'rgba(15,23,42,0.42)',
                       }}
                     >
-                      <Typography sx={{ color: '#bfdbfe', fontSize: '0.78rem', fontWeight: 700 }}>
+                      <Typography sx={{ color: '#c3cbe6', fontSize: '0.78rem', fontWeight: 700 }}>
                         {`${linkedDeliveryItem.title} · ${linkedDeliveryVariantResolution.resolvedLabel}`}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.75rem', mt: 0.18 }}>
@@ -3266,7 +3266,7 @@ export default function ProducerClientReviewPanel({
                       mt: 0.9,
                       p: 0.95,
                       borderRadius: 1.2,
-                      border: '1px solid rgba(59,130,246,0.2)',
+                      border: '1px solid rgba(63, 81, 181,0.2)',
                       bgcolor: 'rgba(15,23,42,0.42)',
                     }}
                   >
@@ -3278,7 +3278,7 @@ export default function ProducerClientReviewPanel({
                         <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.78rem', mt: 0.18 }}>
                           {`${linkedDeliveryItem.title} · ${linkedDeliveryItem.channel} · ${linkedDeliveryItem.format || 'Format ikke satt'}`}
                         </Typography>
-                        <Typography sx={{ color: '#bfdbfe', fontSize: '0.78rem', fontWeight: 700, mt: 0.24 }}>
+                        <Typography sx={{ color: '#c3cbe6', fontSize: '0.78rem', fontWeight: 700, mt: 0.24 }}>
                           {`Brukes nå: ${linkedDeliveryVariantResolution.resolvedLabel}`}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.76rem', mt: 0.18 }}>
@@ -3295,7 +3295,7 @@ export default function ProducerClientReviewPanel({
                           </Typography>
                         ) : null}
                         {savingDeliveryLogoById[linkedDeliveryItem.id] ? (
-                          <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.74rem', mt: 0.24 }}>
+                          <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.74rem', mt: 0.24 }}>
                             Lagrer logovalg for leveransen...
                           </Typography>
                         ) : null}
@@ -3324,8 +3324,8 @@ export default function ProducerClientReviewPanel({
                           sx={{
                             color: '#f8fafc',
                             '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' },
-                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(96,165,250,0.42)' },
-                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(96,165,250,0.65)' },
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(147, 164, 220,0.42)' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(147, 164, 220,0.65)' },
                           }}
                         >
                           {DELIVERY_LOGO_SELECTION_OPTIONS.map((option) => (
@@ -3344,7 +3344,7 @@ export default function ProducerClientReviewPanel({
                   )
                 ) : null}
                 {isContentLogicReview ? (
-                  <Typography sx={{ color: 'rgba(191,219,254,0.86)', fontSize: '0.8rem', mt: 0.65, fontWeight: 600 }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.86)', fontSize: '0.8rem', mt: 0.65, fontWeight: 600 }}>
                     Denne avklaringen styrer hvordan hook, budskap og CTA faktisk blir behandlet i innholdsproduksjonen.
                   </Typography>
                 ) : null}
@@ -3424,7 +3424,7 @@ export default function ProducerClientReviewPanel({
                         size="small"
                         variant="text"
                         onClick={() => { void handleCopyReviewPortalUrl(review); }}
-                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(195, 203, 230,0.92)', minHeight: 44 }}
                       >
                         Kopier godkjenningslenke
                       </Button>
@@ -3432,7 +3432,7 @@ export default function ProducerClientReviewPanel({
                         size="small"
                         variant="text"
                         onClick={() => { void handleCopyReviewClientInviteText(review); }}
-                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(195, 203, 230,0.92)', minHeight: 44 }}
                       >
                         Kopier klienttekst
                       </Button>
@@ -3440,7 +3440,7 @@ export default function ProducerClientReviewPanel({
                         size="small"
                         variant="text"
                         onClick={handleSendReviewClientInvite}
-                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(195, 203, 230,0.92)', minHeight: 44 }}
                       >
                         Send invitasjon
                       </Button>
@@ -3448,7 +3448,7 @@ export default function ProducerClientReviewPanel({
                         size="small"
                         variant="text"
                         onClick={() => handleOpenReviewPortal(review)}
-                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                        sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(195, 203, 230,0.92)', minHeight: 44 }}
                       >
                         Åpne klientlenke
                       </Button>
@@ -3459,7 +3459,7 @@ export default function ProducerClientReviewPanel({
                 {reviewComments.length > 0 ? (
                   <Stack spacing={0.45} sx={{ mt: 0.9 }}>
                     <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <Typography sx={{ color: 'rgba(191,219,254,0.9)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      <Typography sx={{ color: 'rgba(195, 203, 230,0.9)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                         Kommentarer
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.88)', fontSize: '0.76rem' }}>
@@ -3473,7 +3473,7 @@ export default function ProducerClientReviewPanel({
                             ...previous,
                             [review.id]: !commentsExpanded,
                           }))}
-                          sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
+                          sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(195, 203, 230,0.92)', minHeight: 44 }}
                         >
                           {commentsExpanded ? 'Vis færre' : 'Vis alle'}
                         </Button>
@@ -3481,7 +3481,7 @@ export default function ProducerClientReviewPanel({
                     </Stack>
                     <Stack spacing={0.35}>
                       {visibleComments.map((comment) => (
-                        <Box key={comment.id} sx={{ p: 0.6, borderRadius: 1, bgcolor: 'rgba(10, 5, 21,0.42)' }}>
+                        <Box key={comment.id} sx={{ p: 0.6, borderRadius: 1, bgcolor: 'rgba(27, 18, 44,0.42)' }}>
                           <Typography sx={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.4 }}>{comment.comment_text}</Typography>
                           <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', mt: 0.18 }}>
                             {comment.author_role || 'ukjent'} • {new Date(comment.created_at).toLocaleString('nb-NO')}
@@ -3524,7 +3524,7 @@ export default function ProducerClientReviewPanel({
                 )}
 
                 {isClientGroundingReview ? (
-                  <Alert severity="info" sx={{ mt: 1, bgcolor: 'rgba(59,130,246,0.08)', color: '#dbeafe' }}>
+                  <Alert severity="info" sx={{ mt: 1, bgcolor: 'rgba(63, 81, 181,0.08)', color: '#dfe4f3' }}>
                     Denne saken oppdateres automatisk når klienten fyller inn briefen eller laster opp materiale.
                   </Alert>
                 ) : null}
@@ -3532,7 +3532,7 @@ export default function ProducerClientReviewPanel({
                 {canDecide && decisionOptions.length > 0 && !isClientGroundingReview && (
                   <Stack spacing={1} sx={{ mt: 1 }}>
                     {decisionCopy.helper ? (
-                      <Typography sx={{ color: 'rgba(191,219,254,0.86)', fontSize: '0.78rem' }}>
+                      <Typography sx={{ color: 'rgba(195, 203, 230,0.86)', fontSize: '0.78rem' }}>
                         {decisionCopy.helper}
                       </Typography>
                     ) : null}

@@ -284,10 +284,10 @@ function MerchConceptVisual({
   const baseLayout = CONCEPT_LOGO_LAYOUT[productId];
   const backPlacement = placement === 'back';
   const logoFilter = logoVariant === 'light'
-    ? 'brightness(0) invert(1) drop-shadow(0 2px 4px rgba(10, 5, 21,0.55))'
+    ? 'brightness(0) invert(1) drop-shadow(0 2px 4px rgba(27, 18, 44,0.55))'
     : logoVariant === 'dark'
       ? 'brightness(0) drop-shadow(0 0 1px rgba(255,255,255,0.8))'
-      : 'drop-shadow(0 0 1.5px rgba(255,255,255,0.85)) drop-shadow(0 2px 4px rgba(10, 5, 21,0.42))';
+      : 'drop-shadow(0 0 1.5px rgba(255,255,255,0.85)) drop-shadow(0 2px 4px rgba(27, 18, 44,0.42))';
 
   return (
     <Box
@@ -314,7 +314,7 @@ function MerchConceptVisual({
           aria-hidden
           sx={{
             position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain',
-            filter: providerImageUrl ? 'drop-shadow(0 24px 22px rgba(10, 5, 21,0.28))' : 'grayscale(1) contrast(1.04) drop-shadow(0 24px 22px rgba(10, 5, 21,0.34))',
+            filter: providerImageUrl ? 'drop-shadow(0 24px 22px rgba(27, 18, 44,0.28))' : 'grayscale(1) contrast(1.04) drop-shadow(0 24px 22px rgba(27, 18, 44,0.34))',
             userSelect: 'none',
           }}
         />
@@ -618,7 +618,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
   const visibleConcepts = savedConcepts.filter((concept) => concept.status !== 'archived').slice(0, 6);
 
   return (
-    <Box sx={{ p: 1.4, borderRadius: 3, border: '1px solid rgba(93, 118, 203,0.22)', bgcolor: 'rgba(33, 28, 59,0.36)' }}>
+    <Box sx={{ p: 1.4, borderRadius: 3, border: '1px solid rgba(93, 118, 203,0.22)', bgcolor: 'rgba(60, 78, 109,0.36)' }}>
       <Stack spacing={1.4}>
         <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={0.8}>
           <Box>
@@ -671,7 +671,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
                         <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.86rem' }}>{entry.productLabel}</Typography>
                         <Chip size="small" label={PRIORITY_LABEL[entry.priority]} sx={{ height: 20, color: '#dfe4f3', bgcolor: 'rgba(93, 118, 203,0.18)', fontSize: '0.65rem' }} />
                       </Stack>
-                      <Typography sx={{ color: '#a5f3fc', fontSize: '0.74rem', fontWeight: 700 }}>{entry.purpose}</Typography>
+                      <Typography sx={{ color: '#c3cbe6', fontSize: '0.74rem', fontWeight: 700 }}>{entry.purpose}</Typography>
                       <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.7rem', lineHeight: 1.4 }}>{entry.rationale}</Typography>
                       <Typography sx={{ color: documented ? '#bbf7d0' : '#fde68a', fontSize: '0.68rem' }}>
                         {documented && entry.supplierMatch ? `Nettsidebekreftet hos ${entry.supplierMatch.name}` : 'Leverandør må bekrefte produkt og teknikk'}
@@ -709,7 +709,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.9 }}>
                 {(Object.keys(LOGO_VARIANT_LABEL) as MerchLogoVariant[]).map((variant) => (
                   <Chip key={variant} size="small" clickable label={LOGO_VARIANT_LABEL[variant]} onClick={() => setLogoVariant(variant)}
-                    sx={{ bgcolor: logoVariant === variant ? 'rgba(34,211,238,0.22)' : 'rgba(15,23,42,0.52)', color: logoVariant === variant ? '#a5f3fc' : '#cbd5e1' }} />
+                    sx={{ bgcolor: logoVariant === variant ? 'rgba(93, 118, 203,0.22)' : 'rgba(15,23,42,0.52)', color: logoVariant === variant ? '#c3cbe6' : '#cbd5e1' }} />
                 ))}
               </Stack>
             </Box>
@@ -733,7 +733,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
                     <Typography component="span" sx={{ fontSize: '0.66rem', fontWeight: 700 }}>{color.label} · {color.hex.toUpperCase()}</Typography>
                   </Box>
                 ))}
-                <Box component="label" title="Velg egen farge" sx={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', background: 'conic-gradient(#ef4444,#facc15,#22c55e,#06b6d4,#5d76cb,#4b3d8f,#ef4444)', border: '1px solid rgba(255,255,255,0.48)' }}>
+                <Box component="label" title="Velg egen farge" sx={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', background: 'conic-gradient(#ef4444,#facc15,#22c55e,#3f51b5,#5d76cb,#4b3d8f,#ef4444)', border: '1px solid rgba(255,255,255,0.48)' }}>
                   <Box component="input" type="color" aria-label="Velg egen plaggfarge" value={targetColor} onChange={(event) => {
                     setTargetColorOverrides((current) => ({ ...current, [productId]: event.target.value.toUpperCase() }));
                     setVariantOverrides((current) => { const next = { ...current }; delete next[productId]; return next; });
@@ -775,7 +775,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.7 }}>
                 {productSpec.placements.map((placement) => (
                   <Chip key={placement.id} size="small" clickable label={placement.label} onClick={() => setProduction({ ...production, placement: placement.id, technique: placement.techniques.includes(production.technique) ? production.technique : placement.techniques[0], printWidthMm: placement.defaultWidthMm, printHeightMm: placement.defaultHeightMm })}
-                    sx={{ bgcolor: production.placement === placement.id ? 'rgba(34,211,238,0.22)' : 'rgba(15,23,42,0.52)', color: production.placement === placement.id ? '#a5f3fc' : '#cbd5e1' }} />
+                    sx={{ bgcolor: production.placement === placement.id ? 'rgba(93, 118, 203,0.22)' : 'rgba(15,23,42,0.52)', color: production.placement === placement.id ? '#c3cbe6' : '#cbd5e1' }} />
                 ))}
               </Stack>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} sx={{ mt: 0.9 }}>
@@ -797,9 +797,9 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
           </Stack>
 
           <Stack spacing={0.8} sx={{ flex: '1.25 1 480px', minWidth: 0 }}>
-            <Box sx={{ position: 'relative', overflow: 'hidden', minHeight: 420, p: 2, borderRadius: 2, border: '1px solid rgba(34,211,238,0.2)', backgroundColor: 'rgba(15,23,42,0.82)', backgroundImage: 'radial-gradient(circle at 50% 15%, rgba(93, 118, 203,0.3), transparent 42%),linear-gradient(rgba(148,163,184,0.045) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,0.045) 1px,transparent 1px)', backgroundSize: 'auto,28px 28px,28px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <Box sx={{ position: 'relative', overflow: 'hidden', minHeight: 420, p: 2, borderRadius: 2, border: '1px solid rgba(93, 118, 203,0.2)', backgroundColor: 'rgba(15,23,42,0.82)', backgroundImage: 'radial-gradient(circle at 50% 15%, rgba(93, 118, 203,0.3), transparent 42%),linear-gradient(rgba(148,163,184,0.045) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,0.045) 1px,transparent 1px)', backgroundSize: 'auto,28px 28px,28px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.5} alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ position: 'absolute', top: 12, left: 12, right: 12, justifyContent: 'space-between', zIndex: 3 }}>
-                <Chip size="small" label={providerImageUrl ? 'Reell katalogvariant · konsepttrykk' : 'Fotorealistisk konsept · ikke produksjonsbevis'} sx={{ height: 'auto', maxWidth: '100%', color: '#a5f3fc', bgcolor: 'rgba(8,47,73,0.78)', fontWeight: 700, '& .MuiChip-label': { display: 'block', whiteSpace: 'normal', py: 0.35 } }} />
+                <Chip size="small" label={providerImageUrl ? 'Reell katalogvariant · konsepttrykk' : 'Fotorealistisk konsept · ikke produksjonsbevis'} sx={{ height: 'auto', maxWidth: '100%', color: '#c3cbe6', bgcolor: 'rgba(42, 61, 86,0.78)', fontWeight: 700, '& .MuiChip-label': { display: 'block', whiteSpace: 'normal', py: 0.35 } }} />
                 <Button size="small" variant="outlined" startIcon={<ZoomIcon />} onClick={() => setDetailView((current) => !current)} sx={{ textTransform: 'none', color: '#e2e8f0', borderColor: 'rgba(226,232,240,0.3)' }}>{detailView ? 'Helhet' : 'Trykkdetalj'}</Button>
               </Stack>
               <MerchConceptVisual productId={productId} logoUrl={logoUrl} baseColor={displayedColor} companyName={companyName} providerImageUrl={providerImageUrl} logoVariant={logoVariant} detailView={detailView} placement={production.placement} printScale={printScale} />
@@ -819,7 +819,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
                   {loading ? `Renderer … ${elapsedSec}s` : mockupUrls.length > 0 ? 'Rendre på nytt' : 'Lag leverandørmockup'}
                 </Button>
               </Stack>
-              <Box sx={{ minHeight: 280, mt: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1.5, bgcolor: 'rgba(10, 5, 21,0.45)', overflow: 'hidden' }}>
+              <Box sx={{ minHeight: 280, mt: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1.5, bgcolor: 'rgba(27, 18, 44,0.45)', overflow: 'hidden' }}>
                 {printfulConfigured === false ? <Alert severity="info">Printful er ikke koblet. Konsept, produksjonsvalg og prosjektlagring fungerer fortsatt.</Alert>
                   : loading ? <CircularProgress size={30} />
                     : error ? <Alert severity="error">{error.detail}</Alert>
@@ -828,7 +828,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
               </Box>
               {mockupUrls.length > 1 ? (
                 <Stack direction="row" spacing={0.6} sx={{ mt: 0.7, overflowX: 'auto' }}>
-                  {mockupUrls.map((url, index) => <Box component="button" type="button" key={url} onClick={() => setActiveMockupIndex(index)} sx={{ p: 0, width: 72, height: 72, borderRadius: 1, overflow: 'hidden', cursor: 'pointer', border: index === activeMockupIndex ? '2px solid #67e8f9' : '1px solid rgba(148,163,184,0.24)', bgcolor: '#0f172a' }}><Box component="img" src={url} alt={`Mockup-visning ${index + 1}`} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} /></Box>)}
+                  {mockupUrls.map((url, index) => <Box component="button" type="button" key={url} onClick={() => setActiveMockupIndex(index)} sx={{ p: 0, width: 72, height: 72, borderRadius: 1, overflow: 'hidden', cursor: 'pointer', border: index === activeMockupIndex ? '2px solid #93a4dc' : '1px solid rgba(148,163,184,0.24)', bgcolor: '#0f172a' }}><Box component="img" src={url} alt={`Mockup-visning ${index + 1}`} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} /></Box>)}
                 </Stack>
               ) : null}
               {cached ? <Chip size="small" label="Hentet fra deduplisert render-cache" sx={{ mt: 0.7, color: '#bbf7d0', bgcolor: 'rgba(34,197,94,0.12)' }} /> : null}
@@ -870,8 +870,8 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({ projectId, boot
           </Stack>
         </Stack>
 
-        <Alert severity="info" icon={false} sx={{ bgcolor: 'rgba(14,116,144,0.09)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.18)' }}>
-          <Typography sx={{ color: '#e0f2fe', fontWeight: 800, fontSize: '0.78rem', mb: 0.25 }}>Produksjonsgrense</Typography>
+        <Alert severity="info" icon={false} sx={{ bgcolor: 'rgba(63, 81, 181,0.09)', color: '#cbd5e1', border: '1px solid rgba(93, 118, 203,0.18)' }}>
+          <Typography sx={{ color: '#dfe4f3', fontWeight: 800, fontSize: '0.78rem', mb: 0.25 }}>Produksjonsgrense</Typography>
           <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.55 }}>Katalogvariant, fargekode og trykkmål gjør konseptet etterprøvbart, men leverandøren må fortsatt bekrefte artikkelnummer, lagerstatus, materiale, stoffvekt, passform, dekorflate og prøvetrykk skriftlig før bestilling.</Typography>
         </Alert>
       </Stack>

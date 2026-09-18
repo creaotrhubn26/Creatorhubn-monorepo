@@ -70,13 +70,13 @@ interface RoleRoomFeedbackFabProps {
 const CATEGORY_CONFIG: Record<FeedbackCategory, { label: string; icon: typeof BugIcon; color: string }> = {
   bug: { label: 'Bug', icon: BugIcon, color: '#ef4444' },
   feature: { label: 'Idé / forslag', icon: IdeaIcon, color: '#facc15' },
-  question: { label: 'Spørsmål', icon: QuestionIcon, color: '#60a5fa' },
+  question: { label: 'Spørsmål', icon: QuestionIcon, color: '#93a4dc' },
   other: { label: 'Annet', icon: FeedbackIcon, color: '#93a4dc' },
 };
 
 const PRIORITY_OPTIONS: Array<{ value: FeedbackPriority; label: string; color: string }> = [
   { value: 'low', label: 'Lav', color: '#94a3b8' },
-  { value: 'medium', label: 'Medium', color: '#60a5fa' },
+  { value: 'medium', label: 'Medium', color: '#93a4dc' },
   { value: 'high', label: 'Høy', color: '#fb923c' },
   { value: 'critical', label: 'Kritisk', color: '#ef4444' },
 ];

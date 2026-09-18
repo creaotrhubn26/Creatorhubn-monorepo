@@ -239,7 +239,7 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                       border: isSelected
                         ? '2px solid rgba(93, 118, 203,0.7)'
                         : '1px solid rgba(148,163,184,0.2)',
-                      bgcolor: isSelected ? 'rgba(33, 28, 59,0.5)' : 'rgba(15,23,42,0.5)',
+                      bgcolor: isSelected ? 'rgba(60, 78, 109,0.5)' : 'rgba(15,23,42,0.5)',
                       transition: 'all 0.15s',
                       '&:hover': { borderColor: 'rgba(93, 118, 203,0.5)' },
                     }}
@@ -254,7 +254,7 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                             <Chip size="small" label="Orgnr fra nettsiden" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0' }} />
                           ) : null}
                           {c.websiteHostMatch ? (
-                            <Chip size="small" label="Nettside-match" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                            <Chip size="small" label="Nettside-match" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
                           ) : null}
                         </Stack>
                         <Typography sx={{ fontSize: '0.78rem', color: 'text.secondary', fontFamily: 'monospace', mt: 0.2 }}>
@@ -280,8 +280,8 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                         size="small"
                         label={`${c.score}`}
                         sx={{
-                          bgcolor: c.score >= 80 ? 'rgba(34,197,94,0.16)' : c.score >= 50 ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.16)',
-                          color: c.score >= 80 ? '#bbf7d0' : c.score >= 50 ? '#bfdbfe' : '#cbd5e1',
+                          bgcolor: c.score >= 80 ? 'rgba(34,197,94,0.16)' : c.score >= 50 ? 'rgba(63, 81, 181,0.16)' : 'rgba(148,163,184,0.16)',
+                          color: c.score >= 80 ? '#bbf7d0' : c.score >= 50 ? '#c3cbe6' : '#cbd5e1',
                           fontWeight: 700,
                         }}
                       />

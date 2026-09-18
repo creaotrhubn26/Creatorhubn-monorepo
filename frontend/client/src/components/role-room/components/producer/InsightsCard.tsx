@@ -31,16 +31,16 @@ export default function InsightsCard({ connectionId, leads }: { connectionId: st
   const data = run.data;
 
   return (
-    <Box sx={{ border: '1px solid rgba(34,211,238,0.3)', bgcolor: 'rgba(34,211,238,0.06)', borderRadius: 2 }}>
+    <Box sx={{ border: '1px solid rgba(93, 118, 203,0.3)', bgcolor: 'rgba(93, 118, 203,0.06)', borderRadius: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 1.4, cursor: 'pointer' }} onClick={() => setOpen((v) => !v)}>
-        <InsightsIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <InsightsIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>AI-innsikt fra leadsene</Typography>
           <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
             Hva spør folk om? Få innholdsidéer å bruke i markedsplanen og feed-planneren.
           </Typography>
         </Box>
-        <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '0.8rem', fontWeight: 700 }}>{open ? 'Skjul' : 'Vis'}</Typography>
+        <Typography sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: '0.8rem', fontWeight: 700 }}>{open ? 'Skjul' : 'Vis'}</Typography>
       </Stack>
       <Collapse in={open}>
         <Box sx={{ px: 1.4, pb: 1.6 }}>
@@ -64,7 +64,7 @@ export default function InsightsCard({ connectionId, leads }: { connectionId: st
                   <Typography sx={{ fontSize: '0.74rem', fontWeight: 700, color: 'rgba(226,232,240,0.7)', mb: 0.5 }}>Hva folk spør om</Typography>
                   <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                     {data.themes.map((t, i) => (
-                      <Chip key={i} size="small" label={`${t.label}${t.count ? ` · ${t.count}` : ''}`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc', fontWeight: 600 }} />
+                      <Chip key={i} size="small" label={`${t.label}${t.count ? ` · ${t.count}` : ''}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#c3cbe6', fontWeight: 600 }} />
                     ))}
                   </Stack>
                 </Box>

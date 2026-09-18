@@ -854,7 +854,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   const bgColor = '#2a3d56';
   const textColor = '#e0e0e0';
   const accentColor = '#93a4dc';
-  const intColor = '#60a5fa';
+  const intColor = '#93a4dc';
   const extColor = '#34d399';
 
   if (collapsed) {
@@ -1178,7 +1178,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
             )}
             {characterStats.slice(0, 15).map(stat => (
               <Box key={stat.name} sx={{ mb: 0.75, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <PersonIcon sx={{ fontSize: 13, color: '#60a5fa', flexShrink: 0 }} />
+                <PersonIcon sx={{ fontSize: 13, color: '#93a4dc', flexShrink: 0 }} />
                 <Box sx={{ flex: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
                     <Typography variant="caption" sx={{ color: textColor, fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>
@@ -1188,8 +1188,8 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                       {stat.sceneCount} {stat.sceneCount === 1 ? 'scene' : 'scener'}
                     </Typography>
                   </Box>
-                  <Box sx={{ height: 3, bgcolor: alpha('#60a5fa', 0.15), borderRadius: 1 }}>
-                    <Box sx={{ height: '100%', bgcolor: alpha('#60a5fa', 0.55), borderRadius: 1, width: `${(stat.sceneCount / (characterStats[0]?.sceneCount || 1)) * 100}%` }} />
+                  <Box sx={{ height: 3, bgcolor: alpha('#93a4dc', 0.15), borderRadius: 1 }}>
+                    <Box sx={{ height: '100%', bgcolor: alpha('#93a4dc', 0.55), borderRadius: 1, width: `${(stat.sceneCount / (characterStats[0]?.sceneCount || 1)) * 100}%` }} />
                   </Box>
                 </Box>
               </Box>

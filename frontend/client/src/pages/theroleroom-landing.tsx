@@ -429,7 +429,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        bgcolor: 'rgba(10, 5, 21, 0.85)',
+        bgcolor: 'rgba(27, 18, 44, 0.85)',
         backdropFilter: 'blur(12px)',
         borderBottom: `1px solid ${palette.borderSubtle}`,
       }}

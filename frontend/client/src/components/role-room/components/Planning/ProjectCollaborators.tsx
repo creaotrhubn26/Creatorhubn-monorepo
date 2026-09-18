@@ -32,14 +32,14 @@ const ProjectCollaborators: React.FC<ProjectCollaboratorsProps> = ({
     
     // Photographer roles
     if (['second_shooter', 'photo_editor', 'retoucher'].includes(role)) return '#10b981';
-    if (['assistant', 'stylist', 'makeup_artist'].includes(role)) return '#3b82f6';
+    if (['assistant', 'stylist', 'makeup_artist'].includes(role)) return '#3f51b5';
     
     // Videographer roles - leadership
     if (['director', 'producer'].includes(role)) return '#ef4444'; // Red for leadership
     if (['cinematographer', 'camera_operator', 'drone_pilot'].includes(role)) return '#5d76cb'; // Purple for camera
     if (['video_editor', 'colorist', 'vfx_artist', 'motion_graphics'].includes(role)) return '#f59e0b'; // Orange for post-production
-    if (['sound_engineer', 'audio_mixer'].includes(role)) return '#06b6d4'; // Cyan for audio
-    if (['grip', 'gaffer'].includes(role)) return '#3b82f6'; // Blue for lighting/grip
+    if (['sound_engineer', 'audio_mixer'].includes(role)) return '#3f51b5'; // Cyan for audio
+    if (['grip', 'gaffer'].includes(role)) return '#3f51b5'; // Blue for lighting/grip
     if (['production_assistant', 'script_supervisor', 'location_manager', 'production_designer'].includes(role)) return '#22c55e'; // Green for production support
     
     // Music producer roles
@@ -47,7 +47,7 @@ const ProjectCollaborators: React.FC<ProjectCollaboratorsProps> = ({
     if (['songwriter', 'composer', 'mix_engineer'].includes(role)) return '#f59e0b';
     
     // Generic
-    if (role === 'collaborator') return '#3b82f6';
+    if (role === 'collaborator') return '#3f51b5';
     return '#6b7280';
   };
 

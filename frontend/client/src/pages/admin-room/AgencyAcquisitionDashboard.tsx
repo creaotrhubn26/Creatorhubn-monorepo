@@ -70,7 +70,7 @@ interface DashboardData {
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   new: { label: 'Ny', color: '#93a4dc' },
-  contacted: { label: 'Kontaktet', color: '#60a5fa' },
+  contacted: { label: 'Kontaktet', color: '#93a4dc' },
   demo: { label: 'Demo booket', color: '#fbbf24' },
   trial: { label: 'Prøveperiode', color: '#fb923c' },
   customer: { label: 'Kunde', color: '#34d399' },

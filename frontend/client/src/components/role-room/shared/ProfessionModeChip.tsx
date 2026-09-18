@@ -38,8 +38,8 @@ interface ProfessionModeChipProps {
 // ikke kunne vise en modus som ikke finnes, slik «Casting-modus» gjorde.
 const MODE_STYLE: Record<ProfessionMode, { icon: React.ReactNode; color: string }> = {
   production: { icon: <ProductionIcon />, color: '#EC4899' },
-  photographer: { icon: <ContentIcon />, color: '#0EA5E9' },
-  content_producer: { icon: <ContentIcon />, color: '#3B82F6' },
+  photographer: { icon: <ContentIcon />, color: '#3f51b5' },
+  content_producer: { icon: <ContentIcon />, color: '#3f51b5' },
   content_creator: { icon: <ContentIcon />, color: '#6366F1' },
   dance_studio: { icon: <StudioIcon />, color: '#F5B82E' },
   dance_freelance: { icon: <FreelanceIcon />, color: '#10B981' },

@@ -40,11 +40,11 @@ import { useCmsBlocks } from '../cms/useCmsBlocks';
 import { DEFAULT_LOCALE } from '../cms/blockSchema';
 
 const SURFACE = 'rgba(7, 13, 26, 0.72)';
-const BORDER = 'rgba(125, 211, 252, 0.14)';
+const BORDER = 'rgba(147, 164, 220, 0.14)';
 const TEXT_PRIMARY = 'rgba(241, 245, 249, 0.96)';
-const TEXT_SECONDARY = 'rgba(191, 219, 254, 0.74)';
+const TEXT_SECONDARY = 'rgba(195, 203, 230, 0.74)';
 const TEXT_MUTED = 'rgba(148, 163, 184, 0.78)';
-const ACCENT = 'var(--role-portal-accent, #7dd3fc)';
+const ACCENT = 'var(--role-portal-accent, #93a4dc)';
 const SUCCESS = '#34d399';
 
 const cardSx = {
@@ -180,7 +180,7 @@ export default function AgencyPortalView(_props: AgencyPortalViewProps) {
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar
                 src={agency.logo_url || undefined}
-                sx={{ width: 56, height: 56, bgcolor: 'rgba(125,211,252,0.16)', color: ACCENT, fontWeight: 800 }}
+                sx={{ width: 56, height: 56, bgcolor: 'rgba(147, 164, 220,0.16)', color: ACCENT, fontWeight: 800 }}
               >
                 {agency.name.slice(0, 2).toUpperCase()}
               </Avatar>
@@ -202,7 +202,7 @@ export default function AgencyPortalView(_props: AgencyPortalViewProps) {
                     label={agencyRole === 'admin' ? 'Du er admin' : 'Du er medlem'}
                     sx={{
                       alignSelf: 'flex-start',
-                      bgcolor: agencyRole === 'admin' ? `${SUCCESS}22` : 'rgba(125,211,252,0.16)',
+                      bgcolor: agencyRole === 'admin' ? `${SUCCESS}22` : 'rgba(147, 164, 220,0.16)',
                       color: agencyRole === 'admin' ? SUCCESS : ACCENT,
                       fontWeight: 600,
                       height: 22,
@@ -358,7 +358,7 @@ function TalentCard({ talent, onOpen }: TalentCardProps) {
               size="small"
               label={SCOPE_LABELS[s] ?? s}
               sx={{
-                bgcolor: 'rgba(125, 211, 252, 0.12)',
+                bgcolor: 'rgba(147, 164, 220, 0.12)',
                 color: ACCENT,
                 height: 18,
                 fontSize: '0.7rem',
@@ -395,7 +395,7 @@ function TalentDetail({ talent }: TalentDetailProps) {
             label={SCOPE_LABELS[s] ?? s}
             size="small"
             sx={{
-              bgcolor: 'rgba(125, 211, 252, 0.16)',
+              bgcolor: 'rgba(147, 164, 220, 0.16)',
               color: ACCENT,
               fontWeight: 600,
             }}
@@ -480,7 +480,7 @@ function TalentDetail({ talent }: TalentDetailProps) {
               <Chip
                 label={talent.willing_to_travel ? 'Vil reise' : 'Kun lokalt'}
                 size="small"
-                sx={{ bgcolor: 'rgba(125,211,252,0.12)', color: ACCENT, fontWeight: 600 }}
+                sx={{ bgcolor: 'rgba(147, 164, 220,0.12)', color: ACCENT, fontWeight: 600 }}
               />
             ) : null}
           </Stack>

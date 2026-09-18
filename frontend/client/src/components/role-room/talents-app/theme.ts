@@ -58,7 +58,7 @@ export const palette = {
   warningBg: 'rgba(245, 158, 11, 0.12)',
   danger: '#ef4444',
   dangerBg: 'rgba(239, 68, 68, 0.12)',
-  info: '#38bdf8',
+  info: '#5d76cb',
 
   // Filmstrip-shimmer på sidebaren (aksent-avledet)
   filmstrip: 'var(--rr-filmstrip, rgba(75, 61, 143, 0.06))',

@@ -147,7 +147,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout Box ─────────────────────────────────────────────────────────────
 
 function Callout({
-  color = '#3b82f6',
+  color = '#3f51b5',
   children,
 }: {
   color?: string;
@@ -598,7 +598,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#3b82f6">
+            <Callout color="#3f51b5">
               Filters stack: you can filter by status AND location AND a search term
               simultaneously. The strip count in each day header updates live to show only
               matching strips.

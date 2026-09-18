@@ -940,7 +940,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const getStatusColor = (status?: ProductionDayStatus): string => {
     switch (status) {
       case 'completed': return '#10b981';
-      case 'in_progress': return 'var(--role-cyan, #00d4ff)';
+      case 'in_progress': return 'var(--role-cyan, #5d76cb)';
       case 'cancelled': return '#ff4444';
       default: return '#ffb800';
     }
@@ -1573,7 +1573,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         <title>Call sheet ${day.date}</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0a0f1c; color:#f8fafc; padding:24px; }
-          .sheet { border:1px solid rgba(50, 18, 122,.35); border-radius:16px; padding:20px; background:linear-gradient(160deg, rgba(75, 61, 143,.22), rgba(6,182,212,.1)); }
+          .sheet { border:1px solid rgba(50, 18, 122,.35); border-radius:16px; padding:20px; background:linear-gradient(160deg, rgba(75, 61, 143,.22), rgba(63, 81, 181,.1)); }
           h1 { margin:0 0 8px; font-size:28px; }
           h2 { margin:20px 0 8px; font-size:16px; color:#c3cbe6; text-transform:uppercase; letter-spacing:.08em; }
           .meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
@@ -2040,7 +2040,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     tr:nth-child(even) { background-color: #f8fafc; }
     .badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .badge-planned { background: #ffb800; color: white; }
-    .badge-in_progress { background: #00d4ff; color: white; }
+    .badge-in_progress { background: #5d76cb; color: white; }
     .badge-completed { background: #10b981; color: white; }
     .badge-cancelled { background: #ef4444; color: white; }
     .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 15px 60px; border-top: 2px solid #e2e8f0; background: #fafbfc; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #64748b; font-weight: 500; }
@@ -2648,7 +2648,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           borderRadius: 2,
           border: '1px solid rgba(75, 61, 143,0.35)',
           background:
-            'linear-gradient(135deg, rgba(75, 61, 143,0.16) 0%, rgba(8,145,178,0.08) 100%)',
+            'linear-gradient(135deg, rgba(75, 61, 143,0.16) 0%, rgba(63, 81, 181,0.08) 100%)',
         }}
       >
         <Box
@@ -2689,7 +2689,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   color="secondary"
                 />
               }
-              label={<Typography sx={{ color: '#67e8f9', fontSize: '0.8rem' }}>Feltmodus</Typography>}
+              label={<Typography sx={{ color: '#93a4dc', fontSize: '0.8rem' }}>Feltmodus</Typography>}
             />
             <Chip
               icon={isOnline ? <OnlineIcon /> : <OfflineIcon />}
@@ -2733,8 +2733,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   onClick={() => generateCallSheetForDay(selectedProDay)}
                   sx={{
                     minHeight: TOUCH_TARGET_SIZE,
-                    color: '#67e8f9',
-                    borderColor: 'rgba(103,232,249,0.5)',
+                    color: '#93a4dc',
+                    borderColor: 'rgba(147, 164, 220,0.5)',
                   }}
                 >
                   Call sheet
@@ -2769,7 +2769,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Dekning</Typography>
-                <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontWeight: 700, fontSize: '1.2rem' }}>{proKpis.coveragePercent}%</Typography>
+                <Typography sx={{ color: 'var(--role-cyan, #5d76cb)', fontWeight: 700, fontSize: '1.2rem' }}>{proKpis.coveragePercent}%</Typography>
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Planlagt tid</Typography>
@@ -2794,7 +2794,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             </Box>
 
             {selectedProDay && selectedReadiness && (
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(10, 5, 21,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(27, 18, 44,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 1.25 }}>
                   <Chip
                     icon={
@@ -2952,8 +2952,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             )}
 
             {selectedProDay && (
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(10, 5, 21,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                <Typography sx={{ color: '#67e8f9', fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(27, 18, 44,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <Typography sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>
                   Feltmodus og teamflyt
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.25 }}>
@@ -2962,7 +2962,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     variant="outlined"
                     startIcon={<StartIcon />}
                     onClick={() => void applyFieldStatus(selectedProDay, 'in_progress', 'check_in')}
-                    sx={{ color: 'var(--role-cyan, #22d3ee)', borderColor: 'rgba(34,211,238,0.45)' }}
+                    sx={{ color: 'var(--role-cyan, #5d76cb)', borderColor: 'rgba(93, 118, 203,0.45)' }}
                   >
                     Check-in
                   </Button>
@@ -3074,7 +3074,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                             icon={<CommentIcon />}
                             label={`@${name}`}
                             onClick={() => replaceDraftMention(selectedProDay.id, selectedMentionQuery, name)}
-                            sx={{ bgcolor: 'rgba(6,182,212,0.2)', color: '#cffafe' }}
+                            sx={{ bgcolor: 'rgba(63, 81, 181,0.2)', color: '#dfe4f3' }}
                           />
                         ))}
                       </Box>
@@ -3082,12 +3082,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     {selectedDidYouMean?.suggestion && (
                       <Alert
                         severity="info"
-                        sx={{ mt: 1, bgcolor: 'rgba(14,116,144,0.2)', color: '#e0f2fe', '& .MuiAlert-icon': { color: '#67e8f9' } }}
+                        sx={{ mt: 1, bgcolor: 'rgba(63, 81, 181,0.2)', color: '#dfe4f3', '& .MuiAlert-icon': { color: '#93a4dc' } }}
                         action={
                           <Button
                             size="small"
                             onClick={() => replaceDraftMention(selectedProDay.id, selectedDidYouMean.rawTag, selectedDidYouMean.suggestion!)}
-                            sx={{ color: '#67e8f9' }}
+                            sx={{ color: '#93a4dc' }}
                           >
                             Bytt
                           </Button>
@@ -3140,8 +3140,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     ) : (
                       <Stack spacing={0.75}>
                         {[...selectedTeamFlow].reverse().slice(0, 8).map((entry) => (
-                          <Box key={entry.id} sx={{ p: 0.75, borderRadius: 1.25, bgcolor: 'rgba(10, 5, 21,0.6)', border: '1px solid rgba(148,163,184,0.2)' }}>
-                            <Typography sx={{ color: entry.type === 'decision' ? '#fbbf24' : '#67e8f9', fontSize: '0.72rem', fontWeight: 700 }}>
+                          <Box key={entry.id} sx={{ p: 0.75, borderRadius: 1.25, bgcolor: 'rgba(27, 18, 44,0.6)', border: '1px solid rgba(148,163,184,0.2)' }}>
+                            <Typography sx={{ color: entry.type === 'decision' ? '#fbbf24' : '#93a4dc', fontSize: '0.72rem', fontWeight: 700 }}>
                               {entry.type === 'decision' ? 'Beslutning' : 'Kommentar'} · {entry.author}
                             </Typography>
                             <Typography sx={{ color: '#f8fafc', fontSize: '0.8rem' }}>{entry.text}</Typography>
@@ -3403,7 +3403,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                         sx={{
                           bgcolor: selectedIds.has(day.id) ? 'rgba(50, 18, 122,0.15)' : 'rgba(255,255,255,0.05)',
                           border: selectedIds.has(day.id) ? '2px solid #32127a' : '1px solid rgba(255,255,255,0.1)',
-                          outline: dragTargetDayId === day.id ? '2px dashed rgba(34,211,238,0.8)' : 'none',
+                          outline: dragTargetDayId === day.id ? '2px dashed rgba(93, 118, 203,0.8)' : 'none',
                           borderRadius: 2,
                           transition: 'all 0.2s ease',
                           height: '100%',
@@ -3610,9 +3610,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       size="small"
                                       label={`Avheng. ${dependencyIssueCount}`}
                                       sx={{
-                                        bgcolor: dependencyIssueCount > 0 ? 'rgba(59,130,246,0.2)' : 'rgba(148,163,184,0.2)',
+                                        bgcolor: dependencyIssueCount > 0 ? 'rgba(63, 81, 181,0.2)' : 'rgba(148,163,184,0.2)',
                                         color: '#fff',
-                                        border: `1px solid ${dependencyIssueCount > 0 ? 'rgba(59,130,246,0.55)' : 'rgba(148,163,184,0.45)'}`,
+                                        border: `1px solid ${dependencyIssueCount > 0 ? 'rgba(63, 81, 181,0.55)' : 'rgba(148,163,184,0.45)'}`,
                                       }}
                                     />
                                   </Box>
@@ -3860,7 +3860,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
                               const getWeatherColor = () => {
                                 if (isSunny) return '#ffb800';
-                                if (isRainy) return 'var(--role-cyan, #00d4ff)';
+                                if (isRainy) return 'var(--role-cyan, #5d76cb)';
                                 if (isSnowy) return '#a8d8ff';
                                 if (isThunder) return '#5d76cb';
                                 if (isCloudy) return '#94a3b8';
@@ -3869,7 +3869,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
                               const getBgGradient = () => {
                                 if (isSunny) return 'linear-gradient(135deg, rgba(255,184,0,0.2) 0%, rgba(255,120,0,0.1) 100%)';
-                                if (isRainy) return 'linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(0,100,180,0.1) 100%)';
+                                if (isRainy) return 'linear-gradient(135deg, rgba(93, 118, 203,0.2) 0%, rgba(0,100,180,0.1) 100%)';
                                 if (isSnowy) return 'linear-gradient(135deg, rgba(168,216,255,0.2) 0%, rgba(200,230,255,0.1) 100%)';
                                 if (isThunder) return 'linear-gradient(135deg, rgba(93, 118, 203,0.2) 0%, rgba(50, 18, 122,0.1) 100%)';
                                 return 'linear-gradient(135deg, rgba(148,163,184,0.15) 0%, rgba(100,116,139,0.1) 100%)';
@@ -3978,7 +3978,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                                 left: { xs: 8 + i * 10, sm: 10 + i * 11 },
                                                 width: 3,
                                                 height: 10,
-                                                bgcolor: 'var(--role-cyan, #00d4ff)',
+                                                bgcolor: 'var(--role-cyan, #5d76cb)',
                                                 borderRadius: 2,
                                                 animation: 'rain 0.7s ease-in-out infinite',
                                                 animationDelay: `${i * 0.15}s`,
@@ -4067,7 +4067,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                             <UmbrellaIcon sx={{
                                               fontSize: { xs: 18, sm: 20 },
-                                              color: 'var(--role-cyan, #00d4ff)',
+                                              color: 'var(--role-cyan, #5d76cb)',
                                               animation: dayForecast.precipitation > 0 ? 'pulse 2s ease-in-out infinite' : 'none',
                                             }} />
                                             <Box>
@@ -4285,8 +4285,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       sx={{
                                         p: { xs: 2, sm: 2.5 },
                                         borderRadius: 2.5,
-                                        bgcolor: 'rgba(0,212,255,0.08)',
-                                        border: '1px solid rgba(0,212,255,0.2)',
+                                        bgcolor: 'rgba(93, 118, 203,0.08)',
+                                        border: '1px solid rgba(93, 118, 203,0.2)',
                                         height: '100%',
                                         transition: 'all 0.2s ease',
                                       }}
@@ -4297,16 +4297,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             width: { xs: 36, sm: 40 },
                                             height: { xs: 36, sm: 40 },
                                             borderRadius: 2,
-                                            bgcolor: 'rgba(0,212,255,0.2)',
+                                            bgcolor: 'rgba(93, 118, 203,0.2)',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                           }}
                                         >
-                                          <PeopleIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: 'var(--role-cyan, #00d4ff)' }} />
+                                          <PeopleIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: 'var(--role-cyan, #5d76cb)' }} />
                                         </Box>
                                         <Box sx={{ flex: 1 }}>
-                                          <Typography sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                          <Typography sx={{ color: 'var(--role-cyan, #5d76cb)', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                                             Team
                                           </Typography>
                                           <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
@@ -4317,8 +4317,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           label={dayCrew.length}
                                           size="small"
                                           sx={{
-                                            bgcolor: 'rgba(0,212,255,0.3)',
-                                            color: 'var(--role-cyan, #00d4ff)',
+                                            bgcolor: 'rgba(93, 118, 203,0.3)',
+                                            color: 'var(--role-cyan, #5d76cb)',
                                             fontWeight: 700,
                                             minWidth: 32,
                                           }}
@@ -4331,7 +4331,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             label={`${c.name}${c.role ? ` • ${c.role}` : ''}`}
                                             size="medium"
                                             sx={{
-                                              bgcolor: 'rgba(0,212,255,0.2)',
+                                              bgcolor: 'rgba(93, 118, 203,0.2)',
                                               color: '#80deea',
                                               fontWeight: 500,
                                               fontSize: { xs: '0.8rem', sm: '0.875rem' },
@@ -4717,8 +4717,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   sx={{
                                     minWidth: TOUCH_TARGET_SIZE,
                                     minHeight: TOUCH_TARGET_SIZE,
-                                    color: '#67e8f9',
-                                    '&:hover': { bgcolor: 'rgba(103,232,249,0.12)' },
+                                    color: '#93a4dc',
+                                    '&:hover': { bgcolor: 'rgba(147, 164, 220,0.12)' },
                                     ...focusVisibleStyles,
                                   }}
                                 >
@@ -4825,7 +4825,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
                     {new Date(item.from).toLocaleDateString('nb-NO')}
                   </Typography>
-                  <Typography sx={{ color: '#67e8f9', fontSize: '0.85rem', fontWeight: 700 }}>
+                  <Typography sx={{ color: '#93a4dc', fontSize: '0.85rem', fontWeight: 700 }}>
                     {new Date(item.to).toLocaleDateString('nb-NO')}
                   </Typography>
                 </Box>
@@ -4893,7 +4893,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           <Button
             variant="contained"
             onClick={() => void applyDragMove()}
-            sx={{ bgcolor: '#06b6d4', '&:hover': { bgcolor: '#0891b2' } }}
+            sx={{ bgcolor: '#3f51b5', '&:hover': { bgcolor: '#3f51b5' } }}
           >
             Bekreft flytt
           </Button>

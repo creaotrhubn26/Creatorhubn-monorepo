@@ -144,7 +144,7 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
 
   const statusConfig: Record<VfxStatus, { label: string; color: string }> = {
     identified: { label: 'Identifisert', color: '#6b7280' },
-    planned: { label: 'Planlagt', color: '#3b82f6' },
+    planned: { label: 'Planlagt', color: '#3f51b5' },
     in_progress: { label: 'Pågår', color: '#f59e0b' },
     review: { label: 'Review', color: 'var(--role-violet, #5d76cb)' },
     approved: { label: 'Godkjent', color: '#10b981' },

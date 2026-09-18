@@ -86,7 +86,7 @@ export interface ShapeToolsProps {
 // =============================================================================
 
 export const DEFAULT_SHAPE_STYLE: ShapeStyle = {
-  fillColor: '#3b82f6',
+  fillColor: '#3f51b5',
   fillOpacity: 0.3,
   strokeColor: '#ffffff',
   strokeWidth: 2,
@@ -108,7 +108,7 @@ const SHAPE_ICONS: Record<ShapeType, React.ReactNode> = {
 
 const COLOR_PRESETS = [
   '#ffffff', '#000000', '#ef4444', '#f97316', '#eab308',
-  '#22c55e', '#3b82f6', '#5d76cb', '#ec4899', '#6b7280',
+  '#22c55e', '#3f51b5', '#5d76cb', '#ec4899', '#6b7280',
 ];
 
 // =============================================================================
@@ -130,10 +130,10 @@ const ShapeButton = styled(IconButton, {
 })<{ selected?: boolean }>(({ selected }) => ({
   borderRadius: 6,
   padding: 6,
-  backgroundColor: selected ? 'rgba(59, 130, 246, 0.3)' : 'transparent',
-  border: selected ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid transparent',
+  backgroundColor: selected ? 'rgba(63, 81, 181, 0.3)' : 'transparent',
+  border: selected ? '1px solid rgba(63, 81, 181, 0.5)' : '1px solid transparent',
   '&:hover': {
-    backgroundColor: selected ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255,255,255,0.1)',
+    backgroundColor: selected ? 'rgba(63, 81, 181, 0.4)' : 'rgba(255,255,255,0.1)',
   },
 }));
 
@@ -238,7 +238,7 @@ export function drawShape(
   // Selection indicator
   if (selected) {
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = '#3f51b5';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
     ctx.strokeRect(-4, -4, shape.width + 8, shape.height + 8);
@@ -246,7 +246,7 @@ export function drawShape(
     // Resize handles
     const handleSize = 8;
     ctx.fillStyle = 'white';
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = '#3f51b5';
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
     

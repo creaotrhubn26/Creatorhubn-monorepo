@@ -131,7 +131,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 // Focus visible styles for WCAG 2.4.7
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #00d4ff',
+    outline: '3px solid #5d76cb',
     outlineOffset: 2,
   },
 };
@@ -174,15 +174,15 @@ const ROLE_ROOM_COLORS = {
   accentStrong: '#4b3d8f',
   accentSoft: 'rgba(93, 118, 203,0.18)',
   accentBorder: 'rgba(93, 118, 203,0.4)',
-  secondary: 'var(--role-cyan, #22d3ee)',
-  secondarySoft: 'rgba(34,211,238,0.18)',
+  secondary: 'var(--role-cyan, #5d76cb)',
+  secondarySoft: 'rgba(93, 118, 203,0.18)',
   mutedText: 'rgba(255,255,255,0.74)',
-  panel: 'rgba(24, 18, 43,0.72)',
+  panel: 'rgba(42, 61, 86,0.72)',
   panelBorder: 'rgba(93, 118, 203,0.22)',
 };
 
 const LOCATION_PRO_VIEWS_NAMESPACE = 'roleRoom_locationProViews';
-const APPROVED_ANNOTATION_COLORS = new Set(['#5d76cb', 'var(--role-cyan, #22d3ee)', '#34d399', '#f59e0b', '#ef4444', '#93a4dc', '#5d76cb']);
+const APPROVED_ANNOTATION_COLORS = new Set(['#5d76cb', 'var(--role-cyan, #5d76cb)', '#34d399', '#f59e0b', '#ef4444', '#93a4dc', '#5d76cb']);
 
 const PRO_PRESET_LABELS: Record<ProPresetId, string> = {
   all: 'Alle',
@@ -974,7 +974,7 @@ export function LocationManagementPanel({
     const colors: Record<NonNullable<Location['type']>, string> = {
       studio: '#93a4dc',
       outdoor: '#34d399',
-      indoor: 'var(--role-cyan, #22d3ee)',
+      indoor: 'var(--role-cyan, #5d76cb)',
       virtual: '#5d76cb',
       other: '#94a3b8',
     };
@@ -3123,7 +3123,7 @@ export function LocationManagementPanel({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(93, 118, 203, 0.28) 0%, rgba(34, 211, 238, 0.2) 100%)',
+              background: 'linear-gradient(135deg, rgba(93, 118, 203, 0.28) 0%, rgba(93, 118, 203, 0.2) 100%)',
               border: `2px solid ${ROLE_ROOM_COLORS.accentBorder}`,
               display: 'flex',
               alignItems: 'center',
@@ -3980,7 +3980,7 @@ export function LocationManagementPanel({
               { key: 'permit_missing', label: 'Mangler tillatelse', value: operationalStats.permitMissing, color: '#fbbf24' },
               { key: 'high_risk', label: 'Høy risiko', value: operationalStats.highRisk, color: '#f87171' },
               { key: 'over_budget', label: 'Over budsjett', value: operationalStats.overBudget, color: '#fb7185' },
-              { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: 'var(--role-cyan, #22d3ee)' },
+              { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: 'var(--role-cyan, #5d76cb)' },
               { key: 'all', label: 'Totalt i visning', value: operationalStats.total, color: '#93a4dc' },
             ] as Array<{ key: OperationalFilterKey; label: string; value: number; color: string }>).map((item) => (
               <Button
@@ -4202,7 +4202,7 @@ export function LocationManagementPanel({
           </Card>
 
           {selectedIds.size > 0 && (
-            <Card sx={{ bgcolor: 'rgba(24, 18, 43,0.82)', border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+            <Card sx={{ bgcolor: 'rgba(42, 61, 86,0.82)', border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
               <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                 <Box
                   sx={{
@@ -4341,7 +4341,7 @@ export function LocationManagementPanel({
                         borderRadius: 2,
                         minHeight: proMapMinHeight,
                         border: '1px solid rgba(255,255,255,0.16)',
-                        background: 'rgba(16, 11, 30,0.9)',
+                        background: 'rgba(42, 49, 82,0.9)',
                         overflow: 'hidden',
                         '& .leaflet-container': {
                           width: '100%',
@@ -4408,11 +4408,11 @@ export function LocationManagementPanel({
                                   textTransform: 'none',
                                   minHeight: 30,
                                   fontSize: '0.75rem',
-                                  bgcolor: 'rgba(16, 11, 30,0.65)',
+                                  bgcolor: 'rgba(42, 49, 82,0.65)',
                                   borderColor: 'rgba(255,255,255,0.35)',
                                   color: '#fff',
                                   '&:hover': {
-                                    bgcolor: 'rgba(16, 11, 30,0.82)',
+                                    bgcolor: 'rgba(42, 49, 82,0.82)',
                                     borderColor: 'rgba(255,255,255,0.55)',
                                   },
                                 }}
@@ -4430,7 +4430,7 @@ export function LocationManagementPanel({
                                 px: 1,
                                 py: 0.5,
                                 borderRadius: 1,
-                                bgcolor: 'rgba(16, 11, 30,0.72)',
+                                bgcolor: 'rgba(42, 49, 82,0.72)',
                                 border: '1px solid rgba(255,255,255,0.2)',
                                 zIndex: 800,
                               }}
@@ -4558,7 +4558,7 @@ export function LocationManagementPanel({
                       const loadFlowStatusMeta: Record<LoadFlowStatus, { label: string; color: string }> = {
                         planned: { label: 'Planlagt', color: '#93a4dc' },
                         ready: { label: 'Klar', color: '#34d399' },
-                        in_progress: { label: 'Pågår', color: 'var(--role-cyan, #22d3ee)' },
+                        in_progress: { label: 'Pågår', color: 'var(--role-cyan, #5d76cb)' },
                         completed: { label: 'Ferdig', color: '#86efac' },
                       };
                       const isEditingLoadFlow = editingLoadFlowIds.has(location.id);
@@ -4633,13 +4633,13 @@ export function LocationManagementPanel({
                             bgcolor: isConsistencyHighlighted
                               ? 'rgba(251,191,36,0.12)'
                               : activeMapLocationId === location.id
-                                ? 'rgba(34,211,238,0.12)'
+                                ? 'rgba(93, 118, 203,0.12)'
                                 : 'rgba(255,255,255,0.03)',
                             border: `1px solid ${
                               isConsistencyHighlighted
                                 ? 'rgba(251,191,36,0.62)'
                                 : activeMapLocationId === location.id
-                                  ? 'rgba(34,211,238,0.45)'
+                                  ? 'rgba(93, 118, 203,0.45)'
                                   : 'rgba(255,255,255,0.14)'
                             }`,
                             borderRadius: 2.25,
@@ -4677,7 +4677,7 @@ export function LocationManagementPanel({
                                   </Typography>
                                   <Stack direction="row" spacing={0.75} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
                                     <Chip size="small" label={getTypeLabel(location.type)} sx={{ bgcolor: `${typeColor}2b`, color: typeColor }} />
-                                    <Chip size="small" label={`${metric?.readinessScore ?? 0}% klar`} sx={{ bgcolor: 'rgba(34,211,238,0.2)', color: '#67e8f9' }} />
+                                    <Chip size="small" label={`${metric?.readinessScore ?? 0}% klar`} sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: '#93a4dc' }} />
                                     <Chip size="small" label={`Risiko ${metric?.riskScore ?? 0}`} sx={{ bgcolor: `${riskColor}26`, color: riskColor }} />
                                   </Stack>
                                 </Box>
@@ -4797,14 +4797,14 @@ export function LocationManagementPanel({
                                 mt: 1.1,
                                 p: 1,
                                 borderRadius: 1.5,
-                                bgcolor: 'rgba(34,211,238,0.08)',
-                                border: '1px solid rgba(34,211,238,0.24)',
+                                bgcolor: 'rgba(93, 118, 203,0.08)',
+                                border: '1px solid rgba(93, 118, 203,0.24)',
                               }}
                             >
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                                  <BasecampIcon sx={{ fontSize: 16, color: '#67e8f9' }} />
-                                  <Typography sx={{ color: '#67e8f9', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                  <BasecampIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
+                                  <Typography sx={{ color: '#93a4dc', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
                                     Basecamp + load-in/out
                                   </Typography>
                                   {consistencySection === 'loadFlow' ? (
@@ -4826,7 +4826,7 @@ export function LocationManagementPanel({
                                     onClick={() => void handleToggleBasecamp(location)}
                                     disabled={isSavingBasecamp}
                                     sx={{
-                                      color: isBasecamp ? '#34d399' : '#67e8f9',
+                                      color: isBasecamp ? '#34d399' : '#93a4dc',
                                       textTransform: 'none',
                                       minWidth: 0,
                                       px: 1,
@@ -4995,7 +4995,7 @@ export function LocationManagementPanel({
                                         startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
                                         onClick={() => void handleSaveLoadFlow(location)}
                                         disabled={isSavingLoadFlow}
-                                        sx={{ textTransform: 'none', bgcolor: ROLE_ROOM_COLORS.secondary, '&:hover': { bgcolor: '#06b6d4' } }}
+                                        sx={{ textTransform: 'none', bgcolor: ROLE_ROOM_COLORS.secondary, '&:hover': { bgcolor: '#3f51b5' } }}
                                       >
                                         {isSavingLoadFlow ? 'Lagrer...' : 'Lagre flow'}
                                       </Button>
@@ -5067,7 +5067,7 @@ export function LocationManagementPanel({
                               <Collapse in={sceneLinksExpanded}>
                                 <Box sx={{ mt: 1, display: 'flex', gap: 0.65, flexWrap: 'wrap' }}>
                                   <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneIds.length} scener`} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#fff' }} />
-                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.shots} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.shots} shots`} sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc' }} />
                                   <Chip size="small" icon={<CallbackIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.callbacks} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
                                   <Chip size="small" icon={<CrewLinkIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.crew} crew-touchpoints`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
                                   <Chip size="small" icon={<EquipmentIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.equipment} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
@@ -5113,7 +5113,7 @@ export function LocationManagementPanel({
                                                       {scene.label}
                                                     </Typography>
                                                     <Box sx={{ mt: 0.35, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                                      <Chip size="small" label={`${insight?.shotCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                                                      <Chip size="small" label={`${insight?.shotCount ?? 0} shots`} sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc' }} />
                                                       <Chip size="small" label={`${insight?.callbackCount ?? 0} callback`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
                                                       <Chip size="small" label={`${insight?.equipment.length ?? 0} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
                                                       <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(147, 164, 220,0.2)', color: '#c3cbe6' }} />
@@ -5177,7 +5177,7 @@ export function LocationManagementPanel({
                                                 {scene.sceneLabel}
                                               </Typography>
                                               <Box sx={{ mt: 0.45, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                                <Chip size="small" label={`${scene.shotListCount} shotlists`} sx={{ bgcolor: 'rgba(34,211,238,0.15)', color: '#67e8f9' }} />
+                                                <Chip size="small" label={`${scene.shotListCount} shotlists`} sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#93a4dc' }} />
                                                 <Chip size="small" label={`${scene.callbackCount} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
                                                 <Chip size="small" label={`${scene.crewTouchpoints} crew`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
                                                 <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(147, 164, 220,0.2)', color: '#c3cbe6' }} />
@@ -5217,8 +5217,8 @@ export function LocationManagementPanel({
                                 mt: 1.1,
                                 p: 1,
                                 borderRadius: 1.5,
-                                bgcolor: 'rgba(34,211,238,0.08)',
-                                border: '1px solid rgba(34,211,238,0.24)',
+                                bgcolor: 'rgba(93, 118, 203,0.08)',
+                                border: '1px solid rgba(93, 118, 203,0.24)',
                               }}
                             >
                               <Box
@@ -5231,10 +5231,10 @@ export function LocationManagementPanel({
                                 }}
                               >
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                                  <ImageIcon sx={{ fontSize: 16, color: '#67e8f9' }} />
+                                  <ImageIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
                                   <Typography
                                     sx={{
-                                      color: '#67e8f9',
+                                      color: '#93a4dc',
                                       fontSize: '0.74rem',
                                       textTransform: 'uppercase',
                                       fontWeight: 700,
@@ -5282,7 +5282,7 @@ export function LocationManagementPanel({
                                   size="small"
                                   icon={<ImageIcon sx={{ fontSize: 15 }} />}
                                   label={`${locationMediaImages.length} lokasjonsbilder`}
-                                  sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }}
+                                  sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc' }}
                                 />
                                 <Chip
                                   size="small"
@@ -5389,7 +5389,7 @@ export function LocationManagementPanel({
                                           variant="outlined"
                                           startIcon={<AddPhotoIcon sx={{ fontSize: 15 }} />}
                                           onClick={() => handleAddMediaFromUrl(location.id, 'location')}
-                                          sx={{ textTransform: 'none', color: '#67e8f9', borderColor: 'rgba(34,211,238,0.45)' }}
+                                          sx={{ textTransform: 'none', color: '#93a4dc', borderColor: 'rgba(93, 118, 203,0.45)' }}
                                         >
                                           Legg til URL
                                         </Button>
@@ -5398,7 +5398,7 @@ export function LocationManagementPanel({
                                           variant="outlined"
                                           component="label"
                                           startIcon={<UploadFileIcon sx={{ fontSize: 15 }} />}
-                                          sx={{ textTransform: 'none', color: '#67e8f9', borderColor: 'rgba(34,211,238,0.45)' }}
+                                          sx={{ textTransform: 'none', color: '#93a4dc', borderColor: 'rgba(93, 118, 203,0.45)' }}
                                         >
                                           Last opp bilde
                                           <input
@@ -5465,7 +5465,7 @@ export function LocationManagementPanel({
                                                 display: 'block',
                                                 borderRadius: 1,
                                                 overflow: 'hidden',
-                                                border: '1px solid rgba(34,211,238,0.28)',
+                                                border: '1px solid rgba(93, 118, 203,0.28)',
                                               }}
                                             >
                                               <Box
@@ -5811,7 +5811,7 @@ export function LocationManagementPanel({
                                       sx={{
                                         textTransform: 'none',
                                         bgcolor: ROLE_ROOM_COLORS.secondary,
-                                        '&:hover': { bgcolor: '#06b6d4' },
+                                        '&:hover': { bgcolor: '#3f51b5' },
                                       }}
                                     >
                                       {isSavingMedia ? 'Lagrer...' : 'Lagre media'}
@@ -5857,7 +5857,7 @@ export function LocationManagementPanel({
                                               height: 52,
                                               borderRadius: 1,
                                               overflow: 'hidden',
-                                              border: '1px solid rgba(34,211,238,0.35)',
+                                              border: '1px solid rgba(93, 118, 203,0.35)',
                                               display: 'block',
                                             }}
                                           >
@@ -6113,7 +6113,7 @@ export function LocationManagementPanel({
                                       size="small"
                                       icon={<PersonIcon sx={{ fontSize: 15 }} />}
                                       label={proContactName}
-                                      sx={{ bgcolor: 'rgba(77,208,225,0.18)', color: '#67e8f9' }}
+                                      sx={{ bgcolor: 'rgba(77,208,225,0.18)', color: '#93a4dc' }}
                                     />
                                   ) : null}
                                   {proContactPhone ? (
@@ -6129,7 +6129,7 @@ export function LocationManagementPanel({
                                       size="small"
                                       icon={<EmailIcon sx={{ fontSize: 15 }} />}
                                       label={proContactEmail}
-                                      sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#67e8f9' }}
+                                      sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#93a4dc' }}
                                     />
                                   ) : null}
                                   {!proContactName && !proContactPhone && !proContactEmail ? (
@@ -6143,7 +6143,7 @@ export function LocationManagementPanel({
                             </Box>
 
                             <Box sx={{ mt: 1.1, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                              <Chip size="small" icon={<TimelineIcon />} label={`${metric?.shotsCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                              <Chip size="small" icon={<TimelineIcon />} label={`${metric?.shotsCount ?? 0} shots`} sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc' }} />
                               {(metric?.missingTechnicalRoles ?? []).slice(0, 2).map((role) => (
                                 <Chip key={role} size="small" label={getRoleLabel(role)} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
                               ))}
@@ -6195,9 +6195,9 @@ export function LocationManagementPanel({
                     <CardContent>
                       <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>Crew + ShotList kobling</Typography>
                       <Stack spacing={1}>
-                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.25)' }}>
+                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(93, 118, 203,0.12)', border: '1px solid rgba(93, 118, 203,0.25)' }}>
                           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Teknisk crew tilgjengelig</Typography>
-                          <Typography sx={{ color: '#67e8f9', fontWeight: 800, fontSize: '1.1rem' }}>{technicalCrewPool.length}</Typography>
+                          <Typography sx={{ color: '#93a4dc', fontWeight: 800, fontSize: '1.1rem' }}>{technicalCrewPool.length}</Typography>
                         </Box>
                         <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(93, 118, 203,0.12)', border: '1px solid rgba(93, 118, 203,0.25)' }}>
                           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Shots koblet til lokasjoner</Typography>
@@ -6302,7 +6302,7 @@ export function LocationManagementPanel({
           sx={{
             border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`,
             borderRadius: 2.5,
-            bgcolor: 'rgba(16, 11, 30, 0.52)',
+            bgcolor: 'rgba(42, 49, 82, 0.52)',
             backdropFilter: 'blur(6px)',
             p: { xs: 0.25, sm: 0.5, md: 0.75, lg: 0.875, xl: 1 },
             maxWidth: { xs: '100%', xl: 1880 },
@@ -6373,15 +6373,15 @@ export function LocationManagementPanel({
                   alignSelf: 'flex-start',
                   flexDirection: 'column',
                   background: selectedIds.has(location.id)
-                    ? 'linear-gradient(165deg, rgba(33, 28, 59,0.96) 0%, rgba(24, 18, 43,0.94) 100%)'
-                    : 'linear-gradient(165deg, rgba(24, 18, 43,0.9) 0%, rgba(16, 11, 30,0.9) 100%)',
+                    ? 'linear-gradient(165deg, rgba(60, 78, 109,0.96) 0%, rgba(42, 61, 86,0.94) 100%)'
+                    : 'linear-gradient(165deg, rgba(42, 61, 86,0.9) 0%, rgba(42, 49, 82,0.9) 100%)',
                   border: selectedIds.has(location.id) ? '1px solid rgba(93, 118, 203,0.7)' : '1px solid rgba(93, 118, 203,0.28)',
                   borderRadius: 2.5,
                   overflow: 'hidden',
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   boxShadow: selectedIds.has(location.id)
                     ? '0 10px 26px rgba(48, 31, 132,0.32)'
-                    : '0 8px 22px rgba(10, 5, 21,0.35)',
+                    : '0 8px 22px rgba(27, 18, 44,0.35)',
                   ...focusVisibleStyles,
                   '&:hover': {
                     borderColor: 'rgba(93, 118, 203,0.72)',
@@ -7045,8 +7045,8 @@ export function LocationManagementPanel({
                             minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             p: { xs: 1, sm: 1.05, md: 1.1, lg: 1.15, xl: 1.2 },
                             color: '#66dbff',
-                            bgcolor: 'rgba(0,212,255,0.11)',
-                            border: '1px solid rgba(0,212,255,0.28)',
+                            bgcolor: 'rgba(93, 118, 203,0.11)',
+                            border: '1px solid rgba(93, 118, 203,0.28)',
                             borderRadius: 1.75,
                             '@media (min-width: 2048px) and (max-width: 3839px)': {
                               minWidth: 50,
@@ -7055,8 +7055,8 @@ export function LocationManagementPanel({
                             },
                             transition: 'all 0.2s ease',
                             '&:hover': { 
-                              bgcolor: 'rgba(0,212,255,0.2)',
-                              borderColor: 'rgba(0,212,255,0.45)',
+                              bgcolor: 'rgba(93, 118, 203,0.2)',
+                              borderColor: 'rgba(93, 118, 203,0.45)',
                               transform: 'translateY(-1px)',
                             },
                             '&:active': {
@@ -7208,14 +7208,14 @@ export function LocationManagementPanel({
             sx: {
               color: '#fff',
               background:
-                'radial-gradient(120% 140% at 0% 0%, rgba(34,211,238,0.14) 0%, rgba(17,24,39,0) 48%), linear-gradient(165deg, rgba(16, 11, 30,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
+                'radial-gradient(120% 140% at 0% 0%, rgba(93, 118, 203,0.14) 0%, rgba(17,24,39,0) 48%), linear-gradient(165deg, rgba(42, 49, 82,0.98) 0%, rgba(27, 18, 44,0.98) 100%)',
               maxHeight: { xs: '100%', sm: '90vh' },
               maxWidth: { xs: '95vw', sm: '85vw', md: '80vw', lg: '75vw', xl: '70vw' },
               m: { xs: 0, sm: 2, md: 2.5, lg: 3, xl: 4 },
               borderRadius: { xs: 0, sm: 3 },
               border: '1px solid rgba(93, 118, 203,0.45)',
               boxShadow:
-                '0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(93, 118, 203,0.24)',
+                '0 28px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(93, 118, 203,0.14) inset, 0 0 32px rgba(93, 118, 203,0.24)',
               willChange: 'transform, opacity',
               transformOrigin: 'center center',
               zIndex: 100000,
@@ -7227,7 +7227,7 @@ export function LocationManagementPanel({
           zIndex: 100000,
           '& .MuiBackdrop-root': {
             zIndex: 99998,
-            bgcolor: 'rgba(10, 5, 21,0.82)',
+            bgcolor: 'rgba(27, 18, 44,0.82)',
             backdropFilter: 'blur(5px)',
             willChange: 'opacity',
           },
@@ -7244,7 +7244,7 @@ export function LocationManagementPanel({
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
             borderBottom: '1px solid rgba(93, 118, 203,0.34)',
             background:
-              'linear-gradient(120deg, rgba(93, 118, 203,0.28) 0%, rgba(14,20,42,0.95) 55%, rgba(34,211,238,0.2) 100%)',
+              'linear-gradient(120deg, rgba(93, 118, 203,0.28) 0%, rgba(14,20,42,0.95) 55%, rgba(93, 118, 203,0.2) 100%)',
           }}
         >
           <Stack direction="row" spacing={1.5} alignItems="center">
@@ -7295,7 +7295,7 @@ export function LocationManagementPanel({
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch',
             background:
-              'linear-gradient(180deg, rgba(15,23,42,0.38) 0%, rgba(10, 5, 21,0.22) 100%)',
+              'linear-gradient(180deg, rgba(15,23,42,0.38) 0%, rgba(27, 18, 44,0.22) 100%)',
           }}
         >
           <Typography
@@ -7767,7 +7767,7 @@ export function LocationManagementPanel({
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
             position: { xs: 'sticky', sm: 'relative' },
             bottom: 0,
-            bgcolor: 'rgba(10, 5, 21,0.82)',
+            bgcolor: 'rgba(27, 18, 44,0.82)',
             backdropFilter: 'blur(8px)',
           }}
         >

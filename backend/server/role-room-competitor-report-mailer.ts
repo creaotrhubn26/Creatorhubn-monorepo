@@ -23,7 +23,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   opportunity: '#22c55e',
   threat: '#ef4444',
   gap: '#fbbf24',
-  trend: '#60a5fa',
+  trend: '#93a4dc',
 };
 const CATEGORY_LABEL: Record<string, string> = {
   opportunity: 'Mulighet',
@@ -52,7 +52,7 @@ const MOMENTUM_LABEL: Record<string, string> = {
 };
 const MOMENTUM_COLORS: Record<string, string> = {
   'fast-growth': '#22c55e',
-  steady: '#60a5fa',
+  steady: '#93a4dc',
   flat: '#94a3b8',
   declining: '#ef4444',
 };

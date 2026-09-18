@@ -146,7 +146,7 @@ export const AddonsPanel: React.FC = () => {
             <Card
               key={a.slug}
               sx={{
-                bgcolor: isActiveStatus ? 'rgba(93, 118, 203,0.10)' : 'rgba(16, 11, 30,0.62)',
+                bgcolor: isActiveStatus ? 'rgba(93, 118, 203,0.10)' : 'rgba(42, 49, 82,0.62)',
                 border: `1px solid ${isActiveStatus ? 'rgba(147, 164, 220,0.36)' : PANEL_BORDER}`,
                 borderRadius: 2,
                 position: 'relative',

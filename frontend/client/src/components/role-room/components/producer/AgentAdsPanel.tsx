@@ -592,13 +592,13 @@ export default function AgentAdsPanel({
 
           {/* Notes */}
           {discoveryResult.notes.length > 0 ? (
-            <Card sx={{ bgcolor: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.18)', color: palette.textPrimary }}>
+            <Card sx={{ bgcolor: 'rgba(147, 164, 220,0.06)', border: '1px solid rgba(147, 164, 220,0.18)', color: palette.textPrimary }}>
               <CardContent>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ cursor: 'pointer' }} onClick={() => setShowNotes((v) => !v)}>
-                  <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: '#60a5fa' }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: '#93a4dc' }}>
                     Claude-innsikt ({discoveryResult.notes.length})
                   </Typography>
-                  <IconButton size="small" sx={{ color: '#60a5fa' }}>
+                  <IconButton size="small" sx={{ color: '#93a4dc' }}>
                     {showNotes ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                   </IconButton>
                 </Stack>
@@ -847,9 +847,9 @@ export default function AgentAdsPanel({
               </CardContent>
             </Card>
           ) : (
-            <Card sx={{ bgcolor: 'rgba(96,165,250,0.06)', border: `1px solid rgba(96,165,250,0.24)`, color: palette.textPrimary }}>
+            <Card sx={{ bgcolor: 'rgba(147, 164, 220,0.06)', border: `1px solid rgba(147, 164, 220,0.24)`, color: palette.textPrimary }}>
               <CardContent>
-                <Typography sx={{ color: '#60a5fa', fontWeight: 800, fontSize: '0.96rem', mb: 1 }}>
+                <Typography sx={{ color: '#93a4dc', fontWeight: 800, fontSize: '0.96rem', mb: 1 }}>
                   📤 Sendt til klient for godkjenning
                 </Typography>
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem' }}>
@@ -1903,7 +1903,7 @@ function ActionCard({
               <Chip
                 label={action.trigger_type}
                 size="small"
-                sx={{ bgcolor: 'rgba(96,165,250,0.14)', color: '#60a5fa', fontSize: '0.7rem', height: 18 }}
+                sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#93a4dc', fontSize: '0.7rem', height: 18 }}
               />
             </Stack>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mb: 0.4 }}>

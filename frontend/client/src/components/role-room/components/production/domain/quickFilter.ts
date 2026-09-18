@@ -203,7 +203,7 @@ export const QUICK_FILTER_PRESETS: Array<{
     label: 'Scheduled',
     labelNo: 'Planlagt',
     query: { status: 'scheduled' },
-    color: '#3B82F6',
+    color: '#3f51b5',
   },
   {
     id: 'shot',

@@ -155,7 +155,7 @@ export function LocationDecisionRoom({
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Chip icon={<EvidenceIcon />} label={`${summary.verifiedCriteria}/${summary.totalRequiredCriteria} vurdert med evidens`} sx={{ color: '#ccfbf1', bgcolor: 'rgba(45,212,191,.09)' }} />
-            <Chip icon={<ReviewIcon />} label={`${summary.approvals}/${summary.requiredApprovals} godkjenninger`} sx={{ color: '#dbeafe', bgcolor: 'rgba(96,165,250,.1)' }} />
+            <Chip icon={<ReviewIcon />} label={`${summary.approvals}/${summary.requiredApprovals} godkjenninger`} sx={{ color: '#dfe4f3', bgcolor: 'rgba(147, 164, 220,.1)' }} />
           </Stack>
         </Stack>
       </Box>
@@ -192,7 +192,7 @@ export function LocationDecisionRoom({
                   scrollSnapAlign: 'start',
                   borderColor: selected ? '#2dd4bf' : 'rgba(148,163,184,.18)',
                   boxShadow: selected ? '0 0 0 1px rgba(45,212,191,.25)' : 'none',
-                  '&:focus-visible': { outline: '3px solid #67e8f9', outlineOffset: 2 },
+                  '&:focus-visible': { outline: '3px solid #93a4dc', outlineOffset: 2 },
                 }}
               >
                 <Stack direction="row" justifyContent="space-between" gap={1}>
@@ -336,7 +336,7 @@ export function LocationDecisionRoom({
           </Box>
 
           <Stack spacing={1.25}>
-            <Box sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'rgba(96,165,250,.045)', border: '1px solid rgba(96,165,250,.18)' }}>
+            <Box sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'rgba(147, 164, 220,.045)', border: '1px solid rgba(147, 164, 220,.18)' }}>
               <Typography component="h3" variant="h6" fontWeight={820}>Felles sign-off</Typography>
               <Typography sx={{ color: 'rgba(226,232,240,.54)', fontSize: '.76rem', mb: 1.25 }}>
                 Hver beslutning signeres av riktig prosjektrolle på serveren.

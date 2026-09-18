@@ -279,7 +279,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                     <Chip
                       size="small"
                       label={`${d.count}`}
-                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }}
+                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoSoft }}
                     />
                   </Stack>
                 ))}

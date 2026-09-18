@@ -201,7 +201,7 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
             sx={{
               p: { xs: 2.5, md: 3 },
               borderRadius: 2.5,
-              background: 'rgba(16, 11, 30,0.42)',
+              background: 'rgba(42, 49, 82,0.42)',
               border: `1px solid ${PANEL_BORDER}`,
             }}
           >

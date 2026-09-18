@@ -345,7 +345,7 @@ const ReplanView: React.FC<{ data: ReplanDayResult }> = ({ data }) => (
     )}
     {data.recommendation.combine.length > 0 && (
       <Box>
-        <Typography sx={{ fontSize: 11, color: '#60a5fa', fontWeight: 700, letterSpacing: 1 }}>
+        <Typography sx={{ fontSize: 11, color: '#93a4dc', fontWeight: 700, letterSpacing: 1 }}>
           KOMBINER ({data.recommendation.combine.length})
         </Typography>
         {data.recommendation.combine.map((c, i) => (
@@ -502,7 +502,7 @@ const EndOfDayView: React.FC<{ data: EndOfDayBrief }> = ({ data }) => {
       )}
       {data.tomorrowBrief.priority.length > 0 && (
         <Box>
-          <Typography sx={{ fontSize: 11, color: '#60a5fa', fontWeight: 700, letterSpacing: 1 }}>
+          <Typography sx={{ fontSize: 11, color: '#93a4dc', fontWeight: 700, letterSpacing: 1 }}>
             I MORGEN
           </Typography>
           <List dense sx={{ p: 0 }}>

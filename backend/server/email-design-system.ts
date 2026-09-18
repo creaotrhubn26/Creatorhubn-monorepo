@@ -93,7 +93,7 @@ export type EmailCategory =
   | 'general';
 
 const CATEGORY_BADGE: Record<EmailCategory, { label: string; bg: string; fg: string; icon: IconName }> = {
-  viewed:        { label: 'Sett',          bg: 'rgba(96,165,250,0.22)',  fg: '#60a5fa', icon: 'visibility' },
+  viewed:        { label: 'Sett',          bg: 'rgba(147, 164, 220,0.22)',  fg: '#93a4dc', icon: 'visibility' },
   shortlisted:   { label: 'Shortlistet',   bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'star' },
   reminder:      { label: 'Påminnelse',    bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'notification' },
   comment:       { label: 'Kommentar',     bg: 'rgba(75, 61, 143,0.22)',   fg: '#93a4dc', icon: 'chat' },

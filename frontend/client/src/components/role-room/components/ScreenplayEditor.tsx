@@ -775,7 +775,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     return {
       scene_heading: { ...base, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase',
         marginTop: `${1.5 * mm}em`, marginBottom: `${0.5 * mm}em` },
-      character: { ...base, fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase',
+      character: { ...base, fontWeight: 600, color: '#93a4dc', textTransform: 'uppercase',
         marginLeft: isMobile ? '20%' : isTablet ? '30%' : '37%', marginTop: `${mm}em` },
       dialogue: { ...base, color: '#f5f5f5',
         marginLeft: isMobile ? '5%' : isTablet ? '12%' : '17%',
@@ -2014,7 +2014,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           </Tooltip>
           <Tooltip title="Character">
             <IconButton size={responsive.buttonSize} onClick={() => applyElementAtCursor('character')}>
-              <CharacterIcon sx={{ color: '#60a5fa', fontSize: responsive.iconSize }} />
+              <CharacterIcon sx={{ color: '#93a4dc', fontSize: responsive.iconSize }} />
             </IconButton>
           </Tooltip>
           {!isMobile && (
@@ -2108,7 +2108,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 onClick={openCharacterRenameDialog}
                 aria-label="Endre karakternavn i hele manuset"
                 disabled={readOnly || renameCharacterNames.length === 0}
-                sx={{ color: '#60a5fa' }}
+                sx={{ color: '#93a4dc' }}
               >
                 <RenameCharacterIcon sx={{ fontSize: responsive.iconSize }} />
               </IconButton>
@@ -2211,7 +2211,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                       : (isMobile ? '☁ ○' : '☁ Ikke synkronisert')}
                 sx={{
                   bgcolor: cloudSaveState === 'saved'
-                    ? 'rgba(59, 130, 246, 0.18)'
+                    ? 'rgba(63, 81, 181, 0.18)'
                     : cloudSaveState === 'error' || cloudSaveState === 'conflict'
                       ? 'rgba(244, 63, 94, 0.2)'
                       : 'rgba(251, 191, 36, 0.2)',
@@ -2245,8 +2245,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 size={responsive.buttonSize}
                 onClick={handleFullscreenToggle}
                 sx={{ 
-                  color: isFullscreen ? '#3b82f6' : '#6b7280',
-                  '&:hover': { color: '#3b82f6', bgcolor: 'rgba(59, 130, 246, 0.1)' },
+                  color: isFullscreen ? '#3f51b5' : '#6b7280',
+                  '&:hover': { color: '#3f51b5', bgcolor: 'rgba(63, 81, 181, 0.1)' },
                 }}
               >
                 {isFullscreen ? (
@@ -2323,7 +2323,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           const icon = (() => {
             switch (rule.type) {
               case 'scene_heading': return <SceneIcon sx={{ color: '#fbbf24' }} />;
-              case 'character': return <CharacterIcon sx={{ color: '#60a5fa' }} />;
+              case 'character': return <CharacterIcon sx={{ color: '#93a4dc' }} />;
               case 'dialogue': return <DialogueIcon />;
               case 'parenthetical': return <FormatAlignCenter sx={{ color: '#93a4dc' }} />;
               case 'transition': return <TransitionIcon sx={{ color: '#f472b6' }} />;
@@ -2332,7 +2332,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
               case 'centered': return <CenterIcon sx={{ color: '#34d399' }} />;
               case 'page_break': return <PageIcon />;
               case 'note': return <CodeIcon />;
-              case 'dual_dialogue': return <DialogueIcon sx={{ color: '#22d3ee' }} />;
+              case 'dual_dialogue': return <DialogueIcon sx={{ color: '#5d76cb' }} />;
               default: return <ActionIcon />;
             }
           })();
@@ -2398,7 +2398,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                   ...(clickableAssignment ? {
                     pointerEvents: 'auto',
                     cursor: 'pointer',
-                    textDecoration: 'underline dotted rgba(96, 165, 250, 0.75)',
+                    textDecoration: 'underline dotted rgba(147, 164, 220, 0.75)',
                     textUnderlineOffset: '0.16em',
                   } : {}),
                 }}
@@ -2549,7 +2549,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 >
                   <ListItemIcon sx={{ minWidth: isMobile ? 30 : 40 }}>
                     {autocompleteType === 'character' ? (
-                      <CharacterIcon  sx={{ color: '#60a5fa', fontSize: responsive.iconSize }} />
+                      <CharacterIcon  sx={{ color: '#93a4dc', fontSize: responsive.iconSize }} />
                     ) : autocompleteType === 'location' ? (
                       <LocationIcon   sx={{ color: '#fbbf24', fontSize: responsive.iconSize }} />
                     ) : autocompleteType === 'scene_prefix' ? (
@@ -2605,7 +2605,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           px: isMobile ? 1 : 1.5,
           py: 0.75,
           borderColor: 'rgba(147, 164, 220, 0.28)',
-          bgcolor: 'rgba(16, 11, 30, 0.92)',
+          bgcolor: 'rgba(42, 49, 82, 0.92)',
           overflowX: 'auto',
         }}
       >
@@ -2637,9 +2637,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 label={`${screenplayShortcutLabel(command.id, screenplayPlatform, shortcutOverrides)} ${command.label}`}
                 sx={{
                   height: 24,
-                  color: '#dbeafe',
-                  bgcolor: 'rgba(59, 130, 246, 0.12)',
-                  border: '1px solid rgba(96, 165, 250, 0.28)',
+                  color: '#dfe4f3',
+                  bgcolor: 'rgba(63, 81, 181, 0.12)',
+                  border: '1px solid rgba(147, 164, 220, 0.28)',
                   fontSize: responsive.captionFontSize,
                 }}
               />

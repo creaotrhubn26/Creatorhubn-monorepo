@@ -271,7 +271,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
 
   const kpis = [
     { id: 'studenter', label: 'Studenter', value: totalStudents, hint: 'På tvers av alle kull', color: '#c3cbe6', bg: 'rgba(93, 118, 203,0.16)', icon: <CohortIcon /> },
-    { id: 'kull', label: 'Kull', value: cohorts.filter((c) => !c.archived).length, hint: 'Aktive dette semesteret', color: '#38bdf8', bg: 'rgba(56,189,248,0.16)', icon: <CanvasIcon /> },
+    { id: 'kull', label: 'Kull', value: cohorts.filter((c) => !c.archived).length, hint: 'Aktive dette semesteret', color: '#5d76cb', bg: 'rgba(93, 118, 203,0.16)', icon: <CanvasIcon /> },
     { id: 'grupper', label: 'Grupper', value: groups.length, hint: selected ? `I ${selected.name}` : 'Velg et kull', color: '#34d399', bg: 'rgba(16,185,129,0.16)', icon: <CohortIcon /> },
     { id: 'utengruppe', label: 'Studenter uten gruppe', value: ungrouped, hint: 'Klar for gruppering', color: '#f59e0b', bg: 'rgba(245,158,11,0.16)', icon: <InviteIcon /> },
   ];

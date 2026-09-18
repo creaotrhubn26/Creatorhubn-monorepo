@@ -105,7 +105,7 @@ const ROLE_COLOR: Record<string, string> = {
   salgssjef: '#f97316',
   teamleder: '#fbbf24',
   salgskonsulent: '#34d399',
-  promotor: '#60a5fa',
+  promotor: '#93a4dc',
 };
 
 /** Medalje for top 3 — gull, sølv, bronse */

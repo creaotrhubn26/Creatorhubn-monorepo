@@ -54,7 +54,7 @@ type Bucket = 'urgent' | 'today' | 'soon' | 'attention';
 const BUCKET_META: Record<Bucket, { label: string; color: string; Icon: typeof UrgentIcon }> = {
   urgent: { label: 'Haster nå', color: '#fca5a5', Icon: UrgentIcon },
   today: { label: 'I dag', color: '#fbbf24', Icon: TodayIcon },
-  soon: { label: 'Kommende', color: 'var(--role-cyan, #22d3ee)', Icon: SoonIcon },
+  soon: { label: 'Kommende', color: 'var(--role-cyan, #5d76cb)', Icon: SoonIcon },
   attention: { label: 'Krever oppmerksomhet', color: '#c3cbe6', Icon: AttentionIcon },
 };
 const BUCKET_ORDER: Bucket[] = ['urgent', 'today', 'soon', 'attention'];
@@ -123,7 +123,7 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
           aria-label={collapsed ? 'Vis Min dag' : 'Skjul Min dag'}
           sx={{
             minWidth: 44, minHeight: 44, color: 'rgba(226,232,240,0.8)',
-            '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+            '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 },
           }}
         >
           <ExpandIcon sx={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform .15s' }} />
@@ -249,7 +249,7 @@ function MinDagRow({
             flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '12px',
             minHeight: 44, px: 1.2, borderRadius: '9px', color: '#c3cbe6',
             '&:hover': { background: 'rgba(93, 118, 203,0.1)' },
-            '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+            '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 },
           }}
         >
           Åpne

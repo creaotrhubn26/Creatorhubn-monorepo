@@ -44,7 +44,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, { txt: string; bg: string; color: string }> = {
   active: { txt: 'AKTIV', bg: 'rgba(52,211,153,0.18)', color: '#34d399' },
-  delegated: { txt: 'DELEGERT', bg: 'rgba(96,165,250,0.18)', color: '#60a5fa' },
+  delegated: { txt: 'DELEGERT', bg: 'rgba(147, 164, 220,0.18)', color: '#93a4dc' },
   pending: { txt: 'AVVENTER', bg: 'rgba(251,191,36,0.18)', color: '#fbbf24' },
   revoked: { txt: 'AVSLUTTET', bg: 'rgba(148,163,184,0.18)', color: '#94a3b8' },
   expired: { txt: 'UTLØPT', bg: 'rgba(248,113,113,0.18)', color: '#f87171' },

@@ -1869,7 +1869,7 @@ export default function ProducerPlannerStudio({
           p: 1.35,
           borderRadius: 2,
           border: '1px solid rgba(148,163,184,0.18)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(10, 5, 21,0.86) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(27, 18, 44,0.86) 100%)',
         }}
       >
         <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.2} justifyContent="space-between">
@@ -1902,8 +1902,8 @@ export default function ProducerPlannerStudio({
                   size="small"
                   label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} nye varsler` : 'Ingen nye varsler'}
                   sx={{
-                    bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
-                    color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
+                    bgcolor: notificationsUnreadCount > 0 ? 'rgba(63, 81, 181,0.18)' : 'rgba(148,163,184,0.16)',
+                    color: notificationsUnreadCount > 0 ? '#c3cbe6' : '#cbd5e1',
                   }}
                 />
               </Stack>
@@ -1990,8 +1990,8 @@ export default function ProducerPlannerStudio({
                     fontWeight: 700,
                   },
                   '& .Mui-selected': {
-                    bgcolor: 'rgba(59,130,246,0.18) !important',
-                    color: '#bfdbfe !important',
+                    bgcolor: 'rgba(63, 81, 181,0.18) !important',
+                    color: '#c3cbe6 !important',
                   },
                 }}
               >
@@ -2075,7 +2075,7 @@ export default function ProducerPlannerStudio({
                       bgcolor: 'rgba(148,163,184,0.18)',
                       '& .MuiLinearProgress-bar': {
                         borderRadius: 999,
-                        bgcolor: card.tone === 'danger' ? '#f87171' : card.tone === 'warning' ? '#fbbf24' : '#38bdf8',
+                        bgcolor: card.tone === 'danger' ? '#f87171' : card.tone === 'warning' ? '#fbbf24' : '#5d76cb',
                       },
                     }}
                   />
@@ -2083,7 +2083,7 @@ export default function ProducerPlannerStudio({
                     <Chip size="small" label={`${card.progress}% fremdrift`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
                     <Chip size="small" label={`${card.blockers} blockers`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca' }} />
                     {!useMobileContentProducerPlanner ? (
-                      <Chip size="small" label={`${card.approvals} approvals`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                      <Chip size="small" label={`${card.approvals} approvals`} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
                     ) : null}
                   </Stack>
                   <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
@@ -2160,8 +2160,8 @@ export default function ProducerPlannerStudio({
                 size="small"
                 label={contentProducerInboxSummary.unread > 0 ? `${contentProducerInboxSummary.unread} uleste` : 'Alt lest'}
                 sx={{
-                  bgcolor: contentProducerInboxSummary.unread > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
-                  color: contentProducerInboxSummary.unread > 0 ? '#bfdbfe' : '#cbd5e1',
+                  bgcolor: contentProducerInboxSummary.unread > 0 ? 'rgba(63, 81, 181,0.18)' : 'rgba(148,163,184,0.16)',
+                  color: contentProducerInboxSummary.unread > 0 ? '#c3cbe6' : '#cbd5e1',
                 }}
               />
               {notificationsUnreadCount > 0 ? (
@@ -2196,9 +2196,9 @@ export default function ProducerPlannerStudio({
                   label={`${PRODUCER_INBOX_FILTER_LABELS[filterKey]} · ${count}`}
                   onClick={() => setInboxFilter(filterKey)}
                   sx={{
-                    bgcolor: inboxFilter === filterKey ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.12)',
-                    color: inboxFilter === filterKey ? '#bfdbfe' : '#cbd5e1',
-                    border: inboxFilter === filterKey ? '1px solid rgba(96,165,250,0.32)' : '1px solid rgba(148,163,184,0.14)',
+                    bgcolor: inboxFilter === filterKey ? 'rgba(63, 81, 181,0.18)' : 'rgba(148,163,184,0.12)',
+                    color: inboxFilter === filterKey ? '#c3cbe6' : '#cbd5e1',
+                    border: inboxFilter === filterKey ? '1px solid rgba(147, 164, 220,0.32)' : '1px solid rgba(148,163,184,0.14)',
                     fontWeight: 700,
                   }}
                 />
@@ -2213,7 +2213,7 @@ export default function ProducerPlannerStudio({
               mb: 1,
               '& .MuiInputBase-root': {
                 color: '#e5edf7',
-                bgcolor: 'rgba(10, 5, 21,0.46)',
+                bgcolor: 'rgba(27, 18, 44,0.46)',
               },
               '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.7)' },
               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
@@ -2293,13 +2293,13 @@ export default function ProducerPlannerStudio({
                     border: item.needsFollowUp
                       ? '1px solid rgba(245,158,11,0.28)'
                       : item.unread
-                        ? '1px solid rgba(59,130,246,0.28)'
+                        ? '1px solid rgba(63, 81, 181,0.28)'
                         : '1px solid rgba(148,163,184,0.16)',
                     background: item.needsFollowUp
                       ? 'rgba(30,41,59,0.92)'
                       : item.unread
                         ? 'rgba(15,23,42,0.92)'
-                        : 'rgba(10, 5, 21,0.36)',
+                        : 'rgba(27, 18, 44,0.36)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
@@ -2308,7 +2308,7 @@ export default function ProducerPlannerStudio({
                         <Chip
                           size="small"
                           label={PRODUCER_INBOX_CATEGORY_LABELS[item.category]}
-                          sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                          sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                         />
                         <Chip
                           size="small"
@@ -2319,7 +2319,7 @@ export default function ProducerPlannerStudio({
                         <Chip
                           size="small"
                           label={item.projectName}
-                          sx={{ bgcolor: 'rgba(14,165,233,0.12)', color: '#bae6fd' }}
+                          sx={{ bgcolor: 'rgba(63, 81, 181,0.12)', color: '#c3cbe6' }}
                         />
                         {hasText(item.clientLabel) ? (
                           <Chip
@@ -2381,7 +2381,7 @@ export default function ProducerPlannerStudio({
                             minWidth: { xs: '100%', sm: 220, md: 190 },
                             '& .MuiInputBase-root': {
                               color: '#e5edf7',
-                              bgcolor: 'rgba(10, 5, 21,0.5)',
+                              bgcolor: 'rgba(27, 18, 44,0.5)',
                             },
                             '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.7)' },
                             '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.24)' },
@@ -2510,7 +2510,7 @@ export default function ProducerPlannerStudio({
                         p: 0.95,
                         borderRadius: 1.6,
                         border: '1px solid rgba(148,163,184,0.16)',
-                        background: 'rgba(10, 5, 21,0.42)',
+                        background: 'rgba(27, 18, 44,0.42)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} justifyContent="space-between">
@@ -2525,7 +2525,7 @@ export default function ProducerPlannerStudio({
                             <Chip
                               size="small"
                               label={getReviewTypeLabel(review)}
-                              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                              sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                             />
                             <Chip
                               size="small"
@@ -2598,8 +2598,8 @@ export default function ProducerPlannerStudio({
                   size="small"
                   label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} uleste` : 'Alt lest'}
                   sx={{
-                    bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
-                    color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
+                    bgcolor: notificationsUnreadCount > 0 ? 'rgba(63, 81, 181,0.18)' : 'rgba(148,163,184,0.16)',
+                    color: notificationsUnreadCount > 0 ? '#c3cbe6' : '#cbd5e1',
                   }}
                 />
                 {notificationsUnreadCount > 0 ? (
@@ -2627,9 +2627,9 @@ export default function ProducerPlannerStudio({
                       borderRadius: 1.6,
                       border: notification.read
                         ? '1px solid rgba(148,163,184,0.16)'
-                        : '1px solid rgba(59,130,246,0.28)',
+                        : '1px solid rgba(63, 81, 181,0.28)',
                       background: notification.read
-                        ? 'rgba(10, 5, 21,0.36)'
+                        ? 'rgba(27, 18, 44,0.36)'
                         : 'rgba(15,23,42,0.92)',
                     }}
                   >
@@ -2640,8 +2640,8 @@ export default function ProducerPlannerStudio({
                             size="small"
                             label={notification.read ? 'Lest' : 'Ny'}
                             sx={{
-                              bgcolor: notification.read ? 'rgba(148,163,184,0.16)' : 'rgba(59,130,246,0.18)',
-                              color: notification.read ? '#cbd5e1' : '#bfdbfe',
+                              bgcolor: notification.read ? 'rgba(148,163,184,0.16)' : 'rgba(63, 81, 181,0.18)',
+                              color: notification.read ? '#cbd5e1' : '#c3cbe6',
                             }}
                           />
                           <Chip
@@ -2723,9 +2723,9 @@ export default function ProducerPlannerStudio({
                           size="small"
                           label="Fortsett der du slapp"
                           sx={{
-                            bgcolor: 'rgba(59,130,246,0.16)',
-                            color: '#bfdbfe',
-                            border: '1px solid rgba(96,165,250,0.34)',
+                            bgcolor: 'rgba(63, 81, 181,0.16)',
+                            color: '#c3cbe6',
+                            border: '1px solid rgba(147, 164, 220,0.34)',
                             fontWeight: 700,
                           }}
                         />
@@ -2769,7 +2769,7 @@ export default function ProducerPlannerStudio({
                       >
                         <Stack spacing={0.55}>
                           <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
-                            <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[getPhaseForTimelineItem(item)]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                            <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[getPhaseForTimelineItem(item)]} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
                             <Chip size="small" label={item.status} sx={{ bgcolor: styles.chipBackground, color: styles.chipColor }} />
                             {hasText(item.due_at) ? (
                               <Chip size="small" label={toDisplayDateTime(item.due_at)} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
@@ -2906,7 +2906,7 @@ export default function ProducerPlannerStudio({
                           p: 1,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(10, 5, 21,0.5)',
+                          background: 'rgba(27, 18, 44,0.5)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 0.8 }}>
@@ -2921,7 +2921,7 @@ export default function ProducerPlannerStudio({
                           <Chip
                             size="small"
                             label={`${phaseItems.length} timeline-punkt`}
-                            sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe', alignSelf: 'flex-start' }}
+                            sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6', alignSelf: 'flex-start' }}
                           />
                         </Stack>
                         <Stack spacing={0.75}>
@@ -3028,7 +3028,7 @@ export default function ProducerPlannerStudio({
                       p: 0.9,
                       borderRadius: 1.25,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      background: 'rgba(10, 5, 21,0.45)',
+                      background: 'rgba(27, 18, 44,0.45)',
                     }}
                   >
                     <Stack direction="row" justifyContent="space-between" spacing={1}>
@@ -3062,7 +3062,7 @@ export default function ProducerPlannerStudio({
                       p: 0.9,
                       borderRadius: 1.2,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      background: 'rgba(10, 5, 21,0.45)',
+                      background: 'rgba(27, 18, 44,0.45)',
                     }}
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>{item.title}</Typography>
@@ -3148,13 +3148,13 @@ export default function ProducerPlannerStudio({
                     p: 0.95,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(10, 5, 21,0.45)',
+                    background: 'rgba(27, 18, 44,0.45)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
                     <Box sx={{ minWidth: 0 }}>
                       <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
-                        <Chip size="small" label={CALENDAR_TYPE_LABELS[entry.type]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                        <Chip size="small" label={CALENDAR_TYPE_LABELS[entry.type]} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
                         <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[entry.phase]} sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#dfe4f3' }} />
                       </Stack>
                       <Typography sx={{ color: '#fff', fontWeight: 700 }}>{entry.title}</Typography>
@@ -3229,11 +3229,11 @@ export default function ProducerPlannerStudio({
                   flex: 1,
                   p: 1,
                   borderRadius: 1.5,
-                  border: '1px solid rgba(59,130,246,0.24)',
+                  border: '1px solid rgba(63, 81, 181,0.24)',
                   background: 'rgba(30,41,59,0.4)',
                 }}
               >
-                <Typography sx={{ color: '#bfdbfe', fontWeight: 700 }}>Anbefalt møte-vindu</Typography>
+                <Typography sx={{ color: '#c3cbe6', fontWeight: 700 }}>Anbefalt møte-vindu</Typography>
                 <Typography sx={{ color: '#fff', fontWeight: 700, mt: 0.35 }}>{recommendedMeetingWindow}</Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.8rem', mt: 0.25 }}>
                   Basert på faseplan, crew availability og nærmeste operative holdepunkt.
@@ -3288,11 +3288,11 @@ export default function ProducerPlannerStudio({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ color: 'rgba(191,219,254,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Person</TableCell>
-                  <TableCell sx={{ color: 'rgba(191,219,254,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Availability</TableCell>
-                  <TableCell sx={{ color: 'rgba(191,219,254,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Assigned</TableCell>
-                  <TableCell sx={{ color: 'rgba(191,219,254,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Conflict</TableCell>
-                  <TableCell sx={{ color: 'rgba(191,219,254,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Recommendation</TableCell>
+                  <TableCell sx={{ color: 'rgba(195, 203, 230,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Person</TableCell>
+                  <TableCell sx={{ color: 'rgba(195, 203, 230,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Availability</TableCell>
+                  <TableCell sx={{ color: 'rgba(195, 203, 230,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Assigned</TableCell>
+                  <TableCell sx={{ color: 'rgba(195, 203, 230,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Conflict</TableCell>
+                  <TableCell sx={{ color: 'rgba(195, 203, 230,0.82)', borderBottomColor: 'rgba(148,163,184,0.16)' }}>Recommendation</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -3328,7 +3328,7 @@ export default function ProducerPlannerStudio({
               borderTopRightRadius: 20,
               border: '1px solid rgba(148,163,184,0.18)',
               borderBottom: 'none',
-              background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(10, 5, 21,0.96) 100%)',
+              background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(27, 18, 44,0.96) 100%)',
               p: 1.4,
             },
           }}
@@ -3384,8 +3384,8 @@ export default function ProducerPlannerStudio({
                   fontWeight: 700,
                 },
                 '& .Mui-selected': {
-                  bgcolor: 'rgba(59,130,246,0.18) !important',
-                  color: '#bfdbfe !important',
+                  bgcolor: 'rgba(63, 81, 181,0.18) !important',
+                  color: '#c3cbe6 !important',
                 },
               }}
             >
@@ -3580,7 +3580,7 @@ export default function ProducerPlannerStudio({
                     <Typography sx={{ fontWeight: 700, mb: 0.6 }}>Agenda systemet foreslår</Typography>
                     <Stack spacing={0.7}>
                       {meetingDialogAgenda.map((item) => (
-                        <Box key={item.title} sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(59,130,246,0.08)' }}>
+                        <Box key={item.title} sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(63, 81, 181,0.08)' }}>
                           <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>
                           <Typography sx={{ color: 'text.secondary', fontSize: '0.82rem' }}>{item.detail}</Typography>
                         </Box>

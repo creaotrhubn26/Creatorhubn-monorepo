@@ -50,9 +50,9 @@ const RoleRoomBrandMark: FC<RoleRoomBrandMarkProps> = ({
         px: 0.8,
         py: 0.45,
         borderRadius: 1.2,
-        border: '1px solid rgba(56,189,248,0.42)',
+        border: '1px solid rgba(93, 118, 203,0.42)',
         bgcolor: 'rgba(7,13,26,0.76)',
-        boxShadow: '0 0 0 1px rgba(125,211,252,0.16) inset',
+        boxShadow: '0 0 0 1px rgba(147, 164, 220,0.16) inset',
         ...sx,
       }}
     >
@@ -65,8 +65,8 @@ const RoleRoomBrandMark: FC<RoleRoomBrandMarkProps> = ({
           height: size,
           objectFit: 'contain',
           borderRadius: 1,
-          border: '1px solid rgba(186,230,253,0.6)',
-          bgcolor: 'rgba(10, 5, 21,0.66)',
+          border: '1px solid rgba(195, 203, 230,0.6)',
+          bgcolor: 'rgba(27, 18, 44,0.66)',
           p: 0.2,
           boxShadow: '0 0 14px rgba(93, 118, 203,0.28)',
           flexShrink: 0,
@@ -76,7 +76,7 @@ const RoleRoomBrandMark: FC<RoleRoomBrandMarkProps> = ({
         <Typography
           variant="caption"
           sx={{
-            color: 'rgba(186,230,253,0.96)',
+            color: 'rgba(195, 203, 230,0.96)',
             fontWeight: 800,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',

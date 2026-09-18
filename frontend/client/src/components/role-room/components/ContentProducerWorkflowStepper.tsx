@@ -94,8 +94,8 @@ const APPROVAL_BADGE_CONFIG: Record<NonNullable<WorkflowApprovalStatus>, { label
   },
   awaiting_client: {
     label: 'Sendt til klient',
-    bg: 'rgba(59,130,246,0.18)',
-    color: '#bfdbfe',
+    bg: 'rgba(63, 81, 181,0.18)',
+    color: '#c3cbe6',
     hint: 'Sendt til klient — venter på tilbakemelding. Klikk for å se status og purre.',
   },
   changes_requested: {

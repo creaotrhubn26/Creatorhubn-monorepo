@@ -191,7 +191,7 @@ export default function PostAgentLinkPage(): JSX.Element {
     >
       <div
         style={{
-          background: 'rgba(33, 28, 59, 0.7)',
+          background: 'rgba(60, 78, 109, 0.7)',
           border: '1px solid #2b2553',
           borderRadius: 12,
           padding: 32,

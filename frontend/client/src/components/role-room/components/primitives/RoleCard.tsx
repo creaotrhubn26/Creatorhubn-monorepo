@@ -72,7 +72,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
             }
           : undefined,
         '&:focus-visible': interactive
-          ? { outline: '2px solid #60a5fa', outlineOffset: 2 }
+          ? { outline: '2px solid #93a4dc', outlineOffset: 2 }
           : undefined,
         ...sx,
       }}

@@ -374,7 +374,7 @@ function StatusChip({ status }: { status: string }) {
     draft:       { bg: 'rgba(255,255,255,0.08)', fg: '#94a3b8', label: 'Kladd' },
     ready:       { bg: 'rgba(75, 61, 143,0.18)', fg: '#93a4dc', label: 'Klar' },
     submitted:   { bg: 'rgba(75, 61, 143,0.18)', fg: '#93a4dc', label: 'Sendt' },
-    viewed:      { bg: 'rgba(96,165,250,0.18)', fg: '#60a5fa', label: 'Sett' },
+    viewed:      { bg: 'rgba(147, 164, 220,0.18)', fg: '#93a4dc', label: 'Sett' },
     shortlisted: { bg: 'rgba(251,191,36,0.18)', fg: '#fbbf24', label: 'Shortlistet' },
     passed:      { bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8', label: 'Forbigått' },
     revoked:     { bg: 'rgba(248,113,113,0.18)', fg: '#f87171', label: 'Revokert' },

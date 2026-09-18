@@ -137,7 +137,7 @@ export default function RelatedContractsSection({
               color: brandColor,
               '&:hover': {
                 borderColor: brandColor,
-                bgcolor: 'rgba(0, 212, 255, 0.1)',
+                bgcolor: 'rgba(93, 118, 203, 0.1)',
               },
               minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
               fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' },
@@ -176,7 +176,7 @@ export default function RelatedContractsSection({
                   borderColor: isLinkedToCurrentSplitSheet ? brandColor : 'rgba(255,255,255,0.1)',
                   borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
                   mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-                  bgcolor: isLinkedToCurrentSplitSheet ? 'rgba(0, 212, 255, 0.08)' : 'rgba(255,255,255,0.02)',
+                  bgcolor: isLinkedToCurrentSplitSheet ? 'rgba(93, 118, 203, 0.08)' : 'rgba(255,255,255,0.02)',
                   '&:hover': {
                     bgcolor: 'rgba(255,255,255,0.05)',
                     borderColor: brandColor,
@@ -296,7 +296,7 @@ export default function RelatedContractsSection({
                         onClick={() => onViewContract(contract)}
                         sx={{
                           color: brandColor,
-                          '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.1)' },
+                          '&:hover': { bgcolor: 'rgba(93, 118, 203, 0.1)' },
                           minWidth: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
                           minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
                         }}
@@ -310,7 +310,7 @@ export default function RelatedContractsSection({
                         onClick={onCreateContract}
                         sx={{
                           color: brandColor,
-                          '&:hover': { bgcolor: 'rgba(0, 212, 255, 0.1)' },
+                          '&:hover': { bgcolor: 'rgba(93, 118, 203, 0.1)' },
                           minWidth: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
                           minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
                         }}

@@ -422,7 +422,7 @@ export default function CompetitorReportPanel() {
         {!report && !loading && (
           <Alert severity="info" data-testid="report-empty-state"
             sx={{
-              background: 'rgba(59,130,246,0.10)',
+              background: 'rgba(63, 81, 181,0.10)',
               border: `1px solid ${adminTokens.status.info.border}`,
               color: adminTokens.status.info.text,
               '& .MuiAlert-icon': { color: adminTokens.status.info.base },

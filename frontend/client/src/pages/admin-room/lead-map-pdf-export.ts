@@ -272,7 +272,7 @@ function buildHtml(data: PdfReportData): string {
     .bucket .label { font-size: 10px; margin-top: 6px; text-transform: uppercase; }
     .bucket.urgent { background: rgba(248,113,113,0.1); color: #b91c1c; }
     .bucket.warn { background: rgba(251,191,36,0.1); color: #d97706; }
-    .bucket.info { background: rgba(96,165,250,0.1); color: #2563eb; }
+    .bucket.info { background: rgba(147, 164, 220,0.1); color: #2563eb; }
     footer.report-footer {
       margin-top: 32px; padding-top: 12px;
       border-top: 1px solid #eee;

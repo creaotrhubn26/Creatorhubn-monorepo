@@ -42,10 +42,10 @@ interface Props {
 }
 
 const COLORS = {
-  cardBg: 'rgba(10, 5, 21,0.72)',
-  cardBorder: 'rgba(56,189,248,0.28)',
-  accent: '#38bdf8',
-  accentBg: 'rgba(56,189,248,0.14)',
+  cardBg: 'rgba(27, 18, 44,0.72)',
+  cardBorder: 'rgba(93, 118, 203,0.28)',
+  accent: '#5d76cb',
+  accentBg: 'rgba(93, 118, 203,0.14)',
   success: '#34d399',
   successBg: 'rgba(52,211,153,0.16)',
   warn: '#fbbf24',
@@ -153,10 +153,10 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
         <Box>
-          <Typography sx={{ color: '#e0f2fe', fontWeight: 700, fontSize: '0.95rem' }}>
+          <Typography sx={{ color: '#dfe4f3', fontWeight: 700, fontSize: '0.95rem' }}>
             Talent-forslag fra byråer ({pendingCount} venter svar)
           </Typography>
-          <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.8rem' }}>
+          <Typography sx={{ color: 'rgba(195, 203, 230,0.78)', fontSize: '0.8rem' }}>
             Byråer som har akseptert prosjekt-invitasjon foreslår talenter til rollene
           </Typography>
         </Box>
@@ -175,8 +175,8 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
               sx={{
                 p: 1.4,
                 borderRadius: 2,
-                border: '1px solid rgba(56,189,248,0.22)',
-                bgcolor: 'rgba(10, 5, 21,0.5)',
+                border: '1px solid rgba(93, 118, 203,0.22)',
+                bgcolor: 'rgba(27, 18, 44,0.5)',
               }}
             >
               <Stack direction="row" alignItems="center" spacing={1.4} sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -185,7 +185,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 200 }}>
                   <Typography sx={{ color: '#f0f9ff', fontWeight: 700 }}>{p.display_name}</Typography>
-                  <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.78rem' }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.78)', fontSize: '0.78rem' }}>
                     {[p.city, ageLine(p), p.gender].filter(Boolean).join(' · ')}
                   </Typography>
                   <Stack direction="row" spacing={0.6} sx={{ mt: 0.4, flexWrap: 'wrap', gap: 0.4 }}>
@@ -225,7 +225,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                 />
               </Stack>
               {p.agency_notes ? (
-                <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.78rem', mt: 1, fontStyle: 'italic', pl: 7 }}>
+                <Typography sx={{ color: 'rgba(195, 203, 230,0.78)', fontSize: '0.78rem', mt: 1, fontStyle: 'italic', pl: 7 }}>
                   Byråets kommentar: «{p.agency_notes}»
                 </Typography>
               ) : null}
@@ -244,8 +244,8 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                     sx={{
                       textTransform: 'none',
                       fontWeight: 600,
-                      color: 'rgba(186,230,253,0.85)',
-                      border: '1px solid rgba(186,230,253,0.32)',
+                      color: 'rgba(195, 203, 230,0.85)',
+                      border: '1px solid rgba(195, 203, 230,0.32)',
                       '&:hover': { bgcolor: 'rgba(248,113,113,0.08)', color: '#fda4af' },
                     }}
                   >
@@ -261,7 +261,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                       fontWeight: 700,
                       bgcolor: COLORS.accent,
                       color: '#0f172a',
-                      '&:hover': { bgcolor: '#0ea5e9' },
+                      '&:hover': { bgcolor: '#3f51b5' },
                     }}
                   >
                     Aksepter
@@ -279,7 +279,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
           onClose={() => !busy && setResponseTarget(null)}
           maxWidth="sm"
           fullWidth
-          PaperProps={{ sx: { bgcolor: 'rgba(10, 5, 21,0.95)', color: '#e0f2fe', border: `1px solid ${responseTarget.accept ? COLORS.success : COLORS.danger}` } }}
+          PaperProps={{ sx: { bgcolor: 'rgba(27, 18, 44,0.95)', color: '#dfe4f3', border: `1px solid ${responseTarget.accept ? COLORS.success : COLORS.danger}` } }}
         >
           <DialogTitle sx={{ fontWeight: 800 }}>
             {responseTarget.accept ? 'Aksepter' : 'Avslå'} {responseTarget.proposal.display_name}
@@ -308,7 +308,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.4 }}>
-            <Button onClick={() => setResponseTarget(null)} disabled={busy} sx={{ textTransform: 'none', color: 'rgba(186,230,253,0.8)' }}>
+            <Button onClick={() => setResponseTarget(null)} disabled={busy} sx={{ textTransform: 'none', color: 'rgba(195, 203, 230,0.8)' }}>
               Avbryt
             </Button>
             <Button

@@ -74,16 +74,16 @@ interface TabSpec {
 const ALL_TABS: TabSpec[] = [
   { value: 'roles', label: 'Roller', Icon: TheaterIcon, color: '#f48fb1' },
   { value: 'candidates', label: 'Kandidater', Icon: PersonIcon, color: '#10b981' },
-  { value: 'crew', label: 'Crew', Icon: GroupIcon, color: 'var(--role-cyan, #00d4ff)' },
+  { value: 'crew', label: 'Crew', Icon: GroupIcon, color: 'var(--role-cyan, #5d76cb)' },
   { value: 'schedule', label: 'Tidsplan', Icon: CalendarIcon, color: '#32127a' },
   { value: 'publishing', label: 'Publisering', Icon: YouTubeIcon, color: '#ff0000' },
   { value: 'carousel', label: 'Ukescontent', Icon: EditIcon, color: '#84cc16' },
   { value: 'approval', label: 'Godkjenning', Icon: CheckCircleIcon, color: '#10b981' },
-  { value: 'brief', label: 'Brief', Icon: EditIcon, color: '#3b82f6' },
+  { value: 'brief', label: 'Brief', Icon: EditIcon, color: '#3f51b5' },
   { value: 'planner', label: 'Planner', Icon: ScheduleIcon, color: '#93a4dc' },
   { value: 'shooting', label: 'Skyting', Icon: MovieIcon, color: '#ef4444' },
   { value: 'shotlist', label: 'Shotliste', Icon: TheaterIcon, color: '#ec4899' },
-  { value: 'mannskap', label: 'Mannskap', Icon: GroupIcon, color: '#06b6d4' },
+  { value: 'mannskap', label: 'Mannskap', Icon: GroupIcon, color: '#3f51b5' },
   { value: 'agent', label: 'Agent', Icon: AutoFixHighIcon, color: '#93a4dc' },
 ];
 
@@ -564,7 +564,7 @@ function PhoneMockup({ tabs }: MockupProps) {
               display: 'grid',
               gridTemplateColumns: 'repeat(5, 1fr)',
               borderTop: '1px solid rgba(255,255,255,0.08)',
-              bgcolor: 'rgba(16, 11, 30,0.96)',
+              bgcolor: 'rgba(42, 49, 82,0.96)',
               px: 0.25,
               py: 0.5,
             }}
@@ -717,7 +717,7 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
               width: 56,
               flexShrink: 0,
               borderRight: '1px solid rgba(255,255,255,0.08)',
-              bgcolor: 'rgba(24, 18, 43,0.55)',
+              bgcolor: 'rgba(42, 61, 86,0.55)',
               py: 0.5,
               display: 'flex',
               flexDirection: 'column',
@@ -813,7 +813,7 @@ function MacbookMockup({ tabs }: MockupProps) {
             }}
           >
             {/* Browser chrome */}
-            <Box sx={{ height: 14, bgcolor: 'rgba(24, 18, 43,0.8)', display: 'flex', alignItems: 'center', px: 0.75, gap: 0.4, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <Box sx={{ height: 14, bgcolor: 'rgba(42, 61, 86,0.8)', display: 'flex', alignItems: 'center', px: 0.75, gap: 0.4, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#ff5f56' }} />
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#ffbd2e' }} />
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#27c93f' }} />

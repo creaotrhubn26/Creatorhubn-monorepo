@@ -402,24 +402,24 @@ const CATALOG_BRIDGE_CARD_SX = {
   height: '100%',
   display: 'flex',
   flexDirection: 'column',
-  background: 'linear-gradient(155deg, rgba(10, 5, 21,0.84) 0%, rgba(15,23,42,0.74) 52%, rgba(30,41,59,0.62) 100%)',
+  background: 'linear-gradient(155deg, rgba(27, 18, 44,0.84) 0%, rgba(15,23,42,0.74) 52%, rgba(30,41,59,0.62) 100%)',
   border: '1px solid rgba(148,163,184,0.2)',
   borderRadius: 2,
-  boxShadow: '0 10px 24px rgba(10, 5, 21,0.26)',
+  boxShadow: '0 10px 24px rgba(27, 18, 44,0.26)',
   transition: 'all 0.26s ease',
   '&:hover': {
-    borderColor: 'rgba(125,211,252,0.38)',
-    boxShadow: '0 14px 30px rgba(10, 5, 21,0.38)',
+    borderColor: 'rgba(147, 164, 220,0.38)',
+    boxShadow: '0 14px 30px rgba(27, 18, 44,0.38)',
     transform: 'translateY(-2px)',
   },
 };
 
 const CATALOG_BRIDGE_SURFACE_SX = {
   p: 2.5,
-  background: 'linear-gradient(150deg, rgba(10, 5, 21,0.74) 0%, rgba(15,23,42,0.64) 100%)',
+  background: 'linear-gradient(150deg, rgba(27, 18, 44,0.74) 0%, rgba(15,23,42,0.64) 100%)',
   border: '1px solid rgba(148,163,184,0.22)',
   borderRadius: 2,
-  boxShadow: '0 10px 24px rgba(10, 5, 21,0.24)',
+  boxShadow: '0 10px 24px rgba(27, 18, 44,0.24)',
 };
 
 const CATALOG_BRIDGE_TAB_PANEL_SX = {
@@ -427,8 +427,8 @@ const CATALOG_BRIDGE_TAB_PANEL_SX = {
   m: { xs: 1.5, md: 2 },
   borderRadius: 2.5,
   border: '1px solid rgba(148,163,184,0.2)',
-  background: 'linear-gradient(155deg, rgba(10, 5, 21,0.56) 0%, rgba(15,23,42,0.44) 55%, rgba(30,41,59,0.34) 100%)',
-  boxShadow: '0 12px 28px rgba(10, 5, 21,0.26)',
+  background: 'linear-gradient(155deg, rgba(27, 18, 44,0.56) 0%, rgba(15,23,42,0.44) 55%, rgba(30,41,59,0.34) 100%)',
+  boxShadow: '0 12px 28px rgba(27, 18, 44,0.26)',
 };
 
 type RoleRoomDialogAccent =
@@ -4573,7 +4573,7 @@ export function EquipmentManagementPanel({
                 { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981' },
                 { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b' },
                 { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444' },
-                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa' },
+                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#93a4dc' },
               ]}
             />
           </Box>
@@ -4874,7 +4874,7 @@ export function EquipmentManagementPanel({
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
                 }
               }}
             >
@@ -4904,7 +4904,7 @@ export function EquipmentManagementPanel({
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
                 }
               }}
             >
@@ -4934,7 +4934,7 @@ export function EquipmentManagementPanel({
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
                 },
               }}
             >
@@ -4969,7 +4969,7 @@ export function EquipmentManagementPanel({
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
                 },
               }}
             >
@@ -5949,7 +5949,7 @@ export function EquipmentManagementPanel({
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
                 },
               }}
             >
@@ -5972,7 +5972,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -6110,7 +6110,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -6195,7 +6195,7 @@ export function EquipmentManagementPanel({
                     '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)', maxHeight: 350 } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)', maxHeight: 350 } }
                   }}
                 >
                   {allCategories.map(cat => (
@@ -6436,9 +6436,9 @@ export function EquipmentManagementPanel({
                     p: 2,
                     background:
                       'linear-gradient(145deg, rgba(15,23,42,0.88) 0%, rgba(30,41,59,0.82) 52%, rgba(17,24,39,0.9) 100%)',
-                    border: '1px solid rgba(125,211,252,0.22)',
+                    border: '1px solid rgba(147, 164, 220,0.22)',
                     borderRadius: 2,
-                    boxShadow: '0 14px 34px rgba(10, 5, 21,0.45)',
+                    boxShadow: '0 14px 34px rgba(27, 18, 44,0.45)',
                   }}
                 >
                   <Stack
@@ -6459,7 +6459,7 @@ export function EquipmentManagementPanel({
                       <Chip
                         size="small"
                         label={selectedCameraForForm.type === 'video' ? 'Cine/Video' : 'Foto'}
-                        sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 700 }}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#c3cbe6', fontWeight: 700 }}
                       />
                       {selectedCameraForForm.isNetflixCertified &&
                         renderNetflixBadge('Netflix-sertifisert', false)}
@@ -6503,11 +6503,11 @@ export function EquipmentManagementPanel({
                         onClick={() => setCameraSpecsExpanded((prev) => !prev)}
                         sx={{
                           mt: 1,
-                          color: '#bfdbfe',
+                          color: '#c3cbe6',
                           fontWeight: 700,
                           textTransform: 'none',
                           px: 0,
-                          '&:hover': { bgcolor: 'transparent', color: '#dbeafe' },
+                          '&:hover': { bgcolor: 'transparent', color: '#dfe4f3' },
                         }}
                       >
                         {cameraSpecsExpanded ? 'Skjul spesifikasjoner' : 'Les mer om spesifikasjoner'}
@@ -6584,7 +6584,7 @@ export function EquipmentManagementPanel({
                             <Chip
                               size="small"
                               label={camera.type === 'video' ? 'Cine/Video' : 'Foto'}
-                              sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 600 }}
+                              sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#c3cbe6', fontWeight: 600 }}
                             />
                             {camera.isNetflixCertified && renderNetflixBadge('Netflix-sertifisert', false)}
                           </Stack>
@@ -6704,7 +6704,7 @@ export function EquipmentManagementPanel({
                     '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
@@ -6733,7 +6733,7 @@ export function EquipmentManagementPanel({
                     '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   {Object.entries(CONDITION_LABELS).map(([value, label]) => (
@@ -6762,7 +6762,7 @@ export function EquipmentManagementPanel({
                     '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   <MenuItem value="">Ingen</MenuItem>
@@ -7141,7 +7141,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7197,7 +7197,7 @@ export function EquipmentManagementPanel({
                 '&:hover fieldset': { borderColor: 'rgba(33,150,243,0.3)' },
               }}
               MenuProps={{
-                PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
               }}
             >
               {crewMembers.map(crew => (
@@ -7278,7 +7278,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7435,7 +7435,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7670,7 +7670,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7891,7 +7891,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.28)',
@@ -8188,7 +8188,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8321,7 +8321,7 @@ export function EquipmentManagementPanel({
         fullWidth
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3, 
             minHeight: 500,
@@ -8652,7 +8652,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(255,77,77,0.3)',
@@ -8714,7 +8714,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8806,7 +8806,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8865,7 +8865,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8975,7 +8975,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -9120,7 +9120,7 @@ export function EquipmentManagementPanel({
 
       {/* ── Check-out Dialog ─────────────────────────── */}
       <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
         <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('info'), pb: 1 }}>
           <Box sx={getRoleRoomDialogIconSx('info', 40)}>
             <CheckOutIcon sx={{ color: '#fff' }} />
@@ -9168,7 +9168,7 @@ export function EquipmentManagementPanel({
 
       {/* ── Check-in Dialog ──────────────────────────── */}
       <Dialog open={checkinDialogOpen} onClose={() => setCheckinDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
         <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('success'), pb: 1 }}>
           <Box sx={getRoleRoomDialogIconSx('success', 40)}>
             <CheckInIcon sx={{ color: '#fff' }} />
@@ -9225,8 +9225,8 @@ export function EquipmentManagementPanel({
             overflow: 'hidden',
             border: '1px solid rgba(148,163,184,0.28)',
             background:
-              'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.94) 56%, rgba(30,41,59,0.9) 100%)',
-            boxShadow: '0 24px 64px rgba(10, 5, 21,0.56)',
+              'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.94) 56%, rgba(30,41,59,0.9) 100%)',
+            boxShadow: '0 24px 64px rgba(27, 18, 44,0.56)',
             backdropFilter: 'blur(22px)',
           },
         }}
@@ -9241,7 +9241,7 @@ export function EquipmentManagementPanel({
             py: 2,
             borderBottom: '1px solid rgba(148,163,184,0.22)',
             background:
-              'linear-gradient(120deg, rgba(75, 61, 143,0.2) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.25) 100%)',
+              'linear-gradient(120deg, rgba(75, 61, 143,0.2) 0%, rgba(63, 81, 181,0.1) 52%, rgba(15,23,42,0.25) 100%)',
           }}
         >
           <Box sx={getRoleRoomDialogIconSx('primary', 42)}>
@@ -9256,7 +9256,7 @@ export function EquipmentManagementPanel({
             </Typography>
           </Box>
           <Stack direction="row" spacing={0.75} sx={{ ml: 'auto', mr: 1, display: { xs: 'none', md: 'flex' } }}>
-            <Chip size="small" label={`${equipment.length} totalt`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
+            <Chip size="small" label={`${equipment.length} totalt`} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
             <Chip size="small" label={`${missingItems.length} mangler ansvarlig`} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
             <Chip size="small" label={`${maintenanceItems.length} vedlikehold`} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
           </Stack>
@@ -9269,7 +9269,7 @@ export function EquipmentManagementPanel({
             pt: 1.5,
             pb: 1,
             borderBottom: '1px solid rgba(148,163,184,0.16)',
-            background: 'linear-gradient(180deg, rgba(15,23,42,0.42) 0%, rgba(10, 5, 21,0.08) 100%)',
+            background: 'linear-gradient(180deg, rgba(15,23,42,0.42) 0%, rgba(27, 18, 44,0.08) 100%)',
           }}
         >
           <Tabs
@@ -9392,9 +9392,9 @@ export function EquipmentManagementPanel({
               ml: 'auto',
               color: '#1b122c',
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 60%, #3b82f6 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 60%, #3f51b5 100%)',
               boxShadow: '0 12px 28px rgba(75, 61, 143,0.38)',
-              '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 60%, #60a5fa 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 60%, #93a4dc 100%)' },
             }}
           >
             Last ned CSV
@@ -9404,7 +9404,7 @@ export function EquipmentManagementPanel({
 
       {/* ── Offline outbox viewer ────────────────────── */}
       <Dialog open={offlineOutboxOpen} onClose={() => setOfflineOutboxOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
         <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('danger'), pb: 1 }}>
           <Box sx={getRoleRoomDialogIconSx('danger', 40)}>
             <OfflineIcon sx={{ color: '#fff' }} />
@@ -9459,7 +9459,7 @@ export function EquipmentManagementPanel({
         fullScreen
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.98) 0%, rgba(15,23,42,0.94) 50%, rgba(30,41,59,0.88) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.98) 0%, rgba(15,23,42,0.94) 50%, rgba(30,41,59,0.88) 100%)',
             color: '#fff',
           },
         }}
@@ -9470,7 +9470,7 @@ export function EquipmentManagementPanel({
             ...getRoleRoomDialogTitleSx('primary'),
             borderBottom: '1px solid rgba(148,163,184,0.24)',
             pb: 0.5,
-            background: 'linear-gradient(90deg, rgba(75, 61, 143,0.16) 0%, rgba(56,189,248,0.1) 100%)',
+            background: 'linear-gradient(90deg, rgba(75, 61, 143,0.16) 0%, rgba(93, 118, 203,0.1) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -9998,7 +9998,7 @@ export function EquipmentManagementPanel({
                                 : 'linear-gradient(150deg, rgba(15,23,42,0.78) 0%, rgba(30,41,59,0.55) 100%)',
                               boxShadow: selectedCameraId === camera.id
                                 ? '0 10px 26px rgba(75, 61, 143,0.34)'
-                                : '0 8px 20px rgba(10, 5, 21,0.28)',
+                                : '0 8px 20px rgba(27, 18, 44,0.28)',
                               '&::before': {
                                 content: '""',
                                 position: 'absolute',
@@ -10007,12 +10007,12 @@ export function EquipmentManagementPanel({
                                 right: 0,
                                 height: 2,
                                 background: selectedCameraId === camera.id
-                                  ? 'linear-gradient(90deg, #93a4dc, #38bdf8)'
-                                  : 'linear-gradient(90deg, rgba(148,163,184,0.65), rgba(125,211,252,0.55))',
+                                  ? 'linear-gradient(90deg, #93a4dc, #5d76cb)'
+                                  : 'linear-gradient(90deg, rgba(148,163,184,0.65), rgba(147, 164, 220,0.55))',
                               },
                               '&:hover': {
                                 background: 'linear-gradient(150deg, rgba(51,65,85,0.92) 0%, rgba(30,41,59,0.78) 100%)',
-                                borderColor: 'rgba(125,211,252,0.38)',
+                                borderColor: 'rgba(147, 164, 220,0.38)',
                               },
                             }}
                           >
@@ -10072,10 +10072,10 @@ export function EquipmentManagementPanel({
                       sx={{
                         p: 2,
                         background:
-                          'linear-gradient(160deg, rgba(10, 5, 21,0.84) 0%, rgba(15,23,42,0.72) 44%, rgba(30,41,59,0.62) 100%)',
-                        border: '1px solid rgba(125,211,252,0.18)',
+                          'linear-gradient(160deg, rgba(27, 18, 44,0.84) 0%, rgba(15,23,42,0.72) 44%, rgba(30,41,59,0.62) 100%)',
+                        border: '1px solid rgba(147, 164, 220,0.18)',
                         borderRadius: 2,
-                        boxShadow: '0 14px 30px rgba(10, 5, 21,0.35)',
+                        boxShadow: '0 14px 30px rgba(27, 18, 44,0.35)',
                       }}
                     >
                       <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, mb: 1.5 }}>
@@ -10184,7 +10184,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -10300,7 +10300,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -10406,7 +10406,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -10521,11 +10521,11 @@ export function EquipmentManagementPanel({
         PaperProps={{
           sx: {
             background:
-              'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 48%, rgba(30,41,59,0.82) 100%)',
+              'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 48%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             border: '1px solid rgba(148,163,184,0.3)',
             borderRadius: 2,
-            boxShadow: '0 18px 38px rgba(10, 5, 21,0.5)',
+            boxShadow: '0 18px 38px rgba(27, 18, 44,0.5)',
           },
         }}
       >
@@ -10534,7 +10534,7 @@ export function EquipmentManagementPanel({
           sx={{
             ...getRoleRoomDialogTitleSx('primary'),
             borderBottom: '1px solid rgba(148,163,184,0.24)',
-            background: 'linear-gradient(90deg, rgba(75, 61, 143,0.16) 0%, rgba(56,189,248,0.12) 100%)',
+            background: 'linear-gradient(90deg, rgba(75, 61, 143,0.16) 0%, rgba(93, 118, 203,0.12) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>

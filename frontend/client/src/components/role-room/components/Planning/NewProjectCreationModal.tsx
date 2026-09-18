@@ -120,13 +120,13 @@ const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: strin
   project: { Icon: DashboardIcon, color: 'var(--role-violet, #5d76cb)', label: 'Prosjekt' },
   roles: { Icon: TheaterComedyIcon, color: '#f48fb1', label: 'Roller' },
   candidates: { Icon: RecentActorsIcon, color: '#10b981', label: 'Kandidater' },
-  crew: { Icon: GroupsIcon, color: 'var(--role-cyan, #00d4ff)', label: 'Team' },
+  crew: { Icon: GroupsIcon, color: 'var(--role-cyan, #5d76cb)', label: 'Team' },
   locations: { Icon: LocationIcon, color: '#4caf50', label: 'Lokasjoner' },
   equipment: { Icon: PropIcon, color: '#4b3d8f', label: 'Utstyr' },
   production_days: { Icon: CalendarIcon, color: '#32127a', label: 'Prod.dager' },
   scenes: { Icon: ShotListIcon, color: '#e91e63', label: 'Scener' },
   shot_lists: { Icon: ShotListIcon, color: '#e91e63', label: 'Shot Lists' },
-  split_sheets: { Icon: ShareIcon, color: '#06b6d4', label: 'Deling' },
+  split_sheets: { Icon: ShareIcon, color: '#3f51b5', label: 'Deling' },
   offers: { Icon: HandshakeIcon, color: '#ffb800', label: 'Tilbud' },
   contracts: { Icon: ContractsIcon, color: '#4b3d8f', label: 'Kontrakter' },
   consents: { Icon: ConsentIcon, color: '#00bcd4', label: 'Samtykker' },
@@ -255,7 +255,7 @@ import { TOUCH_TARGET_SIZE } from '../../constants/accessibility';
 // Shared focus styles for WCAG 2.4.7 Focus Visible
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #00d4ff',
+    outline: '3px solid #5d76cb',
     outlineOffset: '2px',
   },
 };
@@ -315,9 +315,9 @@ export default function NewProjectCreationModal({
             bgcolor: 'rgba(255,255,255,0.1)',
           },
           '&.Mui-selected': {
-            bgcolor: 'rgba(0,212,255,0.2)',
+            bgcolor: 'rgba(93, 118, 203,0.2)',
             '&:hover': {
-              bgcolor: 'rgba(0,212,255,0.3)',
+              bgcolor: 'rgba(93, 118, 203,0.3)',
             },
           },
         },
@@ -2519,9 +2519,9 @@ export default function NewProjectCreationModal({
                 })}`}
                 size="small"
                 sx={{ 
-                  bgcolor: 'rgba(0, 212, 255, 0.15)',
+                  bgcolor: 'rgba(93, 118, 203, 0.15)',
                   color: '#00b8e6',
-                  border: '1px solid rgba(0, 212, 255, 0.3)',
+                  border: '1px solid rgba(93, 118, 203, 0.3)',
                   fontWeight: 600,
                   fontSize: { xs: '0.7rem', sm: '0.75rem' },
                   flexShrink: 0,
@@ -2742,7 +2742,7 @@ export default function NewProjectCreationModal({
                             bgcolor: 'rgba(255,255,255,0.1)',
                           },
                           '&.Mui-focused': {
-                            bgcolor: 'rgba(0,212,255,0.2)',
+                            bgcolor: 'rgba(93, 118, 203,0.2)',
                           },
                         },
                       },
@@ -2773,7 +2773,7 @@ export default function NewProjectCreationModal({
                     ),
                     endAdornment: clientBrregLoading ? (
                       <InputAdornment position="end">
-                        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+                        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
                       </InputAdornment>
                     ) : (projectData.clientOrganizationNumber || '').replace(/[\s-]/g, '').length === 9 ? (
                       <InputAdornment position="end">
@@ -2914,8 +2914,8 @@ export default function NewProjectCreationModal({
               size="small"
               label={projectData.splitSheetData ? 'Avtaler klargjort i økonomi' : 'Avtaler opprettes i økonomi'}
               sx={{
-                bgcolor: projectData.splitSheetData ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.14)',
-                color: projectData.splitSheetData ? '#86efac' : '#bfdbfe',
+                bgcolor: projectData.splitSheetData ? 'rgba(34,197,94,0.14)' : 'rgba(63, 81, 181,0.14)',
+                color: projectData.splitSheetData ? '#86efac' : '#c3cbe6',
                 fontWeight: 700,
               }}
             />
@@ -3008,8 +3008,8 @@ export default function NewProjectCreationModal({
                   gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
                   p: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 },
                   borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3 },
-                  bgcolor: 'rgba(0, 212, 255, 0.1)',
-                  border: '2px solid rgba(0, 212, 255, 0.3)',
+                  bgcolor: 'rgba(93, 118, 203, 0.1)',
+                  border: '2px solid rgba(93, 118, 203, 0.3)',
                 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                     <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />
@@ -3046,7 +3046,7 @@ export default function NewProjectCreationModal({
                         color: 'primary.main',
                         '&:hover': {
                           borderColor: 'primary.main',
-                          bgcolor: 'rgba(0, 212, 255, 0.1)',
+                          bgcolor: 'rgba(93, 118, 203, 0.1)',
                         },
                         minHeight: { xs: 36, sm: 38, md: 40, lg: 42, xl: 44 },
                         fontSize: { xs: '0.75rem', sm: '0.813rem', md: '0.875rem', lg: '0.938rem', xl: '1rem' },
@@ -3082,8 +3082,8 @@ export default function NewProjectCreationModal({
             sx={{
               mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
               borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
-              bgcolor: 'rgba(125,211,252,0.05)',
-              border: '1px solid rgba(125,211,252,0.2)',
+              bgcolor: 'rgba(147, 164, 220,0.05)',
+              border: '1px solid rgba(147, 164, 220,0.2)',
               boxShadow: '0 8px 28px rgba(0,0,0,0.2)',
             }}
           >
@@ -3107,7 +3107,7 @@ export default function NewProjectCreationModal({
                     </Box>
                   </Box>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                    <Chip size="small" label="1. Grunndata" sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
+                    <Chip size="small" label="1. Grunndata" sx={{ bgcolor: 'rgba(63, 81, 181,0.18)', color: '#c3cbe6' }} />
                     <Chip size="small" label="2. Team og økonomi" sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
                     <Chip size="small" label="3. Oppsummering" sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }} />
                   </Stack>
@@ -3153,10 +3153,10 @@ export default function NewProjectCreationModal({
                       }}
                       sx={{
                         textTransform: 'none',
-                        bgcolor: 'var(--role-cyan, #00d4ff)',
+                        bgcolor: 'var(--role-cyan, #5d76cb)',
                         color: '#001018',
                         fontWeight: 700,
-                        '&:hover': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+                        '&:hover': { bgcolor: 'var(--role-cyan, #5d76cb)' },
                       }}
                     >
                       Fortsett til oppsummering
@@ -3522,7 +3522,7 @@ export default function NewProjectCreationModal({
                 color: 'text.primary',
                 '&:hover': {
                   borderColor: 'primary.main',
-                  bgcolor: 'rgba(0, 212, 255, 0.1)',
+                  bgcolor: 'rgba(93, 118, 203, 0.1)',
                 },
               }}
             >
@@ -3676,7 +3676,7 @@ export default function NewProjectCreationModal({
                 gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
                 color: '#fff',
               }}>
-                <CompanyIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.375rem', lg: '1.5rem', xl: '1.625rem' } }} />
+                <CompanyIcon sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.375rem', lg: '1.5rem', xl: '1.625rem' } }} />
                 Bedriftssøk (valgfritt)
               </Typography>
               <Divider sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, mt: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }, borderColor: 'rgba(255,255,255,0.1)' }} />
@@ -3724,10 +3724,10 @@ export default function NewProjectCreationModal({
                           minHeight: TOUCH_TARGET_SIZE,
                           '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                           '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                          '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                          '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                         },
                         '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                        '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                        '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                       }}
                     />
                   )}
@@ -3755,7 +3755,7 @@ export default function NewProjectCreationModal({
                             bgcolor: 'rgba(255,255,255,0.1)',
                           },
                           '&.Mui-focused': {
-                            bgcolor: 'rgba(0,212,255,0.2)',
+                            bgcolor: 'rgba(93, 118, 203,0.2)',
                           },
                         },
                       },
@@ -3786,7 +3786,7 @@ export default function NewProjectCreationModal({
                     ),
                     endAdornment: brregLoading ? (
                       <InputAdornment position="end">
-                        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+                        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
                       </InputAdornment>
                     ) : newCollaboratorOrgNumber.replace(/[\s-]/g, '').length === 9 ? (
                       <InputAdornment position="end">
@@ -3796,8 +3796,8 @@ export default function NewProjectCreationModal({
                           size="small"
                           aria-label="Søk opp bedrift"
                           sx={{
-                            color: 'var(--role-cyan, #00d4ff)',
-                            '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                            color: 'var(--role-cyan, #5d76cb)',
+                            '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
                           }}
                         >
                           <SearchIcon />
@@ -3811,10 +3811,10 @@ export default function NewProjectCreationModal({
                       minHeight: TOUCH_TARGET_SIZE,
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                     },
                     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                     '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.87)' },
                   }}
                 />
@@ -3839,7 +3839,7 @@ export default function NewProjectCreationModal({
                 gap: 1,
                 color: '#fff',
               }}>
-                <ContactIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+                <ContactIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
                 Teammedlem
               </Typography>
               <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
@@ -3868,10 +3868,10 @@ export default function NewProjectCreationModal({
                       minHeight: TOUCH_TARGET_SIZE,
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                     },
                     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                   }}
                 />
                 <TextField
@@ -3907,10 +3907,10 @@ export default function NewProjectCreationModal({
                       minHeight: TOUCH_TARGET_SIZE,
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                     },
                     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                     '& .MuiFormHelperText-root.Mui-error': { color: '#f44336' },
                   }}
                 />
@@ -3934,7 +3934,7 @@ export default function NewProjectCreationModal({
                 gap: 1,
                 color: '#fff',
               }}>
-                <GroupsIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+                <GroupsIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
                 Rolle i prosjektet
               </Typography>
               <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
@@ -3943,7 +3943,7 @@ export default function NewProjectCreationModal({
                   id="collaborator-role-label"
                   sx={{
                     color: 'rgba(255,255,255,0.87)',
-                    '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
+                    '&.Mui-focused': { color: 'var(--role-cyan, #5d76cb)' },
                   }}
                 >
                   Rolle *
@@ -3960,7 +3960,7 @@ export default function NewProjectCreationModal({
                     minHeight: TOUCH_TARGET_SIZE,
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)', borderWidth: 2 },
                   }}
                 >
                   {availableCollaboratorRoles.map((role) => (
@@ -3969,7 +3969,7 @@ export default function NewProjectCreationModal({
                       value={role}
                       sx={{
                         minHeight: TOUCH_TARGET_SIZE,
-                        '&:focus-visible': { bgcolor: 'rgba(0,212,255,0.2)' },
+                        '&:focus-visible': { bgcolor: 'rgba(93, 118, 203,0.2)' },
                       }}
                     >
                       {ROLE_DISPLAY_NAMES[role]}
@@ -4107,7 +4107,7 @@ export default function NewProjectCreationModal({
             aria-label={editingCollaborator ? "Oppdater teammedlem" : "Legg til teammedlem"}
             fullWidth={isMobile}
             sx={{
-              bgcolor: 'var(--role-cyan, #00d4ff)',
+              bgcolor: 'var(--role-cyan, #5d76cb)',
               color: '#000',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
@@ -4192,9 +4192,9 @@ export default function NewProjectCreationModal({
             {projectData.projectId && (
               <Card sx={{ 
                 borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, 
-                bgcolor: 'rgba(0, 212, 255, 0.15)', 
-                border: '2px solid rgba(0, 212, 255, 0.4)',
-                boxShadow: '0 4px 12px rgba(0, 212, 255, 0.2)',
+                bgcolor: 'rgba(93, 118, 203, 0.15)', 
+                border: '2px solid rgba(93, 118, 203, 0.4)',
+                boxShadow: '0 4px 12px rgba(93, 118, 203, 0.2)',
               }}>
                 <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                   <Typography variant="h6" sx={{ 
@@ -4327,12 +4327,12 @@ export default function NewProjectCreationModal({
                       const getRoleColor = (role?: ContributorRole) => {
                         if (!role) return '#6b7280';
                         if (['second_shooter', 'photo_editor', 'retoucher'].includes(role)) return '#10b981';
-                        if (['assistant', 'stylist', 'makeup_artist'].includes(role)) return '#3b82f6';
+                        if (['assistant', 'stylist', 'makeup_artist'].includes(role)) return '#3f51b5';
                         if (['video_editor', 'cinematographer', 'colorist'].includes(role)) return '#5d76cb';
-                        if (['sound_engineer', 'grip', 'gaffer'].includes(role)) return '#3b82f6';
+                        if (['sound_engineer', 'grip', 'gaffer'].includes(role)) return '#3f51b5';
                         if (['producer', 'artist'].includes(role)) return '#10b981';
                         if (['songwriter', 'composer', 'mix_engineer'].includes(role)) return '#f59e0b';
-                        if (role === 'collaborator') return '#3b82f6';
+                        if (role === 'collaborator') return '#3f51b5';
                         return '#6b7280';
                       };
                       const roleColor = getRoleColor(collab.role);
@@ -4461,7 +4461,7 @@ export default function NewProjectCreationModal({
           </Stack>
 
           {isCastingPlanner ? (
-            <Card sx={{ mt: 2.5, borderRadius: 3, bgcolor: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.22)' }}>
+            <Card sx={{ mt: 2.5, borderRadius: 3, bgcolor: 'rgba(93, 118, 203,0.08)', border: '1px solid rgba(93, 118, 203,0.22)' }}>
               <CardContent sx={{ p: 2.25 }}>
                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.98rem', mb: 0.5 }}>
                   Send klientinvitasjon etter opprettelse
@@ -4475,8 +4475,8 @@ export default function NewProjectCreationModal({
                       checked={showClientInviteAfterSave}
                       onChange={(event) => setShowClientInviteAfterSave(event.target.checked)}
                       sx={{
-                        color: 'rgba(0,212,255,0.7)',
-                        '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                        color: 'rgba(93, 118, 203,0.7)',
+                        '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                       }}
                     />
                   )}
@@ -4538,7 +4538,7 @@ export default function NewProjectCreationModal({
             startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: 'var(--role-cyan, #00d4ff)',
+              bgcolor: 'var(--role-cyan, #5d76cb)',
               color: '#000',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
@@ -4546,7 +4546,7 @@ export default function NewProjectCreationModal({
               fontSize: { xs: '0.938rem', sm: '1rem', md: '1.063rem', lg: '1.125rem', xl: '1.188rem' },
               '&:hover': { bgcolor: '#00b8e6' },
               '&.Mui-disabled': {
-                bgcolor: 'rgba(0,212,255,0.5)',
+                bgcolor: 'rgba(93, 118, 203,0.5)',
                 color: 'rgba(0,0,0,0.5)',
               },
             }}
@@ -4604,10 +4604,10 @@ export default function NewProjectCreationModal({
               severity="info"
               icon={<VisibilityIcon />}
               sx={{
-                bgcolor: 'rgba(0,212,255,0.08)',
-                border: '1px solid rgba(0,212,255,0.22)',
+                bgcolor: 'rgba(93, 118, 203,0.08)',
+                border: '1px solid rgba(93, 118, 203,0.22)',
                 color: '#fff',
-                '& .MuiAlert-icon': { color: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiAlert-icon': { color: 'var(--role-cyan, #5d76cb)' },
               }}
             >
               Prosjektet er opprettet. Her kan du redigere mottaker, emne, e-postinnhold og hvor lenge klienten skal ha tilgang før The Role Room sender invitasjonen fra systemet.
@@ -4627,7 +4627,7 @@ export default function NewProjectCreationModal({
                     color: '#fff',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
-                    '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
                   '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
@@ -4650,7 +4650,7 @@ export default function NewProjectCreationModal({
                     color: '#fff',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
-                    '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
                   '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
@@ -4671,7 +4671,7 @@ export default function NewProjectCreationModal({
                   color: '#fff',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
                 '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
@@ -4691,7 +4691,7 @@ export default function NewProjectCreationModal({
                   color: '#fff',
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)' },
                 }}
               >
                 <MenuItem value="forever">For alltid</MenuItem>
@@ -4780,7 +4780,7 @@ export default function NewProjectCreationModal({
                   fontFamily: 'inherit',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.25)' },
-                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' },
                 '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.66)' },
@@ -4859,7 +4859,7 @@ export default function NewProjectCreationModal({
                 minHeight: TOUCH_TARGET_SIZE,
                 textTransform: 'none',
                 fontWeight: 700,
-                bgcolor: 'var(--role-cyan, #00d4ff)',
+                bgcolor: 'var(--role-cyan, #5d76cb)',
                 color: '#000',
                 '&:hover': { bgcolor: '#00b8e6' },
               }}
@@ -4893,7 +4893,7 @@ export default function NewProjectCreationModal({
                 <span><StoryArcIcon sx={{ fontSize: 20, color: '#e91e63' }} /></span>
               </Tooltip>
               <Tooltip title="Kamera">
-                <span><CameraIcon sx={{ fontSize: 20, color: 'var(--role-cyan, #00d4ff)' }} /></span>
+                <span><CameraIcon sx={{ fontSize: 20, color: 'var(--role-cyan, #5d76cb)' }} /></span>
               </Tooltip>
             </Stack>
           </Stack>

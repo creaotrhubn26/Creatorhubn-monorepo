@@ -252,7 +252,7 @@ export const SceneInfoColumn: React.FC<SceneInfoColumnProps> = ({
           <QuickActionButton
             label="PICKUP SHOT"
             icon={<StarIcon sx={{ fontSize: 14 }} />}
-            color="#3b82f6"
+            color="#3f51b5"
             onClick={() => onQuickAction?.('pickup-shot')}
           />
           <QuickActionButton

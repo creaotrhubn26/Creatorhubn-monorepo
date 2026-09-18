@@ -152,7 +152,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
       >
         {[
           { label: 'Estimat', value: totals.estimate, tone: 'rgba(148,163,184,0.18)', fg: '#e2e8f0' },
-          { label: 'Godkjent', value: totals.approved, tone: 'rgba(59,130,246,0.18)', fg: '#bfdbfe' },
+          { label: 'Godkjent', value: totals.approved, tone: 'rgba(63, 81, 181,0.18)', fg: '#c3cbe6' },
           { label: 'Faktisk', value: totals.actual, tone: 'rgba(93, 118, 203,0.18)', fg: '#dfe4f3' },
           {
             label: 'Avvik',
@@ -222,7 +222,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
               />
               <Legend />
               <Area type="monotone" dataKey="estimate" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.18} name="Estimat" />
-              <Area type="monotone" dataKey="approved" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.22} name="Godkjent" />
+              <Area type="monotone" dataKey="approved" stroke="#3f51b5" fill="#3f51b5" fillOpacity={0.22} name="Godkjent" />
               <Area type="monotone" dataKey="actual" stroke="#5d76cb" fill="#5d76cb" fillOpacity={0.32} name="Faktisk" />
             </AreaChart>
           </ResponsiveContainer>
@@ -268,7 +268,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
                   alignItems={{ sm: 'center' }}
                   justifyContent="space-between"
                   spacing={1}
-                  sx={{ p: 1, borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(10, 5, 21,0.4)' }}
+                  sx={{ p: 1, borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(27, 18, 44,0.4)' }}
                 >
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
                     {PHASE_LABELS[p.phase] ?? p.phase}

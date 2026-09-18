@@ -64,7 +64,7 @@ interface ClipNode {
 // Color-mapping pr kamera
 const CAM_COLORS = [
   '#dc2626', // A — rød
-  '#3b82f6', // B — blå
+  '#3f51b5', // B — blå
   '#22c55e', // C — grønn
   '#fbbf24', // D — gul
 ];

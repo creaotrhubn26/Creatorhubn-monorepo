@@ -697,7 +697,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
             <PersonOutlineIcon sx={{ fontSize: 80, color: palette.textMuted }} />
           </Box>
         )}
-        <IconButton sx={{ position: 'absolute', top: 8, right: 8, color: palette.accentBright, bgcolor: 'rgba(16, 11, 30,0.7)', '&:hover': { bgcolor: 'rgba(75, 61, 143,0.3)' } }}>
+        <IconButton sx={{ position: 'absolute', top: 8, right: 8, color: palette.accentBright, bgcolor: 'rgba(42, 49, 82,0.7)', '&:hover': { bgcolor: 'rgba(75, 61, 143,0.3)' } }}>
           <BookmarkIcon fontSize="small" />
         </IconButton>
       </Box>

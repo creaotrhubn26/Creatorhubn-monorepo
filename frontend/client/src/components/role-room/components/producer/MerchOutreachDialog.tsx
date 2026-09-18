@@ -132,7 +132,7 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
                 size="small"
                 icon={<PhoneIcon fontSize="small" />}
                 label={supplier.contact.phone}
-                sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#bfdbfe' }}
+                sx={{ bgcolor: 'rgba(63, 81, 181,0.12)', color: '#c3cbe6' }}
               />
             ) : null}
             {supplier.contact?.contactPageUrl ? (

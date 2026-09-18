@@ -225,7 +225,7 @@ export default function ClientEconomyPanel({
           sx={{
             borderRadius: '16px',
             border: '1px solid rgba(93, 118, 203,0.3)',
-            background: 'linear-gradient(135deg, rgba(75, 61, 143,0.18) 0%, rgba(75, 61, 143,0.1) 60%, rgba(10, 5, 21,0.6) 100%)',
+            background: 'linear-gradient(135deg, rgba(75, 61, 143,0.18) 0%, rgba(75, 61, 143,0.1) 60%, rgba(27, 18, 44,0.6) 100%)',
             p: { xs: 2, sm: 2.5 },
             boxShadow: '0 14px 36px rgba(0,0,0,0.4)',
           }}

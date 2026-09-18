@@ -101,7 +101,7 @@ export default function ProducerReceivedMaterialsPanel({ projectId }: { projectI
           {items.map((m) => {
             const used = m.status === 'approved';
             return (
-              <Box key={m.id} sx={{ borderRadius: '9px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(10, 5, 21,0.4)', p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box key={m.id} sx={{ borderRadius: '9px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(27, 18, 44,0.4)', p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 34, height: 34, flexShrink: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(148,163,184,0.1)' }}>
                   <FileIcon sx={{ fontSize: 18, color: '#c3cbe6' }} />
                 </Box>

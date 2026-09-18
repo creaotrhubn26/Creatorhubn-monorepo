@@ -540,7 +540,7 @@ const ROLE_ROOM_SELECT_MENU_PROPS = {
       zIndex: 10061,
       mt: 0.5,
       maxHeight: 'min(52vh, 360px)',
-      bgcolor: 'rgba(16, 11, 30,0.98)',
+      bgcolor: 'rgba(42, 49, 82,0.98)',
       color: 'rgba(246, 245, 255,0.94)',
       border: '1px solid rgba(255,255,255,0.08)',
       backdropFilter: 'blur(18px)',
@@ -1015,7 +1015,7 @@ const DESIGN = {
   card: {
     aspectRatio:        '2 / 3',
     borderRadius:       '14px',
-    background:         'rgba(10, 5, 21,0.92)',
+    background:         'rgba(27, 18, 44,0.92)',
     defaultFocalPoint:  'center 15%',          // objectPosition fallback
     hoverTransform:     'translateY(-10px) rotate(-2deg) scale(1.04)',
     activeTransform:    'translateY(-4px) rotate(0deg) scale(0.98)',
@@ -1054,8 +1054,8 @@ const DESIGN = {
     // label band
     labelBorderIdle:     'rgba(75, 61, 143,0.10)',
     labelBorderSelected: 'rgba(75, 61, 143,0.30)',
-    labelBgSelInner:     'rgba(10, 5, 21,0.97)',
-    labelBgSelOuter:     'rgba(16, 11, 30,0.85)',
+    labelBgSelInner:     'rgba(27, 18, 44,0.97)',
+    labelBgSelOuter:     'rgba(42, 49, 82,0.85)',
     // text
     textIdle:            'rgba(147, 164, 220,0.85)',
     textSelected:        'rgba(195, 203, 230,1.00)',
@@ -1082,9 +1082,9 @@ const DESIGN = {
     maxWidthDesktop:  'clamp(1560px, 95vw, 4400px)',
     maxWidthMobile:   'min(96vw, 480px)',
     minHeightDesktop: 'clamp(640px, 80vh, 1540px)',
-    bgOpaque:         'rgba(16, 11, 30,0.96)',
-    bgTranslucent:    'rgba(16, 11, 30,0.72)',
-    backdropBg:       'rgba(10, 5, 21,0.65)',
+    bgOpaque:         'rgba(42, 49, 82,0.96)',
+    bgTranslucent:    'rgba(42, 49, 82,0.72)',
+    backdropBg:       'rgba(27, 18, 44,0.65)',
     borderRadiusLg:   '28px',
     borderRadiusSm:   '24px',
   },
@@ -1419,7 +1419,7 @@ function RoleChip({
             // Lilla gradient som matcher dans-vertikalens branding-tokens.
             background: selected
               ? 'radial-gradient(circle at 50% 40%, rgba(147, 164, 220,0.35) 0%, rgba(48, 31, 132,0.85) 70%, #0a0a0a 100%)'
-              : 'radial-gradient(circle at 50% 40%, rgba(93, 118, 203,0.18) 0%, rgba(24, 18, 43,0.92) 70%, #0a0a0a 100%)',
+              : 'radial-gradient(circle at 50% 40%, rgba(93, 118, 203,0.18) 0%, rgba(42, 61, 86,0.92) 70%, #0a0a0a 100%)',
             transition: `background 0.3s ${easing}`,
             // SVG-ikon arver fontSize fra parent.
             fontSize: 'clamp(40px, 14vw, 76px)',
@@ -1470,7 +1470,7 @@ function RoleChip({
             px: 0.85,
             py: 0.4,
             borderRadius: '999px',
-            bgcolor: selected ? 'rgba(16, 11, 30,0.82)' : 'rgba(10, 5, 21,0.72)',
+            bgcolor: selected ? 'rgba(42, 49, 82,0.82)' : 'rgba(27, 18, 44,0.72)',
             border: selected
               ? `1px solid ${DESIGN.p.shadowRing}`
               : '1px solid rgba(255,255,255,0.12)',
@@ -1555,7 +1555,7 @@ function RoleChip({
         background: selected
           ? `linear-gradient(to top, ${DESIGN.p.labelBgSelInner} 0%, ${DESIGN.p.labelBgSelOuter} 55%, transparent 100%)`
           : variant === 'decision'
-            ? 'linear-gradient(to top, rgba(10, 5, 21,0.72) 0%, rgba(10, 5, 21,0.24) 100%)'
+            ? 'linear-gradient(to top, rgba(27, 18, 44,0.72) 0%, rgba(27, 18, 44,0.24) 100%)'
             : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 55%, transparent 100%)',
         display: 'flex',
         alignItems: showDecisionDetails ? 'center' : 'flex-end',
@@ -1791,8 +1791,8 @@ interface ProfessionPickerMeta {
 }
 
 const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
-  production:       { label: 'Film/video',       glyph: '🎬', accent: '#60a5fa' },
-  photographer:     { label: 'Fotograf',         glyph: '📷', accent: 'var(--role-cyan, #22d3ee)' },
+  production:       { label: 'Film/video',       glyph: '🎬', accent: '#93a4dc' },
+  photographer:     { label: 'Fotograf',         glyph: '📷', accent: 'var(--role-cyan, #5d76cb)' },
   content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#5d76cb' },
   content_creator:  { label: 'Innholdsskaper',   glyph: '⚡', accent: '#f59e0b' },
   dance_studio:     { label: 'Dansestudio',      glyph: '🎓', accent: '#5d76cb', beta: true },
@@ -1826,7 +1826,7 @@ export default function LoginDialog({
   const isFullScreen = useMediaQuery('(max-width:479px)');
   // CreatorHub Design: selv-brand login-dialogen (--role-cyan m.fl.) fra theroleroom-tokens, så
   // cyan-aksenten retinter også når dialogen vises på landingssiden (der casting-shellet ikke er
-  // montert). Ingen override → vars uset → literalene (#22d3ee) gjelder → identisk.
+  // montert). Ingen override → vars uset → literalene (#5d76cb) gjelder → identisk.
   useRoleRoomBrand();
 
   const [email, setEmail] = useState('');
@@ -5536,7 +5536,7 @@ export default function LoginDialog({
                       sx={{
                         p: 1.2,
                         borderRadius: '18px',
-                        bgcolor: 'rgba(16, 11, 30,0.66)',
+                        bgcolor: 'rgba(42, 49, 82,0.66)',
                         border: '1px solid rgba(246,195,88,0.22)',
                       }}
                     >
@@ -5686,7 +5686,7 @@ export default function LoginDialog({
                             bgcolor: '#ffd787',
                           },
                           '&.Mui-disabled': {
-                            color: 'rgba(10, 5, 21,0.36)',
+                            color: 'rgba(27, 18, 44,0.36)',
                             bgcolor: 'rgba(246,195,88,0.42)',
                           },
                         }}
@@ -5864,7 +5864,7 @@ export default function LoginDialog({
                       sx={{
                         p: 1.2,
                         borderRadius: '18px',
-                        bgcolor: 'rgba(16, 11, 30,0.66)',
+                        bgcolor: 'rgba(42, 49, 82,0.66)',
                         border: '1px solid rgba(147, 164, 220,0.18)',
                       }}
                     >
@@ -5927,7 +5927,7 @@ export default function LoginDialog({
                                 aspectRatio: '1 / 1',
                                 borderRadius: '14px',
                                 overflow: 'hidden',
-                                bgcolor: 'rgba(10, 5, 21,0.8)',
+                                bgcolor: 'rgba(27, 18, 44,0.8)',
                                 border: '1px solid rgba(255,255,255,0.06)',
                               }}
                             >
@@ -5983,7 +5983,7 @@ export default function LoginDialog({
                   sx={{
                     p: 1.2,
                     borderRadius: '18px',
-                    bgcolor: 'rgba(16, 11, 30,0.66)',
+                    bgcolor: 'rgba(42, 49, 82,0.66)',
                     border: '1px solid rgba(147, 164, 220,0.18)',
                   }}
                 >
@@ -6059,7 +6059,7 @@ export default function LoginDialog({
                       bgcolor: '#c3cbe6',
                     },
                     '&.Mui-disabled': {
-                      color: 'rgba(10, 5, 21,0.36)',
+                      color: 'rgba(27, 18, 44,0.36)',
                       bgcolor: 'rgba(142,167,255,0.32)',
                     },
                   }}
@@ -6090,7 +6090,7 @@ export default function LoginDialog({
                 borderRadius: '18px',
                 bgcolor: isCommercialPaymentSatisfied
                   ? 'rgba(38,178,103,0.08)'
-                  : 'rgba(16, 11, 30,0.78)',
+                  : 'rgba(42, 49, 82,0.78)',
                 border: isCommercialPaymentSatisfied
                   ? '1px solid rgba(38,178,103,0.2)'
                   : '1px solid rgba(147, 164, 220,0.16)',
@@ -6512,7 +6512,7 @@ export default function LoginDialog({
         PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
       >
         <Box sx={{ p: 3 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: 'var(--role-cyan, #22d3ee)' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: 'var(--role-cyan, #5d76cb)' }}>
             To-faktor-bekreftelse
           </Typography>
           <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.72)', mb: 2 }}>
@@ -6544,7 +6544,7 @@ export default function LoginDialog({
               border: '1px solid rgba(148,163,184,0.3)',
               borderRadius: '8px',
               outline: 'none',
-              '&:focus': { borderColor: 'var(--role-cyan, #22d3ee)' },
+              '&:focus': { borderColor: 'var(--role-cyan, #5d76cb)' },
             }}
           />
           {twoFactorError ? (
@@ -6568,9 +6568,9 @@ export default function LoginDialog({
                 textTransform: 'none',
                 fontWeight: 700,
                 flex: 2,
-                bgcolor: 'var(--role-cyan, #22d3ee)',
+                bgcolor: 'var(--role-cyan, #5d76cb)',
                 color: '#0b1226',
-                '&:hover': { bgcolor: '#06b6d4' },
+                '&:hover': { bgcolor: '#3f51b5' },
               }}
             >
               {twoFactorSubmitting ? 'Verifiserer…' : 'Bekreft'}

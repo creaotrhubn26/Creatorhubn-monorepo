@@ -30,7 +30,7 @@ export const MOBILE_TOUCH_TARGET_SIZE = 48;
  */
 export const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '2px solid #60a5fa',
+    outline: '2px solid #93a4dc',
     outlineOffset: 2,
   },
 } as const;

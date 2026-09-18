@@ -185,7 +185,7 @@ export function GlobalMentionHelper({
             p: 1,
             borderRadius: 2,
             border: '1px solid rgba(93, 118, 203,0.28)',
-            background: 'linear-gradient(135deg, rgba(24, 18, 43,0.82) 0%, rgba(33, 28, 59,0.78) 100%)',
+            background: 'linear-gradient(135deg, rgba(42, 61, 86,0.82) 0%, rgba(60, 78, 109,0.78) 100%)',
           }}
         >
           <Typography sx={{ color: '#9ec5ff', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
@@ -214,11 +214,11 @@ export function GlobalMentionHelper({
           sx={{
             p: 1,
             borderRadius: 2,
-            border: '1px solid rgba(56,189,248,0.25)',
+            border: '1px solid rgba(93, 118, 203,0.25)',
             background: 'linear-gradient(135deg, rgba(8,32,58,0.82) 0%, rgba(14,34,72,0.78) 100%)',
           }}
         >
-          <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
+          <Typography sx={{ color: 'var(--role-cyan, #93a4dc)', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
             {suggestionTitle}
           </Typography>
           <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
@@ -230,9 +230,9 @@ export function GlobalMentionHelper({
                 onClick={() => onApplySuggestion(name)}
                 label={name}
                 sx={{
-                  bgcolor: 'rgba(56,189,248,0.16)',
+                  bgcolor: 'rgba(93, 118, 203,0.16)',
                   color: '#e2f2ff',
-                  border: '1px solid rgba(56,189,248,0.5)',
+                  border: '1px solid rgba(93, 118, 203,0.5)',
                   fontWeight: 700,
                 }}
               />

@@ -378,7 +378,7 @@ export const ContactIcon: React.FC<IconProps> = ({ sx, style, ...props }) => {
       <circle cx="12" cy="8" r="4" fill="currentColor" />
       <path d="M20 21C20 17.134 16.418 14 12 14C7.582 14 4 17.134 4 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
       {/* Info badge */}
-      <circle cx="18" cy="6" r="4" fill="#00d4ff" />
+      <circle cx="18" cy="6" r="4" fill="#5d76cb" />
       <path d="M18 4.5V5.5M18 7V8.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
@@ -412,7 +412,7 @@ export const FolderProjectIcon: React.FC<IconProps> = ({ sx, style, ...props }) 
       <rect x="17" y="10" width="2" height="2" rx="0.5" fill="currentColor" />
       <rect x="17" y="14" width="2" height="2" rx="0.5" fill="currentColor" />
       {/* Play symbol */}
-      <path d="M10 10L14 12.5L10 15V10Z" fill="#00d4ff" />
+      <path d="M10 10L14 12.5L10 15V10Z" fill="#5d76cb" />
     </svg>
   );
 };
@@ -477,7 +477,7 @@ export const CompanyIcon: React.FC<IconProps> = ({ sx, style, ...props }) => {
       <rect x="8" y="11" width="3" height="3" fill="currentColor" />
       <rect x="13" y="11" width="3" height="3" fill="currentColor" />
       {/* Door */}
-      <rect x="10" y="16" width="4" height="5" fill="#00d4ff" />
+      <rect x="10" y="16" width="4" height="5" fill="#5d76cb" />
     </svg>
   );
 };

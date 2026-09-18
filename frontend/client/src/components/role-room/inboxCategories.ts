@@ -34,12 +34,12 @@ export interface InboxCategory {
 
 // Basis-kategoriene = inbox_type-verdiene backend utleder (inferInboxType).
 const CATEGORIES: Record<string, InboxCategory> = {
-  brief: { key: 'brief', label: 'Brief', color: '#60a5fa', bg: 'rgba(96,165,250,0.16)', Icon: DescriptionOutlinedIcon },
+  brief: { key: 'brief', label: 'Brief', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.16)', Icon: DescriptionOutlinedIcon },
   approval: { key: 'approval', label: 'Godkjenning', color: '#34d399', bg: 'rgba(52,211,153,0.16)', Icon: CheckCircleOutlineIcon },
   material: { key: 'material', label: 'Materiale', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.16)', Icon: PhotoLibraryOutlinedIcon },
   delivery: { key: 'delivery', label: 'Leveranse', color: '#2dd4bf', bg: 'rgba(45,212,191,0.16)', Icon: MovieOutlinedIcon },
   request: { key: 'request', label: 'Forespørsel', color: '#fbbf24', bg: 'rgba(251,191,36,0.16)', Icon: HelpOutlineIcon },
-  workspace: { key: 'workspace', label: 'Arbeidsflate', color: '#38bdf8', bg: 'rgba(56,189,248,0.16)', Icon: HubOutlinedIcon },
+  workspace: { key: 'workspace', label: 'Arbeidsflate', color: '#5d76cb', bg: 'rgba(93, 118, 203,0.16)', Icon: HubOutlinedIcon },
   general: { key: 'general', label: 'Varsel', color: '#94a3b8', bg: 'rgba(148,163,184,0.16)', Icon: NotificationsNoneIcon },
 };
 

@@ -196,8 +196,8 @@ export default function ClientAdsApprovalSection({
                       label={daysLeft === 0 ? 'Frist i dag' : `${daysLeft} dager igjen`}
                       size="small"
                       sx={{
-                        bgcolor: daysLeft <= 1 ? 'rgba(248,113,113,0.18)' : 'rgba(96,165,250,0.18)',
-                        color: daysLeft <= 1 ? '#f87171' : '#60a5fa',
+                        bgcolor: daysLeft <= 1 ? 'rgba(248,113,113,0.18)' : 'rgba(147, 164, 220,0.18)',
+                        color: daysLeft <= 1 ? '#f87171' : '#93a4dc',
                         fontWeight: 700,
                       }}
                     />
@@ -284,7 +284,7 @@ export default function ClientAdsApprovalSection({
                         <td style={{ color: 'rgba(195, 203, 230,0.85)' }}>
                           {CATEGORY_LABELS[a.goal_category] ?? a.goal_category}
                         </td>
-                        <td style={{ color: 'rgba(96,165,250,0.85)' }}>
+                        <td style={{ color: 'rgba(147, 164, 220,0.85)' }}>
                           {TRIGGER_LABELS[a.trigger_type] ?? a.trigger_type}
                         </td>
                         <td className="num">{a.default_value} {a.currency}</td>

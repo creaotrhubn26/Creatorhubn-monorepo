@@ -622,7 +622,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
           sx={{
             px: 2,
             py: 2,
-            bgcolor: 'rgba(10, 5, 21,0.98)',
+            bgcolor: 'rgba(27, 18, 44,0.98)',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',

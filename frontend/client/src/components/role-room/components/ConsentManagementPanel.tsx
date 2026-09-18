@@ -74,12 +74,12 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
     '--dialog-accent-hover': 'rgba(93, 118, 203,0.15)',
     '--dialog-border-color': 'rgba(93, 118, 203,0.34)',
     '--dialog-text': '#ffffff',
-    bgcolor: 'rgba(24, 18, 43,0.94)',
+    bgcolor: 'rgba(42, 61, 86,0.94)',
     color: 'var(--dialog-text)',
     border: '1px solid var(--dialog-border-color)',
     borderRadius: 2.5,
     backgroundImage: [
-      'linear-gradient(180deg, rgba(10, 5, 21,0.9) 0%, rgba(16, 11, 30,0.9) 100%)',
+      'linear-gradient(180deg, rgba(27, 18, 44,0.9) 0%, rgba(42, 49, 82,0.9) 100%)',
       'radial-gradient(circle at 16% -24%, rgba(93, 118, 203,0.28), transparent 55%)',
       'radial-gradient(circle at 82% -10%, rgba(75, 61, 143,0.24), transparent 48%)',
     ].join(', '),
@@ -321,7 +321,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
     const colors: Record<ConsentInvitationStatus, string> = {
       'not_sent': 'rgba(255,255,255,0.3)',
       'sent': '#ffb800',
-      'viewed': 'var(--role-cyan, #00d4ff)',
+      'viewed': 'var(--role-cyan, #5d76cb)',
       'signed': '#10b981',
       'declined': '#ff4444',
     };
@@ -375,7 +375,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
           sx={{
-            bgcolor: 'var(--role-cyan, #00d4ff)',
+            bgcolor: 'var(--role-cyan, #5d76cb)',
             color: '#000',
             fontWeight: 600,
             '&:hover': { bgcolor: '#00b8e6' },
@@ -407,7 +407,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 sx={{
                   bgcolor: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.1)',
-                  '&:hover': { borderColor: consent.signed ? '#10b981' : 'var(--role-cyan, #00d4ff)' },
+                  '&:hover': { borderColor: consent.signed ? '#10b981' : 'var(--role-cyan, #5d76cb)' },
                 }}
               >
                 <CardContent>
@@ -454,7 +454,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                         size="small"
                         onClick={() => handleOpenDialog(consent)}
                         aria-label="Rediger samtykke"
-                        sx={{ color: 'var(--role-cyan, #00d4ff)' }}
+                        sx={{ color: 'var(--role-cyan, #5d76cb)' }}
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -520,7 +520,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           zIndex: consentModalZIndex,
           '& .MuiBackdrop-root': {
             zIndex: consentModalBackdropZIndex,
-            bgcolor: 'rgba(10, 5, 21,0.86)',
+            bgcolor: 'rgba(27, 18, 44,0.86)',
             backdropFilter: 'blur(3px)',
           },
         }}
@@ -563,7 +563,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               p: { xs: 2, sm: 2.5, md: 2.75 },
               borderRadius: 2.25,
               border: '1px solid var(--dialog-border-color)',
-              bgcolor: 'rgba(33, 28, 59,0.74)',
+              bgcolor: 'rgba(60, 78, 109,0.74)',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
             }}
           >
@@ -594,8 +594,8 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   checked={formData.signed || false}
                   onChange={(e) => setFormData({ ...formData, signed: e.target.checked })}
                   sx={{
-                    color: 'var(--role-cyan, #00d4ff)',
-                    '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                    color: 'var(--role-cyan, #5d76cb)',
+                    '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                   }}
                 />
               }
@@ -716,7 +716,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           zIndex: consentModalZIndex,
           '& .MuiBackdrop-root': {
             zIndex: consentModalBackdropZIndex,
-            bgcolor: 'rgba(10, 5, 21,0.86)',
+            bgcolor: 'rgba(27, 18, 44,0.86)',
             backdropFilter: 'blur(3px)',
           },
         }}
@@ -760,7 +760,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 p: { xs: 2, sm: 2.5, md: 2.75 },
                 borderRadius: 2.25,
                 border: '1px solid var(--dialog-border-color)',
-                bgcolor: 'rgba(33, 28, 59,0.74)',
+                bgcolor: 'rgba(60, 78, 109,0.74)',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
               }}
             >

@@ -61,7 +61,7 @@ interface ValidationResult {
 const METHOD_META: Record<TrackingMethod, { label: string; description: string; color: string }> = {
   pending: { label: 'Ikke valgt', description: 'Velg en metode først', color: '#4b3d8f' },
   gtag_snippets: { label: 'gtag-snippets', description: 'Lim-inn-koden er enkelest for de fleste', color: '#93a4dc' },
-  gtm_api: { label: 'GTM API', description: 'Vi sender tags via API til klientens GTM', color: '#60a5fa' },
+  gtm_api: { label: 'GTM API', description: 'Vi sender tags via API til klientens GTM', color: '#93a4dc' },
   proxy: { label: 'Server-side proxy', description: 'Mest sikkert — token aldri i browser', color: '#34d399' },
   wordpress_plugin: { label: 'WordPress-plugin', description: 'Vår plugin pull-er config automatisk', color: '#fbbf24' },
   manual: { label: 'Manuell', description: 'For custom-stacks vi ikke kan automatisere', color: '#fb923c' },

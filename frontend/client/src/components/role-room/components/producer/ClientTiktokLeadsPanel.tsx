@@ -295,8 +295,8 @@ export default function ClientTiktokLeadsPanel({
                       label={lead.status === 'new' ? 'NY' : lead.status === 'qualified' ? 'KVALIFISERT' : lead.status === 'contacted' ? 'KONTAKTET' : lead.status === 'converted' ? 'KUNDE' : 'TAPT'}
                       size="small"
                       sx={{
-                        bgcolor: lead.status === 'new' ? 'rgba(96,165,250,0.18)' : lead.status === 'converted' ? 'rgba(52,211,153,0.18)' : 'rgba(148,163,184,0.18)',
-                        color: lead.status === 'new' ? '#60a5fa' : lead.status === 'converted' ? '#34d399' : palette.textMuted,
+                        bgcolor: lead.status === 'new' ? 'rgba(147, 164, 220,0.18)' : lead.status === 'converted' ? 'rgba(52,211,153,0.18)' : 'rgba(148,163,184,0.18)',
+                        color: lead.status === 'new' ? '#93a4dc' : lead.status === 'converted' ? '#34d399' : palette.textMuted,
                         fontWeight: 700,
                         fontSize: '0.68rem',
                       }}

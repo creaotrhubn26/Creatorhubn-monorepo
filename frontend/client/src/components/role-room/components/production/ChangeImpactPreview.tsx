@@ -58,7 +58,7 @@ export interface ChangeImpactPreviewProps {
 const SEVERITY_STYLE: Record<ImpactSeverity, { color: string; label: string }> = {
   blocking: { color: '#f87171', label: 'Må ryddes' },
   warning: { color: '#fbbf24', label: 'Sjekk' },
-  info: { color: '#60a5fa', label: 'Til info' },
+  info: { color: '#93a4dc', label: 'Til info' },
 };
 
 function SeverityIcon({ severity }: { severity: ImpactSeverity }) {

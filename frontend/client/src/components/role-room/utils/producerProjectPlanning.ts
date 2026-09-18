@@ -626,11 +626,11 @@ export const PRODUCER_WORKSPACE_PAGE_PLACEMENT_LABELS: Record<ProducerWorkspaceP
 };
 
 export const PRODUCER_WORKSPACE_SURFACE_COLORS: Record<ProducerWorkspaceSurfaceKey, string> = {
-  brief: '#38bdf8',
+  brief: '#5d76cb',
   materials: '#fbbf24',
   storyboard: '#fb7185',
   manuscript: '#93a4dc',
-  shotlist: '#22d3ee',
+  shotlist: '#5d76cb',
   brand: '#5d76cb',
   accounts: '#14b8a6',
   delivery: '#22c55e',
@@ -1669,7 +1669,7 @@ export const createProducerWorkspaceSection = (
 ): ProducerWorkspaceSection => ({
   id: overrides.id && hasText(overrides.id) ? overrides.id.trim() : createWorkspaceId('section'),
   title: hasText(title) ? title.trim() : 'Ny seksjon',
-  color: normalizeWorkspaceColor(overrides.color, '#38bdf8'),
+  color: normalizeWorkspaceColor(overrides.color, '#5d76cb'),
   pinned: Boolean(overrides.pinned),
   order: typeof overrides.order === 'number' ? overrides.order : 0,
   layout: overrides.layout === 'focus' || overrides.layout === 'grid' ? overrides.layout : 'split',
@@ -1685,7 +1685,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     ],
     {
       id: 'workspace-section-foundation',
-      color: '#38bdf8',
+      color: '#5d76cb',
       pinned: true,
       order: 0,
       layout: 'split',
@@ -1824,7 +1824,7 @@ const normalizeProducerWorkspaceSection = (value: unknown, index: number): Produ
     pages,
     {
       id: hasText(record.id) ? record.id.trim() : undefined,
-      color: normalizeWorkspaceColor(record.color, pages[0]?.color ?? '#38bdf8'),
+      color: normalizeWorkspaceColor(record.color, pages[0]?.color ?? '#5d76cb'),
       pinned: Boolean(record.pinned),
       order: typeof record.order === 'number' ? record.order : index,
       layout: record.layout === 'focus' || record.layout === 'grid' ? record.layout : 'split',

@@ -25,9 +25,9 @@ export const roleTokens = {
   /** Soft aksent — rgba med 0.24 alpha. Brukes for bakgrunn på chips. */
   accentSoft: 'rgba(93, 118, 203,0.24)',
   /** Surface — dypt lilla bg #2a3d56. Brukes for hovedflater. */
-  surface: 'rgba(24, 18, 43,0.84)',
+  surface: 'rgba(42, 61, 86,0.84)',
   /** Dempet surface — for nestede flater. */
-  surfaceMuted: 'rgba(33, 28, 59,0.72)',
+  surfaceMuted: 'rgba(60, 78, 109,0.72)',
   /** Standard border for kort/dialoger (aksent-derivbar). */
   border: 'var(--role-border, rgba(93, 118, 203,0.32))',
   /** Primær tekst-farge — varm-hvit #eef1fb. */
@@ -38,7 +38,7 @@ export const roleTokens = {
   /** Status-farger (matcher roleWorkflow.ts) */
   status: {
     draft: '#6b7280',
-    open: '#00d4ff',
+    open: '#5d76cb',
     casting: '#ffb800',
     filled: '#10b981',
     cancelled: '#ef4444',

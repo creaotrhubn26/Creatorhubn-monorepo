@@ -105,7 +105,7 @@ export default function MonthlyManagementFeeBox({
             label="Spend MTD"
             value={`${fmt(data.totals.spend_mtd_nok)} kr`}
             sub="trekkes direkte fra dere til Google"
-            color="#60a5fa"
+            color="#93a4dc"
           />
           <SummaryCard
             label="Mgmt-fee MTD"
@@ -169,7 +169,7 @@ export default function MonthlyManagementFeeBox({
                     </Stack>
                   </Box>
                   <Box sx={{ textAlign: 'right' }}>
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', color: '#60a5fa' }}>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', color: '#93a4dc' }}>
                       {fmt(c.spend_mtd_nok)} kr
                     </Typography>
                     <Typography sx={{ color: 'rgba(195, 203, 230,0.7)', fontSize: '0.74rem' }}>

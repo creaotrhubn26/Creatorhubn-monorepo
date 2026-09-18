@@ -100,7 +100,7 @@ interface AuthorInfo {
   color: string;
 }
 
-const AUTHOR_PALETTE = [danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, '#5d76cb', danceFlowColors.pinkAccent, '#06b6d4', '#f97316'];
+const AUTHOR_PALETTE = [danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, '#5d76cb', danceFlowColors.pinkAccent, '#3f51b5', '#f97316'];
 
 function authorInfoFor(
   userId: string,

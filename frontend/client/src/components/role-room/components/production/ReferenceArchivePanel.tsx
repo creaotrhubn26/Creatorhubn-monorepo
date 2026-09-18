@@ -401,7 +401,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                   sx={{
                     position: 'absolute',
                     inset: 0,
-                    bgcolor: 'rgba(10, 5, 21,0.85)',
+                    bgcolor: 'rgba(27, 18, 44,0.85)',
                     opacity: 0,
                     transition: 'opacity 0.15s',
                     p: 1,
@@ -454,7 +454,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
               sx={{
                 position: 'absolute',
                 inset: 0,
-                bgcolor: 'rgba(10, 5, 21,0.85)',
+                bgcolor: 'rgba(27, 18, 44,0.85)',
                 opacity: 0,
                 transition: 'opacity 0.15s',
                 p: 1,
@@ -487,7 +487,7 @@ export const ReferenceArchivePanel: React.FC<Props> = ({ projectId, sceneContext
                   <Chip
                     size="small"
                     label={frame.claudeTags.lightingMood}
-                    sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(59,130,246,0.3)', color: '#e5e7eb' }}
+                    sx={{ height: 16, fontSize: 9, bgcolor: 'rgba(63, 81, 181,0.3)', color: '#e5e7eb' }}
                   />
                 )}
               </Stack>

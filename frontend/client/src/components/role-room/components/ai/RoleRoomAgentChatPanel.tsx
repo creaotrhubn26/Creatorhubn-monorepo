@@ -224,7 +224,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
           {projectId ? (
             <Chip
-              icon={<HistoryIcon sx={{ fontSize: 14, color: '#a5f3fc !important' }} />}
+              icon={<HistoryIcon sx={{ fontSize: 14, color: '#c3cbe6 !important' }} />}
               label="Historikk"
               size="small"
               variant="outlined"
@@ -232,9 +232,9 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
               clickable
               sx={{
                 color: '#e2e8f0',
-                borderColor: 'rgba(34,211,238,0.3)',
-                bgcolor: 'rgba(8,47,73,0.24)',
-                '&:hover': { bgcolor: 'rgba(8,47,73,0.42)' },
+                borderColor: 'rgba(93, 118, 203,0.3)',
+                bgcolor: 'rgba(42, 61, 86,0.24)',
+                '&:hover': { bgcolor: 'rgba(42, 61, 86,0.42)' },
               }}
             />
           ) : null}
@@ -268,13 +268,13 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             size="small"
             variant="outlined"
             sx={{
-              color: '#a5f3fc',
-              borderColor: 'rgba(34,211,238,0.3)',
-              bgcolor: 'rgba(8,47,73,0.22)',
-              '&:hover': { bgcolor: 'rgba(8,47,73,0.4)', borderColor: 'rgba(34,211,238,0.5)' },
+              color: '#c3cbe6',
+              borderColor: 'rgba(93, 118, 203,0.3)',
+              bgcolor: 'rgba(42, 61, 86,0.22)',
+              '&:hover': { bgcolor: 'rgba(42, 61, 86,0.4)', borderColor: 'rgba(93, 118, 203,0.5)' },
               '&.Mui-disabled': {
-                color: 'rgba(165,243,252,0.4)',
-                borderColor: 'rgba(34,211,238,0.14)',
+                color: 'rgba(195, 203, 230,0.4)',
+                borderColor: 'rgba(93, 118, 203,0.14)',
               },
             }}
           />
@@ -286,10 +286,10 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           severity="info"
           variant="outlined"
           sx={{
-            bgcolor: 'rgba(34,211,238,0.08)',
+            bgcolor: 'rgba(93, 118, 203,0.08)',
             color: '#cbd5e1',
-            border: '1px solid rgba(34,211,238,0.22)',
-            '& .MuiAlert-icon': { color: '#a5f3fc' },
+            border: '1px solid rgba(93, 118, 203,0.22)',
+            '& .MuiAlert-icon': { color: '#c3cbe6' },
           }}
         >
           {emptyStateText
@@ -319,7 +319,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             >
               <Typography
                 sx={{
-                  color: isUser ? '#dfe4f3' : '#a5f3fc',
+                  color: isUser ? '#dfe4f3' : '#c3cbe6',
                   fontSize: '0.68rem',
                   fontWeight: 700,
                   textTransform: 'uppercase',
@@ -387,12 +387,12 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
                             sx={{
                               alignSelf: 'flex-start',
                               textTransform: 'none',
-                              color: '#a5f3fc',
-                              borderColor: 'rgba(34,211,238,0.4)',
-                              '&:hover': { borderColor: 'rgba(34,211,238,0.7)', bgcolor: 'rgba(8,47,73,0.3)' },
+                              color: '#c3cbe6',
+                              borderColor: 'rgba(93, 118, 203,0.4)',
+                              '&:hover': { borderColor: 'rgba(93, 118, 203,0.7)', bgcolor: 'rgba(42, 61, 86,0.3)' },
                               '&.Mui-disabled': {
-                                color: 'rgba(165,243,252,0.4)',
-                                borderColor: 'rgba(34,211,238,0.16)',
+                                color: 'rgba(195, 203, 230,0.4)',
+                                borderColor: 'rgba(93, 118, 203,0.16)',
                               },
                             }}
                           >
@@ -435,7 +435,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         })}
         {awaitingFirstToken ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+            <CircularProgress size={18} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem' }}>
               The Role Room Agent tenker …
             </Typography>
@@ -466,7 +466,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
     <Box
       sx={{
         flexShrink: 0,
-        bgcolor: 'rgba(10, 5, 21,0.82)',
+        bgcolor: 'rgba(27, 18, 44,0.82)',
         borderTop: '1px solid rgba(148,163,184,0.18)',
         pt: 1.2,
         pb: 'calc(var(--rr-safe-bottom, 0px) + 10px)',
@@ -499,8 +499,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             color: '#f1f5f9',
             fontSize: { xs: '0.95rem', md: '0.95rem' },
             '& fieldset': { borderColor: 'rgba(148,163,184,0.3)' },
-            '&:hover fieldset': { borderColor: 'rgba(34,211,238,0.5)' },
-            '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #22d3ee)' },
+            '&:hover fieldset': { borderColor: 'rgba(93, 118, 203,0.5)' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
           },
           '& .MuiOutlinedInput-input::placeholder': {
             color: 'rgba(226,232,240,0.5)',
@@ -516,10 +516,10 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           width: { xs: 44, md: 48 },
           height: { xs: 44, md: 48 },
           flexShrink: 0,
-          bgcolor: 'var(--role-cyan, #22d3ee)',
-          color: '#082f49',
-          '&:hover': { bgcolor: '#06b6d4' },
-          '&.Mui-disabled': { bgcolor: 'rgba(34,211,238,0.25)', color: 'rgba(8,47,73,0.6)' },
+          bgcolor: 'var(--role-cyan, #5d76cb)',
+          color: '#2a3d56',
+          '&:hover': { bgcolor: '#3f51b5' },
+          '&.Mui-disabled': { bgcolor: 'rgba(93, 118, 203,0.25)', color: 'rgba(42, 61, 86,0.6)' },
         }}
       >
         {pending ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />}
@@ -534,10 +534,10 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
         variant="outlined"
         sx={{
           m: 2,
-          bgcolor: 'rgba(34,211,238,0.08)',
+          bgcolor: 'rgba(93, 118, 203,0.08)',
           color: '#cbd5e1',
-          border: '1px solid rgba(34,211,238,0.22)',
-          '& .MuiAlert-icon': { color: '#a5f3fc' },
+          border: '1px solid rgba(93, 118, 203,0.22)',
+          '& .MuiAlert-icon': { color: '#c3cbe6' },
         }}
       >
         Velg et prosjekt for å åpne The Role Room Agent.
@@ -562,7 +562,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           // dark RoleRoomAgentDialog *and* the light RoleRoomDashboard
           // Card. Before this wrap the agent bubbles blended into the
           // Dialog's own light-wrapper and the text was unreadable.
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(27, 18, 44,0.98) 100%)',
           borderRadius: { xs: 0, md: 2 },
           border: { xs: 'none', md: '1px solid rgba(148,163,184,0.14)' },
           overflow: 'hidden',

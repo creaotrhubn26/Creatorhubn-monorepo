@@ -161,7 +161,7 @@ export function AssessmentTab() {
     { id: 'kø', label: 'Til vurdering', value: pendingCount, hint: 'Innleveringer venter', icon: <PendingIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
     { id: 'vurdert', label: 'Vurdert denne uken', value: reviewedThisWeek, hint: 'Fullførte vurderinger', icon: <DoneIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     { id: 'snitt', label: 'Snittkarakter', value: avgGrade, hint: 'Der karakter er tallfestet', icon: <AvgIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
-    { id: 'lms', label: 'Sendt til LMS', value: pushedIds.size, hint: 'Karakterer via AGS', icon: <LmsIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'lms', label: 'Sendt til LMS', value: pushedIds.size, hint: 'Karakterer via AGS', icon: <LmsIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb' },
   ];
 
   return (

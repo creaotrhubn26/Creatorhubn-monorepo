@@ -171,7 +171,7 @@ function AssistantCard({ a, busy, onToggle, onRevoke }: {
   const granted = ASSISTANT_AREAS.filter((ar) => a.areas[ar]);
   const sensitiveGranted = granted.filter(isSensitive);
   return (
-    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: 1.25, opacity: busy ? 0.7 : 1 }}>
+    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: 1.25, opacity: busy ? 0.7 : 1 }}>
       <Stack direction="row" alignItems="center" spacing={1}>
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography sx={{ color: '#f1f5f9', fontSize: '0.92rem', fontWeight: 700 }}>{a.assistantName || a.assistantEmail}</Typography>

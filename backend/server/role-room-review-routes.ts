@@ -183,7 +183,7 @@ export function buildReviewHtml(data: {
       padding: 20px;
     }
     .header {
-      background: linear-gradient(135deg, rgba(24, 18, 43,0.95), rgba(10, 5, 21,0.95));
+      background: linear-gradient(135deg, rgba(42, 61, 86,0.95), rgba(27, 18, 44,0.95));
       border: 1px solid rgba(62, 49, 128,0.30);
       border-radius: 10px; padding: 20px;
       max-width: 1200px; margin: 0 auto 20px auto;

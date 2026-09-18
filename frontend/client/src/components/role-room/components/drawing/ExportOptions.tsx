@@ -156,7 +156,7 @@ const SCALE_OPTIONS = [
 // =============================================================================
 
 const ExportContainer = styled(Paper)(() => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -170,11 +170,11 @@ const FormatCard = styled(Box, {
   padding: 12,
   borderRadius: 8,
   cursor: 'pointer',
-  backgroundColor: selected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.03)',
-  border: `2px solid ${selected ? '#3b82f6' : 'transparent'}`,
+  backgroundColor: selected ? 'rgba(63, 81, 181, 0.2)' : 'rgba(255,255,255,0.03)',
+  border: `2px solid ${selected ? '#3f51b5' : 'transparent'}`,
   transition: 'all 0.15s',
   '&:hover': {
-    backgroundColor: selected ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.06)',
+    backgroundColor: selected ? 'rgba(63, 81, 181, 0.25)' : 'rgba(255,255,255,0.06)',
   },
 }));
 
@@ -460,9 +460,9 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
               size="small"
               onClick={() => updateSettings({ scale: option.value })}
               sx={{
-                bgcolor: settings.scale === option.value ? 'rgba(59,130,246,0.3)' : 'transparent',
+                bgcolor: settings.scale === option.value ? 'rgba(63, 81, 181,0.3)' : 'transparent',
                 border: settings.scale === option.value 
-                  ? '1px solid rgba(59,130,246,0.5)' 
+                  ? '1px solid rgba(63, 81, 181,0.5)' 
                   : '1px solid rgba(255,255,255,0.1)',
               }}
             />

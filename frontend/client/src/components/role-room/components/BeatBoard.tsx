@@ -199,13 +199,13 @@ const BEAT_TYPE_CONFIG: Record<BeatType, BeatTypeConfig> = {
 
 const BEAT_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#5d76cb', '#ec4899', '#6b7280',
+  '#3f51b5', '#3f51b5', '#5d76cb', '#ec4899', '#6b7280',
 ];
 
 // Thread colours consistent with the screenshot sidebar
 const THREAD_COLOR: Record<StoryThread, string> = {
   A: '#5d76cb',
-  B: '#3b82f6',
+  B: '#3f51b5',
   C: '#f59e0b',
 };
 
@@ -382,7 +382,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
           m: responsive.gap / 2,
           cursor: beat.locked ? 'not-allowed' : 'pointer',
           border: cardBorder,
-          bgcolor: 'rgba(16, 11, 30,0.92)',
+          bgcolor: 'rgba(42, 49, 82,0.92)',
           borderLeft: `4px solid ${accentColor}`,
           boxShadow: cardGlow,
           transform: `scale(${cardScale})`,
@@ -403,7 +403,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
             onClick={(e) => { e.stopPropagation(); onMultiSelect(); }}
           >
             {isMultiSelected
-              ? <CheckedIcon sx={{ color: '#42a5f5', fontSize: 18, bgcolor: 'rgba(16, 11, 30,0.9)', borderRadius: '50%' }} />
+              ? <CheckedIcon sx={{ color: '#42a5f5', fontSize: 18, bgcolor: 'rgba(42, 49, 82,0.9)', borderRadius: '50%' }} />
               : <UncheckedIcon sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 18, opacity: 0, '.MuiCard-root:hover &': { opacity: 1 } }} />
             }
           </Box>
@@ -572,7 +572,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
                     label={char}
                     size="small"
                     sx={{
-                      bgcolor: 'rgba(59,130,246,0.15)', color: 'rgba(59,130,246,0.9)',
+                      bgcolor: 'rgba(63, 81, 181,0.15)', color: 'rgba(63, 81, 181,0.9)',
                       fontSize: '0.58rem', height: 16,
                       '& .MuiChip-label': { px: 0.5 },
                       '& .MuiChip-icon': { fontSize: 10 },
@@ -873,7 +873,7 @@ const RoomModeOverlay: FC<{
             <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" gap={0.5}>
               {beat.characters.map((c, i) => (
                 <Chip key={i} label={c} size="small"
-                  sx={{ bgcolor: 'rgba(59,130,246,0.2)', color: '#93c5fd', fontSize: '0.75rem' }} />
+                  sx={{ bgcolor: 'rgba(63, 81, 181,0.2)', color: '#93c5fd', fontSize: '0.75rem' }} />
               ))}
             </Stack>
           )}
@@ -1151,7 +1151,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
           alignItems: 'center',
           gap: 0.75,
           borderBottom: '1px solid rgba(255,255,255,0.07)',
-          bgcolor: 'rgba(16, 11, 30,0.95)',
+          bgcolor: 'rgba(42, 49, 82,0.95)',
           flexWrap: isMobile ? 'wrap' : 'nowrap',
         }}
       >

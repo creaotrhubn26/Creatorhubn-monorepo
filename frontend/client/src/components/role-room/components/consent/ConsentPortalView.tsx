@@ -57,7 +57,7 @@ const cardSx = {
   borderRadius: 4,
   border: '1px solid',
   borderColor: alpha(BRAND, 0.1),
-  boxShadow: '0 18px 50px rgba(24, 18, 43, 0.10)',
+  boxShadow: '0 18px 50px rgba(42, 61, 86, 0.10)',
   bgcolor: '#fff',
 } as const;
 

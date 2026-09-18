@@ -108,7 +108,7 @@ interface ProductionCalendarPanelProps {
 
 const EVENT_TYPES = [
   { value: 'audition', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
-  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
+  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #5d76cb)' },
   { value: 'fitting', label: 'Kostyme/Fitting', icon: <CheckroomIcon />, color: '#ec4899' },
   { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: 'var(--role-violet, #5d76cb)' },
   { value: 'shooting', label: 'Opptak', icon: <MovieIcon />, color: '#10b981' },
@@ -888,7 +888,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           py: { xs: 1.25, sm: 1.5 },
           borderRadius: 2.5,
           border: '1px solid rgba(148,163,184,0.28)',
-          background: 'linear-gradient(120deg, rgba(75, 61, 143,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.24) 100%)',
+          background: 'linear-gradient(120deg, rgba(75, 61, 143,0.16) 0%, rgba(93, 118, 203,0.1) 52%, rgba(15,23,42,0.24) 100%)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -1065,14 +1065,14 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               avatarUrl: (m as { photo_url?: string | null }).photo_url ?? null,
               statusColor: (m as { status?: string }).status === 'confirmed' ? '#10b981'
                 : (m as { status?: string }).status === 'pending' ? '#f59e0b'
-                : (m as { status?: string }).status === 'invited' ? '#60a5fa'
+                : (m as { status?: string }).status === 'invited' ? '#93a4dc'
                 : null,
               availabilityByDay: crewAvailabilityByDay.get(m.id),
             }))}
             events={events}
             eventTypeConfig={{
               audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-              selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
+              selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #5d76cb)', icon: <HowToRegIcon /> },
               fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
               rehearsal: { label: 'Prøve', color: 'var(--role-violet, #5d76cb)', icon: <GroupsIcon /> },
               shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
@@ -1093,7 +1093,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           events={events}
           eventTypeConfig={{
             audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-            selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
+            selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #5d76cb)', icon: <HowToRegIcon /> },
             fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
             rehearsal: { label: 'Prøve', color: 'var(--role-violet, #5d76cb)', icon: <GroupsIcon /> },
             shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
@@ -1107,7 +1107,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           onEditEvent={(event) => handleOpenDialog(event)}
         />
       ) : events.length === 0 ? (
-        <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+        <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.1)', color: '#93a4dc' }}>
           Ingen hendelser planlagt. Klikk "Ny hendelse" for å legge til opptak, prøver, eller andre produksjonshendelser.
         </Alert>
       ) : (
@@ -1228,7 +1228,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
 
                         {eventCrew.length > 0 && (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <GroupsIcon sx={{ fontSize: 14, color: '#06b6d4' }} />
+                            <GroupsIcon sx={{ fontSize: 14, color: '#3f51b5' }} />
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                               {eventCrew.map((member) => crewLabel(member)).join(', ')}
                             </Typography>
@@ -1264,9 +1264,9 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               border: '1px solid rgba(93, 118, 203,0.45)',
               borderRadius: 3,
               background:
-                'radial-gradient(120% 150% at 0% 0%, rgba(34,211,238,0.14) 0%, rgba(15,23,42,0) 44%), linear-gradient(165deg, rgba(16, 11, 30,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
+                'radial-gradient(120% 150% at 0% 0%, rgba(93, 118, 203,0.14) 0%, rgba(15,23,42,0) 44%), linear-gradient(165deg, rgba(42, 49, 82,0.98) 0%, rgba(27, 18, 44,0.98) 100%)',
               boxShadow:
-                '0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(93, 118, 203,0.25)',
+                '0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(93, 118, 203,0.14) inset, 0 0 32px rgba(93, 118, 203,0.25)',
               overflow: 'hidden',
             },
           },
@@ -1278,7 +1278,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             alignItems: 'center',
             gap: 1.25,
             borderBottom: '1px solid rgba(93, 118, 203,0.35)',
-            background: 'linear-gradient(120deg, rgba(75, 61, 143,0.42) 0%, rgba(15,23,42,0.9) 55%, rgba(34,211,238,0.24) 100%)',
+            background: 'linear-gradient(120deg, rgba(75, 61, 143,0.42) 0%, rgba(15,23,42,0.9) 55%, rgba(93, 118, 203,0.24) 100%)',
           }}
         >
           <Box sx={{ color: eventTypeConfig.color, display: 'inline-flex', alignItems: 'center' }}>
@@ -1299,7 +1299,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             pt: 2.5,
             px: 3,
             pb: 2.75,
-            background: 'linear-gradient(180deg, rgba(15,23,42,0.34) 0%, rgba(10, 5, 21,0.18) 100%)',
+            background: 'linear-gradient(180deg, rgba(15,23,42,0.34) 0%, rgba(27, 18, 44,0.18) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -1340,7 +1340,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                       ? 'linear-gradient(90deg, #ef4444, #f97316)'
                       : workflowGaps.length > 0
                         ? 'linear-gradient(90deg, #f59e0b, #eab308)'
-                        : 'linear-gradient(90deg, #10b981, #22d3ee)',
+                        : 'linear-gradient(90deg, #10b981, #5d76cb)',
                   },
                 }}
               />
@@ -1459,11 +1459,11 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                 startIcon={<AddIcon />}
                 onClick={() => handleRequestEntityCreate('location')}
                 sx={{
-                  borderColor: 'rgba(34,211,238,0.45)',
-                  color: '#67e8f9',
+                  borderColor: 'rgba(93, 118, 203,0.45)',
+                  color: '#93a4dc',
                   '&:hover': {
-                    borderColor: 'rgba(34,211,238,0.75)',
-                    bgcolor: 'rgba(34,211,238,0.12)',
+                    borderColor: 'rgba(93, 118, 203,0.75)',
+                    bgcolor: 'rgba(93, 118, 203,0.12)',
                   },
                 }}
               >
@@ -1546,11 +1546,11 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                 startIcon={<AddIcon />}
                 onClick={() => handleRequestEntityCreate('crew')}
                 sx={{
-                  borderColor: 'rgba(59,130,246,0.5)',
+                  borderColor: 'rgba(63, 81, 181,0.5)',
                   color: '#93c5fd',
                   '&:hover': {
-                    borderColor: 'rgba(59,130,246,0.75)',
-                    bgcolor: 'rgba(59,130,246,0.12)',
+                    borderColor: 'rgba(63, 81, 181,0.75)',
+                    bgcolor: 'rgba(63, 81, 181,0.12)',
                   },
                 }}
               >
@@ -1643,7 +1643,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         <DialogActions
           sx={{
             borderTop: '1px solid rgba(93, 118, 203,0.25)',
-            bgcolor: 'rgba(10, 5, 21,0.84)',
+            bgcolor: 'rgba(27, 18, 44,0.84)',
             backdropFilter: 'blur(8px)',
             px: 3,
             py: 2,

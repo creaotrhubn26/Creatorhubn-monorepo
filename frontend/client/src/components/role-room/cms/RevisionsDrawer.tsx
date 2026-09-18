@@ -154,7 +154,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                       borderRadius: 1,
                       cursor: 'pointer',
                       border: isSelected ? '1px solid rgba(147, 164, 220,0.5)' : '1px solid rgba(148,163,184,0.14)',
-                      bgcolor: isSelected ? 'rgba(147, 164, 220,0.10)' : 'rgba(10, 5, 21,0.34)',
+                      bgcolor: isSelected ? 'rgba(147, 164, 220,0.10)' : 'rgba(27, 18, 44,0.34)',
                       '&:hover': { bgcolor: 'rgba(147, 164, 220,0.06)' },
                       '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: -2 },
                     }}
@@ -265,7 +265,7 @@ function RevisionContentPreview({ content }: { content: Record<string, unknown> 
     <Box
       component="pre"
       sx={{
-        bgcolor: 'rgba(10, 5, 21,0.5)',
+        bgcolor: 'rgba(27, 18, 44,0.5)',
         color: 'rgba(203,213,225,0.86)',
         fontSize: '0.78rem',
         p: 1.5,

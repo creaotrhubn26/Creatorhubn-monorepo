@@ -478,7 +478,7 @@ const COLORS = {
   textOnDarkSecondary: '#d1d5db', // 11.2:1 on #2a3d56
   
   // Section colors - all WCAG AA compliant
-  location: { bg: '#0369a1', text: '#ffffff' }, // 5.3:1 - darkened from #0ea5e9
+  location: { bg: '#0369a1', text: '#ffffff' }, // 5.3:1 - darkened from #3f51b5
   scenes: { bg: '#3e3180', text: '#ffffff' }, // 6.8:1 - darkened from #4b3d8f
   cast: { bg: '#047857', text: '#ffffff' }, // 5.5:1 - darkened from #059669
   crew: { bg: '#4b3d8f', text: '#ffffff' }, // 5.9:1 - darkened from #5d76cb
@@ -1637,7 +1637,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
             severity="info" 
             sx={{ 
               mb: 2, 
-              bgcolor: alpha('#3b82f6', 0.15),
+              bgcolor: alpha('#3f51b5', 0.15),
               '& .MuiAlert-message': { fontSize: responsive.fontSize.caption }
             }}
           >
@@ -1674,7 +1674,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                 }}
                 sx={{
                   '& .MuiInput-underline:before': { borderBottomColor: 'rgba(255,255,255,0.3)' },
-                  '& .MuiInput-underline:after': { borderBottomColor: '#3b82f6' },
+                  '& .MuiInput-underline:after': { borderBottomColor: '#3f51b5' },
                   '& .MuiInput-underline:hover:before': { borderBottomColor: 'rgba(255,255,255,0.5)' },
                   width: '100%',
                   maxWidth: 400,
@@ -1695,7 +1695,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                 }}
                 sx={{
                   '& .MuiInput-underline:before': { borderBottomColor: 'rgba(255,255,255,0.2)' },
-                  '& .MuiInput-underline:after': { borderBottomColor: '#3b82f6' },
+                  '& .MuiInput-underline:after': { borderBottomColor: '#3f51b5' },
                   '& .MuiInput-underline:hover:before': { borderBottomColor: 'rgba(255,255,255,0.4)' },
                   width: '100%',
                   maxWidth: 300,
@@ -1752,7 +1752,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
-                  borderColor: editMode ? '#3b82f6' : 'divider',
+                  borderColor: editMode ? '#3f51b5' : 'divider',
                   borderWidth: editMode ? 2 : 1,
                 }}
               >
@@ -1788,7 +1788,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                     }}
                     sx={{
                       '& .MuiInput-underline:before': { borderBottomColor: 'rgba(0,0,0,0.2)' },
-                      '& .MuiInput-underline:after': { borderBottomColor: '#3b82f6' },
+                      '& .MuiInput-underline:after': { borderBottomColor: '#3f51b5' },
                       width: '100%',
                     }}
                   />

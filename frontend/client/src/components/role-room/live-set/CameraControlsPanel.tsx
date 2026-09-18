@@ -173,7 +173,7 @@ function MockScope({ mode }: { mode: 'waveform' | 'vectorscope' }) {
       ))}
       <polyline points={points(0, 'red')} fill="none" stroke="rgba(239,68,68,0.5)" strokeWidth="0.5" />
       <polyline points={points(2, 'green')} fill="none" stroke="rgba(34,197,94,0.6)" strokeWidth="0.5" />
-      <polyline points={points(4, 'blue')} fill="none" stroke="rgba(59,130,246,0.5)" strokeWidth="0.5" />
+      <polyline points={points(4, 'blue')} fill="none" stroke="rgba(63, 81, 181,0.5)" strokeWidth="0.5" />
     </svg>
   );
 }

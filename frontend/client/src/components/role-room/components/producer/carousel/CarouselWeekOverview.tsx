@@ -113,8 +113,8 @@ export default function CarouselWeekOverview({ draft, posts, onSelectPost }: Pro
                     size="small"
                     label={platformLabel}
                     sx={{
-                      bgcolor: 'rgba(34,211,238,0.12)',
-                      color: 'var(--role-cyan, #22d3ee)',
+                      bgcolor: 'rgba(93, 118, 203,0.12)',
+                      color: 'var(--role-cyan, #5d76cb)',
                       fontSize: 11,
                       height: 20,
                     }}

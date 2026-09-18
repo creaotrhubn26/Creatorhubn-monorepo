@@ -154,7 +154,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout Box ──────────────────────────────────────────────────────────────
 
 function Callout({
-  color = 'var(--role-cyan, #00d4ff)',
+  color = 'var(--role-cyan, #5d76cb)',
   children,
 }: {
   color?: string;
@@ -211,7 +211,7 @@ function Key({ children }: { children: React.ReactNode }) {
 const STATUS_PILLS: Record<string, { label: string; color: string; bg: string }> = {
   confirmed:   { label: 'Confirmed',   color: '#10b981', bg: 'rgba(16,185,129,0.18)' },
   pending:     { label: 'Pending',     color: '#f59e0b', bg: 'rgba(245,158,11,0.18)' },
-  invited:     { label: 'Invited',     color: '#3b82f6', bg: 'rgba(59,130,246,0.18)' },
+  invited:     { label: 'Invited',     color: '#3f51b5', bg: 'rgba(63, 81, 181,0.18)' },
   unavailable: { label: 'Unavailable', color: '#ef4444', bg: 'rgba(239,68,68,0.18)'  },
 };
 
@@ -244,7 +244,7 @@ function StatusPill({ status }: { status: string }) {
 const DOOD_CODES: Record<string, { bg: string; text: string; meaning: string }> = {
   W:  { bg: '#1e3a1e', text: '#4ade80', meaning: 'Work day'   },
   H:  { bg: '#2a2a0f', text: '#facc15', meaning: 'Hold day'   },
-  T:  { bg: '#1a2a3a', text: '#60a5fa', meaning: 'Travel day' },
+  T:  { bg: '#1a2a3a', text: '#93a4dc', meaning: 'Travel day' },
   SW: { bg: '#2d1e1e', text: '#f87171', meaning: 'Start/Work' },
   FW: { bg: '#2d1e1e', text: '#f87171', meaning: 'Finish/Work'},
 };
@@ -396,7 +396,7 @@ const STEPS: Step[] = [
               <StatusPill status="confirmed" /> in the edit dialog or via bulk status
               change.
             </Typography>
-            <Callout color="#3b82f6">
+            <Callout color="#3f51b5">
               💡 Invited members still show on the DOOD board so you can plan around
               them while waiting for confirmation.
             </Callout>
@@ -440,7 +440,7 @@ const STEPS: Step[] = [
               (top of the list) to reset. The sidebar can be hidden on mobile or
               collapsed via the <strong>‹ / ›</strong> icon in the header on desktop.
             </Typography>
-            <Callout color="#00d4ff">
+            <Callout color="#5d76cb">
               💡 Department colours match the crew card accent — Camera is teal,
               Lighting is amber, Post is violet, and so on — making cards visually
               scannable.
@@ -750,7 +750,7 @@ const STEPS: Step[] = [
               If the project has multiple production days, use the day picker in the
               drawer header to switch between them.
             </Typography>
-            <Callout color="#00d4ff">
+            <Callout color="#5d76cb">
               💡 The callsheet is rendered by{' '}
               <strong>CallSheetGenerator</strong> and supports PDF export — click
               the print / download button inside the drawer.
@@ -879,7 +879,7 @@ export function CrewManagementGuide({ open, onClose, initialStepId }: CrewManage
     contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const ACCENT = guideConfig.accentColorOverride ?? 'var(--role-cyan, #00d4ff)';
+  const ACCENT = guideConfig.accentColorOverride ?? 'var(--role-cyan, #5d76cb)';
 
   return (
     <Dialog

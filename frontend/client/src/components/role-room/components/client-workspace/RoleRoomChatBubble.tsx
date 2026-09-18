@@ -114,7 +114,7 @@ export default function RoleRoomChatBubble({
               color: '#fff', boxShadow: '0 10px 30px rgba(75, 61, 143,0.5)',
               border: open ? 'none' : '1px solid rgba(93, 118, 203,0.45)',
               '&:hover': { background: open ? 'linear-gradient(135deg,#3e3180,#4b3d8f)' : '#3c4e6d' },
-              '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 3 },
+              '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 3 },
             }}
           >
             {open ? (

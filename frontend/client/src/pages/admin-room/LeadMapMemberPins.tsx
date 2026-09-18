@@ -23,7 +23,7 @@ const ROLE_COLOR: Record<string, string> = {
   salgssjef: '#f97316',
   teamleder: '#fbbf24',
   salgskonsulent: '#34d399',
-  promotor: '#60a5fa',
+  promotor: '#93a4dc',
   member: '#93a4dc',
   viewer: '#9ca3af',
 };

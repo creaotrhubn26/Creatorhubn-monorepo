@@ -166,7 +166,7 @@ function getLuminance(r: number, g: number, b: number): number {
 // =============================================================================
 
 const EyedropperContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -183,7 +183,7 @@ const ColorSwatch = styled(Box, {
   backgroundColor: color,
   cursor: 'pointer',
   border: selected 
-    ? '3px solid #3b82f6' 
+    ? '3px solid #3f51b5' 
     : '2px solid rgba(255,255,255,0.2)',
   transition: 'transform 0.15s, border-color 0.15s',
   '&:hover': {
@@ -497,7 +497,7 @@ export const Eyedropper: React.FC<EyedropperProps> = ({
 
         {/* Instructions */}
         {isActive && (
-          <Box sx={{ p: 1.5, bgcolor: 'rgba(59,130,246,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box sx={{ p: 1.5, bgcolor: 'rgba(63, 81, 181,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Click on the canvas to pick a color
             </Typography>

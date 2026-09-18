@@ -159,9 +159,9 @@ function renderClassificationChips(items: Array<string | null | undefined>) {
           size="small"
           variant="outlined"
           sx={{
-            bgcolor: 'rgba(59,130,246,0.12)',
-            color: '#dbeafe',
-            borderColor: 'rgba(59,130,246,0.22)',
+            bgcolor: 'rgba(63, 81, 181,0.12)',
+            color: '#dfe4f3',
+            borderColor: 'rgba(63, 81, 181,0.22)',
           }}
         />
       ))}
@@ -924,8 +924,8 @@ export default function RoleRoomAgentDialog({
         sx: {
           borderRadius: fullScreen ? 0 : 4,
           overflow: 'hidden',
-          border: fullScreen ? 'none' : '1px solid rgba(34,211,238,0.22)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
+          border: fullScreen ? 'none' : '1px solid rgba(93, 118, 203,0.22)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(27, 18, 44,0.98) 100%)',
           boxShadow: fullScreen ? 'none' : '0 32px 90px rgba(0,0,0,0.48)',
           // On iPad+iPhone let the whole panel scroll within viewport;
           // Dialog's default overflow:hidden leaves DialogContent as the
@@ -946,7 +946,7 @@ export default function RoleRoomAgentDialog({
           px: { xs: 1.4, md: 3 },
           pt: { xs: 1.2, md: 1.5 },
           borderBottom: '1px solid rgba(148,163,184,0.14)',
-          background: 'radial-gradient(circle at top left, rgba(34,211,238,0.18) 0%, rgba(15,23,42,0) 48%)',
+          background: 'radial-gradient(circle at top left, rgba(93, 118, 203,0.18) 0%, rgba(15,23,42,0) 48%)',
           flexShrink: 0,
         }}
       >
@@ -1009,8 +1009,8 @@ export default function RoleRoomAgentDialog({
                   size="small"
                   aria-label={`Aktivt prosjekt: ${projectName}`}
                   sx={{
-                    bgcolor: 'rgba(59,130,246,0.16)',
-                    color: '#bfdbfe',
+                    bgcolor: 'rgba(63, 81, 181,0.16)',
+                    color: '#c3cbe6',
                     maxWidth: { xs: 160, md: 240 },
                     '& .MuiChip-label': { textOverflow: 'ellipsis', overflow: 'hidden' },
                   }}
@@ -1027,7 +1027,7 @@ export default function RoleRoomAgentDialog({
                     color: '#cbd5e1',
                     fontSize: '0.72rem',
                     py: 0.2,
-                    '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', color: 'var(--role-cyan, #22d3ee)' },
+                    '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', color: 'var(--role-cyan, #5d76cb)' },
                   }}
                 >
                   System status
@@ -1039,7 +1039,7 @@ export default function RoleRoomAgentDialog({
                   onClick={() => setShowAdminChrome((v) => !v)}
                   aria-label={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'}
                   data-testid="agent-admin-toggle"
-                  sx={{ color: showAdminChrome ? 'var(--role-cyan, #22d3ee)' : 'rgba(148,163,184,0.55)' }}
+                  sx={{ color: showAdminChrome ? 'var(--role-cyan, #5d76cb)' : 'rgba(148,163,184,0.55)' }}
                 >
                   <TuneIcon fontSize="small" />
                 </IconButton>
@@ -1097,7 +1097,7 @@ export default function RoleRoomAgentDialog({
           disabled={flowIndex < 0 || flowIndex >= tabFlow.length - 1}
           onClick={() => { if (flowIndex < tabFlow.length - 1) setActiveTab(tabFlow[flowIndex + 1]); }}
           data-testid="agent-next-step"
-          sx={{ textTransform: 'none', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', borderColor: 'rgba(34,211,238,0.5)' }}
+          sx={{ textTransform: 'none', fontWeight: 700, color: 'var(--role-cyan, #5d76cb)', borderColor: 'rgba(93, 118, 203,0.5)' }}
         >
           Neste →
         </Button>
@@ -1131,8 +1131,8 @@ export default function RoleRoomAgentDialog({
             px: { xs: 1.25, md: 2 },
             fontSize: { xs: '0.78rem', md: '0.875rem' },
           },
-          '& .Mui-selected': { color: '#22d3ee !important' },
-          '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+          '& .Mui-selected': { color: '#5d76cb !important' },
+          '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #5d76cb)' },
           '& .MuiTabs-scrollButtons': {
             color: 'rgba(226,232,240,0.72)',
             '&.Mui-disabled': { opacity: 0.3 },
@@ -1210,7 +1210,7 @@ export default function RoleRoomAgentDialog({
           mr: { xs: 0.5, md: 1 },
           fontSize: { xs: '0.78rem', md: '0.875rem' },
           fontWeight: isAdvancedTab(activeTab) ? 700 : 600,
-          color: isAdvancedTab(activeTab) ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.72)',
+          color: isAdvancedTab(activeTab) ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.72)',
         }}
       >
         Avansert
@@ -1267,7 +1267,7 @@ export default function RoleRoomAgentDialog({
                 sx={{
                   textTransform: 'none',
                   fontWeight: 800,
-                  background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
                 }}
               >
                 {applying ? 'Lagrer…' : 'Bruk forslag (lagre her)'}
@@ -1356,7 +1356,7 @@ export default function RoleRoomAgentDialog({
                 p: 0.85,
                 borderRadius: 2.5,
                 border: '1px solid rgba(148,163,184,0.16)',
-                bgcolor: 'rgba(10, 5, 21,0.4)',
+                bgcolor: 'rgba(27, 18, 44,0.4)',
               }}
             >
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', fontWeight: 800 }}>
@@ -1608,7 +1608,7 @@ export default function RoleRoomAgentDialog({
             sx={{
               p: { xs: 1.4, md: 1.8 },
               borderRadius: 3,
-              border: '1px solid rgba(34,211,238,0.22)',
+              border: '1px solid rgba(93, 118, 203,0.22)',
               bgcolor: 'rgba(15,23,42,0.52)',
             }}
           >
@@ -1644,7 +1644,7 @@ export default function RoleRoomAgentDialog({
                     fontWeight: 800,
                     textTransform: 'none',
                     whiteSpace: 'nowrap',
-                    background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                    background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
                   }}
                 >
                   {generating ? 'Finner ut…' : 'Finn ut alt om kunden'}
@@ -1704,12 +1704,12 @@ export default function RoleRoomAgentDialog({
               sx={{
                 p: 1.6,
                 borderRadius: 3,
-                border: '1px solid rgba(34,211,238,0.25)',
-                bgcolor: 'rgba(34,211,238,0.06)',
+                border: '1px solid rgba(93, 118, 203,0.25)',
+                bgcolor: 'rgba(93, 118, 203,0.06)',
               }}
             >
               <Stack direction="row" spacing={1.2} alignItems="center">
-                <CircularProgress size={22} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+                <CircularProgress size={22} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
                 <Box>
                   <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Jeg jobber…</Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.84rem' }}>
@@ -1743,8 +1743,8 @@ export default function RoleRoomAgentDialog({
                 sx={{
                   p: 1.2,
                   borderRadius: 3,
-                  border: '1px dashed rgba(34,211,238,0.28)',
-                  bgcolor: 'rgba(8,47,73,0.32)',
+                  border: '1px dashed rgba(93, 118, 203,0.28)',
+                  bgcolor: 'rgba(42, 61, 86,0.32)',
                 }}
               >
                 <Stack spacing={0.85}>
@@ -1763,7 +1763,7 @@ export default function RoleRoomAgentDialog({
                           key={`rr-refinement-${index}`}
                           label={`Runde ${index + 1}: ${entry.length > 60 ? `${entry.slice(0, 60)}…` : entry}`}
                           size="small"
-                          sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc', maxWidth: '100%' }}
+                          sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#c3cbe6', maxWidth: '100%' }}
                         />
                       ))}
                     </Stack>
@@ -1799,9 +1799,9 @@ export default function RoleRoomAgentDialog({
                         textTransform: 'none',
                         fontWeight: 700,
                         minHeight: 40,
-                        bgcolor: 'rgba(34,211,238,0.9)',
-                        color: '#082f49',
-                        '&:hover': { bgcolor: 'rgba(34,211,238,1)' },
+                        bgcolor: 'rgba(93, 118, 203,0.9)',
+                        color: '#2a3d56',
+                        '&:hover': { bgcolor: 'rgba(93, 118, 203,1)' },
                       }}
                     >
                       {generating ? 'Endrer…' : 'Send endring'}
@@ -1816,13 +1816,13 @@ export default function RoleRoomAgentDialog({
                 sx={{
                   p: 1.4,
                   borderRadius: 3,
-                  border: '1px solid rgba(34,211,238,0.3)',
-                  bgcolor: 'rgba(34,211,238,0.06)',
+                  border: '1px solid rgba(93, 118, 203,0.3)',
+                  bgcolor: 'rgba(93, 118, 203,0.06)',
                 }}
               >
                 <Typography
                   sx={{
-                    color: 'var(--role-cyan, #22d3ee)',
+                    color: 'var(--role-cyan, #5d76cb)',
                     fontWeight: 800,
                     fontSize: '0.74rem',
                     textTransform: 'uppercase',
@@ -1843,7 +1843,7 @@ export default function RoleRoomAgentDialog({
                     <Chip size="small" label={result.companyAge.label} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#bbf7d0' }} />
                   ) : null}
                   {socialProfileCandidates.length > 0 ? (
-                    <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                    <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
                   ) : null}
                   {competitorAnalysis?.competitors?.length ? (
                     <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }} />
@@ -1897,9 +1897,9 @@ export default function RoleRoomAgentDialog({
                       data-testid={`research-section-${key}`}
                       sx={{
                         fontWeight: 700,
-                        bgcolor: selected ? 'rgba(34,211,238,0.18)' : 'rgba(148,163,184,0.12)',
-                        color: selected ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)',
-                        border: selected ? '1px solid rgba(34,211,238,0.5)' : '1px solid transparent',
+                        bgcolor: selected ? 'rgba(93, 118, 203,0.18)' : 'rgba(148,163,184,0.12)',
+                        color: selected ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.7)',
+                        border: selected ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid transparent',
                       }}
                     />
                   );
@@ -1915,7 +1915,7 @@ export default function RoleRoomAgentDialog({
                     flex: 1.25,
                     p: 1.25,
                     borderRadius: 3,
-                    border: '1px solid rgba(56,189,248,0.16)',
+                    border: '1px solid rgba(93, 118, 203,0.16)',
                     bgcolor: 'rgba(15,23,42,0.48)',
                   }}
                 >
@@ -1924,7 +1924,7 @@ export default function RoleRoomAgentDialog({
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Om kunden</Typography>
                       <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap justifyContent="flex-end">
                         {providerLabel ? (
-                          <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: '#a5f3fc' }} />
+                          <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.12)', color: '#c3cbe6' }} />
                         ) : null}
                         {retrievalLabel ? (
                           <Chip label={retrievalLabel} size="small" sx={{ bgcolor: 'rgba(16,185,129,0.12)', color: '#a7f3d0' }} />
@@ -1970,8 +1970,8 @@ export default function RoleRoomAgentDialog({
                               sx={{
                                 cursor: 'pointer',
                                 height: 22,
-                                bgcolor: selected ? 'rgba(59,130,246,0.24)' : 'transparent',
-                                color: selected ? '#bfdbfe' : 'rgba(203,213,225,0.85)',
+                                bgcolor: selected ? 'rgba(63, 81, 181,0.24)' : 'transparent',
+                                color: selected ? '#c3cbe6' : 'rgba(203,213,225,0.85)',
                                 borderColor: 'rgba(148,163,184,0.3)',
                               }}
                             />
@@ -2076,8 +2076,8 @@ export default function RoleRoomAgentDialog({
                                   size="small"
                                   label={suggestion.priority === 'critical' ? 'Kritisk' : suggestion.priority === 'recommended' ? 'Anbefalt' : 'Standard'}
                                   sx={{
-                                    bgcolor: suggestion.priority === 'critical' ? 'rgba(248,113,113,0.18)' : suggestion.priority === 'recommended' ? 'rgba(250,204,21,0.16)' : 'rgba(59,130,246,0.14)',
-                                    color: suggestion.priority === 'critical' ? '#fecaca' : suggestion.priority === 'recommended' ? '#fde68a' : '#bfdbfe',
+                                    bgcolor: suggestion.priority === 'critical' ? 'rgba(248,113,113,0.18)' : suggestion.priority === 'recommended' ? 'rgba(250,204,21,0.16)' : 'rgba(63, 81, 181,0.14)',
+                                    color: suggestion.priority === 'critical' ? '#fecaca' : suggestion.priority === 'recommended' ? '#fde68a' : '#c3cbe6',
                                   }}
                                 />
                                 <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{suggestion.title}</Typography>
@@ -2102,7 +2102,7 @@ export default function RoleRoomAgentDialog({
                     display: showResearchSection('kanaler') ? undefined : 'none',
                     p: 1.2,
                     borderRadius: 3,
-                    border: '1px solid rgba(59,130,246,0.2)',
+                    border: '1px solid rgba(63, 81, 181,0.2)',
                     bgcolor: 'rgba(15,23,42,0.46)',
                   }}
                 >
@@ -2118,7 +2118,7 @@ export default function RoleRoomAgentDialog({
                         <Chip
                           size="small"
                           label={`${usableSocialProfileCandidates.length}/${socialProfileCandidates.length} klare for bruk`}
-                          sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                          sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                         />
                         <Button size="small" variant="outlined" disabled={socialRefreshBusy}
                           onClick={() => void refreshSocialCandidates()}
@@ -2195,7 +2195,7 @@ export default function RoleRoomAgentDialog({
                                       fontWeight: 700,
                                       fontSize: '0.74rem',
                                       color: '#93c5fd',
-                                      borderColor: 'rgba(59,130,246,0.4)',
+                                      borderColor: 'rgba(63, 81, 181,0.4)',
                                     }}
                                   >
                                     Be kunden om tilgang
@@ -2238,7 +2238,7 @@ export default function RoleRoomAgentDialog({
                         {result.siteSetupAudit?.techStack && result.siteSetupAudit.techStack.key !== 'unknown' && (
                           <Chip size="small"
                             label={`Bygget med: ${result.siteSetupAudit.techStack.label}`}
-                            sx={{ bgcolor: 'rgba(96,165,250,0.16)', color: '#93c5fd', fontWeight: 700, fontSize: '0.7rem' }} />
+                            sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#93c5fd', fontWeight: 700, fontSize: '0.7rem' }} />
                         )}
                       </Stack>
                       <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>
@@ -2280,7 +2280,7 @@ export default function RoleRoomAgentDialog({
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                           <Button size="small" variant="outlined" disabled={gscSetupBusy}
                             onClick={() => void runGscApiSetup(result.siteSetupAudit!.url)}
-                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#bfdbfe', borderColor: 'rgba(59,130,246,0.4)' }}>
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#c3cbe6', borderColor: 'rgba(63, 81, 181,0.4)' }}>
                             {gscSetupBusy ? 'Setter opp GSC…' : 'Verifiser i Search Console + meld inn sitemap (via API)'}
                           </Button>
                           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
@@ -2299,7 +2299,7 @@ export default function RoleRoomAgentDialog({
                         ) : undefined}>
                         {gscSetupOutcome.text}
                         {gscSetupOutcome.metaTag ? (
-                          <Box component="pre" sx={{ m: 0, mt: 0.5, p: 0.75, borderRadius: 1, bgcolor: 'rgba(10, 5, 21,0.6)', fontSize: '0.72rem', overflowX: 'auto', fontFamily: 'monospace' }}>
+                          <Box component="pre" sx={{ m: 0, mt: 0.5, p: 0.75, borderRadius: 1, bgcolor: 'rgba(27, 18, 44,0.6)', fontSize: '0.72rem', overflowX: 'auto', fontFamily: 'monospace' }}>
                             {gscSetupOutcome.metaTag}
                           </Box>
                         ) : null}
@@ -2388,7 +2388,7 @@ export default function RoleRoomAgentDialog({
                                 .replace(/^https?:\/\//, '').replace(/\/.*$/, '');
                               if (domain) void fetchGscInsights(domain);
                             }}
-                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#a5f3fc', borderColor: 'rgba(34,211,238,0.4)' }}>
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,0.4)' }}>
                             {gscInsightsBusy ? 'Henter søkedata…' : 'Hent ekte søkedata (Search Console, 90 dager)'}
                           </Button>
                           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
@@ -2399,7 +2399,7 @@ export default function RoleRoomAgentDialog({
                           <Alert severity="warning" sx={{ py: 0.25 }}>{gscInsightsError}</Alert>
                         ) : null}
                         {gscInsights ? (
-                          <Box sx={{ p: 0.9, borderRadius: 2.2, border: '1px solid rgba(34,211,238,0.2)', bgcolor: 'rgba(15,23,42,0.52)' }}>
+                          <Box sx={{ p: 0.9, borderRadius: 2.2, border: '1px solid rgba(93, 118, 203,0.2)', bgcolor: 'rgba(15,23,42,0.52)' }}>
                             <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.84rem', mb: 0.4 }}>
                               {`Topp-søk for ${gscInsights.siteUrl.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')} (${gscInsights.period.from} – ${gscInsights.period.to})`}
                             </Typography>
@@ -2474,7 +2474,7 @@ export default function RoleRoomAgentDialog({
                           sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
                         />
                         {competitorSummaryLabel ? (
-                          <Chip size="small" label={competitorSummaryLabel} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                          <Chip size="small" label={competitorSummaryLabel} sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }} />
                         ) : null}
                       </Stack>
                     </Stack>
@@ -2518,12 +2518,12 @@ export default function RoleRoomAgentDialog({
                                     bgcolor: competitor.status === 'verified'
                                       ? 'rgba(16,185,129,0.18)'
                                       : competitor.status === 'likely'
-                                        ? 'rgba(59,130,246,0.16)'
+                                        ? 'rgba(63, 81, 181,0.16)'
                                         : 'rgba(250,204,21,0.14)',
                                     color: competitor.status === 'verified'
                                       ? '#bbf7d0'
                                       : competitor.status === 'likely'
-                                        ? '#bfdbfe'
+                                        ? '#c3cbe6'
                                         : '#fde68a',
                                     fontWeight: 700,
                                   }}
@@ -2562,8 +2562,8 @@ export default function RoleRoomAgentDialog({
                                     mt: 0.8,
                                     p: 0.9,
                                     borderRadius: 1.8,
-                                    border: '1px solid rgba(59,130,246,0.28)',
-                                    bgcolor: 'rgba(59,130,246,0.08)',
+                                    border: '1px solid rgba(63, 81, 181,0.28)',
+                                    bgcolor: 'rgba(63, 81, 181,0.08)',
                                   }}
                                 >
                                   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.4 }}>
@@ -2571,15 +2571,15 @@ export default function RoleRoomAgentDialog({
                                       Meta Page Public Metadata
                                     </Typography>
                                     {(competitor as any).metaPage.verified ? (
-                                      <Chip size="small" label="Verified" sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(29,161,242,0.22)', color: '#bfdbfe' }} />
+                                      <Chip size="small" label="Verified" sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(29,161,242,0.22)', color: '#c3cbe6' }} />
                                     ) : null}
                                   </Stack>
                                   <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                                     {typeof (competitor as any).metaPage.followersCount === 'number' ? (
-                                      <Chip size="small" label={`${((competitor as any).metaPage.followersCount as number).toLocaleString('nb-NO')} følgere`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                                      <Chip size="small" label={`${((competitor as any).metaPage.followersCount as number).toLocaleString('nb-NO')} følgere`} sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }} />
                                     ) : null}
                                     {typeof (competitor as any).metaPage.fanCount === 'number' ? (
-                                      <Chip size="small" label={`${((competitor as any).metaPage.fanCount as number).toLocaleString('nb-NO')} likes`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                                      <Chip size="small" label={`${((competitor as any).metaPage.fanCount as number).toLocaleString('nb-NO')} likes`} sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }} />
                                     ) : null}
                                     {(competitor as any).metaPage.category ? (
                                       <Chip size="small" label={(competitor as any).metaPage.category} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.3)' }} />
@@ -2610,7 +2610,7 @@ export default function RoleRoomAgentDialog({
                                     rel="noreferrer"
                                     size="small"
                                     variant="outlined"
-                                    sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(59,130,246,0.4)' }}
+                                    sx={{ textTransform: 'none', fontWeight: 700, color: '#c3cbe6', borderColor: 'rgba(63, 81, 181,0.4)' }}
                                   >
                                     Meta Page
                                   </Button>
@@ -2838,7 +2838,7 @@ export default function RoleRoomAgentDialog({
                     flex: 1,
                     p: 1.2,
                     borderRadius: 3,
-                    border: '1px solid rgba(59,130,246,0.16)',
+                    border: '1px solid rgba(63, 81, 181,0.16)',
                     bgcolor: 'rgba(15,23,42,0.42)',
                   }}
                 >
@@ -2877,8 +2877,8 @@ export default function RoleRoomAgentDialog({
                         sx={{
                           p: 1,
                           borderRadius: 2.4,
-                          border: '1px solid rgba(34,211,238,0.14)',
-                          bgcolor: 'rgba(8,47,73,0.14)',
+                          border: '1px solid rgba(93, 118, 203,0.14)',
+                          bgcolor: 'rgba(42, 61, 86,0.14)',
                         }}
                       >
                         <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
@@ -2996,7 +2996,7 @@ export default function RoleRoomAgentDialog({
               textTransform: 'none',
               fontWeight: 800,
               px: 2.6,
-              background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
             }}
           >
             {applying ? 'Lagrer…' : 'Bruk forslag'}

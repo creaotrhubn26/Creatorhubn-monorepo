@@ -52,7 +52,7 @@ const ICON_BY_TYPE: Record<string, typeof PersonAddAlt1OutlinedIcon> = {
 
 const COLOR_BY_TYPE: Record<string, string> = {
   lead_assigned: '#93a4dc',
-  lead_status_changed: '#60a5fa',
+  lead_status_changed: '#93a4dc',
   lead_won_on_team: '#34d399',
   follow_up_due: '#f87171',
   approaching_lead: '#fbbf24',

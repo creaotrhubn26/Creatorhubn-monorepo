@@ -35,7 +35,7 @@ function resourceType(r: Resource): { label: string; icon: React.ReactNode; colo
   const u = (r.url || '').toLowerCase();
   if (/youtu|vimeo|\.mp4|video/.test(u)) return { label: 'VIDEO', icon: <VideoIcon sx={{ fontSize: 15 }} />, color: '#ec4899' };
   if (/\.pdf/.test(u)) return { label: 'PDF', icon: <PdfIcon sx={{ fontSize: 15 }} />, color: '#f59e0b' };
-  if (r.body) return { label: 'ARTIKKEL', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: '#38bdf8' };
+  if (r.body) return { label: 'ARTIKKEL', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: '#5d76cb' };
   if (r.url) return { label: 'LENKE', icon: <GenericLinkIcon sx={{ fontSize: 15 }} />, color: '#c3cbe6' };
   return { label: 'NOTAT', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: 'rgba(255,255,255,0.75)' };
 }
@@ -100,7 +100,7 @@ export function FagstoffTab() {
   const kpis = [
     { id: 'leksjoner', label: 'Leksjoner', value: resources.length, hint: `På tvers av ${grouped.length || RESOURCE_CATEGORIES.length} produksjonssteg`, icon: <LibraryIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
     { id: 'video', label: 'Videoleksjoner', value: videoCount, hint: 'Korte «hvordan»-videoer', icon: <VideoIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
-    { id: 'steg', label: 'Produksjonssteg dekket', value: `${stegDekket}/${RESOURCE_CATEGORIES.length}`, hint: 'Steg med fagstoff', icon: <ViewsIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'steg', label: 'Produksjonssteg dekket', value: `${stegDekket}/${RESOURCE_CATEGORIES.length}`, hint: 'Steg med fagstoff', icon: <ViewsIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb' },
     { id: 'lenker', label: 'Med lenke/ressurs', value: medLenke, hint: 'Video, PDF eller artikkel', icon: <DoneIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
   ];
 

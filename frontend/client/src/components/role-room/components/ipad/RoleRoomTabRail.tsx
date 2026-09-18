@@ -66,7 +66,7 @@ export const RoleRoomTabRail: React.FC<RoleRoomTabRailProps> = ({
         alignItems: 'stretch',
         py: 1,
         gap: 0.5,
-        bgcolor: 'rgba(24, 18, 43,0.55)',
+        bgcolor: 'rgba(42, 61, 86,0.55)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 'var(--rr-card-radius, 12px)',
         position: 'sticky',

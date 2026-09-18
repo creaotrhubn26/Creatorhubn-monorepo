@@ -244,7 +244,7 @@ const StatsBar: FC<{ stats: ScenePoolStats; isMobile: boolean }> = ({ stats, isM
   <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2 }, flexWrap: 'wrap', alignItems: 'center' }}>
     {[
       { value: stats.totalScenes, label: 'Scener', color: '#4b3d8f' },
-      { value: `${stats.totalPages.toFixed(1)}s`, label: 'Sider', color: '#3B82F6' },
+      { value: `${stats.totalPages.toFixed(1)}s`, label: 'Sider', color: '#3f51b5' },
       { value: formatMinutes(stats.totalMinutes), label: 'Total tid', color: '#10B981' },
       { value: stats.uniqueLocations, label: 'Lok.', color: '#F59E0B' },
       { value: stats.uniqueCastMembers, label: 'Cast', color: '#EF4444' },

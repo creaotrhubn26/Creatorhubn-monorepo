@@ -367,7 +367,7 @@ function GscSection({
 
   return (
     <SectionFrame
-      icon={<SearchOutlinedIcon sx={{ color: '#60a5fa' }} />}
+      icon={<SearchOutlinedIcon sx={{ color: '#93a4dc' }} />}
       title="Search Console — verifisering + sitemap"
       subtitle="Sørg for at hele klient-siten blir indeksert av Google."
       expanded={expanded}
@@ -401,7 +401,7 @@ function GscSection({
                 p: 1.2,
                 fontFamily: 'monospace',
                 fontSize: '0.78rem',
-                color: '#a5f3fc',
+                color: '#c3cbe6',
                 wordBreak: 'break-all',
                 mb: 1,
                 display: 'flex',
@@ -516,7 +516,7 @@ function DiagnoseRow({ check }: { check: DiagnoseCheck }) {
     ok: <CheckCircleOutlineIcon sx={{ color: '#34d399', fontSize: 18 }} />,
     warning: <WarningAmberIcon sx={{ color: '#fbbf24', fontSize: 18 }} />,
     error: <ErrorOutlineOutlinedIcon sx={{ color: '#f87171', fontSize: 18 }} />,
-    info: <InfoOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />,
+    info: <InfoOutlinedIcon sx={{ color: '#93a4dc', fontSize: 18 }} />,
   };
   return (
     <Stack direction="row" spacing={1} alignItems="flex-start">

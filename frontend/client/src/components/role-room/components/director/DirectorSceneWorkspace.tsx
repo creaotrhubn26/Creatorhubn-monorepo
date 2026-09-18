@@ -417,11 +417,11 @@ export function DirectorSceneWorkspace({
             <Card variant="outlined" sx={{ bgcolor: roleTokens.surface, borderColor: roleTokens.border, color: roleTokens.text }}>
               <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <CalendarIcon sx={{ color: '#7dd3fc' }} />
+                  <CalendarIcon sx={{ color: '#93a4dc' }} />
                   <Typography component="h3" sx={{ fontWeight: 760 }}>Opptaksplan</Typography>
                 </Stack>
                 {context.productionDays.length > 0 ? context.productionDays.map((day) => (
-                  <Box key={day.id} sx={{ mb: 0.75, p: 1, borderRadius: 1, bgcolor: 'rgba(56,189,248,0.07)' }}>
+                  <Box key={day.id} sx={{ mb: 0.75, p: 1, borderRadius: 1, bgcolor: 'rgba(93, 118, 203,0.07)' }}>
                     <Typography sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatProductionDate(day.date)}</Typography>
                     <Typography sx={{ color: roleTokens.textMuted, fontSize: '0.72rem' }}>
                       {day.callTime ? `Oppmøte ${day.callTime}` : 'Oppmøte ikke satt'} · {day.status ?? 'planlagt'}

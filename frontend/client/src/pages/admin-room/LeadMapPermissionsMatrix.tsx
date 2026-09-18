@@ -111,7 +111,7 @@ const ROLE_COLUMNS = [
   { key: 'salgssjef', label: 'Salgssjef', color: '#f97316' },
   { key: 'teamleder', label: 'Teamleder', color: '#fbbf24' },
   { key: 'salgskonsulent', label: 'Salgskonsulent', color: '#34d399' },
-  { key: 'promotor', label: 'Promotør', color: '#60a5fa' },
+  { key: 'promotor', label: 'Promotør', color: '#93a4dc' },
   { key: 'member', label: 'Medlem', color: '#93a4dc' },
   { key: 'viewer', label: 'Leser', color: '#9ca3af' },
 ];

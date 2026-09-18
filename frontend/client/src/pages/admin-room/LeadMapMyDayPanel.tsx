@@ -96,7 +96,7 @@ const STATUS_COLOR: Record<string, string> = {
   not_present: '#94a3b8',
   declined: '#f87171',
   interested: '#34d399',
-  meeting_booked: '#60a5fa',
+  meeting_booked: '#93a4dc',
   proposal_sent: '#93a4dc',
   won: '#34d399',
   lost: '#6b7280',
@@ -395,7 +395,7 @@ export default function LeadMapMyDayPanel() {
       </Stack>
 
       {route && (
-        <Card variant="outlined" sx={{ mb: 2, borderColor: '#60a5fa' }}>
+        <Card variant="outlined" sx={{ mb: 2, borderColor: '#93a4dc' }}>
           <CardContent>
             <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" rowGap={1}>
               <Box>

@@ -156,7 +156,7 @@ function CompetitorRow({
           <Stack direction="row" alignItems="center" spacing={0.5}>
             {competitor.accountType === 'instagram'
               ? <InstagramIcon sx={{ fontSize: 12, color: '#ec4899' }} />
-              : <FacebookIcon sx={{ fontSize: 12, color: '#60a5fa' }} />}
+              : <FacebookIcon sx={{ fontSize: 12, color: '#93a4dc' }} />}
             <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
               {competitor.accountType === 'instagram'
                 ? `@${competitor.igUsername || '?'}`
@@ -183,8 +183,8 @@ function CompetitorRow({
           <Tooltip title={expanded ? 'Skjul trend' : 'Vis 30-d trend'}>
             <IconButton size="small" onClick={() => setExpanded((v) => !v)}
               data-testid={`competitor-expand-${competitor.id}`}>
-              {expanded ? <TrendingFlatIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />
-                : <TrendingUpIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />}
+              {expanded ? <TrendingFlatIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
+                : <TrendingUpIcon sx={{ fontSize: 16, color: '#93a4dc' }} />}
             </IconButton>
           </Tooltip>
           <Tooltip title={competitor.autoSnapshot ? 'Auto-snapshot ON (1×/døgn)' : 'Auto-snapshot OFF — kun manuell'}>
@@ -406,7 +406,7 @@ export default function CompetitorsPanel() {
             sx={{ background: 'rgba(93, 118, 203,0.15)', color: '#c4b5fd', fontSize: '0.65rem', height: 18 }} />
           <Button size="small" startIcon={<RefreshIcon />} onClick={() => void load()} disabled={loading}
             data-testid="competitors-refresh"
-            sx={{ ml: 'auto', color: '#7dd3fc' }}>
+            sx={{ ml: 'auto', color: '#93a4dc' }}>
             {loading ? 'Henter…' : 'Refresh'}
           </Button>
         </Stack>
@@ -435,7 +435,7 @@ export default function CompetitorsPanel() {
               <InstagramIcon sx={{ fontSize: 16, mr: 0.5, color: '#ec4899' }} /> Instagram-handle
             </ToggleButton>
             <ToggleButton value="facebook">
-              <FacebookIcon sx={{ fontSize: 16, mr: 0.5, color: '#60a5fa' }} /> Facebook Page-ID
+              <FacebookIcon sx={{ fontSize: 16, mr: 0.5, color: '#93a4dc' }} /> Facebook Page-ID
             </ToggleButton>
           </ToggleButtonGroup>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>

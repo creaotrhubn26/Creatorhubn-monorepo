@@ -144,9 +144,9 @@ export function ProductionDayCardInfo({
               sx={{
                 height: 18,
                 fontSize: '9px',
-                bgcolor: alpha('#00d4ff', 0.14),
-                color: 'var(--role-cyan, #7dd3fc)',
-                border: `1px solid ${alpha('#00d4ff', 0.28)}`,
+                bgcolor: alpha('#5d76cb', 0.14),
+                color: 'var(--role-cyan, #93a4dc)',
+                border: `1px solid ${alpha('#5d76cb', 0.28)}`,
               }}
             />
             <Chip

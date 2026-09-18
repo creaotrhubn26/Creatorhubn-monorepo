@@ -39,7 +39,7 @@ const vurderingsformLabel = (k: string | null) => VURDERINGSFORM_OPTIONS.find((o
 
 const STATUS_META: Record<AssignmentStatus, { label: string; color: string }> = {
   draft: { label: 'Utkast', color: 'rgba(255,255,255,0.72)' },
-  published: { label: 'Pågår', color: '#38bdf8' },
+  published: { label: 'Pågår', color: '#5d76cb' },
   archived: { label: 'Arkivert', color: 'rgba(255,255,255,0.75)' },
 };
 
@@ -135,7 +135,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
     return [
       { id: 'aktive', label: 'Aktive oppgaver', value: active, hint: 'Publisert og pågående', icon: <ActiveIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
       { id: 'vurder', label: 'Til vurdering', value: toReview, hint: 'Innleveringer venter', icon: <ReviewIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
-      { id: 'frist', label: 'Forfaller denne uken', value: dueThisWeek, hint: 'Kommende frister', icon: <DueIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+      { id: 'frist', label: 'Forfaller denne uken', value: dueThisWeek, hint: 'Kommende frister', icon: <DueIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb' },
       { id: 'mangler', label: 'Manglende innleveringer', value: missing, hint: 'Krever oppfølging', icon: <MissingIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
     ];
   }, [assignments]);
@@ -287,7 +287,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               <Box sx={{ minWidth: 0, pr: 2 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
-                  {(() => { const co = courses.find((c) => c.id === a.courseId); return co ? <Chip label={co.code || co.title} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(56,189,248,0.16)', color: '#38bdf8', flexShrink: 0 }} /> : null; })()}
+                  {(() => { const co = courses.find((c) => c.id === a.courseId); return co ? <Chip label={co.code || co.title} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#5d76cb', flexShrink: 0 }} /> : null; })()}
                   {a.isArbeidskrav && <Chip label="Arbeidskrav" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(245,158,11,0.18)', color: '#f59e0b', flexShrink: 0 }} />}
                   {a.isExam && <Chip label="Eksamen" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(236,72,153,0.18)', color: '#ec4899', flexShrink: 0 }} />}
                   {vurderingsformLabel(a.vurderingsform) && <Chip label={vurderingsformLabel(a.vurderingsform)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 600, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)', flexShrink: 0 }} />}

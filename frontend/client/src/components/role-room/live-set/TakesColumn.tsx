@@ -37,7 +37,7 @@ const STATUS_DISPLAY: Record<
   queued: { label: 'I KØ', bg: 'rgba(100,116,139,0.18)', color: '#94a3b8' },
   processing: { label: 'PROSESSERER', bg: 'rgba(245,158,11,0.18)', color: '#fbbf24' },
   analyzed: { label: 'GODKJENT', bg: 'rgba(34,197,94,0.18)', color: '#86efac' },
-  failed: { label: 'PICKUP', bg: 'rgba(59,130,246,0.18)', color: '#93c5fd' },
+  failed: { label: 'PICKUP', bg: 'rgba(63, 81, 181,0.18)', color: '#93c5fd' },
 };
 
 interface TakesColumnProps {

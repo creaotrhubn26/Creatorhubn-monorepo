@@ -120,7 +120,7 @@ const Toolbar = styled(Paper, {
   transform: 'translate3d(-50%, 0, 0)',
   padding: '8px 16px',
   borderRadius: 24,
-  backgroundColor: drawing ? 'rgba(24, 18, 43, 0.995)' : 'rgba(24, 18, 43, 0.97)',
+  backgroundColor: drawing ? 'rgba(42, 61, 86, 0.995)' : 'rgba(42, 61, 86, 0.97)',
   backdropFilter: drawing ? 'none' : 'blur(6px)',
   WebkitBackdropFilter: drawing ? 'none' : 'blur(6px)',
   display: 'flex',

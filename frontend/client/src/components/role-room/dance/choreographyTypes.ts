@@ -50,7 +50,7 @@ export const SEGMENT_KINDS: readonly SegmentKindMeta[] = [
   { kind: 'outro',             labelToken: 'choreographySegmentOutro',            color: '#5d76cb' }, // purple
   { kind: 'freestyle',         labelToken: 'choreographySegmentFreestyle',        color: danceFlowColors.successDark }, // emerald
   { kind: 'lift',              labelToken: 'choreographySegmentLift',             color: '#f43f5e' }, // rose
-  { kind: 'formation_change',  labelToken: 'choreographySegmentFormationChange',  color: '#06b6d4' }, // cyan
+  { kind: 'formation_change',  labelToken: 'choreographySegmentFormationChange',  color: '#3f51b5' }, // cyan
 ] as const;
 
 // ─── Energi-nivåer ───────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ export interface TimelineLayerMeta {
 export const TIMELINE_LAYERS: readonly TimelineLayerMeta[] = [
   { kind: 'music',        labelToken: 'choreographyLayerMusic',         segmentField: 'musicCue',     color: '#5d76cb', variant: 'waveform' },
   { kind: 'choreography', labelToken: 'choreographyLayerChoreography',  segmentField: 'kind',         color: '#93a4dc', variant: 'block'    },
-  { kind: 'formation',    labelToken: 'choreographyLayerFormation',     segmentField: 'formation',    color: '#06b6d4', variant: 'text'     },
+  { kind: 'formation',    labelToken: 'choreographyLayerFormation',     segmentField: 'formation',    color: '#3f51b5', variant: 'text'     },
   { kind: 'camera',       labelToken: 'choreographyLayerCamera',        segmentField: 'camera',       color: danceFlowColors.info, variant: 'text'     },
   { kind: 'lighting',     labelToken: 'choreographyLayerLighting',      segmentField: 'lighting',     color: danceFlowColors.amber, variant: 'text'     },
   { kind: 'costumes',     labelToken: 'choreographyLayerCostumes',      segmentField: 'costume',      color: danceFlowColors.pinkAccent, variant: 'text'     },

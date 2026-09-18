@@ -2637,7 +2637,7 @@ export function CastingShotListPanel({
     const mostCommonShotType = Object.entries(shotTypeCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
 
     // SVG Icon for shot list
-    const shotListIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const shotListIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5d76cb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="8" r="3"/>
       <path d="M5 20v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/>
       <rect x="15" y="3" width="4" height="3" rx="0.5"/>
@@ -3175,11 +3175,11 @@ export function CastingShotListPanel({
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: 'var(--role-cyan, #00d4ff)',
-                borderColor: 'var(--role-cyan, #00d4ff)',
+                color: 'var(--role-cyan, #5d76cb)',
+                borderColor: 'var(--role-cyan, #5d76cb)',
                 px: { xs: 1, sm: 2 },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
               }}
             >
               <StoryboardIcon />
@@ -3384,9 +3384,9 @@ export function CastingShotListPanel({
                 label={getEstimateConfidenceLabel(productionEstimate.confidence)}
                 size="small"
                 sx={{
-                  bgcolor: 'rgba(59,130,246,0.14)',
+                  bgcolor: 'rgba(63, 81, 181,0.14)',
                   color: '#93c5fd',
-                  border: '1px solid rgba(59,130,246,0.28)',
+                  border: '1px solid rgba(63, 81, 181,0.28)',
                 }}
               />
             </Box>
@@ -3581,7 +3581,7 @@ export function CastingShotListPanel({
               <Alert
                 severity={productionEstimate.overloadedDayCount > 0 ? 'warning' : 'info'}
                 sx={{
-                  bgcolor: productionEstimate.overloadedDayCount > 0 ? 'rgba(249,115,22,0.12)' : 'rgba(59,130,246,0.12)',
+                  bgcolor: productionEstimate.overloadedDayCount > 0 ? 'rgba(249,115,22,0.12)' : 'rgba(63, 81, 181,0.12)',
                   color: '#fff',
                   '& .MuiAlert-icon': {
                     color: productionEstimate.overloadedDayCount > 0 ? '#fdba74' : '#93c5fd',
@@ -3676,7 +3676,7 @@ export function CastingShotListPanel({
               minHeight: TOUCH_TARGET_SIZE,
               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
               '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
-              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)' },
             }}
           >
             <MenuItem value="all">Alle</MenuItem>
@@ -3782,9 +3782,9 @@ export function CastingShotListPanel({
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: showFilters ? 'rgba(0,212,255,0.2)' : 'transparent',
-                color: showFilters ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.7)',
-                borderColor: showFilters ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.2)',
+                bgcolor: showFilters ? 'rgba(93, 118, 203,0.2)' : 'transparent',
+                color: showFilters ? 'var(--role-cyan, #5d76cb)' : 'rgba(255,255,255,0.7)',
+                borderColor: showFilters ? 'var(--role-cyan, #5d76cb)' : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -3803,9 +3803,9 @@ export function CastingShotListPanel({
             gap: 1.5,
             mb: 2,
             p: 2,
-            bgcolor: 'rgba(0,212,255,0.05)',
+            bgcolor: 'rgba(93, 118, 203,0.05)',
             borderRadius: 2,
-            border: '1px solid rgba(0,212,255,0.2)',
+            border: '1px solid rgba(93, 118, 203,0.2)',
           }}
           role="region"
           aria-label="Avanserte filtre"
@@ -3823,9 +3823,9 @@ export function CastingShotListPanel({
               sx={{
                 color: '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.3)' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.6)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.3)' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.6)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)' },
               }}
             >
               <MenuItem value="all">Alle</MenuItem>
@@ -3848,9 +3848,9 @@ export function CastingShotListPanel({
               sx={{
                 color: '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.3)' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.6)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.3)' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.6)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)' },
               }}
             >
               <MenuItem value="all">Alle</MenuItem>
@@ -4067,16 +4067,16 @@ export function CastingShotListPanel({
                   data-story-arc-scene-id={shotList.sceneId || undefined}
                   sx={{
                     bgcolor: isFocusedShotList
-                      ? 'rgba(56,189,248,0.12)'
+                      ? 'rgba(93, 118, 203,0.12)'
                       : selectedIds.has(shotList.id)
                         ? 'rgba(233,30,99,0.15)'
                         : 'rgba(255,255,255,0.05)',
                     border: isFocusedShotList
-                      ? '2px solid rgba(56,189,248,0.65)'
+                      ? '2px solid rgba(93, 118, 203,0.65)'
                       : selectedIds.has(shotList.id)
                         ? '2px solid #e91e63'
                         : '1px solid rgba(255,255,255,0.1)',
-                    boxShadow: isFocusedShotList ? '0 0 0 1px rgba(125,211,252,0.18), 0 16px 34px rgba(8,47,73,0.28)' : 'none',
+                    boxShadow: isFocusedShotList ? '0 0 0 1px rgba(147, 164, 220,0.18), 0 16px 34px rgba(42, 61, 86,0.28)' : 'none',
                     borderRadius: 2,
                     transition: 'all 0.2s ease',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', transform: 'translateY(-2px)' },
@@ -4237,7 +4237,7 @@ export function CastingShotListPanel({
                         mb: 1.5,
                         p: 1.25,
                         borderRadius: 1.5,
-                        border: '1px solid rgba(59,130,246,0.18)',
+                        border: '1px solid rgba(63, 81, 181,0.18)',
                         bgcolor: 'rgba(15,23,42,0.45)',
                       }}
                       data-testid={`legacy-shotlist-coverage-${shotList.id}`}
@@ -4253,9 +4253,9 @@ export function CastingShotListPanel({
                             });
                           }}
                           sx={{
-                            bgcolor: 'rgba(59,130,246,0.14)',
+                            bgcolor: 'rgba(63, 81, 181,0.14)',
                             color: '#93c5fd',
-                            border: '1px solid rgba(59,130,246,0.24)',
+                            border: '1px solid rgba(63, 81, 181,0.24)',
                             cursor: 'pointer',
                           }}
                         />
@@ -4354,9 +4354,9 @@ export function CastingShotListPanel({
                       sx={{
                         mb: 1.5,
                         p: 1,
-                        bgcolor: 'rgba(0,212,255,0.08)',
+                        bgcolor: 'rgba(93, 118, 203,0.08)',
                         borderRadius: 1.5,
-                        border: '1px solid rgba(0,212,255,0.25)',
+                        border: '1px solid rgba(93, 118, 203,0.25)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 1,
@@ -4364,8 +4364,8 @@ export function CastingShotListPanel({
                     >
                       {storyboardGenerationProgress[shotList.id] ? (
                         <>
-                          <MUICircularProgress size={14} sx={{ color: 'var(--role-cyan, #00d4ff)', flexShrink: 0 }} />
-                          <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)', flex: 1 }}>
+                          <MUICircularProgress size={14} sx={{ color: 'var(--role-cyan, #5d76cb)', flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ color: 'var(--role-cyan, #5d76cb)', flex: 1 }}>
                             Genererer bilde {storyboardGenerationProgress[shotList.id].current} / {storyboardGenerationProgress[shotList.id].total}
                           </Typography>
                           {storyboardGenerationProgress[shotList.id].current >= storyboardGenerationProgress[shotList.id].total && (
@@ -4374,8 +4374,8 @@ export function CastingShotListPanel({
                         </>
                       ) : (
                         <>
-                          <MUICircularProgress size={14} sx={{ color: 'var(--role-cyan, #00d4ff)', flexShrink: 0 }} />
-                          <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)' }}>
+                          <MUICircularProgress size={14} sx={{ color: 'var(--role-cyan, #5d76cb)', flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ color: 'var(--role-cyan, #5d76cb)' }}>
                             Starter storyboard-generering…
                           </Typography>
                         </>
@@ -4388,14 +4388,14 @@ export function CastingShotListPanel({
                     sx={{
                       mb: 1.5,
                       p: 1.5,
-                      bgcolor: 'rgba(0,212,255,0.05)',
+                      bgcolor: 'rgba(93, 118, 203,0.05)',
                       borderRadius: 1.5,
-                      border: '1px dashed rgba(0,212,255,0.3)',
+                      border: '1px dashed rgba(93, 118, 203,0.3)',
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                      <AddIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: 18 }} />
-                      <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}>
+                      <AddIcon sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: 18 }} />
+                      <Typography variant="caption" sx={{ color: 'var(--role-cyan, #5d76cb)', fontWeight: 600 }}>
                         Legg til shot
                       </Typography>
                     </Box>
@@ -4566,7 +4566,7 @@ export function CastingShotListPanel({
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: 0.5,
-                                      color: 'var(--role-cyan, #00d4ff)',
+                                      color: 'var(--role-cyan, #5d76cb)',
                                       fontSize: '11px',
                                     }}
                                   >
@@ -4592,10 +4592,10 @@ export function CastingShotListPanel({
                                   flexDirection: 'column', 
                                   gap: 1,
                                   p: 1.5,
-                                  bgcolor: focusedShotId === shot.id ? 'rgba(56,189,248,0.14)' : 'rgba(255,255,255,0.03)',
+                                  bgcolor: focusedShotId === shot.id ? 'rgba(93, 118, 203,0.14)' : 'rgba(255,255,255,0.03)',
                                   borderRadius: 2,
                                   border: focusedShotId === shot.id
-                                    ? '1px solid rgba(56,189,248,0.55)'
+                                    ? '1px solid rgba(93, 118, 203,0.55)'
                                     : '1px solid rgba(255,255,255,0.08)',
                                   transition: 'all 0.2s ease',
                                   '&:hover': {
@@ -4675,7 +4675,7 @@ export function CastingShotListPanel({
                                         borderRadius: 1.5,
                                         '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
                                         '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                                        '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                                        '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
                                       },
                                       '& .MuiInputBase-input': {
                                         fontSize: '0.8rem',
@@ -4726,7 +4726,7 @@ export function CastingShotListPanel({
                                       <IconButton
                                         size="small"
                                         onClick={() => handleOpenShotDialog(shotList.id, shot)}
-                                        sx={{ p: 0.5, color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
+                                        sx={{ p: 0.5, color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'var(--role-cyan, #5d76cb)' } }}
                                       >
                                         <EditIcon sx={{ fontSize: 16 }} />
                                       </IconButton>
@@ -5086,7 +5086,7 @@ export function CastingShotListPanel({
                                       pl: 5, 
                                       mt: 0.5,
                                       cursor: 'pointer',
-                                      color: 'var(--role-cyan, #00d4ff)',
+                                      color: 'var(--role-cyan, #5d76cb)',
                                       opacity: 0.7,
                                       transition: 'opacity 0.2s',
                                       '&:hover': { opacity: 1 },
@@ -5094,7 +5094,7 @@ export function CastingShotListPanel({
                                     onClick={() => handleRegenerateSingleImage(shotList, shot, getPackTemplate(shotList.id))}
                                   >
                                     {regeneratingShotId === shot.id ? (
-                                      <MUICircularProgress size={12} sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+                                      <MUICircularProgress size={12} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
                                     ) : (
                                       <AutoAwesomeIcon sx={{ fontSize: 14 }} />
                                     )}
@@ -5123,7 +5123,7 @@ export function CastingShotListPanel({
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 0.5,
-                                    color: 'var(--role-cyan, #00d4ff)',
+                                    color: 'var(--role-cyan, #5d76cb)',
                                     fontSize: '11px',
                                   }}
                                 >
@@ -5195,7 +5195,7 @@ export function CastingShotListPanel({
                               size="small"
                               startIcon={<AddIcon />}
                               onClick={() => handleQuickAddShot(shotList)}
-                              sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: '11px', borderColor: 'rgba(0,212,255,0.4)' }}
+                              sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: '11px', borderColor: 'rgba(93, 118, 203,0.4)' }}
                               variant="outlined"
                             >
                               Legg til shot
@@ -5593,7 +5593,7 @@ export function CastingShotListPanel({
                 p: isMobile ? 1.25 : 1.75,
                 borderRadius: 2,
                 border: '1px solid rgba(255,255,255,0.08)',
-                background: 'linear-gradient(135deg, rgba(233,30,99,0.08), rgba(0,212,255,0.08))',
+                background: 'linear-gradient(135deg, rgba(233,30,99,0.08), rgba(93, 118, 203,0.08))',
                 boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
               }}
             >
@@ -5639,9 +5639,9 @@ export function CastingShotListPanel({
                   label={`Estimat: ${estimatedMinutes} min`}
                   icon={<ScheduleIcon sx={{ fontSize: 16 }} />}
                   sx={{
-                    bgcolor: 'rgba(0,212,255,0.12)',
-                    color: 'var(--role-cyan, #00d4ff)',
-                    border: '1px solid rgba(0,212,255,0.35)',
+                    bgcolor: 'rgba(93, 118, 203,0.12)',
+                    color: 'var(--role-cyan, #5d76cb)',
+                    border: '1px solid rgba(93, 118, 203,0.35)',
                     height: 30,
                   }}
                 />
@@ -5652,7 +5652,7 @@ export function CastingShotListPanel({
                 p: isMobile ? 1.5 : 2,
                 borderRadius: 2,
                 border: '1px solid rgba(255,255,255,0.08)',
-                background: 'linear-gradient(135deg, rgba(233,30,99,0.07), rgba(0,212,255,0.04))',
+                background: 'linear-gradient(135deg, rgba(233,30,99,0.07), rgba(93, 118, 203,0.04))',
                 boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
               }}
             >
@@ -5939,7 +5939,7 @@ export function CastingShotListPanel({
                 size="small"
                 startIcon={showAdvancedCamera ? <CollapseIcon /> : <ExpandIcon />}
                 onClick={() => setShowAdvancedCamera(!showAdvancedCamera)}
-                sx={{ color: 'var(--role-cyan, #00d4ff)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
+                sx={{ color: 'var(--role-cyan, #5d76cb)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
               >
                 {showAdvancedCamera ? 'Skjul teknisk blokk' : 'Vis teknisk blokk'}
               </Button>
@@ -6348,8 +6348,8 @@ export function CastingShotListPanel({
                                 width: 30,
                                 height: 30,
                                 borderRadius: '50%',
-                                bgcolor: 'rgba(0,212,255,0.2)',
-                                border: '1px solid rgba(0,212,255,0.4)',
+                                bgcolor: 'rgba(93, 118, 203,0.2)',
+                                border: '1px solid rgba(93, 118, 203,0.4)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -6365,7 +6365,7 @@ export function CastingShotListPanel({
                                   sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
                               ) : (
-                                <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700 }}>
+                                <Typography variant="caption" sx={{ color: 'var(--role-cyan, #5d76cb)', fontWeight: 700 }}>
                                   {getInitials(displayName)}
                                 </Typography>
                               )}
@@ -6683,16 +6683,16 @@ export function CastingShotListPanel({
                           p: 1.5,
                           borderRadius: 1,
                           bgcolor: selectedShotsForConversion.has(shot.id)
-                            ? 'rgba(0,212,255,0.1)'
+                            ? 'rgba(93, 118, 203,0.1)'
                             : 'rgba(255,255,255,0.03)',
                           border: selectedShotsForConversion.has(shot.id)
-                            ? '1px solid rgba(0,212,255,0.3)'
+                            ? '1px solid rgba(93, 118, 203,0.3)'
                             : '1px solid rgba(255,255,255,0.1)',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
                           '&:hover': {
                             bgcolor: selectedShotsForConversion.has(shot.id)
-                              ? 'rgba(0,212,255,0.15)'
+                              ? 'rgba(93, 118, 203,0.15)'
                               : 'rgba(255,255,255,0.05)',
                           },
                         }}
@@ -6717,7 +6717,7 @@ export function CastingShotListPanel({
                             }
                             setSelectedShotsForConversion(newSet);
                           }}
-                          sx={{ color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' } }}
+                          sx={{ color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' } }}
                         />
                         <Box
                           sx={{
@@ -6765,8 +6765,8 @@ export function CastingShotListPanel({
                           label={shot.duration ? `${shot.duration}s` : '3s'}
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(0,212,255,0.2)',
-                            color: 'var(--role-cyan, #00d4ff)',
+                            bgcolor: 'rgba(93, 118, 203,0.2)',
+                            color: 'var(--role-cyan, #5d76cb)',
                             fontSize: '10px',
                           }}
                         />
@@ -6776,7 +6776,7 @@ export function CastingShotListPanel({
                 </Stack>
               </Box>
 
-              <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.3)' }}>
+              <Alert severity="info" sx={{ bgcolor: 'rgba(93, 118, 203,0.1)', border: '1px solid rgba(93, 118, 203,0.3)' }}>
                 <Typography variant="body2">
                   {selectedShotsForConversion.size} av {selectedShotListForStoryboard.shots.length} shots valgt
                 </Typography>
@@ -6818,7 +6818,7 @@ export function CastingShotListPanel({
             disabled={selectedShotsForConversion.size === 0}
             startIcon={<StoryboardIcon />}
             sx={{
-              bgcolor: 'var(--role-cyan, #00d4ff)',
+              bgcolor: 'var(--role-cyan, #5d76cb)',
               color: '#000',
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,
@@ -6840,7 +6840,7 @@ export function CastingShotListPanel({
           paper: {
             sx: {
               bgcolor: '#0b0d12',
-              backgroundImage: 'radial-gradient(circle at top left, rgba(0,212,255,0.12), transparent 40%), radial-gradient(circle at 20% 30%, rgba(233,30,99,0.12), transparent 45%)',
+              backgroundImage: 'radial-gradient(circle at top left, rgba(93, 118, 203,0.12), transparent 40%), radial-gradient(circle at 20% 30%, rgba(233,30,99,0.12), transparent 45%)',
             },
           },
         }}
@@ -6858,7 +6858,7 @@ export function CastingShotListPanel({
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <StoryboardIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+            <StoryboardIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, letterSpacing: 0.2 }}>
               Storyboard Viewer
             </Typography>
@@ -6924,9 +6924,9 @@ export function CastingShotListPanel({
                     <Chip
                       label={`${currentStoryboard.frames.length} frames`}
                       sx={{
-                        bgcolor: 'rgba(0,212,255,0.15)',
-                        color: 'var(--role-cyan, #00d4ff)',
-                        border: '1px solid rgba(0,212,255,0.4)',
+                        bgcolor: 'rgba(93, 118, 203,0.15)',
+                        color: 'var(--role-cyan, #5d76cb)',
+                        border: '1px solid rgba(93, 118, 203,0.4)',
                       }}
                     />
                     <Chip
@@ -6961,7 +6961,7 @@ export function CastingShotListPanel({
                           transition: 'all 0.2s ease',
                           '&:hover': {
                             transform: 'translateY(-4px)',
-                            borderColor: 'rgba(0,212,255,0.5)',
+                            borderColor: 'rgba(93, 118, 203,0.5)',
                             boxShadow: '0 12px 24px rgba(0,0,0,0.35)',
                           },
                         }}
@@ -7040,7 +7040,7 @@ export function CastingShotListPanel({
                 mb: 2,
                 p: 1.5,
                 borderRadius: 2,
-                border: '1px solid rgba(59,130,246,0.28)',
+                border: '1px solid rgba(63, 81, 181,0.28)',
                 bgcolor: 'rgba(15,23,42,0.5)',
               }}
             >
@@ -7106,10 +7106,10 @@ export function CastingShotListPanel({
                     sx={{
                       py: 2,
                       color: '#93c5fd',
-                      borderColor: 'rgba(59,130,246,0.3)',
+                      borderColor: 'rgba(63, 81, 181,0.3)',
                       justifyContent: 'flex-start',
                       textAlign: 'left',
-                      '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.08)' },
+                      '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(63, 81, 181,0.08)' },
                     }}
                   >
                     <Box>
@@ -7223,10 +7223,10 @@ export function CastingShotListPanel({
               sx={{
                 py: 2,
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.3)',
+                borderColor: 'rgba(63, 81, 181,0.3)',
                 justifyContent: 'flex-start',
                 textAlign: 'left',
-                '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.08)' },
+                '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(63, 81, 181,0.08)' },
               }}
             >
               <Box>
@@ -7357,7 +7357,7 @@ export function CastingShotListPanel({
       >
         <DialogTitle sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <StoryboardIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+            <StoryboardIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             Storyboard Manager
           </Box>
           <IconButton onClick={() => setShowStoryboardManager(false)} aria-label="Lukk Storyboard Manager" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -7386,7 +7386,7 @@ export function CastingShotListPanel({
                   <Card
                     sx={{
                       bgcolor: 'rgba(255,255,255,0.05)',
-                      border: relatedStoryboard ? '1px solid rgba(0,212,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                      border: relatedStoryboard ? '1px solid rgba(93, 118, 203,0.3)' : '1px solid rgba(255,255,255,0.1)',
                       borderRadius: 2,
                     }}
                   >
@@ -7429,7 +7429,7 @@ export function CastingShotListPanel({
                           <Chip
                             size="small"
                             label={`${relatedStoryboard.frames.length} frames`}
-                            sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: 'var(--role-cyan, #00d4ff)', fontSize: '10px' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: 'var(--role-cyan, #5d76cb)', fontSize: '10px' }}
                           />
                         )}
                       </Box>
@@ -7485,10 +7485,10 @@ export function CastingShotListPanel({
                             variant="outlined"
                             sx={{
                               flex: 1,
-                              color: 'var(--role-cyan, #00d4ff)',
-                              borderColor: 'rgba(0,212,255,0.3)',
+                              color: 'var(--role-cyan, #5d76cb)',
+                              borderColor: 'rgba(93, 118, 203,0.3)',
                               fontSize: '11px',
-                              '&:hover': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                              '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)' },
                             }}
                             onClick={() => {
                               setShowStoryboardManager(false);
@@ -7736,7 +7736,7 @@ export function CastingShotListPanel({
                           {candidate.description}
                         </Typography>
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                          <Chip size="small" label={candidate.sourceLabel} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd' }} />
+                          <Chip size="small" label={candidate.sourceLabel} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#93c5fd' }} />
                           {candidate.cameraAngle && (
                             <Chip size="small" label={candidate.cameraAngle} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.72)' }} />
                           )}

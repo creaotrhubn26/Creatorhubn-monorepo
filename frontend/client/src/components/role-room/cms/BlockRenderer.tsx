@@ -235,7 +235,7 @@ function HeroView({ block }: { block: HeroBlock }) {
           size="small"
           sx={{
             alignSelf: 'flex-start',
-            background: 'linear-gradient(135deg, rgba(147, 164, 220,0.18), rgba(96,165,250,0.18))',
+            background: 'linear-gradient(135deg, rgba(147, 164, 220,0.18), rgba(147, 164, 220,0.18))',
             color: '#dfe4f3',
             fontWeight: 700,
             letterSpacing: 0.3,
@@ -651,7 +651,7 @@ function CtaView({ block }: { block: CtaBlock }) {
   return (
     <Card
       sx={{
-        background: 'linear-gradient(135deg, rgba(147, 164, 220,0.14) 0%, rgba(96,165,250,0.12) 100%)',
+        background: 'linear-gradient(135deg, rgba(147, 164, 220,0.14) 0%, rgba(147, 164, 220,0.12) 100%)',
         border: '1px solid rgba(147, 164, 220,0.32)',
         borderRadius: 2.5,
         position: 'relative',
@@ -786,7 +786,7 @@ function FeatureListView({ block }: { block: FeatureListBlock }) {
                 <Chip
                   label={it}
                   sx={{
-                    background: 'linear-gradient(135deg, rgba(147, 164, 220,0.14), rgba(96,165,250,0.10))',
+                    background: 'linear-gradient(135deg, rgba(147, 164, 220,0.14), rgba(147, 164, 220,0.10))',
                     color: '#dfe4f3',
                     fontWeight: 500,
                     fontSize: '0.92rem',
@@ -841,7 +841,7 @@ function RelatedStudiesView({ block }: { block: RelatedStudiesBlock }) {
               p: 2,
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.16)',
-              background: 'rgba(10, 5, 21,0.42)',
+              background: 'rgba(27, 18, 44,0.42)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 border: '1px solid rgba(147, 164, 220,0.32)',

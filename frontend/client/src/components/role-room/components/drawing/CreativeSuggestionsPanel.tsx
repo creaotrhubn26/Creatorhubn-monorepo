@@ -52,7 +52,7 @@ export interface CreativeSuggestionsPanelProps {
 
 const PRIORITY_COLOR: Record<ShotSuggestion['priority'], string> = {
   critical: '#ef4444',
-  recommended: '#3b82f6',
+  recommended: '#3f51b5',
   try: '#93a4dc',
 };
 
@@ -102,7 +102,7 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
 
   if (!activeScene) {
     return (
-      <Paper sx={{ p: 2, bgcolor: 'rgba(16, 11, 30,0.95)', color: '#fff' }} data-testid="creative-suggestions-empty">
+      <Paper sx={{ p: 2, bgcolor: 'rgba(42, 49, 82,0.95)', color: '#fff' }} data-testid="creative-suggestions-empty">
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
           <AutoAwesome sx={{ color: '#fbbf24' }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Creative Studio</Typography>
@@ -119,7 +119,7 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
       data-testid="creative-suggestions-panel"
       sx={{
         p: compact ? 1.5 : 2,
-        bgcolor: 'rgba(16, 11, 30,0.95)',
+        bgcolor: 'rgba(42, 49, 82,0.95)',
         color: '#fff',
         maxWidth: 380,
         minWidth: 280,

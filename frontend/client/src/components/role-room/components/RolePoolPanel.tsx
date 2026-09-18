@@ -63,14 +63,14 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   const roleTabAccent = 'var(--role-accent, #5d76cb)';
   const roleTabAccentHover = '#5d76cb';
   const roleTabAccentSoft = 'rgba(93, 118, 203,0.24)';
-  const roleSurface = 'rgba(24, 18, 43,0.84)';
-  const roleSurfaceMuted = 'rgba(33, 28, 59,0.72)';
+  const roleSurface = 'rgba(42, 61, 86,0.84)';
+  const roleSurfaceMuted = 'rgba(60, 78, 109,0.72)';
   const roleBorder = 'var(--role-border, rgba(93, 118, 203,0.32))';
   const roleText = '#eef1fb';
   const roleTextMuted = 'rgba(224, 219, 250,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
   const roleTexture =
-    `linear-gradient(180deg, rgba(10, 5, 21,0.9) 0%, rgba(16, 11, 30,0.92) 100%), radial-gradient(circle at 18% -25%, rgba(93, 118, 203,0.3), transparent 55%), radial-gradient(circle at 82% -10%, rgba(75, 61, 143,0.28), transparent 46%), ${rolePanelBackdrop}`;
+    `linear-gradient(180deg, rgba(27, 18, 44,0.9) 0%, rgba(42, 49, 82,0.92) 100%), radial-gradient(circle at 18% -25%, rgba(93, 118, 203,0.3), transparent 55%), radial-gradient(circle at 82% -10%, rgba(75, 61, 143,0.28), transparent 46%), ${rolePanelBackdrop}`;
 
   const {
     data: poolRoles = [],

@@ -112,7 +112,7 @@ export default function RoleRoomAgentConnectionsBar({
       id: 'facebook_page',
       label: 'Facebook Page',
       shortLabel: 'FB',
-      color: '#3b82f6',
+      color: '#3f51b5',
       status: 'available',
       hint: 'Page-publisering + comments',
     });
@@ -133,7 +133,7 @@ export default function RoleRoomAgentConnectionsBar({
           id: 'facebook_page',
           label: c.facebookPageName,
           shortLabel: 'FB',
-          color: '#3b82f6',
+          color: '#3f51b5',
           status: 'connected',
           username: c.facebookPageName,
         });
@@ -169,7 +169,7 @@ export default function RoleRoomAgentConnectionsBar({
         id: 'tiktok',
         label: tiktokProfile.displayName ?? tiktokProfile.username ?? 'TikTok',
         shortLabel: 'TT',
-        color: 'var(--role-cyan, #22d3ee)',
+        color: 'var(--role-cyan, #5d76cb)',
         status: 'connected',
         username: tiktokProfile.username ?? null,
         profilePictureUrl: tiktokProfile.avatarUrl ?? null,
@@ -178,7 +178,7 @@ export default function RoleRoomAgentConnectionsBar({
         id: 'tiktok',
         label: 'TikTok',
         shortLabel: 'TT',
-        color: 'var(--role-cyan, #22d3ee)',
+        color: 'var(--role-cyan, #5d76cb)',
         status: 'available',
         hint: 'Video til kreators TikTok-inbox',
       };

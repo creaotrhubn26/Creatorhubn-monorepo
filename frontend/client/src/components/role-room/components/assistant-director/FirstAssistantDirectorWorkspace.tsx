@@ -192,7 +192,7 @@ export function FirstAssistantDirectorWorkspace({
             p: 1,
             mb: 2.5,
             border: '1px solid rgba(251, 146, 60, 0.24)',
-            bgcolor: 'rgba(16, 11, 30, 0.94)',
+            bgcolor: 'rgba(42, 49, 82, 0.94)',
             borderRadius: 2,
           }}
         >

@@ -64,7 +64,7 @@ const SURFACES: ReadonlyArray<{
 
 const TONE_STYLES: Record<DirectorBriefTone, { color: string; background: string; border: string }> = {
   attention: { color: '#fcd34d', background: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.26)' },
-  upcoming: { color: '#7dd3fc', background: 'rgba(14, 165, 233, 0.08)', border: 'rgba(56, 189, 248, 0.24)' },
+  upcoming: { color: '#93a4dc', background: 'rgba(63, 81, 181, 0.08)', border: 'rgba(93, 118, 203, 0.24)' },
   ready: { color: '#6ee7b7', background: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.24)' },
   neutral: { color: roleTokens.textMuted, background: 'rgba(148, 163, 184, 0.06)', border: 'rgba(148, 163, 184, 0.18)' },
 };
@@ -319,7 +319,7 @@ export function DirectorWorkspace({
                 </Box>
                 <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
                   <Stack direction="row" spacing={1} alignItems="center">
-                    {brief.productionDay?.kind === 'today' ? <CalendarIcon sx={{ color: '#fcd34d', fontSize: 19 }} /> : <ReadyIcon sx={{ color: '#7dd3fc', fontSize: 19 }} />}
+                    {brief.productionDay?.kind === 'today' ? <CalendarIcon sx={{ color: '#fcd34d', fontSize: 19 }} /> : <ReadyIcon sx={{ color: '#93a4dc', fontSize: 19 }} />}
                     <Typography sx={{ color: roleTokens.textMuted, fontSize: '0.78rem' }}>
                       {brief.productionDay
                         ? brief.productionDay.kind === 'today'

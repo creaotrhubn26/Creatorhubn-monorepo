@@ -116,7 +116,7 @@ const FONT_FAMILIES = [
 
 const COLOR_PRESETS = [
   '#ffffff', '#000000', '#ef4444', '#f97316', '#eab308',
-  '#22c55e', '#3b82f6', '#5d76cb', '#ec4899', '#6b7280',
+  '#22c55e', '#3f51b5', '#5d76cb', '#ec4899', '#6b7280',
 ];
 
 // =============================================================================
@@ -217,7 +217,7 @@ export function drawTextAnnotation(
   
   // Selection indicator
   if (selected) {
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = '#3f51b5';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
     ctx.strokeRect(
@@ -230,7 +230,7 @@ export function drawTextAnnotation(
     // Resize handles
     const handleSize = 8;
     ctx.fillStyle = 'white';
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = '#3f51b5';
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
     
@@ -351,7 +351,7 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
           size="small"
           onClick={() => onStyleChange({ fontWeight: style.fontWeight === 'bold' ? 'normal' : 'bold' })}
           sx={{ 
-            bgcolor: style.fontWeight === 'bold' ? 'rgba(59,130,246,0.3)' : 'transparent',
+            bgcolor: style.fontWeight === 'bold' ? 'rgba(63, 81, 181,0.3)' : 'transparent',
           }}
         >
           <FormatBold sx={{ fontSize: 18 }} />
@@ -364,7 +364,7 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
           size="small"
           onClick={() => onStyleChange({ fontStyle: style.fontStyle === 'italic' ? 'normal' : 'italic' })}
           sx={{ 
-            bgcolor: style.fontStyle === 'italic' ? 'rgba(59,130,246,0.3)' : 'transparent',
+            bgcolor: style.fontStyle === 'italic' ? 'rgba(63, 81, 181,0.3)' : 'transparent',
           }}
         >
           <FormatItalic sx={{ fontSize: 18 }} />
@@ -377,7 +377,7 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
           size="small"
           onClick={() => onStyleChange({ textDecoration: style.textDecoration === 'underline' ? 'none' : 'underline' })}
           sx={{ 
-            bgcolor: style.textDecoration === 'underline' ? 'rgba(59,130,246,0.3)' : 'transparent',
+            bgcolor: style.textDecoration === 'underline' ? 'rgba(63, 81, 181,0.3)' : 'transparent',
           }}
         >
           <FormatUnderlined sx={{ fontSize: 18 }} />

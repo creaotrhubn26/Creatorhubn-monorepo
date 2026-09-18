@@ -105,7 +105,7 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
                 background: active ? 'linear-gradient(135deg,#4b3d8f,#5d76cb)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.2)'}`,
                 '&:hover': { background: active ? 'linear-gradient(135deg,#4b3d8f,#5d76cb)' : 'rgba(255,255,255,0.06)' },
-                '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+                '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 },
               }}
             >
               {c.label}
@@ -149,7 +149,7 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
         <Button
           onClick={() => inputRef.current?.click()}
           startIcon={<UploadIcon />}
-          sx={{ mt: 2, textTransform: 'none', fontWeight: 700, minHeight: 44, px: 3, borderRadius: '10px', color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+          sx={{ mt: 2, textTransform: 'none', fontWeight: 700, minHeight: 44, px: 3, borderRadius: '10px', color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' }, '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 } }}
         >
           Bla gjennom filer
         </Button>
@@ -174,7 +174,7 @@ export default function ClientMerkevareView({ projectId }: { projectId: string }
 
       {/* Pågående opplastinger */}
       {uploads.map((u) => (
-        <Box key={u.tempId} sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: 1.25 }}>
+        <Box key={u.tempId} sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: 1.25 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.6 }}>
             <Typography sx={{ color: '#f1f5f9', fontSize: '0.84rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</Typography>
             <Typography sx={{ color: u.error ? '#fca5a5' : '#c3cbe6', fontSize: '0.78rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
@@ -218,7 +218,7 @@ function MaterialRow({ m }: { m: RoleRoomMaterial }) {
   const statusColor = processing ? '#fbbf24' : '#6ee7b7';
   const statusLabel = processing ? 'Behandles' : 'Lastet opp';
   return (
-    <Box sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(10, 5, 21,0.35)', p: 1.1, display: 'flex', alignItems: 'center', gap: 1.25 }}>
+    <Box sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(27, 18, 44,0.35)', p: 1.1, display: 'flex', alignItems: 'center', gap: 1.25 }}>
       <Box sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(148,163,184,0.1)' }}>
         <FileIcon sx={{ fontSize: 20, color: '#c3cbe6' }} />
       </Box>

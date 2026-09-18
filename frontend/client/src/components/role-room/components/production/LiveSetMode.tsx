@@ -1040,9 +1040,9 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
             label={`Aktiv scene · ${currentSceneId ? `scene-${currentSceneId.replace('scene-', '')}` : 'ikke valgt'}`}
             size="small"
             sx={{
-              bgcolor: 'rgba(56,189,248,0.12)',
-              color: '#7dd3fc',
-              border: '1px solid rgba(56,189,248,0.35)',
+              bgcolor: 'rgba(93, 118, 203,0.12)',
+              color: '#93a4dc',
+              border: '1px solid rgba(93, 118, 203,0.35)',
               height: is2K ? 26 : 24,
               fontSize: is2K ? '0.78rem' : '0.73rem',
             }}
@@ -1077,9 +1077,9 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
               label={`Neste · ${nextSceneId}`}
               size="small"
               sx={{
-                bgcolor: 'rgba(59,130,246,0.14)',
+                bgcolor: 'rgba(63, 81, 181,0.14)',
                 color: '#93c5fd',
-                border: '1px solid rgba(59,130,246,0.35)',
+                border: '1px solid rgba(63, 81, 181,0.35)',
                 height: is2K ? 26 : 24,
                 fontSize: is2K ? '0.78rem' : '0.73rem',
               }}
@@ -1117,9 +1117,9 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
             label={`Vær · ${weatherLabel}${shootingDay?.weather?.temperature !== undefined ? ` ${shootingDay.weather.temperature}°C` : ''}`}
             size="small"
             sx={{
-              bgcolor: 'rgba(56,189,248,0.12)',
-              color: '#7dd3fc',
-              border: '1px solid rgba(56,189,248,0.35)',
+              bgcolor: 'rgba(93, 118, 203,0.12)',
+              color: '#93a4dc',
+              border: '1px solid rgba(93, 118, 203,0.35)',
               height: is2K ? 26 : 24,
               fontSize: is2K ? '0.78rem' : '0.73rem',
             }}

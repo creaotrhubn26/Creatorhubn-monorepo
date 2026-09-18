@@ -34,7 +34,7 @@ import { ACCENT, Panel, T } from './_eduUi';
 const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
 const ROLE_COLOR: Record<FacultyRole, string> = {
-  lead: '#c3cbe6', teacher: '#38bdf8', supervisor: '#34d399', guest: '#f59e0b',
+  lead: '#c3cbe6', teacher: '#5d76cb', supervisor: '#34d399', guest: '#f59e0b',
 };
 
 export function FacultyTab() {
@@ -144,7 +144,7 @@ export function FacultyTab() {
       label: 'Ledige TRR-seter',
       value: !license ? '—' : license.unlimited ? 'Ubegrenset' : (license.available != null ? license.available : '—'),
       hint: !license ? 'Laster lisens…' : license.unlimited ? 'Site-/FTE-lisens' : (license.seatLimit != null ? `${license.used} av ${license.seatLimit} i bruk` : 'Lisens ikke satt — klikk tannhjulet'),
-      icon: <SeatIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8',
+      icon: <SeatIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb',
       onEdit: openLicenseEditor,
     },
   ];

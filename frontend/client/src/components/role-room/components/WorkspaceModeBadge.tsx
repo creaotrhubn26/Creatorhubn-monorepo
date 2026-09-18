@@ -60,9 +60,9 @@ const MODE_CONFIGS: Record<WorkspaceMode, ModeConfig> = {
     label: 'Klient',
     shortLabel: 'Klient',
     icon: ClientIcon,
-    bg: 'rgba(59,130,246,0.18)',
-    color: '#bfdbfe',
-    border: '1px solid rgba(96,165,250,0.4)',
+    bg: 'rgba(63, 81, 181,0.18)',
+    color: '#c3cbe6',
+    border: '1px solid rgba(147, 164, 220,0.4)',
   },
   dance: {
     label: 'Dansestudio',

@@ -15,7 +15,7 @@ import { LoadingSkeleton, PanelHeader } from './ui';
 
 type Status = 'svart' | 'lead' | 'skjult';
 const STATUSES: { key: Status; label: string; color: string }[] = [
-  { key: 'svart', label: 'Svart', color: '#38bdf8' },
+  { key: 'svart', label: 'Svart', color: '#5d76cb' },
   { key: 'lead', label: 'Mulig kunde', color: '#22c55e' },
   { key: 'skjult', label: 'Skjult', color: '#94a3b8' },
 ];
@@ -126,7 +126,7 @@ export default function MentionsPanel() {
               size="small" label={`Alle (${counts.alle})`} clickable
               onClick={() => setStatusFilter('alle')}
               variant={statusFilter === 'alle' ? 'filled' : 'outlined'}
-              sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: statusFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
+              sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(93, 118, 203,0.18)' : 'transparent', color: statusFilter === 'alle' ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.7)' }}
             />
             {STATUSES.map((s) => (
               <Chip

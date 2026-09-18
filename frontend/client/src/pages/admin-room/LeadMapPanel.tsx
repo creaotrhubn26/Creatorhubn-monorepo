@@ -183,7 +183,7 @@ interface Metrics {
 }
 
 const STATUS_META: Record<LeadStatus, { label: string; color: string; bg: string }> = {
-  unvisited:       { label: 'Unvisited',       color: '#60a5fa', bg: 'rgba(96,165,250,0.20)' },
+  unvisited:       { label: 'Unvisited',       color: '#93a4dc', bg: 'rgba(147, 164, 220,0.20)' },
   visited:         { label: 'Visited',         color: '#cbd5e1', bg: 'rgba(203,213,225,0.20)' },
   return:          { label: 'Return',          color: '#fbbf24', bg: 'rgba(251,191,36,0.20)' },
   not_present:     { label: 'Not present',     color: '#94a3b8', bg: 'rgba(148,163,184,0.20)' },
@@ -2241,13 +2241,13 @@ export default function LeadMapPanel() {
               ? 'rgba(248,113,113,0.08)'
               : reminders.buckets.over14days > 0
               ? 'rgba(251,191,36,0.08)'
-              : 'rgba(96,165,250,0.08)',
+              : 'rgba(147, 164, 220,0.08)',
             border: `1px solid ${
               reminders.buckets.over30days > 0
                 ? 'rgba(248,113,113,0.4)'
                 : reminders.buckets.over14days > 0
                 ? 'rgba(251,191,36,0.4)'
-                : 'rgba(96,165,250,0.4)'
+                : 'rgba(147, 164, 220,0.4)'
             }`,
           }}>
             <Stack direction="row" alignItems="center" spacing={1.4} flexWrap="wrap" useFlexGap>
@@ -2256,7 +2256,7 @@ export default function LeadMapPanel() {
                   ? '#f87171'
                   : reminders.buckets.over14days > 0
                   ? palette.amber
-                  : '#60a5fa',
+                  : '#93a4dc',
                 fontSize: 22,
               }} />
               <Stack sx={{ flex: 1, minWidth: 200 }}>
@@ -2285,7 +2285,7 @@ export default function LeadMapPanel() {
                     <Chip
                       label={`${reminders.buckets.over7days} over 7d`}
                       size="small"
-                      sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: '#60a5fa', fontWeight: 800, fontSize: '0.66rem', height: 20 }}
+                      sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: '#93a4dc', fontWeight: 800, fontSize: '0.66rem', height: 20 }}
                     />
                   )}
                   {reminders.dueToday.length > 0 && (
@@ -3107,7 +3107,7 @@ export default function LeadMapPanel() {
                             width: 22, height: 22, borderRadius: '50%',
                             background: isMe
                               ? `linear-gradient(135deg, ${palette.accent}, ${palette.amber})`
-                              : `linear-gradient(135deg, #60a5fa, #34d399)`,
+                              : `linear-gradient(135deg, #93a4dc, #34d399)`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             color: '#0a0a0f', fontWeight: 800, fontSize: '0.62rem',
                             flexShrink: 0,
@@ -3303,15 +3303,15 @@ export default function LeadMapPanel() {
                   return (
                     <Box sx={{
                       mb: 2, p: 1.4, borderRadius: 1.2,
-                      bgcolor: 'rgba(96,165,250,0.06)',
-                      border: '1px dashed rgba(96,165,250,0.4)',
+                      bgcolor: 'rgba(147, 164, 220,0.06)',
+                      border: '1px dashed rgba(147, 164, 220,0.4)',
                     }}>
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <DomainOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />
+                        <DomainOutlinedIcon sx={{ color: '#93a4dc', fontSize: 18 }} />
                         <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
                           Henter firma-data fra BRREG …
                         </Typography>
-                        <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                        <CircularProgress size={14} sx={{ color: '#93a4dc' }} />
                       </Stack>
                     </Box>
                   );
@@ -3321,11 +3321,11 @@ export default function LeadMapPanel() {
                   return (
                     <Box sx={{
                       mb: 2, p: 1.4, borderRadius: 1.2,
-                      bgcolor: 'rgba(96,165,250,0.06)',
-                      border: '1px dashed rgba(96,165,250,0.4)',
+                      bgcolor: 'rgba(147, 164, 220,0.06)',
+                      border: '1px dashed rgba(147, 164, 220,0.4)',
                     }}>
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <DomainOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />
+                        <DomainOutlinedIcon sx={{ color: '#93a4dc', fontSize: 18 }} />
                         <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary, flex: 1 }}>
                           Ingen firma-data ennå
                         </Typography>
@@ -3333,8 +3333,8 @@ export default function LeadMapPanel() {
                           size="small" variant="text"
                           onClick={() => void enrichLead(selected.id)}
                           disabled={isLoading}
-                          startIcon={isLoading ? <CircularProgress size={12} sx={{ color: '#60a5fa' }} /> : null}
-                          sx={{ color: '#60a5fa', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}
+                          startIcon={isLoading ? <CircularProgress size={12} sx={{ color: '#93a4dc' }} /> : null}
+                          sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}
                         >
                           {isLoading ? 'Henter …' : 'Hent fra BRREG'}
                         </Button>
@@ -3392,13 +3392,13 @@ export default function LeadMapPanel() {
                 return (
                   <Box sx={{
                     mb: 2, p: 1.6, borderRadius: 1.4,
-                    bgcolor: 'rgba(96,165,250,0.06)',
-                    border: '1px solid rgba(96,165,250,0.32)',
+                    bgcolor: 'rgba(147, 164, 220,0.06)',
+                    border: '1px solid rgba(147, 164, 220,0.32)',
                   }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                       <Stack direction="row" alignItems="center" spacing={0.8}>
-                        <DomainOutlinedIcon sx={{ color: '#60a5fa', fontSize: 18 }} />
-                        <Typography sx={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        <DomainOutlinedIcon sx={{ color: '#93a4dc', fontSize: 18 }} />
+                        <Typography sx={{ fontSize: '0.7rem', color: '#93a4dc', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                           Firma (BRREG)
                         </Typography>
                         <Chip
@@ -3468,7 +3468,7 @@ export default function LeadMapPanel() {
                       )}
                     </Stack>
                     {enrichment.financials && (
-                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(147, 164, 220,0.18)' }}>
                         <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
                           Regnskap {enrichment.financials.year} ({enrichment.financials.currency}) — Regnskapsregisteret
                         </Typography>
@@ -3524,7 +3524,7 @@ export default function LeadMapPanel() {
                       </Typography>
                     )}
                     {enrichment.ip && (
-                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(147, 164, 220,0.18)' }}>
                         <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
                           Immaterielle rettigheter — Patentstyret{enrichment.ip.matchedBy === 'name' ? ' (navnesøk — kan inneholde navnebrødre)' : ''}
                         </Typography>
@@ -3550,7 +3550,7 @@ export default function LeadMapPanel() {
                       </Box>
                     )}
                     {enrichment.contacts && enrichment.contacts.length > 0 && (
-                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(96,165,250,0.18)' }}>
+                      <Box sx={{ mt: 1.2, pt: 1, borderTop: '1px solid rgba(147, 164, 220,0.18)' }}>
                         <Typography sx={{ fontSize: '0.62rem', color: palette.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.6 }}>
                           Nøkkelpersoner
                         </Typography>
@@ -4450,8 +4450,8 @@ export default function LeadMapPanel() {
                 </Box>
 
                 {/* Rationale */}
-                <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.28)' }}>
-                  <Typography sx={{ fontSize: '0.68rem', color: '#60a5fa', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.4 }}>
+                <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(147, 164, 220,0.06)', border: '1px solid rgba(147, 164, 220,0.28)' }}>
+                  <Typography sx={{ fontSize: '0.68rem', color: '#93a4dc', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.4 }}>
                     Hvorfor denne strategien?
                   </Typography>
                   <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary }}>
@@ -4498,7 +4498,7 @@ export default function LeadMapPanel() {
             {reminders && reminders.staleLeads.length > 0 ? (
               <Stack spacing={0.6}>
                 {reminders.staleLeads.map((sl) => {
-                  const color = sl.daysSilent >= 30 ? '#f87171' : sl.daysSilent >= 14 ? palette.amber : '#60a5fa';
+                  const color = sl.daysSilent >= 30 ? '#f87171' : sl.daysSilent >= 14 ? palette.amber : '#93a4dc';
                   return (
                     <Stack
                       key={sl.id} direction="row" spacing={1} alignItems="center"
@@ -5227,7 +5227,7 @@ export default function LeadMapPanel() {
                       <Chip
                         label={ev.assignedUserName.split(' ')[0]}
                         size="small"
-                        sx={{ bgcolor: 'rgba(96,165,250,0.12)', color: '#60a5fa', fontSize: '0.66rem', fontWeight: 700, height: 20 }}
+                        sx={{ bgcolor: 'rgba(147, 164, 220,0.12)', color: '#93a4dc', fontSize: '0.66rem', fontWeight: 700, height: 20 }}
                       />
                     )}
                   </Stack>
@@ -5288,7 +5288,7 @@ export default function LeadMapPanel() {
                             width: 22, height: 22, borderRadius: '50%',
                             background: isMe
                               ? `linear-gradient(135deg, ${palette.accent}, ${palette.amber})`
-                              : `linear-gradient(135deg, #60a5fa, #34d399)`,
+                              : `linear-gradient(135deg, #93a4dc, #34d399)`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             color: '#0a0a0f', fontWeight: 800, fontSize: '0.62rem',
                           }}>

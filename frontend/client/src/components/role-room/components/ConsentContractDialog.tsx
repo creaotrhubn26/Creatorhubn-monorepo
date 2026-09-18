@@ -286,7 +286,7 @@ const consentTypeConfig: Record<ConsentType, {
     IconComponent: PhotoIcon,
     label: 'Foto-samtykke',
     description: 'Tillater bruk av fotografier tatt under produksjonen',
-    color: 'var(--role-cyan, #00d4ff)',
+    color: 'var(--role-cyan, #5d76cb)',
     defaultTitle: 'Samtykke for bruk av fotografier',
   },
   video_release: {
@@ -709,7 +709,7 @@ export function ConsentContractDialog({
         {/* Contract Header with Logo */}
         <Box sx={{ 
           p: 4, 
-          borderBottom: '2px solid #00d4ff',
+          borderBottom: '2px solid #5d76cb',
           background: 'linear-gradient(135deg, #1c2128 0%, #2d3748 100%)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
@@ -768,7 +768,7 @@ export function ConsentContractDialog({
             p: 2, 
             bgcolor: '#f0f9ff', 
             borderRadius: 1, 
-            border: '1px solid #bae6fd',
+            border: '1px solid #c3cbe6',
             display: 'flex',
             alignItems: 'flex-start',
             gap: 1.5,
@@ -1102,12 +1102,12 @@ export function ConsentContractDialog({
                 <Chip 
                   label="GDPR" 
                   size="small" 
-                  sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dbeafe', color: '#1e40af' }} 
+                  sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dfe4f3', color: '#1e40af' }} 
                 />
                 <Chip 
                   label="Personopplysningsloven" 
                   size="small" 
-                  sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dbeafe', color: '#1e40af' }} 
+                  sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dfe4f3', color: '#1e40af' }} 
                 />
                 <Chip 
                   label="Åndsverkloven § 104" 
@@ -1143,7 +1143,7 @@ return (
         zIndex: consentModalZIndex,
         '& .MuiBackdrop-root': {
           zIndex: consentModalBackdropZIndex,
-          bgcolor: 'rgba(10, 5, 21,0.86)',
+          bgcolor: 'rgba(27, 18, 44,0.86)',
           backdropFilter: 'blur(3px)',
         },
       }}
@@ -1153,12 +1153,12 @@ return (
           '--dialog-accent-hover': 'rgba(93, 118, 203,0.15)',
           '--dialog-border-color': 'rgba(93, 118, 203,0.34)',
           '--dialog-text': '#ffffff',
-          bgcolor: 'rgba(24, 18, 43,0.94)',
+          bgcolor: 'rgba(42, 61, 86,0.94)',
           color: 'var(--dialog-text)',
           border: '1px solid var(--dialog-border-color)',
           borderRadius: { xs: 0, sm: 2.5 },
           backgroundImage: [
-            'linear-gradient(180deg, rgba(10, 5, 21,0.9) 0%, rgba(16, 11, 30,0.9) 100%)',
+            'linear-gradient(180deg, rgba(27, 18, 44,0.9) 0%, rgba(42, 49, 82,0.9) 100%)',
             'radial-gradient(circle at 16% -24%, rgba(93, 118, 203,0.28), transparent 55%)',
             'radial-gradient(circle at 82% -10%, rgba(75, 61, 143,0.24), transparent 48%)',
           ].join(', '),
@@ -1330,9 +1330,9 @@ return (
                   icon={<GavelIcon />}
                   sx={{ 
                     mb: 2, 
-                    bgcolor: 'rgba(0,212,255,0.1)', 
-                    color: 'var(--role-cyan, #00d4ff)',
-                    '& .MuiAlert-icon': { color: 'var(--role-cyan, #00d4ff)' },
+                    bgcolor: 'rgba(93, 118, 203,0.1)', 
+                    color: 'var(--role-cyan, #5d76cb)',
+                    '& .MuiAlert-icon': { color: 'var(--role-cyan, #5d76cb)' },
                   }}
                   action={
                     <Button 
@@ -2358,13 +2358,13 @@ return (
                       </Box>
 
                       {sendMethod === 'email' && candidate?.contactInfo.email && (
-                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
+                        <Alert severity="info" sx={{ bgcolor: 'rgba(93, 118, 203,0.1)', color: 'var(--role-cyan, #5d76cb)' }}>
                           Kontrakten sendes til: <strong>{candidate.contactInfo.email}</strong>
                         </Alert>
                       )}
 
                       {sendMethod === 'sms' && candidate?.contactInfo.phone && (
-                        <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
+                        <Alert severity="info" sx={{ bgcolor: 'rgba(93, 118, 203,0.1)', color: 'var(--role-cyan, #5d76cb)' }}>
                           SMS sendes til: <strong>{candidate.contactInfo.phone}</strong>
                         </Alert>
                       )}

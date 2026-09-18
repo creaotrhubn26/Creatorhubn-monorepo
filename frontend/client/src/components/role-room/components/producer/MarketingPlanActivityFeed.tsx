@@ -37,7 +37,7 @@ const EVENT_VISUALS: Record<ActivityEventKind, {
     icon: VersionIcon, actorBadge: '',
   },
   client_comment: {
-    color: '#67e8f9', bg: 'rgba(34,211,238,0.14)',
+    color: '#93a4dc', bg: 'rgba(93, 118, 203,0.14)',
     icon: CommentIcon, actorBadge: 'Klient',
   },
   team_comment: {

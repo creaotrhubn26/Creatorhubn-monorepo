@@ -242,7 +242,7 @@ const posterSx: React.CSSProperties = {
 };
 
 const badgeOverlaySx: React.CSSProperties = {
-  background: 'rgba(24, 18, 43,0.78)',
+  background: 'rgba(42, 61, 86,0.78)',
   padding: '6px 12px',
   borderRadius: 4,
   fontSize: 12,

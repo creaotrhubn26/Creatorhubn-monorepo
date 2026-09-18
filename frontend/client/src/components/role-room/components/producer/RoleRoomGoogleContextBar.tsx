@@ -593,9 +593,9 @@ export default function RoleRoomGoogleContextBar({
 
     if (connectionState !== 'connected') {
       return {
-        background: 'rgba(59,130,246,0.12)',
-        border: 'rgba(59,130,246,0.28)',
-        color: '#bfdbfe',
+        background: 'rgba(63, 81, 181,0.12)',
+        border: 'rgba(63, 81, 181,0.28)',
+        color: '#c3cbe6',
         label: CONNECTION_STATE_LABELS[connectionState] ?? connectionState,
       };
     }

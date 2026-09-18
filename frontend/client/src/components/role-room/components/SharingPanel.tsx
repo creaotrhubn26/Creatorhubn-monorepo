@@ -36,7 +36,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #00d4ff',
+    outline: '3px solid #5d76cb',
     outlineOffset: 2,
   },
 };
@@ -115,7 +115,7 @@ export function SharingPanel({
     switch (role) {
       case 'admin': return '#ef4444';
       case 'editor': return '#10b981';
-      case 'viewer': return 'var(--role-cyan, #00d4ff)';
+      case 'viewer': return 'var(--role-cyan, #5d76cb)';
       default: return '#6b7280';
     }
   };
@@ -163,7 +163,7 @@ export function SharingPanel({
       title: 'Offentlig',
       description: 'Alle med lenken kan se prosjektet',
       icon: PublicIcon,
-      color: 'var(--role-cyan, #00d4ff)',
+      color: 'var(--role-cyan, #5d76cb)',
       active: false,
     },
   ];
@@ -186,7 +186,7 @@ export function SharingPanel({
           py: { xs: 1.25, sm: 1.5 },
           borderRadius: 2.5,
           border: '1px solid rgba(148,163,184,0.26)',
-          background: 'linear-gradient(120deg, rgba(75, 61, 143,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
+          background: 'linear-gradient(120deg, rgba(75, 61, 143,0.16) 0%, rgba(93, 118, 203,0.1) 52%, rgba(15,23,42,0.22) 100%)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -318,7 +318,7 @@ export function SharingPanel({
       <Card sx={{ bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.24)' }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <LinkIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+            <LinkIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
               Delingslenke
             </Typography>
@@ -347,7 +347,7 @@ export function SharingPanel({
                   borderColor: 'rgba(255,255,255,0.2)',
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
-                  '&:hover': { borderColor: 'var(--role-cyan, #00d4ff)', bgcolor: 'rgba(0,212,255,0.1)' },
+                  '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.1)' },
                   ...focusVisibleStyles,
                 }}
               >

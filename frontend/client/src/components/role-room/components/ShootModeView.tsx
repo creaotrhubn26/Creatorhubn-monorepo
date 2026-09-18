@@ -466,8 +466,8 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
                 color: 'rgba(255,255,255,0.87)',
                 borderColor: 'rgba(255,255,255,0.2)',
                 '&.Mui-selected': {
-                  color: '#00d4ff',
-                  bgcolor: 'rgba(0,212,255,0.1)',
+                  color: '#5d76cb',
+                  bgcolor: 'rgba(93, 118, 203,0.1)',
                 },
               },
             }}
@@ -520,7 +520,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             startIcon={<Add />}
             onClick={() => setQuickAddOpen(true)}
             sx={{
-              bgcolor: '#00d4ff',
+              bgcolor: '#5d76cb',
               color: '#000',
               fontWeight: 600,
               '&:hover': { bgcolor: '#00b8e6' },
@@ -584,7 +584,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ delay: index * 0.02 }}
                   style={{ cursor: 'grab' }}
-                  whileDrag={{ scale: 1.02, cursor: 'grabbing', boxShadow: '0 8px 32px rgba(0,212,255,0.3)' }}
+                  whileDrag={{ scale: 1.02, cursor: 'grabbing', boxShadow: '0 8px 32px rgba(93, 118, 203,0.3)' }}
                 >
                   <ShootModeCard
                     shot={shot}
@@ -633,7 +633,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <LocationOn sx={{ color: '#00d4ff' }} />
+                      <LocationOn sx={{ color: '#5d76cb' }} />
                       <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                         {location?.name || 'Ingen lokasjon'}
                       </Typography>
@@ -641,8 +641,8 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
                         size="small"
                         label={`${locShots.length} shots`}
                         sx={{
-                          bgcolor: 'rgba(0,212,255,0.15)',
-                          color: '#00d4ff',
+                          bgcolor: 'rgba(93, 118, 203,0.15)',
+                          color: '#5d76cb',
                         }}
                       />
                       <Chip
@@ -718,7 +718,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
                 {currentShot.description || `Shot ${currentShotIndex + 1}`}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                <Chip size="small" label={currentShot.shotType} sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff' }} />
+                <Chip size="small" label={currentShot.shotType} sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#5d76cb' }} />
                 <Chip size="small" label={currentShot.cameraAngle} sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#4b3d8f' }} />
                 <Chip size="small" label={currentShot.cameraMovement} sx={{ bgcolor: 'rgba(50, 18, 122,0.15)', color: '#32127a' }} />
               </Box>
@@ -768,7 +768,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <FlashOn sx={{ color: '#00d4ff' }} />
+            <FlashOn sx={{ color: '#5d76cb' }} />
             Quick Mode - Legg til shot
           </Box>
         </DialogTitle>
@@ -829,7 +829,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             variant="contained"
             onClick={handleQuickAdd}
             startIcon={<Add />}
-            sx={{ bgcolor: '#00d4ff', color: '#000' }}
+            sx={{ bgcolor: '#5d76cb', color: '#000' }}
           >
             Legg til
           </Button>
@@ -934,13 +934,13 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
       onClick={onSelect}
       sx={{
         bgcolor: '#1a1a24',
-        border: isActive ? '2px solid #00d4ff' : '1px solid rgba(255,255,255,0.1)',
+        border: isActive ? '2px solid #5d76cb' : '1px solid rgba(255,255,255,0.1)',
         borderRadius: 2,
         cursor: 'pointer',
         transition: 'all 0.2s',
         opacity: status === 'completed' ? 0.7 : 1,
         '&:hover': {
-          borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.3)',
+          borderColor: isActive ? '#5d76cb' : 'rgba(255,255,255,0.3)',
           transform: 'translateY(-2px)',
         },
       }}
@@ -1040,7 +1040,7 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
             size="small"
             icon={<PhotoCamera sx={{ fontSize: 14 }} />}
             label={shot.shotType}
-            sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff', fontSize: '0.7rem' }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#5d76cb', fontSize: '0.7rem' }}
           />
           <Chip
             size="small"
@@ -1181,7 +1181,7 @@ const TimelineShotRow: React.FC<TimelineShotRowProps> = ({
           {shot.description || `Shot ${index + 1}`}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-          <Chip size="small" label={shot.shotType} sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff', fontSize: '0.65rem', height: 20 }} />
+          <Chip size="small" label={shot.shotType} sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#5d76cb', fontSize: '0.65rem', height: 20 }} />
           <Chip size="small" label={shot.cameraMovement} sx={{ bgcolor: 'rgba(50, 18, 122,0.15)', color: '#32127a', fontSize: '0.65rem', height: 20 }} />
         </Box>
       </Box>

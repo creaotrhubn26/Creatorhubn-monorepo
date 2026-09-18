@@ -105,7 +105,7 @@ function LandingExitIntentImpl({ enabled, onStartClick }: LandingExitIntentProps
       aria-labelledby="exit-intent-title"
       PaperProps={{
         sx: {
-          bgcolor: 'rgba(10, 5, 21, 0.96)',
+          bgcolor: 'rgba(27, 18, 44, 0.96)',
           color: '#e2e8f0',
           border: '1px solid rgba(93, 118, 203, 0.35)',
           borderRadius: 3,

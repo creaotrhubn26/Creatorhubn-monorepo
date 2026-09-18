@@ -61,7 +61,7 @@ const EVENT_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, { txt: string; color: string; bg: string }> = {
   delivered: { txt: 'SENDT', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
-  pending: { txt: 'PÅ VEI', color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
+  pending: { txt: 'PÅ VEI', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.18)' },
   retrying: { txt: 'PRØVER PÅ NYTT', color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
   failed: { txt: 'FEILET', color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
 };
@@ -255,7 +255,7 @@ export default function ClientTiktokCrmEventsPanel({
                       ) : ev.delivery_status === 'failed' ? (
                         <ErrorOutlineOutlinedIcon sx={{ color: '#f87171', fontSize: 20 }} />
                       ) : (
-                        <CircularProgress size={16} sx={{ color: '#60a5fa' }} />
+                        <CircularProgress size={16} sx={{ color: '#93a4dc' }} />
                       )}
                       <Box sx={{ flex: 1 }}>
                         <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>

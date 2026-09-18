@@ -38,20 +38,20 @@ function SpotlightIcon({ size, style, title }: { size: number; style?: CSSProper
       <title>{title}</title>
       <defs>
         <linearGradient id={gradientId} x1="50%" y1="0%" x2="50%" y2="100%">
-          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+          <stop offset="0%" stopColor="#5d76cb" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#5d76cb" stopOpacity="0" />
         </linearGradient>
       </defs>
       {/* Beam */}
       <path d="M26 10 L38 10 L56 56 L8 56 Z" fill={`url(#${gradientId})`} opacity="0.55" />
       {/* Ground ellipse */}
-      <ellipse cx="32" cy="56" rx="22" ry="3.2" fill="#22d3ee" opacity="0.25" />
+      <ellipse cx="32" cy="56" rx="22" ry="3.2" fill="#5d76cb" opacity="0.25" />
       {/* Lamp body */}
-      <rect x="24" y="6" width="16" height="10" rx="3" fill="#0f172a" stroke="#22d3ee" strokeWidth="2" />
+      <rect x="24" y="6" width="16" height="10" rx="3" fill="#0f172a" stroke="#5d76cb" strokeWidth="2" />
       {/* Lens glow */}
-      <rect x="26" y="14" width="12" height="3" rx="1.2" fill="#22d3ee" />
+      <rect x="26" y="14" width="12" height="3" rx="1.2" fill="#5d76cb" />
       {/* Top handle */}
-      <rect x="30" y="2" width="4" height="5" rx="1.5" fill="#22d3ee" />
+      <rect x="30" y="2" width="4" height="5" rx="1.5" fill="#5d76cb" />
     </svg>
   );
 }
@@ -150,7 +150,7 @@ export const ROLE_ROOM_TIERS: Record<
     name: 'Role Room Spotlight',
     shortName: 'Spotlight',
     tagline: 'Kom i gang med kundeanalyse og feed-planlegging.',
-    accentHex: 'var(--role-cyan, #22d3ee)',
+    accentHex: 'var(--role-cyan, #5d76cb)',
     level: 1,
   },
   headliner: {

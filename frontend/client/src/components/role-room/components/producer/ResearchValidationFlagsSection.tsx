@@ -34,7 +34,7 @@ type Flag = NonNullable<RoleRoomAgentProducerBootstrapResult['validationFlags']>
 const SEVERITY_META: Record<Flag['severity'], { label: string; color: string; bg: string; Icon: React.ElementType }> = {
   critical: { label: 'Kritisk', color: '#f87171', bg: 'rgba(239,68,68,0.12)', Icon: CriticalIcon },
   warning: { label: 'Advarsel', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', Icon: WarningIcon },
-  info: { label: 'Info', color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', Icon: InfoIcon },
+  info: { label: 'Info', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.08)', Icon: InfoIcon },
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -147,7 +147,7 @@ const ResearchValidationFlagsSection: React.FC<ResearchValidationFlagsSectionPro
   return (
     <Box sx={{ mb: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-        <ShieldIcon sx={{ color: grouped.critical.length > 0 ? '#f87171' : grouped.warning.length > 0 ? '#fbbf24' : '#60a5fa', fontSize: 18 }} />
+        <ShieldIcon sx={{ color: grouped.critical.length > 0 ? '#f87171' : grouped.warning.length > 0 ? '#fbbf24' : '#93a4dc', fontSize: 18 }} />
         <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
           Kvalitets-flagg
         </Typography>
@@ -188,7 +188,7 @@ const ResearchValidationFlagsSection: React.FC<ResearchValidationFlagsSectionPro
               }
               sx={{
                 textTransform: 'none',
-                color: '#60a5fa',
+                color: '#93a4dc',
                 fontSize: '0.78rem',
                 alignSelf: 'flex-start',
                 px: 0.6,

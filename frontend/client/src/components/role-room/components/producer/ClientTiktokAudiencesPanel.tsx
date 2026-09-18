@@ -237,8 +237,8 @@ export default function ClientTiktokAudiencesPanel({
                           label={a.status === 'ready' || a.status === 'READY' ? 'KLAR' : a.status === 'processing' || a.status === 'PROCESSING' ? 'BEHANDLES' : a.status}
                           size="small"
                           sx={{
-                            bgcolor: (a.status === 'ready' || a.status === 'READY') ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)',
-                            color: (a.status === 'ready' || a.status === 'READY') ? '#34d399' : '#60a5fa',
+                            bgcolor: (a.status === 'ready' || a.status === 'READY') ? 'rgba(52,211,153,0.18)' : 'rgba(147, 164, 220,0.18)',
+                            color: (a.status === 'ready' || a.status === 'READY') ? '#34d399' : '#93a4dc',
                             fontWeight: 700,
                             fontSize: '0.68rem',
                           }}

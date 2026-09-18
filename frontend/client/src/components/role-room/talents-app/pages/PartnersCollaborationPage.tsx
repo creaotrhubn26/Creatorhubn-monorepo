@@ -79,7 +79,7 @@ import { palette, radius } from '../theme';
 // Helpers
 // ──────────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = ['#4b3d8f', '#ec4899', '#4b3d8f', '#f59e0b', '#10b981', 'var(--role-cyan, #7dd3fc)', '#fb7185'];
+const AVATAR_COLORS = ['#4b3d8f', '#ec4899', '#4b3d8f', '#f59e0b', '#10b981', 'var(--role-cyan, #93a4dc)', '#fb7185'];
 const colorForKey = (key: string) => AVATAR_COLORS[hashString(key) % AVATAR_COLORS.length];
 function hashString(s: string): number {
   let h = 0;
@@ -107,7 +107,7 @@ function accessChip(access: PartnerOverviewRow['access_level']) {
     full:      { label: 'Full tilgang',     fg: '#4ade80', Icon: CheckCircleIcon },
     limited:   { label: 'Begrenset',        fg: '#fbbf24', Icon: HourglassEmptyIcon },
     custom:    { label: 'Tilpasset',        fg: '#93a4dc', Icon: ShieldIcon },
-    view_only: { label: 'Kun visning',      fg: 'var(--role-cyan, #7dd3fc)', Icon: VisibilityOutlinedIcon },
+    view_only: { label: 'Kun visning',      fg: 'var(--role-cyan, #93a4dc)', Icon: VisibilityOutlinedIcon },
   };
   const { label, fg, Icon } = map[access];
   return (

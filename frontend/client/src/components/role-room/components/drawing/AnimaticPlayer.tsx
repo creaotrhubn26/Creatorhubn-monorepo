@@ -954,7 +954,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         sx={{
           p: compact ? 1 : 1.5,
           borderRadius: 1.5,
-          bgcolor: 'rgba(16, 11, 30,0.92)',
+          bgcolor: 'rgba(42, 49, 82,0.92)',
           border: '1px solid rgba(255,255,255,0.06)',
         }}
       >
@@ -978,7 +978,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       sx={{
         p: compact ? 1 : 1.5,
         borderRadius: 1.5,
-        bgcolor: 'rgba(16, 11, 30,0.92)',
+        bgcolor: 'rgba(42, 49, 82,0.92)',
         border: '1px solid rgba(255,255,255,0.06)',
         outline: 'none',
         '&:focus-visible': { boxShadow: '0 0 0 2px rgba(195, 203, 230,0.4)' },

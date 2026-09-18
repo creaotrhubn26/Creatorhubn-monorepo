@@ -366,8 +366,8 @@ function CandidateManagementPanelInner({
   const roleTabAccent = 'var(--role-accent, #5d76cb)';
   const roleTabAccentHover = '#5d76cb';
   const roleTabAccentSoft = 'rgba(93, 118, 203,0.18)';
-  const roleSurface = 'rgba(24, 18, 43,0.84)';
-  const roleSurfaceMuted = 'rgba(33, 28, 59,0.72)';
+  const roleSurface = 'rgba(42, 61, 86,0.84)';
+  const roleSurfaceMuted = 'rgba(60, 78, 109,0.72)';
   const roleBorder = 'var(--role-border, rgba(93, 118, 203,0.32))';
   const roleText = '#eef1fb';
   const roleTextMuted = 'rgba(224, 219, 250,0.82)';
@@ -604,7 +604,7 @@ function CandidateManagementPanelInner({
       case 'selected': return '#5d76cb';
       case 'shortlist': return '#ffb800';
       case 'rejected': return '#ef4444';
-      case 'requested': return 'var(--role-cyan, #00d4ff)';
+      case 'requested': return 'var(--role-cyan, #5d76cb)';
       default: return '#6b7280';
     }
   };
@@ -1615,7 +1615,7 @@ function CandidateManagementPanelInner({
       letter-spacing: 0.5px;
     }
     .badge-pending { background: #f59e0b; color: white; }
-    .badge-requested { background: #00d4ff; color: white; }
+    .badge-requested { background: #5d76cb; color: white; }
     .badge-shortlist { background: #5d76cb; color: white; }
     .badge-selected { background: #10b981; color: white; }
     .badge-confirmed { background: #10b981; color: white; }
@@ -1887,14 +1887,14 @@ function CandidateManagementPanelInner({
                   if (!isFromPartnership || !agencyName) return null;
                   return (
                     <Chip
-                      icon={<HandshakeOutlinedIcon sx={{ color: '#38bdf8 !important', fontSize: '0.9rem' }} />}
+                      icon={<HandshakeOutlinedIcon sx={{ color: '#5d76cb !important', fontSize: '0.9rem' }} />}
                       label={`Fra ${agencyName}`}
                       size="small"
                       sx={{
                         height: 22,
-                        bgcolor: 'rgba(56,189,248,0.14)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56,189,248,0.32)',
+                        bgcolor: 'rgba(93, 118, 203,0.14)',
+                        color: '#5d76cb',
+                        border: '1px solid rgba(93, 118, 203,0.32)',
                         fontWeight: 600,
                       }}
                     />
@@ -1958,7 +1958,7 @@ function CandidateManagementPanelInner({
         border: `1px solid ${roleBorder}`,
         backgroundColor: roleSurface,
         backgroundImage: `
-          linear-gradient(160deg, rgba(33, 28, 59,0.84) 0%, rgba(16, 11, 30,0.92) 62%, rgba(16, 11, 30,0.95) 100%)
+          linear-gradient(160deg, rgba(60, 78, 109,0.84) 0%, rgba(42, 49, 82,0.92) 62%, rgba(42, 49, 82,0.95) 100%)
         `,
       }}
     >
@@ -3032,7 +3032,7 @@ function CandidateManagementPanelInner({
                 zIndex: 12,
                 border: `1px solid ${roleBorder}`,
                 borderRadius: 1.5,
-                bgcolor: 'rgba(24, 18, 43,0.94)',
+                bgcolor: 'rgba(42, 61, 86,0.94)',
                 backdropFilter: 'blur(8px)',
                 p: 1.25,
                 mb: 2,
@@ -3527,7 +3527,7 @@ function CandidateManagementPanelInner({
                             )}
                             {smsActive && (
                               <Tooltip title="Mottar audition-SMS">
-                                <SmsOutlinedIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #7dd3fc)' }} />
+                                <SmsOutlinedIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #93a4dc)' }} />
                               </Tooltip>
                             )}
                             {emailActive && (

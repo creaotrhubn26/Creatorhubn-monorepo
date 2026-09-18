@@ -196,7 +196,7 @@ function MeetingCard({ m, past = false }: { m: RoleRoomMeeting; past?: boolean }
   const [copied, setCopied] = useState(false);
   const notesReady = m.notesStatus === 'ready' && Boolean(m.notes);
   return (
-    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: { xs: 1.25, md: 1.5 }, opacity: past ? 0.85 : 1 }}>
+    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: { xs: 1.25, md: 1.5 }, opacity: past ? 0.85 : 1 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ color: '#f1f5f9', fontWeight: 800, fontSize: '0.95rem' }}>{m.title}</Typography>

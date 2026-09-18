@@ -239,7 +239,7 @@ export default function CustomerSuccessDashboard() {
             { label: 'Snitt-score', value: data.avgScore, color: palette.accent },
             { label: 'Røde', value: data.tierCounts.red, color: '#f87171' },
             { label: 'Renewals 30d', value: data.upcomingRenewals30d, color: '#fbbf24' },
-            { label: 'Åpne follow-ups', value: data.openFollowups, color: '#60a5fa' },
+            { label: 'Åpne follow-ups', value: data.openFollowups, color: '#93a4dc' },
             { label: 'Churn-signaler 30d', value: data.recentChurnSignals, color: '#fb923c' },
           ].map((k) => (
             <Box key={k.label} sx={{

@@ -1613,8 +1613,8 @@ const DEFAULT_IDENTITY: BrandingIdentity = {
 const DEFAULT_COLORS: BrandingColors = {
   primary: '#5d76cb',
   secondary: '#5d76cb',
-  accent: '#00d4ff',
-  info: '#3b82f6',
+  accent: '#5d76cb',
+  info: '#3f51b5',
   success: '#10b981',
   warning: '#f59e0b',
   error: '#ef4444',

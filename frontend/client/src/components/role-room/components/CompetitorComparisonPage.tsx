@@ -254,7 +254,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
             { Icon: ShieldIcon, title: 'GDPR i EU/EØS', text: 'Data lagres i Europa. Klart definert databehandler-avtale.' },
             { Icon: AutoAwesomeIcon, title: 'Integrert AI', text: 'Casting-agent foreslår kandidater, sender invitasjoner og oppsummerer pipelinen.' },
           ].map((v) => (
-            <Card key={v.title} sx={{ bgcolor: 'rgba(10, 5, 21,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
+            <Card key={v.title} sx={{ bgcolor: 'rgba(27, 18, 44,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
               <CardContent>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                   <v.Icon sx={{ color: '#93a4dc' }} />
@@ -280,10 +280,10 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
             severity="info"
             sx={{
               mb: 2,
-              bgcolor: 'rgba(59,130,246,0.08)',
+              bgcolor: 'rgba(63, 81, 181,0.08)',
               color: 'rgba(203,213,225,0.92)',
-              border: '1px solid rgba(59,130,246,0.24)',
-              '& .MuiAlert-icon': { color: '#60a5fa' },
+              border: '1px solid rgba(63, 81, 181,0.24)',
+              '& .MuiAlert-icon': { color: '#93a4dc' },
             }}
           >
             Vi gjør vårt beste for å holde sammenligningen oppdatert. {config.name}-statuser baseres på offentlig
@@ -292,7 +292,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
           <TableContainer
             component={Box}
             sx={{
-              bgcolor: 'rgba(10, 5, 21,0.42)',
+              bgcolor: 'rgba(27, 18, 44,0.42)',
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.16)',
             }}
@@ -383,7 +383,7 @@ function AlternativesIndexView() {
             <Card
               key={c.key}
               sx={{
-                bgcolor: 'rgba(10, 5, 21,0.42)',
+                bgcolor: 'rgba(27, 18, 44,0.42)',
                 border: '1px solid rgba(148,163,184,0.16)',
                 transition: 'border-color 0.2s',
                 '&:hover': { borderColor: 'rgba(147, 164, 220,0.48)' },

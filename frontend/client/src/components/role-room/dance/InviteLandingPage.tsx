@@ -355,7 +355,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <Paper
       elevation={0}
       sx={{
-        bgcolor: 'rgba(16, 11, 30,0.78)',
+        bgcolor: 'rgba(42, 49, 82,0.78)',
         border: `1px solid ${PANEL_BORDER}`,
         borderRadius: 3,
         p: { xs: 3, md: 5 },

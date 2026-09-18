@@ -190,7 +190,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             <Chip
               size="small"
               label={`${stats.rehearsalsCount} prøver`}
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.15)', color: danceFlowColors.infoSoft }}
+              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(147, 164, 220,0.15)', color: danceFlowColors.infoSoft }}
             />
             <Chip
               size="small"
@@ -275,9 +275,9 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                     sx={{
                       height: 18,
                       fontSize: 9.5,
-                      bgcolor: 'rgba(34,211,238,0.12)',
-                      color: '#67e8f9',
-                      border: '1px solid rgba(34,211,238,0.3)',
+                      bgcolor: 'rgba(93, 118, 203,0.12)',
+                      color: '#93a4dc',
+                      border: '1px solid rgba(93, 118, 203,0.3)',
                     }}
                   />
                 ))}

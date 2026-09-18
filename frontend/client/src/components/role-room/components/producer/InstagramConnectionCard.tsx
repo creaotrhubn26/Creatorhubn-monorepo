@@ -182,7 +182,7 @@ export default function InstagramConnectionCard({
                 textTransform: 'none',
                 fontSize: '0.82rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang
@@ -303,7 +303,7 @@ export default function InstagramConnectionCard({
               fontWeight: 600,
               color: 'rgba(226,232,240,0.7)',
               fontSize: '0.74rem',
-              '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.06)' },
             }}
           >
             Koble en til

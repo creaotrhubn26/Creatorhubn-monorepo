@@ -52,9 +52,9 @@ const PALETTE: Record<SaveStatus, { bg: string; fg: string; icon: string }> = {
     icon: '#10b981',
   },
   saving: {
-    bg: 'rgba(96,165,250,0.14)',
+    bg: 'rgba(147, 164, 220,0.14)',
     fg: '#93c5fd',
-    icon: '#60a5fa',
+    icon: '#93a4dc',
   },
   unsaved: {
     bg: 'rgba(245,158,11,0.12)',

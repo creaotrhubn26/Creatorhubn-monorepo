@@ -934,7 +934,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   label={workspaceSummary.companyName}
                   variant="outlined"
                   sx={{
-                    borderColor: 'rgba(14,165,233,0.25)',
+                    borderColor: 'rgba(63, 81, 181,0.25)',
                     color: 'rgba(17,24,39,0.72)',
                   }}
                 />

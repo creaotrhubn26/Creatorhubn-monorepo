@@ -65,7 +65,7 @@ const PURPLE_LIGHT = danceFlowColors.lavender;
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const PALETTE = [
   danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, danceFlowColors.lavenderDark, danceFlowColors.pinkAccent,
-  '#06b6d4', '#f97316', '#84cc16', '#5d76cb', '#f43f5e',
+  '#3f51b5', '#f97316', '#84cc16', '#5d76cb', '#f43f5e',
 ];
 
 export interface RehearsalPlannerConnectedProps {

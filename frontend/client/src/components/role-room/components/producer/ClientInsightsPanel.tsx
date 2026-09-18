@@ -35,7 +35,7 @@ const palette = {
   textMuted: '#94a3b8',
   accent: '#93a4dc',
   ga4: '#fbbf24',
-  ads: '#60a5fa',
+  ads: '#93a4dc',
   gsc: '#34d399',
   accentGradient: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
 };

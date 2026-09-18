@@ -56,7 +56,7 @@ const PURPLE_LIGHT  = danceFlowColors.lavender;
 const PURPLE_GLASS  = 'rgba(93, 118, 203,0.10)';
 const TEXT_DIM      = 'rgba(229,231,235,0.65)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.45)';
-const PANEL_BG      = 'rgba(16, 11, 30,0.62)';
+const PANEL_BG      = 'rgba(42, 49, 82,0.62)';
 const PANEL_BORDER  = 'rgba(147, 164, 220,0.18)';
 
 const sectionLabel: React.CSSProperties = {

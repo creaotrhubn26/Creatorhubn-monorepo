@@ -424,7 +424,7 @@ export default function MarketingCockpitTab() {
           onClick={() => void load()}
           disabled={loading}
           data-testid="cockpit-refresh"
-          sx={{ color: '#7dd3fc' }}
+          sx={{ color: '#93a4dc' }}
         >
           {loading ? 'Henter…' : 'Refresh'}
         </Button>
@@ -505,7 +505,7 @@ export default function MarketingCockpitTab() {
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' } }}>
             <Card sx={PANEL_SX} data-testid="panel-profile">
               <CardContent sx={{ p: 2 }}>
-                <SectionHeader icon={<FacebookIcon sx={{ color: '#60a5fa', fontSize: 20 }} />}
+                <SectionHeader icon={<FacebookIcon sx={{ color: '#93a4dc', fontSize: 20 }} />}
                   title="Facebook Page" sectionOk={data.profile.ok} testid="profile" />
                 {!data.profile.ok ? <ErrorBody section={data.profile} /> : data.profile.data && (
                   <Stack spacing={0.5}>
@@ -515,7 +515,7 @@ export default function MarketingCockpitTab() {
                     </Typography>
                     {data.profile.data.website && (
                       <MuiLink href={data.profile.data.website} target="_blank" rel="noopener"
-                        sx={{ color: '#7dd3fc', fontSize: '0.82rem' }} data-testid="profile-website">
+                        sx={{ color: '#93a4dc', fontSize: '0.82rem' }} data-testid="profile-website">
                         {data.profile.data.website}
                       </MuiLink>
                     )}
@@ -580,7 +580,7 @@ export default function MarketingCockpitTab() {
 
             <Card sx={PANEL_SX} data-testid="panel-leads">
               <CardContent sx={{ p: 2 }}>
-                <SectionHeader icon={<CampaignIcon sx={{ color: '#22d3ee', fontSize: 20 }} />}
+                <SectionHeader icon={<CampaignIcon sx={{ color: '#5d76cb', fontSize: 20 }} />}
                   title="Lead-former" sectionOk={data.leads.ok} testid="leads" />
                 {!data.leads.ok ? <ErrorBody section={data.leads} /> :
                   data.leads.data && (Array.isArray(data.leads.data.forms) ? data.leads.data.forms : []).length === 0 ? (

@@ -329,7 +329,7 @@ export default function SocialInboxPanel(): React.ReactElement {
               data-testid="inbox-event-wrap"
               sx={{
                 borderRadius: 1.4,
-                bgcolor: e.isRead ? 'rgba(15,23,42,0.4)' : 'rgba(34,211,238,0.06)',
+                bgcolor: e.isRead ? 'rgba(15,23,42,0.4)' : 'rgba(93, 118, 203,0.06)',
                 border: '1px solid rgba(148,163,184,0.18)',
                 opacity: e.isRead ? 0.85 : 1,
               }}
@@ -396,7 +396,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                         e.platform === 'instagram'
                           ? 'rgba(236,72,153,0.18)'
                           : e.platform === 'facebook_page'
-                            ? 'rgba(59,130,246,0.18)'
+                            ? 'rgba(63, 81, 181,0.18)'
                             : e.platform === 'linkedin'
                               ? 'rgba(10,102,194,0.22)'
                               : e.platform === 'youtube'
@@ -408,7 +408,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                           : e.platform === 'facebook_page'
                             ? '#93c5fd'
                             : e.platform === 'linkedin'
-                              ? 'var(--role-cyan, #7dd3fc)'
+                              ? 'var(--role-cyan, #93a4dc)'
                               : e.platform === 'youtube'
                                 ? '#fca5a5'
                                 : '#cbd5e1',
@@ -470,10 +470,10 @@ export default function SocialInboxPanel(): React.ReactElement {
                       disabled={draftState?.loading}
                       data-testid="inbox-draft-reply"
                       aria-label="Foreslå svar"
-                      sx={{ color: 'rgba(34,211,238,0.9)' }}
+                      sx={{ color: 'rgba(93, 118, 203,0.9)' }}
                     >
                       {draftState?.loading ? (
-                        <CircularProgress size={16} sx={{ color: 'rgba(34,211,238,0.9)' }} />
+                        <CircularProgress size={16} sx={{ color: 'rgba(93, 118, 203,0.9)' }} />
                       ) : (
                         <DraftReplyIcon fontSize="small" />
                       )}
@@ -553,10 +553,10 @@ export default function SocialInboxPanel(): React.ReactElement {
                         sx={{
                           textTransform: 'none',
                           fontSize: '0.74rem',
-                          bgcolor: 'rgba(34,211,238,0.18)',
-                          color: 'var(--role-cyan, #22d3ee)',
+                          bgcolor: 'rgba(93, 118, 203,0.18)',
+                          color: 'var(--role-cyan, #5d76cb)',
                           boxShadow: 'none',
-                          '&:hover': { bgcolor: 'rgba(34,211,238,0.28)', boxShadow: 'none' },
+                          '&:hover': { bgcolor: 'rgba(93, 118, 203,0.28)', boxShadow: 'none' },
                         }}
                       >
                         {draftState.copied ? 'Kopiert!' : 'Kopier'}

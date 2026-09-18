@@ -145,7 +145,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
   const donutSegments = [
     { label: 'Ikke startet', value: 0, color: 'rgba(255,255,255,0.75)' },
     { label: 'Påbegynt', value: 0, color: '#f59e0b' },
-    { label: 'Levert', value: data?.reviewQueue.length ?? 0, color: '#38bdf8' },
+    { label: 'Levert', value: data?.reviewQueue.length ?? 0, color: '#5d76cb' },
     { label: 'Vurdert', value: 0, color: '#10b981' },
   ];
   const donutTotal = donutSegments.reduce((a, s) => a + s.value, 0);
@@ -196,7 +196,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
         <Box sx={{
           position: 'relative', overflow: 'hidden', borderRadius: 3, minHeight: 210, display: 'flex', alignItems: 'center',
           border: '1px solid rgba(93, 118, 203,0.28)',
-          backgroundImage: 'linear-gradient(90deg, rgba(10, 5, 21,0.94) 0%, rgba(10, 5, 21,0.62) 46%, rgba(10, 5, 21,0.12) 100%), url(/trr-edu-hero-bg.png)',
+          backgroundImage: 'linear-gradient(90deg, rgba(27, 18, 44,0.94) 0%, rgba(27, 18, 44,0.62) 46%, rgba(27, 18, 44,0.12) 100%), url(/trr-edu-hero-bg.png)',
           backgroundSize: 'cover', backgroundPosition: 'center right',
         }}>
           <Box sx={{ p: { xs: 3, md: 4 }, maxWidth: 620 }}>

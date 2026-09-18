@@ -269,7 +269,7 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
             <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }} />
           ) : null}
           {item.musicalKey ? (
-            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
+            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoSoft }} />
           ) : null}
           {item.durationSec ? (
             <Chip
@@ -491,7 +491,7 @@ const GrantsStatStrip: React.FC<GrantsStatProps> = ({ list }) => {
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="grants-stat-strip">
       <Chip size="small" label={`Utkast: ${stats.drafts}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
-      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoLight }} />
+      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoLight }} />
       <Chip size="small" label={`Innvilget: ${stats.awarded}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       <Chip size="small" label={`Avslått: ${stats.rejected}`} sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorPrimary }} />
       {stats.totalAwardedKr > 0 ? (
@@ -630,7 +630,7 @@ const InvoicesStatStrip: React.FC<{ list: ops.DanceInvoice[] }> = ({ list }) => 
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="invoices-stat-strip">
       <Chip size="small" label={`Utkast: ${stats.draft}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
-      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoLight }} />
+      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoLight }} />
       <Chip size="small" label={`Betalt: ${stats.paid}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {stats.overdue > 0 ? (
         <Chip

@@ -70,7 +70,7 @@ const COVERAGE_BUCKETS = [
 const STATUS_META = {
   missing: { label: 'missing', color: '#f87171', bg: 'rgba(248,113,113,0.14)', border: 'rgba(248,113,113,0.35)' },
   planned: { label: 'planned', color: '#fbbf24', bg: 'rgba(251,191,36,0.14)', border: 'rgba(251,191,36,0.35)' },
-  recorded: { label: 'recorded', color: '#60a5fa', bg: 'rgba(96,165,250,0.14)', border: 'rgba(96,165,250,0.35)' },
+  recorded: { label: 'recorded', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.14)', border: 'rgba(147, 164, 220,0.35)' },
   reviewed: { label: 'reviewed', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.14)', border: 'rgba(147, 164, 220,0.35)' },
   selected: { label: 'selected', color: '#34d399', bg: 'rgba(52,211,153,0.14)', border: 'rgba(52,211,153,0.35)' },
 } as const;
@@ -88,7 +88,7 @@ const formatTakeLabel = (take: Take): string => `T${take.takeNumber || '?'}`;
 
 const SYNC_STATUS_META: Record<CoverageReviewSyncStatus, { label: string; color: string; bg: string; border: string }> = {
   idle: { label: 'Ikke synket', color: '#9ca3af', bg: 'rgba(156,163,175,0.1)', border: 'rgba(156,163,175,0.24)' },
-  loading: { label: 'Laster server', color: '#93c5fd', bg: 'rgba(96,165,250,0.1)', border: 'rgba(96,165,250,0.28)' },
+  loading: { label: 'Laster server', color: '#93c5fd', bg: 'rgba(147, 164, 220,0.1)', border: 'rgba(147, 164, 220,0.28)' },
   saving: { label: 'Lagrer', color: '#fde68a', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)' },
   synced: { label: 'Server synket', color: '#86efac', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)' },
   local_only: { label: 'Lokal backup', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)' },
@@ -186,7 +186,7 @@ export const CoverageReviewWorkspace = ({
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'flex-start', lg: 'center' }}>
           <Box>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-              <VideoVillageIcon sx={{ fontSize: 18, color: '#60a5fa' }} />
+              <VideoVillageIcon sx={{ fontSize: 18, color: '#93a4dc' }} />
               <Typography sx={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>
                 Scene-centric review workspace
               </Typography>
@@ -210,7 +210,7 @@ export const CoverageReviewWorkspace = ({
             )}
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Chip label={`${sceneTakes.length} takes`} sx={{ bgcolor: 'rgba(96,165,250,0.12)', color: '#93c5fd' }} />
+            <Chip label={`${sceneTakes.length} takes`} sx={{ bgcolor: 'rgba(147, 164, 220,0.12)', color: '#93c5fd' }} />
             <Chip label={`${reviewedTakeCount} reviewed`} sx={{ bgcolor: 'rgba(147, 164, 220,0.12)', color: '#c3cbe6' }} />
             <Chip label={`${selectedTakeCount} selected`} sx={{ bgcolor: 'rgba(52,211,153,0.12)', color: '#86efac' }} />
             <Chip
@@ -266,9 +266,9 @@ export const CoverageReviewWorkspace = ({
                           minWidth: 92,
                           height: 26,
                           fontSize: 10,
-                          color: shotLineCoverage[selectedShot.id]?.dialogueIds.includes(line.id) ? '#86efac' : '#bfdbfe',
-                          border: '1px solid rgba(96,165,250,0.22)',
-                          bgcolor: 'rgba(59,130,246,0.06)',
+                          color: shotLineCoverage[selectedShot.id]?.dialogueIds.includes(line.id) ? '#86efac' : '#c3cbe6',
+                          border: '1px solid rgba(147, 164, 220,0.22)',
+                          bgcolor: 'rgba(63, 81, 181,0.06)',
                         }}
                       >
                         {shotLineCoverage[selectedShot.id]?.dialogueIds.includes(line.id) ? 'Fjern line' : 'Cover'}
@@ -311,8 +311,8 @@ export const CoverageReviewWorkspace = ({
                     onClick={() => onSelectShot(shot)}
                     sx={{
                       color: active ? '#fff' : '#cbd5e1',
-                      bgcolor: active ? 'rgba(59,130,246,0.24)' : 'rgba(255,255,255,0.04)',
-                      border: active ? '1px solid rgba(96,165,250,0.65)' : '1px solid #252d3d',
+                      bgcolor: active ? 'rgba(63, 81, 181,0.24)' : 'rgba(255,255,255,0.04)',
+                      border: active ? '1px solid rgba(147, 164, 220,0.65)' : '1px solid #252d3d',
                       fontSize: 10,
                     }}
                   >
@@ -335,14 +335,14 @@ export const CoverageReviewWorkspace = ({
                     sx={{
                       p: 1.5,
                       borderRadius: '14px',
-                      bgcolor: selectedShot?.id === take.shotId ? 'rgba(59,130,246,0.08)' : 'rgba(15,23,42,0.72)',
-                      border: selectedShot?.id === take.shotId ? '1px solid rgba(96,165,250,0.35)' : '1px solid #1e2536',
+                      bgcolor: selectedShot?.id === take.shotId ? 'rgba(63, 81, 181,0.08)' : 'rgba(15,23,42,0.72)',
+                      border: selectedShot?.id === take.shotId ? '1px solid rgba(147, 164, 220,0.35)' : '1px solid #1e2536',
                     }}
                   >
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
                       <Box>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Box sx={{ width: 32, height: 32, borderRadius: '10px', bgcolor: 'rgba(59,130,246,0.16)', display: 'grid', placeItems: 'center' }}>
+                          <Box sx={{ width: 32, height: 32, borderRadius: '10px', bgcolor: 'rgba(63, 81, 181,0.16)', display: 'grid', placeItems: 'center' }}>
                             <PlayIcon sx={{ color: '#93c5fd', fontSize: 17 }} />
                           </Box>
                           <Box>
@@ -415,9 +415,9 @@ export const CoverageReviewWorkspace = ({
                         sx={{
                           height: 28,
                           fontSize: 10,
-                          color: review.sentToPost ? '#86efac' : '#bfdbfe',
-                          bgcolor: review.sentToPost ? 'rgba(52,211,153,0.12)' : 'rgba(59,130,246,0.08)',
-                          border: review.sentToPost ? '1px solid rgba(52,211,153,0.28)' : '1px solid rgba(59,130,246,0.24)',
+                          color: review.sentToPost ? '#86efac' : '#c3cbe6',
+                          bgcolor: review.sentToPost ? 'rgba(52,211,153,0.12)' : 'rgba(63, 81, 181,0.08)',
+                          border: review.sentToPost ? '1px solid rgba(52,211,153,0.28)' : '1px solid rgba(63, 81, 181,0.24)',
                         }}
                       >
                         Send til editor
@@ -520,7 +520,7 @@ const DecisionButton = ({
   active,
   onClick,
   testId,
-  selectedColor = '#60a5fa',
+  selectedColor = '#93a4dc',
 }: {
   label: string;
   active: boolean;
@@ -537,9 +537,9 @@ const DecisionButton = ({
       px: 1,
       fontSize: 10,
       color: active ? selectedColor : '#9ca3af',
-      bgcolor: active ? 'rgba(96,165,250,0.13)' : 'rgba(255,255,255,0.035)',
+      bgcolor: active ? 'rgba(147, 164, 220,0.13)' : 'rgba(255,255,255,0.035)',
       border: active ? `1px solid ${selectedColor}66` : '1px solid #252d3d',
-      '&:hover': { bgcolor: 'rgba(96,165,250,0.16)' },
+      '&:hover': { bgcolor: 'rgba(147, 164, 220,0.16)' },
     }}
   >
     {label}
@@ -569,11 +569,11 @@ const EmptyState = ({ label }: { label: string }) => (
 
 const textFieldSx = {
   '& .MuiInputBase-root': {
-    bgcolor: 'rgba(10, 5, 21,0.72)',
+    bgcolor: 'rgba(27, 18, 44,0.72)',
     color: '#e5e7eb',
     fontSize: 12,
   },
   '& .MuiOutlinedInput-notchedOutline': { borderColor: '#253044' },
-  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#3f51b5' },
   '& .MuiInputBase-input::placeholder': { color: '#64748b', opacity: 1 },
 };

@@ -42,8 +42,8 @@ export const danceFlowColors = {
   warning: '#f59e0b', //         alias for amber — semantic
 
   // Info/blue (info-tilstander, lenker, sendt-badges)
-  info: '#3b82f6', //            11× — primær info (blue-500)
-  infoLight: '#60a5fa', //       15× — info-aksent + lenker (blue-400)
+  info: '#3f51b5', //            11× — primær info (blue-500)
+  infoLight: '#93a4dc', //       15× — info-aksent + lenker (blue-400)
   infoSoft: '#93c5fd', //         6× — info-bakgrunn (blue-300)
 
   // Pink-aksent (talents/agency-badges, highlights)

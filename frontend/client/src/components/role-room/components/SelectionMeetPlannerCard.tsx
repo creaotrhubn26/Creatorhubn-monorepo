@@ -161,7 +161,7 @@ export default function SelectionMeetPlannerCard({
           <Chip
             size="small"
             label={scheduleHint}
-            sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+            sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
           />
         ) : null}
       </Stack>
@@ -227,12 +227,12 @@ export default function SelectionMeetPlannerCard({
         <Box
           sx={{
             borderRadius: 1.15,
-            border: '1px solid rgba(96,165,250,0.22)',
-            bgcolor: 'rgba(10, 5, 21,0.34)',
+            border: '1px solid rgba(147, 164, 220,0.22)',
+            bgcolor: 'rgba(27, 18, 44,0.34)',
             p: compact ? 0.68 : 0.75,
           }}
         >
-          <Typography sx={{ color: '#bfdbfe', fontWeight: 700, fontSize: compact ? '0.66rem' : '0.7rem' }}>
+          <Typography sx={{ color: '#c3cbe6', fontWeight: 700, fontSize: compact ? '0.66rem' : '0.7rem' }}>
             Siste Meet-lenke
           </Typography>
           <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: compact ? '0.64rem' : '0.68rem', mt: 0.18 }}>

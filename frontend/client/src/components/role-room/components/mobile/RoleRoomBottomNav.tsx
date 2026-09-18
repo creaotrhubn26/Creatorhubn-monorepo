@@ -92,7 +92,7 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
           alignItems: 'stretch',
           height: `calc(${NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          bgcolor: 'rgba(16, 11, 30,0.96)',
+          bgcolor: 'rgba(42, 49, 82,0.96)',
           backdropFilter: 'saturate(180%) blur(12px)',
           WebkitBackdropFilter: 'saturate(180%) blur(12px)',
           borderTop: '1px solid rgba(255,255,255,0.08)',

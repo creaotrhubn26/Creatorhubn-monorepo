@@ -319,7 +319,7 @@ export default function ClientTiktokSuitePanel({
                     p: 1.2,
                     fontFamily: 'monospace',
                     fontSize: '0.74rem',
-                    color: '#a5f3fc',
+                    color: '#c3cbe6',
                     maxHeight: 220, overflow: 'auto',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',

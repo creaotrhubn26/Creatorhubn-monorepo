@@ -158,7 +158,7 @@ const STATUS_LABELS: Record<string, string> = {
 const TIER_COLORS: Record<string, { bg: string; fg: string }> = {
   hot:           { bg: 'rgba(248,113,113,0.22)', fg: '#f87171' },
   warm:          { bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24' },
-  cold:          { bg: 'rgba(96,165,250,0.22)',  fg: '#60a5fa' },
+  cold:          { bg: 'rgba(147, 164, 220,0.22)',  fg: '#93a4dc' },
   disqualified:  { bg: 'rgba(148,163,184,0.18)', fg: '#94a3b8' },
 };
 
@@ -272,7 +272,7 @@ export default function B2BAcquisitionPanel() {
         }}
       >
         <StatBox label="Totalt leads" value={String(totalLeads)} color="#93a4dc" />
-        <StatBox label="Siste 30d" value={String(funnel.last_30d.new_30d)} color="#60a5fa" />
+        <StatBox label="Siste 30d" value={String(funnel.last_30d.new_30d)} color="#93a4dc" />
         <StatBox label="Kunder" value={String(funnel.funnel.customer ?? 0)} color="#34d399" />
         <StatBox label="Konvertering" value={`${conversionRate}%`} color="#fbbf24" />
       </Box>
@@ -441,7 +441,7 @@ export default function B2BAcquisitionPanel() {
                         <td style={{ color: 'rgba(203,213,225,0.7)' }}>{s.medium || '—'}</td>
                         <td style={{ color: 'rgba(203,213,225,0.7)' }}>{s.campaign || '—'}</td>
                         <td className="num">{s.n}</td>
-                        <td className="num" style={{ color: '#60a5fa' }}>{s.qualified}</td>
+                        <td className="num" style={{ color: '#93a4dc' }}>{s.qualified}</td>
                         <td className="num" style={{ color: '#34d399' }}>{s.won}</td>
                         <td className="num" style={{ color: winRate >= 10 ? '#34d399' : 'rgba(203,213,225,0.7)' }}>
                           {winRate}%
@@ -635,7 +635,7 @@ function Section({
   return (
     <Box
       sx={{
-        bgcolor: 'rgba(16, 11, 30,0.6)',
+        bgcolor: 'rgba(42, 49, 82,0.6)',
         border: '1px solid rgba(93, 118, 203,0.18)',
         borderRadius: 1.6,
         overflow: 'hidden',
@@ -1081,8 +1081,8 @@ function LinkedInPublishSection() {
                         size="small"
                         sx={{
                           bgcolor: conn.org_type === 'showcase'
-                            ? 'rgba(75, 61, 143,0.20)' : 'rgba(96,165,250,0.20)',
-                          color: conn.org_type === 'showcase' ? '#93a4dc' : '#60a5fa',
+                            ? 'rgba(75, 61, 143,0.20)' : 'rgba(147, 164, 220,0.20)',
+                          color: conn.org_type === 'showcase' ? '#93a4dc' : '#93a4dc',
                           fontWeight: 700, fontSize: '0.7rem', height: 20,
                         }}
                       />

@@ -93,7 +93,7 @@ const PRODUCT_LABEL: Record<RoleRoomAgentMerchProductCategory, string> = {
 
 const STATUS_PILL: Record<RoleRoomAgentMerchSupplier['status'], { label: string; bg: string; fg: string }> = {
   verified: { label: 'Verifisert', bg: 'rgba(16,185,129,0.18)', fg: '#bbf7d0' },
-  likely: { label: 'Sannsynlig', bg: 'rgba(59,130,246,0.16)', fg: '#bfdbfe' },
+  likely: { label: 'Sannsynlig', bg: 'rgba(63, 81, 181,0.16)', fg: '#c3cbe6' },
   needs_review: { label: 'Manuell sjekk', bg: 'rgba(250,204,21,0.16)', fg: '#fde68a' },
   rejected: { label: 'Avvist', bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' },
 };
@@ -302,10 +302,10 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           ) : undefined
         }
         sx={{
-          bgcolor: 'rgba(34,211,238,0.08)',
+          bgcolor: 'rgba(93, 118, 203,0.08)',
           color: '#cbd5e1',
-          border: '1px solid rgba(34,211,238,0.22)',
-          '& .MuiAlert-icon': { color: '#a5f3fc' },
+          border: '1px solid rgba(93, 118, 203,0.22)',
+          '& .MuiAlert-icon': { color: '#c3cbe6' },
         }}
       >
         Kjør Research-fanen først så bygger vi merch-leverandørliste basert på kundens NACE-kode og marked.
@@ -479,9 +479,9 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     label={`${TECHNIQUE_LABEL[t]} · ${merch.techniqueCounts[t]}`}
                     onClick={() => setTechniqueFilter(active ? null : t)}
                     sx={{
-                      bgcolor: active ? 'rgba(34,211,238,0.22)' : 'rgba(15,23,42,0.6)',
-                      color: active ? '#a5f3fc' : '#cbd5e1',
-                      border: active ? '1px solid rgba(34,211,238,0.5)' : '1px solid rgba(148,163,184,0.2)',
+                      bgcolor: active ? 'rgba(93, 118, 203,0.22)' : 'rgba(15,23,42,0.6)',
+                      color: active ? '#c3cbe6' : '#cbd5e1',
+                      border: active ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid rgba(148,163,184,0.2)',
                     }}
                   />
                 );
@@ -503,9 +503,9 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     label={`${PRODUCT_LABEL[c]} · ${merch.productCounts[c]}`}
                     onClick={() => setProductFilter(active ? null : c)}
                     sx={{
-                      bgcolor: active ? 'rgba(34,211,238,0.22)' : 'rgba(15,23,42,0.6)',
-                      color: active ? '#a5f3fc' : '#cbd5e1',
-                      border: active ? '1px solid rgba(34,211,238,0.5)' : '1px solid rgba(148,163,184,0.2)',
+                      bgcolor: active ? 'rgba(93, 118, 203,0.22)' : 'rgba(15,23,42,0.6)',
+                      color: active ? '#c3cbe6' : '#cbd5e1',
+                      border: active ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid rgba(148,163,184,0.2)',
                     }}
                   />
                 );
@@ -575,7 +575,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                   : supplier.status === 'verified'
                     ? '1px solid rgba(16,185,129,0.26)'
                     : '1px solid rgba(148,163,184,0.16)',
-                bgcolor: isSelected ? 'rgba(33, 28, 59,0.5)' : 'rgba(15,23,42,0.48)',
+                bgcolor: isSelected ? 'rgba(60, 78, 109,0.5)' : 'rgba(15,23,42,0.48)',
                 transition: 'border-color 0.15s, background-color 0.15s',
                 '&:hover': { borderColor: isSelected ? 'rgba(93, 118, 203,0.9)' : 'rgba(93, 118, 203,0.4)' },
               }}
@@ -622,8 +622,8 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                         : 'Google Places'
                     }
                     sx={{
-                      bgcolor: supplier.source === 'brreg_nace' ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.14)',
-                      color: supplier.source === 'brreg_nace' ? '#bbf7d0' : '#bfdbfe',
+                      bgcolor: supplier.source === 'brreg_nace' ? 'rgba(34,197,94,0.14)' : 'rgba(63, 81, 181,0.14)',
+                      color: supplier.source === 'brreg_nace' ? '#bbf7d0' : '#c3cbe6',
                       fontSize: '0.7rem',
                     }}
                   />
@@ -691,7 +691,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     {supplier.formattedAddress}
                   </Typography>
                 ) : null}
-                <Typography sx={{ color: '#a5f3fc', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                <Typography sx={{ color: '#c3cbe6', fontSize: '0.78rem', lineHeight: 1.45 }}>
                   → {supplier.outreachHint}
                 </Typography>
                 <Stack
@@ -825,7 +825,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                       <Chip
                         size="small"
                         label={supplier.contact.phone}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#bfdbfe', fontSize: '0.72rem' }}
+                        sx={{ bgcolor: 'rgba(63, 81, 181,0.12)', color: '#c3cbe6', fontSize: '0.72rem' }}
                       />
                     ) : null}
                   </Stack>
@@ -989,7 +989,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
               p: 1.2,
               borderRadius: 3,
               border: '1px solid rgba(93, 118, 203,0.22)',
-              bgcolor: 'rgba(33, 28, 59,0.36)',
+              bgcolor: 'rgba(60, 78, 109,0.36)',
             }}
           >
             <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
@@ -1011,8 +1011,8 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
               flex: 1,
               p: 1.2,
               borderRadius: 3,
-              border: '1px solid rgba(34,211,238,0.18)',
-              bgcolor: 'rgba(8,47,73,0.32)',
+              border: '1px solid rgba(93, 118, 203,0.18)',
+              bgcolor: 'rgba(42, 61, 86,0.32)',
             }}
           >
             <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
@@ -1021,7 +1021,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             <Stack spacing={0.5}>
               {merch.outreachChecklist.map((item) => (
                 <Stack key={item} direction="row" spacing={0.6} alignItems="flex-start">
-                  <CheckIcon sx={{ color: '#a5f3fc', fontSize: 14, mt: 0.3 }} />
+                  <CheckIcon sx={{ color: '#c3cbe6', fontSize: 14, mt: 0.3 }} />
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', lineHeight: 1.5 }}>{item}</Typography>
                 </Stack>
               ))}

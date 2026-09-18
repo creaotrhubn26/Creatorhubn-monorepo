@@ -47,12 +47,12 @@ export const adminTokens = {
     success:    { bg: 'rgba(16,185,129,0.15)', text: '#86efac', border: 'rgba(16,185,129,0.32)', base: '#22c55e' },
     warning:    { bg: 'rgba(251,191,36,0.15)', text: '#fde68a', border: 'rgba(251,191,36,0.32)', base: '#fbbf24' },
     error:      { bg: 'rgba(239,68,68,0.15)',  text: '#fca5a5', border: 'rgba(239,68,68,0.32)',  base: '#ef4444' },
-    info:       { bg: 'rgba(59,130,246,0.16)', text: '#bfdbfe', border: 'rgba(59,130,246,0.32)', base: '#60a5fa' },
+    info:       { bg: 'rgba(63, 81, 181,0.16)', text: '#c3cbe6', border: 'rgba(63, 81, 181,0.32)', base: '#93a4dc' },
     neutral:    { bg: 'rgba(148,163,184,0.15)', text: '#cbd5e1', border: 'rgba(148,163,184,0.32)', base: '#94a3b8' },
   },
   // Sosial-plattform-aksenter (gjenbruk i panel-headers)
   platforms: {
-    facebook:  '#60a5fa',
+    facebook:  '#93a4dc',
     instagram: '#ec4899',
     linkedin:  '#0a66c2',
     tiktok:    '#f97316',

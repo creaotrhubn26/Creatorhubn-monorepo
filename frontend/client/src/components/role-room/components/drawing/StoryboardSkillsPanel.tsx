@@ -187,7 +187,7 @@ export const StoryboardSkillsPanel: React.FC<StoryboardSkillsPanelProps> = ({
       data-testid="storyboard-skills-panel"
       variant="outlined"
       sx={{
-        bgcolor: 'rgba(16, 11, 30, 0.96)',
+        bgcolor: 'rgba(42, 49, 82, 0.96)',
         borderColor: 'rgba(93, 118, 203, 0.3)',
         color: 'common.white',
         minWidth: 0,

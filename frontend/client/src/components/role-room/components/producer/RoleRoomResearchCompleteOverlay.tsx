@@ -367,7 +367,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
         alignItems: 'center',
         justifyContent: 'center',
         p: { xs: 1, md: 2 },
-        bgcolor: 'rgba(10, 5, 21,0.72)',
+        bgcolor: 'rgba(27, 18, 44,0.72)',
         backdropFilter: 'blur(6px)',
       }}
     >
@@ -473,7 +473,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                   <Chip
                     size="small"
                     label={versionTotal !== null && versionTotal > 1 ? `v${versionNumber}/${versionTotal}` : `v${versionNumber}`}
-                    sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc', fontWeight: 700, fontFamily: 'monospace' }}
+                    sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', fontWeight: 700, fontFamily: 'monospace' }}
                   />
                 </Tooltip>
               ) : null}
@@ -920,7 +920,7 @@ const ConfettiLayer: React.FC = () => {
       }}
     >
       {pieces.map((i) => {
-        const colors = ['#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#93a4dc', '#22d3ee'];
+        const colors = ['#fbbf24', '#34d399', '#93a4dc', '#f472b6', '#93a4dc', '#5d76cb'];
         const color = colors[i % colors.length];
         const left = (i * 7) % 100;
         const drift = `${(((i * 13) % 80) - 40)}px`;

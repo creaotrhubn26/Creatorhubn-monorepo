@@ -163,7 +163,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
                   const sm = STATUS_META[it.status] ?? STATUS_META.draft;
                   const SIcon = sm.Icon;
                   return (
-                    <Box key={it.id} sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: 1.1, opacity: busyId === it.id ? 0.6 : 1 }}>
+                    <Box key={it.id} sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: 1.1, opacity: busyId === it.id ? 0.6 : 1 }}>
                       <Stack direction="row" alignItems="flex-start" spacing={1}>
                         <Box sx={{ minWidth: 64, textAlign: 'center', flexShrink: 0 }}>
                           <Typography sx={{ color: it.scheduledAt ? '#c3cbe6' : 'rgba(226,232,240,0.8)', fontSize: '0.72rem', fontWeight: 700 }}>

@@ -148,7 +148,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout Box ─────────────────────────────────────────────────────────────
 
 function Callout({
-  color = '#3b82f6',
+  color = '#3f51b5',
   children,
 }: {
   color?: string;
@@ -304,8 +304,8 @@ const STEPS: Step[] = [
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
-                <CharacterIcon sx={{ fontSize: 15, color: '#60a5fa', flexShrink: 0 }} />
-                <Typography variant="caption" sx={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.05em' }}>
+                <CharacterIcon sx={{ fontSize: 15, color: '#93a4dc', flexShrink: 0 }} />
+                <Typography variant="caption" sx={{ color: '#93a4dc', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.05em' }}>
                   JOHN
                 </Typography>
               </Box>
@@ -321,7 +321,7 @@ const STEPS: Step[] = [
               {[
                 ['Scene Heading', '#fbbf24 (amber)', 'Starts with INT., EXT., or forced with a leading dot .'],
                 ['Action', 'Light grey #e5e5e5', 'Any prose description line (default)'],
-                ['Character', '#60a5fa (blue)', 'All-caps name on its own line followed by dialogue'],
+                ['Character', '#93a4dc (blue)', 'All-caps name on its own line followed by dialogue'],
                 ['Dialogue', 'Off-white #f5f5f5', 'Lines following a character line'],
                 ['Parenthetical', '#93a4dc (lavender)', 'Lines wrapped in (parentheses) inside a dialogue block'],
                 ['Transition', '#f472b6 (pink)', 'All-caps lines ending with a colon e.g. CUT TO:'],

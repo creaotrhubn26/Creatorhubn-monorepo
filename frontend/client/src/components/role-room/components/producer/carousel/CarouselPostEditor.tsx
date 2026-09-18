@@ -217,8 +217,8 @@ export default function CarouselPostEditor({
                 textTransform: 'none',
                 fontSize: 13,
               },
-              '& .Mui-selected': { color: '#22d3ee !important' },
-              '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+              '& .Mui-selected': { color: '#5d76cb !important' },
+              '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #5d76cb)' },
             }}
           >
             {PLATFORMS.map((p) => (
@@ -274,7 +274,7 @@ export default function CarouselPostEditor({
                 <Chip
                   size="small"
                   label={`Bilde: ${selectedSlide?.image_ref.strategy ?? '—'}`}
-                  sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: 'var(--role-cyan, #22d3ee)' }}
+                  sx={{ bgcolor: 'rgba(93, 118, 203,0.12)', color: 'var(--role-cyan, #5d76cb)' }}
                 />
                 <Chip
                   size="small"

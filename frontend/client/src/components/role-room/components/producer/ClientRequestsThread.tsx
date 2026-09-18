@@ -154,7 +154,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
   if (loading && requests.length === 0) {
     return (
       <Stack alignItems="center" sx={{ py: 2 }}>
-        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
       </Stack>
     );
   }
@@ -251,13 +251,13 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                             sx={{
                               p: 1,
                               borderRadius: 1,
-                              bgcolor: isClient ? 'rgba(52,211,153,0.06)' : 'rgba(96,165,250,0.06)',
+                              bgcolor: isClient ? 'rgba(52,211,153,0.06)' : 'rgba(147, 164, 220,0.06)',
                             }}
                           >
                             <Box sx={{ pt: 0.2 }}>
                               {isClient
                                 ? <PersonIcon fontSize="small" sx={{ color: '#34d399' }} />
-                                : <MarketerIcon fontSize="small" sx={{ color: '#60a5fa' }} />
+                                : <MarketerIcon fontSize="small" sx={{ color: '#93a4dc' }} />
                               }
                             </Box>
                             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -318,10 +318,10 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                           onClick={() => void handleReply(req.id)}
                           sx={{
                             textTransform: 'none',
-                            bgcolor: 'var(--role-cyan, #22d3ee)',
+                            bgcolor: 'var(--role-cyan, #5d76cb)',
                             color: '#0b1226',
                             fontWeight: 700,
-                            '&:hover': { bgcolor: '#06b6d4' },
+                            '&:hover': { bgcolor: '#3f51b5' },
                           }}
                         >
                           {replying === req.id ? 'Sender…' : 'Send melding'}

@@ -958,7 +958,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           alignItems: 'center',
           gap: isMobile ? 0.5 : 1,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(33, 28, 59,0.8)',
+          bgcolor: 'rgba(60, 78, 109,0.8)',
           flexWrap: 'wrap',
           position: 'relative',
         }}
@@ -1087,7 +1087,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   headerSummary.saveState === 'saved' ? (
                     <CheckCircleIcon sx={{ fontSize: responsive.iconSize - 8, color: '#34d399' }} />
                   ) : headerSummary.saveState === 'saving' ? (
-                    <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                    <CircularProgress size={14} sx={{ color: '#93a4dc' }} />
                   ) : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict' ? (
                     <WarningIcon sx={{ fontSize: responsive.iconSize - 8, color: '#f43f5e' }} />
                   ) : undefined
@@ -1099,7 +1099,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     headerSummary.saveState === 'saved'
                       ? 'rgba(52, 211, 153, 0.2)'
                       : headerSummary.saveState === 'saving'
-                        ? 'rgba(59, 130, 246, 0.2)'
+                        ? 'rgba(63, 81, 181, 0.2)'
                         : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? 'rgba(244, 63, 94, 0.2)'
                           : 'rgba(251, 191, 36, 0.2)',
@@ -1107,7 +1107,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     headerSummary.saveState === 'saved'
                       ? '#34d399'
                       : headerSummary.saveState === 'saving'
-                        ? '#60a5fa'
+                        ? '#93a4dc'
                         : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? '#f43f5e'
                           : '#fbbf24',
@@ -1246,7 +1246,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             sx={{
               '& .MuiDrawer-paper': {
                 width: responsive.sidebarWidth,
-                bgcolor: 'rgba(33, 28, 59,0.95)',
+                bgcolor: 'rgba(60, 78, 109,0.95)',
               },
             }}
           >
@@ -1418,14 +1418,14 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     bottom: 0,
                     width: 2,
                     transform: 'translateX(-50%)',
-                    bgcolor: 'rgba(56,189,248,0.35)',
+                    bgcolor: 'rgba(93, 118, 203,0.35)',
                     borderRadius: 2,
                     transition: 'background-color 0.15s ease',
                   }
                 : undefined,
               '&:hover::before': rightPanel === 'storyboard'
                 ? {
-                    bgcolor: 'rgba(56,189,248,0.7)',
+                    bgcolor: 'rgba(93, 118, 203,0.7)',
                   }
                 : undefined,
             }}
@@ -1442,7 +1442,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               '& .MuiDrawer-paper': {
                 width: '85vw',
                 maxWidth: 400,
-                bgcolor: 'rgba(33, 28, 59,0.95)',
+                bgcolor: 'rgba(60, 78, 109,0.95)',
               },
             }}
           >

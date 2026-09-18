@@ -210,10 +210,10 @@ const getWorkspacePriorityTone = (tone: 'warning' | 'action' | 'ready') => (
         button: '#0f766e',
       }
       : {
-        border: 'rgba(96,165,250,0.34)',
-        background: 'rgba(59,130,246,0.08)',
-        chipBackground: 'rgba(59,130,246,0.16)',
-        chipColor: '#bfdbfe',
+        border: 'rgba(147, 164, 220,0.34)',
+        background: 'rgba(63, 81, 181,0.08)',
+        chipBackground: 'rgba(63, 81, 181,0.16)',
+        chipColor: '#c3cbe6',
         button: '#1d4ed8',
       }
 );
@@ -2212,7 +2212,7 @@ export default function ProjectEconomyHub({
           p: { xs: 1.5, md: 2 },
           borderRadius: 2,
           border: '1px solid rgba(148,163,184,0.22)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(10, 5, 21,0.82) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(27, 18, 44,0.82) 100%)',
         }}
       >
         <Stack spacing={1.5}>
@@ -2229,8 +2229,8 @@ export default function ProjectEconomyHub({
                     px: 1,
                     py: 0.35,
                     borderRadius: 999,
-                    border: '1px solid rgba(59,130,246,0.24)',
-                    bgcolor: 'rgba(59,130,246,0.12)',
+                    border: '1px solid rgba(63, 81, 181,0.24)',
+                    bgcolor: 'rgba(63, 81, 181,0.12)',
                   }}
                 >
                   <Typography sx={{ color: '#93c5fd', fontSize: '0.73rem', fontWeight: 700 }}>
@@ -2276,7 +2276,7 @@ export default function ProjectEconomyHub({
               px: 1.2,
               py: 0.95,
               borderRadius: 1.5,
-              border: '1px solid rgba(96,165,250,0.16)',
+              border: '1px solid rgba(147, 164, 220,0.16)',
               background: 'rgba(15,23,42,0.52)',
             }}
           >
@@ -2306,7 +2306,7 @@ export default function ProjectEconomyHub({
         sx={{
           borderRadius: 2,
           border: '1px solid rgba(148,163,184,0.18)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(10, 5, 21,0.78) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(27, 18, 44,0.78) 100%)',
           overflow: 'hidden',
         }}
       >
@@ -2496,12 +2496,12 @@ export default function ProjectEconomyHub({
                             ? '1px solid rgba(251,191,36,0.32)'
                             : card.tone === 'ready'
                               ? '1px solid rgba(52,211,153,0.24)'
-                              : '1px solid rgba(96,165,250,0.24)',
+                              : '1px solid rgba(147, 164, 220,0.24)',
                           background: card.tone === 'warning'
                             ? 'rgba(251,191,36,0.06)'
                             : card.tone === 'ready'
                               ? 'rgba(16,185,129,0.06)'
-                              : 'rgba(59,130,246,0.06)',
+                              : 'rgba(63, 81, 181,0.06)',
                         }}
                       >
                         <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.8rem', fontWeight: 700 }}>
@@ -2573,7 +2573,7 @@ export default function ProjectEconomyHub({
                             p: 1.25,
                             borderRadius: 1.5,
                             border: isActive ? '1px solid rgba(251,191,36,0.42)' : '1px solid rgba(148,163,184,0.14)',
-                            background: isActive ? 'rgba(251,191,36,0.08)' : 'rgba(10, 5, 21,0.54)',
+                            background: isActive ? 'rgba(251,191,36,0.08)' : 'rgba(27, 18, 44,0.54)',
                             cursor: 'pointer',
                             transition: 'border-color 0.2s ease, background 0.2s ease',
                             '&:hover': {
@@ -2592,7 +2592,7 @@ export default function ProjectEconomyHub({
                             <Chip
                               size="small"
                               label={`${phaseCard.lineCount} linjer`}
-                              sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                              sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                             />
                           </Stack>
                           <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '1rem', mt: 0.55 }}>
@@ -2656,7 +2656,7 @@ export default function ProjectEconomyHub({
                           p: 1.15,
                           borderRadius: 1.4,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(10, 5, 21,0.54)',
+                          background: 'rgba(27, 18, 44,0.54)',
                         }}
                       >
                         <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.8rem', fontWeight: 700 }}>
@@ -2685,7 +2685,7 @@ export default function ProjectEconomyHub({
                           p: 1.1,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(10, 5, 21,0.54)',
+                          background: 'rgba(27, 18, 44,0.54)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3042,7 +3042,7 @@ export default function ProjectEconomyHub({
                                 p: 1,
                                 borderRadius: 1.25,
                                 border: '1px solid rgba(148,163,184,0.18)',
-                                background: 'rgba(10, 5, 21,0.54)',
+                                background: 'rgba(27, 18, 44,0.54)',
                               }}
                             >
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3171,7 +3171,7 @@ export default function ProjectEconomyHub({
                           key={department}
                           size="small"
                           label={`${department}: ${formatCurrency(departmentRate, currency)}/dag`}
-                          sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                          sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                         />
                       ))}
                     </Stack>
@@ -3347,7 +3347,7 @@ export default function ProjectEconomyHub({
                       <Chip
                         size="small"
                         label={`Venter ${approvalWorkQueue.filter((item) => item.review.status === 'pending').length}`}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                        sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                       />
                       <Chip
                         size="small"
@@ -3390,7 +3390,7 @@ export default function ProjectEconomyHub({
                                 <Chip
                                   size="small"
                                   label={queueItem.laneLabel}
-                                  sx={{ bgcolor: 'rgba(96,165,250,0.14)', color: '#dbeafe' }}
+                                  sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                                 />
                                 <Chip
                                   size="small"
@@ -3568,7 +3568,7 @@ export default function ProjectEconomyHub({
                               </MenuItem>
                             ))}
                           </TextField>
-                          <Alert severity="info" sx={{ bgcolor: 'rgba(30,41,59,0.72)', color: '#dbeafe' }}>
+                          <Alert severity="info" sx={{ bgcolor: 'rgba(30,41,59,0.72)', color: '#dfe4f3' }}>
                             {selectedApprovalTemplateConfig.description}
                           </Alert>
                           <TextField
@@ -3606,12 +3606,12 @@ export default function ProjectEconomyHub({
                               <Chip
                                 size="small"
                                 label={`Fokus ${focusedPhaseLabel}`}
-                                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                               />
                               <Chip
                                 size="small"
                                 label={`${selectedApprovalTemplateConfig.title} · ${deliverableReviews.filter((review) => review.review_type === selectedApprovalTemplate).length} sendt`}
-                                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(96,165,250,0.14)', color: '#dbeafe' }}
+                                sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                               />
                             </Stack>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -3682,7 +3682,7 @@ export default function ProjectEconomyHub({
                             <Chip
                               size="small"
                               label={`Fokus ${focusedPhaseLabel}`}
-                              sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                              sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                             />
                             <Button
                               variant="contained"
@@ -3799,7 +3799,7 @@ export default function ProjectEconomyHub({
                               p: 1.15,
                               borderRadius: 1.5,
                               border: '1px solid rgba(148,163,184,0.16)',
-                              background: 'rgba(10, 5, 21,0.54)',
+                              background: 'rgba(27, 18, 44,0.54)',
                             }}
                           >
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3889,7 +3889,7 @@ export default function ProjectEconomyHub({
                           p: 1.15,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.16)',
-                          background: 'rgba(10, 5, 21,0.54)',
+                          background: 'rgba(27, 18, 44,0.54)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3972,7 +3972,7 @@ export default function ProjectEconomyHub({
                                 p: 1.15,
                                 borderRadius: 1.5,
                                 border: '1px solid rgba(148,163,184,0.16)',
-                                background: 'rgba(10, 5, 21,0.54)',
+                                background: 'rgba(27, 18, 44,0.54)',
                               }}
                             >
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
@@ -3993,7 +3993,7 @@ export default function ProjectEconomyHub({
                                       <Chip
                                         size="small"
                                         label={`Status ${PROJECT_AGREEMENT_STATUS_LABELS[linkedAgreement.status]}`}
-                                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                                        sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                                       />
                                       {linkedAgreement.google_signature ? (
                                         <Chip
@@ -4186,7 +4186,7 @@ export default function ProjectEconomyHub({
                           p: 1.1,
                           borderRadius: 1.5,
                           border: '1px solid rgba(148,163,184,0.14)',
-                          background: 'rgba(10, 5, 21,0.54)',
+                          background: 'rgba(27, 18, 44,0.54)',
                         }}
                       >
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">

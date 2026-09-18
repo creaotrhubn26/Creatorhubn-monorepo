@@ -1253,7 +1253,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         borderRadius: { xs: 2, sm: 3 },
         border: '1px solid rgba(75, 61, 143,0.24)',
         background:
-          'radial-gradient(1200px 380px at 10% -10%, rgba(75, 61, 143,0.16), transparent 55%), linear-gradient(180deg, rgba(24, 18, 43,0.74) 0%, rgba(16, 11, 30,0.64) 100%)',
+          'radial-gradient(1200px 380px at 10% -10%, rgba(75, 61, 143,0.16), transparent 55%), linear-gradient(180deg, rgba(42, 61, 86,0.74) 0%, rgba(42, 49, 82,0.64) 100%)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.28)',
       }}
     >
@@ -1445,7 +1445,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           p: { xs: 1.25, sm: 1.5 },
           borderRadius: 2,
           border: '1px solid rgba(75, 61, 143,0.24)',
-          bgcolor: 'rgba(24, 18, 43,0.55)',
+          bgcolor: 'rgba(42, 61, 86,0.55)',
           display: 'flex',
           flexDirection: { xs: 'column', md: 'row' },
           alignItems: { xs: 'stretch', md: 'center' },

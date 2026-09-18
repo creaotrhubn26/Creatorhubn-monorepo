@@ -22,7 +22,7 @@ const ROLE_META: Record<string, { label: string; color: string; description: str
   salgssjef: { label: 'Salgssjef', color: '#f97316', description: 'Leder hele salgsorganisasjonen' },
   teamleder: { label: 'Teamleder', color: '#fbbf24', description: 'Leder ett salgs-team' },
   salgskonsulent: { label: 'Salgskonsulent', color: '#34d399', description: 'Selger leads i ditt team' },
-  promotor: { label: 'Promotør', color: '#60a5fa', description: 'Promoterer på event/feltarbeid' },
+  promotor: { label: 'Promotør', color: '#93a4dc', description: 'Promoterer på event/feltarbeid' },
   member: { label: 'Medlem', color: '#93a4dc', description: 'Standard skrive-tilgang' },
   viewer: { label: 'Leser', color: '#9ca3af', description: 'Kun lese-tilgang' },
 };

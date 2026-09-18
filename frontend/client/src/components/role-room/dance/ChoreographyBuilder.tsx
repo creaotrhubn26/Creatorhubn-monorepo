@@ -1210,12 +1210,12 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
                 sx={{
                   height: 20,
                   fontSize: 10,
-                  bgcolor: 'rgba(59,130,246,0.18)',
+                  bgcolor: 'rgba(63, 81, 181,0.18)',
                   color: danceFlowColors.infoSoft,
-                  border: '1px solid rgba(59,130,246,0.4)',
+                  border: '1px solid rgba(63, 81, 181,0.4)',
                   cursor: onOpenDancerProfile ? 'pointer' : 'default',
                   '&:hover': onOpenDancerProfile
-                    ? { bgcolor: 'rgba(59,130,246,0.28)' }
+                    ? { bgcolor: 'rgba(63, 81, 181,0.28)' }
                     : undefined,
                 }}
               />

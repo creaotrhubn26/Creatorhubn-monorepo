@@ -30,7 +30,7 @@ const ClassesStatStrip: React.FC<{ classes: svc.DanceClass[]; enrollmentsCount: 
           size="small"
           label={`Fylling: ${fillPct}% (${enrollmentsCount}/${totalCapacity})`}
           sx={{
-            bgcolor: fillPct >= 90 ? 'rgba(52,211,153,0.18)' : fillPct >= 50 ? 'rgba(251,191,36,0.18)' : 'rgba(96,165,250,0.18)',
+            bgcolor: fillPct >= 90 ? 'rgba(52,211,153,0.18)' : fillPct >= 50 ? 'rgba(251,191,36,0.18)' : 'rgba(147, 164, 220,0.18)',
             color:   fillPct >= 90 ? danceFlowColors.successPrimary : fillPct >= 50 ? danceFlowColors.gold : danceFlowColors.infoLight,
             fontWeight: 700,
           }}
@@ -226,7 +226,7 @@ const InstructorsStatStrip: React.FC<{ list: svc.DanceInstructor[] }> = ({ list 
           key={k}
           size="small"
           label={`${contractLabels[k] ?? k}: ${n}`}
-          sx={{ bgcolor: 'rgba(96,165,250,0.15)', color: danceFlowColors.infoSoft }}
+          sx={{ bgcolor: 'rgba(147, 164, 220,0.15)', color: danceFlowColors.infoSoft }}
         />
       ))}
     </Stack>
@@ -316,7 +316,7 @@ const RoomsStatStrip: React.FC<{ rooms: svc.DanceRoom[]; bookingsByRoom: Map<str
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="rooms-stat-strip">
       <Chip size="small" label={`${rooms.length} saler · ${totalCapacity} plasser`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }} />
-      <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
+      <Chip size="small" label={`${totalBookings} bookings denne uka`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoSoft }} />
       {mostUsed && mostUsed.count > 0 ? (
         <Chip size="small" label={`Mest brukt: ${mostUsed.name} (${mostUsed.count})`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       ) : null}
@@ -520,7 +520,7 @@ const VocabStatStrip: React.FC<{ terms: svc.MovementVocabTerm[] }> = ({ terms })
     lift:       { label: 'Lift',       color: danceFlowColors.gold },
     extension:  { label: 'Extension',  color: danceFlowColors.lavender },
     partnering: { label: 'Partnering', color: danceFlowColors.successPrimary },
-    improv:     { label: 'Improv',     color: 'var(--role-cyan, #22d3ee)' },
+    improv:     { label: 'Improv',     color: 'var(--role-cyan, #5d76cb)' },
     other:      { label: 'Annet',      color: danceFlowColors.textMuted },
   };
   const difLabels: Record<string, string> = {

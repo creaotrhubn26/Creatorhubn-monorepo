@@ -27,7 +27,7 @@ const GUIDE_ICONS: Record<GuideId, React.ReactNode> = {
 };
 
 const BADGE_PRESETS = ['New', 'Updated', 'Beta', 'Coming Soon', '!'];
-const NOTE_COLOR_PRESETS = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#5d76cb', '#ec4899'];
+const NOTE_COLOR_PRESETS = ['#f59e0b', '#10b981', '#3f51b5', '#ef4444', '#5d76cb', '#ec4899'];
 
 // ── HEX color input ───────────────────────────────────────────────────────
 
@@ -217,7 +217,7 @@ function StepRow({
       )}
       {!!override.annotations?.length && (
         <Tooltip title={`${override.annotations.length} annotasjon${override.annotations.length !== 1 ? 'er' : ''}`}>
-          <AnnotationIcon sx={{ fontSize: 12, color: '#38bdf8' }} />
+          <AnnotationIcon sx={{ fontSize: 12, color: '#5d76cb' }} />
         </Tooltip>
       )}
       {override.adminNote && (
@@ -358,7 +358,7 @@ function StepEditor({
     const timestamp = Date.now();
     const preset: GuideStepAnnotation[] = [
       { id: `preset-${timestamp}-1`, style: 'precise-box', x: 90.9, y: 56.2, width: 2.3, height: 7.3, label: 'Table', color: '#22c55e', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
-      { id: `preset-${timestamp}-2`, style: 'precise-box', x: 93.5, y: 56.2, width: 2.3, height: 7.3, label: 'Compact', color: '#60a5fa', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
+      { id: `preset-${timestamp}-2`, style: 'precise-box', x: 93.5, y: 56.2, width: 2.3, height: 7.3, label: 'Compact', color: '#93a4dc', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
       { id: `preset-${timestamp}-3`, style: 'precise-box', x: 96.1, y: 56.2, width: 2.3, height: 7.3, label: 'Grid', color: '#f59e0b', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
     ];
     setAnnotations(prev => [...prev, ...preset]);
@@ -537,9 +537,9 @@ function StepEditor({
           <Alert
             severity="info"
             sx={{
-              bgcolor: 'rgba(59,130,246,0.08)',
+              bgcolor: 'rgba(63, 81, 181,0.08)',
               color: '#93c5fd',
-              border: '1px solid rgba(59,130,246,0.2)',
+              border: '1px solid rgba(63, 81, 181,0.2)',
               fontSize: '0.75rem',
             }}
           >
@@ -567,7 +567,7 @@ function StepEditor({
               <Chip
                 label={`${annotations.length} aktive`}
                 size="small"
-                sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(56,189,248,0.12)', color: '#38bdf8' }}
+                sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(93, 118, 203,0.12)', color: '#5d76cb' }}
               />
             </Box>
 

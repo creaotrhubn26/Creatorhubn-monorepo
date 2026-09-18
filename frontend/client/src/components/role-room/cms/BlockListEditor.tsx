@@ -143,7 +143,7 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1.5}
         alignItems={{ sm: 'center' }}
-        sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(10, 5, 21,0.34)' }}
+        sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(27, 18, 44,0.34)' }}
       >
         <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', fontWeight: 600 }}>
           Språk
@@ -276,7 +276,7 @@ function BlockCard({ block, index, total, onUpdate, onDelete, onMove, locale }: 
     <div ref={setNodeRef} style={style}>
       <Card
         sx={{
-          bgcolor: 'rgba(10, 5, 21,0.42)',
+          bgcolor: 'rgba(27, 18, 44,0.42)',
           border: isDragging ? '1px solid rgba(147, 164, 220,0.6)' : '1px solid rgba(148,163,184,0.16)',
           boxShadow: isDragging ? '0 12px 32px rgba(0,0,0,0.4)' : 'none',
         }}
@@ -309,7 +309,7 @@ function BlockCard({ block, index, total, onUpdate, onDelete, onMove, locale }: 
               <Chip
                 label={locale.toUpperCase()}
                 size="small"
-                sx={{ bgcolor: 'rgba(96,165,250,0.16)', color: '#bfdbfe', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
+                sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#c3cbe6', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
               />
             ) : null}
             <Box sx={{ flex: 1 }} />
@@ -649,7 +649,7 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
           border: dragOver
             ? '2px dashed #93a4dc'
             : '2px dashed rgba(147, 164, 220,0.3)',
-          bgcolor: dragOver ? 'rgba(147, 164, 220,0.08)' : 'rgba(10, 5, 21,0.34)',
+          bgcolor: dragOver ? 'rgba(147, 164, 220,0.08)' : 'rgba(27, 18, 44,0.34)',
           textAlign: 'center',
           transition: 'all 0.15s ease',
         }}

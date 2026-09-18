@@ -50,7 +50,7 @@ interface Props {
 
 const PURPLE_BRIGHT = '#5d76cb';
 const PURPLE_LIGHT = '#93a4dc';
-const PANEL_BG = 'rgba(16, 11, 30,0.62)';
+const PANEL_BG = 'rgba(42, 49, 82,0.62)';
 const PANEL_BORDER = 'rgba(147, 164, 220,0.18)';
 const TEXT_DIM = 'rgba(229,231,235,0.78)';
 

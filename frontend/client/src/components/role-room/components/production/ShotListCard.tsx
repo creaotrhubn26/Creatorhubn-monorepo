@@ -66,7 +66,7 @@ const COLOR_TAG_MAP: Record<string, string> = {
   orange: '#f97316',
   yellow: '#eab308',
   green: '#22c55e',
-  blue: '#3b82f6',
+  blue: '#3f51b5',
   purple: '#5d76cb',
   gray: '#6b7280',
 };
@@ -199,7 +199,7 @@ export function ShotListCard({
   const coverage = sm.storyboardCoverage;
 
   // ── Derived visual values ─────────────────────────────────────────────────
-  const progressColor = sm.completionPct === 100 ? '#22c55e' : sm.completionPct >= 50 ? '#f97316' : '#3b82f6';
+  const progressColor = sm.completionPct === 100 ? '#22c55e' : sm.completionPct >= 50 ? '#f97316' : '#3f51b5';
   const timeLabel = sm.estimatedHours > 0
     ? sm.estimatedHours >= 1
       ? `${sm.estimatedHours}h`
@@ -409,9 +409,9 @@ export function ShotListCard({
                   sx={{
                     height: 20,
                     fontSize: '0.64rem',
-                    bgcolor: 'rgba(59,130,246,0.14)',
+                    bgcolor: 'rgba(63, 81, 181,0.14)',
                     color: '#93c5fd',
-                    border: '1px solid rgba(59,130,246,0.24)',
+                    border: '1px solid rgba(63, 81, 181,0.24)',
                     cursor: onOpenStoryboard ? 'pointer' : 'default',
                   }}
                 />

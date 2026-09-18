@@ -116,7 +116,7 @@ export const StripItem: FC<StripItemProps> = React.memo(function StripItem({
             width: 6,
             height: 6,
             borderRadius: '50%',
-            bgcolor: isExt ? '#3b82f6' : '#6b7280',
+            bgcolor: isExt ? '#3f51b5' : '#6b7280',
             flexShrink: 0,
           }}
         />

@@ -480,7 +480,7 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
 
 const baseSx: React.CSSProperties = {
   marginTop: 12, padding: 10,
-  background: 'rgba(24, 18, 43,0.55)',
+  background: 'rgba(42, 61, 86,0.55)',
   border: '1px solid rgba(62, 49, 128,0.20)',
   borderRadius: 6,
   color: 'rgba(224, 219, 250,0.95)',

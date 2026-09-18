@@ -217,7 +217,7 @@ function DashboardPanelInner({
       { status: 'confirmed', color: '#10b981', label: 'Bekreftet' },
       { status: 'selected', color: 'var(--role-violet, #5d76cb)', label: 'Valgt' },
       { status: 'shortlist', color: '#ffb800', label: 'Shortlist' },
-      { status: 'requested', color: 'var(--role-cyan, #00d4ff)', label: 'Forespurt' },
+      { status: 'requested', color: 'var(--role-cyan, #5d76cb)', label: 'Forespurt' },
       { status: 'pending', color: '#6b7280', label: 'Venter' },
       { status: 'rejected', color: '#ef4444', label: 'Avvist' },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }))
@@ -233,7 +233,7 @@ function DashboardPanelInner({
     }, {});
     return [
       { status: 'pending',   label: 'Ingen status', color: '#6b7280', tabIndex: 3 },
-      { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)', tabIndex: 3 },
+      { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #5d76cb)', tabIndex: 3 },
       { status: 'shortlist', label: 'Vurderes',     color: '#ffb800', tabIndex: 3 },
       { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #5d76cb)', tabIndex: 3 },
       { status: 'confirmed', label: 'Bekreftet',    color: '#10b981', tabIndex: 3 },
@@ -266,7 +266,7 @@ function DashboardPanelInner({
   ];
 
   const _quickLinks = [
-    { title: 'Team', description: 'Administrer crew', color: 'var(--role-cyan, #00d4ff)', icon: TeamIcon, tabIndex: 7 },
+    { title: 'Team', description: 'Administrer crew', color: 'var(--role-cyan, #5d76cb)', icon: TeamIcon, tabIndex: 7 },
     { title: 'Lokasjoner', description: 'Lokasjoner', color: '#4caf50', icon: LocationIcon, tabIndex: 5 },
     { title: 'Utstyr', description: 'Rekvisitter', color: '#4b3d8f', icon: PropsIcon, tabIndex: 8 },
     { title: 'Kamera', description: 'Shot lists', color: '#e91e63', icon: ShotListIcon, tabIndex: 9 },
@@ -323,7 +323,7 @@ function DashboardPanelInner({
                         borderColor: 'rgba(255,255,255,0.5)',
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: 'var(--role-cyan, #00d4ff)',
+                        borderColor: 'var(--role-cyan, #5d76cb)',
                         borderWidth: 2,
                       },
                     },
@@ -334,15 +334,15 @@ function DashboardPanelInner({
                   size="small"
                   disabled={isSavingTitle}
                   sx={{
-                    color: 'var(--role-cyan, #00d4ff)',
+                    color: 'var(--role-cyan, #5d76cb)',
                     minWidth: TOUCH_TARGET_SIZE,
                     minHeight: TOUCH_TARGET_SIZE,
-                    '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                    '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
                     ...focusVisibleStyles,
                   }}
                   aria-label="Lagre tittel"
                 >
-                  {isSavingTitle ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /> : <SaveIcon />}
+                  {isSavingTitle ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #5d76cb)' }} /> : <SaveIcon />}
                 </IconButton>
                 <IconButton
                   onClick={handleCancelEdit}
@@ -379,8 +379,8 @@ function DashboardPanelInner({
                         minWidth: TOUCH_TARGET_SIZE,
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { 
-                          color: 'var(--role-cyan, #00d4ff)',
-                          bgcolor: 'rgba(0,212,255,0.1)' 
+                          color: 'var(--role-cyan, #5d76cb)',
+                          bgcolor: 'rgba(93, 118, 203,0.1)' 
                         },
                         ...focusVisibleStyles,
                       }}
@@ -422,7 +422,7 @@ function DashboardPanelInner({
                         borderColor: 'rgba(255,255,255,0.3)',
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: 'var(--role-cyan, #00d4ff)',
+                        borderColor: 'var(--role-cyan, #5d76cb)',
                         borderWidth: 1,
                       },
                     },
@@ -433,15 +433,15 @@ function DashboardPanelInner({
                   size="small"
                   disabled={isSavingDescription}
                   sx={{
-                    color: 'var(--role-cyan, #00d4ff)',
+                    color: 'var(--role-cyan, #5d76cb)',
                     minWidth: TOUCH_TARGET_SIZE,
                     minHeight: TOUCH_TARGET_SIZE,
-                    '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                    '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
                     ...focusVisibleStyles,
                   }}
                   aria-label="Lagre beskrivelse"
                 >
-                  {isSavingDescription ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /> : <SaveIcon />}
+                  {isSavingDescription ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #5d76cb)' }} /> : <SaveIcon />}
                 </IconButton>
                 <IconButton
                   onClick={handleCancelEditDescription}
@@ -473,8 +473,8 @@ function DashboardPanelInner({
                         minWidth: TOUCH_TARGET_SIZE,
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { 
-                          color: 'var(--role-cyan, #00d4ff)',
-                          bgcolor: 'rgba(0,212,255,0.1)' 
+                          color: 'var(--role-cyan, #5d76cb)',
+                          bgcolor: 'rgba(93, 118, 203,0.1)' 
                         },
                         ...focusVisibleStyles,
                       }}

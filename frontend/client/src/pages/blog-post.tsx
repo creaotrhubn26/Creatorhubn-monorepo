@@ -43,7 +43,7 @@ const PILLAR_LABELS: Record<string, string> = {
 
 const PILLAR_COLORS: Record<string, string> = {
   gdpr: '#34d399',
-  selftape: '#60a5fa',
+  selftape: '#93a4dc',
   crm: '#fbbf24',
   ai: '#93a4dc',
   survey: '#f87171',
@@ -279,7 +279,7 @@ export default function BlogPostPage() {
   return (
     <Box sx={{ bgcolor: palette.bgRoot, color: palette.textPrimary, minHeight: '100vh' }}>
       {/* Top-nav */}
-      <Box sx={{ borderBottom: `1px solid ${palette.borderSubtle}`, bgcolor: 'rgba(10, 5, 21,0.85)', backdropFilter: 'blur(8px)' }}>
+      <Box sx={{ borderBottom: `1px solid ${palette.borderSubtle}`, bgcolor: 'rgba(27, 18, 44,0.85)', backdropFilter: 'blur(8px)' }}>
         <Container maxWidth="md">
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 2 }}>
             <Box

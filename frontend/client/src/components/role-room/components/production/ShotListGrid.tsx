@@ -347,7 +347,7 @@ export function ShotListGrid({
             <Box
               sx={{
                 bgcolor: '#3c4e6d',
-                border: '2px solid #3b82f6',
+                border: '2px solid #3f51b5',
                 borderRadius: 2,
                 p: 1.5,
                 boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
@@ -355,7 +355,7 @@ export function ShotListGrid({
                 minWidth: 160,
               }}
             >
-              <Typography variant="caption" sx={{ color: '#3b82f6', fontWeight: 700, display: 'block' }}>
+              <Typography variant="caption" sx={{ color: '#3f51b5', fontWeight: 700, display: 'block' }}>
                 {person?.name ?? draggingPersonId}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>

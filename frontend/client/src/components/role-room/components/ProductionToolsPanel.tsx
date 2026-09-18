@@ -78,7 +78,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       icon: <ShotIcon />,
       description: 'Spor fremgang på shots med timer',
       badge: pendingShots,
-      color: '#3b82f6',
+      color: '#3f51b5',
     },
     {
       id: 'continuity',

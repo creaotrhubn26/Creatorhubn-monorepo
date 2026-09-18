@@ -84,11 +84,11 @@ type FeedbackDraft = {
 
 const SURFACE = 'rgba(7, 13, 26, 0.72)';
 const SURFACE_ALT = 'rgba(10, 18, 34, 0.84)';
-const BORDER = 'rgba(125, 211, 252, 0.14)';
+const BORDER = 'rgba(147, 164, 220, 0.14)';
 const TEXT_PRIMARY = 'rgba(241, 245, 249, 0.96)';
-const TEXT_SECONDARY = 'rgba(191, 219, 254, 0.74)';
+const TEXT_SECONDARY = 'rgba(195, 203, 230, 0.74)';
 const TEXT_MUTED = 'rgba(148, 163, 184, 0.78)';
-const ACCENT = 'var(--role-portal-accent, #7dd3fc)';
+const ACCENT = 'var(--role-portal-accent, #93a4dc)';
 const ACCENT_ALT = '#5d76cb';
 const SUCCESS = '#34d399';
 const WARNING = '#fbbf24';
@@ -107,7 +107,7 @@ const cardSx = {
   border: `1px solid ${BORDER}`,
   bgcolor: SURFACE,
   backdropFilter: 'blur(24px)',
-  boxShadow: '0 22px 80px rgba(10, 5, 21, 0.42)',
+  boxShadow: '0 22px 80px rgba(27, 18, 44, 0.42)',
 };
 
 const formatDateLabel = (value?: string | null): string => {
@@ -194,13 +194,13 @@ const getStatusTone = (status?: string | null): { fg: string; bg: string; border
   if (['requested', 'shortlist', 'viewed', 'sent'].includes(normalized)) {
     return { fg: WARNING, bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.28)' };
   }
-  return { fg: ACCENT, bg: 'rgba(125, 211, 252, 0.12)', border: 'rgba(125, 211, 252, 0.26)' };
+  return { fg: ACCENT, bg: 'rgba(147, 164, 220, 0.12)', border: 'rgba(147, 164, 220, 0.26)' };
 };
 
 const getActivityTone = (entryType?: string | null): { fg: string; bg: string; border: string } => {
   const normalized = String(entryType || '').trim().toLowerCase();
   if (normalized.includes('upload') || normalized.includes('self_tape')) {
-    return { fg: ACCENT, bg: 'rgba(8, 47, 73, 0.42)', border: BORDER };
+    return { fg: ACCENT, bg: 'rgba(42, 61, 86, 0.42)', border: BORDER };
   }
   if (normalized.includes('invite')) {
     return { fg: WARNING, bg: 'rgba(120, 53, 15, 0.26)', border: 'rgba(251, 191, 36, 0.26)' };
@@ -738,7 +738,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
           py: { xs: 3, md: 4 },
           color: TEXT_PRIMARY,
           background:
-            'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 28%), radial-gradient(circle at top right, rgba(93, 118, 203,0.15), transparent 26%), linear-gradient(180deg, #1b122c 0%, #1b122c 46%, #2a3152 100%)',
+            'radial-gradient(circle at top left, rgba(147, 164, 220,0.16), transparent 28%), radial-gradient(circle at top right, rgba(93, 118, 203,0.15), transparent 26%), linear-gradient(180deg, #1b122c 0%, #1b122c 46%, #2a3152 100%)',
         }}
       >
         <Box sx={{ ...cardSx, maxWidth: 820, mx: 'auto', p: { xs: 3, md: 4 } }}>
@@ -752,7 +752,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
               auditions, self tapes og status i en trygg arbeidsflate uten resten av produksjonsdashbordet.
             </Typography>
             {error ? <Alert severity="error">{error}</Alert> : null}
-            <Alert severity="info" sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: TEXT_PRIMARY }}>
+            <Alert severity="info" sx={{ bgcolor: 'rgba(42, 61, 86, 0.44)', color: TEXT_PRIMARY }}>
               Vi fant ingen aktive prosjekter koblet til den innloggede e-posten din. Be teamet sende deg en invitasjonslenke
               eller knytte deg til kandidatprofilen i prosjektet.
             </Alert>
@@ -767,7 +767,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                   px: 2.2,
                   bgcolor: ACCENT,
                   color: '#031522',
-                  '&:hover': { bgcolor: '#bae6fd' },
+                  '&:hover': { bgcolor: '#c3cbe6' },
                 }}
               >
                 Oppdater
@@ -806,7 +806,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
         py: { xs: 2.25, md: 3.5 },
         color: TEXT_PRIMARY,
         background:
-          'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 24%), radial-gradient(circle at top right, rgba(93, 118, 203,0.16), transparent 26%), radial-gradient(circle at bottom left, rgba(52,211,153,0.12), transparent 22%), linear-gradient(180deg, #1b122c 0%, #1b122c 42%, #2a3152 100%)',
+          'radial-gradient(circle at top left, rgba(147, 164, 220,0.16), transparent 24%), radial-gradient(circle at top right, rgba(93, 118, 203,0.16), transparent 26%), radial-gradient(circle at bottom left, rgba(52,211,153,0.12), transparent 22%), linear-gradient(180deg, #1b122c 0%, #1b122c 42%, #2a3152 100%)',
       }}
     >
       <Box
@@ -821,7 +821,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
             borderRadius: 6,
             pointerEvents: 'none',
             backgroundImage:
-              'linear-gradient(rgba(125,211,252,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,0.05) 1px, transparent 1px)',
+              'linear-gradient(rgba(147, 164, 220,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(147, 164, 220,0.05) 1px, transparent 1px)',
             backgroundSize: '32px 32px',
             maskImage: 'linear-gradient(180deg, rgba(255,255,255,0.42), transparent 88%)',
           },
@@ -911,9 +911,9 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                       py: 1.05,
                       color: isActive ? '#031522' : TEXT_PRIMARY,
                       bgcolor: isActive ? ACCENT : 'rgba(15, 23, 42, 0.64)',
-                      border: `1px solid ${isActive ? 'rgba(186,230,253,0.46)' : BORDER}`,
+                      border: `1px solid ${isActive ? 'rgba(195, 203, 230,0.46)' : BORDER}`,
                       '&:hover': {
-                        bgcolor: isActive ? '#bae6fd' : 'rgba(30, 41, 59, 0.92)',
+                        bgcolor: isActive ? '#c3cbe6' : 'rgba(30, 41, 59, 0.92)',
                       },
                     }}
                   >
@@ -977,10 +977,10 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                       borderRadius: 999,
                       textTransform: 'none',
                       fontWeight: 800,
-                      background: 'linear-gradient(135deg, #7dd3fc, #38bdf8)',
+                      background: 'linear-gradient(135deg, #93a4dc, #5d76cb)',
                       color: '#031522',
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #bae6fd, #0ea5e9)',
+                        background: 'linear-gradient(135deg, #c3cbe6, #3f51b5)',
                       },
                     }}
                   >
@@ -999,8 +999,8 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                         borderRadius: 999,
                         textTransform: 'none',
                         fontWeight: 700,
-                        color: '#dbeafe',
-                        borderColor: 'rgba(125, 211, 252, 0.28)',
+                        color: '#dfe4f3',
+                        borderColor: 'rgba(147, 164, 220, 0.28)',
                       }}
                     >
                       Legg i kalender
@@ -1078,7 +1078,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                       ...cardSx,
                       display: { xs: 'block', md: 'none' },
                       p: 2,
-                      borderColor: 'rgba(125, 211, 252, 0.22)',
+                      borderColor: 'rgba(147, 164, 220, 0.22)',
                       bgcolor: 'rgba(8, 15, 30, 0.92)',
                     }}
                   >
@@ -1110,7 +1110,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                         <Chip
                           size="small"
                           label={normalizeStatusLabel(nextSchedule.status)}
-                          sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: '#bae6fd', border: `1px solid ${BORDER}` }}
+                          sx={{ bgcolor: 'rgba(42, 61, 86, 0.44)', color: '#c3cbe6', border: `1px solid ${BORDER}` }}
                         />
                       </Stack>
                       <Typography sx={{ color: TEXT_MUTED, fontSize: '0.92rem', lineHeight: 1.6 }}>
@@ -1130,10 +1130,10 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                               borderRadius: 999,
                               textTransform: 'none',
                               fontWeight: 800,
-                              background: 'linear-gradient(135deg, #7dd3fc, #38bdf8)',
+                              background: 'linear-gradient(135deg, #93a4dc, #5d76cb)',
                               color: '#031522',
                               '&:hover': {
-                                background: 'linear-gradient(135deg, #bae6fd, #0ea5e9)',
+                                background: 'linear-gradient(135deg, #c3cbe6, #3f51b5)',
                               },
                             }}
                           >
@@ -1153,8 +1153,8 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                               borderRadius: 999,
                               textTransform: 'none',
                               fontWeight: 700,
-                              color: '#dbeafe',
-                              borderColor: 'rgba(125, 211, 252, 0.28)',
+                              color: '#dfe4f3',
+                              borderColor: 'rgba(147, 164, 220, 0.28)',
                             }}
                           >
                             Legg i kalender
@@ -1250,7 +1250,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                             label={nextStep.title}
                             sx={{
                               color: ACCENT,
-                              bgcolor: 'rgba(8, 47, 73, 0.44)',
+                              bgcolor: 'rgba(42, 61, 86, 0.44)',
                               border: `1px solid ${BORDER}`,
                             }}
                           />
@@ -1261,7 +1261,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                         <Divider sx={{ borderColor: BORDER }} />
                         <Stack spacing={1.2}>
                           {selectedAssignment.schedules.length === 0 ? (
-                            <Alert severity="info" sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: TEXT_PRIMARY }}>
+                            <Alert severity="info" sx={{ bgcolor: 'rgba(42, 61, 86, 0.44)', color: TEXT_PRIMARY }}>
                               Ingen auditions eller callbacks er synlige ennå. Nar teamet legger deg inn, dukker de opp her.
                             </Alert>
                           ) : (
@@ -1331,10 +1331,10 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                                               borderRadius: 999,
                                               textTransform: 'none',
                                               fontWeight: 800,
-                                              background: 'linear-gradient(135deg, #7dd3fc, #38bdf8)',
+                                              background: 'linear-gradient(135deg, #93a4dc, #5d76cb)',
                                               color: '#031522',
                                               '&:hover': {
-                                                background: 'linear-gradient(135deg, #bae6fd, #0ea5e9)',
+                                                background: 'linear-gradient(135deg, #c3cbe6, #3f51b5)',
                                               },
                                             }}
                                           >
@@ -1354,8 +1354,8 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                                               borderRadius: 999,
                                               textTransform: 'none',
                                               fontWeight: 700,
-                                              color: '#dbeafe',
-                                              borderColor: 'rgba(125, 211, 252, 0.28)',
+                                              color: '#dfe4f3',
+                                              borderColor: 'rgba(147, 164, 220, 0.28)',
                                             }}
                                           >
                                             Legg i kalender
@@ -1378,7 +1378,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                           Siste oppdateringer
                         </Typography>
                         {activityItems.length === 0 ? (
-                          <Alert severity="info" sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: TEXT_PRIMARY }}>
+                          <Alert severity="info" sx={{ bgcolor: 'rgba(42, 61, 86, 0.44)', color: TEXT_PRIMARY }}>
                             Aktivitet vises her nar invitasjoner, self tapes og meldinger begynner a flyte.
                           </Alert>
                         ) : (
@@ -1471,7 +1471,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                                 px: 2.4,
                                 bgcolor: ACCENT,
                                 color: '#031522',
-                                '&:hover': { bgcolor: '#bae6fd' },
+                                '&:hover': { bgcolor: '#c3cbe6' },
                               }}
                             >
                               Velg videofil
@@ -1592,7 +1592,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                           </Stack>
                         </Stack>
                         {selectedAssignment.candidate.videos.length === 0 ? (
-                          <Alert severity="info" sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: TEXT_PRIMARY }}>
+                          <Alert severity="info" sx={{ bgcolor: 'rgba(42, 61, 86, 0.44)', color: TEXT_PRIMARY }}>
                             Ingen self tapes er sendt inn ennå.
                           </Alert>
                         ) : (
@@ -1614,7 +1614,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                                     label={video.source === 'talent_upload' ? 'Opplastet' : 'Link'}
                                     sx={{
                                       color: video.source === 'talent_upload' ? SUCCESS : ACCENT,
-                                      bgcolor: video.source === 'talent_upload' ? 'rgba(6, 78, 59, 0.26)' : 'rgba(8, 47, 73, 0.44)',
+                                      bgcolor: video.source === 'talent_upload' ? 'rgba(6, 78, 59, 0.26)' : 'rgba(42, 61, 86, 0.44)',
                                       border: `1px solid ${BORDER}`,
                                     }}
                                   />
@@ -1713,7 +1713,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                             px: 2.4,
                             bgcolor: ACCENT,
                             color: '#031522',
-                            '&:hover': { bgcolor: '#bae6fd' },
+                            '&:hover': { bgcolor: '#c3cbe6' },
                           }}
                         >
                           Send melding
@@ -1727,7 +1727,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                           Statushistorikk
                         </Typography>
                         {activityItems.length === 0 ? (
-                          <Alert severity="info" sx={{ bgcolor: 'rgba(8, 47, 73, 0.44)', color: TEXT_PRIMARY }}>
+                          <Alert severity="info" sx={{ bgcolor: 'rgba(42, 61, 86, 0.44)', color: TEXT_PRIMARY }}>
                             Ingen aktivitet er logget ennå.
                           </Alert>
                         ) : (
@@ -2010,7 +2010,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
                             px: 2.4,
                             bgcolor: ACCENT,
                             color: '#031522',
-                            '&:hover': { bgcolor: '#bae6fd' },
+                            '&:hover': { bgcolor: '#c3cbe6' },
                           }}
                         >
                           Lagre profil

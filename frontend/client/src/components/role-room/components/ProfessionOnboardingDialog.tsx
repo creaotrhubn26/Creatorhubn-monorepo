@@ -594,7 +594,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     welcomeTitle: 'Velkommen, Musikkvideo-skaper!',
     welcomeSubtitle: 'Visualiser musikken',
     professionIcon: <MusicIcon sx={{ fontSize: 48 }} />,
-    professionColor: '#06b6d4',
+    professionColor: '#3f51b5',
     slides: [
       {
         title: 'Hva er The Role Room?',
@@ -602,17 +602,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'The Role Room er perfekt for å synkronisere visuelle elementer med musikk og planlegge dynamiske sekvenser.',
         features: [
           {
-            icon: <MusicIcon sx={{ color: '#06b6d4' }} />,
+            icon: <MusicIcon sx={{ color: '#3f51b5' }} />,
             title: 'Beat-synkronisering',
             description: 'Planlegg shots etter musikkens struktur',
           },
           {
-            icon: <VideocamIcon sx={{ color: '#06b6d4' }} />,
+            icon: <VideocamIcon sx={{ color: '#3f51b5' }} />,
             title: 'Dynamiske sekvenser',
             description: 'Visualiser raske klipp og overganger',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#06b6d4' }} />,
+            icon: <GroupsIcon sx={{ color: '#3f51b5' }} />,
             title: 'Artist-koordinering',
             description: 'Hold oversikt over artisten og dansere',
           },
@@ -623,12 +623,12 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Planlegg effektivt og maksimer opptaksdagen.',
         features: [
           {
-            icon: <TimelineIcon sx={{ color: '#06b6d4' }} />,
+            icon: <TimelineIcon sx={{ color: '#3f51b5' }} />,
             title: 'Storyboard',
             description: 'Visualiser hele videoen før opptak',
           },
           {
-            icon: <TaskIcon sx={{ color: '#06b6d4' }} />,
+            icon: <TaskIcon sx={{ color: '#3f51b5' }} />,
             title: 'Shot-liste',
             description: 'Organiser etter vers, refreng og bridge',
           },

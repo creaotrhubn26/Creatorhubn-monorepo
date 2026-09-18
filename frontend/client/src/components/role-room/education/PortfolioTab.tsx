@@ -150,7 +150,7 @@ export function PortfolioTab() {
     { id: 'porteflojer', label: 'Porteføljer', value: portfolios.length, hint: 'På tvers av alle kull', icon: <PortfolioIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
     { id: 'publiserte', label: 'Publiserte', value: portfolios.filter((p) => p.status === 'published').length, hint: 'Klare for visning', icon: <PublishedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     { id: 'showreels', label: 'Showreels', value: portfolios.filter((p) => p.kind === 'showreel').length, hint: 'Videosammendrag', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
-    { id: 'eksamen', label: 'Eksamensmapper', value: portfolios.filter((p) => p.kind === 'exam').length, hint: 'Sendt til sensur', icon: <ExamIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'eksamen', label: 'Eksamensmapper', value: portfolios.filter((p) => p.kind === 'exam').length, hint: 'Sendt til sensur', icon: <ExamIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb' },
   ];
 
   const kindLabel = (k: PortfolioKind) => k === 'exam' ? 'Eksamensmappe' : 'Showreel';
@@ -245,7 +245,7 @@ export function PortfolioTab() {
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0, pr: 2 }}>
                 <Typography sx={{ fontSize: 12.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[p.cohortName, p.title || kindLabel(p.kind)].filter(Boolean).join(' · ')}</Typography>
-                <Chip label={kindLabel(p.kind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: p.kind === 'exam' ? 'rgba(56,189,248,0.15)' : 'rgba(236,72,153,0.15)', color: p.kind === 'exam' ? '#38bdf8' : '#ec4899', flexShrink: 0 }} />
+                <Chip label={kindLabel(p.kind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: p.kind === 'exam' ? 'rgba(93, 118, 203,0.15)' : 'rgba(236,72,153,0.15)', color: p.kind === 'exam' ? '#5d76cb' : '#ec4899', flexShrink: 0 }} />
               </Stack>
               <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: published ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: published ? '#34d399' : 'rgba(255,255,255,0.75)', fontSize: 11.5, fontWeight: 600 }}>{published ? 'Publisert' : 'Utkast'}</Box></Box>
               <Stack direction="row" alignItems="center" spacing={0.25} justifyContent="flex-end">

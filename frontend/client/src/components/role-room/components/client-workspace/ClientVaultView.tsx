@@ -217,7 +217,7 @@ function SecretRow({ s }: { s: RoleRoomAccessVaultSecretSummary }) {
   const clientOwned = s.ownerSide === 'client';
   const revoked = Boolean(s.revokedAt);
   return (
-    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: 1.1, opacity: revoked ? 0.6 : 1 }}>
+    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: 1.1, opacity: revoked ? 0.6 : 1 }}>
       <Stack direction="row" spacing={1} alignItems="center">
         <LockIcon sx={{ fontSize: 18, color: '#c3cbe6', flexShrink: 0 }} />
         <Box sx={{ minWidth: 0, flex: 1 }}>

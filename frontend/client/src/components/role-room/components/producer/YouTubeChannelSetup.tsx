@@ -121,7 +121,7 @@ export default function YouTubeChannelSetup({
                 textTransform: 'none',
                 fontSize: '0.78rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang
@@ -283,7 +283,7 @@ export default function YouTubeChannelSetup({
                 textTransform: 'none',
                 fontSize: '0.82rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang
@@ -334,8 +334,8 @@ function SetupCard({
       };
     }
     return {
-      bg: 'rgba(59,130,246,0.06)',
-      border: 'rgba(59,130,246,0.25)',
+      bg: 'rgba(63, 81, 181,0.06)',
+      border: 'rgba(63, 81, 181,0.25)',
       accent: '#93c5fd',
     };
   }, [intent]);
@@ -464,9 +464,9 @@ function ChannelPlanView({
                   label={k}
                   size="small"
                   sx={{
-                    bgcolor: 'rgba(59,130,246,0.1)',
-                    color: '#bfdbfe',
-                    border: '1px solid rgba(59,130,246,0.25)',
+                    bgcolor: 'rgba(63, 81, 181,0.1)',
+                    color: '#c3cbe6',
+                    border: '1px solid rgba(63, 81, 181,0.25)',
                     fontSize: '0.72rem',
                     height: 22,
                   }}

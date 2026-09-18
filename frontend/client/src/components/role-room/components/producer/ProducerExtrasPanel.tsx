@@ -16,7 +16,7 @@ export default function ProducerExtrasPanel({ children }: ProducerExtrasPanelPro
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(27, 18, 44,0.82) 100%)',
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">

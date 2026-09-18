@@ -108,7 +108,7 @@ export default function SocialAccessRequestDialog({
       <DialogTitle sx={{ pb: 1 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Stack direction="row" alignItems="center" spacing={1}>
-            <EmailIcon sx={{ color: '#60a5fa' }} />
+            <EmailIcon sx={{ color: '#93a4dc' }} />
             <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0' }}>
               Be om tilgang til {platformLabel}
             </Typography>
@@ -157,7 +157,7 @@ export default function SocialAccessRequestDialog({
               disabled={loading}
               sx={{
                 textTransform: 'none',
-                bgcolor: '#3b82f6',
+                bgcolor: '#3f51b5',
                 fontWeight: 600,
                 '&:hover': { bgcolor: '#2563eb' },
               }}
@@ -239,7 +239,7 @@ export default function SocialAccessRequestDialog({
                   onClick={() => window.open(request.mailtoUrl!, '_self')}
                   sx={{
                     textTransform: 'none',
-                    bgcolor: '#3b82f6',
+                    bgcolor: '#3f51b5',
                     fontWeight: 600,
                     '&:hover': { bgcolor: '#2563eb' },
                   }}
@@ -273,7 +273,7 @@ const textFieldSx = {
     bgcolor: 'rgba(15,23,42,0.6)',
     '& fieldset': { borderColor: 'rgba(148,163,184,0.25)' },
     '&:hover fieldset': { borderColor: 'rgba(148,163,184,0.4)' },
-    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+    '&.Mui-focused fieldset': { borderColor: '#3f51b5' },
   },
 } as const;
 

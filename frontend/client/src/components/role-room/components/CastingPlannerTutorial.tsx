@@ -92,12 +92,12 @@ const panelInfo = [
   { name: 'Utvelgelse', icon: CompleteIcon, color: '#14b8a6' },
   { name: 'Lokasjoner', icon: LocationIcon, color: '#4caf50' },
   { name: 'Produksjonsplan', icon: CalendarIcon, color: '#32127a' },
-  { name: 'Team', icon: TeamIcon, color: '#00d4ff' },
+  { name: 'Team', icon: TeamIcon, color: '#5d76cb' },
   { name: 'Utstyr', icon: PropIcon, color: '#4b3d8f' },
   { name: 'Live Set', icon: ActionIcon, color: '#ef4444' },
-  { name: 'Media', icon: MediaIcon, color: '#60a5fa' },
+  { name: 'Media', icon: MediaIcon, color: '#93a4dc' },
   { name: 'Økonomi', icon: EconomyIcon, color: '#34d399' },
-  { name: 'Tidslinje', icon: TimelineWorkflowIcon, color: '#38bdf8' },
+  { name: 'Tidslinje', icon: TimelineWorkflowIcon, color: '#5d76cb' },
   { name: 'Klientsamarbeid', icon: ReviewsIcon, color: '#93a4dc' },
   { name: 'Eksport', icon: ExportIcon, color: '#fbbf24' },
 ];
@@ -112,17 +112,17 @@ const stepIndicatorMeta: Record<string, { label: string; subtitle: string; icon:
   'selection': { label: 'Utvelgelse', subtitle: 'Casting', icon: CompleteIcon, color: '#14b8a6' },
   'locations': { label: 'Lokasjoner', subtitle: 'Produksjonsplan', icon: LocationIcon, color: '#4caf50' },
   'production-plan': { label: 'Kalender', subtitle: 'Produksjonsplan', icon: CalendarIcon, color: '#32127a' },
-  'team': { label: 'Team', subtitle: 'Ressurser', icon: TeamIcon, color: '#00d4ff' },
+  'team': { label: 'Team', subtitle: 'Ressurser', icon: TeamIcon, color: '#5d76cb' },
   'equipment': { label: 'Utstyr', subtitle: 'Ressurser', icon: PropIcon, color: '#4b3d8f' },
   'live-set': { label: 'Live Set', subtitle: 'Produksjon', icon: ActionIcon, color: '#ef4444' },
   'complete': { label: 'Slutt', subtitle: 'Oppsummering', icon: CelebrationIcon, color: '#4caf50' },
-  'producer-welcome': { label: 'Start', subtitle: 'Introduksjon', icon: TutorialIcon, color: '#22d3ee' },
+  'producer-welcome': { label: 'Start', subtitle: 'Introduksjon', icon: TutorialIcon, color: '#5d76cb' },
   'producer-studio': { label: 'Storyboard', subtitle: 'Kreativt arbeid', icon: ShotListIcon, color: '#ec4899' },
   'producer-contributors': { label: 'Statister/medvirkende', subtitle: 'Bidragsytere', icon: CandidatesIcon, color: '#10b981' },
   'producer-locations': { label: 'Lokasjoner', subtitle: 'Produksjon', icon: LocationIcon, color: '#4caf50' },
   'producer-equipment': { label: 'Utstyr/rekvisitter', subtitle: 'Produksjon', icon: PropIcon, color: '#4b3d8f' },
-  'producer-media': { label: 'Media', subtitle: 'Leveranser', icon: MediaIcon, color: '#60a5fa' },
-  'producer-timeline': { label: 'Tidslinje', subtitle: 'Produksjon', icon: TimelineWorkflowIcon, color: '#38bdf8' },
+  'producer-media': { label: 'Media', subtitle: 'Leveranser', icon: MediaIcon, color: '#93a4dc' },
+  'producer-timeline': { label: 'Tidslinje', subtitle: 'Produksjon', icon: TimelineWorkflowIcon, color: '#5d76cb' },
   'producer-reviews': { label: 'Klientsamarbeid', subtitle: 'Godkjenning', icon: ReviewsIcon, color: '#93a4dc' },
   'producer-export': { label: 'Eksport', subtitle: 'Levering', icon: ExportIcon, color: '#fbbf24' },
   'producer-complete': { label: 'Slutt', subtitle: 'Oppsummering', icon: CelebrationIcon, color: '#4caf50' },
@@ -325,7 +325,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
       ? {
           label: 'Innholdsprodusent-modus',
           description: 'Driv frem storyboard, media, klientsamarbeid og leveranser i én flyt.',
-          accent: '#22d3ee',
+          accent: '#5d76cb',
           secondaryAccent: '#f59e0b',
           railTitle: 'Fanene i innholdsprodusent-flyten',
           railDescription: 'Dette er arbeidsflatene som faktisk ligger i toppnavigasjonen for innholdsprodusent.',
@@ -340,7 +340,7 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
         };
 
   const accentColor = modeMeta.accent;
-  const surfaceColor = 'rgba(16, 11, 30, 0.96)';
+  const surfaceColor = 'rgba(42, 49, 82, 0.96)';
   const surfaceSecondaryColor = 'rgba(255,255,255,0.045)';
   const borderSoft = 'rgba(255,255,255,0.08)';
   const currentMeta = stepIndicatorMeta[step.id];

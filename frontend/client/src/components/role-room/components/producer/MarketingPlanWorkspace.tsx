@@ -67,7 +67,7 @@ const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
 
 const STATUS_COLORS: Record<MarketingPlanPost['status'], { bg: string; fg: string; icon: typeof CheckCircleIcon }> = {
   proposed: { bg: 'rgba(93, 118, 203,0.16)', fg: '#93a4dc', icon: LightbulbIcon },
-  scheduled: { bg: 'rgba(34,211,238,0.16)', fg: '#67e8f9', icon: ScheduleIcon },
+  scheduled: { bg: 'rgba(93, 118, 203,0.16)', fg: '#93a4dc', icon: ScheduleIcon },
   published: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac', icon: CheckCircleIcon },
   skipped: { bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8', icon: BlockIcon },
 };
@@ -333,7 +333,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
         <KpiTile label="Publisert" value={metrics.by.published}
                  icon={<CheckCircleIcon />} color="#22c55e" />
         <KpiTile label="Planlagt" value={metrics.by.scheduled}
-                 icon={<ScheduleIcon />} color="#22d3ee"
+                 icon={<ScheduleIcon />} color="#5d76cb"
                  subtext={`${metrics.by.proposed} forslag`} />
         <KpiTile label="Dager igjen"
                  value={metrics.daysRemaining ?? '—'}
@@ -640,7 +640,7 @@ function PostRow({ post, pillar, onEdit }: {
       </TableCell>
       <TableCell>
         <Chip size="small" label={FORMAT_LABELS[post.format]}
-              sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#67e8f9', fontSize: '0.7rem', height: 22 }} />
+              sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#93a4dc', fontSize: '0.7rem', height: 22 }} />
       </TableCell>
       <TableCell>
         <Tooltip title={post.hook} placement="top-start">
@@ -658,9 +658,9 @@ function PostRow({ post, pillar, onEdit }: {
                       fontSize: '0.58rem',
                       fontWeight: 800,
                       bgcolor: post.lastEditedByKind === 'client'
-                        ? 'rgba(34,211,238,0.18)' : 'rgba(236,72,153,0.18)',
+                        ? 'rgba(93, 118, 203,0.18)' : 'rgba(236,72,153,0.18)',
                       color: post.lastEditedByKind === 'client'
-                        ? '#67e8f9' : '#f9a8d4',
+                        ? '#93a4dc' : '#f9a8d4',
                       '& .MuiChip-label': { px: 0.6 },
                     }} />
             )}
@@ -729,10 +729,10 @@ function PostThumbnail({ post }: { post: MarketingPlanPost }) {
 const FORMAT_COLOR_FALLBACK: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
-  image: 'var(--role-cyan, #22d3ee)',
+  image: 'var(--role-cyan, #5d76cb)',
   story: '#5d76cb',
   tiktok: '#ec4899',
-  linkedin_post: '#3b82f6',
+  linkedin_post: '#3f51b5',
   youtube_short: '#ef4444',
 };
 
@@ -752,7 +752,7 @@ function formatTimeAgo(iso: string): string {
 
 const containerSx = {
   p: { xs: 2, md: 3 },
-  background: 'radial-gradient(circle at top right, rgba(236,72,153,0.10) 0%, rgba(15,23,42,0.96) 36%, rgba(10, 5, 21,0.98) 100%)',
+  background: 'radial-gradient(circle at top right, rgba(236,72,153,0.10) 0%, rgba(15,23,42,0.96) 36%, rgba(27, 18, 44,0.98) 100%)',
   borderRadius: 3,
   border: '1px solid rgba(236,72,153,0.16)',
   minHeight: 600,
@@ -804,7 +804,7 @@ const thSx = {
   textTransform: 'uppercase' as const,
   letterSpacing: '0.06em',
   borderBottom: '1px solid rgba(148,163,184,0.18)',
-  bgcolor: 'rgba(10, 5, 21,0.9)',
+  bgcolor: 'rgba(27, 18, 44,0.9)',
 };
 
 const mutedSx = {

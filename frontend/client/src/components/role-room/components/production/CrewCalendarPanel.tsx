@@ -217,16 +217,16 @@ const TIME_SLOTS = Array.from({ length: 14 }, (_, i) => i + 6); // 6:00 - 19:00
 // ============================================================================
 
 const glassStyles = {
-  background: 'rgba(33, 28, 59, 0.85)',
+  background: 'rgba(60, 78, 109, 0.85)',
   backdropFilter: 'blur(16px)',
   border: '1px solid rgba(255, 255, 255, 0.08)',
   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
 };
 
 // Hovedområdet bruker samme mørke glass-tokens som produksjonskalenderen
-// (rgba(16, 11, 30)/rgba(10, 5, 21) + lilla/cyan-aksent) i stedet for lyst tema.
+// (rgba(42, 49, 82)/rgba(27, 18, 44) + lilla/cyan-aksent) i stedet for lyst tema.
 const glassLightStyles = {
-  background: 'linear-gradient(165deg, rgba(16, 11, 30,0.96) 0%, rgba(10, 5, 21,0.98) 100%)',
+  background: 'linear-gradient(165deg, rgba(42, 49, 82,0.96) 0%, rgba(27, 18, 44,0.98) 100%)',
   backdropFilter: 'blur(16px)',
   border: '1px solid rgba(148,163,184,0.18)',
   boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
@@ -1560,7 +1560,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
             px: { xs: 1.5, sm: 2.5 },
             py: { xs: 1, sm: 1.25 },
             borderBottom: `1px solid ${alpha('#fff', 0.08)}`,
-            background: 'linear-gradient(120deg, rgba(16,185,129,0.16) 0%, rgba(56,189,248,0.08) 52%, rgba(15,23,42,0.24) 100%)',
+            background: 'linear-gradient(120deg, rgba(16,185,129,0.16) 0%, rgba(93, 118, 203,0.08) 52%, rgba(15,23,42,0.24) 100%)',
           }}
         >
           <Box

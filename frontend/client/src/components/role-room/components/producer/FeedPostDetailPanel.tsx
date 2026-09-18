@@ -721,11 +721,11 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: "none",
                 fontWeight: 700,
-                color: "var(--role-cyan, #22d3ee)",
-                borderColor: "rgba(34,211,238,0.5)",
+                color: "var(--role-cyan, #5d76cb)",
+                borderColor: "rgba(93, 118, 203,0.5)",
                 "&:hover": {
-                  borderColor: "var(--role-cyan, #22d3ee)",
-                  bgcolor: "rgba(34,211,238,0.08)",
+                  borderColor: "var(--role-cyan, #5d76cb)",
+                  bgcolor: "rgba(93, 118, 203,0.08)",
                 },
               }}
             >
@@ -803,11 +803,11 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: "none",
                 fontWeight: 700,
-                color: "var(--role-cyan, #22d3ee)",
-                borderColor: "rgba(34,211,238,0.5)",
+                color: "var(--role-cyan, #5d76cb)",
+                borderColor: "rgba(93, 118, 203,0.5)",
                 "&:hover": {
-                  borderColor: "var(--role-cyan, #22d3ee)",
-                  bgcolor: "rgba(34,211,238,0.08)",
+                  borderColor: "var(--role-cyan, #5d76cb)",
+                  bgcolor: "rgba(93, 118, 203,0.08)",
                 },
               }}
             >
@@ -897,11 +897,11 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: "none",
                 fontWeight: 700,
-                color: "var(--role-cyan, #22d3ee)",
-                borderColor: "rgba(34,211,238,0.5)",
+                color: "var(--role-cyan, #5d76cb)",
+                borderColor: "rgba(93, 118, 203,0.5)",
                 "&:hover": {
-                  borderColor: "var(--role-cyan, #22d3ee)",
-                  bgcolor: "rgba(34,211,238,0.08)",
+                  borderColor: "var(--role-cyan, #5d76cb)",
+                  bgcolor: "rgba(93, 118, 203,0.08)",
                 },
               }}
             >
@@ -1129,7 +1129,7 @@ export default function FeedPostDetailPanel({
           />
           <ColorSwatchInput
             label="Accent"
-            value={post.accentColor || 'var(--role-cyan, #22d3ee)'}
+            value={post.accentColor || 'var(--role-cyan, #5d76cb)'}
             onChange={(value) => onUpdate({ accentColor: value })}
           />
           <ColorSwatchInput
@@ -1219,10 +1219,10 @@ export default function FeedPostDetailPanel({
               fontWeight: 700,
               fontSize: '0.72rem',
               color: concept === post.concept ? '#0b1220' : 'rgba(226,232,240,0.8)',
-              bgcolor: concept === post.concept ? 'var(--role-cyan, #22d3ee)' : 'transparent',
+              bgcolor: concept === post.concept ? 'var(--role-cyan, #5d76cb)' : 'transparent',
               borderColor: 'rgba(148,163,184,0.28)',
               '&:hover': {
-                bgcolor: concept === post.concept ? 'var(--role-cyan, #22d3ee)' : 'rgba(34,211,238,0.08)',
+                bgcolor: concept === post.concept ? 'var(--role-cyan, #5d76cb)' : 'rgba(93, 118, 203,0.08)',
               },
             }}
           />
@@ -1403,7 +1403,7 @@ export default function FeedPostDetailPanel({
         sx={{
           p: 1.2,
           borderRadius: 1.8,
-          background: 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(93, 118, 203,0.08) 100%)',
+          background: 'linear-gradient(135deg, rgba(93, 118, 203,0.08) 0%, rgba(93, 118, 203,0.08) 100%)',
           border: '1px solid rgba(93, 118, 203,0.2)',
         }}
       >
@@ -1448,7 +1448,7 @@ export default function FeedPostDetailPanel({
               textTransform: 'none',
               fontWeight: 700,
               color: '#0b1220',
-              background: 'linear-gradient(135deg, #22d3ee 0%, #5d76cb 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #93a4dc 100%)',
               boxShadow: 'none',
               '&:hover': { boxShadow: '0 4px 16px rgba(93, 118, 203,0.3)' },
             }}
@@ -1621,9 +1621,9 @@ export default function FeedPostDetailPanel({
         sx={{
           textTransform: 'none',
           fontWeight: 700,
-          color: 'var(--role-cyan, #22d3ee)',
-          borderColor: 'rgba(34,211,238,0.5)',
-          '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
+          color: 'var(--role-cyan, #5d76cb)',
+          borderColor: 'rgba(93, 118, 203,0.5)',
+          '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.08)' },
         }}
       >
         Regenerer mal (placeholder)
@@ -1644,7 +1644,7 @@ const textFieldSx = {
     color: 'rgba(226,232,240,0.65)',
   },
   '& .Mui-focused .MuiOutlinedInput-notchedOutline': {
-    borderColor: 'var(--role-cyan, #22d3ee)',
+    borderColor: 'var(--role-cyan, #5d76cb)',
   },
 };
 

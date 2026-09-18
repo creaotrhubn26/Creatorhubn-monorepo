@@ -405,7 +405,7 @@ const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames
 
   const current = playable[index];
   return (
-    <Box data-testid="board-animatic" sx={{ position: 'fixed', inset: 0, zIndex: 1500, bgcolor: 'rgba(10, 5, 21,0.96)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+    <Box data-testid="board-animatic" sx={{ position: 'fixed', inset: 0, zIndex: 1500, bgcolor: 'rgba(27, 18, 44,0.96)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <IconButton onClick={onClose} sx={{ position: 'absolute', top: 16, right: 16, color: '#fff' }}><CloseIcon /></IconButton>
       {current ? (
         <Box sx={{ width: 'min(86vw, 1400px)', aspectRatio: '2.39 / 1', backgroundImage: `url(${current.thumbnailUrl || current.imageUrl})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', borderRadius: 1 }} />

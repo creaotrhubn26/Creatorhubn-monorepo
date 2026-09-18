@@ -144,7 +144,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout Box ─────────────────────────────────────────────────────────────
 
 function Callout({
-  color = '#3b82f6',
+  color = '#3f51b5',
   children,
 }: {
   color?: string;
@@ -264,7 +264,7 @@ const STEPS: Step[] = [
               ['Avatars', 'Up to 4 most-assigned crew/cast — hover to see names.'],
             ].map(([key, val]) => (
               <Box key={String(key)} sx={{ display: 'flex', gap: 1, mb: 0.75, alignItems: 'flex-start' }}>
-                <Typography variant="caption" sx={{ color: '#3b82f6', fontWeight: 700, fontSize: '0.72rem', minWidth: 120, pt: 0.25 }}>
+                <Typography variant="caption" sx={{ color: '#3f51b5', fontWeight: 700, fontSize: '0.72rem', minWidth: 120, pt: 0.25 }}>
                   {key}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem', lineHeight: 1.5 }}>
@@ -298,7 +298,7 @@ const STEPS: Step[] = [
                 </Typography>
               </Box>
             ))}
-            <Callout color="#3b82f6">
+            <Callout color="#3f51b5">
               Active filters are shown in the filter bar with a filled style. The card count next to the search box updates as you filter.
             </Callout>
           </>
@@ -367,8 +367,8 @@ const STEPS: Step[] = [
               ['4', 'Release. The person is added as a default assignee on that list. Their initials appear in the card\'s avatar row instantly.'],
             ].map(([num, desc]) => (
               <Box key={String(num)} sx={{ display: 'flex', gap: 1.5, mb: 1, alignItems: 'flex-start' }}>
-                <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: '#3b82f622', border: '1px solid #3b82f644', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Typography sx={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: 700 }}>{num}</Typography>
+                <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: '#3f51b522', border: '1px solid #3f51b544', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: '0.65rem', color: '#3f51b5', fontWeight: 700 }}>{num}</Typography>
                 </Box>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.5 }}>{desc}</Typography>
               </Box>
@@ -511,7 +511,7 @@ const STEPS: Step[] = [
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, mb: 1.5 }}>
               Drag any Shot List card to a new position in the grid. As you drag, a ghost of the card follows your cursor and the other cards shift to show the drop position.
             </Typography>
-            <Callout color="#3b82f6">
+            <Callout color="#3f51b5">
               Cards can be reordered in both Grid view and List view. The new order is saved to the server as soon as you release.
             </Callout>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem', lineHeight: 1.5, mt: 1 }}>
@@ -554,7 +554,7 @@ const STEPS: Step[] = [
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
               {['Scene', 'Total Shots', 'Completed', 'Unassigned', 'Duration (min)', 'Last Updated'].map((col) => (
-                <Chip key={col} label={col} size="small" sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)' }} />
+                <Chip key={col} label={col} size="small" sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(63, 81, 181,0.1)', color: '#3f51b5', border: '1px solid rgba(63, 81, 181,0.2)' }} />
               ))}
             </Box>
             <Callout color="#10b981">

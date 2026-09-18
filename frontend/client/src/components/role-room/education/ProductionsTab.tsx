@@ -39,8 +39,8 @@ function mapPipeline(status: string | null): { stage: number; pill: string; colo
   const s = (status || '').toLowerCase();
   if (/lever|ferdig|done|complete|publish/.test(s)) return { stage: 4, pill: 'Levert', color: '#10b981', progress: 100 };
   if (/post|redig|edit/.test(s)) return { stage: 3, pill: 'Redigering', color: ACCENT, progress: 48 };
-  if (/opptak|innspill|shoot|filming/.test(s)) return { stage: 2, pill: 'Innspilling', color: '#38bdf8', progress: 62 };
-  if (/pre/.test(s)) return { stage: 1, pill: 'Pre-produksjon', color: '#38bdf8', progress: 34 };
+  if (/opptak|innspill|shoot|filming/.test(s)) return { stage: 2, pill: 'Innspilling', color: '#5d76cb', progress: 62 };
+  if (/pre/.test(s)) return { stage: 1, pill: 'Pre-produksjon', color: '#5d76cb', progress: 34 };
   return { stage: 0, pill: status || 'Planlegging', color: '#10b981', progress: 15 };
 }
 

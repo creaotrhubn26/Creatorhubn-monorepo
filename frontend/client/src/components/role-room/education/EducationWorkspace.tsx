@@ -131,7 +131,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
       borderRight: '1px solid rgba(255,255,255,0.07)',
       // Kinematisk The Role Room-backdrop (klaffbrett + lilla lys) med mørk
       // gradient-overlegg så nav-teksten holder seg lesbar.
-      background: 'linear-gradient(180deg, rgba(10,10,10,0.5) 0%, rgba(10, 5, 21,0.86) 100%), url(/trr-edu-sidebar-bg.png)',
+      background: 'linear-gradient(180deg, rgba(10,10,10,0.5) 0%, rgba(27, 18, 44,0.86) 100%), url(/trr-edu-sidebar-bg.png)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       display: { xs: 'none', md: 'flex' }, flexDirection: 'column', p: 1.75,

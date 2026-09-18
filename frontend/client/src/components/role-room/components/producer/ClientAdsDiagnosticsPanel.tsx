@@ -186,7 +186,7 @@ export default function ClientAdsDiagnosticsPanel({
         <Stack direction="row" spacing={1.4} sx={{ mb: 2 }}>
           {[
             { label: 'Siste 24t', value: data.windowCounts.last_24h, color: '#93a4dc' },
-            { label: 'Siste 7 dager', value: data.windowCounts.last_7d, color: '#60a5fa' },
+            { label: 'Siste 7 dager', value: data.windowCounts.last_7d, color: '#93a4dc' },
             { label: 'Siste 30 dager', value: data.windowCounts.last_30d, color: '#34d399' },
             {
               label: 'Suksess-rate',

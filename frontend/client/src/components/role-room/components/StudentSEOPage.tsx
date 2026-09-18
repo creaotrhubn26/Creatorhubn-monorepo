@@ -507,7 +507,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
               <Card
                 key={ex.title}
                 sx={{
-                  bgcolor: 'rgba(10, 5, 21,0.42)',
+                  bgcolor: 'rgba(27, 18, 44,0.42)',
                   border: '1px solid rgba(148,163,184,0.16)',
                   height: '100%',
                 }}
@@ -556,7 +556,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {config.relatedStudies && config.relatedStudies.length > 0 ? (
           <Box>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-              <SchoolIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+              <SchoolIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
               <Typography
                 component="h2"
                 sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.8rem' } }}
@@ -568,10 +568,10 @@ function PageView({ config }: { config: StudentPageConfig }) {
               severity="info"
               sx={{
                 mb: 2,
-                bgcolor: 'rgba(59,130,246,0.08)',
+                bgcolor: 'rgba(63, 81, 181,0.08)',
                 color: 'rgba(203,213,225,0.92)',
-                border: '1px solid rgba(59,130,246,0.24)',
-                '& .MuiAlert-icon': { color: '#60a5fa' },
+                border: '1px solid rgba(63, 81, 181,0.24)',
+                '& .MuiAlert-icon': { color: '#93a4dc' },
               }}
             >
               Listen er indikativ basert på offentlig studie-informasjon. Sjekk studiestedets egne sider for oppdaterte opptak-krav, søknadsfrister og emne-innhold.
@@ -587,10 +587,10 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     p: 1.5,
                     borderRadius: 1.5,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    bgcolor: 'rgba(10, 5, 21,0.34)',
+                    bgcolor: 'rgba(27, 18, 44,0.34)',
                   }}
                 >
-                  <MovieFilterIcon sx={{ color: 'var(--role-cyan, #22d3ee)', mt: 0.3, fontSize: 20 }} />
+                  <MovieFilterIcon sx={{ color: 'var(--role-cyan, #5d76cb)', mt: 0.3, fontSize: 20 }} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.95rem' }}>
                       {study.name}

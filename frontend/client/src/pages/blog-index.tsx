@@ -63,7 +63,7 @@ const PILLAR_LABELS: Record<string, string> = {
 };
 
 const PILLAR_COLORS: Record<string, string> = {
-  'production-os': '#60a5fa',
+  'production-os': '#93a4dc',
   'content-producer': '#fbbf24',
   dance: '#93a4dc',
   talents: '#34d399',

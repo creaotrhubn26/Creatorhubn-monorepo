@@ -157,7 +157,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
         p: 1.6,
         borderRadius: 3,
         border: '1px solid rgba(93, 118, 203,0.24)',
-        bgcolor: 'rgba(33, 28, 59,0.36)',
+        bgcolor: 'rgba(60, 78, 109,0.36)',
         mb: 2,
       }}
     >

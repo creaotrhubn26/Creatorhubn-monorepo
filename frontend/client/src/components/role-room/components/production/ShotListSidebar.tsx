@@ -87,7 +87,7 @@ function DraggablePersonRow({ person, shotCount }: { person: Person; shotCount: 
           width: 28,
           height: 28,
           fontSize: '0.7rem',
-          bgcolor: person.personType === 'cast' ? '#5d76cb' : '#3b82f6',
+          bgcolor: person.personType === 'cast' ? '#5d76cb' : '#3f51b5',
           flexShrink: 0,
         }}
       >
@@ -279,7 +279,7 @@ export function ShotListSidebar({ crew, loading = false, topAssignees = [] }: Sh
                 height: 20,
                 fontSize: '0.62rem',
                 ...(roleFilter === r
-                  ? { bgcolor: '#3b82f622', color: '#3b82f6', border: '1px solid #3b82f644' }
+                  ? { bgcolor: '#3f51b522', color: '#3f51b5', border: '1px solid #3f51b544' }
                   : { bgcolor: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)' }),
               }}
             />

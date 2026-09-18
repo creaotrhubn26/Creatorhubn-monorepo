@@ -504,7 +504,7 @@ export default function ProducerGoogleWorkspacePanel({
       sx={{
         p: { xs: 1.25, md: 1.5 },
         borderRadius: 2,
-        border: '1px solid rgba(59,130,246,0.24)',
+        border: '1px solid rgba(63, 81, 181,0.24)',
         background: 'linear-gradient(145deg, rgba(15,23,42,0.88) 0%, rgba(17,24,39,0.74) 100%)',
       }}
     >
@@ -598,7 +598,7 @@ export default function ProducerGoogleWorkspacePanel({
                   gap: 0.85,
                 }}
               >
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(27, 18, 44,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Drive-rot
                   </Typography>
@@ -606,7 +606,7 @@ export default function ProducerGoogleWorkspacePanel({
                     {binding?.driveRootFolderId || 'Ikke opprettet'}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(27, 18, 44,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Kalender
                   </Typography>
@@ -614,7 +614,7 @@ export default function ProducerGoogleWorkspacePanel({
                     {binding?.calendarId || 'Ikke opprettet'}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(27, 18, 44,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Siste Drive-sync
                   </Typography>
@@ -622,7 +622,7 @@ export default function ProducerGoogleWorkspacePanel({
                     {formatDateTime(binding?.lastDriveSyncAt)}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(10, 5, 21,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(27, 18, 44,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                     Siste kalendersync
                   </Typography>
@@ -642,7 +642,7 @@ export default function ProducerGoogleWorkspacePanel({
                         size="small"
                         label={`${FOLDER_LABELS[folderKey] ?? folderKey} · ${String(folderId).slice(0, 16)}`}
                         onClick={() => onOpenWorkspace(getProducerWorkspaceSurfaceForGoogleFolder(folderKey))}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#bfdbfe' }}
+                        sx={{ bgcolor: 'rgba(63, 81, 181,0.12)', color: '#c3cbe6' }}
                       />
                     ))}
                   </Stack>
@@ -682,7 +682,7 @@ export default function ProducerGoogleWorkspacePanel({
                         p: 0.95,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.12)',
-                        bgcolor: 'rgba(10, 5, 21,0.48)',
+                        bgcolor: 'rgba(27, 18, 44,0.48)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75} justifyContent="space-between">
@@ -691,7 +691,7 @@ export default function ProducerGoogleWorkspacePanel({
                             <Chip
                               size="small"
                               label={FOLDER_LABELS[artifact.folderKey ?? 'brief'] ?? artifact.folderKey ?? 'Artefakt'}
-                              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                              sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                             />
                             <Typography sx={{ color: '#fff', fontWeight: 600 }} noWrap>
                               {artifact.sourceLabel || artifact.localEntityId}
@@ -785,7 +785,7 @@ export default function ProducerGoogleWorkspacePanel({
                         p: 0.95,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.12)',
-                        bgcolor: 'rgba(10, 5, 21,0.48)',
+                        bgcolor: 'rgba(27, 18, 44,0.48)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75} justifyContent="space-between">

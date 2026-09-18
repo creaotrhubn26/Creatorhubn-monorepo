@@ -268,8 +268,8 @@ const TEMPLATE_TYPE_CONFIG: Record<string, {
 }> = {
   invitation: {
     icon: <EmailIcon sx={{ fontSize: 24 }} />,
-    color: '#3b82f6',
-    bgColor: 'rgba(59, 130, 246, 0.15)',
+    color: '#3f51b5',
+    bgColor: 'rgba(63, 81, 181, 0.15)',
     label: 'Invitasjon',
   },
   callback: {

@@ -317,7 +317,7 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
   }, [result]);
 
   // Styles
-  const bgColor = 'rgba(24, 18, 43, 0.95)';
+  const bgColor = 'rgba(42, 61, 86, 0.95)';
   const textColor = '#fff';
   const borderColor = 'rgba(255,255,255,0.1)';
 

@@ -65,7 +65,7 @@ export const StyleConsistencyIndicator: React.FC<StyleConsistencyIndicatorProps>
       sx={{
         p: compact ? 1 : 1.5,
         borderRadius: 1.5,
-        bgcolor: 'rgba(16, 11, 30,0.92)',
+        bgcolor: 'rgba(42, 49, 82,0.92)',
         border: '1px solid rgba(255,255,255,0.06)',
       }}
     >

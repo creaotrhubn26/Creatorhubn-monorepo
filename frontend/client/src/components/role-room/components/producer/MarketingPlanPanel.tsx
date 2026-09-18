@@ -379,7 +379,7 @@ export default function MarketingPlanPanel({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
                 flexShrink: 0,
               }}
             >
@@ -462,7 +462,7 @@ export default function MarketingPlanPanel({
               <Chip
                 size="small"
                 label={`${plan.horizonDays} dager`}
-                sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc' }}
+                sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#c3cbe6' }}
               />
               {/* Model name + token/cost telemetry removed from the user-facing
                   card (internal noise); cost is still tracked server-side. */}
@@ -556,9 +556,9 @@ export default function MarketingPlanPanel({
                 fontSize: '0.86rem',
                 minHeight: 36,
                 color: 'rgba(226,232,240,0.6)',
-                '&.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
+                '&.Mui-selected': { color: 'var(--role-cyan, #5d76cb)' },
               },
-              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #5d76cb)' },
             }}
           >
             <Tab value="strategy" label="Strategi" />
@@ -570,7 +570,7 @@ export default function MarketingPlanPanel({
                   <Chip
                     size="small"
                     label={plan.pillars.length}
-                    sx={{ height: 16, fontSize: '0.66rem', bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc' }}
+                    sx={{ height: 16, fontSize: '0.66rem', bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }}
                   />
                 </Stack>
               }
@@ -654,7 +654,7 @@ export default function MarketingPlanPanel({
       ) : !readiness?.ready ? null : (
         <Alert
           severity="info"
-          sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
+          sx={{ bgcolor: 'rgba(93, 118, 203,0.06)', color: '#cbd5e1', border: '1px solid rgba(93, 118, 203,0.2)' }}
         >
           Ingen markedsplan ennå. Klikk "Generer plan" — CI bruker research-outputen og
           bygger 3–5 content pillars + kanalstrategi + KPI-mål.
@@ -699,7 +699,7 @@ export default function MarketingPlanPanel({
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
               flexShrink: 0,
             }}
           >
@@ -793,16 +793,16 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
       <Stack spacing={1.2}>
         <KeyValueRow label="Posisjonering">
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.55 }}>
-            <strong style={{ color: '#a5f3fc' }}>Verditilbud:</strong> {strategy.positioning.valueProp}
+            <strong style={{ color: '#c3cbe6' }}>Verditilbud:</strong> {strategy.positioning.valueProp}
           </Typography>
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.55 }}>
-            <strong style={{ color: '#a5f3fc' }}>Differensiering:</strong> {strategy.positioning.differentiator}
+            <strong style={{ color: '#c3cbe6' }}>Differensiering:</strong> {strategy.positioning.differentiator}
           </Typography>
         </KeyValueRow>
 
         <KeyValueRow label={`Kanal (${strategy.channelStrategy.cadencePerWeek}/uke)`}>
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
-            <Chip size="small" label={`Primær: ${strategy.channelStrategy.primary}`} sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc' }} />
+            <Chip size="small" label={`Primær: ${strategy.channelStrategy.primary}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }} />
             {strategy.channelStrategy.secondary.map((s) => (
               <Chip key={s} size="small" label={s} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.28)' }} />
             ))}
@@ -852,7 +852,7 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem' }}>
                     {kpi.target.toLocaleString('nb-NO')}
                   </Typography>
-                  <Typography sx={{ color: '#a5f3fc', fontSize: '0.82rem' }}>
+                  <Typography sx={{ color: '#c3cbe6', fontSize: '0.82rem' }}>
                     {kpi.metric.replace(/_/g, ' ')} per {kpi.per}
                   </Typography>
                 </Stack>
@@ -1106,10 +1106,10 @@ const FORMAT_LABEL: Record<MarketingPlanPost['format'], string> = {
 const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: 'rgba(221,42,123,0.18)',
   carousel: 'rgba(245,133,41,0.2)',
-  image: 'rgba(34,211,238,0.16)',
+  image: 'rgba(93, 118, 203,0.16)',
   story: 'rgba(93, 118, 203,0.2)',
   tiktok: 'rgba(236,72,153,0.2)',
-  linkedin_post: 'rgba(59,130,246,0.22)',
+  linkedin_post: 'rgba(63, 81, 181,0.22)',
   youtube_short: 'rgba(239,68,68,0.18)',
 };
 
@@ -1303,9 +1303,9 @@ function PostsSection({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            color: 'var(--role-cyan, #22d3ee)',
-            borderColor: 'rgba(34,211,238,0.5)',
-            '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
+            color: 'var(--role-cyan, #5d76cb)',
+            borderColor: 'rgba(93, 118, 203,0.5)',
+            '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.08)' },
           }}
         >
           {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
@@ -1323,11 +1323,11 @@ function PostsSection({
           // #152 — live progress for auto-generation
           <Alert
             severity="info"
-            icon={<CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />}
+            icon={<CircularProgress size={18} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />}
             sx={{
-              bgcolor: 'rgba(34,211,238,0.08)',
-              color: '#a5f3fc',
-              border: '1px solid rgba(34,211,238,0.32)',
+              bgcolor: 'rgba(93, 118, 203,0.08)',
+              color: '#c3cbe6',
+              border: '1px solid rgba(93, 118, 203,0.32)',
             }}
           >
             <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
@@ -1345,7 +1345,7 @@ function PostsSection({
         ) : (
           <Alert
             severity="info"
-            sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.06)', color: '#cbd5e1', border: '1px solid rgba(93, 118, 203,0.2)' }}
           >
             Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — CI bygger én post
             per dag balansert på tvers av pillars, med hook, format, script og CTA ferdig
@@ -1378,7 +1378,7 @@ function PostsSection({
                 const idx = ps.indexOf(platformFilter);
                 setPlatformFilter(ps[(idx + 1) % ps.length]);
               }}
-              sx={{ bgcolor: platformFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(34,211,238,0.22)', color: '#a5f3fc', cursor: 'pointer' }}
+              sx={{ bgcolor: platformFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(93, 118, 203,0.22)', color: '#c3cbe6', cursor: 'pointer' }}
             />
             <Chip
               size="small"
@@ -1477,7 +1477,7 @@ function PostsSection({
                 size="small"
                 variant="outlined"
                 onClick={() => setBulkPlatformMenuOpen((v) => !v)}
-                sx={{ textTransform: 'none', color: '#a5f3fc', borderColor: 'rgba(34,211,238,0.4)', fontSize: '0.76rem' }}
+                sx={{ textTransform: 'none', color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,0.4)', fontSize: '0.76rem' }}
               >
                 Endre platform…
               </Button>
@@ -1490,7 +1490,7 @@ function PostsSection({
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
                 }}
               >
                 {batchAccepting ? 'Aksepterer…' : `Accept ${selectedIds.size}`}
@@ -1858,8 +1858,8 @@ function PostCard({
                 sx={{
                   height: 18,
                   fontSize: '0.66rem',
-                  bgcolor: flag.severity === 'warning' ? 'rgba(251,191,36,0.18)' : 'rgba(96,165,250,0.18)',
-                  color: flag.severity === 'warning' ? '#fde68a' : '#bfdbfe',
+                  bgcolor: flag.severity === 'warning' ? 'rgba(251,191,36,0.18)' : 'rgba(147, 164, 220,0.18)',
+                  color: flag.severity === 'warning' ? '#fde68a' : '#c3cbe6',
                   cursor: 'help',
                 }}
               />
@@ -1904,8 +1904,8 @@ function PostCard({
             minWidth: 44,
             minHeight: 44,
             borderRadius: 1.4,
-            bgcolor: 'rgba(34,211,238,0.14)',
-            color: '#a5f3fc',
+            bgcolor: 'rgba(93, 118, 203,0.14)',
+            color: '#c3cbe6',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1949,7 +1949,7 @@ function PostCard({
 
           {post.script ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.8rem', lineHeight: 1.5, mt: 0.5 }}>
-              <strong style={{ color: '#a5f3fc' }}>Script:</strong> {post.script}
+              <strong style={{ color: '#c3cbe6' }}>Script:</strong> {post.script}
             </Typography>
           ) : null}
 
@@ -2038,8 +2038,8 @@ function PostCard({
                   size="small"
                   label={tag}
                   sx={{
-                    bgcolor: 'rgba(34,211,238,0.08)',
-                    color: '#a5f3fc',
+                    bgcolor: 'rgba(93, 118, 203,0.08)',
+                    color: '#c3cbe6',
                     fontSize: '0.66rem',
                     height: 16,
                   }}
@@ -2094,7 +2094,7 @@ function PostCard({
                       textTransform: 'none',
                       fontSize: '0.76rem',
                       py: 0.3,
-                      color: previewOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)',
+                      color: previewOpen ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.7)',
                       minWidth: 0,
                     }}
                   >
@@ -2149,9 +2149,9 @@ function PostCard({
                     fontWeight: 700,
                     fontSize: '0.76rem',
                     py: 0.3,
-                    color: '#a5f3fc',
-                    borderColor: 'rgba(34,211,238,0.4)',
-                    '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
+                    color: '#c3cbe6',
+                    borderColor: 'rgba(93, 118, 203,0.4)',
+                    '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.08)' },
                   }}
                 >
                   {accepting ? 'Aksepterer…' : 'Send → Feed-planner'}
@@ -2181,7 +2181,7 @@ function PostCard({
           sx={{
             textTransform: 'none',
             fontSize: '0.74rem',
-            color: toolsOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.6)',
+            color: toolsOpen ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.6)',
             py: 0,
             px: 0.6,
             minWidth: 0,
@@ -2561,7 +2561,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+            background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
             flexShrink: 0,
           }}
         >

@@ -167,8 +167,8 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
       sx={{
         p: 1.4,
         borderRadius: 2,
-        bgcolor: 'rgba(34,211,238,0.06)',
-        border: '1px solid rgba(34,211,238,0.25)',
+        bgcolor: 'rgba(93, 118, 203,0.06)',
+        border: '1px solid rgba(93, 118, 203,0.25)',
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1}>
@@ -180,7 +180,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
             width: 28,
             height: 28,
             borderRadius: '50%',
-            bgcolor: 'var(--role-cyan, #22d3ee)',
+            bgcolor: 'var(--role-cyan, #5d76cb)',
             color: '#0f172a',
             fontWeight: 800,
             fontSize: '0.85rem',
@@ -252,8 +252,8 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
                       height: 18,
                       fontSize: '0.66rem',
                       fontWeight: 700,
-                      bgcolor: 'rgba(34,211,238,0.18)',
-                      color: 'var(--role-cyan, #22d3ee)',
+                      bgcolor: 'rgba(93, 118, 203,0.18)',
+                      color: 'var(--role-cyan, #5d76cb)',
                       '& .MuiChip-label': { px: 0.7 },
                     }}
                   />

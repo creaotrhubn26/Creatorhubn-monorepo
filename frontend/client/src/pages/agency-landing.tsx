@@ -192,7 +192,7 @@ function TopNav() {
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        bgcolor: 'rgba(10, 5, 21, 0.85)',
+        bgcolor: 'rgba(27, 18, 44, 0.85)',
         backdropFilter: 'blur(12px)',
         borderBottom: `1px solid ${palette.borderSubtle}`,
       }}
@@ -461,7 +461,7 @@ function HeroProductPeek() {
       {/* Mock Kanban-columns */}
       <Stack direction="row" spacing={1.4} sx={{ overflow: 'hidden' }}>
         {[
-          { title: 'Forespurt', n: 3, color: '#60a5fa' },
+          { title: 'Forespurt', n: 3, color: '#93a4dc' },
           { title: 'Vurderes', n: 5, color: '#fbbf24' },
           { title: 'Shortlistet', n: 2, color: '#34d399' },
         ].map((col) => (
@@ -734,7 +734,7 @@ function ValueSection() {
       Icon: AccessTimeOutlinedIcon,
       title: 'Spar 8 timer per casting',
       body: 'Self-tapes, kommentarer og bookingstatus i én tråd. Ingen e-post-ping-pong, ingen Excel-rader.',
-      color: '#60a5fa',
+      color: '#93a4dc',
     },
     {
       Icon: HandshakeOutlinedIcon,
