@@ -1300,6 +1300,12 @@ export interface ProductionDay {
   locationId?: string;
   crew: string[];
   props: string[];
+  /**
+   * Utstyret som er rigget for dagen. Lagres i dagens `data`-blob på serveren,
+   * ikke i en egen kolonne — samme vei som resten av feltene som ikke har fått
+   * sin egen plass i skjemaet.
+   */
+  equipment?: string[];
   callTime?: string;
   wrapTime?: string;
   notes?: string;

@@ -421,3 +421,60 @@ describe('ChangeImpactPreview ved rekvisittendring', () => {
     expect(await screen.findByText('Endrede rekvisitter påvirker:')).toBeInTheDocument();
   });
 });
+
+describe('ChangeImpactPreview ved utstyrsendring', () => {
+  const gearBase = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    currentDate: '2026-09-20',
+    targetDate: '2026-09-20',
+    currentEquipmentIds: ['kamera-1'],
+  };
+
+  it('spør ikke når riggen ikke redigeres', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChangeImpactPreview {...gearBase} targetEquipmentIds={null} />);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('ber om konsekvensen når et kamera legges til', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromEquipmentIds: ['kamera-1'],
+      toEquipmentIds: ['kamera-1', 'optikk-2'],
+      impacts: [{
+        area: 'equipment_load',
+        severity: 'warning',
+        summary: '1 annen opptaksdag samme dato bruker de samme enhetene.',
+        action: 'Én rigg kan ikke stå to steder samtidig.',
+        count: 1,
+      }],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...gearBase} targetEquipmentIds={['kamera-1', 'optikk-2']} />);
+
+    expect(await screen.findByText('1 annen opptaksdag samme dato bruker de samme enhetene.'))
+      .toBeInTheDocument();
+    expect(screen.getByText('Endret utstyr påvirker:')).toBeInTheDocument();
+    const url = String((globalThis.fetch as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url).toContain('equipmentIds=kamera-1%2Coptikk-2');
+  });
+
+  it('nevner alle fire når alt endres på én gang', () => {
+    expect(changeHeadline({
+      dateChanged: true,
+      locationChanged: true,
+      scenesChanged: true,
+      propsChanged: true,
+      equipmentChanged: true,
+      from: '2026-09-20',
+      to: '2026-09-24',
+    })).toBe('Ny dato, ny lokasjon, endrede scener, endrede rekvisitter og endret utstyr påvirker:');
+  });
+});
