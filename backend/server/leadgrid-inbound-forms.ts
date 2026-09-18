@@ -175,6 +175,10 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
         utm_term: str(body.utm_term, MAX.utm),
         utm_content: str(body.utm_content, MAX.utm),
         gclid: str(body.gclid, 255),
+        // fbclid dekker både Facebook og Instagram — Meta bruker samme
+        // klikk-id på begge. ttclid er TikTok sin.
+        fbclid: str(body.fbclid, 255),
+        ttclid: str(body.ttclid, 255),
         referrer_url: str(body.referrer_url ?? req.headers.referer, MAX.url),
         landing_page_url: str(body.landing_page_url, MAX.url),
       };
@@ -188,15 +192,17 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
             `INSERT INTO leadgrid_form_submissions
                (form_endpoint_id, organization_id, project_id, status, lead_id,
                 ip_hash, user_agent, origin, utm_source, utm_medium, utm_campaign,
-                utm_term, utm_content, gclid, referrer_url, landing_page_url, payload)
+                utm_term, utm_content, gclid, fbclid, ttclid,
+                referrer_url, landing_page_url, payload)
              VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6, $7, $8,
-                     $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)`,
+                     $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb)`,
             [
               endpoint!.id, endpoint!.organization_id, endpoint!.project_id,
               status, leadId, ipHash,
               str(req.headers["user-agent"], 500), origin ?? null,
               attribution.utm_source, attribution.utm_medium, attribution.utm_campaign,
               attribution.utm_term, attribution.utm_content, attribution.gclid,
+              attribution.fbclid, attribution.ttclid,
               attribution.referrer_url, attribution.landing_page_url,
               JSON.stringify(body).slice(0, 20000),
             ],
@@ -309,9 +315,10 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
              (organization_id, project_id, name, company, email, phone,
               lead_source, lead_status, owner_user_id, notes,
               utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-              gclid, referrer_url, landing_page_url, created_at, updated_at)
+              gclid, fbclid, ttclid, referrer_url, landing_page_url,
+              created_at, updated_at)
            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, 'unvisited', $8, $9,
-                   $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+                   $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
            RETURNING id::text`,
           [
             endpoint.organization_id, endpoint.project_id,
@@ -319,6 +326,7 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
             company, email, phone, endpoint.lead_source, ownerUserId, message,
             attribution.utm_source, attribution.utm_medium, attribution.utm_campaign,
             attribution.utm_term, attribution.utm_content, attribution.gclid,
+            attribution.fbclid, attribution.ttclid,
             attribution.referrer_url, attribution.landing_page_url,
           ],
         );
@@ -341,6 +349,8 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
               source: "inbound_form",
               utm_campaign: attribution.utm_campaign,
               gclid: attribution.gclid,
+              fbclid: attribution.fbclid,
+              ttclid: attribution.ttclid,
             },
           });
         } catch (err) {
