@@ -32,9 +32,11 @@ interface Props {
   scenes: SceneValg[];
   /** Dagen kortene hører til, kun til overskriften. */
   dayLabel?: string;
+  /** Samme dag, som id: kortene trenger den for å vite hvor folk skal møte. */
+  dayId?: string;
 }
 
-export default function SceneRoleCardsDialog({ open, onClose, projectId, scenes, dayLabel }: Props) {
+export default function SceneRoleCardsDialog({ open, onClose, projectId, scenes, dayLabel, dayId }: Props) {
   const [valgt, setValgt] = useState<SceneValg | null>(null);
 
   // Med én scene er valget bare et ekstra klikk.
@@ -85,7 +87,7 @@ export default function SceneRoleCardsDialog({ open, onClose, projectId, scenes,
             </Button>
           </Box>
         ) : valgt ? (
-          <SceneBlockingEditor projectId={projectId} sceneId={valgt.id} sceneTitle={valgt.title} />
+          <SceneBlockingEditor projectId={projectId} sceneId={valgt.id} sceneTitle={valgt.title} productionDayId={dayId} />
         ) : (
           <>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem', mb: 1.4 }}>

@@ -455,11 +455,24 @@ export function setupRoleRoomSceneRoleCardsRoutes(
                 s.title AS scene_title, s.setting AS scene_setting,
                 s.time_of_day, s.int_ext,
                 s.production_breakdown -> 'blocking' AS blocking,
-                p.name AS project_name
+                p.name AS project_name,
+                d.date AS day_date,
+                l.name AS location_name, l.address AS location_address,
+                l.access_notes AS location_access
            FROM scene_role_cards c
            LEFT JOIN casting_scenes s ON s.id = c.scene_id
            LEFT JOIN casting_projects p ON p.id = c.project_id
+           -- Dagen kortet hører til. Er den ikke satt på kortet, finner vi den
+           -- dagen som har scenen i seg: stedet står på dagen, ikke på scenen.
+           LEFT JOIN casting_production_days d
+                  ON d.project_id = c.project_id
+                 AND (d.id = c.production_day_id
+                      OR (c.production_day_id IS NULL
+                          AND c.scene_id IS NOT NULL
+                          AND d.scene_ids @> to_jsonb(c.scene_id)))
+           LEFT JOIN casting_locations l ON l.id = d.location_id
           WHERE c.token = $1
+          ORDER BY d.date ASC NULLS LAST
           LIMIT 1`,
         [token],
       );
@@ -504,6 +517,18 @@ export function setupRoleRoomSceneRoleCardsRoutes(
           int_ext: card.int_ext,
           blocking: card.blocking,
         },
+        // Hvor og når. «Oppmøte 07:30» uten adresse er halve beskjeden — og
+        // den halvdelen som gjør at folk står feil sted til rett tid.
+        // Bare navn, adresse og hvordan man kommer inn; ingen kontaktinfo til
+        // stedet, den hører produksjonen til.
+        meeting: card.location_name || card.location_address
+          ? {
+              name: card.location_name,
+              address: card.location_address,
+              access_notes: card.location_access,
+              date: card.day_date,
+            }
+          : null,
         project: { name: card.project_name },
       });
     } catch (err) {

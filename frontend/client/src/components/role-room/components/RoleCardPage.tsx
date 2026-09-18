@@ -20,7 +20,7 @@
  * første døgnet, før noen har rukket å legge dem inn.
  */
 
-import { Alert, Box, CircularProgress, Stack, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, Link, Stack, Typography } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
 import CheckroomIcon from '@mui/icons-material/CheckroomOutlined';
 import PlaceIcon from '@mui/icons-material/PlaceOutlined';
@@ -58,9 +58,18 @@ interface Scene {
   blocking: { planUrl?: string; camera?: { x: number; y: number } } | null;
 }
 
+/** Hvor dagen starter. Null når produksjonsdagen ikke har et sted ennå. */
+interface Meeting {
+  name: string | null;
+  address: string | null;
+  access_notes: string | null;
+  date: string | null;
+}
+
 interface Svar {
   card: RoleCard;
   scene: Scene;
+  meeting: Meeting | null;
   project: { name: string | null };
 }
 
@@ -167,7 +176,7 @@ export default function RoleCardPage() {
     );
   }
 
-  const { card, scene, project } = svar;
+  const { card, scene, meeting, project } = svar;
   const plan = scene.blocking?.planUrl;
 
   return (
@@ -254,6 +263,42 @@ export default function RoleCardPage() {
               <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.02rem', mt: 0.3 }}>
                 {new Date(card.call_time).toLocaleString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
               </Typography>
+            </Box>
+          )}
+          {/* Tid uten sted er halve beskjeden — og den halvdelen som gjør at
+              folk står feil sted til rett tid. */}
+          {meeting && (meeting.name || meeting.address) && (
+            <Box sx={{ ...kortSx, flex: '1 1 220px', py: 1.6 }}>
+              <Stack direction="row" spacing={0.8} alignItems="center">
+                <PlaceIcon sx={{ color: palette.secondarySoft, fontSize: 18 }} />
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+                  Sted
+                </Typography>
+              </Stack>
+              <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1.02rem', mt: 0.3 }}>
+                {meeting.name ?? meeting.address}
+              </Typography>
+              {meeting.name && meeting.address && (
+                <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem', mt: 0.2 }}>
+                  {meeting.address}
+                </Typography>
+              )}
+              {meeting.access_notes && (
+                // «Inngang bak bygget» er verdt mer enn adressen når du står der.
+                <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', mt: 0.6, lineHeight: 1.5 }}>
+                  {meeting.access_notes}
+                </Typography>
+              )}
+              {meeting.address && (
+                <Link
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meeting.address)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ color: palette.accentBright, fontSize: '0.86rem', mt: 0.8, display: 'inline-block' }}
+                >
+                  Vis i kart
+                </Link>
+              )}
             </Box>
           )}
           {card.wardrobe && (

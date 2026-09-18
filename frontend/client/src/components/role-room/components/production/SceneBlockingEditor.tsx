@@ -38,6 +38,8 @@ interface Props {
   projectId: string;
   sceneId: string;
   sceneTitle?: string;
+  /** Produksjonsdagen kortene lages for. Stedet henger på dagen, ikke på scenen. */
+  productionDayId?: string;
 }
 
 type Modus = 'person' | 'kamera';
@@ -67,7 +69,7 @@ function tidspunkt(iso: string): string {
   return sammeDag ? `i dag ${klokke}` : `${d.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })} ${klokke}`;
 }
 
-export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: Props) {
+export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, productionDayId }: Props) {
   const [blocking, setBlocking] = useState<SceneBlocking>({ planUrl: null, camera: null });
   const [kort, setKort] = useState<RoleCard[]>([]);
   const [modus, setModus] = useState<Modus>('person');
@@ -143,6 +145,7 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
       contact_email: epost.trim() || null,
       position: utkast,
       scene_id: sceneId,
+      production_day_id: productionDayId ?? null,
       sort_order: kort.length,
     });
     if ('error' in r) { setFeil(r.error); return; }

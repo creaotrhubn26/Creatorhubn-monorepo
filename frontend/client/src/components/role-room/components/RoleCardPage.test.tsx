@@ -32,6 +32,12 @@ const KORT = {
     int_ext: 'INT',
     blocking: { planUrl: 'https://eksempel.test/plan.png', camera: { x: 0.9, y: 0.5 } },
   },
+  meeting: {
+    name: 'Pizzeria Roma',
+    address: 'Storgata 1, Oslo',
+    access_notes: 'Inngang gjennom bakgården.',
+    date: '2026-10-01',
+  },
   project: { name: 'Pizza – kampanje' },
 };
 
@@ -90,6 +96,28 @@ describe('kortet', () => {
     // Vanlig første døgn. En tom ramme ville sett ut som en feil.
     expect(await screen.findByText(/ikke klar ennå/)).toBeInTheDocument();
     expect(screen.queryByAltText('Plantegning')).toBeNull();
+  });
+
+  it('sier hvor du skal møte, ikke bare når', async () => {
+    svar(KORT);
+    render(<RoleCardPage />);
+    // Klokkeslett uten adresse er den halvdelen som får folk til å stå feil
+    // sted til rett tid.
+    expect(await screen.findByText('Pizzeria Roma')).toBeInTheDocument();
+    expect(screen.getByText('Storgata 1, Oslo')).toBeInTheDocument();
+    expect(screen.getByText('Inngang gjennom bakgården.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Vis i kart' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('Storgata%201%2C%20Oslo'),
+    );
+  });
+
+  it('viser ingen sted-boks når dagen mangler sted', async () => {
+    svar({ ...KORT, meeting: null });
+    render(<RoleCardPage />);
+    await screen.findByText(/bord 3/);
+    // En tom boks med overskriften «Sted» ser ut som noe som ikke lastet.
+    expect(screen.queryByText('Sted')).toBeNull();
   });
 
   it('sier hvem du skal spørre når lenken er død', async () => {

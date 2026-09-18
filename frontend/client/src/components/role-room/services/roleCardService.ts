@@ -53,6 +53,8 @@ export interface RoleCardDraft {
   wardrobe?: string | null;
   frame_image_url?: string | null;
   scene_id?: string | null;
+  /** Dagen kortet hører til. Stedet henger på dagen, så uten den mangler kortet oppmøtestedet. */
+  production_day_id?: string | null;
   sort_order?: number | null;
   contact_email?: string | null;
 }
