@@ -72,6 +72,46 @@ function SeverityIcon({ severity }: { severity: ImpactSeverity }) {
   return <InfoOutlinedIcon sx={sx} />;
 }
 
+export interface ChangeSummaryInput {
+  readonly dateChanged: boolean;
+  readonly locationChanged: boolean;
+  readonly scenesChanged: boolean;
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * Overskriften over funnene. Den navnga tidligere bare dato og lokasjon, så en
+ * sceneendring ble presentert som «Ny lokasjon påvirker:» — feil setning over
+ * riktige funn, som er verre enn ingen setning. Her bygges den av det som
+ * faktisk er endret.
+ */
+export function changeHeadline(input: ChangeSummaryInput): string {
+  const { dateChanged, locationChanged, scenesChanged, from, to } = input;
+  const deler: string[] = [];
+  if (dateChanged) deler.push(locationChanged || scenesChanged ? 'ny dato' : `flytting fra ${from} til ${to}`);
+  if (locationChanged) deler.push('ny lokasjon');
+  if (scenesChanged) deler.push('endrede scener');
+  if (deler.length === 0) return 'Endringen påvirker:';
+  const setning = deler.length === 1
+    ? deler[0]
+    : `${deler.slice(0, -1).join(', ')} og ${deler[deler.length - 1]}`;
+  return `${setning.charAt(0).toUpperCase()}${setning.slice(1)} påvirker:`;
+}
+
+/** Samme spørsmål når svaret er «ingenting». */
+export function emptyImpactText(input: ChangeSummaryInput): string {
+  const { dateChanged, locationChanged, scenesChanged, from } = input;
+  const hva = dateChanged
+    ? from
+    : locationChanged && scenesChanged
+      ? 'den gamle lokasjonen eller scenene som endres'
+      : locationChanged
+        ? 'den gamle lokasjonen'
+        : 'scenene som endres';
+  return `Ingenting annet henger på ${hva}. Endringen berører bare dagen selv.`;
+}
+
 export function ChangeImpactPreview({
   projectId,
   dayId,
@@ -191,9 +231,7 @@ export function ChangeImpactPreview({
   if (data.impacts.length === 0) {
     return (
       <Alert severity="success" icon={<CheckCircleOutlineIcon fontSize="small" />} sx={{ mt: 1 }}>
-        {dateChanged
-          ? `Ingenting annet henger på ${data.from}. Endringen berører bare dagen selv.`
-          : 'Ingenting annet henger på den gamle lokasjonen. Endringen berører bare dagen selv.'}
+        {emptyImpactText({ dateChanged, locationChanged, scenesChanged, from: data.from, to: data.to })}
       </Alert>
     );
   }
@@ -201,11 +239,7 @@ export function ChangeImpactPreview({
   return (
     <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, border: '1px solid rgba(255,255,255,0.12)' }}>
       <Typography variant="subtitle2" sx={{ color: '#fff', mb: 1 }}>
-        {dateChanged && locationChanged
-          ? `Ny dato og ny lokasjon påvirker:`
-          : dateChanged
-            ? `Flytting fra ${data.from} til ${data.to} påvirker:`
-            : 'Ny lokasjon påvirker:'}
+        {changeHeadline({ dateChanged, locationChanged, scenesChanged, from: data.from, to: data.to })}
       </Typography>
       <Stack spacing={1}>
         {data.impacts.map((impact) => (
