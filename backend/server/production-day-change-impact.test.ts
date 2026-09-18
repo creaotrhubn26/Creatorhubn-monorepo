@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   collectProductionDayChangeImpact,
   collectProductionDayLocationImpact,
+  collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
 
@@ -200,5 +201,89 @@ describe('collectProductionDayLocationImpact', () => {
     const queried = pool.query.mock.calls.map(([sql]) => String(sql)).join(' ');
     expect(queried).not.toContain('clearanceGates');
     expect(queried).not.toContain('decisionStatus');
+  });
+});
+
+describe('collectProductionDaySceneImpact', () => {
+  const SCENE_INPUT = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    fromSceneIds: ['scene-1', 'scene-2'],
+    toSceneIds: ['scene-1', 'scene-2'],
+  };
+
+  it('says nothing when the scenes are the same, in any order', async () => {
+    const pool = poolWith({ role_room_call_sheet_deliveries: 1 });
+    const impacts = await collectProductionDaySceneImpact(pool, {
+      ...SCENE_INPUT,
+      toSceneIds: ['scene-2', 'scene-1'],
+    });
+
+    expect(impacts).toEqual([]);
+    // Ingen endring skal heller ikke koste en spørring.
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('blocks on a published call sheet', async () => {
+    const impacts = await collectProductionDaySceneImpact(
+      poolWith({ role_room_call_sheet_deliveries: 1 }),
+      { ...SCENE_INPUT, toSceneIds: ['scene-1'] },
+    );
+
+    expect(impacts[0]).toMatchObject({ area: 'call_sheet', severity: 'blocking' });
+    expect(hasBlockingImpact(impacts)).toBe(true);
+  });
+
+  it('blocks when continuity is already shot on a scene being removed', async () => {
+    // Bevisene ville blitt liggende på en dag scenen ikke lenger skytes.
+    const impacts = await collectProductionDaySceneImpact(
+      poolWith({ casting_production_continuity_media: 2 }),
+      { ...SCENE_INPUT, toSceneIds: ['scene-1'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'continuity', severity: 'blocking', count: 2 });
+    expect(impacts[0].action).toBeTruthy();
+  });
+
+  it('warns about cast called in for a scene that leaves the day', async () => {
+    const impacts = await collectProductionDaySceneImpact(
+      poolWith({ casting_roles: 3 }),
+      { ...SCENE_INPUT, toSceneIds: ['scene-1'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'scene_cast', severity: 'warning', count: 3 });
+  });
+
+  it('warns about an added scene with neither shot list nor storyboard', async () => {
+    const impacts = await collectProductionDaySceneImpact(
+      poolWith({}),
+      { ...SCENE_INPUT, toSceneIds: ['scene-1', 'scene-2', 'scene-9'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'scene_prep', severity: 'warning', count: 1 });
+    expect(hasBlockingImpact(impacts)).toBe(false);
+  });
+
+  it('stays quiet about an added scene that is already prepared', async () => {
+    const impacts = await collectProductionDaySceneImpact(
+      poolWith({ forarbeid: 1 }),
+      { ...SCENE_INPUT, toSceneIds: ['scene-1', 'scene-2', 'scene-9'] },
+    );
+
+    expect(impacts.map((impact) => impact.area)).not.toContain('scene_prep');
+  });
+
+  it('mentions existing material on an added scene without calling it a problem', async () => {
+    const impacts = await collectProductionDaySceneImpact(
+      poolWith({ role_room_user_files: 12, forarbeid: 1 }),
+      { ...SCENE_INPUT, toSceneIds: ['scene-1', 'scene-2', 'scene-9'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'scene_material', severity: 'info', count: 12 });
+    expect(impacts[0].action).toBeUndefined();
   });
 });
