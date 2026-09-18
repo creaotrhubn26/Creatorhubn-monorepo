@@ -68,3 +68,24 @@ describe("migrasjon 0650 — salg som egen enhet", () => {
     expect(sql).toContain("JOIN leadgrid_deals d ON d.id = li.deal_id");
   });
 });
+
+describe("backfill tåler data som allerede finnes i produksjon", () => {
+  // Migrasjonen feilet i produksjon 18.09.2026:
+  //   23503: insert or update on table "leadgrid_deals" violates foreign key
+  //   constraint "leadgrid_deals_owner_user_id_fkey"
+  //
+  // crm_customers.owner_user_id har ingen fremmednøkkel og inneholder
+  // pekere til brukere som er slettet. Den nye kolonnen har en. En backfill
+  // som stoler på at kilden er ren, stopper hele deployen.
+  it("importerer ikke en eier som ikke finnes i users", () => {
+    expect(sql).toContain("CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.id = c.owner_user_id)");
+  });
+
+  it("lar heller ikke triggerne skrive en eier som ikke finnes", () => {
+    // Både INSERT-triggeren og speilingen setter owner_user_id. Hadde bare
+    // backfill-en vært vernet, ville neste nye kunde med slettet eier feilet.
+    const treff = sql.match(/SELECT u\.id FROM users u WHERE u\.id = NEW\.owner_user_id/g) ?? [];
+    expect(treff.length).toBe(2);
+  });
+});
+

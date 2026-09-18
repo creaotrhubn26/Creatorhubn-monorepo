@@ -40,7 +40,7 @@ describe("migrasjon 0651", () => {
 
   it("skiller den som opprettet fra den som skal gjøre oppgaven", () => {
     expect(migration).toContain("ADD COLUMN IF NOT EXISTS assigned_user_id");
-    expect(migration).toContain("SET assigned_user_id = user_id");
+    expect(migration).toContain("SET assigned_user_id = o.user_id");
   });
 
   it("knytter oppgaven til salget, ikke bare til bedriften", () => {
@@ -83,3 +83,12 @@ describe("oppgave-endepunktene", () => {
     expect(routes).toContain("(assigned_user_id = $3 OR user_id = $3)");
   });
 });
+
+describe("backfill av ansvarlig", () => {
+  it("kopierer bare brukere som finnes", () => {
+    // leadgrid_oppgaver.user_id er TEXT uten fremmednøkkel; assigned_user_id
+    // har en. Samme feil som veltet 0650 i produksjon.
+    expect(migration).toContain("EXISTS (SELECT 1 FROM users u WHERE u.id = o.user_id)");
+  });
+});
+
