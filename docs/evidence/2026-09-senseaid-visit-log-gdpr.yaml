@@ -30,7 +30,7 @@ interpretation: >
   før publisering (ikke en del av POC-koden).
 project_impact: >
   Bygd 18.09.2026 på claude/project-thread-xxx8zg (PR #2384):
-  backend/migrations/0631_reiseguide_visits.sql (guide_poi_visits, PK (device_id, id)),
+  backend/migrations/0632_reiseguide_visits.sql (guide_poi_visits, PK (device_id, id)),
   backend/server/reiseguide-visits.ts (PUT/GET/DELETE /api/guide/device/visits,
   GET/DELETE /api/guide/device/data, header X-SenseAid-Device, purge etter
   SENSEAID_VISIT_RETENTION_DAYS=365, 60 kall/min per IP), iOS Core/VisitSync.swift,
@@ -45,7 +45,7 @@ decision: >
   til om bryteren skal være på som standard; standard av er det tryggeste og kan
   snus ved å endre startverdien i AppSettings.
 affected:
-  - backend/migrations/0631_reiseguide_visits.sql
+  - backend/migrations/0632_reiseguide_visits.sql
   - backend/server/reiseguide-visits.ts
   - backend/server/reiseguide-routes.ts
   - backend/.env.example (SENSEAID_VISIT_RETENTION_DAYS)

@@ -1,6 +1,6 @@
 /**
  * Seed demo-innholdet for lydguide-POC-en (Kvadraturen, Akershus festning og
- * Operaen) inn i tabellene fra migrasjon 0629_reiseguide_poc.sql.
+ * Operaen) inn i tabellene fra migrasjon 0630_reiseguide_poc.sql.
  *
  *   DATABASE_URL=… npm run seed:reiseguide
  *
@@ -8,7 +8,7 @@
  * oppdaterer tekst og geodata uten å lage duplikater. Lydfiler og teksting
  * røres ikke (de hører til steg 2 og genereres fra godkjente manus), og
  * vurderinger fra brukere (guide_poi_ratings) røres aldri. Quiz-spørsmålene
- * (0630_reiseguide_after_visit.sql) skrives på nytt per sted og språk.
+ * (0631_reiseguide_after_visit.sql) skrives på nytt per sted og språk.
  * Innholdet ligger i server/reiseguide-demo-data.ts.
  */
 import pg from "pg";

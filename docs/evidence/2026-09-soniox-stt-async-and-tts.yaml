@@ -86,7 +86,7 @@ affected:
   - infrastructure/aws/creatorhubn-storage/application-policy.json + README.md
   - backend/server/reiseguide-config.ts
   - backend/server/reiseguide-routes.ts (captions.cues-kontrakten)
-  - backend/migrations/0629_reiseguide_poc.sql (guide_poi_audio.tts_provider, guide_poi_captions.source)
+  - backend/migrations/0630_reiseguide_poc.sql (guide_poi_audio.tts_provider, guide_poi_captions.source)
   - ipad/Reiseguide/Reiseguide/Features/Player/PlayerViewModel.swift (CaptionTimeline.build)
 lesson: >
   Leverandørens produktflate kan ha flyttet seg siden beslutningen ble tatt (Soniox var

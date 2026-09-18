@@ -1,7 +1,7 @@
 /**
  * SenseAid Explore: personlig besøkslogg på serveren, med GDPR som premiss
  * (Daniel 18.09.2026: «ja vil ha loggen på serveren … samtidig er det viktig
- * med GDPR»). Datamodell: migrations/0631_reiseguide_visits.sql.
+ * med GDPR»). Datamodell: migrations/0632_reiseguide_visits.sql.
  *
  * Prinsipper:
  *   * Ingen konto. Enheten identifiseres av appens anonyme, tilfeldige ID, som
