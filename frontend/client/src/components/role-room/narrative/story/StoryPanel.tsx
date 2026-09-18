@@ -14,9 +14,11 @@ import { createEpisode, createOpenQuestion, createSource, deleteEpisode, deleteO
 import { AutosaveField, EmptyHint, SectionTitle, sceneFieldSx } from '../scenes/sceneUi';
 import { SCENE_STATUS_COLORS, SCENE_STATUS_LABELS } from '../scenes/sceneOps';
 import { groupScenesByEpisode, nextEpisodeCode, nextQuestionCode, timelineRows } from './storyOps';
+import { AISuggestionsPanel } from '../../components/AISuggestionsPanel';
+import { generateSuggestions } from '../../services/aiSuggestionsClient';
 
-type StorySection = 'episodes' | 'timeline' | 'questions' | 'sources';
-const SECTIONS: Array<{ id: StorySection; label: string }> = [{ id: 'episodes', label: 'Episoder' }, { id: 'timeline', label: 'Tidslinje' }, { id: 'questions', label: 'Åpne spørsmål' }, { id: 'sources', label: 'Kilder' }];
+type StorySection = 'episodes' | 'timeline' | 'questions' | 'sources' | 'guardian';
+const SECTIONS: Array<{ id: StorySection; label: string }> = [{ id: 'episodes', label: 'Episoder' }, { id: 'timeline', label: 'Tidslinje' }, { id: 'questions', label: 'Åpne spørsmål' }, { id: 'sources', label: 'Kilder' }, { id: 'guardian', label: 'Manusvakt' }];
 const menuProps = { PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } };
 const QUESTION_STATUS_COLOR = { open: narrativeColors.warning, done: narrativeColors.accent, dropped: narrativeColors.textDim } as const;
 
@@ -29,6 +31,19 @@ export interface StoryPanelProps {
 
 export function StoryPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }: StoryPanelProps): React.ReactElement {
   const [section, setSection] = useState<StorySection>(() => { try { const v = new URLSearchParams(window.location.search).get('story'); return SECTIONS.some((s) => s.id === v) ? (v as StorySection) : 'episodes'; } catch { return 'episodes'; } });
+  // Fase 8d: manusvakt — kjør agenten; panelet (keyet på tick) refetcher funnene.
+  const [guardianBusy, setGuardianBusy] = useState(false);
+  const [guardianTick, setGuardianTick] = useState(0);
+  const runGuardian = useCallback(async (mode: 'deterministic' | 'full') => {
+    setGuardianBusy(true);
+    try {
+      const out = await generateSuggestions(projectId, { agentName: 'script-guardian-agent', sourceType: 'project', sourceId: projectId, payload: { mode } });
+      setGuardianTick((t) => t + 1);
+      onNotice(out.length ? `Manusvakt: ${out.length} funn.` : 'Manusvakt: ingen funn.', out.length ? 'warning' : 'success');
+    } catch (err) {
+      onNotice(err instanceof Error ? err.message : 'Manusvakten feilet.', 'error');
+    } finally { setGuardianBusy(false); }
+  }, [projectId, onNotice]);
   useEffect(() => { try { const url = new URL(window.location.href); url.searchParams.set('story', section); window.history.replaceState({}, '', url.toString()); } catch { /* ignore */ } }, [section]);
   const [episodes, setEpisodes] = useState<NarrativeEpisode[]>([]);
   const [scenes, setScenes] = useState<NarrativeSceneSummary[]>([]);
@@ -181,6 +196,27 @@ export function StoryPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }:
               <Tooltip title="Slett"><IconButton size="small" onClick={() => { if (window.confirm(`Slette kilden ${src.code}?`)) void run(() => deleteSource(projectId, src.id)); }} sx={{ color: narrativeColors.error }} aria-label="Slett"><DeleteIcon sx={{ fontSize: 14 }} /></IconButton></Tooltip>
             </Stack>
           ))}
+        </Stack>
+      ) : null}
+
+      {section === 'guardian' ? (
+        <Stack spacing={1.5} data-testid="narrative-story-guardian">
+          <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>
+            Manusvakten sjekker scener, replikker, epoker, kilder og gater. Regler kjører uten modell; KI-passet (Claude) leser bare scener
+            endret siden forrige kjøring. Godta et funn = det opprettes et åpent spørsmål til neste manusgjennomgang — manuset endres aldri automatisk.
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button size="small" variant="outlined" onClick={() => void runGuardian('deterministic')} disabled={guardianBusy} data-testid="narrative-guardian-run-rules" sx={{ color: narrativeColors.accent, borderColor: narrativeColors.accent }}>Kjør regler</Button>
+            <Button size="small" variant="contained" onClick={() => void runGuardian('full')} disabled={guardianBusy} data-testid="narrative-guardian-run-full" sx={{ bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700 }}>{guardianBusy ? 'Kjører…' : 'Kjør manusvakt (regler + KI)'}</Button>
+          </Stack>
+          <AISuggestionsPanel
+            key={guardianTick}
+            projectId={projectId}
+            filter={{ agentName: 'script-guardian-agent' }}
+            title="Manusvakt — funn"
+            hideUncertainToggle
+            onAccepted={() => { void load(); onNotice('Åpent spørsmål opprettet fra funnet.', 'success'); }}
+          />
         </Stack>
       ) : null}
 

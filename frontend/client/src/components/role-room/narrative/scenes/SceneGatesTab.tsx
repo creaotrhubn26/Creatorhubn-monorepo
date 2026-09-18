@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Button, Chip, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import { narrativeColors } from '../narrativeTheme';
 import { NARRATIVE_GATE_KEYS, NARRATIVE_GATE_LABELS, NARRATIVE_GATE_STATUS_LABELS, type NarrativeGateKey, type NarrativeGateStatus, type NarrativeSceneDetail, type NarrativeSceneGate } from '../narrativeTypes';
-import { setSceneGate } from '../narrativeService';
+import { setSceneGate, getAssetDownloadUrl } from '../narrativeService';
 import type { UseNarrativeScenesResult } from './useNarrativeScenes';
 import { sceneFieldSx } from './sceneUi';
 
@@ -24,6 +24,11 @@ function GateRow({ projectId, gate, onSaved, onNotice }: { projectId: string; ga
     try { await setSceneGate(projectId, gate.sceneId, gate.gateKey, { status, evidence, evidenceRefs: gate.evidenceRefs }); await onSaved(); onNotice(`${NARRATIVE_GATE_LABELS[gate.gateKey]}: ${NARRATIVE_GATE_STATUS_LABELS[status]}`, 'success'); }
     catch (err) { onNotice(err instanceof Error ? err.message : 'Kunne ikke lagre gaten.', 'error'); }
     finally { setSaving(false); }
+  };
+  // Fase 8c: bevis-artefakt (asset:<id>) → kortlevd signert URL i ny fane.
+  const openAsset = async (assetId: string) => {
+    try { const { url } = await getAssetDownloadUrl(projectId, assetId); window.open(url, '_blank', 'noopener'); }
+    catch (err) { onNotice(err instanceof Error ? err.message : 'Kunne ikke hente beviset.', 'error'); }
   };
   const saveEvidence = async () => {
     if (evidence === gate.evidence) return;
@@ -44,7 +49,17 @@ function GateRow({ projectId, gate, onSaved, onNotice }: { projectId: string; ga
         ))}
       </Stack>
       <TextField size="small" fullWidth multiline minRows={1} label="Bevis" value={evidence} onChange={(e) => setEvidence(e.target.value)} onBlur={() => void saveEvidence()} placeholder="build/Prologue-P01-Final.xcresult: 68 bestått, 0 feil — eller sitat fra verifikasjonsrapporten" sx={{ ...sceneFieldSx, mt: 1 }} inputProps={{ 'data-testid': `narrative-gate-evidence-${gate.gateKey}` }} />
-      {gate.checkedAt ? <Typography sx={{ fontSize: 10, color: narrativeColors.textDim, mt: 0.5 }}>Sist satt {new Date(gate.checkedAt).toLocaleString('nb-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{gate.evidenceRefs.length ? ` · refs: ${gate.evidenceRefs.join(', ')}` : ''}</Typography> : null}
+      {gate.checkedAt ? (
+        <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+          <Typography sx={{ fontSize: 10, color: narrativeColors.textDim }}>Sist satt {new Date(gate.checkedAt).toLocaleString('nb-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Typography>
+          {gate.checkedBy?.startsWith('ci:') ? <Chip size="small" label="Satt av CI" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(34,197,94,0.15)', color: narrativeColors.accent, fontWeight: 700 }} data-testid={`narrative-gate-ci-${gate.gateKey}`} /> : null}
+          {gate.evidenceRefs.map((ref, i) => (ref.startsWith('asset:') ? (
+            <Chip key={i} size="small" label="Last ned bevis" clickable onClick={() => void openAsset(ref.slice('asset:'.length))} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.text }} data-testid={`narrative-gate-asset-${gate.gateKey}`} />
+          ) : (
+            <Typography key={i} sx={{ fontSize: 10, color: narrativeColors.textDim }}>{ref}</Typography>
+          )))}
+        </Stack>
+      ) : null}
     </Box>
   );
 }

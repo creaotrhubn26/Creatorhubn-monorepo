@@ -1033,3 +1033,189 @@ describe('narrative routes — Fase 7e-1: kapabiliteter i studio-team', () => {
     expect(sql).toMatch(/enterprise_team_members m ON m\.organization_id = p\.created_by AND m\.org_kind = 'game_studio' AND m\.status = 'active'/);
   });
 });
+
+describe('narrative routes — Fase 8b: manusimport (dry-run + apply)', () => {
+  const sceneRow = (over: Record<string, unknown> = {}) => ({
+    id: 'nsc_1', project_id: PROJECT_ID, code: 'P01', title: 'Skoleveien', subtitle: 'W01 · 1797, ettermiddag', location: '', challenge: '', gameplay_mechanic: '',
+    environment: '', status: 'idea', assignee_user_id: null, due_at: null, hero_asset_id: null, sort_order: 0, created_by: 'u1',
+    created_at: new Date('2026-09-17T08:00:00Z'), updated_at: new Date('2026-09-17T08:00:00Z'),
+    before_state: 'Bok hos Elise.', action: 'Nora tar boken.', control: '', after_state: '', audio: '',
+    change_note: '', bridge: '', time_note: '', knowledge: {}, era: '1797', episode_id: null, start_at: null, source_refs: [], working_id: 'P01',
+    ...over,
+  });
+  const DOC = `# Manus v3
+
+### P01 — Skoleveien · W01 · 1797, ettermiddag
+
+**Før:** Bok hos Elise.
+**Handling:** Nora tar boken og knyter skolissen.
+
+### P02 — Ringen · W02 · 1797
+
+**Før:** Oskar kommer frem med ballen.
+
+## W01 — Skoleveien · 1797
+
+| ID | Kildetaler | Type | Engelsk tekst |
+| --- | --- | --- | --- |
+| W01.01 | NORA | E | Must you read all the way home? |
+| W01.02 | ELISE | E | You will not drop my book, will you? |
+`;
+  const existingHandlers = () => [
+    { match: /FROM narrative_scenes WHERE project_id = \$1 ORDER BY sort_order, code$/, rows: [sceneRow()] },
+    { match: /FROM narrative_scene_lines WHERE project_id = \$1 ORDER BY scene_id/, rows: [
+      { id: 'nsl_1', scene_id: 'nsc_1', cue_id: 'W01.01', speaker_label: 'NORA', text_en: 'Must you read all the way home?', source_type: 'E' },
+      { id: 'nsl_3', scene_id: 'nsc_1', cue_id: 'W01.03', speaker_label: 'OSKAR', text_en: 'Ball by the root.', source_type: 'T' },
+    ] },
+  ];
+
+  it('POST import-document (dry-run) parser dokumentet og returnerer diff + sha256 uten å skrive', async () => {
+    const pool = makePool(existingHandlers());
+    const app = createApp(pool);
+    const res = await request(app)
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import-document`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .attach('file', Buffer.from(DOC, 'utf8'), { filename: 'MANUS-v3.md', contentType: 'text/markdown' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.kind).toBe('md');
+    expect(res.body.data.sourceSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(res.body.data.title).toBe('Manus v3');
+    const diff = res.body.data.diff;
+    expect(diff.stats).toMatchObject({ create: 1, update: 1, unchanged: 0, linesCreate: 1, missingLines: 1 });
+    expect(diff.create[0].code).toBe('P02');
+    expect(diff.update[0].changes.action).toEqual({ from: 'Nora tar boken.', to: 'Nora tar boken og knyter skolissen.' });
+    expect(diff.update[0].lines.create.map((l: { cueId: string }) => l.cueId)).toEqual(['W01.02']);
+    expect(diff.missingInDoc.lines[0].cueId).toBe('W01.03');
+    // Ingen skriving under dry-run.
+    const sqls = pool.query.mock.calls.map(([q]) => String(q));
+    expect(sqls.some((q) => /INSERT|UPDATE|DELETE/i.test(q))).toBe(false);
+  });
+
+  it('POST import-document avviser ukjent filtype (415) og tomt dokument (422)', async () => {
+    const app = createApp(makePool(existingHandlers()));
+    const png = await request(app)
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import-document`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .attach('file', Buffer.from('x'), { filename: 'bilde.png', contentType: 'image/png' });
+    expect(png.status).toBe(415);
+    const empty = await request(app)
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import-document`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .attach('file', Buffer.from('Bare prosa. Ingen scener her, bare ord og litt til for å passere lengdekravet.'), { filename: 'notat.txt', contentType: 'text/plain' });
+    expect(empty.status).toBe(422);
+    expect(empty.body.error).toBe('nothing_recognized');
+  });
+
+  it('POST scenes/import-document/apply skriver ny scene, patcher felt/replikker, kobler taler og lager åpne spørsmål', async () => {
+    const inserts: Record<string, unknown[][]> = { scenes: [], lines: [], questions: [], sources: [] };
+    const pool = makePool([
+      { match: /SELECT \* FROM narrative_sources WHERE project_id/, rows: [] },
+      { match: /INSERT INTO narrative_sources/, rows: (p) => { inserts.sources.push(p); return [{ id: 'nso_1', project_id: p[1], code: p[2], label: p[3], kind: p[4], sha256: p[5], path_hint: p[6], notes: p[7], sort_order: p[8], created_by: p[9], verified_at: null, verified_by: null, created_at: new Date(), updated_at: new Date() }]; } },
+      { match: /UPDATE narrative_sources SET/, rows: [{ id: 'nso_1', project_id: PROJECT_ID, code: 'W', label: 'Manus v3', kind: 'md', sha256: 'a'.repeat(64), path_hint: '', notes: 'x', sort_order: 0, created_by: 'u1', verified_at: new Date(), verified_by: 'u1', created_at: new Date(), updated_at: new Date() }] },
+      { match: /FROM narrative_components WHERE project_id = \$1 AND kind = \$2/, rows: [{ id: 'char_nora', project_id: PROJECT_ID, name: 'Nora', custom_id: 'char_nora', folder_path: '', cover_asset_id: null, sort_order: 0, kind: 'character', profile: {}, created_by: 'u1', created_at: new Date(), updated_at: new Date() }] },
+      { match: /SELECT code FROM narrative_scenes/, rows: [] },
+      { match: /INSERT INTO narrative_scenes/, rows: (p) => { inserts.scenes.push(p); return [sceneRow({ id: p[0], code: p[2], title: p[3], working_id: 'P02' })]; } },
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: (p) => [sceneRow({ id: p[0] })] },
+      { match: /UPDATE narrative_scenes SET/, rows: (p) => [sceneRow({ id: p[0] })] },
+      { match: /FROM narrative_scene_lines WHERE scene_id = \$1 AND project_id = \$2/, rows: [{ id: 'nsl_1', scene_id: 'nsc_1', project_id: PROJECT_ID, cue_id: 'W01.01', speaker_component_id: null, speaker_label: 'NORA', perspective: '', text_en: 'x', text_nb: '', source_type: 'E', recording_status: 'none', note: '', sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+      { match: /INSERT INTO narrative_scene_lines/, rows: (p) => { inserts.lines.push(p); return [{ id: p[0], scene_id: p[1], project_id: p[2], cue_id: p[3], speaker_component_id: p[4], speaker_label: p[5], perspective: p[6], text_en: p[7], text_nb: p[8], source_type: p[9], recording_status: p[10], note: p[11], sort_order: p[12], created_by: p[13], created_at: new Date(), updated_at: new Date() }]; } },
+      { match: /UPDATE narrative_scene_lines SET/, rows: (p) => [{ id: p[0], scene_id: 'nsc_1', project_id: PROJECT_ID, cue_id: 'W01.03', speaker_component_id: null, speaker_label: 'OSKAR', perspective: '', text_en: 'ny', text_nb: '', source_type: 'T', recording_status: 'none', note: '', sort_order: 1, created_at: new Date(), updated_at: new Date() }] },
+      { match: /FROM narrative_open_questions WHERE project_id/, rows: [] },
+      { match: /INSERT INTO narrative_open_questions/, rows: (p) => { inserts.questions.push(p); return [{ id: p[0], project_id: p[1], code: p[2], kind: p[3], question: p[4], context: p[5], status: p[6], decision: p[7], source_refs: JSON.parse(String(p[8])), sort_order: p[9], created_by: p[10], created_at: new Date(), updated_at: new Date() }]; } },
+    ]);
+    const app = createApp(pool);
+    const body = {
+      sourceSha256: 'a'.repeat(64), sourceCode: 'W', sourceLabel: 'Manus v3', sourceKind: 'md', fileName: 'MANUS-v3.md',
+      create: [{ workingId: 'P02', code: 'P02', scene: { workingId: 'P02', title: 'Ringen', subtitle: 'W02 · 1797', era: '1797', cueBlocks: ['W02'], fields: { beforeState: 'Oskar kommer frem.', action: '', control: '', afterState: '', audio: '' }, lines: [{ cueId: 'W02.02', speakerLabel: 'OSKAR', sourceType: 'T', textEn: 'The name first.' }, { cueId: 'W02.01', speakerLabel: 'NORA, 12', sourceType: 'E', textEn: 'We wait here.' }] } }],
+      update: [{ sceneId: 'nsc_1', code: 'P01', workingId: 'P01', changes: { action: { from: 'Nora tar boken.', to: 'Nora tar boken og knyter skolissen.' } }, lines: { create: [{ cueId: 'W01.02', speakerLabel: 'ELISE', sourceType: 'E', textEn: 'You will not drop my book, will you?' }], update: [{ lineId: 'nsl_3', cueId: 'W01.03', changes: { textEn: { from: 'Ball by the root.', to: 'The kicking game.' } } }], unchanged: 1 } }],
+      openQuestions: [{ question: 'Replikk W01.04 finnes ikke i «Manus v3» — stryke?', sceneCode: 'P01' }],
+    };
+    const res = await request(app)
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/import-document/apply`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send(body);
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ createdSceneIds: [expect.any(String)], updatedSceneIds: ['nsc_1'], linesCreated: 3, linesUpdated: 1, openQuestionsCreated: 1 });
+    // Kilderegister: kode W med sha256 fra dokumentet.
+    expect(inserts.sources[0][2]).toBe('W');
+    expect(inserts.sources[0][5]).toBe('a'.repeat(64));
+    // Ny scene har kildemerker per fylt felt (kun beforeState).
+    expect(inserts.scenes[0][2]).toBe('P02');
+    expect(JSON.parse(String(inserts.scenes[0][27]))).toEqual([{ tag: 'W', ref: 'W', field: 'beforeState', note: 'P02 (manusimport)' }]);
+    // Replikker sortert på cue-nummer (W02.01 før W02.02) og taler koblet til karakteren «Nora» selv med «, 12».
+    const newSceneLines = inserts.lines.filter((p) => p[1] !== 'nsc_1');
+    expect(newSceneLines.map((p) => p[3])).toEqual(['W02.01', 'W02.02']);
+    expect(newSceneLines[0][4]).toBe('char_nora');
+    expect(newSceneLines[1][4]).toBeNull();
+    // Åpent spørsmål av typen check med kildemerke.
+    expect(inserts.questions[0][2]).toMatch(/^IMP-AAAAAA-01$/);
+    expect(inserts.questions[0][3]).toBe('check');
+    // Ingen DELETE noensinne.
+    expect(pool.query.mock.calls.some(([q]) => /DELETE/i.test(String(q)))).toBe(false);
+  });
+
+  it('apply avviser ugyldig body (400)', async () => {
+    const app = createApp(makePool());
+    const res = await request(app)
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/import-document/apply`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ sourceSha256: 'kort', create: [], update: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+});
+
+describe('narrative routes — Fase 8c: CI-hooks (autentisert) + bevis-nedlasting', () => {
+  const hookRow = (over: Record<string, unknown> = {}) => ({ id: 'nch_123e4567-e89b-12d3-a456-426614174000', project_id: PROJECT_ID, label: 'Xcode Cloud', secret: 'sgh_' + 'a'.repeat(43), created_by: 'u1', created_at: new Date(), revoked_at: null, last_delivery_at: null, delivery_count: 0, ...over });
+
+  it('POST ci-hooks oppretter hook og returnerer hemmeligheten én gang (aldri i GET)', async () => {
+    let stored: unknown[] = [];
+    const pool = makePool([
+      { match: /INSERT INTO narrative_ci_hooks/, rows: (p) => { stored = p; return [hookRow({ id: p[0], label: p[2], secret: p[3] })]; } },
+      { match: /FROM narrative_ci_hooks WHERE project_id/, rows: [hookRow()] },
+    ]);
+    const app = createApp(pool);
+    const created = await request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/ci-hooks`).set('Authorization', `Bearer ${SESSION_TOKEN}`).send({ label: 'Xcode Cloud' });
+    expect(created.status).toBe(201);
+    expect(created.body.data.secret).toMatch(/^sgh_/);
+    expect(created.body.data.secret).toBe(stored[3]);
+    expect(created.body.data.webhookPath).toMatch(/^\/api\/role-room\/narrative\/hooks\/ci\/nch_/);
+    expect(created.body.data.hook.secret).toBeUndefined();
+    const list = await request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/ci-hooks`).set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(list.status).toBe(200);
+    expect(list.body.data[0].secret).toBeUndefined();
+    expect(list.body.data[0].label).toBe('Xcode Cloud');
+  });
+
+  it('POST ci-hooks/:id/revoke setter revoked_at; ukjent → 404', async () => {
+    const pool = makePool([{ match: /UPDATE narrative_ci_hooks SET revoked_at/, rows: (p) => (p[0] === 'nch_x' ? [hookRow({ id: 'nch_x', revoked_at: new Date() })] : []) }]);
+    const app = createApp(pool);
+    const ok = await request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/ci-hooks/nch_x/revoke`).set('Authorization', `Bearer ${SESSION_TOKEN}`).send({});
+    expect(ok.status).toBe(200);
+    expect(ok.body.data.revokedAt).toBeTruthy();
+    const nf = await request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/ci-hooks/nch_y/revoke`).set('Authorization', `Bearer ${SESSION_TOKEN}`).send({});
+    expect(nf.status).toBe(404);
+  });
+
+  it('GET ci-deliveries lister leveringslogg', async () => {
+    const pool = makePool([{ match: /FROM narrative_ci_deliveries WHERE project_id = \$1 ORDER BY/, rows: [{ id: 'ncd_1', hook_id: 'nch_x', project_id: PROJECT_ID, received_at: new Date(), status: 'rejected', scene_code: 'P02', gate_key: 'playthrough', gate_status: 'passed', error: 'gate_evidence_required', commit_sha: 'abc', run_url: null, payload: {} }] }]);
+    const res = await request(createApp(pool)).get(`/api/role-room/narrative/projects/${PROJECT_ID}/ci-deliveries`).set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data[0]).toMatchObject({ status: 'rejected', sceneCode: 'P02', error: 'gate_evidence_required' });
+  });
+
+  it('GET assets/:id/download gir ekstern URL direkte, 404 uten fil, og ellers presignet URL', async () => {
+    const pool = makePool([{ match: /FROM narrative_assets WHERE id = \$1 AND project_id = \$2/, rows: (p) => (
+      p[0] === 'nas_ext' ? [{ id: 'nas_ext', name: 'x.png', storage_key: null, external_url: 'https://cdn.example/x.png' }]
+      : p[0] === 'nas_none' ? [{ id: 'nas_none', name: 'y', storage_key: null, external_url: null }]
+      : []) }]);
+    const app = createApp(pool);
+    const ext = await request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/assets/nas_ext/download`).set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(ext.status).toBe(200);
+    expect(ext.body.data.url).toBe('https://cdn.example/x.png');
+    const none = await request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/assets/nas_none/download`).set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(none.status).toBe(404);
+    const missing = await request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/assets/nas_zzz/download`).set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(missing.status).toBe(404);
+  });
+});

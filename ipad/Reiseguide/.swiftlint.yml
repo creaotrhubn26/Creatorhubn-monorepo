@@ -1,0 +1,20 @@
+disabled_rules:
+  - line_length
+  - identifier_name
+  - todo
+  # Idiomatisk SwiftUI: .sheet(onDismiss:) { … } og lignende.
+  - multiple_closures_with_trailing_closure
+
+opt_in_rules:
+  - implicit_return
+  - unused_import
+  - closure_end_indentation
+  - redundant_type_annotation
+
+excluded:
+  - Reiseguide/Generated
+  - Reiseguide.xcodeproj
+  - ReiseguideTests
+
+force_cast: error
+force_try: error

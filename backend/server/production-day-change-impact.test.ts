@@ -315,7 +315,23 @@ describe('collectProductionDayPropImpact', () => {
     expect(hasBlockingImpact(impacts)).toBe(true);
   });
 
-  it('warns about a prop that is not marked available', async () => {
+  it('counts a prop as secured when it is in storage or rented in', async () => {
+    // Troll fører ingen rekvisitter som «available»: fem står in_storage, to
+    // er rented og én er in_production. Den første versjonen advarte på alt
+    // som ikke var «available», og slo dermed ut på samtlige åtte.
+    const pool = poolWith({ casting_props: 0 });
+    const impacts = await collectProductionDayPropImpact(pool, {
+      ...PROP_INPUT,
+      toPropIds: ['prop-1', 'prop-lager', 'prop-leid'],
+    });
+
+    expect(impacts.map((impact) => impact.area)).not.toContain('prop_availability');
+    const [, params] = (pool.query.mock.calls as unknown[][])
+      .find(([text]) => String(text).includes('casting_props')) as [string, unknown[]];
+    expect(params[2]).toEqual(['available', 'in_storage', 'rented']);
+  });
+
+  it('warns about a prop that is not ready to use', async () => {
     const impacts = await collectProductionDayPropImpact(
       poolWith({ casting_props: 2 }),
       { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2', 'prop-3'] },
@@ -323,6 +339,7 @@ describe('collectProductionDayPropImpact', () => {
 
     expect(impacts).toHaveLength(1);
     expect(impacts[0]).toMatchObject({ area: 'prop_availability', severity: 'warning', count: 2 });
+    expect(impacts[0].summary).toContain('ikke klare til bruk');
     expect(impacts[0].action).toBeTruthy();
   });
 

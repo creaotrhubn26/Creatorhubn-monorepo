@@ -21,6 +21,7 @@ import {
 import { SceneStatusChip, sceneFieldSx } from './sceneUi';
 import { MemberAvatar, useMembersLite } from '../components/MemberPicker';
 import { SceneCard } from './SceneCard';
+import { ImportDocumentDialog } from './ImportDocumentDialog';
 
 export interface ScenesPanelProps {
   projectId: string;
@@ -53,6 +54,9 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
   const visible = useMemo(() => filterScenes(scenes.scenes, { query, status }), [scenes.scenes, query, status]);
 
   useEffect(() => { writeUrl('scene', scenes.selectedId); }, [scenes.selectedId]);
+
+  // ─── Fase 8b: manusimport ──────────────────────────────────────────
+  const [importOpen, setImportOpen] = useState(false);
 
   // ─── Ny scene ──────────────────────────────────────────────────────
   const [newOpen, setNewOpen] = useState(false);
@@ -130,6 +134,9 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
         <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}` }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 14, flex: 1 }}>Scener <Typography component="span" sx={{ fontSize: 12, color: narrativeColors.textDim }}>({scenes.scenes.length})</Typography></Typography>
+            <Tooltip title="Importer manus (Word/PDF/Markdown) — vises som diff før noe skrives">
+              <Button size="small" variant="outlined" onClick={() => setImportOpen(true)} data-testid="narrative-import-open" sx={{ color: narrativeColors.accent, borderColor: narrativeColors.accent, minWidth: 0, px: 1 }}>Importer</Button>
+            </Tooltip>
             <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={openNew} data-testid="narrative-scene-new" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, '&:hover': { bgcolor: narrativeColors.accentDark } }}>Ny scene</Button>
           </Stack>
           <TextField
@@ -189,6 +196,15 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
           <SceneCard projectId={projectId} graph={graph} detail={scenes.detail} scenes={scenes} onJumpToElement={onJumpToElement} onNotice={onNotice} />
         )}
       </Box>
+
+      {/* ── Manusimport (Fase 8b) ─────────────────────────────────────── */}
+      <ImportDocumentDialog
+        open={importOpen} projectId={projectId} onClose={() => setImportOpen(false)}
+        onApplied={(result) => {
+          void scenes.reload();
+          onNotice(`Manus importert: ${result.createdSceneIds.length} nye og ${result.updatedSceneIds.length} oppdaterte scener.`, 'success');
+        }}
+      />
 
       {/* ── Ny scene-dialog ───────────────────────────────────────────── */}
       <Dialog open={newOpen} onClose={() => !creating && setNewOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` }, 'data-testid': 'narrative-scene-new-dialog' } as never}>

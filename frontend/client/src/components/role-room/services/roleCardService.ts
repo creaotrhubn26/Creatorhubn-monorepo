@@ -28,6 +28,10 @@ export interface RoleCard {
   sent_at: string | null;
   /** Første gang kortet ble åpnet av personen selv. Null = ikke sett ennå. */
   opened_at: string | null;
+  /** Personens eget svar på om hen kommer. Null = ikke svart. */
+  response: 'kommer' | 'kan_ikke' | null;
+  responded_at: string | null;
+  response_note: string | null;
 }
 
 export interface SceneBlocking {

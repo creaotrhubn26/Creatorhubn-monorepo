@@ -9,6 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NARRATIVE_DISABLED_EVENT } from './narrativeService';
 import {
   Alert,
   Box,
@@ -71,6 +72,7 @@ import { ComponentGalleryPanel } from './characters/ComponentGalleryPanel';
 import { PlatformPanel } from './platform/PlatformPanel';
 import { PlanPanel } from './plan/PlanPanel';
 import { TeamPanel } from '../game/TeamPanel';
+import { IntegrationsPanel } from './integrations/IntegrationsPanel';
 import { PlanGateBanner } from '../game/GameBillingPanels';
 import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
@@ -204,6 +206,14 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
 
   const store = useNarrativeGraph(projectId);
   const { graph } = store;
+
+  // Fase 8a: server-side av-bryter (503 game_studio_disabled) → helsidebanner.
+  const [serviceDisabled, setServiceDisabled] = useState(false);
+  useEffect(() => {
+    const onDisabled = () => setServiceDisabled(true);
+    window.addEventListener(NARRATIVE_DISABLED_EVENT, onDisabled);
+    return () => window.removeEventListener(NARRATIVE_DISABLED_EVENT, onDisabled);
+  }, []);
 
   // Aktivt brett: ?board= → første brett.
   const [activeBoardId, setActiveBoardId] = useState<string | null>(() => readUrlParam('board'));
@@ -468,6 +478,12 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
             onNotice={(message, severity) => setNotice({ message, severity })}
           />
         );
+      case 'integrations':
+        return (
+          <Box sx={{ p: 0 }} data-testid="narrative-integrations">
+            {projectId ? <IntegrationsPanel projectId={projectId} refreshKey={scenesTick} onNotice={(message, severity) => setNotice({ message, severity })} /> : null}
+          </Box>
+        );
       case 'team':
         return (
           <Box sx={{ p: { xs: 1, md: 2 } }} data-testid="narrative-team">
@@ -557,6 +573,11 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         )}
       >
         <Box data-testid="narrative-workspace" sx={{ minHeight: '100%' }}>
+          {serviceDisabled ? (
+            <Alert severity="warning" data-testid="narrative-disabled-banner" sx={{ m: 2 }}>
+              Spillstudio er midlertidig slått av for vedlikehold. Ingenting går tapt — prøv igjen om litt.
+            </Alert>
+          ) : null}
           <ErrorBoundary
             key={activeTab.id}
             componentName={`narrative-tab:${activeTab.id}`}

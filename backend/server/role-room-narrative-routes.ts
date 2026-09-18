@@ -31,6 +31,16 @@ import {
 import { MAX_TRANSLATE_SEGMENTS, translateSegments } from './narrative-translate.js';
 import { renderStoryGraphPdf, storyGraphPdfFilename } from './narrative-pdf.js';
 import { broadcastEventToRoom, narrativeRoomKey } from './websocket-chat.js';
+import { captureBackendException } from './sentry-init.js';
+import { createTokenRateLimiter } from './narrative-rate-limit.js';
+import multer from 'multer';
+import { createHash } from 'node:crypto';
+import {
+  DOCUMENT_IMPORT_MAX_BYTES, DocumentImportError, diffAgainstProject, extractDocumentText, parseSceneDocument,
+} from './narrative-document-import.js';
+import { applyDocumentImport, listExistingScenesForImport } from './narrative-document-import-service.js';
+import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook } from './role-room-narrative-ci-hooks.js';
+import { presignCreatorHubObjectDownload } from './creatorhub-object-storage.js';
 import {
   PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
   type ResolveProjectPlan,
@@ -245,7 +255,7 @@ const variableBody = z.object({
 });
 
 const assetBody = z.object({
-  kind: z.enum(['image', 'audio', 'video']).optional(),
+  kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
   name: z.string().min(1).max(300),
   externalUrl: z.string().url().max(2000).nullable().optional(),
   mime: nullableStr(120),
@@ -460,11 +470,12 @@ export function createRoleRoomNarrativeRouter(
   deps: CreateRoleRoomNarrativeRouterDeps = {},
 ): ExpressRouter {
   const router = Router();
+  const publicStoryLimiter = createTokenRateLimiter({ windowMs: 60_000, max: 120 });
   const auth = requireAuth(pool, deps.activeSessions);
   const canAccess = deps.canAccessProject ?? canAccessRoleRoomProject;
 
   const requireProject = async (req: Request, res: Response, next: NextFunction) => {
-    const projectId = typeof req.params.projectId === 'string' ? req.params.projectId.trim() : '';
+    const projectId = param(req, 'projectId').trim();
     if (!idSchema.safeParse(projectId).success) { res.status(400).json({ error: 'invalid_project_id' }); return; }
     const { userId } = req as AuthedRequest;
     if (!(await canAccess(pool, userId, projectId))) { res.status(403).json({ error: 'forbidden' }); return; }
@@ -536,7 +547,7 @@ export function createRoleRoomNarrativeRouter(
         // Sanntid: vellykket mutasjon → push til prosjektets rom (best-effort).
         const kind = changeKindFor(req);
         if (kind && res.statusCode < 400 && (req as AuthedRequest).projectId) {
-          const id = typeof req.params.id === 'string' ? [req.params.id] : typeof req.params.sceneId === 'string' ? [req.params.sceneId] : [];
+          const id = [param(req, 'id') || param(req, 'sceneId')].filter(Boolean);
           notifyGraphChanged(req as AuthedRequest, kind, id);
         }
       } catch (err) {
@@ -544,6 +555,14 @@ export function createRoleRoomNarrativeRouter(
           if (!res.headersSent) sendPlanRequired(res, err);
           return;
         }
+        // Fase 8a: wrap() svarer selv, så Sentry-middlewaren i index.ts ser aldri feilen —
+        // fang den eksplisitt (no-op uten SENTRY_DSN). Ikke next(err): finalhandler ville
+        // rive sokkelen når svaret alt er sendt.
+        captureBackendException(err, {
+          endpoint: `${req.method} ${req.baseUrl}${req.route?.path ?? req.path}`,
+          userId: (req as AuthedRequest).userId,
+          extra: { projectId: (req as AuthedRequest).projectId, area: 'role-room/narrative' },
+        });
         console.error('[narrative] route error', err);
         if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
       }
@@ -586,12 +605,12 @@ export function createRoleRoomNarrativeRouter(
   router.patch('/projects/:projectId/boards/:id', ...guard, wrap(async (req, res) => {
     const parsed = boardBody.partial().safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.patchBoard(pool, req.projectId, req.params.id, parsed.data);
+    const r = await svc.patchBoard(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.delete('/projects/:projectId/boards/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteBoard(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteBoard(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
 
@@ -624,19 +643,19 @@ export function createRoleRoomNarrativeRouter(
         ? svc.normalizeBranchConditions(parsed.data.branchConditions)
         : undefined,
     };
-    const r = await svc.patchElement(pool, req.projectId, req.params.id, patch, readExpectedVersion(req));
+    const r = await svc.patchElement(pool, req.projectId, param(req, 'id'), patch, readExpectedVersion(req));
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     if (!r.ok) { res.status(409).json({ error: 'conflict', data: r.conflict }); return; }
     res.json({ success: true, data: r.element });
   }));
   router.delete('/projects/:projectId/elements/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteElement(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteElement(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
   router.put('/projects/:projectId/elements/:id/components', ...guard, wrap(async (req, res) => {
     const parsed = elementComponentsBody.safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.setElementComponents(pool, req.projectId, req.params.id, parsed.data.componentIds);
+    const r = await svc.setElementComponents(pool, req.projectId, param(req, 'id'), parsed.data.componentIds);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
@@ -652,12 +671,12 @@ export function createRoleRoomNarrativeRouter(
   router.patch('/projects/:projectId/connections/:id', ...guard, wrap(async (req, res) => {
     const parsed = connectionBody.pick({ targetId: true, sourceOutputKey: true, labelHtml: true, sortOrder: true }).partial().safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.patchConnection(pool, req.projectId, req.params.id, parsed.data);
+    const r = await svc.patchConnection(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.delete('/projects/:projectId/connections/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteConnection(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteConnection(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
 
@@ -670,12 +689,12 @@ export function createRoleRoomNarrativeRouter(
   router.patch('/projects/:projectId/components/:id', ...guard, wrap(async (req, res) => {
     const parsed = componentBody.partial().safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.patchComponent(pool, req.projectId, req.params.id, parsed.data);
+    const r = await svc.patchComponent(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.delete('/projects/:projectId/components/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteComponent(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteComponent(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
 
@@ -688,12 +707,12 @@ export function createRoleRoomNarrativeRouter(
   router.patch('/projects/:projectId/attributes/:id', ...guard, wrap(async (req, res) => {
     const parsed = attributeBody.omit({ ownerKind: true, ownerId: true }).partial().safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.patchAttribute(pool, req.projectId, req.params.id, parsed.data);
+    const r = await svc.patchAttribute(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.delete('/projects/:projectId/attributes/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteAttribute(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteAttribute(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
 
@@ -708,12 +727,12 @@ export function createRoleRoomNarrativeRouter(
   router.patch('/projects/:projectId/variables/:id', ...guard, wrap(async (req, res) => {
     const parsed = variableBody.partial().safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.patchVariable(pool, req.projectId, req.params.id, parsed.data);
+    const r = await svc.patchVariable(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.delete('/projects/:projectId/variables/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteVariable(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteVariable(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
 
@@ -726,12 +745,12 @@ export function createRoleRoomNarrativeRouter(
   router.patch('/projects/:projectId/assets/:id', ...guard, wrap(async (req, res) => {
     const parsed = assetBody.partial().safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const r = await svc.patchAsset(pool, req.projectId, req.params.id, parsed.data);
+    const r = await svc.patchAsset(pool, req.projectId, param(req, 'id'), parsed.data);
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.delete('/projects/:projectId/assets/:id', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteAsset(pool, req.projectId, req.params.id);
+    const ok = await svc.deleteAsset(pool, req.projectId, param(req, 'id'));
     res.status(ok ? 200 : 404).json(ok ? { success: true } : { error: 'not_found' });
   }));
 
@@ -745,12 +764,12 @@ export function createRoleRoomNarrativeRouter(
     res.status(201).json({ success: true, data: await svc.createRevision(pool, req.projectId, req.userId, parsed.data.label ?? null) });
   }));
   router.get('/projects/:projectId/revisions/:id', ...guard, wrap(async (req, res) => {
-    const r = await svc.getRevision(pool, req.projectId, req.params.id);
+    const r = await svc.getRevision(pool, req.projectId, param(req, 'id'));
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: r });
   }));
   router.post('/projects/:projectId/revisions/:id/restore', ...guard, wrap(async (req, res) => {
-    const backup = await svc.restoreRevision(pool, req.projectId, req.userId, req.params.id);
+    const backup = await svc.restoreRevision(pool, req.projectId, req.userId, param(req, 'id'));
     if (!backup) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: { backup, graph: await svc.getGraph(pool, req.projectId) } });
   }));
@@ -832,7 +851,7 @@ export function createRoleRoomNarrativeRouter(
     res.status(201).json({ success: true, data: { link, token, path: `/story/${token}` } });
   }));
   router.post('/projects/:projectId/share-links/:id/revoke', ...guard, wrap(async (req, res) => {
-    const link = await svc.revokeShareLink(pool, req.projectId, req.params.id);
+    const link = await svc.revokeShareLink(pool, req.projectId, param(req, 'id'));
     if (!link) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: link });
   }));
@@ -882,7 +901,7 @@ export function createRoleRoomNarrativeRouter(
     }
   }));
   router.get('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
-    const detail = await svc.getSceneDetail(pool, req.projectId, req.params.sceneId);
+    const detail = await svc.getSceneDetail(pool, req.projectId, param(req, 'sceneId'));
     if (!detail) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: detail });
   }));
@@ -890,7 +909,7 @@ export function createRoleRoomNarrativeRouter(
     const parsed = sceneBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     try {
-      const scene = await svc.patchScene(pool, req.projectId, req.params.sceneId, parsed.data);
+      const scene = await svc.patchScene(pool, req.projectId, param(req, 'sceneId'), parsed.data);
       if (!scene) { res.status(404).json({ error: 'not_found' }); return; }
       res.json({ success: true, data: scene });
     } catch (err) {
@@ -900,7 +919,7 @@ export function createRoleRoomNarrativeRouter(
   }));
   router.delete('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
     if (!(await requireCapability(req, res, 'scenes.delete'))) return;
-    const ok = await svc.deleteScene(pool, req.projectId, req.params.sceneId);
+    const ok = await svc.deleteScene(pool, req.projectId, param(req, 'sceneId'));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
   }));
@@ -913,7 +932,7 @@ export function createRoleRoomNarrativeRouter(
   router.put('/projects/:projectId/scenes/:sceneId/links', ...guard, wrap(async (req, res) => {
     const parsed = sceneLinksBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const links = await svc.setSceneLinks(pool, req.projectId, req.params.sceneId, parsed.data.links);
+    const links = await svc.setSceneLinks(pool, req.projectId, param(req, 'sceneId'), parsed.data.links);
     if (!links) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: links });
   }));
@@ -921,25 +940,25 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/scenes/:sceneId/frames', ...guard, wrap(async (req, res) => {
     const parsed = sceneFrameBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const frame = await svc.createSceneFrame(pool, req.projectId, req.params.sceneId, req.userId, parsed.data);
+    const frame = await svc.createSceneFrame(pool, req.projectId, param(req, 'sceneId'), req.userId, parsed.data);
     if (!frame) { res.status(404).json({ error: 'not_found', message: 'Scenen eller ressursen finnes ikke i prosjektet.' }); return; }
     res.status(201).json({ success: true, data: frame });
   }));
   router.put('/projects/:projectId/scenes/:sceneId/frames/order', ...guard, wrap(async (req, res) => {
     const parsed = orderBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    await svc.reorderSceneFrames(pool, req.projectId, req.params.sceneId, parsed.data.orderedIds);
+    await svc.reorderSceneFrames(pool, req.projectId, param(req, 'sceneId'), parsed.data.orderedIds);
     res.json({ success: true });
   }));
   router.patch('/projects/:projectId/scenes/:sceneId/frames/:frameId', ...guard, wrap(async (req, res) => {
     const parsed = sceneFramePatch.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const frame = await svc.patchSceneFrame(pool, req.projectId, req.params.sceneId, req.params.frameId, parsed.data);
+    const frame = await svc.patchSceneFrame(pool, req.projectId, param(req, 'sceneId'), param(req, 'frameId'), parsed.data);
     if (!frame) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: frame });
   }));
   router.delete('/projects/:projectId/scenes/:sceneId/frames/:frameId', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteSceneFrame(pool, req.projectId, req.params.sceneId, req.params.frameId);
+    const ok = await svc.deleteSceneFrame(pool, req.projectId, param(req, 'sceneId'), param(req, 'frameId'));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
   }));
@@ -947,34 +966,34 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/scenes/:sceneId/tasks', ...guard, wrap(async (req, res) => {
     const parsed = sceneTaskBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const task = await svc.createSceneTask(pool, req.projectId, req.params.sceneId, req.userId, parsed.data);
+    const task = await svc.createSceneTask(pool, req.projectId, param(req, 'sceneId'), req.userId, parsed.data);
     if (!task) { res.status(404).json({ error: 'not_found' }); return; }
     res.status(201).json({ success: true, data: task });
   }));
   router.patch('/projects/:projectId/scenes/:sceneId/tasks/:taskId', ...guard, wrap(async (req, res) => {
     const parsed = sceneTaskPatch.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
-    const task = await svc.patchSceneTask(pool, req.projectId, req.params.sceneId, req.params.taskId, parsed.data);
+    const task = await svc.patchSceneTask(pool, req.projectId, param(req, 'sceneId'), param(req, 'taskId'), parsed.data);
     if (!task) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: task });
   }));
   router.delete('/projects/:projectId/scenes/:sceneId/tasks/:taskId', ...guard, wrap(async (req, res) => {
-    const ok = await svc.deleteSceneTask(pool, req.projectId, req.params.sceneId, req.params.taskId);
+    const ok = await svc.deleteSceneTask(pool, req.projectId, param(req, 'sceneId'), param(req, 'taskId'));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
   }));
 
   router.get('/projects/:projectId/scenes/:sceneId/reviews', ...guard, wrap(async (req, res) => {
-    res.json({ success: true, data: await svc.listSceneReviews(pool, req.projectId, req.params.sceneId) });
+    res.json({ success: true, data: await svc.listSceneReviews(pool, req.projectId, param(req, 'sceneId')) });
   }));
   router.post('/projects/:projectId/scenes/:sceneId/reviews', ...guard, wrap(async (req, res) => {
     const parsed = reviewRequestBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
     await feature(req.projectId, 'scene_review');
-    const review = await svc.requestSceneReview(pool, req.projectId, req.params.sceneId, req.userId, parsed.data.note ?? null);
+    const review = await svc.requestSceneReview(pool, req.projectId, param(req, 'sceneId'), req.userId, parsed.data.note ?? null);
     if (!review) { res.status(404).json({ error: 'not_found' }); return; }
     res.status(201).json({ success: true, data: review });
-    const scene = await svc.getScene(pool, req.projectId, req.params.sceneId);
+    const scene = await svc.getScene(pool, req.projectId, param(req, 'sceneId'));
     if (scene) {
       const recipients = [scene.assigneeUserId].filter((id): id is string => !!id && id !== req.userId);
       notify(pool, { event: 'narrative_scene_review_requested', projectId: req.projectId, actorUserId: req.userId, scene, review, recipientUserIds: recipients })
@@ -989,13 +1008,13 @@ export function createRoleRoomNarrativeRouter(
     const session = deps.activeSessions?.get((req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim());
     const userLabel = (session && (session.name || session.email)) || null;
     try {
-      const review = await svc.decideSceneReview(pool, req.projectId, req.params.sceneId, req.params.reviewId, {
+      const review = await svc.decideSceneReview(pool, req.projectId, param(req, 'sceneId'), param(req, 'reviewId'), {
         decision: parsed.data.decision, note: parsed.data.note ?? null, expectedSnapshotHash: parsed.data.expectedSnapshotHash ?? null,
         userId: req.userId, userLabel,
       });
       if (!review) { res.status(404).json({ error: 'not_found' }); return; }
       res.json({ success: true, data: review });
-      const scene = await svc.getScene(pool, req.projectId, req.params.sceneId);
+      const scene = await svc.getScene(pool, req.projectId, param(req, 'sceneId'));
       if (scene) {
         const recipients = Array.from(new Set([scene.assigneeUserId, review.requestedBy].filter((id): id is string => !!id && id !== req.userId)));
         notify(pool, { event: 'narrative_scene_review_decided', projectId: req.projectId, actorUserId: req.userId, scene, review, recipientUserIds: recipients })
@@ -1290,11 +1309,137 @@ export function createRoleRoomNarrativeRouter(
     res.json({ success: true, data: await svc.listMembersLite(pool, req.projectId) });
   }));
 
+  // ─── Fase 8b: manusimport (Word/PDF/Markdown → scener + replikker) ─────
+  // Dry-run først: dokumentet parses og diffes mot prosjektet; ingenting skrives før
+  // brukeren godkjenner diffen via /scenes/import-document/apply. Ligger utenfor
+  // «scenes»-segmentet så dry-run ikke sender sanntids-push.
+  const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: DOCUMENT_IMPORT_MAX_BYTES, files: 1 } });
+  const uploadDocument = (req: Request, res: Response, next: NextFunction) => {
+    documentUpload.single('file')(req, res, (err: unknown) => {
+      if (err) {
+        const code = (err as { code?: string }).code;
+        if (code === 'LIMIT_FILE_SIZE') { res.status(413).json({ error: 'file_too_large', maxBytes: DOCUMENT_IMPORT_MAX_BYTES }); return; }
+        res.status(400).json({ error: 'bad_upload', message: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+      next();
+    });
+  };
+  router.post('/projects/:projectId/import-document', ...guard, uploadDocument, wrap(async (req, res) => {
+    const file = (req as Request & { file?: { buffer: Buffer; mimetype: string; originalname: string; size: number } }).file;
+    if (!file) { res.status(400).json({ error: 'missing_file', message: 'Send dokumentet som multipart-feltet «file».' }); return; }
+    try {
+      const { text, kind } = await extractDocumentText(file.buffer, file.mimetype, file.originalname);
+      const parsed = parseSceneDocument(text);
+      const existing = await listExistingScenesForImport(pool, req.projectId);
+      const diff = diffAgainstProject(parsed, existing);
+      res.json({
+        success: true,
+        data: {
+          fileName: file.originalname, sizeBytes: file.size, kind,
+          sourceSha256: createHash('sha256').update(file.buffer).digest('hex'),
+          title: parsed.title, stats: parsed.stats, diff,
+        },
+      });
+    } catch (err) {
+      if (err instanceof DocumentImportError) {
+        res.status(err.code === 'unsupported_type' ? 415 : 422).json({ error: err.code, message: err.message });
+        return;
+      }
+      throw err;
+    }
+  }));
+
+  const importFieldChange = z.object({ from: z.string().max(20_000), to: z.string().max(20_000) });
+  const importParsedLine = z.object({
+    cueId: z.string().trim().regex(svc.NARRATIVE_CUE_ID_RE), speakerLabel: z.string().max(200), textEn: z.string().max(5000),
+    sourceType: z.enum(['E', 'T', 'E+T', 'U', 'A']).nullable(), note: z.string().max(2000).optional(),
+  });
+  const importApplyBody = z.object({
+    sourceSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    sourceCode: z.string().trim().min(1).max(40),
+    sourceLabel: z.string().trim().min(1).max(300),
+    sourceKind: z.enum(['docx', 'pdf', 'md', 'txt', 'other']),
+    fileName: z.string().max(300).optional(),
+    create: z.array(z.object({
+      workingId: z.string().max(40), code: z.string().trim().regex(svc.NARRATIVE_SCENE_CODE_RE),
+      scene: z.object({
+        workingId: z.string().max(40), title: z.string().max(300), subtitle: z.string().max(300),
+        era: z.enum(['pre', '1797', '1802', '1817', 'other']), cueBlocks: z.array(z.string().max(10)).max(50),
+        fields: z.object({ beforeState: z.string().max(20_000), action: z.string().max(20_000), control: z.string().max(20_000), afterState: z.string().max(20_000), audio: z.string().max(20_000) }),
+        lines: z.array(importParsedLine).max(500),
+      }),
+    })).max(500),
+    update: z.array(z.object({
+      sceneId: idSchema, code: z.string().max(40), workingId: z.string().max(40),
+      changes: z.record(z.enum(['title', 'subtitle', 'era', 'beforeState', 'action', 'control', 'afterState', 'audio']), importFieldChange),
+      lines: z.object({
+        create: z.array(importParsedLine).max(500),
+        update: z.array(z.object({ lineId: idSchema, cueId: z.string().max(40), changes: z.record(z.enum(['speakerLabel', 'textEn', 'sourceType']), importFieldChange) })).max(500),
+        unchanged: z.number().int().default(0),
+      }),
+    })).max(500),
+    openQuestions: z.array(z.object({ question: z.string().trim().min(1).max(2000), context: z.string().max(5000).optional(), sceneCode: z.string().max(40).optional() })).max(500).default([]),
+  });
+  router.post('/projects/:projectId/scenes/import-document/apply', ...guard, wrap(async (req, res) => {
+    const parsed = importApplyBody.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'validation_error', details: parsed.error.flatten() }); return; }
+    try {
+      const result = await applyDocumentImport(pool, req.projectId, req.userId, parsed.data);
+      res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      if (err instanceof svc.SceneDuplicateCodeError) { res.status(409).json({ error: 'duplicate_code', code: err.code }); return; }
+      if (err instanceof svc.DuplicateCueError) { res.status(409).json({ error: 'duplicate_cue', cueId: err.cueId }); return; }
+      throw err;
+    }
+  }));
+
+  // ─── Fase 8c: CI-bevis-hooks (autentisert del) + bevis-nedlasting ──────
+  // Selve webhooken og bevis-opplastingen ligger i index.ts FØR express.json (rå body).
+  router.get('/projects/:projectId/ci-hooks', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await listCiHooks(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/ci-hooks', ...guard, wrap(async (req, res) => {
+    const parsed = z.object({ label: z.string().trim().max(200).optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const { hook, secret } = await createCiHook(pool, req.projectId, req.userId, parsed.data.label ?? '');
+    // Hemmeligheten vises ÉN gang (lagres i klartekst i DB fordi HMAC trenger den).
+    res.status(201).json({ success: true, data: { hook, secret, webhookPath: `/api/role-room/narrative/hooks/ci/${hook.id}` } });
+  }));
+  router.post('/projects/:projectId/ci-hooks/:hookId/revoke', ...guard, wrap(async (req, res) => {
+    const hook = await revokeCiHook(pool, req.projectId, param(req, 'hookId'));
+    if (!hook) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: hook });
+  }));
+  router.get('/projects/:projectId/ci-hooks/:hookId/deliveries', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await listCiDeliveries(pool, req.projectId, { hookId: param(req, 'hookId'), limit: 200 }) });
+  }));
+  router.get('/projects/:projectId/ci-deliveries', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await listCiDeliveries(pool, req.projectId, { limit: 200 }) });
+  }));
+  // Bevis-artefakt (narrative_assets.storage_key) → kortlevd signert nedlastings-URL.
+  router.get('/projects/:projectId/assets/:assetId/download', ...guard, wrap(async (req, res) => {
+    const { rows } = await pool.query(`SELECT id, name, storage_key, external_url FROM narrative_assets WHERE id = $1 AND project_id = $2 LIMIT 1`, [param(req, 'assetId'), req.projectId]);
+    const row = rows[0] as { name: string; storage_key: string | null; external_url: string | null } | undefined;
+    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    if (!row.storage_key) {
+      if (row.external_url) { res.json({ success: true, data: { url: row.external_url, expiresInSeconds: null } }); return; }
+      res.status(404).json({ error: 'no_file' }); return;
+    }
+    const url = await presignCreatorHubObjectDownload(row.storage_key, row.name, 300);
+    if (!url) { res.status(503).json({ error: 'storage_unavailable' }); return; }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: { url, expiresInSeconds: 300 } });
+  }));
+
   // Offentlig (uten innlogging): spill-grafen bak et delingstoken. Ugyldig,
   // utløpt og tilbakekalt gir samme 404 (ingen lekkasje av hvilken).
   router.get('/public/:token', async (req: Request, res: Response) => {
     try {
-      const story = await svc.getPublicStory(pool, req.params.token);
+      const token = param(req, 'token');
+      // Fase 8a: per-token-budsjett (ikke IP — bak Renders proxy er req.ip lik for alle).
+      if (publicStoryLimiter.hit(token)) { res.status(429).set('Retry-After', '60').json({ error: 'rate_limited' }); return; }
+      const story = await svc.getPublicStory(pool, token);
       res.setHeader('Cache-Control', 'no-store');
       if (!story) { res.status(404).json({ error: 'not_found' }); return; }
       res.json({ success: true, data: story });
