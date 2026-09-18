@@ -6,7 +6,7 @@ import {
   captureSessions,
   type CaptureAsset,
 } from '../migrations/capture-schema.js';
-import { buildCaptureR2Config } from './capture-upload-service.js';
+import { describeCaptureStorageKey } from './capture-upload-service.js';
 
 type Db = NodePgDatabase<Record<string, unknown>>;
 
@@ -22,6 +22,8 @@ export interface HandoffInput {
   settings?: Record<string, unknown>;
   filter: HandoffFilter;
   preferredSource?: 'full' | 'preview';
+  /** Forward the already-validated Capture bearer to the in-process enhancer. */
+  authorization?: string;
 }
 
 export interface HandoffResult {
@@ -45,12 +47,14 @@ async function submitToEnhancer(
   endpoint: string,
   body: Record<string, unknown>,
   ownerUserId: string,
+  authorization?: string,
 ): Promise<string | null> {
   const response = await fetch(`${endpoint}/api/photo-enhancer/jobs`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-user-id': ownerUserId,
+      ...(authorization ? { authorization } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -122,7 +126,7 @@ export async function performHandoff(
   input: HandoffInput,
 ): Promise<HandoffResult | null> {
   const owns = await db
-    .select({ id: captureSessions.id })
+    .select({ id: captureSessions.id, projectId: captureSessions.projectId })
     .from(captureSessions)
     .where(
       and(eq(captureSessions.id, sessionId), eq(captureSessions.ownerUserId, ownerUserId)),
@@ -132,7 +136,6 @@ export async function performHandoff(
 
   const assets = await selectAssets(db, sessionId, input.filter);
 
-  const cfg = buildCaptureR2Config();
   const endpoint =
     process.env.CAPTURE_HANDOFF_ENHANCER_URL?.trim() ||
     `http://127.0.0.1:${process.env.PORT ?? 3000}`;
@@ -141,7 +144,8 @@ export async function performHandoff(
 
   const jobs = await processWithConcurrency(assets, DEFAULT_HANDOFF_CONCURRENCY, async (asset) => {
     const key = pickStorageKey(asset, preferredSource);
-    if (!key || !cfg.bucket) {
+    const storage = key ? describeCaptureStorageKey(key) : null;
+    if (!key || !storage) {
       return {
         assetId: asset.id,
         jobId: null,
@@ -153,8 +157,9 @@ export async function performHandoff(
         endpoint,
         {
           source: {
-            bucket: cfg.bucket,
+            bucket: storage.bucket,
             key,
+            storage: storage.storage,
             fileName: asset.originalFilename,
             mimeType: asset.mime,
             size: asset.sizeBytes ?? 0,
@@ -167,8 +172,10 @@ export async function performHandoff(
             captureSessionId: sessionId,
             captureHandoffId: handoffId,
           },
+          projectId: owns[0]?.projectId || 'unassigned',
         },
         ownerUserId,
+        input.authorization,
       );
       if (!jobId) {
         return { assetId: asset.id, jobId: null, status: 'failed' as const };

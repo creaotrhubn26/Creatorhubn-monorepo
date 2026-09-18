@@ -137,8 +137,8 @@ function getCharacters(dialogueLines: DialogueLine[]): string[] {
 // Generate consistent colors for characters
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
-    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1',
+    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8875eb',
+    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#8875eb',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
@@ -339,7 +339,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#1a1a2e',
+        bgcolor: '#18122b',
         overflow: 'hidden',
       }}
     >
@@ -349,7 +349,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         sx={{
           p: 2,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(30,30,50,0.9)',
+          bgcolor: 'rgba(33, 28, 59,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={2}>
@@ -456,7 +456,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
           sx={{
             p: 2,
             borderBottom: '1px solid rgba(255,255,255,0.1)',
-            bgcolor: 'rgba(25,25,45,0.9)',
+            bgcolor: 'rgba(24, 18, 43,0.9)',
           }}
         >
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>

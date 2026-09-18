@@ -39,7 +39,7 @@ import {
 } from './dancerProfileService';
 
 const PURPLE = danceFlowColors.lavenderDark;
-const PURPLE_SOFT = 'rgba(139,92,246,0.12)';
+const PURPLE_SOFT = 'rgba(136, 117, 235,0.12)';
 
 export interface DanceProjectCalendarProps {
   /** Når null/undefined, viser kalenderen alle eierens dansere på tvers av prosjekter. */
@@ -184,7 +184,7 @@ export function DanceProjectCalendar({
         p: 3,
         borderRadius: 2,
         border: `1px solid ${PURPLE_SOFT}`,
-        backgroundColor: 'rgba(139,92,246,0.03)',
+        backgroundColor: 'rgba(136, 117, 235,0.03)',
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
@@ -274,12 +274,12 @@ export function DanceProjectCalendar({
                 borderRadius: 1,
                 border: cell.isToday ? `1.5px solid ${PURPLE}` : '1px solid transparent',
                 backgroundColor: cell.inMonth
-                  ? `rgba(139,92,246,${0.04 + intensity * 0.18})`
+                  ? `rgba(136, 117, 235,${0.04 + intensity * 0.18})`
                   : 'rgba(0,0,0,0.02)',
                 color: cell.inMonth ? 'text.primary' : 'text.disabled',
                 cursor: 'pointer',
                 transition: 'background-color 120ms ease, transform 80ms ease',
-                '&:hover': { backgroundColor: 'rgba(139,92,246,0.16)' },
+                '&:hover': { backgroundColor: 'rgba(136, 117, 235,0.16)' },
                 '&:focus-visible': {
                   outline: `2px solid ${PURPLE}`,
                   outlineOffset: 2,
@@ -361,7 +361,7 @@ export function DanceProjectCalendar({
                       p: 1.25,
                       borderRadius: 1,
                       border: `1px solid ${PURPLE_SOFT}`,
-                      backgroundColor: 'rgba(139,92,246,0.04)',
+                      backgroundColor: 'rgba(136, 117, 235,0.04)',
                     }}
                   >
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>

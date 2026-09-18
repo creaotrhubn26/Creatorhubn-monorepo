@@ -70,7 +70,7 @@ export interface ClientRequestsThreadProps {
 
 const STATUS_META: Record<ClientRequestSummary['status'], { label: string; color: string; bg: string }> = {
   pending:     { label: 'Sendt — venter på klient',         color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-  in_progress: { label: 'Du purret — venter fortsatt',      color: '#a5b4fc', bg: 'rgba(167,139,250,0.12)' },
+  in_progress: { label: 'Du purret — venter fortsatt',      color: '#c6bdf4', bg: 'rgba(158, 140, 248,0.12)' },
   answered:    { label: 'Klient har svart',                 color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
   closed:      { label: 'Lukket',                           color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
 };

@@ -7,7 +7,7 @@
  *   - Inline CSS (klienter ignorerer external stylesheets)
  *   - Table-baserte layouts (Outlook/Gmail-kompatibilitet)
  *   - Maks 600 px innholdsbredde
- *   - Dark theme matchet til Role Room sin lilla palett
+ *   - Dark theme matchet til Role Room sin indigo palett
  *   - Mobile-first: kollapser til en kolonne, generøs padding
  *   - Web-safe fonts med sans-serif fallback
  *
@@ -17,19 +17,19 @@
 
 // ── Design-tokens (matcher Talents-appens palett) ────────────────
 export const emailPalette = {
-  bgOuter: '#0a0118',
-  bgCard: '#150b2e',
-  bgElevated: '#1a0f3a',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.10)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
-  textMuted: '#8b7ec4',
-  accent: '#a855f7',
-  accentBright: '#c084fc',
-  accentDeep: '#7c3aed',
-  accentMagenta: '#d946ef',
+  bgOuter: '#0a0515',
+  bgCard: '#18122b',
+  bgElevated: '#211c3b',
+  border: 'rgba(98, 73, 223, 0.18)',
+  borderStrong: 'rgba(98, 73, 223, 0.32)',
+  borderSubtle: 'rgba(98, 73, 223, 0.10)',
+  textPrimary: '#f1effb',
+  textSecondary: '#c0b8ea',
+  textMuted: '#a19bbf',
+  accent: '#6249df',
+  accentBright: '#9e8cf8',
+  accentDeep: '#3c27a5',
+  accentMagenta: '#8875eb',
   success: '#34d399',
   warning: '#fbbf24',
   danger: '#f87171',
@@ -96,11 +96,11 @@ const CATEGORY_BADGE: Record<EmailCategory, { label: string; bg: string; fg: str
   viewed:        { label: 'Sett',          bg: 'rgba(96,165,250,0.22)',  fg: '#60a5fa', icon: 'visibility' },
   shortlisted:   { label: 'Shortlistet',   bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'star' },
   reminder:      { label: 'Påminnelse',    bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'notification' },
-  comment:       { label: 'Kommentar',     bg: 'rgba(168,85,247,0.22)',  fg: '#c084fc', icon: 'chat' },
+  comment:       { label: 'Kommentar',     bg: 'rgba(98,73,223,0.22)',   fg: '#9e8cf8', icon: 'chat' },
   welcome:       { label: 'Velkommen',     bg: 'rgba(52,211,153,0.22)',  fg: '#34d399', icon: 'checkCircle' },
-  lead_internal: { label: 'Ny lead',       bg: 'rgba(217,70,239,0.22)',  fg: '#e879f9', icon: 'trackChanges' },
+  lead_internal: { label: 'Ny lead',       bg: 'rgba(136,117,235,0.22)', fg: '#8875eb', icon: 'trackChanges' },
   lead_ack:      { label: 'Mottatt',       bg: 'rgba(52,211,153,0.22)',  fg: '#34d399', icon: 'checkCircle' },
-  general:       { label: 'The Role Room', bg: 'rgba(168,85,247,0.22)',  fg: '#c084fc', icon: 'playCircle' },
+  general:       { label: 'The Role Room', bg: 'rgba(98,73,223,0.22)',   fg: '#9e8cf8', icon: 'playCircle' },
 };
 
 // ── Utility: HTML-escape ─────────────────────────────────────────
@@ -503,28 +503,33 @@ export interface ComposeArgs {
   bodyText?: string;
 }
 
-// Hele paletten er Role Room-lilla (matcher Talents-appen). For Creatorhub-
-// e-poster bytter vi de lilla tokenene til Creatorhubs varme/oransje palett i
+// Hele paletten er Role Room-indigo (matcher Talents-appen). For Creatorhub-
+// e-poster bytter vi de indigo tokenene til Creatorhubs varme/oransje palett i
 // det ferdige HTML-et — kontaktflate-fritt for Role Room-e-poster (uendret).
+//
+// 🔑 Denne listen MÅ følge emailPalette. Fargene brukes her som DATA, ikke som
+// stil: endres paletten uten at listen endres, slutter erstatningene å treffe,
+// og Creatorhub-e-poster går ut i Role Rooms farger uten at noe feiler.
+// Testen email-design-system.test.ts holder de to i lås.
 function applyCreatorhubPalette(html: string): string {
   return html
-    // aksent-lilla → Creatorhub-oransje (hex)
-    .replace(/#a855f7/gi, '#ff8c00')
-    .replace(/#c084fc/gi, '#ffa733')
-    .replace(/#7c3aed/gi, '#cc7000')
-    .replace(/#d946ef/gi, '#ff8c00')
-    .replace(/#e879f9/gi, '#ffa733')
-    // lilla rgba-trippel (alle alfa, med/uten mellomrom) → oransje
-    .replace(/rgba\(\s*168\s*,\s*85\s*,\s*247\s*,/gi, 'rgba(255, 140, 0,')
-    .replace(/rgba\(\s*217\s*,\s*70\s*,\s*239\s*,/gi, 'rgba(255, 140, 0,')
-    // mørke lilla bakgrunner → varm mørk
-    .replace(/#0a0118/gi, '#0c0a08')
-    .replace(/#150b2e/gi, '#17120c')
-    .replace(/#1a0f3a/gi, '#211a10')
-    // lilla-tonet tekst → varm
-    .replace(/#f5f3ff/gi, '#fdf6ee')
-    .replace(/#c4b5fd/gi, '#f0d9b8')
-    .replace(/#8b7ec4/gi, '#b3a081');
+    // aksent-indigo → Creatorhub-oransje (hex)
+    .replace(/#6249df/gi, '#ff8c00')
+    .replace(/#9e8cf8/gi, '#ffa733')
+    .replace(/#3c27a5/gi, '#cc7000')
+    .replace(/#8875eb/gi, '#ff8c00')
+    .replace(/#472bd4/gi, '#cc7000')
+    // indigo rgba-trippel (alle alfa, med/uten mellomrom) → oransje
+    .replace(/rgba\(\s*98\s*,\s*73\s*,\s*223\s*,/gi, 'rgba(255, 140, 0,')
+    .replace(/rgba\(\s*136\s*,\s*117\s*,\s*235\s*,/gi, 'rgba(255, 140, 0,')
+    // mørke indigo bakgrunner → varm mørk
+    .replace(/#0a0515/gi, '#0c0a08')
+    .replace(/#18122b/gi, '#17120c')
+    .replace(/#211c3b/gi, '#211a10')
+    // indigo-tonet tekst → varm
+    .replace(/#f1effb/gi, '#fdf6ee')
+    .replace(/#c0b8ea/gi, '#f0d9b8')
+    .replace(/#a19bbf/gi, '#b3a081');
 }
 
 export function composeEmail(args: ComposeArgs): { html: string; text: string } {

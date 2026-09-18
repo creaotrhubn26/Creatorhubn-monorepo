@@ -175,7 +175,20 @@ export default defineConfig({
   ],
   root: './client',
   resolve: {
-    dedupe: ['react', 'react-dom', 'three', '@emotion/react', '@emotion/styled'],
+    // The npm workspace also contains backend-only MUI v7 packages while the
+    // browser app is still on MUI v6. Force every frontend dependency (notably
+    // MUI X Date Pickers) to resolve the same Material/System instances from
+    // the Vite project root. Mixing the hoisted v7 picker runtime with the v6
+    // theme crashes production with `theme.alpha is not a function`.
+    dedupe: [
+      'react',
+      'react-dom',
+      'three',
+      '@emotion/react',
+      '@emotion/styled',
+      '@mui/material',
+      '@mui/system',
+    ],
     alias: {
       // @/* is handled by customPathResolver plugin
       '@shared': path.resolve(__dirname, 'shared'),

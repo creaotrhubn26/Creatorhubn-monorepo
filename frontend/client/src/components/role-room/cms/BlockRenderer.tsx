@@ -235,11 +235,11 @@ function HeroView({ block }: { block: HeroBlock }) {
           size="small"
           sx={{
             alignSelf: 'flex-start',
-            background: 'linear-gradient(135deg, rgba(167,139,250,0.18), rgba(96,165,250,0.18))',
-            color: '#ddd6fe',
+            background: 'linear-gradient(135deg, rgba(158, 140, 248,0.18), rgba(96,165,250,0.18))',
+            color: '#e0dbfa',
             fontWeight: 700,
             letterSpacing: 0.3,
-            border: '1px solid rgba(167,139,250,0.32)',
+            border: '1px solid rgba(158, 140, 248,0.32)',
             backdropFilter: 'blur(8px)',
             px: 1.2,
             py: 0.4,
@@ -289,7 +289,7 @@ function HeroView({ block }: { block: HeroBlock }) {
               variant="contained"
               size="large"
               sx={{
-                background: 'linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)',
+                background: 'linear-gradient(135deg, #9e8cf8 0%, #8875eb 100%)',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
@@ -297,12 +297,12 @@ function HeroView({ block }: { block: HeroBlock }) {
                 px: 3.5,
                 py: 1.4,
                 borderRadius: 1.5,
-                boxShadow: '0 8px 24px rgba(167,139,250,0.32)',
+                boxShadow: '0 8px 24px rgba(158, 140, 248,0.32)',
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   transform: 'translateY(-2px)',
-                  boxShadow: '0 12px 32px rgba(167,139,250,0.5)',
-                  background: 'linear-gradient(135deg, #c4b5fd 0%, #a78bfa 100%)',
+                  boxShadow: '0 12px 32px rgba(158, 140, 248,0.5)',
+                  background: 'linear-gradient(135deg, #c6bdf4 0%, #9e8cf8 100%)',
                 },
               }}
             >
@@ -404,11 +404,11 @@ function RichTextView({ block }: { block: RichTextBlock }) {
             '& ul, & ol': { pl: 3.5, my: 1.5 },
             '& li': { mb: 0.6, lineHeight: 1.7 },
             '& a': {
-              color: '#a78bfa',
+              color: '#9e8cf8',
               textDecoration: 'underline',
-              textDecorationColor: 'rgba(167,139,250,0.4)',
+              textDecorationColor: 'rgba(158, 140, 248,0.4)',
               transition: 'all 0.15s ease',
-              '&:hover': { textDecorationColor: '#a78bfa' },
+              '&:hover': { textDecorationColor: '#9e8cf8' },
             },
             '& strong': { color: '#f8fafc', fontWeight: 700 },
             '& hr': { my: 3, borderColor: 'rgba(255,255,255,0.12)' },
@@ -421,7 +421,7 @@ function RichTextView({ block }: { block: RichTextBlock }) {
               fontFamily: 'ui-monospace, SFMono-Regular, monospace',
             },
             '& blockquote': {
-              borderLeft: '3px solid #a78bfa',
+              borderLeft: '3px solid #9e8cf8',
               pl: 2,
               my: 2,
               color: 'rgba(203,213,225,0.96)',
@@ -465,12 +465,12 @@ function FaqAccordionItem({ q, a }: { q: string; a: string }) {
   return (
     <Card
       sx={{
-        bgcolor: open ? 'rgba(167,139,250,0.06)' : 'rgba(255,255,255,0.03)',
-        border: open ? '1px solid rgba(167,139,250,0.32)' : '1px solid rgba(255,255,255,0.08)',
+        bgcolor: open ? 'rgba(158, 140, 248,0.06)' : 'rgba(255,255,255,0.03)',
+        border: open ? '1px solid rgba(158, 140, 248,0.32)' : '1px solid rgba(255,255,255,0.08)',
         transition: 'all 0.2s ease',
         '&:hover': {
-          bgcolor: 'rgba(167,139,250,0.05)',
-          border: '1px solid rgba(167,139,250,0.24)',
+          bgcolor: 'rgba(158, 140, 248,0.05)',
+          border: '1px solid rgba(158, 140, 248,0.24)',
         },
       }}
     >
@@ -494,7 +494,7 @@ function FaqAccordionItem({ q, a }: { q: string; a: string }) {
           cursor: 'pointer',
           userSelect: 'none',
           '&:focus-visible': {
-            outline: '2px solid #a78bfa',
+            outline: '2px solid #9e8cf8',
             outlineOffset: -2,
           },
         }}
@@ -504,7 +504,7 @@ function FaqAccordionItem({ q, a }: { q: string; a: string }) {
         </Typography>
         <ExpandMoreIcon
           sx={{
-            color: open ? '#a78bfa' : 'rgba(203,213,225,0.6)',
+            color: open ? '#9e8cf8' : 'rgba(203,213,225,0.6)',
             transform: open ? 'rotate(180deg)' : 'rotate(0)',
             transition: 'transform 0.25s ease, color 0.2s ease',
           }}
@@ -557,7 +557,7 @@ function ComparisonView({ block, locale }: { block: ComparisonBlock; locale: Loc
           <TableHead>
             <TableRow
               sx={{
-                background: 'linear-gradient(180deg, rgba(167,139,250,0.08), rgba(167,139,250,0.02))',
+                background: 'linear-gradient(180deg, rgba(158, 140, 248,0.08), rgba(158, 140, 248,0.02))',
               }}
             >
               <TableCell
@@ -576,7 +576,7 @@ function ComparisonView({ block, locale }: { block: ComparisonBlock; locale: Loc
               <TableCell
                 align="center"
                 sx={{
-                  color: '#ddd6fe',
+                  color: '#e0dbfa',
                   fontWeight: 800,
                   borderColor: 'rgba(255,255,255,0.08)',
                   fontSize: '0.95rem',
@@ -604,7 +604,7 @@ function ComparisonView({ block, locale }: { block: ComparisonBlock; locale: Loc
                 key={i}
                 sx={{
                   bgcolor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-                  '&:hover': { bgcolor: 'rgba(167,139,250,0.04)' },
+                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.04)' },
                   transition: 'background 0.15s ease',
                 }}
               >
@@ -651,8 +651,8 @@ function CtaView({ block }: { block: CtaBlock }) {
   return (
     <Card
       sx={{
-        background: 'linear-gradient(135deg, rgba(167,139,250,0.14) 0%, rgba(96,165,250,0.12) 100%)',
-        border: '1px solid rgba(167,139,250,0.32)',
+        background: 'linear-gradient(135deg, rgba(158, 140, 248,0.14) 0%, rgba(96,165,250,0.12) 100%)',
+        border: '1px solid rgba(158, 140, 248,0.32)',
         borderRadius: 2.5,
         position: 'relative',
         overflow: 'hidden',
@@ -663,7 +663,7 @@ function CtaView({ block }: { block: CtaBlock }) {
           right: -50,
           width: 200,
           height: 200,
-          background: 'radial-gradient(circle, rgba(167,139,250,0.2), transparent 70%)',
+          background: 'radial-gradient(circle, rgba(158, 140, 248,0.2), transparent 70%)',
           pointerEvents: 'none',
         },
       }}
@@ -693,7 +693,7 @@ function CtaView({ block }: { block: CtaBlock }) {
               variant="contained"
               size="large"
               sx={{
-                background: 'linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)',
+                background: 'linear-gradient(135deg, #9e8cf8 0%, #8875eb 100%)',
                 color: '#0b1120',
                 fontWeight: 700,
                 fontSize: '1rem',
@@ -701,12 +701,12 @@ function CtaView({ block }: { block: CtaBlock }) {
                 px: 3.5,
                 py: 1.4,
                 borderRadius: 1.5,
-                boxShadow: '0 8px 24px rgba(167,139,250,0.4)',
+                boxShadow: '0 8px 24px rgba(158, 140, 248,0.4)',
                 transition: 'all 0.2s ease',
                 '&:hover': {
-                  background: 'linear-gradient(135deg, #c4b5fd 0%, #a78bfa 100%)',
+                  background: 'linear-gradient(135deg, #c6bdf4 0%, #9e8cf8 100%)',
                   transform: 'translateY(-2px)',
-                  boxShadow: '0 12px 32px rgba(167,139,250,0.5)',
+                  boxShadow: '0 12px 32px rgba(158, 140, 248,0.5)',
                 },
               }}
             >
@@ -786,19 +786,19 @@ function FeatureListView({ block }: { block: FeatureListBlock }) {
                 <Chip
                   label={it}
                   sx={{
-                    background: 'linear-gradient(135deg, rgba(167,139,250,0.14), rgba(96,165,250,0.10))',
-                    color: '#ddd6fe',
+                    background: 'linear-gradient(135deg, rgba(158, 140, 248,0.14), rgba(96,165,250,0.10))',
+                    color: '#e0dbfa',
                     fontWeight: 500,
                     fontSize: '0.92rem',
-                    border: '1px solid rgba(167,139,250,0.24)',
+                    border: '1px solid rgba(158, 140, 248,0.24)',
                     px: 0.8,
                     py: 2,
                     height: 36,
                     transition: 'all 0.2s ease',
                     '&:hover': {
                       transform: 'translateY(-2px)',
-                      border: '1px solid rgba(167,139,250,0.5)',
-                      boxShadow: '0 4px 12px rgba(167,139,250,0.2)',
+                      border: '1px solid rgba(158, 140, 248,0.5)',
+                      boxShadow: '0 4px 12px rgba(158, 140, 248,0.2)',
                     },
                   }}
                 />
@@ -841,11 +841,11 @@ function RelatedStudiesView({ block }: { block: RelatedStudiesBlock }) {
               p: 2,
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.16)',
-              background: 'rgba(2,6,23,0.42)',
+              background: 'rgba(10, 5, 21,0.42)',
               transition: 'all 0.2s ease',
               '&:hover': {
-                border: '1px solid rgba(167,139,250,0.32)',
-                bgcolor: 'rgba(167,139,250,0.04)',
+                border: '1px solid rgba(158, 140, 248,0.32)',
+                bgcolor: 'rgba(158, 140, 248,0.04)',
                 transform: 'translateY(-2px)',
               },
             }}
@@ -896,8 +896,8 @@ function UsageExamplesView({ block }: { block: UsageExamplesBlock }) {
               borderRadius: 2,
               transition: 'all 0.25s ease',
               '&:hover': {
-                bgcolor: 'rgba(167,139,250,0.05)',
-                border: '1px solid rgba(167,139,250,0.32)',
+                bgcolor: 'rgba(158, 140, 248,0.05)',
+                border: '1px solid rgba(158, 140, 248,0.32)',
                 transform: 'translateY(-3px)',
                 boxShadow: '0 12px 24px rgba(0,0,0,0.2)',
               },

@@ -65,7 +65,7 @@ interface Props {
 }
 
 const COLORS = {
-  cardBg: 'rgba(2,6,23,0.72)',
+  cardBg: 'rgba(10, 5, 21,0.72)',
   cardBorder: 'rgba(56,189,248,0.28)',
   accent: '#38bdf8',
   accentBg: 'rgba(56,189,248,0.14)',
@@ -220,7 +220,7 @@ export default function AgencyPartnershipPicker({
             p: 2.2,
             borderRadius: 2,
             border: '1px dashed rgba(56,189,248,0.32)',
-            bgcolor: 'rgba(2,6,23,0.55)',
+            bgcolor: 'rgba(10, 5, 21,0.55)',
             textAlign: 'center',
           }}
         >
@@ -270,7 +270,7 @@ export default function AgencyPartnershipPicker({
           onClose={() => !busy && setInviteTarget(null)}
           maxWidth="sm"
           fullWidth
-          PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.95)', color: '#e0f2fe', border: `1px solid ${COLORS.accent}` } }}
+          PaperProps={{ sx: { bgcolor: 'rgba(10, 5, 21,0.95)', color: '#e0f2fe', border: `1px solid ${COLORS.accent}` } }}
         >
           <DialogTitle sx={{ fontWeight: 800 }}>
             Inviter {inviteTarget.agency_name} til {castingProjectName ?? 'dette prosjektet'}
@@ -363,7 +363,7 @@ function PartnershipRow(props: {
         p: 1.4,
         borderRadius: 2,
         border: '1px solid rgba(56,189,248,0.22)',
-        bgcolor: 'rgba(2,6,23,0.5)',
+        bgcolor: 'rgba(10, 5, 21,0.5)',
         display: 'flex',
         alignItems: 'center',
         gap: 1.6,
@@ -505,7 +505,7 @@ function ProposePartnershipDialog(props: {
       onClose={() => !busy && props.onClose()}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e0f2fe', border: `1px solid ${COLORS.accent}`, minHeight: 560 } }}
+      PaperProps={{ sx: { bgcolor: 'rgba(10, 5, 21,0.96)', color: '#e0f2fe', border: `1px solid ${COLORS.accent}`, minHeight: 560 } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Foreslå samarbeid med casting-byrå
@@ -549,7 +549,7 @@ function ProposePartnershipDialog(props: {
                         p: 1.4,
                         borderRadius: 2,
                         border: `1px solid ${isSel ? COLORS.accent : 'rgba(56,189,248,0.2)'}`,
-                        bgcolor: isSel ? COLORS.accentBg : 'rgba(2,6,23,0.5)',
+                        bgcolor: isSel ? COLORS.accentBg : 'rgba(10, 5, 21,0.5)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',

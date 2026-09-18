@@ -199,13 +199,13 @@ export default function DanceProjectSwitcherDialog({
                       display: 'flex', alignItems: 'center', gap: 1,
                       width: '100%', px: 1.25, py: 1,
                       border: 'none', borderRadius: 1,
-                      bgcolor: isActive ? 'rgba(167,139,250,0.12)' : 'transparent',
+                      bgcolor: isActive ? 'rgba(158, 140, 248,0.12)' : 'transparent',
                       color: isActive ? danceFlowColors.lavender : danceFlowColors.textSecondary,
                       cursor: 'pointer', font: 'inherit',
                       textAlign: 'left',
                       transition: 'background-color 120ms',
                       '&:hover': {
-                        bgcolor: isActive ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.04)',
+                        bgcolor: isActive ? 'rgba(158, 140, 248,0.18)' : 'rgba(255,255,255,0.04)',
                       },
                     }}
                   >

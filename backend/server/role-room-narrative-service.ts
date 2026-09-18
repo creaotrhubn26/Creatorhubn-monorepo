@@ -1,7 +1,7 @@
 /**
  * Story Graph — narrativ graf for spillstudio-vertikalen (game_studio).
  *
- * Ren SQL-service over tabellene i 0605_role_room_narrative_graph.sql.
+ * Ren SQL-service over tabellene i 0616_role_room_narrative_graph.sql.
  * Alt er prosjekt-skopet: hver funksjon tar (pool, projectId, …) og hver
  * spørring har `project_id = $n` slik at en id fra et annet prosjekt aldri
  * kan leses/endres (IDOR-vern uavhengig av rute-laget).
@@ -1378,7 +1378,7 @@ export async function getPublicStory(db: Queryable, rawToken: string): Promise<P
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Fase 6: Scener & gameplay + Review & Godkjenning
-//  (tabeller i 0610_narrative_scenes_and_reviews.sql)
+//  (tabeller i 0621_narrative_scenes_and_reviews.sql)
 // ═══════════════════════════════════════════════════════════════════════
 
 export type NarrativeSceneStatus = 'idea' | 'in_progress' | 'in_review' | 'changes_requested' | 'approved' | 'implemented';
@@ -1389,7 +1389,7 @@ export type NarrativeSceneLinkKind = 'element' | 'board' | 'component';
 export const NARRATIVE_SCENE_STATUSES: readonly NarrativeSceneStatus[] =
   ['idea', 'in_progress', 'in_review', 'changes_requested', 'approved', 'implemented'];
 export const NARRATIVE_SCENE_TASK_STATUSES: readonly NarrativeSceneTaskStatus[] = ['todo', 'doing', 'done'];
-/** Scenekode: 1–3 bokstaver + 1–4 sifre (speiler CHECK-en i 0610). */
+/** Scenekode: 1–3 bokstaver + 1–4 sifre (speiler CHECK-en i 0621). */
 export const NARRATIVE_SCENE_CODE_RE = /^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?$/;
 export type NarrativeSceneEra = 'pre' | '1797' | '1802' | '1817' | 'other';
 export const NARRATIVE_SCENE_ERAS: readonly NarrativeSceneEra[] = ['pre', '1797', '1802', '1817', 'other'];
@@ -2242,7 +2242,7 @@ export async function listMembersLite(db: Queryable, projectId: string): Promise
 // ═══════════════════════════════════════════════════════════════════════
 //  Fase 7: Produksjons-OS — gater, replikker, episoder, åpne spørsmål,
 //  kilder, milepæler, plattformmål, oversikt og innboks
-//  (tabeller i 0611_narrative_production_os.sql)
+//  (tabeller i 0622_narrative_production_os.sql)
 // ═══════════════════════════════════════════════════════════════════════
 
 export type NarrativeGateKey = 'script_coverage' | 'greybox' | 'characters_animation' | 'playthrough' | 'picture' | 'audio';
@@ -3096,7 +3096,7 @@ export async function markAllInboxRead(db: Queryable, projectId: string, userId:
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Fase 7e-2: Gjeste-reviewere (delingslenker per runde + reviewer-sesjoner)
-//  (tabeller i 0613_narrative_review_share_links.sql)
+//  (tabeller i 0624_narrative_review_share_links.sql)
 // ═══════════════════════════════════════════════════════════════════════
 
 export type NarrativeReviewAccessMode = 'view' | 'comment' | 'approve';

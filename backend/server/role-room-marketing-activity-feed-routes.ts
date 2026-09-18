@@ -14,6 +14,10 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import {
+  isLeadgridMarketingProjectKey,
+  resolveLeadgridMarketingAccess,
+} from "./leadgrid-marketing-bridge.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -37,6 +41,14 @@ function getUserIdFromRequest(
 async function viewerCanAccessProject(
   pool: Pool, projectId: string, viewerId: string,
 ): Promise<boolean> {
+  // Leadgrid Markedssjef-modus (`lg-`-nøkkel): Leadgrids egne regler.
+  if (isLeadgridMarketingProjectKey(projectId)) {
+    const access = await resolveLeadgridMarketingAccess(pool, {
+      projectKey: projectId,
+      session: { userId: viewerId },
+    });
+    return access.ok;
+  }
   const { rows } = await pool.query<{ owns: boolean; member: boolean }>(
     `SELECT
        EXISTS(SELECT 1 FROM casting_projects

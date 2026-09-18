@@ -14,6 +14,7 @@ import * as schema from '../migrations/schema.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { canAccessProject } from './project-team-routes.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
+import { isChatUpgradePath } from './ws-upgrade-paths.js';
 import crypto from 'crypto';
 
 type DB = NodePgDatabase<typeof schema>;
@@ -326,7 +327,10 @@ export function createWebSocketServer(
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
       const pathname = url.pathname || '/';
-      if (pathname === '/ws' || pathname.startsWith('/ws/')) {
+      // Prefikset `/ws/` er delt med tre dedikerte sanntidsservere. Node kaller
+      // hver 'upgrade'-lytter, så vi MÅ yielde deres stier — ellers fullfører vi
+      // håndtrykket først og deres `handleUpgrade()` kaster på samme socket.
+      if (isChatUpgradePath(pathname)) {
         wss.handleUpgrade(req, socket, head, (ws) => {
           wss.emit('connection', ws, req);
         });

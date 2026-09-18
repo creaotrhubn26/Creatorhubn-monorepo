@@ -80,14 +80,14 @@ type AnalysisOperationalFilter = 'all' | 'ready' | 'action_required' | 'risk' | 
 type PermitWorkflowStatus = 'not_started' | 'draft' | 'submitted' | 'in_review' | 'approved' | 'rejected';
 
 const ROLE_ROOM_DIALOG_COLORS = {
-  accent: '#a855f7',
-  accentSoft: 'rgba(168,85,247,0.18)',
+  accent: '#8875eb',
+  accentSoft: 'rgba(136, 117, 235,0.18)',
   secondary: 'var(--role-cyan, #22d3ee)',
   secondarySoft: 'rgba(34,211,238,0.18)',
   success: '#34d399',
   successSoft: 'rgba(52,211,153,0.18)',
-  panel: 'rgba(20,16,46,0.74)',
-  border: 'rgba(168,85,247,0.24)',
+  panel: 'rgba(24, 18, 43,0.74)',
+  border: 'rgba(136, 117, 235,0.24)',
   mutedText: 'rgba(255,255,255,0.8)',
 };
 
@@ -228,6 +228,37 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
   const replaced = current.replace(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u, name);
   return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
+
+/**
+ * Kartverkets offentlige adresseoppslag bekrefter gateadressen og koordinatene,
+ * men returnerer ikke alltid en matrikkel-ID. Det skal ikke gjøre en gyldig
+ * adresse til en feiltilstand. Vi åpner i stedet analysen med et eksplisitt
+ * uverifisert operativt datagrunnlag som brukeren kan fylle ut etter scout.
+ */
+const buildVerifiedAddressAnalysis = (): Location['propertyAnalysis'] => ({
+  photographySpots: [],
+  droneRestrictions: {
+    allowed: false,
+    restrictions: [],
+    noFlyZones: [],
+  },
+  weatherExposure: {
+    shelterOptions: [],
+  },
+  accessAnalysis: {
+    publicTransport: [],
+    parkingSpots: [],
+    evParkingSpots: [],
+    evChargingSpots: [],
+  },
+  analysisMeta: {
+    operationalStatus: 'unverified',
+    propertySource: 'kartverket',
+    warnings: [
+      'Kartverket bekrefter adressen, men tekniske opptaksforhold må dokumenteres under scout.',
+    ],
+  },
+});
 
 const createManualDraft = (
   analysis: Location['propertyAnalysis'],
@@ -545,8 +576,8 @@ interface SpotListItemProps {
 const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: SpotListItemProps) => {
   const bgColor = variant === 'ev' ? ROLE_ROOM_DIALOG_COLORS.secondarySoft : ROLE_ROOM_DIALOG_COLORS.accentSoft;
   const borderColor = variant === 'ev' ? 'rgba(34,211,238,0.34)' : ROLE_ROOM_DIALOG_COLORS.border;
-  const hoverBgColor = variant === 'ev' ? 'rgba(34,211,238,0.24)' : 'rgba(168,85,247,0.24)';
-  const hoverBorderColor = variant === 'ev' ? 'rgba(34,211,238,0.55)' : 'rgba(168,85,247,0.52)';
+  const hoverBgColor = variant === 'ev' ? 'rgba(34,211,238,0.24)' : 'rgba(136, 117, 235,0.24)';
+  const hoverBorderColor = variant === 'ev' ? 'rgba(34,211,238,0.55)' : 'rgba(136, 117, 235,0.52)';
   
   const handleClick = useCallback(() => {
     openMapsNavigation(spot.coordinates.lat, spot.coordinates.lng);
@@ -718,7 +749,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       } else if (addressData.propertyId) {
         await loadAnalysisForProperty(addressData.propertyId);
       } else {
-        setError('Kunne ikke finne lokasjons-ID for denne adressen');
+        const addressAnalysis = buildVerifiedAddressAnalysis();
+        setAnalysis(addressAnalysis);
+        roleRoomAnalytics.locationAnalyzed({
+          project_id: (location as { projectId?: string })?.projectId ?? 'unknown',
+          location_id: location?.id,
+          analysis_type: 'address',
+        });
+        if (onAnalysisComplete) {
+          await Promise.resolve(onAnalysisComplete(addressAnalysis));
+        }
         setLoading(false);
       }
     } catch (err) {
@@ -726,7 +766,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       setError('Kunne ikke laste lokasjonsdata');
       setLoading(false);
     }
-  }, [loadAnalysisForProperty]);
+  }, [loadAnalysisForProperty, location, onAnalysisComplete]);
 
   // Load analysis when dialog opens - use stable location identifier to prevent repeated loads
   useEffect(() => {
@@ -1439,7 +1479,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 color: 'rgba(255,255,255,0.87)',
                 minWidth: 44,
                 minHeight: 44,
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.24)' },
+                '&:hover': { bgcolor: 'rgba(136, 117, 235,0.24)' },
               }}
               aria-label="Lukk dialog"
             >
@@ -1551,8 +1591,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               sx={{
                 borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 },
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                bgcolor: 'rgba(20,16,46,0.72)',
-                border: '1px solid rgba(168,85,247,0.24)',
+                bgcolor: 'rgba(24, 18, 43,0.72)',
+                border: '1px solid rgba(136, 117, 235,0.24)',
               }}
             >
               <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
@@ -1592,7 +1632,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         p: { xs: 1, sm: 1.25, md: 1.5 },
                         borderRadius: 2,
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(168,85,247,0.22)',
+                        border: '1px solid rgba(136, 117, 235,0.22)',
                       }}
                     >
                       <Typography sx={{ color: ROLE_ROOM_DIALOG_COLORS.mutedText, fontSize: { xs: '0.68rem', sm: '0.72rem', md: '0.78rem' }, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -1652,8 +1692,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               sx={{
                 borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 },
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                bgcolor: 'rgba(20,16,46,0.72)',
-                border: '1px solid rgba(168,85,247,0.24)',
+                bgcolor: 'rgba(24, 18, 43,0.72)',
+                border: '1px solid rgba(136, 117, 235,0.24)',
               }}
             >
               <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
@@ -1958,7 +1998,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           fontWeight: 700,
                           bgcolor: ROLE_ROOM_DIALOG_COLORS.accent,
                           '&:hover': {
-                            bgcolor: '#9333ea',
+                            bgcolor: '#6249df',
                           },
                         }}
                       >
@@ -1986,8 +2026,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 sx={{
                   borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 },
                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                  bgcolor: 'rgba(20,16,46,0.72)',
-                  border: '1px solid rgba(168,85,247,0.24)',
+                  bgcolor: 'rgba(24, 18, 43,0.72)',
+                  border: '1px solid rgba(136, 117, 235,0.24)',
                 }}
               >
                 <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
@@ -2025,7 +2065,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         textTransform: 'none',
                         fontWeight: 700,
                         '&:hover': {
-                          bgcolor: '#9333ea',
+                          bgcolor: '#6249df',
                         },
                       }}
                     >
@@ -2257,7 +2297,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                     ) : contact.id.includes('veg') ? (
                                       <PublicIcon sx={{ color: '#67e8f9', fontSize: '1rem' }} />
                                     ) : contact.id.includes('grunneier') ? (
-                                      <BusinessIcon sx={{ color: '#c4b5fd', fontSize: '1rem' }} />
+                                      <BusinessIcon sx={{ color: '#c6bdf4', fontSize: '1rem' }} />
                                     ) : (
                                       <GavelIcon sx={{ color: '#67e8f9', fontSize: '1rem' }} />
                                     )}
@@ -2292,7 +2332,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                   size="small"
                                   icon={<EventIcon />}
                                   label={`Frist -${contact.leadDays} d`}
-                                  sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#d8b4fe' }}
+                                  sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#c6bdf4' }}
                                 />
                                 <Chip
                                   size="small"
@@ -2395,7 +2435,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                     href={contact.website}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    sx={{ textTransform: 'none', color: '#d8b4fe' }}
+                                    sx={{ textTransform: 'none', color: '#c6bdf4' }}
                                   >
                                     Åpne kanal
                                   </Button>
@@ -2445,7 +2485,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 2 }}>
                         <CardContent sx={{ p: 1.2 }}>
                           <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 0.7 }}>
-                            <AccessTimeIcon sx={{ color: '#d8b4fe' }} />
+                            <AccessTimeIcon sx={{ color: '#c6bdf4' }} />
                             Fristlinje
                           </Typography>
                           <Stack spacing={0.7} sx={{ mt: 1 }}>
@@ -2528,8 +2568,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             <Card sx={{ 
               borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 }, 
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              bgcolor: 'rgba(20,16,46,0.72)',
-              border: '1px solid rgba(168,85,247,0.24)',
+              bgcolor: 'rgba(24, 18, 43,0.72)',
+              border: '1px solid rgba(136, 117, 235,0.24)',
             }}>
               <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
@@ -2553,7 +2593,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     </Typography>
                   </Box>
                 </Box>
-                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(168,85,247,0.24)' }} />
+                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(136, 117, 235,0.24)' }} />
                 <Box
                   sx={{
                     display: 'grid',
@@ -2565,7 +2605,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     <Box key={idx}>
                       <Card sx={{ 
                         bgcolor: 'rgba(255,255,255,0.05)', 
-                        border: '1px solid rgba(168,85,247,0.24)',
+                        border: '1px solid rgba(136, 117, 235,0.24)',
                         borderRadius: 2,
                         height: '100%',
                         transition: 'all 0.2s ease',
@@ -2623,7 +2663,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           <Box sx={{ 
                             mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                             pt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
-                            borderTop: '1px solid rgba(168,85,247,0.24)',
+                            borderTop: '1px solid rgba(136, 117, 235,0.24)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 },
@@ -2649,8 +2689,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             <Card sx={{ 
               borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 }, 
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              bgcolor: 'rgba(20,16,46,0.72)',
-              border: '1px solid rgba(168,85,247,0.24)',
+              bgcolor: 'rgba(24, 18, 43,0.72)',
+              border: '1px solid rgba(136, 117, 235,0.24)',
             }}>
               <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
@@ -2689,7 +2729,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     }}
                   />
                 </Box>
-                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(168,85,247,0.24)' }} />
+                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(136, 117, 235,0.24)' }} />
                 <Stack spacing={{ xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }}>
                   {analysis?.droneRestrictions.maxAltitude && (
                     <Box sx={{ 
@@ -2759,8 +2799,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             <Card sx={{ 
               borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 }, 
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              bgcolor: 'rgba(20,16,46,0.72)',
-              border: '1px solid rgba(168,85,247,0.24)',
+              bgcolor: 'rgba(24, 18, 43,0.72)',
+              border: '1px solid rgba(136, 117, 235,0.24)',
             }}>
               <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
@@ -2784,7 +2824,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     </Typography>
                   </Box>
                 </Box>
-                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(168,85,247,0.24)' }} />
+                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(136, 117, 235,0.24)' }} />
                 <Box
                   sx={{
                     display: 'grid',
@@ -2798,7 +2838,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                       borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                       bgcolor: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(168,85,247,0.24)',
+                      border: '1px solid rgba(136, 117, 235,0.24)',
                       height: '100%',
                     }}>
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
@@ -2835,7 +2875,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         <Box sx={{ 
                           mt: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, 
                           pt: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, 
-                          borderTop: '1px solid rgba(168,85,247,0.24)',
+                          borderTop: '1px solid rgba(136, 117, 235,0.24)',
                         }}>
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, letterSpacing: '0.5px' }}>
                             Drone-sikkerhet
@@ -2873,7 +2913,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                       borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                       bgcolor: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(168,85,247,0.24)',
+                      border: '1px solid rgba(136, 117, 235,0.24)',
                       height: '100%',
                     }}>
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
@@ -2955,8 +2995,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             <Card sx={{ 
               borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 }, 
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              bgcolor: 'rgba(20,16,46,0.72)',
-              border: '1px solid rgba(168,85,247,0.24)',
+              bgcolor: 'rgba(24, 18, 43,0.72)',
+              border: '1px solid rgba(136, 117, 235,0.24)',
             }}>
               <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
@@ -2980,7 +3020,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     </Typography>
                   </Box>
                 </Box>
-                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(168,85,247,0.24)' }} />
+                <Divider sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, borderColor: 'rgba(136, 117, 235,0.24)' }} />
                 <Box
                   sx={{
                     display: 'grid',
@@ -2994,7 +3034,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }, 
                         borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                         bgcolor: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(168,85,247,0.24)',
+                        border: '1px solid rgba(136, 117, 235,0.24)',
                       }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                           <Box sx={{ 
@@ -3037,7 +3077,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }, 
                       borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                       bgcolor: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(168,85,247,0.24)',
+                      border: '1px solid rgba(136, 117, 235,0.24)',
                       height: '100%',
                       display: 'flex',
                       alignItems: 'center',
@@ -3072,7 +3112,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         p: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }, 
                         borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                         bgcolor: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(168,85,247,0.24)',
+                        border: '1px solid rgba(136, 117, 235,0.24)',
                       }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                           <Box sx={{ 
@@ -3238,7 +3278,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                         borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, 
                         bgcolor: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(168,85,247,0.24)',
+                        border: '1px solid rgba(136, 117, 235,0.24)',
                       }}>
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                           Gangeavstand til nærmeste stopp: <strong>{analysis?.accessAnalysis.walkingDistance} meter</strong>
@@ -3297,7 +3337,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         )}
       </DialogContent>
       <DialogActions sx={{ 
-        borderTop: '1px solid rgba(168,85,247,0.24)', 
+        borderTop: '1px solid rgba(136, 117, 235,0.24)', 
         p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
         px: { xs: 2, sm: 3, md: 2.75, lg: 3, xl: 3.5 },
         gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
@@ -3315,7 +3355,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
             minHeight: 44,
             '&:hover': { 
-              bgcolor: 'rgba(168,85,247,0.24)',
+              bgcolor: 'rgba(136, 117, 235,0.24)',
               borderColor: 'rgba(255,255,255,0.3)',
             },
           }}

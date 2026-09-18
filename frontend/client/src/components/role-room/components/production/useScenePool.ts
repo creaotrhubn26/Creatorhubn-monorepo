@@ -26,9 +26,9 @@ import type {
  * Classic TV/film colour-coding convention.
  */
 const COLOR_MAP: Record<IntExtType, Record<TimeOfDay, string>> = {
-  INT:     { DAY: '#fff9c4', NIGHT: '#1a237e', DAWN: '#ffe0b2', DUSK: '#f3e5f5' },
+  INT:     { DAY: '#fff9c4', NIGHT: '#301f84', DAWN: '#ffe0b2', DUSK: '#e0dbfa' },
   EXT:     { DAY: '#e3f2fd', NIGHT: '#263238', DAWN: '#fff3e0', DUSK: '#fce4ec' },
-  'INT/EXT': { DAY: '#e8f5e9', NIGHT: '#4a148c', DAWN: '#fbe9e7', DUSK: '#ede7f6' },
+  'INT/EXT': { DAY: '#e8f5e9', NIGHT: '#301f84', DAWN: '#fbe9e7', DUSK: '#ebe7fd' },
 };
 
 export function deriveStripColor(intExt: IntExtType, timeOfDay: TimeOfDay): string {

@@ -166,6 +166,10 @@ function getPrivacyBrand(): LegalBrand {
         detail: 'Data fra Google Workspace, LinkedIn, Vitnemålsportalen, betalingssystemer og — ved bruk av AI-funksjoner — innhold sendt til Anthropic Claude (se egen seksjon under «AI-funksjoner»).',
       },
       {
+        title: 'Google Sign-In og CreatorHub Capture',
+        detail: 'Når du velger Google Sign-In, mottar vi bare bekreftet e-postadresse, navn og eventuell profilbilde-URL fra Google for å opprette eller koble CreatorHub-kontoen din og sikre innloggingen. Google-passordet ditt deles aldri med CreatorHub.',
+      },
+      {
         title: 'Annonse- og målings-data',
         detail: 'Når du besøker creatorhubn.com kan vi sette Meta Pixel, Google Tag og LinkedIn Insight Tag for å måle effekten av annonser vi kjører for å markedsføre CreatorHub. Disse sender event-data (sidevisning, klikk, registrering, hashet e-post ved konvertering) til respektive plattformer. Vi sender aldri passord, prosjekt-innhold eller AI-samtale-logger. Du kan avvise via cookie-banner, «Do Not Track» / Global Privacy Control, eller plattformens egen opt-out.',
       },
@@ -198,6 +202,10 @@ function getPrivacyBrand(): LegalBrand {
       {
         title: 'Integrasjoner du selv aktiverer',
         detail: 'For å koble til tjenester du selv aktiverer (Google, LinkedIn, Vitnemålsportalen) og generere utkast eller anbefalinger. Rettslig grunnlag: GDPR art. 6.1.b / 6.1.a.',
+      },
+      {
+        title: 'Google Sign-In i CreatorHub og Capture',
+        detail: 'For å bekrefte identiteten din, opprette eller koble riktig CreatorHub-konto og etablere en sikker appøkt. Innloggingen bruker bare openid, email og profile. Rettslig grunnlag: GDPR art. 6.1.b.',
       },
       {
         title: 'Sikkerhet og misbruksforebygging',
@@ -318,7 +326,7 @@ const PrivacyPolicy: React.FC = () => {
                       {brand.appName} · Personvernerklæring
                     </Typography>
                     <Typography variant="body1" sx={{ color: mutedColor, mt: 1 }}>
-                      {brand.subtitle} · Sist oppdatert: 6. april 2026
+                      {brand.subtitle} · Sist oppdatert: 14. september 2026
                     </Typography>
                   </Box>
                 </Stack>
@@ -507,9 +515,57 @@ const PrivacyPolicy: React.FC = () => {
 
           <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
 
+          {!isRoleRoom && (
+            <>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+                  8. Google Sign-In og CreatorHub Capture
+                </Typography>
+                <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+                  Google Sign-In i CreatorHub og iPad-appen CreatorHub Capture brukes bare til
+                  identitetsbekreftelse og innlogging. Vi ber om de grunnleggende omfangene{' '}
+                  <code>openid</code>, <code>email</code> og <code>profile</code>. Det gir oss tilgang
+                  til bekreftet e-postadresse, navn og eventuell profilbilde-URL. Innloggingen gir
+                  ikke tilgang til Google-passordet ditt, Gmail, Google Drive, Kalender, Kontakter
+                  eller andre Google-tjenester.
+                </Typography>
+                <Paper sx={panelSx}>
+                  <List dense disablePadding>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Slik bruker vi opplysningene"
+                        secondary="Opplysningene brukes til å opprette eller koble riktig CreatorHub-konto, vise kontoen din og beskytte innlogging og appøkter. De selges ikke, brukes ikke til annonsering og brukes ikke til trening av AI-modeller."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Token og lagring"
+                        secondary="Google-ID-tokenet valideres mot CreatorHubs registrerte klient-ID-er og beholdes ikke etter innloggingen. E-postadresse, navn og eventuell profilbilde-URL lagres i CreatorHub-kontoen. CreatorHub Capture lagrer den utstedte CreatorHub-økten sikkert i enhetens Keychain; den lokale økten slettes når du logger ut."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Separate Google-integrasjoner"
+                        secondary="Hvis du senere kobler til Google Workspace-funksjoner som Drive, Kalender, Gmail eller Chat, skjer det i en separat og uttrykkelig godkjenningsflyt som viser de ekstra tillatelsene før du godkjenner. Google Sign-In alene gir ikke disse tilgangene."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Din kontroll"
+                        secondary="Du kan logge ut i appen, trekke CreatorHubs Google-tilgang tilbake i Google-kontoen din og be om innsyn eller sletting ved å kontakte oss. Tilbaketrekking hindrer ny Google-innlogging, men sletter ikke automatisk data vi må beholde etter lov."
+                      />
+                    </ListItem>
+                  </List>
+                </Paper>
+              </Box>
+
+              <Divider sx={{ my: 4, borderColor: brand.accentBorder }} />
+            </>
+          )}
+
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
-              8. NextRole — spesifikk databehandling
+              {isRoleRoom ? '8. NextRole — spesifikk databehandling' : '9. NextRole — spesifikk databehandling'}
             </Typography>
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
               NextRole er CV-byggeren vår. Følgende databehandling skjer i tillegg
@@ -591,7 +647,9 @@ const PrivacyPolicy: React.FC = () => {
 
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
-              9. Meta-integrasjoner (Facebook, Instagram, Marketing API)
+              {isRoleRoom
+                ? '9. Meta-integrasjoner (Facebook, Instagram, Marketing API)'
+                : '10. Meta-integrasjoner (Facebook, Instagram, Marketing API)'}
             </Typography>
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
               Når en administrator kobler en Facebook Page eller Instagram Business-konto til
@@ -655,7 +713,7 @@ const PrivacyPolicy: React.FC = () => {
 
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
-              10. Klage til Datatilsynet
+              {isRoleRoom ? '10. Klage til Datatilsynet' : '11. Klage til Datatilsynet'}
             </Typography>
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
               Hvis du mener behandlingen vår bryter personvernlovgivningen, kan du kontakte oss først eller sende klage til Datatilsynet.

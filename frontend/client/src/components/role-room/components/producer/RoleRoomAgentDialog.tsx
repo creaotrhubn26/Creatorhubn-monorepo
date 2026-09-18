@@ -925,7 +925,7 @@ export default function RoleRoomAgentDialog({
           borderRadius: fullScreen ? 0 : 4,
           overflow: 'hidden',
           border: fullScreen ? 'none' : '1px solid rgba(34,211,238,0.22)',
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(2,6,23,0.98) 100%)',
+          background: 'linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
           boxShadow: fullScreen ? 'none' : '0 32px 90px rgba(0,0,0,0.48)',
           // On iPad+iPhone let the whole panel scroll within viewport;
           // Dialog's default overflow:hidden leaves DialogContent as the
@@ -998,7 +998,7 @@ export default function RoleRoomAgentDialog({
                       label="Innholdsprodusent"
                       size="small"
                       aria-label="Rolle: innholdsprodusent"
-                      sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
+                      sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#c6bdf4', display: { xs: 'none', sm: 'inline-flex' } }}
                     />
                   </Tooltip>
                 </>
@@ -1356,7 +1356,7 @@ export default function RoleRoomAgentDialog({
                 p: 0.85,
                 borderRadius: 2.5,
                 border: '1px solid rgba(148,163,184,0.16)',
-                bgcolor: 'rgba(2,6,23,0.4)',
+                bgcolor: 'rgba(10, 5, 21,0.4)',
               }}
             >
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', fontWeight: 800 }}>
@@ -1846,7 +1846,7 @@ export default function RoleRoomAgentDialog({
                     <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                   ) : null}
                   {competitorAnalysis?.competitors?.length ? (
-                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#f0abfc' }} />
+                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4' }} />
                   ) : null}
                 </Stack>
                 {(() => {
@@ -2299,7 +2299,7 @@ export default function RoleRoomAgentDialog({
                         ) : undefined}>
                         {gscSetupOutcome.text}
                         {gscSetupOutcome.metaTag ? (
-                          <Box component="pre" sx={{ m: 0, mt: 0.5, p: 0.75, borderRadius: 1, bgcolor: 'rgba(2,6,23,0.6)', fontSize: '0.72rem', overflowX: 'auto', fontFamily: 'monospace' }}>
+                          <Box component="pre" sx={{ m: 0, mt: 0.5, p: 0.75, borderRadius: 1, bgcolor: 'rgba(10, 5, 21,0.6)', fontSize: '0.72rem', overflowX: 'auto', fontFamily: 'monospace' }}>
                             {gscSetupOutcome.metaTag}
                           </Box>
                         ) : null}
@@ -2312,7 +2312,7 @@ export default function RoleRoomAgentDialog({
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                           <Button size="small" variant="outlined" disabled={pixelSetupBusy}
                             onClick={() => void runMetaPixelApiSetup(result.siteSetupAudit!.url)}
-                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#f0abfc', borderColor: 'rgba(168,85,247,0.4)' }}>
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#c6bdf4', borderColor: 'rgba(136, 117, 235,0.4)' }}>
                             {pixelSetupBusy ? 'Setter opp pixel…' : 'Opprett Meta Pixel (via Meta-koblingen)'}
                           </Button>
                           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>

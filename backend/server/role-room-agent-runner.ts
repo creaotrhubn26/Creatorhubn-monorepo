@@ -37,11 +37,17 @@ import { buildGoogleMcpConfig } from './role-room-google-mcp.js';
 import { mergeAgentMcpConfigs } from './role-room-agent-mcp.js';
 import { resolveAdsAccessToken } from './role-room-ads-oauth.js';
 import {
-  ROLE_ROOM_AGENT_SYSTEM_PROMPT,
-  ROLE_ROOM_AGENT_TOOLS,
   ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
+  agentSystemPromptForMode,
+  agentToolsForMode,
+  type RoleRoomAgentMode,
 } from './role-room-agent-definition.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
+import {
+  resolveLeadgridAgentProject,
+  type LeadgridAgentProject,
+} from './leadgrid-agent-access.js';
+import { buildLeadgridAgentContextBlock } from './leadgrid-agent-context.js';
 import { buildMarketingContextBlock } from './role-room-agent-marketing-context.js';
 import {
   buildBackendPseudonymMap,
@@ -96,6 +102,14 @@ export interface RoleRoomAgentInvokeInput {
   userId: string;
   /** The caller's role for privileged-bypass detection (admin/owner). */
   userRole?: string | null;
+  /**
+   * Agent-modus. Utledes fra `leadgridProject` (eller slås opp via
+   * leadgrid-agent-access.ts når feltet er utelatt). Casting-kall trenger
+   * ikke sette noe — default er dagens Role Room-persona.
+   */
+  mode?: RoleRoomAgentMode;
+  /** Forhåndsløst Leadgrid-prosjekt (null = casting). Utelatt → runner slår opp. */
+  leadgridProject?: LeadgridAgentProject | null;
   action: RoleRoomAgentAction;
   /** User's natural-language question. Short (max ~1 KB). */
   userMessage: string;
@@ -160,8 +174,12 @@ export class RoleRoomAgentEntitlementError extends Error {
   }
 }
 
-function buildCachedSystem(input: RoleRoomAgentInvokeInput, pseudo: ReturnType<typeof buildBackendPseudonymMap>) {
-  const lines: string[] = [ROLE_ROOM_AGENT_SYSTEM_PROMPT, '', '## Prosjektkontekst'];
+function buildCachedSystem(
+  input: RoleRoomAgentInvokeInput,
+  pseudo: ReturnType<typeof buildBackendPseudonymMap>,
+  mode: RoleRoomAgentMode = 'casting',
+) {
+  const lines: string[] = [agentSystemPromptForMode(mode), '', '## Prosjektkontekst'];
   lines.push(`Prosjekt-id: ${input.projectId}`);
   if (input.context.briefSummary) {
     lines.push('', '### Brief-sammendrag');
@@ -237,9 +255,22 @@ export async function invokeRoleRoomAgent(
     throw new RoleRoomAgentDisabledError();
   }
 
-  const entitlement = await checkAgentEntitlement(pool, userId, input.userRole);
-  if (!entitlement.allowed) {
-    throw new RoleRoomAgentEntitlementError(entitlement);
+  // Leadgrid-vertikalen (leadgrid-agent-access.ts): når prosjektet er et
+  // Leadgrid-prosjekt (lg-nøkkel = markedssjef-modus, ren Leadgrid-id = salgs-
+  // modus) styrer modusen persona, verktøy og kontekstblokk, og modul-
+  // entitlementen erstatter Role Rooms userId-/abonnements-entitlement.
+  // Ruten har allerede autorisert prosjekt-tilgang; her avgjøres bare modus.
+  const leadgridProject: LeadgridAgentProject | null =
+    input.leadgridProject !== undefined
+      ? input.leadgridProject
+      : await resolveLeadgridAgentProject(pool, { projectId, userId });
+  const mode: RoleRoomAgentMode = input.mode ?? leadgridProject?.kind ?? 'casting';
+
+  if (!leadgridProject) {
+    const entitlement = await checkAgentEntitlement(pool, userId, input.userRole);
+    if (!entitlement.allowed) {
+      throw new RoleRoomAgentEntitlementError(entitlement);
+    }
   }
 
   let consent: RoleRoomAiConsentRecord;
@@ -293,6 +324,7 @@ export async function invokeRoleRoomAgent(
       toPlaceholder: (value: string) => crewMap.toPlaceholder(candidateMap.toPlaceholder(value)),
       fromPlaceholder: (value: string) => crewMap.fromPlaceholder(candidateMap.fromPlaceholder(value)),
     },
+    mode,
   );
 
   const fieldCategories: string[] = [];
@@ -328,6 +360,8 @@ export async function invokeRoleRoomAgent(
 
   const cacheEnabled = process.env.ROLE_ROOM_AGENT_CACHE !== 'off';
   const contextHash = hashContext({
+    // Modus inngår i nøkkelen så persona-bytte aldri treffer et gammelt svar.
+    mode,
     briefSummary: input.context.briefSummary ?? null,
     openReviews: input.context.openReviews ?? [],
     timelineHighlights: input.context.timelineHighlights ?? [],
@@ -379,12 +413,22 @@ export async function invokeRoleRoomAgent(
   // Aggregate, PII-free cross-tab status so the agent can answer operational
   // questions (Inbox/Leads/Analytics/Feed) without the producer pasting numbers.
   // Best-effort: a null block simply omits it.
-  const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+  // Leadgrid-moduser får sin egen aggregerte blokk (org, kartlegging, plan /
+  // pipeline-tall) i stedet for Role Rooms produsent-arbeidsflate og userId-
+  // nøklede Business DNA/katalog/segmenter.
+  const workspaceBlock = leadgridProject
+    ? null
+    : await buildWorkspaceContextBlock(pool, { userId, projectId });
   // Markedsførings-/merkevare-bevissthet (Business DNA, katalog, segmenter+ROAS,
   // GEO) — gjør agenten kjent med alt vi har bygd. Best-effort, null utelates.
-  const marketingBlock = await buildMarketingContextBlock(pool, { userId, projectId });
+  const marketingBlock = leadgridProject
+    ? null
+    : await buildMarketingContextBlock(pool, { userId, projectId });
+  const leadgridBlock = leadgridProject
+    ? await buildLeadgridAgentContextBlock(pool, { project: leadgridProject })
+    : null;
   const freshSystemBlock =
-    [workspaceBlock, marketingBlock].filter(Boolean).join('\n\n') || undefined;
+    [workspaceBlock, marketingBlock, leadgridBlock].filter(Boolean).join('\n\n') || undefined;
 
   // Spor B: attach ad-platform MCP connectors when enabled AND the producer has
   // a connected account. Read-only by default (reporting/get tools) — writes are
@@ -425,7 +469,7 @@ export async function invokeRoleRoomAgent(
       cachedSystem,
       freshSystem: freshSystemBlock,
       userMessage: pseudonymizedUserMessage,
-      tools: ROLE_ROOM_AGENT_TOOLS,
+      tools: agentToolsForMode(mode),
       maxTokens: ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
       model: modelId,
       userId,

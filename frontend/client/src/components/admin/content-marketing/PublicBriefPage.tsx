@@ -81,7 +81,7 @@ export function PublicBriefIndex() {
         ) : null}
         <Box sx={{ mb: 5 }}>
           <Typography
-            sx={{ fontFamily: '"Courier New", Courier, monospace', fontSize: { xs: '0.85rem', md: '0.95rem' }, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#a78bfa', fontWeight: 700, mb: 1.5 }}
+            sx={{ fontFamily: '"Courier New", Courier, monospace', fontSize: { xs: '0.85rem', md: '0.95rem' }, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#9e8cf8', fontWeight: 700, mb: 1.5 }}
           >
             Norwegian Casting Brief — arkiv
           </Typography>
@@ -121,7 +121,7 @@ export function PublicBriefIndex() {
                   textDecoration: 'none',
                   color: 'inherit',
                   transition: 'all 0.15s',
-                  '&:hover': { borderColor: 'rgba(167,139,250,0.4)', bgcolor: 'rgba(139,92,246,0.06)' },
+                  '&:hover': { borderColor: 'rgba(158, 140, 248,0.4)', bgcolor: 'rgba(136, 117, 235,0.06)' },
                 }}
               >
                 {issue.published_at ? (
@@ -209,7 +209,7 @@ export function PublicBriefDetail({ slug }: { slug: string }) {
         <Container maxWidth="md">
           <Typography component="h1" sx={{ color: '#fff', fontWeight: 800, fontSize: '1.5rem', mb: 1 }}>Utgaven finnes ikke</Typography>
           <Typography sx={{ color: 'rgba(229,231,235,0.74)' }}>{error}</Typography>
-          <Typography sx={{ mt: 2 }}><a href="/brief" style={{ color: '#a78bfa' }}>← Tilbake til arkivet</a></Typography>
+          <Typography sx={{ mt: 2 }}><a href="/brief" style={{ color: '#9e8cf8' }}>← Tilbake til arkivet</a></Typography>
         </Container>
       </Box>
     );
@@ -222,7 +222,7 @@ export function PublicBriefDetail({ slug }: { slug: string }) {
           <Typography
             component="a"
             href="/brief"
-            sx={{ color: '#a78bfa', fontSize: '0.85rem', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+            sx={{ color: '#9e8cf8', fontSize: '0.85rem', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
           >
             ← Norwegian Casting Brief
           </Typography>
@@ -248,8 +248,8 @@ export function PublicBriefDetail({ slug }: { slug: string }) {
             '& h2': { color: '#fff', fontSize: { xs: '1.3rem', md: '1.5rem' }, lineHeight: 1.3, m: '2.5rem 0 1rem', fontWeight: 700 },
             '& h3': { color: '#fff', fontSize: { xs: '1.05rem', md: '1.15rem' }, lineHeight: 1.3, m: '2rem 0 0.75rem', fontWeight: 700 },
             '& p': { m: '0 0 1.25rem' },
-            '& a': { color: '#a78bfa' },
-            '& blockquote': { borderLeft: '3px solid #8b5cf6', pl: 2.5, color: 'rgba(229,231,235,0.85)', m: '1.5rem 0', fontStyle: 'italic' },
+            '& a': { color: '#9e8cf8' },
+            '& blockquote': { borderLeft: '3px solid #8875eb', pl: 2.5, color: 'rgba(229,231,235,0.85)', m: '1.5rem 0', fontStyle: 'italic' },
             '& ul, & ol': { pl: 3, my: 1.5 },
             '& li': { my: 0.5 },
             '& strong': { color: '#fff' },

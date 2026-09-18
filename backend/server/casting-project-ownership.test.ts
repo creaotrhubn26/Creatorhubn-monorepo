@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  resolveCastingProjectAccess,
   userCanAccessCastingProject,
   userCanCommentCastingContinuity,
   userCanCoordinateCastingProduction,
@@ -10,210 +11,381 @@ import {
   userCanManageCastingProduction,
 } from "./casting-project-ownership.js";
 
-describe("userCanAccessCastingProject", () => {
-  it("accepts canonical owners and project-role members", async () => {
+/**
+ * Canonical project with one membership row. The grant rules live in
+ * TypeScript now, so these tests state who may do what rather than asserting
+ * the shape of a SQL predicate.
+ */
+const canonicalMember = (
+  role: string | null,
+  permissions: Record<string, unknown> | null = null,
+  { isOwner = false, additionalRoles = null }: {
+    isOwner?: boolean;
+    additionalRoles?: string[] | null;
+  } = {},
+) => vi.fn(async (text: string) => {
+  if (text.includes("FROM casting_projects cp")) {
+    return {
+      rows: [{
+        project_exists: true,
+        is_owner: isOwner,
+        member_role: role,
+        member_permissions: permissions,
+        member_additional_roles: additionalRoles,
+      }],
+    };
+  }
+  return { rows: [] };
+});
+
+const legacyOnly = (owner: string | null) => vi.fn(async (text: string) => {
+  if (text.includes("FROM casting_projects cp")) {
+    return {
+      rows: [{
+        project_exists: false,
+        is_owner: false,
+        member_role: null,
+        member_permissions: null,
+      }],
+    };
+  }
+  return { rows: owner ? [{ store_value: { created_by: owner } }] : [] };
+});
+
+describe("resolveCastingProjectAccess", () => {
+  it("answers every grant from one query", async () => {
+    const query = canonicalMember("production_manager");
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "pm-1");
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(access.role).toBe("production_manager");
+    expect(access.isMember).toBe(true);
+    expect(access.canAccess).toBe(true);
+    expect(access.grants).toEqual({
+      canEditProduction: true,
+      canManageProduction: true,
+      canCoordinateProduction: true,
+      canManageLocations: true,
+      canManageContinuity: false,
+      canCommentContinuity: false,
+    });
+  });
+
+  it("filters deactivated and expired membership rows in the query", async () => {
     const query = vi.fn(async (text: string, params?: unknown[]) => {
-      expect(text).toContain("FROM casting_projects cp");
-      expect(text).toContain("FROM casting_user_roles cur");
       expect(text).toContain("cur.deactivated_at IS NULL");
       expect(text).toContain("cur.expires_at IS NULL OR cur.expires_at > NOW()");
       expect(params).toEqual(["project-1", "user-1"]);
-      return { rows: [{ project_exists: true, can_access: true }] };
+      return {
+        rows: [{
+          project_exists: true,
+          is_owner: false,
+          member_role: null,
+          member_permissions: null,
+        }],
+      };
     });
 
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "user-1");
+
+    expect(access.isMember).toBe(false);
+    expect(access.canAccess).toBe(false);
+  });
+
+  it("gives the project creator every grant without a membership row", async () => {
+    const query = canonicalMember(null, null, { isOwner: true });
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "owner-1");
+
+    expect(access.isOwner).toBe(true);
+    expect(access.role).toBeNull();
+    expect(Object.values(access.grants).every(Boolean)).toBe(true);
+  });
+
+  it("ignores a permissions column that is not an object", async () => {
+    const query = canonicalMember("grip", "not-json" as never);
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "grip-1");
+
+    expect(access.permissions).toEqual({});
+    expect(Object.values(access.grants).some(Boolean)).toBe(false);
+  });
+
+  it("denies everything without a project id or user id", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+
+    await expect(resolveCastingProjectAccess({ query }, "", "user-1"))
+      .resolves.toMatchObject({ canAccess: false });
+    await expect(resolveCastingProjectAccess({ query }, "project-1", null))
+      .resolves.toMatchObject({ canAccess: false });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("stays fail-closed when the canonical query throws and no legacy owner matches", async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("FROM casting_projects cp")) throw new Error("relation missing");
+      return { rows: [] };
+    });
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "user-1");
+
+    expect(access.canAccess).toBe(false);
+    expect(Object.values(access.grants).some(Boolean)).toBe(false);
+  });
+});
+
+describe("userCanAccessCastingProject", () => {
+  it("accepts canonical owners and project-role members", async () => {
     await expect(userCanAccessCastingProject(
-      { query },
-      "project-1",
-      "user-1",
+      { query: canonicalMember(null, null, { isOwner: true }) }, "project-1", "owner-1",
     )).resolves.toBe(true);
-    expect(query).toHaveBeenCalledTimes(1);
+
+    await expect(userCanAccessCastingProject(
+      { query: canonicalMember("viewer") }, "project-1", "viewer-1",
+    )).resolves.toBe(true);
+  });
+
+  it("denies a user with no membership row", async () => {
+    await expect(userCanAccessCastingProject(
+      { query: canonicalMember(null) }, "project-1", "stranger-1",
+    )).resolves.toBe(false);
   });
 
   it("falls back to the strict compat owner for legacy-only projects", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      if (text.includes("FROM casting_projects cp")) {
-        return { rows: [{ project_exists: false, can_access: false }] };
-      }
-      expect(text).toContain("legacy_compat_store");
-      expect(params).toEqual(["casting:project:legacy-1"]);
-      return { rows: [{ store_value: { created_by: "user-1" } }] };
-    });
+    const query = legacyOnly("user-1");
 
-    await expect(userCanAccessCastingProject(
-      { query },
-      "legacy-1",
-      "user-1",
-    )).resolves.toBe(true);
+    await expect(userCanAccessCastingProject({ query }, "legacy-1", "user-1"))
+      .resolves.toBe(true);
     expect(query).toHaveBeenCalledTimes(2);
   });
 
   it("never falls back to stale legacy ownership for a canonical project", async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes("FROM casting_projects cp")) {
-        return { rows: [{ project_exists: true, can_access: false }] };
+        return {
+          rows: [{
+            project_exists: true,
+            is_owner: false,
+            member_role: null,
+            member_permissions: null,
+          }],
+        };
       }
       return { rows: [{ store_value: { created_by: "user-1" } }] };
     });
 
-    await expect(userCanAccessCastingProject(
-      { query },
-      "project-1",
-      "user-1",
-    )).resolves.toBe(false);
+    await expect(userCanAccessCastingProject({ query }, "project-1", "user-1"))
+      .resolves.toBe(false);
     expect(query).toHaveBeenCalledTimes(1);
   });
-});
 
-describe("userCanCoordinateCastingProduction", () => {
-  it("allows coordinators, PMs, producers and explicit coordination grants only", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      expect(text).toContain("'production_coordinator'");
-      expect(text).toContain("'production_manager'");
-      expect(text).toContain("'producer'");
-      expect(text).toContain("canCoordinateProduction");
-      expect(text).not.toContain("'first_ad'");
-      expect(text).not.toContain("canManageProduction");
-      expect(params).toEqual(["project-1", "coordinator-1"]);
-      return { rows: [{ project_exists: true, can_coordinate_production: true }] };
-    });
-
-    await expect(userCanCoordinateCastingProduction(
-      { query },
-      "project-1",
-      "coordinator-1",
-    )).resolves.toBe(true);
+  it("never accepts the placeholder demo owner", async () => {
+    await expect(userCanAccessCastingProject(
+      { query: legacyOnly("demo-user") }, "legacy-1", "demo-user",
+    )).resolves.toBe(false);
   });
 });
 
 describe("userCanEditCastingProduction", () => {
   it("accepts an active 1st AD production grant", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      expect(text).toContain("'first_ad'");
-      expect(text).toContain("'second_ad'");
-      expect(text).toContain("canEditProduction");
-      expect(text).toContain("cur.deactivated_at IS NULL");
-      expect(text).toContain("cur.expires_at IS NULL OR cur.expires_at > NOW()");
-      expect(params).toEqual(["project-1", "first-ad-1"]);
-      return { rows: [{ project_exists: true, can_edit_production: true }] };
-    });
+    await expect(userCanEditCastingProduction(
+      { query: canonicalMember("first_ad") }, "project-1", "first-ad-1",
+    )).resolves.toBe(true);
 
     await expect(userCanEditCastingProduction(
-      { query },
-      "project-1",
-      "first-ad-1",
+      { query: canonicalMember("second_ad") }, "project-1", "second-ad-1",
     )).resolves.toBe(true);
-    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts an explicit grant on a role that does not carry it by default", async () => {
+    await expect(userCanEditCastingProduction(
+      { query: canonicalMember("grip", { canEditProduction: true }) }, "project-1", "grip-1",
+    )).resolves.toBe(true);
   });
 
   it("denies a canonical project member without production write access", async () => {
-    const query = vi.fn(async () => ({
-      rows: [{ project_exists: true, can_edit_production: false }],
-    }));
+    const query = canonicalMember("viewer");
 
-    await expect(userCanEditCastingProduction(
-      { query },
-      "project-1",
-      "viewer-1",
-    )).resolves.toBe(false);
+    await expect(userCanEditCastingProduction({ query }, "project-1", "viewer-1"))
+      .resolves.toBe(false);
     expect(query).toHaveBeenCalledTimes(1);
   });
 
   it("keeps legacy-only projects owner-only", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      if (text.includes("FROM casting_projects cp")) {
-        return { rows: [{ project_exists: false, can_edit_production: false }] };
-      }
-      expect(text).toContain("legacy_compat_store");
-      expect(params).toEqual(["casting:project:legacy-1"]);
-      return { rows: [{ store_value: { created_by: "owner-1" } }] };
-    });
+    const query = legacyOnly("owner-1");
+
+    await expect(userCanEditCastingProduction({ query }, "legacy-1", "owner-1"))
+      .resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(2);
 
     await expect(userCanEditCastingProduction(
-      { query },
-      "legacy-1",
-      "owner-1",
-    )).resolves.toBe(true);
-    expect(query).toHaveBeenCalledTimes(2);
+      { query: legacyOnly("someone-else") }, "legacy-1", "intruder-1",
+    )).resolves.toBe(false);
   });
 });
 
 describe("userCanManageCastingProduction", () => {
   it("limits the management lane to owners, producer roles and an explicit grant", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      expect(text).toContain("'production_manager'");
-      expect(text).toContain("'producer'");
-      expect(text).toContain("canManageProduction");
-      expect(text).not.toContain("'first_ad'");
-      expect(text).not.toContain("'second_ad'");
-      expect(text).not.toContain("'production_coordinator'");
-      expect(params).toEqual(["project-1", "manager-1"]);
-      return { rows: [{ project_exists: true, can_manage_production: true }] };
-    });
+    await expect(userCanManageCastingProduction(
+      { query: canonicalMember("production_manager") }, "project-1", "manager-1",
+    )).resolves.toBe(true);
 
     await expect(userCanManageCastingProduction(
-      { query },
-      "project-1",
-      "manager-1",
+      { query: canonicalMember("producer") }, "project-1", "producer-1",
+    )).resolves.toBe(true);
+
+    await expect(userCanManageCastingProduction(
+      { query: canonicalMember("grip", { canManageProduction: true }) }, "project-1", "grip-1",
     )).resolves.toBe(true);
   });
 
   it("denies canonical production editors without management authority", async () => {
-    const query = vi.fn(async () => ({
-      rows: [{ project_exists: true, can_manage_production: false }],
-    }));
+    for (const role of ["first_ad", "second_ad", "production_coordinator", "director"]) {
+      await expect(userCanManageCastingProduction(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(false);
+    }
+  });
+});
 
-    await expect(userCanManageCastingProduction(
-      { query },
-      "project-1",
-      "first-ad-1",
+describe("userCanCoordinateCastingProduction", () => {
+  it("allows coordinators, PMs, producers and explicit coordination grants only", async () => {
+    for (const role of ["production_coordinator", "production_manager", "producer"]) {
+      await expect(userCanCoordinateCastingProduction(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(true);
+    }
+
+    await expect(userCanCoordinateCastingProduction(
+      { query: canonicalMember("grip", { canCoordinateProduction: true }) }, "project-1", "grip-1",
+    )).resolves.toBe(true);
+
+    await expect(userCanCoordinateCastingProduction(
+      { query: canonicalMember("first_ad") }, "project-1", "first-ad-1",
     )).resolves.toBe(false);
-    expect(query).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("userCanManageCastingLocations", () => {
   it("allows location managers, scouts and explicit grants without granting location security writes", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      expect(text).toContain("'location_manager'");
-      expect(text).toContain("'location_scout'");
-      expect(text).not.toContain("'location_security'");
-      expect(text).toContain("canManageLocations");
-      expect(params).toEqual(["project-1", "location-manager-1"]);
-      return { rows: [{ project_exists: true, can_manage_locations: true }] };
-    });
+    for (const role of ["location_manager", "location_scout", "producer", "production_manager"]) {
+      await expect(userCanManageCastingLocations(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(true);
+    }
 
     await expect(userCanManageCastingLocations(
-      { query }, "project-1", "location-manager-1",
-    )).resolves.toBe(true);
+      { query: canonicalMember("location_security") }, "project-1", "security-1",
+    )).resolves.toBe(false);
   });
 });
 
 describe("continuity ownership", () => {
   it("limits the canonical continuity lane to script supervisors or an explicit grant", async () => {
-    const query = vi.fn(async (text: string, params?: unknown[]) => {
-      expect(text).toContain("'script_supervisor'");
-      expect(text).toContain("canManageContinuity");
-      expect(text).not.toContain("'production_manager'");
-      expect(params).toEqual(["project-1", "script-supervisor-1"]);
-      return { rows: [{ project_exists: true, can_manage_continuity: true }] };
-    });
+    await expect(userCanManageCastingContinuity(
+      { query: canonicalMember("script_supervisor") }, "project-1", "script-supervisor-1",
+    )).resolves.toBe(true);
 
     await expect(userCanManageCastingContinuity(
-      { query }, "project-1", "script-supervisor-1",
+      { query: canonicalMember("grip", { canManageContinuity: true }) }, "project-1", "grip-1",
     )).resolves.toBe(true);
+
+    for (const role of ["production_manager", "director", "first_ad"]) {
+      await expect(userCanManageCastingContinuity(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(false);
+    }
   });
 
   it("lets directors and ADs comment without granting continuity management", async () => {
-    const query = vi.fn(async (text: string) => {
-      expect(text).toContain("'director'");
-      expect(text).toContain("'first_ad'");
-      expect(text).toContain("canComment");
-      expect(text).toContain("AS can_comment_continuity");
-      return { rows: [{ project_exists: true, can_comment_continuity: true }] };
-    });
+    for (const role of ["director", "first_ad", "second_ad", "producer"]) {
+      await expect(userCanCommentCastingContinuity(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(true);
+      await expect(userCanManageCastingContinuity(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(false);
+    }
+  });
 
+  it("accepts a plain comment grant for commenting only", async () => {
     await expect(userCanCommentCastingContinuity(
-      { query }, "project-1", "director-1",
+      { query: canonicalMember("grip", { canComment: true }) }, "project-1", "grip-1",
     )).resolves.toBe(true);
+
+    await expect(userCanManageCastingContinuity(
+      { query: canonicalMember("grip", { canComment: true }) }, "project-1", "grip-1",
+    )).resolves.toBe(false);
+  });
+
+  it("denies a crew member with no continuity relationship", async () => {
+    await expect(userCanCommentCastingContinuity(
+      { query: canonicalMember("grip") }, "project-1", "grip-1",
+    )).resolves.toBe(false);
+  });
+});
+
+describe("several project roles on one membership", () => {
+  it("unions grants across the primary and additional roles", async () => {
+    const query = canonicalMember("director", null, { additionalRoles: ["producer"] });
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "user-1");
+
+    expect(access.role).toBe("director");
+    expect(access.roles).toEqual(["director", "producer"]);
+    // director alone never carried the management lane; producer does.
+    expect(access.grants.canManageProduction).toBe(true);
+    expect(access.grants.canEditProduction).toBe(true);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a single-role member unchanged", async () => {
+    const access = await resolveCastingProjectAccess(
+      { query: canonicalMember("director") }, "project-1", "user-1",
+    );
+
+    expect(access.roles).toEqual(["director"]);
+    expect(access.grants.canManageProduction).toBe(false);
+  });
+
+  it("normalises and dedupes stored role values", async () => {
+    const access = await resolveCastingProjectAccess(
+      { query: canonicalMember("director", null, {
+        additionalRoles: ["  PRODUCER ", "director", "", "location_scout"],
+      }) },
+      "project-1",
+      "user-1",
+    );
+
+    expect(access.roles).toEqual(["director", "producer", "location_scout"]);
+  });
+
+  it("ignores additional roles when the membership itself is gone", async () => {
+    const access = await resolveCastingProjectAccess(
+      { query: canonicalMember(null, null, { additionalRoles: ["producer"] }) },
+      "project-1",
+      "user-1",
+    );
+
+    expect(access.isMember).toBe(false);
+    expect(access.canAccess).toBe(false);
+    expect(access.grants.canManageProduction).toBe(false);
+  });
+
+  it("survives a database that has not run the migration yet", async () => {
+    const query = vi.fn(async () => ({
+      rows: [{
+        project_exists: true,
+        is_owner: false,
+        member_role: "producer",
+        member_permissions: null,
+      }],
+    }));
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "user-1");
+
+    expect(access.roles).toEqual(["producer"]);
+    expect(access.grants.canManageProduction).toBe(true);
   });
 });

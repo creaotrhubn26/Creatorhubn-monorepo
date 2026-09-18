@@ -37,7 +37,7 @@ interpretation: >
   the runtime dependency-free and shareable between frontend Play Mode, backend
   validation/export and standalone HTML export.
 project_impact: >
-  backend/migrations/0605_role_room_narrative_graph.sql mirrors the model;
+  backend/migrations/0616_role_room_narrative_graph.sql mirrors the model;
   frontend/shared/narrative-script/ (Fase 2) must be verified against the ANTLR grammar
   and Arcweave's example projects; any grammar/schema change upstream is a breaking
   change for import/export.
@@ -46,7 +46,7 @@ decision: >
   Mirror Arcweave's project.json 1:1 and adopt arcscript syntax; implement our own
   TypeScript interpreter (no @arcweave/arcscript dependency).
 affected:
-  - backend/migrations/0605_role_room_narrative_graph.sql
+  - backend/migrations/0616_role_room_narrative_graph.sql
   - backend/server/role-room-narrative-service.ts
   - frontend/client/src/components/role-room/narrative/
   - frontend/shared/narrative-script/ (lexer, parser, evaluator, interpreter — Fase 2, levert)
@@ -57,8 +57,8 @@ affected:
   - frontend/shared/narrative-player/ + frontend/client/public/embed/narrative-player.js (Fase 3)
   - backend/server/role-room-narrative-routes.ts (export.json, export.md, import, share-links, public/:token)
   - backend/server/role-room-mcp-registry.ts (rr_export_story_graph, rr_draft_element)
-  - backend/server/ai-narrative-element-agent.ts + backend/migrations/0606_ai_suggestions_narrative_source_type.sql
-  - frontend/shared/narrative-format/locale.ts + backend/migrations/0607_narrative_i18n.sql (Fase 4b: kodeblokker oversettes aldri)
+  - backend/server/ai-narrative-element-agent.ts + backend/migrations/0617_ai_suggestions_narrative_source_type.sql
+  - frontend/shared/narrative-format/locale.ts + backend/migrations/0618_narrative_i18n.sql (Fase 4b: kodeblokker oversettes aldri)
   - frontend/shared/narrative-runtime-pkg/ + packages/story-graph-runtime/ (Fase 4e: JS full tolk; C#/GDScript dokumentert delsett — se 2026-09-narrative-import-formats.yaml)
 lesson: >
   Interop with a competitor's ecosystem is cheapest when the data model is adopted

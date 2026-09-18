@@ -77,6 +77,180 @@ function createApp(
   return app;
 }
 
+describe('production day change impact', () => {
+  const PATH = `/api/role-room/projects/${PROJECT_ID}/production-days/day-6/impact`;
+
+  const impactQuery = (counts: Record<string, number>, dayDate: string | null = '2026-09-20') =>
+    vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
+        return { rows: dayDate ? [{ id: 'day-6', date: dayDate }] : [], rowCount: dayDate ? 1 : 0 };
+      }
+      const table = Object.keys(counts).find((name) => text.includes(name));
+      return { rows: [{ count: table ? counts[table] : 0 }], rowCount: 1 };
+    });
+
+  it('lists what breaks and flags the blocking one', async () => {
+    const app = createApp(impactQuery({ role_room_call_sheet_deliveries: 1, equipment_bookings: 2 }));
+
+    const response = await request(app)
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.from).toBe('2026-09-20');
+    expect(response.body.to).toBe('2026-09-24');
+    expect(response.body.blocking).toBe(true);
+    expect(response.body.impacts.map((i: { area: string }) => i.area)).toContain('call_sheet');
+  });
+
+  it('says nothing changes when the date is the same', async () => {
+    const app = createApp(impactQuery({ role_room_call_sheet_deliveries: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?date=2026-09-20`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ unchanged: true, impacts: [], blocking: false });
+  });
+
+  it('rejects a date it cannot parse instead of guessing', async () => {
+    const app = createApp(impactQuery({}));
+
+    const response = await request(app)
+      .get(`${PATH}?date=torsdag`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(400);
+  });
+
+  it('hides a day that does not belong to the project', async () => {
+    const app = createApp(impactQuery({}, null));
+
+    const response = await request(app)
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('fails loudly rather than reporting an empty impact list', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
+        return { rows: [{ id: 'day-6', date: '2026-09-20' }], rowCount: 1 };
+      }
+      throw new Error('database unavailable');
+    });
+
+    const response = await request(createApp(query))
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('impact_unavailable');
+  });
+
+  it('requires the same grant as moving the day', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: false, member_role: 'viewer', member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await request(createApp(query))
+      .get(`${PATH}?date=2026-09-24`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+  });
+});
+
+describe('project access endpoint', () => {
+  const accessQuery = (row: Record<string, unknown> | null) => vi.fn(async (text: string) => {
+    if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (text.includes('AS member_role')) {
+      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  it('answers with the effective role and grants for the caller', async () => {
+    const app = createApp(accessQuery({
+      project_exists: true,
+      is_owner: false,
+      member_role: 'location_manager',
+      member_permissions: {},
+    }));
+
+    const response = await request(app)
+      .get(`/api/role-room/projects/${PROJECT_ID}/access`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.access).toEqual(expect.objectContaining({
+      projectId: PROJECT_ID,
+      role: 'location_manager',
+      isOwner: false,
+      isMember: true,
+    }));
+    expect(response.body.access.grants).toEqual(expect.objectContaining({
+      canManageLocations: true,
+      canManageProduction: false,
+      canManageContinuity: false,
+    }));
+  });
+
+  it('hides the project from a user with no active membership', async () => {
+    const app = createApp(accessQuery({
+      project_exists: true,
+      is_owner: false,
+      member_role: null,
+      member_permissions: null,
+    }));
+
+    const response = await request(app)
+      .get(`/api/role-room/projects/${PROJECT_ID}/access`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('requires authentication', async () => {
+    const app = createApp(accessQuery(null));
+
+    const response = await request(app).get(`/api/role-room/projects/${PROJECT_ID}/access`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('casting production-day access', () => {
   it('uploads a validated scout photo through the project-scoped AWS S3 adapter', async () => {
     const uploadLocationScoutPhoto = vi.fn().mockResolvedValue({
@@ -98,7 +272,7 @@ describe('casting production-day access', () => {
     });
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -128,7 +302,7 @@ describe('casting production-day access', () => {
     const uploadLocationScoutPhoto = vi.fn();
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -149,7 +323,7 @@ describe('casting production-day access', () => {
     const listLocationScoutMedia = vi.fn();
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_access')) return { rows: [{ project_exists: true, can_access: false }], rowCount: 1 };
+      if (text.includes('AS member_role')) return { rows: [{ project_exists: true, is_owner: false, member_role: null, member_permissions: null }], rowCount: 1 };
       throw new Error(`Unexpected SQL: ${text}`);
     });
 
@@ -165,8 +339,8 @@ describe('casting production-day access', () => {
   it('atomically creates a validated location readiness version and server audit entry', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) {
-        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('FROM casting_locations')) {
         expect(values).toEqual([PROJECT_ID, 'location-1']);
@@ -228,8 +402,8 @@ describe('casting production-day access', () => {
     const current = { ...locationOperationsPayload(), stage: 'cleared' };
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) {
-        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('FROM casting_locations')) {
         return { rows: [{ '?column?': 1 }], rowCount: 1 };
@@ -253,6 +427,13 @@ describe('casting production-day access', () => {
       locationId: 'location-1', version: 3,
       operations: expect.objectContaining({ stage: 'cleared' }),
     }));
+    // Uniform envelope: readable without knowing which lane lost the race.
+    expect(response.body.conflict).toEqual({
+      lane: 'location_operations',
+      currentVersion: 3,
+      updatedBy: 'location-manager-2',
+      updatedAt: undefined,
+    });
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
   });
 
@@ -267,8 +448,8 @@ describe('casting production-day access', () => {
     };
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) {
-        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
       if (text.includes('FROM role_room_location_operations') && text.includes('location_id = $2')) {
@@ -306,8 +487,8 @@ describe('casting production-day access', () => {
   it('rejects incomplete location readiness payloads before writing', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) {
-        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -323,8 +504,8 @@ describe('casting production-day access', () => {
   it('hides location readiness writes from project members without location authority', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) {
-        return { rows: [{ project_exists: true, can_manage_locations: false }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -342,8 +523,8 @@ describe('casting production-day access', () => {
   it('refuses to attach readiness data to a location outside the requested project', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_locations')) {
-        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('FROM casting_locations')) return { rows: [], rowCount: 0 };
       throw new Error(`Unexpected SQL: ${text}`);
@@ -374,8 +555,8 @@ describe('casting production-day access', () => {
     };
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('cp.created_by = $2 AS is_owner')) {
-        return { rows: [{ is_owner: false, role: 'director', permissions: {} }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: 'director', member_permissions: {} }], rowCount: 1 };
       }
       if (text.includes('FROM role_room_location_operations operations')) {
         return { rows: [{ location_id: 'location-1', operations: current, version: 1, updated_by: 'location-manager-1' }], rowCount: 1 };
@@ -405,8 +586,8 @@ describe('casting production-day access', () => {
   it('hides decision actions from project roles without review authority', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('cp.created_by = $2 AS is_owner')) {
-        return { rows: [{ is_owner: false, role: 'first_ad', permissions: {} }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: 'first_ad', member_permissions: {} }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -429,8 +610,8 @@ describe('casting production-day access', () => {
     };
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('cp.created_by = $2 AS is_owner')) {
-        return { rows: [{ is_owner: false, role: 'producer', permissions: {} }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: 'producer', member_permissions: {} }], rowCount: 1 };
       }
       if (text.includes('FROM role_room_location_operations operations')) {
         return { rows: [{ location_id: 'location-1', operations: current, version: 1, updated_by: 'location-manager-1' }], rowCount: 1 };
@@ -458,8 +639,8 @@ describe('casting production-day access', () => {
     const current = readyLocationDecisionPayload();
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('cp.created_by = $2 AS is_owner')) {
-        return { rows: [{ is_owner: false, role: 'producer', permissions: {} }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: 'producer', member_permissions: {} }], rowCount: 1 };
       }
       if (text.includes('FROM role_room_location_operations operations')) {
         return { rows: [{ location_id: 'location-1', operations: current, version: 4, updated_by: 'location-manager-1' }], rowCount: 1 };
@@ -491,8 +672,8 @@ describe('casting production-day access', () => {
   it('allows an active project member to read production days', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_access')) {
-        return { rows: [{ project_exists: true, can_access: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('SELECT * FROM casting_production_days')) {
         return {
@@ -524,8 +705,8 @@ describe('casting production-day access', () => {
   it('allows a production editor to save a production day', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_edit_production')) {
-        return { rows: [{ project_exists: true, can_edit_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('INSERT INTO casting_production_days')) {
         return {
@@ -567,8 +748,8 @@ describe('casting production-day access', () => {
   it('keeps management, coordination and continuity state outside generic production-day writes', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_edit_production')) {
-        return { rows: [{ project_exists: true, can_edit_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.includes('INSERT INTO casting_production_days')) {
         const savedData = JSON.parse(String(values?.[10] ?? '{}'));
@@ -613,8 +794,8 @@ describe('casting production-day access', () => {
   it('atomically saves validated production-management operations and creates server audit data', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_production')) {
-        return { rows: [{ project_exists: true, can_manage_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return {
@@ -688,8 +869,8 @@ describe('casting production-day access', () => {
     };
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_production')) {
-        return { rows: [{ project_exists: true, can_manage_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return { rows: [latestRow], rowCount: 1 };
@@ -718,8 +899,8 @@ describe('casting production-day access', () => {
   it('rejects malformed production-management payloads before writing', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_production')) {
-        return { rows: [{ project_exists: true, can_manage_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -737,8 +918,8 @@ describe('casting production-day access', () => {
   it('does not let an unrelated production editor mutate the management lane', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_production')) {
-        return { rows: [{ project_exists: true, can_manage_production: false }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -761,8 +942,8 @@ describe('casting production-day access', () => {
   it('atomically saves coordination without exposing management decisions', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_coordinate_production')) {
-        return { rows: [{ project_exists: true, can_coordinate_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return {
@@ -832,8 +1013,8 @@ describe('casting production-day access', () => {
   it('rejects coordination crew follow-up for people outside the selected day', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_coordinate_production')) {
-        return { rows: [{ project_exists: true, can_coordinate_production: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return { rows: [{ id: 'day-1', project_id: PROJECT_ID, date: '2026-09-11', crew_ids: [], coordination_version: 0, data: {} }], rowCount: 1 };
@@ -860,8 +1041,8 @@ describe('casting production-day access', () => {
   it('hides the project and refuses writes without production permission', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_edit_production')) {
-        return { rows: [{ project_exists: true, can_edit_production: false }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -880,8 +1061,8 @@ describe('casting production-day access', () => {
     const mediaFileId = 'c8bdfe62-84ab-4b2c-885e-bfba9bbd2d12';
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_continuity')) {
-        return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return {
@@ -953,8 +1134,8 @@ describe('casting production-day access', () => {
     };
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_comment_continuity')) {
-        return { rows: [{ project_exists: true, can_comment_continuity: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return { rows: [{ id: 'day-1', project_id: PROJECT_ID, date: '2026-09-11', scene_ids: ['scene-1'], continuity_version: 1, data: { productionContinuity: existing } }], rowCount: 1 };
@@ -980,8 +1161,8 @@ describe('casting production-day access', () => {
   it('returns the latest continuity version on an optimistic concurrency conflict', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_continuity')) {
-        return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return {
@@ -1015,8 +1196,8 @@ describe('casting production-day access', () => {
   it('hides continuity from project members without continuity permission', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_continuity')) {
-        return { rows: [{ project_exists: true, can_manage_continuity: false }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: false, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });
@@ -1037,8 +1218,8 @@ describe('casting production-day access', () => {
   it('rejects continuity records for scenes outside the production day', async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_continuity')) {
-        return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return {
@@ -1066,8 +1247,8 @@ describe('casting production-day access', () => {
     const foreignFileId = 'ec78f0f0-c324-4aed-9e21-0ab6276e0bbb';
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_continuity')) {
-        return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT * FROM casting_production_days')) {
         return {
@@ -1109,8 +1290,8 @@ describe('casting production-day access', () => {
     const fileId = '8b49da36-ff43-4d8f-98dc-20ce0e39218d';
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_manage_continuity')) {
-        return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       if (text.startsWith('SELECT scene_ids FROM casting_production_days')) {
         return { rows: [{ scene_ids: ['scene-1'] }], rowCount: 1 };
@@ -1179,8 +1360,8 @@ describe('casting production-day access', () => {
     const fileId = '8b49da36-ff43-4d8f-98dc-20ce0e39218d';
     const query = vi.fn(async (text: string) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
-      if (text.includes('AS can_access')) {
-        return { rows: [{ project_exists: true, can_access: true }], rowCount: 1 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
       }
       throw new Error(`Unexpected SQL: ${text}`);
     });

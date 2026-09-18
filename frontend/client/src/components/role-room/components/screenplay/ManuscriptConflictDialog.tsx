@@ -57,7 +57,7 @@ const ManuscriptPane: React.FC<{
         fontFamily: 'Courier New, monospace',
         fontSize: '0.82rem',
         lineHeight: 1.55,
-        bgcolor: 'rgba(2, 6, 23, 0.6)',
+        bgcolor: 'rgba(10, 5, 21, 0.6)',
       }}
     >
       {content || 'Tomt manus'}

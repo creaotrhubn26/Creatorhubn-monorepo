@@ -34,6 +34,8 @@ import roleRoomTalentsService, {
   type RoleRoomTalent,
 } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
+import TalentsHowItWorksCard from '../components/TalentsHowItWorksCard';
+import { calcProfileStrength } from '../profileStrength';
 import type { TalentsAppPage } from '../TalentsAppShell';
 
 interface DashboardPageProps {
@@ -48,35 +50,24 @@ const cardSx = {
   p: 2.4,
 };
 
-function calcProfileCompleteness(talent: RoleRoomTalent | null): { score: number; missing: string[] } {
-  if (!talent) return { score: 0, missing: ['Opprett profil'] };
-  const missing: string[] = [];
-  if (!talent.headshot_url) missing.push('Headshot');
-  if (!talent.showreel_url) missing.push('Showreel');
-  if (!talent.bio || talent.bio.length < 40) missing.push('Bio (min 40 tegn)');
-  if (!talent.city) missing.push('By');
-  if (!talent.playing_age_min || !talent.playing_age_max) missing.push('Spille-alder');
-  if (!Array.isArray(talent.skills) || talent.skills.length === 0) missing.push('Ferdigheter');
-  if (!Array.isArray(talent.languages) || talent.languages.length === 0) missing.push('Språk');
-  const total = 7;
-  const score = Math.round(((total - missing.length) / total) * 100);
-  return { score: Math.max(0, score), missing };
-}
 
 export default function DashboardPage({ demoMode, onNavigate }: DashboardPageProps) {
   const [talent, setTalent] = useState<RoleRoomTalent | null>(null);
   const [overview, setOverview] = useState<PartnersOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creditCount, setCreditCount] = useState(0);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, o] = await Promise.all([
+      const [t, o, credits] = await Promise.all([
         demoMode ? Promise.resolve(null) : roleRoomTalentsService.fetchMyTalent(),
         roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode }),
+        demoMode ? Promise.resolve([]) : roleRoomTalentsService.fetchMyCredits(),
       ]);
       setTalent(t);
       setOverview(o);
+      setCreditCount(credits.length);
     } finally {
       setLoading(false);
     }
@@ -84,7 +75,10 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
 
   useEffect(() => { void reload(); }, [reload]);
 
-  const completeness = useMemo(() => calcProfileCompleteness(talent ?? (overview?.talent as RoleRoomTalent | null)), [talent, overview]);
+  const completeness = useMemo(
+    () => calcProfileStrength(talent ?? (overview?.talent as RoleRoomTalent | null), creditCount),
+    [talent, overview, creditCount],
+  );
   const recentViews = (overview?.feed ?? []).filter((f) => f.kind === 'access').slice(0, 4);
   const activePartners = overview?.stats?.activePartners ?? 0;
 
@@ -119,10 +113,19 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
       {demoMode ? (
         <Alert
           severity="info"
-          sx={{ mb: 3, bgcolor: 'rgba(168,85,247,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.accentBright } }}
+          sx={{ mb: 3, bgcolor: 'rgba(98, 73, 223,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.accentBright } }}
         >
           Du ser demo-data. Klikk <strong>Logg inn</strong> oppe til høyre for å bruke din egen profil.
         </Alert>
+      ) : null}
+
+      {/* Første møte med Talents: hva systemet er, og hva som skjer videre. */}
+      {!demoMode ? (
+        <TalentsHowItWorksCard
+          completeness={completeness.score}
+          activePartners={activePartners}
+          onNavigate={onNavigate}
+        />
       ) : null}
 
       {/* Profile completeness — hvis ikke 100% */}
@@ -139,7 +142,7 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
                 sx={{
                   height: 8,
                   borderRadius: 4,
-                  bgcolor: 'rgba(168,85,247,0.12)',
+                  bgcolor: 'rgba(98, 73, 223,0.12)',
                   '& .MuiLinearProgress-bar': { background: palette.accentGradient },
                 }}
               />
@@ -230,7 +233,7 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
                 alignItems="center"
                 sx={{ p: 1.4, borderRadius: radius.sm, bgcolor: palette.bgCardElevated }}
               >
-                <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(168,85,247,0.18)', color: palette.accentBright }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(98, 73, 223,0.18)', color: palette.accentBright }}>
                   <CheckCircleIcon fontSize="small" />
                 </Avatar>
                 <Stack spacing={0.2} sx={{ flexGrow: 1 }}>
@@ -283,7 +286,7 @@ function QuickCard({ Icon, label, value, desc, onClick, ctaText }: QuickCardProp
           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', fontWeight: 500, mb: 0.6 }}>{label}</Typography>
           <Typography sx={{ color: palette.textPrimary, fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>{value}</Typography>
         </Box>
-        <Box sx={{ width: 36, height: 36, borderRadius: radius.sm, bgcolor: 'rgba(168, 85, 247, 0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ width: 36, height: 36, borderRadius: radius.sm, bgcolor: 'rgba(98, 73, 223, 0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon sx={{ color: palette.accentBright, fontSize: 18 }} />
         </Box>
       </Stack>

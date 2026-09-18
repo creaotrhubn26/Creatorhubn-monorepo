@@ -279,8 +279,8 @@ const ResearchFieldProvenancePanel: React.FC<ResearchFieldProvenancePanelProps> 
                 sx={{
                   p: 1.2,
                   borderRadius: 2,
-                  bgcolor: 'rgba(99,102,241,0.08)',
-                  border: '1px solid rgba(99,102,241,0.24)',
+                  bgcolor: 'rgba(136, 117, 235,0.08)',
+                  border: '1px solid rgba(136, 117, 235,0.24)',
                 }}
               >
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.74rem', mb: 0.3 }}>

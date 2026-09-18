@@ -69,3 +69,39 @@ describe('computeCrewConflictsFromAvailability', () => {
     expect(computeCrewConflictsFromAvailability(['crew-1'], '', '', ctx).size).toBe(0);
   });
 });
+
+describe('crew→medlem-kobling', () => {
+  const busy = overlay([{ date: '2026-08-10', availability: 'unavailable' }]);
+
+  it('bruker radens userId når den finnes', () => {
+    const ctx = {
+      crew: [{ id: 'crew-1', userId: 'user-1' }],
+      emailToUser: new Map<string, string>(),
+      availabilityByUser: new Map([['user-1', busy]]),
+    };
+    const res = computeCrewConflictsFromAvailability(['crew-1'], '2026-08-10', '2026-08-10', ctx);
+    expect(res.get('crew-1')).toHaveLength(1);
+  });
+
+  it('userId vinner over en e-post som peker på feil konto', () => {
+    const ctx = {
+      crew: [{ id: 'crew-1', userId: 'user-1', email: 'delt@produksjon.no' }],
+      emailToUser: new Map([['delt@produksjon.no', 'user-2']]),
+      availabilityByUser: new Map([['user-1', busy], ['user-2', overlay([
+        { date: '2026-08-10', availability: 'available' },
+      ])]]),
+    };
+    const res = computeCrewConflictsFromAvailability(['crew-1'], '2026-08-10', '2026-08-10', ctx);
+    expect(res.get('crew-1')).toHaveLength(1);
+  });
+
+  it('faller tilbake til e-post når raden mangler userId', () => {
+    const ctx = {
+      crew: [{ id: 'crew-1', userId: null, email: 'A@Example.com' }],
+      emailToUser: new Map([['a@example.com', 'user-1']]),
+      availabilityByUser: new Map([['user-1', busy]]),
+    };
+    const res = computeCrewConflictsFromAvailability(['crew-1'], '2026-08-10', '2026-08-10', ctx);
+    expect(res.get('crew-1')).toHaveLength(1);
+  });
+});

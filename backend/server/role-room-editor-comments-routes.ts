@@ -260,10 +260,10 @@ async function persistMentions(
     projectId,
     userIds: targets,
     subject: `${author} nevnte deg i en kommentar`,
-    html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#1a0f2e">
-        <h2 style="color:#6e3fc7;margin:0 0 16px">Du ble nevnt</h2>
+    html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#18122b">
+        <h2 style="color:#472bd4;margin:0 0 16px">Du ble nevnt</h2>
         <p><strong>${escapeHtmlComment(author)}</strong> nevnte deg i en kommentar:</p>
-        <blockquote style="border-left:3px solid #a030c0;margin:12px 0;padding:8px 12px;background:#f5f0fa;color:#3a2050">${escapeHtmlComment(snippet) || "(åpne for å se kommentaren)"}</blockquote>
+        <blockquote style="border-left:3px solid #472bd4;margin:12px 0;padding:8px 12px;background:#ebe7fd;color:#261763">${escapeHtmlComment(snippet) || "(åpne for å se kommentaren)"}</blockquote>
         <p style="color:#6b7280;font-size:13px;margin-top:24px">Åpne Creative Sync Workspace for å svare.</p>
       </div>`,
     text: `${author} nevnte deg i en kommentar:\n\n${snippet}\n\nÅpne Creative Sync Workspace for å svare.`,

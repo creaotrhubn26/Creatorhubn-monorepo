@@ -49,7 +49,18 @@ interface B2RoutesDeps {
   /** URL-prefix uten avsluttende slash, f.eks. "/api/admin/b2-archive" */
   routePrefix: string;
   /** env-var-prefix inkludert underscore, f.eks. "B2_" eller "B2_ROLE_ROOM_" */
-  envPrefix: string;
+  envPrefix?: string;
+  /**
+   * Alternativ bøtte-kilde. Uten denne leses B2 fra `envPrefix`. Med den kan
+   * samme browser peke på en hvilken som helst S3-kompatibel bøtte — f.eks.
+   * The Role Room sin private AWS-bøtte, som har sin egen OIDC-klient.
+   */
+  resolveConfig?: () => B2Config | null;
+  /**
+   * Skru av opplasting og sletting. Produksjonsmedia eies av appflytene som
+   * skrev dem; admin-browseren skal kunne se og hente, ikke rydde.
+   */
+  readOnly?: boolean;
 }
 
 interface B2Config {
@@ -110,7 +121,10 @@ function isValidKey(key: string): boolean {
 }
 
 export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
-  const { app, requireAdminSession, routePrefix, envPrefix } = deps;
+  const { app, requireAdminSession, routePrefix, envPrefix, resolveConfig, readOnly } = deps;
+  const loadConfig = (): B2Config | null => (
+    resolveConfig ? resolveConfig() : getB2Config(envPrefix ?? '')
+  );
 
   // Separat usage-cache per bucket (envPrefix er nøkkel)
   let usageCache: UsageCache | null = null;
@@ -118,7 +132,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
   app.get(`${routePrefix}/health`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
 
-    const config = getB2Config(envPrefix);
+    const config = loadConfig();
     if (!config) {
       return res.json({
         connected: false,
@@ -149,7 +163,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
 
   app.get(`${routePrefix}/usage`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config(envPrefix);
+    const config = loadConfig();
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const force = req.query.force === "1";
@@ -179,7 +193,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
 
   app.get(`${routePrefix}/files`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config(envPrefix);
+    const config = loadConfig();
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const prefix = typeof req.query.prefix === "string" ? req.query.prefix : undefined;
@@ -212,9 +226,9 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
     }
   });
 
-  app.post(`${routePrefix}/upload-url`, express.json(), async (req, res) => {
+  if (!readOnly) app.post(`${routePrefix}/upload-url`, express.json(), async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config(envPrefix);
+    const config = loadConfig();
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const { key, contentType, expiresIn } = req.body || {};
@@ -239,7 +253,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
 
   app.get(`${routePrefix}/download-url`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config(envPrefix);
+    const config = loadConfig();
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const key = typeof req.query.key === "string" ? req.query.key : "";
@@ -257,9 +271,9 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
     }
   });
 
-  app.delete(`${routePrefix}/files/:key(*)`, async (req, res) => {
+  if (!readOnly) app.delete(`${routePrefix}/files/:key(*)`, async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    const config = getB2Config(envPrefix);
+    const config = loadConfig();
     if (!config) return res.status(503).json({ error: "B2 ikke konfigurert" });
 
     const key = req.params.key;

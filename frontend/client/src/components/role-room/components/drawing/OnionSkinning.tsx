@@ -90,7 +90,7 @@ export const DEFAULT_ONION_SKIN_SETTINGS: OnionSkinSettings = {
 // =============================================================================
 
 const OnionContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: 'rgba(16, 11, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',

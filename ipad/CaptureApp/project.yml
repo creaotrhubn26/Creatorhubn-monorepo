@@ -13,6 +13,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: 7.0.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    exactVersion: 10.0.0
 
 settings:
   base:
@@ -28,8 +31,10 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     # Apple Generic Versioning — kreves av fastlane increment_build_number
     VERSIONING_SYSTEM: apple-generic
+    # Settes per utgivelse før `xcodegen generate`; TestFlight krever at
+    # buildnummeret stiger innenfor samme MARKETING_VERSION-tog.
     CURRENT_PROJECT_VERSION: "1"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0"
 
 targets:
   CaptureApp:
@@ -40,12 +45,20 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: GoogleSignIn
+        product: GoogleSignIn
       - target: CaptureWidgets
         embed: true
     info:
       path: CaptureApp/Generated/Info.plist
       properties:
         CFBundleDisplayName: CreatorHub One
+        # XcodeGen skriver ellers sine egne defaults (1.0 / 1) og ignorerer
+        # MARKETING_VERSION/CURRENT_PROJECT_VERSION. Da havner hvert TestFlight-
+        # bygg på «1.0 (1)» uansett hva man bumper. Koble nøklene til
+        # build-settings så bumpen faktisk får effekt.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Appen bruker kun standard HTTPS-kryptering (eksemptert). Setter dette
         # så TestFlight-bygg ikke blokkeres på «Missing Compliance» — uten det
         # er bygget VALID men «not in internally testable state» til noen svarer
@@ -76,17 +89,10 @@ targets:
         NSSpeechRecognitionUsageDescription: Transcribe your voice memos on-device so dictated retouch and delivery notes become searchable text.
         NSLocationWhenInUseUsageDescription: Used to show accurate golden-hour and weather for your current shoot location on the "I dag" dashboard.
         NSCalendarsWriteOnlyAccessUsageDescription: Add a shoot to your calendar. Write-only — the app never reads your existing events.
-        # Google OAuth — one-time setup per Google Cloud project:
-        #   1. Register an OAuth 2.0 Client ID of type "iOS" with bundle
-        #      identifier `com.creatorhubn.capture`.
-        #   2. Paste the resulting client ID below (format:
-        #      `<num>-<hash>.apps.googleusercontent.com`).
-        #   3. Replace the URL scheme with the reversed client ID
-        #      (`com.googleusercontent.apps.<num>-<hash>`).
-        # Until both are filled in, `GoogleOAuthCoordinator.isConfigured`
-        # returns false and `SignInView` falls back to the paste-token
-        # flow so builds stay usable pre-setup.
-        GoogleOAuthClientID: 256648631702-s96ihgei36g0pgc11t4o27arcjoc35g5.apps.googleusercontent.com
+        # Official Google Sign-In iOS SDK configuration. The client is
+        # registered for `com.creatorhubn.capture` in CreatorHub's Google
+        # Cloud project; the reversed ID is the SDK callback scheme.
+        GIDClientID: 256648631702-s96ihgei36g0pgc11t4o27arcjoc35g5.apps.googleusercontent.com
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.creatorhubn.capture.google-oauth
@@ -145,6 +151,9 @@ targets:
       path: CaptureWidgets/Generated/Info.plist
       properties:
         CFBundleDisplayName: CreatorHub Widgets
+        # Extension må ha samme versjon som app-target-et.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

@@ -1,4 +1,4 @@
--- 0612_game_team.sql
+-- 0623_game_team.sql
 -- Team-stack for spillstudio (Story Graph) — kopi av dans-modellen
 -- (0071_dance_team_extension + 0072_dance_invite_pin) med egne tabeller.
 -- Begrunnelse: dance_team_role er nøklet på eier-user_id uten org_kind, så en

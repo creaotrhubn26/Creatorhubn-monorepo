@@ -38,6 +38,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DashboardIcon from '@mui/icons-material/Home';
 import GroupIcon from '@mui/icons-material/Group';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
@@ -47,11 +48,13 @@ import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 
 import TalentsLogo from './TalentsLogo';
 import { palette, radius } from './theme';
+import SurfaceSwitcher from '../shared/SurfaceSwitcher';
 
 export type TalentsAppPage =
   | 'dashboard'
   | 'registry'
   | 'profiles'
+  | 'cv'
   | 'selftapes'
   | 'auditions'
   | 'partners'
@@ -76,6 +79,7 @@ const MENU: Array<{ id: TalentsAppPage; label: string; Icon: React.ComponentType
   { id: 'dashboard', label: 'Hjem', Icon: DashboardIcon, ready: true },
   { id: 'registry', label: 'Talent Registry', Icon: GroupIcon, ready: true },
   { id: 'profiles', label: 'Min profil', Icon: PersonOutlineIcon, ready: true },
+  { id: 'cv', label: 'CV', Icon: DescriptionOutlinedIcon, ready: true },
   { id: 'partners', label: 'Partnere', Icon: HandshakeOutlinedIcon, ready: true },
   { id: 'partnerships', label: 'Partnerships', Icon: BusinessCenterOutlinedIcon, ready: true },
   { id: 'audit', label: 'Hvem har sett meg?', Icon: VisibilityIcon, ready: true },
@@ -157,17 +161,17 @@ export default function TalentsAppShell({
                   fontWeight: isActive ? 700 : 500, fontSize: '0.9rem',
                   py: 1.1, pl: 1.4, pr: 1.4, borderRadius: radius.sm,
                   color: isActive ? palette.textPrimary : palette.textMuted,
-                  bgcolor: isActive ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
+                  bgcolor: isActive ? 'rgba(98, 73, 223, 0.16)' : 'transparent',
                   borderLeft: `3px solid ${isActive ? palette.accent : 'transparent'}`,
                   letterSpacing: '0.005em', opacity: isDisabled ? 0.5 : 1,
                   '& .MuiButton-startIcon': { color: isActive ? palette.accentBright : palette.textMuted, mr: 1.4 },
-                  '&:hover': isDisabled ? {} : { bgcolor: isActive ? 'rgba(168, 85, 247, 0.22)' : 'rgba(168, 85, 247, 0.06)', color: palette.textPrimary },
+                  '&:hover': isDisabled ? {} : { bgcolor: isActive ? 'rgba(98, 73, 223, 0.22)' : 'rgba(98, 73, 223, 0.06)', color: palette.textPrimary },
                   '&.Mui-disabled': { color: palette.textMuted },
                 }}
               >
                 <Box sx={{ flexGrow: 1, textAlign: 'left' }}>{label}</Box>
                 {isDisabled ? (
-                  <Box sx={{ ml: 0.6, px: 0.7, py: 0.1, bgcolor: 'rgba(168, 85, 247, 0.1)', borderRadius: radius.xs, color: palette.accentBright, fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  <Box sx={{ ml: 0.6, px: 0.7, py: 0.1, bgcolor: 'rgba(98, 73, 223, 0.1)', borderRadius: radius.xs, color: palette.accentBright, fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                     Snart
                   </Box>
                 ) : null}
@@ -183,7 +187,7 @@ export default function TalentsAppShell({
               Send oss en e-post — vi svarer innen 24 timer.
             </Typography>
             <Button size="small" endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />} href="mailto:support@theroleroom.com?subject=Talents-portalen"
-              sx={{ mt: 1.2, width: '100%', bgcolor: 'rgba(168, 85, 247, 0.12)', color: palette.textPrimary, textTransform: 'none', fontWeight: 600, fontSize: '0.78rem', borderRadius: radius.sm, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(168, 85, 247, 0.22)' } }}>
+              sx={{ mt: 1.2, width: '100%', bgcolor: 'rgba(98, 73, 223, 0.12)', color: palette.textPrimary, textTransform: 'none', fontWeight: 600, fontSize: '0.78rem', borderRadius: radius.sm, border: `1px solid ${palette.borderStrong}`, '&:hover': { bgcolor: 'rgba(98, 73, 223, 0.22)' } }}>
               Kontakt support
             </Button>
           </Box>
@@ -274,6 +278,11 @@ export default function TalentsAppShell({
 
           <Box sx={{ flexGrow: 1 }} />
 
+          {/* Talents-appen er en søskengren til RoleRoomUXLayer, så
+              flatevelgeren der nådde aldri hit — og det var nettopp her en
+              talent satt fast uten vei ut. */}
+          <SurfaceSwitcher />
+
           <IconButton sx={{ color: palette.textMuted }}>
             <NotificationsNoneIcon />
           </IconButton>
@@ -284,6 +293,19 @@ export default function TalentsAppShell({
             alignItems="center"
             spacing={1.2}
             onClick={() => setUserMenuOpen(true)}
+            // Var en ren Stack med onClick: ikke tastaturnåbar og uten
+            // tilgjengelig navn, så menyen — og dermed «Logg ut» — fantes
+            // ikke for noen som ikke bruker mus.
+            role="button"
+            tabIndex={0}
+            aria-haspopup="menu"
+            aria-label="Kontomeny"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setUserMenuOpen(true);
+              }
+            }}
             sx={{
               pl: 1,
               pr: 1.4,

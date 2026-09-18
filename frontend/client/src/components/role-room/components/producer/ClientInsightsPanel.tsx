@@ -26,18 +26,18 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 const palette = {
-  bgCard: '#150b2e',
-  bgElevated: '#1a0f3a',
-  border: 'rgba(168,85,247,0.18)',
-  borderStrong: 'rgba(168,85,247,0.32)',
-  textPrimary: '#f5f3ff',
-  textSecondary: '#c4b5fd',
+  bgCard: '#18122b',
+  bgElevated: '#18122b',
+  border: 'rgba(136, 117, 235,0.18)',
+  borderStrong: 'rgba(136, 117, 235,0.32)',
+  textPrimary: '#f6f5ff',
+  textSecondary: '#c6bdf4',
   textMuted: '#94a3b8',
-  accent: '#c084fc',
+  accent: '#9e8cf8',
   ga4: '#fbbf24',
   ads: '#60a5fa',
   gsc: '#34d399',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
 };
 
 interface Insights {
@@ -139,7 +139,7 @@ export default function ClientInsightsPanel({
         <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 1.6 }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: 1.4,
-            bgcolor: 'rgba(192,132,252,0.18)',
+            bgcolor: 'rgba(158, 140, 248,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <InsightsOutlinedIcon sx={{ color: palette.accent }} />
@@ -165,7 +165,7 @@ export default function ClientInsightsPanel({
                   color: range === opt.value ? '#fff' : palette.textSecondary,
                   fontWeight: 700,
                   minWidth: 0, px: 1.4,
-                  '&:hover': { background: range === opt.value ? palette.accentGradient : 'rgba(168,85,247,0.08)' },
+                  '&:hover': { background: range === opt.value ? palette.accentGradient : 'rgba(136, 117, 235,0.08)' },
                 }}
               >
                 {opt.label}
@@ -232,7 +232,7 @@ export default function ClientInsightsPanel({
             {/* Observasjoner (det viktigste) */}
             {data.observations.length > 0 ? (
               <Box sx={{
-                bgcolor: 'rgba(192,132,252,0.08)',
+                bgcolor: 'rgba(158, 140, 248,0.08)',
                 border: `1px solid ${palette.borderStrong}`,
                 borderRadius: 1.4,
                 p: 1.6,
@@ -294,7 +294,7 @@ export default function ClientInsightsPanel({
                           value={pct}
                           sx={{
                             height: 6, borderRadius: 1,
-                            bgcolor: 'rgba(168,85,247,0.08)',
+                            bgcolor: 'rgba(136, 117, 235,0.08)',
                             '& .MuiLinearProgress-bar': { bgcolor: palette.accent },
                           }}
                         />
@@ -391,7 +391,7 @@ export default function ClientInsightsPanel({
                         value={p.share * 100}
                         sx={{
                           height: 6, borderRadius: 1,
-                          bgcolor: 'rgba(168,85,247,0.08)',
+                          bgcolor: 'rgba(136, 117, 235,0.08)',
                           '& .MuiLinearProgress-bar': {
                             bgcolor: p.platform === 'LinkedIn'
                               ? '#0a66c2'
@@ -442,7 +442,7 @@ function KpiBox({ label, value, color, sub, source }: { label: string; value: st
         {value}
       </Typography>
       {sub ? (
-        <Typography sx={{ color: 'rgba(196,181,253,0.85)', fontSize: '0.74rem', mt: 0.3 }}>
+        <Typography sx={{ color: 'rgba(198, 189, 244,0.85)', fontSize: '0.74rem', mt: 0.3 }}>
           {sub}
         </Typography>
       ) : null}
@@ -476,7 +476,7 @@ function DataTable({
           <Box
             key={`${r.label}-${i}`}
             sx={{
-              bgcolor: 'rgba(168,85,247,0.04)',
+              bgcolor: 'rgba(136, 117, 235,0.04)',
               border: `1px solid ${palette.border}`,
               borderRadius: 1,
               px: 1.2, py: 0.8,

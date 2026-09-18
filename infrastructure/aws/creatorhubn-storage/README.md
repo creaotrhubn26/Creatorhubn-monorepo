@@ -31,6 +31,8 @@ from PostgreSQL first.
 
 Operational prefixes are deliberately outside tenant storage:
 
+- `platform/releases/{application}/{version}/` contains immutable, signed application builds.
+- `platform/releases/{application}/latest.json` is written last as the atomic release pointer.
 - `temporary/` expires after 1 day.
 - `exports/` expires after 7 days.
 - `quarantine/` expires after 14 days.
@@ -38,6 +40,32 @@ Operational prefixes are deliberately outside tenant storage:
 
 The zero-byte prefix markers in S3 exist for console discoverability only.
 Objects must always use the complete canonical hierarchy above.
+
+## Application distribution
+
+Pro Tools Companion is distributed from the private prefix
+`platform/releases/protools-companion/`. GitHub Actions builds and verifies the
+signed installers, then assumes the narrowly-scoped
+`CreatorHubGitHubApplicationReleasePublisher` role through GitHub OIDC. It
+uploads immutable version files first and replaces `latest.json` only after all
+artifacts are present and readable.
+
+The backend runtime has read-only access to `platform/releases/*`. It validates
+the manifest, maps fixed artifact IDs to exact keys, and issues five-minute S3
+URLs. Browser and Tauri clients only receive CreatorHub API URLs; neither client
+uses GitHub as a download or update origin.
+
+Provision or reconcile the publisher with an authenticated administrative
+profile:
+
+```bash
+./infrastructure/aws/creatorhubn-storage/provision-release-publisher.sh tidsflyt
+```
+
+Apply `application-policy.json` to the existing CreatorHub backend IAM identity
+when this prefix is introduced. Do not give the release publisher access to
+tenant objects under `organizations/`, and do not grant the backend write access
+to application releases.
 
 Browser and Adobe UXP uploads receive short-lived, checksum-bound presigned
 URLs after PostgreSQL authorization. The bucket CORS origin is therefore `*`

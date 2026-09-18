@@ -1652,20 +1652,20 @@ const DEFAULT_IDENTITY: BrandingIdentity = {
 };
 
 const DEFAULT_COLORS: BrandingColors = {
-  primary: '#8b5cf6',
-  secondary: '#6366f1',
+  primary: '#8875eb',
+  secondary: '#8875eb',
   accent: '#00d4ff',
   info: '#3b82f6',
   success: '#10b981',
   warning: '#f59e0b',
   error: '#ef4444',
-  background: '#0a0a0f',
+  background: '#0a0515',
   surface: '#0d1117',
   textPrimary: '#ffffff',
   textSecondary: 'rgba(255,255,255,0.87)',
-  border: 'rgba(139,92,246,0.3)',
-  gradientStart: '#8b5cf6',
-  gradientEnd: '#6366f1',
+  border: 'rgba(136, 117, 235,0.3)',
+  gradientStart: '#8875eb',
+  gradientEnd: '#8875eb',
 };
 
 const DEFAULT_TYPOGRAPHY: BrandingTypography = {
@@ -3196,7 +3196,7 @@ const DEFAULT_EMAIL_THEME: RoleRoomEmailTheme = {
   cardBorder: '#e9e0d4',
   headerBackground: '#171410',
   headerText: '#f8f5ef',
-  brandLabelColor: '#a13bca',
+  brandLabelColor: '#472bd4',
   bodyText: '#4d473f',
   mutedText: '#7b7368',
   buttonBackground: '#f6c358',

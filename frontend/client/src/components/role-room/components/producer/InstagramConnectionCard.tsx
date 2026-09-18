@@ -166,7 +166,7 @@ export default function InstagramConnectionCard({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #515BD4 100%)',
+                background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #6249df 100%)',
                 boxShadow: 'none',
                 '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
               }}

@@ -62,7 +62,7 @@ const STATE_META: Record<DataSource['state'], { color: string; bg: string; label
   connected: { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', label: 'Koblet', Icon: LinkIcon },
   expired: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: 'Token utløpt', Icon: ErrorIcon },
   needs_config: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', label: 'Mangler config', Icon: WarningIcon },
-  needs_test: { color: '#a5b4fc', bg: 'rgba(167,139,250,0.12)', label: 'Ikke testet', Icon: WarningIcon },
+  needs_test: { color: '#c6bdf4', bg: 'rgba(158, 140, 248,0.12)', label: 'Ikke testet', Icon: WarningIcon },
   test_failed: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: 'Test feilet', Icon: ErrorIcon },
   verified: { color: '#34d399', bg: 'rgba(52,211,153,0.12)', label: 'Verifisert', Icon: VerifiedIcon },
 };

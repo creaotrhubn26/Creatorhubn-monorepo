@@ -289,7 +289,7 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Team & gjester | Roller med spill-kapabiliteter, seter fra plan, PIN-invitasjon (`/game/invite/:token`), kapabilitetssjekk på sletting/beslutning/plan; gjeste-reviewere uten konto via `/story-review/:token` (se/kommentere/beslutte, stale-vern, varsel) | ✅ Fase 7 (Studio) |
 
 **Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
-login-persona. Priser er plassholdere satt i migrasjon 0608 og redigeres i «Admin · Planer».
+login-persona. Priser er plassholdere satt i migrasjon 0619 og redigeres i «Admin · Planer».
 
 ### 2.8 AI-lag — The Role Room Agent (BETA — ikke skipet)
 

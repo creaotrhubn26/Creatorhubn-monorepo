@@ -110,8 +110,8 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
       sx={{
         p: 1.6,
         borderRadius: 3,
-        border: "1px solid rgba(99,102,241,0.32)",
-        bgcolor: "rgba(30,27,75,0.45)",
+        border: "1px solid rgba(136, 117, 235,0.32)",
+        bgcolor: "rgba(33, 28, 59,0.45)",
       }}
     >
       <Stack
@@ -180,7 +180,7 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
                 ? "#fbbf24"
                 : isDone
                   ? "#34d399"
-                  : "#a5b4fc";
+                  : "#c6bdf4";
             return (
               <Box
                 key={stage.key}
@@ -188,15 +188,15 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
                   position: "relative",
                   p: 0.7,
                   borderRadius: 1.4,
-                  border: `1px solid ${isRunning ? "rgba(99,102,241,0.48)" : "rgba(148,163,184,0.14)"}`,
+                  border: `1px solid ${isRunning ? "rgba(136, 117, 235,0.48)" : "rgba(148,163,184,0.14)"}`,
                   bgcolor: "rgba(15,23,42,0.5)",
                   overflow: "hidden",
                   animation: isRunning
                     ? "researchPulse 1.4s ease-in-out infinite"
                     : "none",
                   "@keyframes researchPulse": {
-                    "0%, 100%": { borderColor: "rgba(99,102,241,0.32)" },
-                    "50%": { borderColor: "rgba(99,102,241,0.78)" },
+                    "0%, 100%": { borderColor: "rgba(136, 117, 235,0.32)" },
+                    "50%": { borderColor: "rgba(136, 117, 235,0.78)" },
                   },
                 }}
               >
@@ -205,7 +205,7 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
                     position: "absolute",
                     inset: 0,
                     width: `${width}%`,
-                    bgcolor: isRunning ? "rgba(99,102,241,0.18)" : barColor,
+                    bgcolor: isRunning ? "rgba(136, 117, 235,0.18)" : barColor,
                     transition: "width 0.4s ease-out",
                     zIndex: 0,
                   }}
@@ -332,7 +332,7 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
                     />
                     <Typography
                       sx={{
-                        color: draft.status === "ready" ? "#86efac" : "#a5b4fc",
+                        color: draft.status === "ready" ? "#86efac" : "#c6bdf4",
                         fontSize: "0.65rem",
                         fontWeight: 700,
                       }}

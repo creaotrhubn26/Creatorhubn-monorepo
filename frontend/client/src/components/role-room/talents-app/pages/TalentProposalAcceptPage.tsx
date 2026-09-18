@@ -58,6 +58,7 @@ export default function TalentProposalAcceptPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<'accepted' | 'declined' | null>(null);
+  const [needsAccount, setNeedsAccount] = useState(false);
 
   const reload = useCallback(async () => {
     if (!token) { setError('Mangler invitasjons-token'); setLoading(false); return; }
@@ -75,7 +76,16 @@ export default function TalentProposalAcceptPage() {
     setBusy(true); setError(null);
     const result = await roleRoomTalentsService.acceptTalentProposal(token);
     setBusy(false);
-    if (!result.ok) { setError(result.error || 'Klarte ikke å akseptere'); return; }
+    if (!result.ok) {
+      // Uten konto kan forslaget leses, men ikke aksepteres. Send talenten
+      // til selvregistrering og tilbake hit igjen i stedet for en blindvei.
+      if ((result.error || '').toLowerCase().includes('logge inn')) {
+        setNeedsAccount(true);
+        return;
+      }
+      setError(result.error || 'Klarte ikke å akseptere');
+      return;
+    }
     setDone('accepted');
     setTimeout(() => { window.location.href = '/talents/profil'; }, 2500);
   };
@@ -101,7 +111,24 @@ export default function TalentProposalAcceptPage() {
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: palette.bgRoot, p: 3 }}>
       <Box sx={{ maxWidth: 580, width: '100%', bgcolor: palette.bgCard, border: `1px solid ${palette.border}`, borderRadius: radius.lg, p: 4 }}>
-        {error ? (
+        {needsAccount ? (
+          <Stack spacing={2}>
+            <Typography sx={{ color: palette.textPrimary, fontWeight: 800, fontSize: '1.25rem' }}>
+              Du trenger en konto for å svare
+            </Typography>
+            <Typography sx={{ color: palette.textSecondary, lineHeight: 1.6 }}>
+              Opprett en gratis skuespillerkonto, så kommer du rett tilbake hit for å fullføre.
+              Ingenting deles med {proposal?.agency_name} før du aksepterer.
+            </Typography>
+            <Button
+              variant="contained"
+              href={`/talents/registrer?retur=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+              sx={{ textTransform: 'none', fontWeight: 700, background: palette.accentGradient, alignSelf: 'flex-start', px: 3, py: 1.1 }}
+            >
+              Opprett konto
+            </Button>
+          </Stack>
+        ) : error ? (
           <Stack spacing={2}>
             <Alert severity="error">{error}</Alert>
             <Button href="/talents" sx={{ textTransform: 'none', color: palette.accentBright, alignSelf: 'flex-start' }}>
@@ -151,7 +178,7 @@ export default function TalentProposalAcceptPage() {
               <Chip
                 label={PARTNER_TYPE_LABELS[proposal.agency_type] ?? proposal.agency_type}
                 size="small"
-                sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: palette.accentBright, fontWeight: 600 }}
+                sx={{ bgcolor: 'rgba(98, 73, 223,0.16)', color: palette.accentBright, fontWeight: 600 }}
               />
               {proposal.agency_about ? (
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem', mt: 1.4, lineHeight: 1.55 }}>
@@ -164,7 +191,7 @@ export default function TalentProposalAcceptPage() {
               severity="info"
               icon={<ShieldIcon />}
               sx={{
-                bgcolor: 'rgba(168,85,247,0.10)',
+                bgcolor: 'rgba(98, 73, 223,0.10)',
                 color: palette.textPrimary,
                 border: `1px solid ${palette.borderStrong}`,
                 '& .MuiAlert-icon': { color: palette.accentBright },

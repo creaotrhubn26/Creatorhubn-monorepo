@@ -8,7 +8,7 @@
 import type { Page, Route } from '@playwright/test';
 
 // ─── Fase 4d: /api/game/billing (plan-gating) ──────────────────────────
-// Fixture speiler seeden i 0608_game_billing.sql; standardplan i specs er
+// Fixture speiler seeden i 0619_game_billing.sql; standardplan i specs er
 // `studio` (alt åpent) så eksisterende specs er upåvirket.
 import fs from 'fs';
 import path from 'path';

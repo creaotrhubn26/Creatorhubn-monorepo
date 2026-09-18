@@ -450,7 +450,7 @@ function SettingsAdmin(): React.ReactElement {
             <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}><Button size="small" onClick={() => void save(s)} sx={{ color: c.accent, textTransform: 'none' }}>Lagre</Button></Stack>
           </Box>
         ))}
-        {settings.length === 0 && !error ? <Typography sx={{ fontSize: 12, color: c.textDim }}>Ingen innstillinger ennå (seedes av migrasjon 0608).</Typography> : null}
+        {settings.length === 0 && !error ? <Typography sx={{ fontSize: 12, color: c.textDim }}>Ingen innstillinger ennå (seedes av migrasjon 0619).</Typography> : null}
       </Stack>
     </Box>
   );

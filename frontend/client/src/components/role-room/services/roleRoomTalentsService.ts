@@ -56,6 +56,18 @@ export interface RoleRoomTalent {
   availability_confirmed_at: string | null;
   willing_to_travel: boolean;
   external_links: Array<{ label: string; url: string }>;
+  showreel_url_2: string | null;
+  about_video_url: string | null;
+  drama_school: string | null;
+  /** Lenkene casting-byråer spør om. Byrå-nøklene deles kun under contact_info. */
+  profile_links: Partial<Record<TalentProfileLinkKey, string>> | null;
+  /** Satt av BankID-verifisering. Selve identiteten ligger i eid_identities. */
+  identity_verified: boolean | null;
+  identity_verified_at: string | null;
+  physical_attributes: Record<string, string | number | boolean> | null;
+  casting_photos: Partial<Record<'face_front' | 'face_profile' | 'full_body_front', string>> | null;
+  /** Eget samtykke for etnisk opprinnelse — særlig kategori (GDPR art. 9). */
+  ethnicity_consent: boolean | null;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
   badges: string[];
   metadata: Record<string, unknown>;
@@ -129,6 +141,55 @@ export interface RoleRoomMaskedTalent extends Partial<RoleRoomTalent> {
   granted_scopes: RoleRoomTalentConsentScope[];
 }
 
+export interface CvImportSuggestion {
+  credits: Array<{
+    category: TalentCreditCategory;
+    title: string;
+    role_name: string | null;
+    role_type: string | null;
+    production_company: string | null;
+    director: string | null;
+    year: number | null;
+  }>;
+  profile: {
+    drama_school: string | null;
+  };
+  /** Linjer med persondata vi bevisst hoppet over. */
+  skipped: string[];
+}
+
+export type TalentCreditCategory = 'film_tv' | 'theatre' | 'commercial' | 'voice' | 'other';
+
+/** Én kreditering i skuespiller-CV-en (migrasjon 0611). */
+export interface TalentCredit {
+  id: string;
+  talent_id: string;
+  category: TalentCreditCategory;
+  title: string;
+  role_name: string | null;
+  role_type: string | null;
+  production_company: string | null;
+  production_org_number: string | null;
+  director: string | null;
+  format: string | null;
+  year: number | null;
+  sort_order: number | null;
+  notes: string | null;
+  external_url: string | null;
+}
+
+export type TalentCreditDraft = Partial<Omit<TalentCredit, 'id' | 'talent_id'>> & { title: string };
+
+export type TalentProfileLinkKey =
+  | 'website'
+  | 'imdb'
+  | 'wikipedia'
+  | 'facebook'
+  | 'instagram'
+  | 'additional'
+  | 'agency_website'
+  | 'agency_profile';
+
 const BASE = '/api/role-room/talents';
 const AGENCY_BASE = '/api/role-room';
 
@@ -146,6 +207,108 @@ async function authFetch(path: string, init?: RequestInit) {
 }
 
 const roleRoomTalentsService = {
+  /** Er eID satt opp i dette miljøet? Svarer aldri med hemmeligheter. */
+  async fetchEidConfig(): Promise<{ configured: boolean; providers: string[] }> {
+    const r = await authFetch('/api/role-room/eid/config');
+    if (!r.ok) return { configured: false, providers: [] };
+    return (await r.json().catch(() => null)) ?? { configured: false, providers: [] };
+  },
+
+  /** Starter verifisering og returnerer URL-en brukeren skal sendes til. */
+  async startIdentityVerification(returnPath: string): Promise<{ authorizeUrl: string } | { error: string }> {
+    const r = await authFetch(`${BASE}/me/verify/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'bankid', returnPath }),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'start_failed' };
+    return { authorizeUrl: payload.authorizeUrl as string };
+  },
+
+  /** Eget ja/nei for etnisk opprinnelse. Trekkes det, slettes verdien. */
+  async setEthnicityConsent(granted: boolean): Promise<RoleRoomTalent | { error: string }> {
+    const r = await authFetch(`${BASE}/me/ethnicity-consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ granted }),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre samtykket' };
+    return payload.talent as RoleRoomTalent;
+  },
+
+  /** Laster opp en CV (PDF/DOCX) og får et FORSLAG tilbake. Lagrer ingenting. */
+  async importCv(file: File): Promise<CvImportSuggestion | { error: string }> {
+    const body = new FormData();
+    body.append('file', file);
+    const r = await authFetch(`${BASE}/me/cv-import`, { method: 'POST', body });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'import_failed' };
+    return payload.suggestion as CvImportSuggestion;
+  },
+
+  async fetchMyCredits(): Promise<TalentCredit[]> {
+    const r = await authFetch(`${BASE}/me/credits`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return (payload?.credits as TalentCredit[]) ?? [];
+  },
+
+  async createCredit(draft: TalentCreditDraft): Promise<TalentCredit | { error: string }> {
+    const r = await authFetch(`${BASE}/me/credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre krediteringen' };
+    return payload.credit as TalentCredit;
+  },
+
+  async updateCredit(id: string, patch: Partial<TalentCreditDraft>): Promise<TalentCredit | { error: string }> {
+    const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å oppdatere krediteringen' };
+    return payload.credit as TalentCredit;
+  },
+
+  /** Hele rekkefølgen sendes inn, ikke «flytt denne hit» — samme svar uansett. */
+  async reorderCredits(ids: string[]): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${BASE}/me/credits/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Klarte ikke å lagre rekkefølgen' };
+    }
+    return { ok: true };
+  },
+
+  async deleteCredit(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await authFetch(`${BASE}/me/credits/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      return { ok: false, error: payload?.error || 'Klarte ikke å slette' };
+    }
+    return { ok: true };
+  },
+
+  /** Autocomplete fra krediteringer som allerede finnes i registeret. */
+  async suggestCreditValues(field: 'title' | 'production_company' | 'director', q: string): Promise<string[]> {
+    if (q.trim().length < 2) return [];
+    const r = await authFetch(`${BASE}/credits/suggest?field=${field}&q=${encodeURIComponent(q.trim())}`);
+    if (!r.ok) return [];
+    const payload = await r.json().catch(() => null);
+    return (payload?.suggestions as string[]) ?? [];
+  },
+
   async fetchMyTalent(): Promise<RoleRoomTalent | null> {
     const r = await authFetch(`${BASE}/me`);
     if (!r.ok) return null;
@@ -711,6 +874,15 @@ export interface TalentSearchHit {
   // maskerte felter (kun hvis scope er gitt):
   headshot_url?: string | null;
   showreel_url?: string | null;
+  showreel_url_2?: string | null;
+  about_video_url?: string | null;
+  drama_school?: string | null;
+  profile_links?: Partial<Record<TalentProfileLinkKey, string>>;
+  physical_attributes?: Record<string, string | number | boolean>;
+  casting_photos?: Record<string, string>;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  ethnicity?: string | null;
   has_showreel?: boolean;
   playing_age_min?: number | null;
   playing_age_max?: number | null;

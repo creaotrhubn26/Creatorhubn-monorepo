@@ -45,21 +45,21 @@ import {
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 
 const palette = {
-  bgRoot: 'var(--rrl-bg, #0a0118)',
-  bgShell: '#0f0721',
-  bgCard: '#150b2e',
-  bgElevated: '#1a0f3a',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  bgRoot: 'var(--rrl-bg, #0a0515)',
+  bgShell: '#100b1e',
+  bgCard: '#18122b',
+  bgElevated: '#18122b',
+  border: 'rgba(136, 117, 235, 0.18)',
+  borderStrong: 'rgba(136, 117, 235, 0.32)',
+  borderSubtle: 'rgba(136, 117, 235, 0.08)',
   textPrimary: 'var(--rrl-text, #f5f3ff)',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
   // CreatorHub Design (landing-tokens): primær-aksenten er CSS-var-drevet fra design-tokens
   // (ws=theroleroom, nøkkel landingAccent). Literal-fallback = identisk uten override.
-  accent: 'var(--rrl-accent, #a855f7)',
-  accentBright: 'var(--rrl-accent-bright, #c084fc)',
-  accentGradient: 'linear-gradient(135deg, var(--rrl-accent, #a855f7) 0%, #d946ef 100%)',
+  accent: 'var(--rrl-accent, #8875eb)',
+  accentBright: 'var(--rrl-accent-bright, #9e8cf8)',
+  accentGradient: 'linear-gradient(135deg, var(--rrl-accent, #8875eb) 0%, #6249df 100%)',
 };
 
 const PHOTOS = {
@@ -449,7 +449,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        bgcolor: 'rgba(10, 1, 24, 0.85)',
+        bgcolor: 'rgba(10, 5, 21, 0.85)',
         backdropFilter: 'blur(12px)',
         borderBottom: `1px solid ${palette.borderSubtle}`,
       }}
@@ -510,7 +510,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
                 borderRadius: 2,
                 border: `1px solid ${palette.borderStrong}`,
                 display: { xs: 'none', sm: 'inline-flex' },
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.08)', borderColor: palette.accentBright },
+                '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)', borderColor: palette.accentBright },
               }}
             >
               Talent Registry
@@ -525,7 +525,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
                 px: 2.4,
                 py: 1,
                 borderRadius: 2,
-                '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
               }}
             >
               Logg inn
@@ -547,8 +547,8 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
         position: 'relative',
         overflow: 'hidden',
         background: `
-          radial-gradient(ellipse at top right, rgba(168, 85, 247, 0.16), transparent 60%),
-          radial-gradient(ellipse at bottom left, rgba(217, 70, 239, 0.10), transparent 60%),
+          radial-gradient(ellipse at top right, rgba(136, 117, 235, 0.16), transparent 60%),
+          radial-gradient(ellipse at bottom left, rgba(98, 73, 223, 0.10), transparent 60%),
           ${palette.bgRoot}
         `,
         pt: { xs: 6, md: 10 },
@@ -565,7 +565,7 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
             <Chip
               label="Fra klasserom til kino — ett system hele veien"
               sx={{
-                bgcolor: 'rgba(168,85,247,0.12)',
+                bgcolor: 'rgba(136, 117, 235,0.12)',
                 color: palette.accentBright,
                 fontWeight: 700,
                 fontSize: '0.76rem',
@@ -617,7 +617,7 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                   py: 1.4,
                   borderRadius: 2,
                   fontSize: '1rem',
-                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                 }}
               >
                 Book demo
@@ -634,7 +634,7 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                   borderRadius: 2,
                   fontSize: '1rem',
                   border: `1px solid ${palette.borderStrong}`,
-                  '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+                  '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)' },
                 }}
               >
                 Opprett konto
@@ -682,7 +682,7 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                   objectFit: 'cover',
                   borderRadius: 3,
                   border: `1px solid ${palette.border}`,
-                  boxShadow: '0 24px 80px rgba(168,85,247,0.28)',
+                  boxShadow: '0 24px 80px rgba(136, 117, 235,0.28)',
                   display: 'block',
                 }}
               />
@@ -818,7 +818,7 @@ function PlanSection({ onBookDemo }: { onBookDemo: () => void }) {
             py: 1.4,
             borderRadius: 2,
             fontSize: '1rem',
-            '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
           }}
         >
           Book demo
@@ -1047,7 +1047,7 @@ function EducationSection({ onBookDemo }: { onBookDemo: () => void }) {
               py: 1.4,
               borderRadius: 2,
               fontSize: '1rem',
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             Book institusjonssamtale
@@ -1064,7 +1064,7 @@ function EducationSection({ onBookDemo }: { onBookDemo: () => void }) {
               borderRadius: 2,
               fontSize: '1rem',
               border: `1px solid ${palette.borderStrong}`,
-              '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)' },
             }}
           >
             Les mer om utdanning
@@ -1125,7 +1125,7 @@ function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => 
                     width: 56,
                     height: 56,
                     borderRadius: 2,
-                    bgcolor: 'rgba(168,85,247,0.14)',
+                    bgcolor: 'rgba(136, 117, 235,0.14)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1155,7 +1155,7 @@ function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => 
                         size="small"
                         label="NY"
                         sx={{
-                          bgcolor: 'rgba(192,132,252,0.18)',
+                          bgcolor: 'rgba(158, 140, 248,0.18)',
                           color: palette.accentBright,
                           fontWeight: 800,
                           fontSize: '0.7rem',
@@ -1183,7 +1183,7 @@ function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => 
                     py: 1.2,
                     borderRadius: 2,
                     flexShrink: 0,
-                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                   }}
                 >
                   Utforsk
@@ -1310,7 +1310,7 @@ function PillarsSection() {
                 width: 44,
                 height: 44,
                 borderRadius: 1.6,
-                bgcolor: 'rgba(168,85,247,0.14)',
+                bgcolor: 'rgba(136, 117, 235,0.14)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1392,7 +1392,7 @@ function TrustStripFull() {
       </Box>
       <Box
         sx={{
-          bgcolor: 'rgba(168,85,247,0.06)',
+          bgcolor: 'rgba(136, 117, 235,0.06)',
           border: `1px solid ${palette.borderSubtle}`,
           borderRadius: 3,
           px: { xs: 2.4, md: 4 },
@@ -1458,7 +1458,7 @@ function BlogTeaserSection() {
             textTransform: 'none',
             fontWeight: 700,
             fontSize: '0.94rem',
-            '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)' },
           }}
         >
           Se alle artikler
@@ -1491,7 +1491,7 @@ function BlogTeaserSection() {
               label={t.pillar}
               size="small"
               sx={{
-                bgcolor: 'rgba(168,85,247,0.16)',
+                bgcolor: 'rgba(136, 117, 235,0.16)',
                 color: palette.accentBright,
                 fontWeight: 700,
                 mb: 1.6,
@@ -1517,7 +1517,7 @@ function FinalCTASection({ onLogin, onBookDemo }: { onLogin: () => void; onBookD
         sx={{
           textAlign: 'center',
           p: { xs: 4, md: 6 },
-          bgcolor: 'rgba(168,85,247,0.08)',
+          bgcolor: 'rgba(136, 117, 235,0.08)',
           border: `1px solid ${palette.borderStrong}`,
           borderRadius: 4,
         }}
@@ -1541,7 +1541,7 @@ function FinalCTASection({ onLogin, onBookDemo }: { onLogin: () => void; onBookD
               py: 1.4,
               borderRadius: 2,
               fontSize: '1rem',
-              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
             }}
           >
             Book demo
@@ -1558,7 +1558,7 @@ function FinalCTASection({ onLogin, onBookDemo }: { onLogin: () => void; onBookD
               borderRadius: 2,
               fontSize: '1rem',
               border: `1px solid ${palette.borderStrong}`,
-              '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)' },
             }}
           >
             Opprett konto

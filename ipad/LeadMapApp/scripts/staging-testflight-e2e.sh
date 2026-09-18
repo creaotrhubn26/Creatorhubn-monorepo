@@ -16,6 +16,8 @@ run_tidum_e2e="${LEADGRID_RUN_TIDUM_E2E:-0}"
 run_tidum_campaign_e2e="${LEADGRID_RUN_TIDUM_CAMPAIGN_E2E:-0}"
 run_creatorhub_e2e="${LEADGRID_RUN_CREATORHUB_E2E:-0}"
 run_creatorhub_campaign_e2e="${LEADGRID_RUN_CREATORHUB_CAMPAIGN_E2E:-0}"
+run_medside_e2e="${LEADGRID_RUN_MEDSIDE_E2E:-0}"
+run_medside_campaign_e2e="${LEADGRID_RUN_MEDSIDE_CAMPAIGN_E2E:-0}"
 simulator_destination="${LEADGRID_STAGING_SIMULATOR_DESTINATION:-platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5}"
 
 if [[ -z "$staging_url" || ( -z "$staging_bearer_token" && ( -z "$staging_email" || -z "$staging_password" ) ) ]]; then
@@ -36,6 +38,10 @@ if [[ "$run_tidum_campaign_e2e" == "1" && "$run_tidum_e2e" != "1" ]]; then
 fi
 if [[ "$run_creatorhub_campaign_e2e" == "1" && "$run_creatorhub_e2e" != "1" ]]; then
   echo "LEADGRID_RUN_CREATORHUB_CAMPAIGN_E2E krever LEADGRID_RUN_CREATORHUB_E2E=1." >&2
+  exit 2
+fi
+if [[ "$run_medside_campaign_e2e" == "1" && "$run_medside_e2e" != "1" ]]; then
+  echo "LEADGRID_RUN_MEDSIDE_CAMPAIGN_E2E krever LEADGRID_RUN_MEDSIDE_E2E=1." >&2
   exit 2
 fi
 staging_url="${staging_url%/}"
@@ -849,7 +855,275 @@ if [[ "$run_creatorhub_e2e" == "1" ]]; then
   fi
 fi
 
-lead_project_id="${creatorhub_project_id:-${tidum_project_id:-${role_room_project_id:-$requested_project_id}}}"
+medside_project_id=""
+if [[ "$run_medside_e2e" == "1" ]]; then
+  medside_preview_payload="$(jq -n --arg organization_id "$org_id" '{organization_id: $organization_id, website_url: "medside.no"}')"
+  medside_preview="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$medside_preview_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/preview")"
+  jq -e '
+    .preview.website_domain == "medside.no" and
+    .preview.project_name == "MedSide" and
+    .preview.category == "KI-basert klinisk dokumentasjon" and
+    .preview.category_confidence == "high" and
+    (.preview.recommended_profiles | length) == 6 and
+    ([.preview.recommended_profiles[].template_key] | sort) ==
+      (["medside.chiropractic", "medside.gp_offices", "medside.gp_offices_brreg", "medside.medical_specialists", "medside.physiotherapy", "medside.psychology"] | sort) and
+    ([.preview.recommended_profiles[].template_key] | unique | length) == 6 and
+    ([.preview.recommended_profiles[] | select(.is_default == true)] | length) == 1 and
+    ([.preview.recommended_profiles[].brief.country_code] | unique) == ["NO"] and
+    ([.preview.recommended_profiles[].brief.city] | all(. == null)) and
+    ([.preview.recommended_profiles[].approval_mode] | all(. == "manual")) and
+    ([.preview.recommended_profiles[].auto_discover_enabled] | all(. == false)) and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.gp_offices") |
+      .brief.registry_source == "nhn_flr_public" and .brief.industry_queries == ["86.210"]) and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.gp_offices_brreg") |
+      .brief.registry_source == "brreg_open_data" and .brief.industry_queries == ["86.210"] and
+      .is_default == false and .brief.qualification_requirement == "preferred") and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.medical_specialists") |
+      .brief.registry_source == "brreg_open_data" and .brief.industry_queries == ["86.221", "86.222"]) and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.physiotherapy") |
+      .brief.registry_source == "brreg_open_data" and .brief.industry_queries == ["86.950"]) and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.psychology") |
+      .brief.registry_source == "brreg_open_data" and .brief.industry_queries == ["86.930"]) and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.chiropractic") |
+      .brief.registry_source == "brreg_open_data" and
+      .brief.organization_name_queries == ["kiropraktor", "kiropraktikk", "kiropraktorklinikk"] and
+      .brief.qualification_requirement == "required")
+  ' <<<"$medside_preview" >/dev/null
+  echo "STAGING_E2E_STAGE=medside_preview_verified"
+
+  medside_commit_payload="$(jq -n \
+    --arg organization_id "$org_id" \
+    --arg preview_id "$(jq -er '.preview.id' <<<"$medside_preview")" \
+    --arg administrator_email "$staging_email" \
+    --argjson profiles "$(jq '.preview.recommended_profiles' <<<"$medside_preview")" \
+    '{
+      organization_id: $organization_id,
+      preview_id: $preview_id,
+      profiles: $profiles,
+      access_setup: {
+        organization: {mode: "current"},
+        administrator_email: $administrator_email,
+        team: {mode: "none"},
+        invitations: []
+      }
+    }')"
+  medside_commit="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$medside_commit_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/commit")"
+  medside_project_id="$(jq -er '.project.id' <<<"$medside_commit")"
+  jq -e --arg project_id "$medside_project_id" '
+    .project.id == $project_id and
+    .project.name == "MedSide" and
+    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 6 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside.")) | .template_key] | unique | length) == 6 and
+    .access.discovery_access_verified == true
+  ' <<<"$medside_commit" >/dev/null
+  echo "STAGING_E2E_STAGE=medside_project_committed"
+
+  medside_profiles="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    "$staging_url/api/leadgrid/projects/$medside_project_id/discovery/profiles")"
+  # Fem autoritative profiler, ingen legacy-blindvei, nøyaktig én standard, og
+  # standarden må kunne kjøres i dette miljøet.
+  if ! jq -e '
+    (.profiles | length) == 6 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 6 and
+    ([.profiles[].template_key] | unique | length) == 6 and
+    ([.profiles[] | select(.is_default == true)] | length) == 1 and
+    ([.profiles[] | select(.is_default == true) | .blocked_reason] | all(. == null)) and
+    ([.profiles[].approval_mode] | all(. == "manual")) and
+    ([.profiles[].auto_discover_enabled] | all(. == false)) and
+    ([.profiles[] | select(.brief.industry_queries == ["legekontor"])] | length) == 0
+  ' <<<"$medside_profiles" >/dev/null; then
+    echo "MedSide-profilene brøt staging-kontrakten. Sikker profildiagnose:" >&2
+    jq -c '[.profiles[] | {name, template_key, template_version, status, is_default,
+      blocked_reason, registry_source: .brief.registry_source,
+      industry_queries: .brief.industry_queries}]' <<<"$medside_profiles" >&2
+    exit 13
+  fi
+  echo "STAGING_E2E_STAGE=medside_profiles_verified"
+
+  # Fastlegeprofilen skal enten virke mot ekte Maskinporten eller si eksplisitt
+  # at FLR ikke er satt opp. En stille, kjørbar blindvei er ikke godkjent.
+  medside_flr_blocked_reason="$(jq -r '.profiles[] | select(.template_key == "medside.gp_offices") | .blocked_reason // "null"' <<<"$medside_profiles")"
+  if [[ "$medside_flr_blocked_reason" != "null" && "$medside_flr_blocked_reason" != "flr_not_configured" ]]; then
+    echo "Fastlegeprofilen rapporterte en ukjent blokkeringsårsak: $medside_flr_blocked_reason" >&2
+    exit 13
+  fi
+  echo "STAGING_E2E_MEDSIDE_FLR_READINESS=$medside_flr_blocked_reason"
+
+  medside_replay_preview="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$medside_preview_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/preview")"
+  medside_replay_payload="$(jq -n \
+    --arg organization_id "$org_id" \
+    --arg preview_id "$(jq -er '.preview.id' <<<"$medside_replay_preview")" \
+    '{organization_id: $organization_id, preview_id: $preview_id}')"
+  medside_replay="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$medside_replay_payload" \
+    "$staging_url/api/leadgrid/project-onboarding/commit")"
+  jq -e --arg project_id "$medside_project_id" '
+    .project.id == $project_id and
+    .reused_project == true and
+    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 6 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside.")) | .template_key] | unique | length) == 6 and
+    ([.profiles[] | select(.is_default == true)] | length) == 1
+  ' <<<"$medside_replay" >/dev/null
+  echo "STAGING_E2E_STAGE=medside_reuse_without_duplicates_verified"
+
+  if [[ "$run_medside_campaign_e2e" == "1" ]]; then
+    # Bare profiler backend faktisk kan kjøre. En blokkert FLR-profil skal ikke
+    # gjøre kampanjen rød; den er allerede verifisert som ærlig blokkert over.
+    medside_runnable_profiles="$(jq '[.profiles[] | select(.status == "active" and .blocked_reason == null and ((.template_key // "") | startswith("medside.")))]' <<<"$medside_profiles")"
+    medside_runnable_count="$(jq 'length' <<<"$medside_runnable_profiles")"
+    if [[ "$medside_runnable_count" -lt 5 ]]; then
+      echo "Forventet minst fem kjørbare BRREG-profiler for MedSide, fant $medside_runnable_count." >&2
+      exit 14
+    fi
+    medside_campaign_payload="$(jq -n \
+      --arg name "[E2E] MedSide kjørbare profiler $timestamp" \
+      --argjson profiles "$(jq '[.[] | {profile_id: .id, expected_version: .version}]' <<<"$medside_runnable_profiles")" \
+      '{name: $name, profiles: $profiles}')"
+    medside_campaign="$(curl --fail-with-body --silent --show-error \
+      -H "Authorization: Bearer $token" \
+      -H "X-Organization-Id: $org_id" \
+      -H "X-Leadgrid-Organization-Id: $org_id" \
+      -H "Idempotency-Key: medside-staging-e2e-$timestamp" \
+      -H "Content-Type: application/json" \
+      --data-binary "$medside_campaign_payload" \
+      "$staging_url/api/leadgrid/projects/$medside_project_id/discovery/campaign-runs")"
+    medside_campaign_id="$(jq -er '.campaign.id' <<<"$medside_campaign")"
+
+    medside_campaign_complete=false
+    for _attempt in {1..120}; do
+      medside_campaign="$(curl --fail-with-body --silent --show-error \
+        -H "Authorization: Bearer $token" \
+        -H "X-Organization-Id: $org_id" \
+        -H "X-Leadgrid-Organization-Id: $org_id" \
+        "$staging_url/api/leadgrid/projects/$medside_project_id/discovery/campaign-runs/$medside_campaign_id")"
+      medside_campaign_status="$(jq -er '.status' <<<"$medside_campaign")"
+      if [[ "$medside_campaign_status" =~ ^(completed|partial|failed|cancelled)$ ]]; then
+        medside_campaign_complete=true
+        break
+      fi
+      sleep 5
+    done
+    if [[ "$medside_campaign_complete" != "true" ]]; then
+      echo "MedSide-kampanjen fullførte ikke innen 10 minutter." >&2
+      exit 14
+    fi
+    if ! jq -e --argjson expected "$medside_runnable_count" '
+      (.status == "completed" or .status == "partial") and
+      .total_profiles == $expected and
+      .failed_profiles == 0 and
+      (.items | length) == $expected and
+      ([.items[].status] | all(. == "completed" or . == "partial")) and
+      ([.items[].profile_id] | unique | length) == $expected and
+      ([.items[].candidate_count] | any(. > 0))
+    ' <<<"$medside_campaign" >/dev/null; then
+      echo "MedSide-kampanjen brøt staging-kontrakten. Sikker kampanjediagnose:" >&2
+      jq -c '{status, total_profiles, completed_profiles, partial_profiles, failed_profiles,
+        items: [.items[] | {profile_name, status, candidate_count, error_code, current_run_id}]}' \
+        <<<"$medside_campaign" >&2
+      exit 14
+    fi
+
+    # Minst én BRREG-profil må gi ekte, relevante kandidater som venter på
+    # manuell godkjenning. Ingen kandidat blir lead før noen godkjenner.
+    medside_candidate_profile_id="$(jq -er 'first(.items[] | select(.candidate_count > 0) | .profile_id)' <<<"$medside_campaign")"
+    medside_candidate_run_id="$(jq -er --arg id "$medside_candidate_profile_id" 'first(.items[] | select(.profile_id == $id) | .current_run_id)' <<<"$medside_campaign")"
+    medside_industry_codes="$(jq -c --arg id "$medside_candidate_profile_id" '.[] | select(.id == $id) | .brief.industry_queries' <<<"$medside_runnable_profiles")"
+    medside_minimum_score="$(jq -r --arg id "$medside_candidate_profile_id" '.[] | select(.id == $id) | .brief.minimum_fit_score' <<<"$medside_runnable_profiles")"
+    medside_candidates="$(curl --fail-with-body --silent --show-error \
+      -H "Authorization: Bearer $token" \
+      -H "X-Organization-Id: $org_id" \
+      -H "X-Leadgrid-Organization-Id: $org_id" \
+      "$staging_url/api/leadgrid/projects/$medside_project_id/discovery/runs/$medside_candidate_run_id/candidates?disposition=pending&sort=score_desc&limit=100")"
+    if ! jq -e \
+      --argjson industry_codes "$medside_industry_codes" \
+      --argjson minimum_score "$medside_minimum_score" '
+      (.items | length) > 0 and
+      ([.items[].source] | all(. == "brreg_open_data")) and
+      ([.items[].organization_number] | all(type == "string" and test("^[0-9]{9}$"))) and
+      (($industry_codes | length) == 0 or
+        (([.items[].nace_code] - $industry_codes) | length) == 0) and
+      ([.items[].fit_score] | all(type == "number" and . >= $minimum_score)) and
+      ([.items[].excluded] | all(. == false)) and
+      ([.items[].disposition] | all(. == "review_ready"))
+    ' <<<"$medside_candidates" >/dev/null; then
+      echo "MedSide-kandidatene brøt kontrakten. Sikker kandidatdiagnose:" >&2
+      jq -c '{count: (.items | length), sources: ([.items[].source] | unique),
+        nace_codes: ([.items[].nace_code] | unique),
+        minimum_fit_score: ([.items[].fit_score] | min),
+        dispositions: ([.items[].disposition] | unique),
+        excluded_count: ([.items[] | select(.excluded == true)] | length)}' \
+        <<<"$medside_candidates" >&2
+      exit 14
+    fi
+
+    medside_candidate_id="$(jq -er 'first(.items[] | select(.disposition == "review_ready" and .excluded == false) | .id)' <<<"$medside_candidates")"
+    medside_decision_key="medside-candidate-approval-$timestamp"
+    medside_decision_payload='{"decision":"approve","reason_code":"good_fit"}'
+    medside_decision="$(curl --fail-with-body --silent --show-error \
+      -H "Authorization: Bearer $token" \
+      -H "X-Organization-Id: $org_id" \
+      -H "X-Leadgrid-Organization-Id: $org_id" \
+      -H "Idempotency-Key: $medside_decision_key" \
+      -H "Content-Type: application/json" \
+      --data-binary "$medside_decision_payload" \
+      "$staging_url/api/leadgrid/projects/$medside_project_id/discovery/runs/$medside_candidate_run_id/candidates/$medside_candidate_id/decision")"
+    medside_approved_lead_id="$(jq -er '.lead_id' <<<"$medside_decision")"
+    jq -e --arg candidate_id "$medside_candidate_id" '
+      .candidate_id == $candidate_id and .decision == "approve" and
+      .candidate_status == "imported" and .replayed == false and (.lead_id | type) == "string"
+    ' <<<"$medside_decision" >/dev/null
+    medside_decision_replay="$(curl --fail-with-body --silent --show-error \
+      -H "Authorization: Bearer $token" \
+      -H "X-Organization-Id: $org_id" \
+      -H "X-Leadgrid-Organization-Id: $org_id" \
+      -H "Idempotency-Key: $medside_decision_key" \
+      -H "Content-Type: application/json" \
+      --data-binary "$medside_decision_payload" \
+      "$staging_url/api/leadgrid/projects/$medside_project_id/discovery/runs/$medside_candidate_run_id/candidates/$medside_candidate_id/decision")"
+    jq -e --arg lead_id "$medside_approved_lead_id" '
+      .decision == "approve" and .lead_id == $lead_id and .replayed == true
+    ' <<<"$medside_decision_replay" >/dev/null
+    # Leadet skal ligge under MedSide-prosjektet, ikke lekke til et annet.
+    medside_approved_lead="$(curl --fail-with-body --silent --show-error \
+      -H "Authorization: Bearer $token" \
+      -H "X-Organization-Id: $org_id" \
+      -H "X-Leadgrid-Organization-Id: $org_id" \
+      "$staging_url/api/admin-room/lead-map/leads/$medside_approved_lead_id")"
+    jq -e --arg lead_id "$medside_approved_lead_id" --arg project_id "$medside_project_id" '
+      ((.id == $lead_id) or (.lead.id == $lead_id)) and
+      ((.projectId == $project_id) or (.project_id == $project_id) or
+        (.lead.projectId == $project_id) or (.lead.project_id == $project_id))
+    ' <<<"$medside_approved_lead" >/dev/null
+    echo "STAGING_E2E_STAGE=medside_campaign_candidates_approval_verified"
+  fi
+fi
+
+lead_project_id="${creatorhub_project_id:-${tidum_project_id:-${role_room_project_id:-${medside_project_id:-$requested_project_id}}}}"
 if [[ -z "$lead_project_id" ]]; then
   echo "Mangler LEADGRID_STAGING_PROJECT_ID når domene-E2E ikke kjøres." >&2
   exit 2
@@ -987,23 +1261,46 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
   app_dir="$(cd "$script_dir/.." && pwd)"
   derived_data="${LEADGRID_STAGING_DERIVED_DATA:-/private/tmp/leadgrid-staging-e2e}"
   result_bundle="${LEADGRID_STAGING_RESULT_BUNDLE:-$derived_data/Logs/Test/Leadgrid-Staging-$(date -u +%Y%m%d%H%M%S).xcresult}"
+  simulator_name="$(sed -nE 's/(^|.*,)[[:space:]]*name=([^,]+).*/\2/p' <<<"$simulator_destination")"
+  simulator_os="$(sed -nE 's/.*OS=([^,]+).*/\1/p' <<<"$simulator_destination")"
+  if [[ -z "$simulator_name" || -z "$simulator_os" ]]; then
+    echo "Simulator-destinasjonen må inneholde name og OS: $simulator_destination" >&2
+    exit 9
+  fi
+  simulator_runtime_suffix="iOS-${simulator_os//./-}"
+  simulator_udid="$(xcrun simctl list --json devices available | jq -er \
+    --arg name "$simulator_name" \
+    --arg runtime_suffix "$simulator_runtime_suffix" '
+      [.devices | to_entries[] |
+        select(.key | endswith($runtime_suffix)) |
+        .value[] |
+        select(.name == $name and .isAvailable == true)
+      ][0].udid
+    ')"
+  resolved_simulator_destination="platform=iOS Simulator,id=$simulator_udid"
+  echo "STAGING_E2E_SIMULATOR_DEVICE=$simulator_name:$simulator_os:$simulator_udid"
   simulator_tests=(
-    "-only-testing:LeadMapAppUITests/QASweepTests/testStagingLeadCreationOfflineReconnect"
-    "-only-testing:LeadMapAppUITests/QASweepTests/testStagingPondusUsageOfflineReconnect"
+    "LeadMapAppUITests/QASweepTests/testStagingLeadCreationOfflineReconnect"
+    "LeadMapAppUITests/QASweepTests/testStagingPondusUsageOfflineReconnect"
   )
   if [[ "$run_role_room_e2e" == "1" ]]; then
     simulator_tests+=(
-      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingRoleRoomProjectOpensAllDiscoveryProfiles"
+      "LeadMapAppUITests/QASweepTests/testStagingRoleRoomProjectOpensAllDiscoveryProfiles"
     )
   fi
   if [[ "$run_tidum_e2e" == "1" ]]; then
     simulator_tests+=(
-      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingTidumProjectOpensAllDiscoveryProfiles"
+      "LeadMapAppUITests/QASweepTests/testStagingTidumProjectOpensAllDiscoveryProfiles"
     )
   fi
   if [[ "$run_creatorhub_e2e" == "1" ]]; then
     simulator_tests+=(
-      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingCreatorHubProjectOpensAllDiscoveryProfiles"
+      "LeadMapAppUITests/QASweepTests/testStagingCreatorHubProjectOpensAllDiscoveryProfiles"
+    )
+  fi
+  if [[ "$run_medside_e2e" == "1" ]]; then
+    simulator_tests+=(
+      "LeadMapAppUITests/QASweepTests/testStagingMedSideProjectOpensAllDiscoveryProfiles"
     )
   fi
   (
@@ -1012,7 +1309,7 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     xcodebuild build-for-testing -quiet \
       -project LeadMapApp.xcodeproj \
       -scheme LeadMapApp \
-      -destination "$simulator_destination" \
+      -destination "$resolved_simulator_destination" \
       -derivedDataPath "$derived_data" \
       CODE_SIGNING_ALLOWED=NO
 
@@ -1024,6 +1321,9 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     fi
     test_xctestrun="$source_xctestrun"
     cleanup_xctestrun() {
+      if [[ -n "${simulator_udid:-}" ]]; then
+        xcrun simctl shutdown "$simulator_udid" >/dev/null 2>&1 || true
+      fi
       [[ -n "${test_xctestrun:-}" && -f "$test_xctestrun" ]] || return 0
       for key in \
         LEADGRID_STAGING_BASE_URL \
@@ -1032,7 +1332,8 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
         LEADGRID_STAGING_PROJECT_ID \
         LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID \
         LEADGRID_STAGING_TIDUM_PROJECT_ID \
-        LEADGRID_STAGING_CREATORHUB_PROJECT_ID
+        LEADGRID_STAGING_CREATORHUB_PROJECT_ID \
+        LEADGRID_STAGING_MEDSIDE_PROJECT_ID
       do
         plutil -remove "LeadMapAppUITests.EnvironmentVariables.$key" "$test_xctestrun" >/dev/null 2>&1 || true
       done
@@ -1046,45 +1347,75 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_ROLE_ROOM_PROJECT_ID" -string "$role_room_project_id" "$test_xctestrun"
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_TIDUM_PROJECT_ID" -string "$tidum_project_id" "$test_xctestrun"
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_CREATORHUB_PROJECT_ID" -string "$creatorhub_project_id" "$test_xctestrun"
+    plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_MEDSIDE_PROJECT_ID" -string "$medside_project_id" "$test_xctestrun"
 
-    mkdir -p "$(dirname "$result_bundle")"
-    if [[ -e "$result_bundle" ]]; then
-      echo "Resultatpakken finnes allerede: $result_bundle" >&2
-      exit 9
-    fi
-    if xcodebuild test-without-building -quiet \
-      -xctestrun "$test_xctestrun" \
-      -destination "$simulator_destination" \
-      -parallel-testing-enabled NO \
-      -maximum-concurrent-test-simulator-destinations 1 \
-      -resultBundlePath "$result_bundle" \
-      "${simulator_tests[@]}"; then
-      simulator_test_status=0
-    else
-      simulator_test_status=$?
-    fi
+    result_bundle_base="${result_bundle%.xcresult}"
+    mkdir -p "$(dirname "$result_bundle_base")"
+    passed_tests=0
+    test_index=0
+    for simulator_test in "${simulator_tests[@]}"; do
+      test_index=$((test_index + 1))
+      test_name="${simulator_test##*/}"
+      test_result_bundle="${result_bundle_base}-${test_index}-${test_name}.xcresult"
+      if [[ -e "$test_result_bundle" ]]; then
+        echo "Resultatpakken finnes allerede: $test_result_bundle" >&2
+        exit 9
+      fi
 
-    test_summary="$(xcrun xcresulttool get test-results summary --path "$result_bundle")"
-    if [[ "$simulator_test_status" -ne 0 ]]; then
-      echo "STAGING_E2E_SIMULATOR_SUMMARY=$test_summary" >&2
-      echo "STAGING_E2E_SIMULATOR_FAILURES_BEGIN" >&2
-      xcrun xcresulttool get test-results tests --path "$result_bundle" | jq -r '
-        .. | objects |
-        select(.nodeType? == "Test Case" and .result? == "Failed") |
-        "TEST: \(.name)\n" +
-        ([.children[]? | select(.nodeType? == "Failure Message") | .name] | join("\n"))
-      ' >&2 || true
-      echo "STAGING_E2E_SIMULATOR_FAILURES_END" >&2
-      exit "$simulator_test_status"
-    fi
+      # Xcode may leave the simulator launch service unhealthy after a UI test.
+      # Give every scenario a new xcodebuild process and an explicitly completed
+      # clean boot, while reusing the single build-for-testing output above.
+      xcrun simctl shutdown "$simulator_udid" >/dev/null 2>&1 || true
+      xcrun simctl erase "$simulator_udid"
+      xcrun simctl boot "$simulator_udid"
+      xcrun simctl bootstatus "$simulator_udid" -b
+      if xcodebuild test-without-building -quiet \
+        -xctestrun "$test_xctestrun" \
+        -destination "$resolved_simulator_destination" \
+        -parallel-testing-enabled NO \
+        -maximum-concurrent-test-simulator-destinations 1 \
+        -resultBundlePath "$test_result_bundle" \
+        "-only-testing:$simulator_test"; then
+        simulator_test_status=0
+      else
+        simulator_test_status=$?
+      fi
+
+      test_summary="$(xcrun xcresulttool get test-results summary --path "$test_result_bundle")"
+      if [[ "$simulator_test_status" -ne 0 ]]; then
+        echo "STAGING_E2E_SIMULATOR_SUMMARY=$test_summary" >&2
+        echo "STAGING_E2E_SIMULATOR_FAILURES_BEGIN" >&2
+        xcrun xcresulttool get test-results tests --path "$test_result_bundle" | jq -r '
+          .. | objects |
+          select(.nodeType? == "Test Case" and .result? == "Failed") |
+          "TEST: \(.name)\n" +
+          ([.children[]? | select(.nodeType? == "Failure Message") | .name] | join("\n"))
+        ' >&2 || true
+        echo "STAGING_E2E_SIMULATOR_FAILURES_END" >&2
+        exit "$simulator_test_status"
+      fi
+      jq -e '
+        .result == "Passed" and
+        .passedTests == 1 and
+        .failedTests == 0 and
+        .skippedTests == 0 and
+        .totalTestCount == 1
+      ' <<<"$test_summary" >/dev/null
+      passed_tests=$((passed_tests + 1))
+      echo "STAGING_E2E_SIMULATOR_TEST=$test_name:PASS"
+    done
     expected_tests="${#simulator_tests[@]}"
-    jq -e --argjson expected "$expected_tests" '
-      .result == "Passed" and
-      .passedTests == $expected and
-      .failedTests == 0 and
-      .skippedTests == 0 and
-      .totalTestCount == $expected
-    ' <<<"$test_summary" >/dev/null
+    if [[ "$passed_tests" -ne "$expected_tests" ]]; then
+      echo "Forventet $expected_tests beståtte simulatortester, fikk $passed_tests." >&2
+      exit 10
+    fi
+    jq -cn --argjson passed "$passed_tests" '{
+      result: "Passed",
+      passedTests: $passed,
+      failedTests: 0,
+      skippedTests: 0,
+      totalTestCount: $passed
+    }' | sed 's/^/STAGING_E2E_SIMULATOR_SUMMARY=/'
     cleanup_xctestrun
     trap - EXIT
   )
@@ -1138,6 +1469,21 @@ if [[ "$run_creatorhub_campaign_e2e" == "1" ]]; then
   echo "CREATORHUB_APPROVED_LEAD_ID=$creatorhub_approved_lead_id"
   echo "CREATORHUB_PROFILE_CANDIDATE_COUNTS=$(jq -c '[.items[] | {profile_name, candidate_count, review_ready_count}]' <<<"$creatorhub_campaign")"
   echo "CREATORHUB_AGENCY_WEBSITE_EVIDENCE=assessed:$creatorhub_agency_assessed_count,unknown:$creatorhub_agency_unknown_count"
+fi
+if [[ "$run_medside_e2e" == "1" ]]; then
+  echo "MEDSIDE_ONBOARDING_PROFILES_NATIVE=PASS"
+  echo "MEDSIDE_REUSE_WITHOUT_DUPLICATES=PASS"
+  echo "MEDSIDE_LEGACY_LEGEKONTOR_RETIRED=PASS"
+  echo "MEDSIDE_PROJECT_ID=$medside_project_id"
+  echo "MEDSIDE_FLR_READINESS=$medside_flr_blocked_reason"
+fi
+if [[ "$run_medside_campaign_e2e" == "1" ]]; then
+  echo "MEDSIDE_CAMPAIGN_RUNNABLE_PROFILES_RESULTS=PASS"
+  echo "MEDSIDE_CANDIDATE_APPROVAL_IDEMPOTENCY=PASS"
+  echo "MEDSIDE_CAMPAIGN_STATUS=$(jq -er '.status' <<<"$medside_campaign")"
+  echo "MEDSIDE_CAMPAIGN_ID=$medside_campaign_id"
+  echo "MEDSIDE_APPROVED_LEAD_ID=$medside_approved_lead_id"
+  echo "MEDSIDE_PROFILE_CANDIDATE_COUNTS=$(jq -c '[.items[] | {profile_name, candidate_count, review_ready_count}]' <<<"$medside_campaign")"
 fi
 echo "PAIR_CODE=$pair_code"
 echo "PAIR_CODE_EXPIRES_SECONDS=300"

@@ -38,21 +38,21 @@ import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 // ── Design-tokens (samme palett som Talents-app) ──────────────────
 const palette = {
-  bgRoot: '#0a0118',
-  bgShell: '#0f0721',
-  bgCard: '#150b2e',
-  bgElevated: '#1a0f3a',
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  bgRoot: '#0a0515',
+  bgShell: '#100b1e',
+  bgCard: '#18122b',
+  bgElevated: '#18122b',
+  border: 'rgba(136, 117, 235, 0.18)',
+  borderStrong: 'rgba(136, 117, 235, 0.32)',
+  borderSubtle: 'rgba(136, 117, 235, 0.08)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accent: '#a855f7',
-  accentBright: '#c084fc',
-  accentDeep: '#7c3aed',
-  accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
-  glow: '0 0 32px rgba(168, 85, 247, 0.18)',
+  accent: '#8875eb',
+  accentBright: '#9e8cf8',
+  accentDeep: '#6249df',
+  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+  glow: '0 0 32px rgba(136, 117, 235, 0.18)',
 };
 
 export default function AgencyLandingPage() {
@@ -192,7 +192,7 @@ function TopNav() {
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        bgcolor: 'rgba(10, 1, 24, 0.85)',
+        bgcolor: 'rgba(10, 5, 21, 0.85)',
         backdropFilter: 'blur(12px)',
         borderBottom: `1px solid ${palette.borderSubtle}`,
       }}
@@ -246,7 +246,7 @@ function TopNav() {
                 textTransform: 'none', fontWeight: 700,
                 fontSize: { xs: '0.82rem', md: '0.88rem' },
                 px: { xs: 1.4, md: 2 },
-                '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(168,85,247,0.06)' },
+                '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(136, 117, 235,0.06)' },
               }}
             >
               Logg inn
@@ -269,8 +269,8 @@ function Hero({ isMobile }: { isMobile: boolean }) {
         pt: { xs: 6, md: 12 },
         pb: { xs: 8, md: 14 },
         background: `
-          radial-gradient(ellipse at top left, rgba(168, 85, 247, 0.18), transparent 60%),
-          radial-gradient(ellipse at bottom right, rgba(217, 70, 239, 0.12), transparent 50%),
+          radial-gradient(ellipse at top left, rgba(136, 117, 235, 0.18), transparent 60%),
+          radial-gradient(ellipse at bottom right, rgba(98, 73, 223, 0.12), transparent 50%),
           ${palette.bgRoot}
         `,
       }}
@@ -288,7 +288,7 @@ function Hero({ isMobile }: { isMobile: boolean }) {
               spacing={1}
               sx={{
                 display: 'inline-flex',
-                bgcolor: 'rgba(168,85,247,0.14)',
+                bgcolor: 'rgba(136, 117, 235,0.14)',
                 border: `1px solid ${palette.borderStrong}`,
                 px: 1.4, py: 0.5,
                 borderRadius: 999,
@@ -353,8 +353,8 @@ function Hero({ isMobile }: { isMobile: boolean }) {
                   px: 3.2, py: 1.6,
                   minHeight: 48,
                   borderRadius: 2,
-                  boxShadow: '0 8px 24px rgba(168,85,247,0.45)',
-                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                  boxShadow: '0 8px 24px rgba(136, 117, 235,0.45)',
+                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
                 }}
                 endIcon={<ArrowForwardIcon />}
               >
@@ -372,7 +372,7 @@ function Hero({ isMobile }: { isMobile: boolean }) {
                   px: 3.2, py: 1.6,
                   minHeight: 48,
                   borderRadius: 2,
-                  '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(168,85,247,0.08)' },
+                  '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(136, 117, 235,0.08)' },
                 }}
               >
                 Se priser
@@ -434,7 +434,7 @@ function HeroProductPeek() {
         border: `1px solid ${palette.border}`,
         borderRadius: 3,
         p: 2,
-        boxShadow: '0 24px 80px rgba(168,85,247,0.28), inset 0 0 0 1px rgba(255,255,255,0.04)',
+        boxShadow: '0 24px 80px rgba(136, 117, 235,0.28), inset 0 0 0 1px rgba(255,255,255,0.04)',
         overflow: 'hidden',
       }}
     >
@@ -448,7 +448,7 @@ function HeroProductPeek() {
         <Box sx={{ flex: 1 }} />
         <Box
           sx={{
-            bgcolor: 'rgba(168,85,247,0.16)',
+            bgcolor: 'rgba(136, 117, 235,0.16)',
             color: palette.accentBright,
             fontWeight: 700, fontSize: '0.7rem',
             px: 1, py: 0.3, borderRadius: 999,
@@ -746,7 +746,7 @@ function ValueSection() {
       Icon: AutoAwesomeOutlinedIcon,
       title: 'Tech-byrå-status mot kunden',
       body: 'AI-feedback på self-tapes, signed links, profesjonelle pitches. Produksjonsteamet ser byrået som en teknologi-partner.',
-      color: '#c084fc',
+      color: '#9e8cf8',
     },
   ];
 
@@ -932,7 +932,7 @@ function ProductPeekSection({ isMobile: _isMobile }: { isMobile: boolean }) {
                 <Box
                   sx={{
                     width: 44, height: 44, borderRadius: 2,
-                    bgcolor: 'rgba(168,85,247,0.18)',
+                    bgcolor: 'rgba(136, 117, 235,0.18)',
                     display: 'inline-flex',
                     alignItems: 'center', justifyContent: 'center',
                   }}
@@ -969,10 +969,10 @@ function ProductPeekSection({ isMobile: _isMobile }: { isMobile: boolean }) {
                 p: 2,
                 position: 'relative',
                 overflow: 'hidden',
-                boxShadow: '0 20px 60px rgba(168,85,247,0.18)',
+                boxShadow: '0 20px 60px rgba(136, 117, 235,0.18)',
                 background: `
                   radial-gradient(ellipse at ${i % 2 === 0 ? 'top right' : 'top left'},
-                    rgba(168,85,247,0.18), transparent 60%),
+                    rgba(136, 117, 235,0.18), transparent 60%),
                   ${palette.bgCard}
                 `,
               }}
@@ -1113,7 +1113,7 @@ function PricingTeaser() {
           <Box
             key={tier.name}
             sx={{
-              bgcolor: tier.highlighted ? 'rgba(168,85,247,0.10)' : palette.bgCard,
+              bgcolor: tier.highlighted ? 'rgba(136, 117, 235,0.10)' : palette.bgCard,
               border: `1px solid ${tier.highlighted ? palette.accentBright : palette.borderSubtle}`,
               borderRadius: 3,
               p: 3,
@@ -1172,7 +1172,7 @@ function PricingTeaser() {
             fontSize: '0.94rem',
             px: 3, py: 1.4,
             borderRadius: 2,
-            '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(168,85,247,0.08)' },
+            '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(136, 117, 235,0.08)' },
           }}
         >
           Se hele prismodellen
@@ -1407,9 +1407,9 @@ function LeadForm() {
                   py: 1.6,
                   minHeight: 48,
                   borderRadius: 2,
-                  boxShadow: '0 8px 24px rgba(168,85,247,0.32)',
-                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
-                  '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.6)' },
+                  boxShadow: '0 8px 24px rgba(136, 117, 235,0.32)',
+                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                  '&.Mui-disabled': { background: 'rgba(136, 117, 235,0.32)', color: 'rgba(255,255,255,0.6)' },
                 }}
                 endIcon={<ArrowForwardIcon />}
               >
@@ -1504,7 +1504,7 @@ function FAQTeaser() {
             fontSize: '0.94rem',
             px: 3, py: 1.4,
             borderRadius: 2,
-            '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(168,85,247,0.08)' },
+            '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(136, 117, 235,0.08)' },
           }}
         >
           Se alle FAQ-svar
@@ -1526,7 +1526,7 @@ function FooterCTA() {
         textAlign: 'center',
         overflow: 'hidden',
         background: `
-          radial-gradient(ellipse at center, rgba(168,85,247,0.20), transparent 70%),
+          radial-gradient(ellipse at center, rgba(136, 117, 235,0.20), transparent 70%),
           ${palette.bgShell}
         `,
       }}
@@ -1557,8 +1557,8 @@ function FooterCTA() {
             px: 4, py: 1.8,
             minHeight: 52,
             borderRadius: 2,
-            boxShadow: '0 12px 32px rgba(168,85,247,0.48)',
-            '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+            boxShadow: '0 12px 32px rgba(136, 117, 235,0.48)',
+            '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
           }}
           endIcon={<ArrowForwardIcon />}
         >

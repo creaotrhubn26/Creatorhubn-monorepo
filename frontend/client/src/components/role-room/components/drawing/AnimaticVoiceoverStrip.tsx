@@ -73,9 +73,9 @@ export const AnimaticVoiceoverStrip: React.FC<AnimaticVoiceoverStripProps> = ({
                 px: 0.5,
                 py: 0.25,
                 borderRadius: 0.75,
-                bgcolor: isActive ? 'rgba(165,180,252,0.2)' : 'transparent',
+                bgcolor: isActive ? 'rgba(198, 189, 244,0.2)' : 'transparent',
                 border: '1px solid',
-                borderColor: isActive ? 'rgba(165,180,252,0.5)' : 'transparent',
+                borderColor: isActive ? 'rgba(198, 189, 244,0.5)' : 'transparent',
                 flexShrink: 0,
               }}
               data-testid={`animatic-voiceover-frame-${idx}`}

@@ -24,12 +24,18 @@ import {
   type PseudonymizableEntity,
 } from './role-room-pseudonymize.js';
 import {
-  ROLE_ROOM_AGENT_SYSTEM_PROMPT,
-  ROLE_ROOM_AGENT_TOOLS,
+  agentSystemPromptForMode,
+  agentToolsForMode,
+  type RoleRoomAgentMode,
 } from './role-room-agent-definition.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
+import {
+  resolveLeadgridAgentProject,
+  type LeadgridAgentProject,
+} from './leadgrid-agent-access.js';
+import { buildLeadgridAgentContextBlock } from './leadgrid-agent-context.js';
 import {
   appendMessage,
   createStreamingPlaceholder,
@@ -106,19 +112,33 @@ export async function handleAgentStream(
   // (feed-godkjenningsstatus o.l.) ble injisert i modell-svaret, og consent +
   // AI-audit ble forbrukt/forurenset under offerets project_id. Entitlement/
   // rate-limit er kaller-scoped (userId) og stopper ikke dette. Fail-closed.
+  // Leadgrid-vertikalen (leadgrid-agent-access.ts): et Leadgrid-prosjekt
+  // (lg-nøkkel = markedssjef-modus, ren Leadgrid-id = salgs-modus) autoriseres
+  // via Leadgrids regler når casting-sjekken feiler. Modusen styrer persona,
+  // verktøy og kontekstblokk lenger ned; casting-oppførsel er uendret.
+  let leadgridProject: LeadgridAgentProject | null = null;
   if (!(await canAccessRoleRoomProject(pool, userId, projectId))) {
-    res.status(403).json({ error: 'project_access_denied' });
-    return;
+    leadgridProject = await resolveLeadgridAgentProject(pool, { projectId, userId });
+    if (!leadgridProject) {
+      res.status(403).json({ error: 'project_access_denied' });
+      return;
+    }
   }
+  const mode: RoleRoomAgentMode = leadgridProject?.kind ?? 'casting';
 
-  const entitlement = await checkAgentEntitlement(pool, userId, userRole);
-  if (!entitlement.allowed) {
-    res.status(402).json({
-      error: 'entitlement_required',
-      detail: entitlement.reason,
-      entitlement,
-    });
-    return;
+  // Agent-entitlement er userId-/abonnements-basert (Role Room). Leadgrid-
+  // prosjekter er allerede gatet av modul-entitlementen (leadgrid:core /
+  // leadgrid:marketing) i resolveren over.
+  if (!leadgridProject) {
+    const entitlement = await checkAgentEntitlement(pool, userId, userRole);
+    if (!entitlement.allowed) {
+      res.status(402).json({
+        error: 'entitlement_required',
+        detail: entitlement.reason,
+        entitlement,
+      });
+      return;
+    }
   }
 
   try {
@@ -180,7 +200,7 @@ export async function handleAgentStream(
   const scrubbedFromUser = countScrubbed(userMessage);
 
   const systemLines: string[] = [
-    ROLE_ROOM_AGENT_SYSTEM_PROMPT,
+    agentSystemPromptForMode(mode),
     '',
     '## Prosjektkontekst',
     `Prosjekt-id: ${projectId}`,
@@ -322,7 +342,14 @@ export async function handleAgentStream(
   // Aggregate, PII-free cross-tab status (Inbox/Leads/Analytics/Feed) in a
   // FRESH uncached system block so it stays current without busting the cached
   // project-context prefix. Best-effort: omitted when null.
-  const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+  const workspaceBlock = leadgridProject
+    ? null
+    : await buildWorkspaceContextBlock(pool, { userId, projectId });
+  // Leadgrid-moduser får sin egen aggregerte blokk (org, kartlegging, plan /
+  // pipeline-tall) i stedet for Role Rooms produsent-arbeidsflate.
+  const leadgridBlock = leadgridProject
+    ? await buildLeadgridAgentContextBlock(pool, { project: leadgridProject })
+    : null;
 
   try {
     const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [
@@ -335,11 +362,14 @@ export async function handleAgentStream(
     if (workspaceBlock) {
       systemBlocks.push({ type: 'text', text: workspaceBlock });
     }
+    if (leadgridBlock) {
+      systemBlocks.push({ type: 'text', text: leadgridBlock });
+    }
     const stream = client.messages.stream({
       model: modelId,
       max_tokens: 1200,
       system: systemBlocks,
-      tools: ROLE_ROOM_AGENT_TOOLS,
+      tools: agentToolsForMode(mode),
       messages: [{ role: 'user', content: pseudonymizedMessage }],
     });
 

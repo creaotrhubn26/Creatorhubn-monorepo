@@ -21,7 +21,7 @@ type Term = {
 };
 
 const CATEGORIES: Record<Term['category'], { label: string; color: string }> = {
-  rolle: { label: 'Roller', color: '#a78bfa' },
+  rolle: { label: 'Roller', color: '#9e8cf8' },
   format: { label: 'Format', color: '#22d3ee' },
   compliance: { label: 'Compliance', color: '#fbbf24' },
   institusjon: { label: 'Institusjoner', color: '#34d399' },

@@ -38,14 +38,14 @@ import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
-  userCanAccessCastingProject,
-  userCanCommentCastingContinuity,
-  userCanCoordinateCastingProduction,
-  userCanEditCastingProduction,
-  userCanManageCastingLocations,
-  userCanManageCastingContinuity,
-  userCanManageCastingProduction,
+  collectProductionDayChangeImpact,
+  collectProductionDayLocationImpact,
+  hasBlockingImpact,
+} from './production-day-change-impact.js';
+import {
+  resolveCastingProjectAccess,
   userOwnsCastingProject,
+  type CastingGrant,
 } from './casting-project-ownership.js';
 import {
   continuityObject,
@@ -328,6 +328,77 @@ function mapPropRow(row: Record<string, any>) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/**
+ * Optimistic-concurrency lanes on the production surface.
+ *
+ * Every lane already keeps its own monotonic version, actor and timestamp, but
+ * each 409 named them differently and wrapped the current state under its own
+ * key — so a client had to know which lane it was talking to before it could
+ * read the conflict. The lane table below is the one place that mapping lives.
+ */
+const CONFLICT_LANES = {
+  location_operations: {
+    payloadKey: 'locationOperation',
+    versionField: 'version',
+    updatedByField: 'updatedBy',
+    updatedAtField: 'updatedAt',
+  },
+  production_management: {
+    payloadKey: 'productionDay',
+    versionField: 'managementVersion',
+    updatedByField: 'managementUpdatedBy',
+    updatedAtField: 'managementUpdatedAt',
+  },
+  production_coordination: {
+    payloadKey: 'productionDay',
+    versionField: 'coordinationVersion',
+    updatedByField: 'coordinationUpdatedBy',
+    updatedAtField: 'coordinationUpdatedAt',
+  },
+  continuity: {
+    payloadKey: 'productionDay',
+    versionField: 'continuityVersion',
+    updatedByField: 'continuityUpdatedBy',
+    updatedAtField: 'continuityUpdatedAt',
+  },
+} as const satisfies Record<string, {
+  payloadKey: string;
+  versionField: string;
+  updatedByField: string;
+  updatedAtField: string;
+}>;
+
+type ConflictLane = keyof typeof CONFLICT_LANES;
+
+/**
+ * Answer a lost optimistic-concurrency race the same way in every lane.
+ *
+ * `conflict` is the uniform part a client can read without knowing the lane:
+ * which lane lost, the version it must resend, and who moved it last. The
+ * lane's own key still carries the full current state, so existing callers
+ * keep working.
+ */
+function sendVersionConflict(
+  res: Response,
+  lane: ConflictLane,
+  message: string,
+  current: Record<string, unknown> | undefined,
+): void {
+  const spec = CONFLICT_LANES[lane];
+  const version = current ? Number(current[spec.versionField] ?? 0) : undefined;
+  res.status(409).json({
+    error: 'version_conflict',
+    message,
+    conflict: {
+      lane,
+      currentVersion: Number.isFinite(version) ? version : undefined,
+      updatedBy: current?.[spec.updatedByField] ?? undefined,
+      updatedAt: current?.[spec.updatedAtField] ?? undefined,
+    },
+    [spec.payloadKey]: current,
+  });
 }
 
 function mapDayRow(row: Record<string, any>) {
@@ -1173,130 +1244,83 @@ export function createCastingProductionRouter(
     return true;
   }
 
-  async function ensureProductionAccess(
+  /**
+   * Single gate for every production route. `resolveCastingProjectAccess`
+   * answers membership and all grants from one query, so a request can no
+   * longer see the caller as a coordinator for one check and a stranger for
+   * the next. A denial always reads as 404 to keep project existence private
+   * across tenants.
+   */
+  async function ensureProjectGrant(
+    req: Request,
+    res: Response,
+    projectId: unknown,
+    grant: CastingGrant | 'access',
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    const access = normalizedProjectId
+      ? await resolveCastingProjectAccess(pool, normalizedProjectId, userId)
+      : null;
+    const allowed = access
+      ? (grant === 'access' ? access.canAccess : access.grants[grant])
+      : false;
+    if (!allowed) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
+  const ensureProductionAccess = (
     req: Request,
     res: Response,
     projectId: unknown,
     mode: 'read' | 'write',
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? mode === 'write'
-        ? await userCanEditCastingProduction(pool, normalizedProjectId, userId)
-        : await userCanAccessCastingProject(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      // Keep project existence private across tenants.
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  ) => ensureProjectGrant(req, res, projectId, mode === 'write' ? 'canEditProduction' : 'access');
 
-  async function ensureProductionManagementAccess(
-    req: Request,
-    res: Response,
-    projectId: unknown,
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? await userCanManageCastingProduction(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  const ensureProductionManagementAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canManageProduction');
 
-  async function ensureProductionCoordinationAccess(
-    req: Request,
-    res: Response,
-    projectId: unknown,
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? await userCanCoordinateCastingProduction(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  const ensureProductionCoordinationAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canCoordinateProduction');
 
-  async function ensureLocationManagementAccess(
-    req: Request,
-    res: Response,
-    projectId: unknown,
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? await userCanManageCastingLocations(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  const ensureLocationManagementAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canManageLocations');
 
-  async function ensureContinuityAccess(
+  const ensureContinuityAccess = (
     req: Request,
     res: Response,
     projectId: unknown,
     mode: 'manage' | 'comment',
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? mode === 'manage'
-        ? await userCanManageCastingContinuity(pool, normalizedProjectId, userId)
-        : await userCanCommentCastingContinuity(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  ) => ensureProjectGrant(
+    req,
+    res,
+    projectId,
+    mode === 'manage' ? 'canManageContinuity' : 'canCommentContinuity',
+  );
 
   async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
-    const result = await pool.query(
-      `SELECT
-         cp.created_by = $2 AS is_owner,
-         cur.role,
-         COALESCE(cur.permissions, '{}'::jsonb) AS permissions
-       FROM casting_projects cp
-       LEFT JOIN casting_user_roles cur
-         ON cur.project_id = cp.id
-        AND cur.user_id = $2
-        AND cur.deactivated_at IS NULL
-        AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-       WHERE cp.id = $1
-       LIMIT 1`,
-      [projectId, userId],
-    );
-    const row = result.rows[0] as Record<string, unknown> | undefined;
-    if (!row) return null;
-    const projectRole = String(row.role ?? '').trim().toLowerCase().replace(/[ -]+/g, '_');
+    const access = await resolveCastingProjectAccess(pool, projectId, userId);
+    // A project missing from the canonical table has no decision authority,
+    // even when the legacy compat store still names an owner.
+    if (!access.projectExists) return null;
+    // Historic rows store the role with spaces or hyphens; the canonical
+    // resolver only lowercases and trims.
+    const projectRole = (access.role ?? '').replace(/[ -]+/g, '_');
     const approvalRole: LocationDecisionApprovalRole | null = projectRole === 'director'
       ? 'director'
       : ['cinematographer', 'director_of_photography', 'dop', 'dp', 'camera_team'].includes(projectRole)
         ? 'cinematographer'
         : projectRole === 'producer'
           ? 'producer'
-          : row.is_owner === true && !projectRole
+          : access.isOwner && !projectRole
             ? 'producer'
             : null;
     return {
       approvalRole,
-      canLock: row.is_owner === true || projectRole === 'producer',
-      canReopen: row.is_owner === true || ['producer', 'production_manager', 'location_manager'].includes(projectRole),
+      canLock: access.isOwner || projectRole === 'producer',
+      canReopen: access.isOwner || ['producer', 'production_manager', 'location_manager'].includes(projectRole),
     };
   }
 
@@ -1306,6 +1330,124 @@ export function createCastingProductionRouter(
     version: Number(row.version ?? 0),
     updatedBy: row.updated_by ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+  });
+
+  // ────────────── CHANGE IMPACT ──────────────
+  /**
+   * Hva som brekker hvis denne dagen flyttes. Ren lesning — den endrer
+   * ingenting, og finnes for at brukeren skal se konsekvensen før valget
+   * tas i stedet for å få den forklart etterpå.
+   */
+  router.get('/projects/:projectId/production-days/:dayId/impact', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      const dayId = String(req.params.dayId || '').trim();
+      const toDate = String(req.query.date || '').trim();
+      const toLocationId = String(req.query.locationId || '').trim();
+      // Samme rute svarer for begge endringene. En forespørsel uten noen av
+      // dem har ingen konsekvens å beregne.
+      if (!toDate && !toLocationId) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato eller ny lokasjon.' });
+        return;
+      }
+      if (toDate && !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato som YYYY-MM-DD.' });
+        return;
+      }
+      // Forhåndsvisningen avslører produksjonsdata, så den krever samme
+      // rettighet som selve flyttingen.
+      if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
+
+      const dayResult = await pool.query(
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id
+           FROM casting_production_days
+          WHERE id = $1 AND project_id = $2
+          LIMIT 1`,
+        [dayId, projectId],
+      );
+      const day = dayResult.rows[0] as { date?: string; location_id?: string | null } | undefined;
+      if (!day) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      const fromDate = String(day.date ?? '');
+      const fromLocationId = day.location_id ? String(day.location_id) : null;
+
+      const dateChanged = Boolean(toDate) && toDate !== fromDate;
+      const locationChanged = Boolean(toLocationId) && toLocationId !== fromLocationId;
+      if (!dateChanged && !locationChanged) {
+        res.json({
+          from: fromDate,
+          to: toDate || fromDate,
+          fromLocationId,
+          toLocationId: toLocationId || fromLocationId,
+          impacts: [],
+          blocking: false,
+          unchanged: true,
+        });
+        return;
+      }
+
+      const impacts = [
+        ...(dateChanged
+          ? await collectProductionDayChangeImpact(pool, { projectId, dayId, fromDate, toDate })
+          : []),
+        ...(locationChanged
+          ? await collectProductionDayLocationImpact(pool, {
+              projectId, dayId, fromLocationId, toLocationId,
+            })
+          : []),
+      ];
+      res.json({
+        from: fromDate,
+        to: toDate || fromDate,
+        fromLocationId,
+        toLocationId: toLocationId || fromLocationId,
+        impacts,
+        blocking: hasBlockingImpact(impacts),
+        unchanged: false,
+      });
+    } catch {
+      // En ufullstendig liste er verre enn ingen liste: klienten skal ikke
+      // kunne presentere «ingen påvirkning» når spørringen feilet.
+      res.status(500).json({ error: 'impact_unavailable', message: 'Kunne ikke beregne konsekvensen.' });
+    }
+  });
+
+  // ────────────── PROJECT ACCESS ──────────────
+  /**
+   * The caller's effective role and grants for one project, resolved on the
+   * server. The client used to read the whole role roster and match itself by
+   * user id, which ignored deactivated and expired memberships; this answers
+   * for the authenticated caller only, from the same resolver every guard uses.
+   */
+  router.get('/projects/:projectId/access', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const userId = (req as AuthedRequest).userId;
+      const projectId = typeof req.params.projectId === 'string' ? req.params.projectId.trim() : '';
+      const access = projectId
+        ? await resolveCastingProjectAccess(pool, projectId, userId)
+        : null;
+      if (!access?.canAccess) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({
+        access: {
+          projectId,
+          role: access.role,
+          roles: access.roles,
+          isOwner: access.isOwner,
+          isMember: access.isMember,
+          permissions: access.permissions,
+          grants: access.grants,
+        },
+      });
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke hente prosjekttilgang', detail: 'internal_error' });
+    }
   });
 
   // ────────────── LOCATION OPERATIONS ──────────────
@@ -1375,11 +1517,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any> | undefined;
       const currentVersion = Number(currentRow?.version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Lokasjonen er endret av en annen bruker.',
-          locationOperation: currentRow ? mapLocationOperationsRow(currentRow) : undefined,
-        });
+        sendVersionConflict(res, 'location_operations', 'Lokasjonen er endret av en annen bruker.', currentRow ? mapLocationOperationsRow(currentRow) : undefined);
         return;
       }
 
@@ -1458,11 +1596,7 @@ export function createCastingProductionRouter(
             WHERE project_id = $1 AND location_id = $2`,
           [projectId, locationId],
         );
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Lokasjonen er endret av en annen bruker.',
-          locationOperation: latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined,
-        });
+        sendVersionConflict(res, 'location_operations', 'Lokasjonen er endret av en annen bruker.', latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined);
         return;
       }
       res.json({ locationOperation: mapLocationOperationsRow(saveResult.rows[0]) });
@@ -1530,11 +1664,7 @@ export function createCastingProductionRouter(
         }
         const currentVersion = Number(currentRow.version ?? 0);
         if (currentVersion !== expectedVersion) {
-          res.status(409).json({
-            error: 'version_conflict',
-            message: 'Beslutningen er endret av en annen bruker.',
-            locationOperation: mapLocationOperationsRow(currentRow),
-          });
+          sendVersionConflict(res, 'location_operations', 'Beslutningen er endret av en annen bruker.', mapLocationOperationsRow(currentRow));
           return;
         }
 
@@ -1661,11 +1791,7 @@ export function createCastingProductionRouter(
               WHERE project_id = $1 AND location_id = $2`,
             [projectId, locationId],
           );
-          res.status(409).json({
-            error: 'version_conflict',
-            message: 'Beslutningen er endret av en annen bruker.',
-            locationOperation: latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined,
-          });
+          sendVersionConflict(res, 'location_operations', 'Beslutningen er endret av en annen bruker.', latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined);
           return;
         }
         res.json({ locationOperation: mapLocationOperationsRow(updateResult.rows[0]) });
@@ -1953,11 +2079,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.management_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Dagskontrollen er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'production_management', 'Dagskontrollen er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
 
@@ -2021,11 +2143,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Dagskontrollen er endret av en annen bruker.',
-          productionDay: mapDayRow(latest.rows[0]),
-        });
+        sendVersionConflict(res, 'production_management', 'Dagskontrollen er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
@@ -2067,11 +2185,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.coordination_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Koordinatorflaten er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'production_coordination', 'Koordinatorflaten er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
 
@@ -2135,11 +2249,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Koordinatorflaten er endret av en annen bruker.',
-          productionDay: mapDayRow(latest.rows[0]),
-        });
+        sendVersionConflict(res, 'production_coordination', 'Koordinatorflaten er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
@@ -2181,11 +2291,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.continuity_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Kontinuitetsloggen er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
 
@@ -2311,11 +2417,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Kontinuitetsloggen er endret av en annen bruker.',
-          productionDay: mapDayRow(latest.rows[0]),
-        });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
@@ -2355,11 +2457,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.continuity_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Kontinuitetsloggen er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
       const assignedSceneIds = new Set(asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)));
@@ -2427,7 +2525,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({ error: 'version_conflict', message: 'Kontinuitetsloggen er endret av en annen bruker.', productionDay: mapDayRow(latest.rows[0]) });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.status(201).json({ productionDay: mapDayRow(updateResult.rows[0]), comment });

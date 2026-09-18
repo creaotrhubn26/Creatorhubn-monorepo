@@ -107,7 +107,21 @@ function parseSseFrame(buffer: string): { event: string; data: string; rest: str
   return { event, data: dataLines.join('\n'), rest };
 }
 
-export function useResearchProgress(): UseResearchProgressReturn {
+export interface UseResearchProgressOptions {
+  /** SSE-endepunkt (POST). Default: Role Rooms producer-bootstrap-stream.
+   *  Leadgrid Markedssjef-modus bruker /api/leadgrid/marketing/bootstrap/stream,
+   *  som sender samme `start`/`stage`/`done`/`error`-hendelser. */
+  endpoint?: string;
+  /** Lagre resultatet som prosjekt-snapshot etter `done` (Role Room-kontrakt).
+   *  Leadgrid persisterer server-side og setter denne til false. Default true. */
+  persistSnapshot?: boolean;
+}
+
+const DEFAULT_ENDPOINT = '/api/role-room/agent/producer-bootstrap-stream';
+
+export function useResearchProgress(options?: UseResearchProgressOptions): UseResearchProgressReturn {
+  const endpoint = options?.endpoint ?? DEFAULT_ENDPOINT;
+  const persistSnapshot = options?.persistSnapshot !== false;
   const [stages, setStages] = useState<ResearchStage[]>([]);
   const [status, setStatus] = useState<ResearchProgressStatus>('idle');
   const [result, setResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
@@ -167,7 +181,7 @@ export function useResearchProgress(): UseResearchProgressReturn {
 
     (async () => {
       try {
-        const response = await fetch('/api/role-room/agent/producer-bootstrap-stream', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -215,10 +229,12 @@ export function useResearchProgress(): UseResearchProgressReturn {
                   // Match the non-stream bootstrap contract before exposing
                   // done. Without this PUT the version history exists, but the
                   // project loses the result (including merch) after a reload.
-                  await roleRoomAgentService.saveSnapshot(
-                    input.projectId,
-                    payload.result,
-                  );
+                  if (persistSnapshot) {
+                    await roleRoomAgentService.saveSnapshot(
+                      input.projectId,
+                      payload.result,
+                    );
+                  }
                   setResult(payload.result);
                   if (Array.isArray(payload.researchMockups))
                     setMockups(payload.researchMockups);
@@ -255,7 +271,7 @@ export function useResearchProgress(): UseResearchProgressReturn {
         }
       })();
     },
-    [reset],
+    [reset, endpoint, persistSnapshot],
   );
 
   return { start, reset, stages, status, result, error, mockups };

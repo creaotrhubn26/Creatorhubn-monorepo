@@ -124,7 +124,7 @@ export default function SplitSheetSongFlowIntegration({
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MusicIcon sx={{ color: '#9f7aea' }} />
+                <MusicIcon sx={{ color: '#8875eb' }} />
                 SongFlow Integrasjon
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -252,7 +252,7 @@ export default function SplitSheetSongFlowIntegration({
             variant="contained"
             onClick={handleLink}
             disabled={linkMutation.isPending || (!songflowTrackId && !songflowProjectId)}
-            sx={{ bgcolor: '#9f7aea' }}
+            sx={{ bgcolor: '#8875eb' }}
           >
             {linkMutation.isPending ? 'Kobler...' : 'Koble til'}
           </Button>

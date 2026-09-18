@@ -41,6 +41,72 @@ export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
 
 export const DEFAULT_PROFESSION_MODE: ProfessionMode = 'production';
 
+/**
+ * Navn og beskrivelse per modus, og om brukeren selv kan bytte til den.
+ *
+ * Modusvelgeren bygget tidligere sin egen liste. Den hadde fire av åtte
+ * modus, og én oppføring — «Casting-modus» — som ikke var en ProfessionMode i
+ * det hele tatt: å velge den satte en verdi isValidProfessionMode forkaster,
+ * så brukeren havnet stille tilbake i produksjonsmodus. Listen bor her nå, ved
+ * siden av typen den beskriver, så de to ikke kan gli fra hverandre igjen.
+ */
+export const PROFESSION_MODE_META: Record<ProfessionMode, {
+  label: string;
+  description: string;
+  /** Vises i «bytt modus». Falsk for modus som ennå ikke er en ferdig flate. */
+  switchable: boolean;
+}> = {
+  production: {
+    label: 'Produksjons-modus',
+    description: 'Produksjon — prosjekter, team og leveranser.',
+    switchable: true,
+  },
+  photographer: {
+    label: 'Foto-modus',
+    description: 'Fotoprosjekt — oppdrag, lokasjoner og leveranser.',
+    switchable: true,
+  },
+  content_producer: {
+    label: 'Innholdsprodusent-modus',
+    description: 'Innholdsproduksjon — kunder, plan og publisering.',
+    switchable: true,
+  },
+  content_creator: {
+    label: 'Innholdsskaper-modus',
+    description: 'Innholdsskaper — egne kanaler, ideer og kalender.',
+    switchable: true,
+  },
+  dance_studio: {
+    label: 'Studio-modus',
+    description: 'Dansestudio — klasser, instruktører, rom og påmelding.',
+    switchable: true,
+  },
+  dance_freelance: {
+    label: 'Frilans-modus',
+    description: 'Frilans-danser — koreografi, performances, faktura.',
+    switchable: true,
+  },
+  education: {
+    label: 'Utdannings-modus',
+    description: 'Utdanningsinstitusjon — studenter, kurs og portfolio.',
+    switchable: true,
+  },
+  student: {
+    // «Min side» er foreløpig super-admin-preview (se isStudentMode). Å tilby
+    // den i menyen ville sendt vanlige brukere inn i en flate som ikke er
+    // ferdig — heller ingen oppføring enn en som skuffer.
+    label: 'Student-modus',
+    description: 'Student — min side, kurs og innleveringer.',
+    switchable: false,
+  },
+  game_studio: {
+    label: 'Spillstudio-modus',
+    description: 'Story Graph — brett, elementer, forgreninger og spillmodus.',
+    switchable: true,
+  },
+};
+
+
 const QUERY_PARAM_KEY = 'mode';
 const STORAGE_KEY = 'role_room_profession_mode';
 

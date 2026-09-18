@@ -467,40 +467,65 @@ jobs:
             throw "Expected an unsigned pre-signing binary, got $($signature.Status): $app"
           }
 
-      - name: Authenticode-sign Windows application
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\apps\creatorhub-protools-companion\src-tauri\target\release\creatorhub-protools-companion.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: CreatorHub Pro Tools Companion
-          description-url: https://www.creatorhubn.com
+      - name: Configure pinned Microsoft Sign CLI for Tauri bundling
+        env:
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signToolDir = Join-Path $env:RUNNER_TEMP 'dotnet-sign'
+          dotnet tool install --tool-path $signToolDir --version 0.9.1-beta.26227.3 sign
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install the pinned Microsoft Sign CLI' }
+          $signCli = Join-Path $signToolDir 'sign.exe'
+          if (-not (Test-Path $signCli)) { throw "Microsoft Sign CLI not found: $signCli" }
+          & $signCli --version
+          if ($LASTEXITCODE -ne 0) { throw 'Microsoft Sign CLI version check failed' }
 
-      - name: Bundle Windows MSI and NSIS installers
+          # Tauri patches the application binary independently for MSI and NSIS.
+          # Signing before `tauri bundle` would therefore leave an invalid signature
+          # inside the installers. Run Artifact Signing through Tauri's supported
+          # signCommand hook after each patch and before each package is assembled.
+          $signingConfigPath = Join-Path $env:RUNNER_TEMP 'tauri.windows.artifact-signing.json'
+          $signingConfig = @{
+            bundle = @{
+              windows = @{
+                signCommand = @{
+                  cmd = $signCli
+                  args = @(
+                    'code', 'artifact-signing',
+                    '--artifact-signing-endpoint', $env:ARTIFACT_SIGNING_ENDPOINT,
+                    '--artifact-signing-account', $env:ARTIFACT_SIGNING_ACCOUNT,
+                    '--artifact-signing-certificate-profile', $env:ARTIFACT_SIGNING_PROFILE,
+                    '--azure-credential-type', 'azure-cli',
+                    '--file-digest', 'SHA256',
+                    '--timestamp-url', 'http://timestamp.acs.microsoft.com',
+                    '--timestamp-digest', 'SHA256',
+                    '--description', 'CreatorHub Pro Tools Companion',
+                    '--description-url', 'https://www.creatorhubn.com',
+                    '%1'
+                  )
+                }
+              }
+            }
+          }
+          $signingConfig | ConvertTo-Json -Depth 6 | Set-Content -Path $signingConfigPath -Encoding utf8
+          "TAURI_WINDOWS_SIGNING_CONFIG=$signingConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Bundle and Authenticode-sign Windows MSI and NSIS installers
         working-directory: apps/creatorhub-protools-companion
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD }}
-        run: npm run tauri -- bundle --bundles msi nsis --ci
-
-      - name: Authenticode-sign Windows installers
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\apps\creatorhub-protools-companion\src-tauri\target\release\bundle
-          files-folder-filter: '*.exe,*.msi'
-          files-folder-recurse: true
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: CreatorHub Pro Tools Companion
-          description-url: https://www.creatorhubn.com
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_WINDOWS_SIGNING_CONFIG) -or -not (Test-Path $env:TAURI_WINDOWS_SIGNING_CONFIG)) {
+            throw 'Tauri Artifact Signing configuration is missing'
+          }
+          npm run tauri -- bundle --bundles msi nsis --ci --config $env:TAURI_WINDOWS_SIGNING_CONFIG
+          if ($LASTEXITCODE -ne 0) { throw 'Signed Tauri Windows bundling failed' }
 
       - name: Package and sign Windows updater
         working-directory: apps/creatorhub-protools-companion
@@ -550,8 +575,9 @@ jobs:
           if ($extractedApps.Count -ne 1) {
             throw "Expected one Companion executable in extracted MSI; found $($extractedApps.Count)"
           }
-          if ((Get-AuthenticodeSignature $extractedApps[0].FullName).Status -ne 'Valid') {
-            throw 'The Companion executable embedded in the MSI is not Authenticode-valid'
+          $extractedSignature = Get-AuthenticodeSignature $extractedApps[0].FullName
+          if ($extractedSignature.Status -ne 'Valid') {
+            throw "The Companion executable embedded in the MSI is not Authenticode-valid: $($extractedSignature.Status) — $($extractedSignature.StatusMessage)"
           }
 
           $installProcess = Start-Process $nsis[0].FullName -ArgumentList '/S' -Wait -PassThru
@@ -576,8 +602,9 @@ jobs:
           if ($installedApps.Count -ne 1) {
             throw "Expected one installed Companion executable; found $($installedApps.Count) in $installLocation"
           }
-          if ((Get-AuthenticodeSignature $installedApps[0].FullName).Status -ne 'Valid') {
-            throw 'Installed Companion executable is not Authenticode-valid'
+          $installedSignature = Get-AuthenticodeSignature $installedApps[0].FullName
+          if ($installedSignature.Status -ne 'Valid') {
+            throw "Installed Companion executable is not Authenticode-valid: $($installedSignature.Status) — $($installedSignature.StatusMessage)"
           }
           $appProcess = Start-Process $installedApps[0].FullName -PassThru
           Start-Sleep -Seconds 8
@@ -610,13 +637,22 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $bundleRoot = 'src-tauri/target/release/bundle'
-          $app = Resolve-Path 'src-tauri/target/release/creatorhub-protools-companion.exe'
           $msi = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*.msi')
           $exe = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*-setup.exe')
           if ($msi.Count -ne 1 -or $exe.Count -ne 1) {
             throw "Expected exactly one MSI and one NSIS setup EXE; found $($msi.Count) and $($exe.Count)"
           }
-          $signedFiles = @((Get-Item $app), $msi[0], $exe[0])
+
+          # `tauri bundle` copies and patches the no-bundle application once per
+          # package, then invokes signCommand for the patched copy. The original
+          # target/release executable therefore remains the verified unsigned
+          # input. Verify the application users actually receive from the MSI.
+          $msiExtract = Join-Path $env:RUNNER_TEMP 'companion-msi-extract'
+          $embeddedApps = @(Get-ChildItem -Path $msiExtract -Recurse -File -Filter 'creatorhub-protools-companion.exe')
+          if ($embeddedApps.Count -ne 1) {
+            throw "Expected one Companion executable in the extracted MSI; found $($embeddedApps.Count)"
+          }
+          $signedFiles = @($embeddedApps[0], $msi[0], $exe[0])
           $subjects = @()
           foreach ($file in $signedFiles) {
             if ($file.Length -le 0) { throw "Empty signed file: $($file.FullName)" }
@@ -662,12 +698,20 @@ jobs:
     name: Verify assets and publish release
     needs: [prepare, build, build-windows]
     runs-on: ubuntu-latest
+    environment: protools-companion-release
+    permissions:
+      contents: write
+      id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
       - name: Download draft assets
         shell: bash
         run: |
@@ -722,26 +766,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mac_arm="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_aarch64.app.tar.gz"
-          mac_intel="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64.app.tar.gz"
-          windows="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64-setup.exe.zip"
-          release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
-          jq -n \
-            --arg version "$RELEASE_VERSION" \
-            --arg pub_date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-            --arg notes "CreatorHub Pro Tools Companion ${RELEASE_VERSION}" \
-            --arg mac_arm_url "$release_base/$mac_arm" \
-            --arg mac_arm_sig "$(<"artifacts/$mac_arm.sig")" \
-            --arg mac_intel_url "$release_base/$mac_intel" \
-            --arg mac_intel_sig "$(<"artifacts/$mac_intel.sig")" \
-            --arg windows_url "$release_base/$windows" \
-            --arg windows_sig "$(<"artifacts/$windows.sig")" \
-            '{version:$version,notes:$notes,pub_date:$pub_date,platforms:{
-              "darwin-aarch64":{signature:$mac_arm_sig,url:$mac_arm_url},
-              "darwin-x86_64":{signature:$mac_intel_sig,url:$mac_intel_url},
-              "windows-x86_64":{signature:$windows_sig,url:$windows_url}
-            }}' > artifacts/protools-companion-latest.json
-          jq -e '.version and (.platforms | length == 3) and (.platforms[] | .signature != "" and (.url | startswith("https://")))' \
+          node scripts/build-protools-companion-distribution-manifest.mjs \
+            artifacts "$RELEASE_VERSION" "https://www.creatorhubn.com"
+          jq -e --arg version "$RELEASE_VERSION" '.version == $version and (.platforms | length == 3) and (.platforms[] | .signature != "" and (.url | startswith("https://www.creatorhubn.com/api/protools/companion/download/" + $version + "/")))' \
             artifacts/protools-companion-latest.json >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
             --jq '.[] | select(.name == "protools-companion-latest.json") | .id' | while read -r asset_id; do
@@ -779,6 +806,57 @@ jobs:
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=SHA256SUMS.txt")
           jq -e '.name == "SHA256SUMS.txt" and .state == "uploaded"' \
             <<<"$upload_response" >/dev/null
+
+      - name: Configure short-lived AWS release credentials
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLICATION_RELEASE_ROLE_ARN }}
+          aws-region: ${{ vars.CREATORHUB_APPLICATIONS_REGION }}
+          role-session-name: protools-release-${{ github.run_id }}
+
+      - name: Sync verified release to private CreatorHub S3
+        env:
+          RELEASE_BUCKET: ${{ vars.CREATORHUB_APPLICATIONS_BUCKET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_BUCKET" ]]; then
+            echo "::error::CREATORHUB_APPLICATIONS_BUCKET is not configured"
+            exit 1
+          fi
+          version_prefix="platform/releases/protools-companion/${RELEASE_VERSION}"
+          while IFS= read -r -d '' file; do
+            filename="${file#artifacts/}"
+            aws s3api put-object \
+              --bucket "$RELEASE_BUCKET" \
+              --key "$version_prefix/$filename" \
+              --body "$file" \
+              --server-side-encryption AES256 \
+              --cache-control 'public,max-age=31536000,immutable' \
+              --metadata "product=protools-companion,version=$RELEASE_VERSION" >/dev/null
+          done < <(find artifacts -maxdepth 1 -type f -print0)
+
+          # latest.json er pekeren backend leser. Den skrives sist, etter at alle
+          # immutable filer finnes, slik at klienter aldri ser en halv release.
+          aws s3api put-object \
+            --bucket "$RELEASE_BUCKET" \
+            --key 'platform/releases/protools-companion/latest.json' \
+            --body artifacts/creatorhub-s3-release.json \
+            --content-type application/json \
+            --server-side-encryption AES256 \
+            --cache-control 'no-cache,no-store,must-revalidate' \
+            --metadata "product=protools-companion,version=$RELEASE_VERSION" >/dev/null
+
+          jq -r '[.downloads[], (.updater | to_entries[].value)] | .[].key' \
+            artifacts/creatorhub-s3-release.json | while read -r key; do
+              aws s3api head-object --bucket "$RELEASE_BUCKET" --key "$key" >/dev/null
+            done
+          remote_manifest=$(mktemp)
+          aws s3api get-object \
+            --bucket "$RELEASE_BUCKET" \
+            --key 'platform/releases/protools-companion/latest.json' \
+            "$remote_manifest" >/dev/null
+          cmp artifacts/creatorhub-s3-release.json "$remote_manifest"
 
       - name: Publish verified release
         shell: bash

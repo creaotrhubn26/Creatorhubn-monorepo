@@ -1,4 +1,4 @@
--- 0609_game_plan_export_pdf.sql
+-- 0620_game_plan_export_pdf.sql
 -- Ny feature `export_pdf` (lesbart manus som PDF) på Pro og Studio.
 -- Muterer KUN features med jsonb-merge (mønster fra 0074_dance_plan_seed.sql);
 -- admin-konfigurerte priser og limits beholdes. Solo får ikke featuren.

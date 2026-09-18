@@ -51,7 +51,7 @@ export function DancerPathsView({ formations, dancers }: DancerPathsViewProps): 
       sx={{
         width: '100%',
         bgcolor: '#0d0f14',
-        border: '1px solid rgba(139,92,246,0.18)',
+        border: '1px solid rgba(136, 117, 235,0.18)',
         borderRadius: 1,
         p: 1,
       }}

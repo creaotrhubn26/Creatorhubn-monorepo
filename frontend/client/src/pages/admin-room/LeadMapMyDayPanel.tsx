@@ -91,13 +91,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   unvisited: '#9ca3af',
-  visited: '#a78bfa',
+  visited: '#9e8cf8',
   return: '#fbbf24',
   not_present: '#94a3b8',
   declined: '#f87171',
   interested: '#34d399',
   meeting_booked: '#60a5fa',
-  proposal_sent: '#c084fc',
+  proposal_sent: '#9e8cf8',
   won: '#34d399',
   lost: '#6b7280',
 };
@@ -291,9 +291,9 @@ export default function LeadMapMyDayPanel() {
               value={Math.min(100, quota.progressPct ?? 0)}
               sx={{
                 height: 12, borderRadius: 6,
-                bgcolor: 'rgba(192,132,252,0.15)',
+                bgcolor: 'rgba(158, 140, 248,0.15)',
                 '& .MuiLinearProgress-bar': {
-                  bgcolor: (quota.progressPct ?? 0) >= 100 ? '#34d399' : '#c084fc',
+                  bgcolor: (quota.progressPct ?? 0) >= 100 ? '#34d399' : '#9e8cf8',
                 },
               }}
               aria-label={`Kvote-progresjon ${quota.progressPct ?? 0}%`}
@@ -326,7 +326,7 @@ export default function LeadMapMyDayPanel() {
           <Card>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1}>
-                <TrendingUpIcon sx={{ color: '#c084fc' }} />
+                <TrendingUpIcon sx={{ color: '#9e8cf8' }} />
                 <Box>
                   <Typography variant="overline" color="text.secondary">Mine leads</Typography>
                   <Typography variant="h5">{leads.length}</Typography>
@@ -539,10 +539,10 @@ export default function LeadMapMyDayPanel() {
                     {lead.distance_km !== null && (
                       <Box sx={{
                         mb: 1, p: 1,
-                        bgcolor: 'rgba(192,132,252,0.10)',
+                        bgcolor: 'rgba(158, 140, 248,0.10)',
                         borderRadius: 1,
                       }}>
-                        <Typography variant="h6" sx={{ color: '#c084fc', lineHeight: 1 }}>
+                        <Typography variant="h6" sx={{ color: '#9e8cf8', lineHeight: 1 }}>
                           {lead.distance_km < 1
                             ? `${Math.round(lead.distance_km * 1000)} m`
                             : lead.distance_km < 10

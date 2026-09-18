@@ -1,4 +1,4 @@
--- 0608_game_billing.sql
+-- 0619_game_billing.sql
 -- Betalings-stack for spillstudio-vertikalen (Story Graph).
 -- Speiler dans (0070) med game_*-tabeller i stedet for å generalisere
 -- dance_* (PK-endring + regresjonsrisiko i en betalende vertikal).

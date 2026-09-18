@@ -1,4 +1,4 @@
--- 0611_narrative_production_os.sql
+-- 0622_narrative_production_os.sql
 --
 -- Story Graph Fase 7 — produksjons-OS rundt Story Graph, datamodell for å
 -- bygge et spill fra et manus: scenekort v2 (Før/Handling/Kontroll/Etter/
@@ -9,7 +9,7 @@
 --
 -- Avledet av studioets egne dokumenter (OPENING-HYBRID-v2, SCENE-PLAN-v3,
 -- Storyline-v2, OPENING-DIALOGUE-v2, AGENTS.md). Samme konvensjoner som
--- 0605/0610. Team (0612) og gjeste-reviewere (0613) er egne migrasjoner.
+-- 0616/0621. Team (0623) og gjeste-reviewere (0624) er egne migrasjoner.
 
 -- ─── Scenekort v2 ───────────────────────────────────────────────────────────
 ALTER TABLE narrative_scenes

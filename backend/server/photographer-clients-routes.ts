@@ -50,7 +50,7 @@ export function setupPhotographerClientsRoutes(
                   MAX(created_at)       AS last_order_at
              FROM print_orders
             WHERE canonical_client_id IS NOT NULL
-              AND payment_status = 'paid'
+              AND payment_status IN ('paid', 'succeeded')
             GROUP BY canonical_client_id
          ) po ON po.canonical_client_id = c.id
          LEFT JOIN (

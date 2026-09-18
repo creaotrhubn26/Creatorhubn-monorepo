@@ -136,6 +136,20 @@ function canonicalKey(key) {
   if (/^(platform|organizations|agencies|users|talents|projects|workspaces|education|temporary|quarantine|exports|_system)\//.test(normalized)) {
     return normalized;
   }
+  // Arkivhierarkiet fra b2-archive-helper flyttes helt, slik at objekter som
+  // allerede ligger i B2 havner på samme lesbare sti som nye skrives til.
+  // Samme liste som ARCHIVE_PREFIXES i server/role-room-storage-key.ts.
+  for (const prefix of [
+    "newsletters/",
+    "funding-apps/",
+    "decks/",
+    "business-plans/",
+    "casting-call-posters/",
+    "marketing-reports/",
+    "ad-hoc/",
+  ]) {
+    if (normalized.startsWith(prefix)) return `platform/archives/${normalized}`;
+  }
   // B2 model files overlap names used by the authoritative R2 model bucket.
   // Preserve the B2 variants under a source-specific legacy branch so a
   // same-sized but different artifact can never overwrite the R2 copy.

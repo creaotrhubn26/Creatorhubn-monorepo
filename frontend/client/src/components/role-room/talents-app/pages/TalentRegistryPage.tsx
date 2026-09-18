@@ -207,10 +207,10 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
                   sx={{
                     textTransform: 'none', fontWeight: 700, px: 2.4, py: 1.1, borderRadius: radius.sm,
                     background: palette.accentGradient, color: '#fff',
-                    boxShadow: '0 4px 14px rgba(168,85,247,0.38)',
+                    boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
                     '&:hover': {
-                      background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)',
-                      boxShadow: '0 6px 18px rgba(168,85,247,0.52)',
+                      background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)',
+                      boxShadow: '0 6px 18px rgba(98, 73, 223,0.52)',
                     },
                     // Overstyr MUI sin default disabled-stil (lys grå) — beholder
                     // gradient men dimmer ned til 50% så det er tydelig at den
@@ -283,7 +283,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               sx={{
                 color: palette.textPrimary, textTransform: 'none', borderRadius: radius.sm,
                 bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`,
-                '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
                 fontWeight: 600, fontSize: '0.85rem',
               }}
             >
@@ -383,7 +383,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             sx={{
               textTransform: 'none', fontWeight: 700, py: 1.2, borderRadius: radius.sm,
               border: `1px dashed ${palette.borderStrong}`, color: palette.accentBright,
-              '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+              '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
             }}
           >
             Lagre nytt søk
@@ -411,7 +411,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.4 }}>Nye registreringer<br />siste 30 dager</Typography>
               </Box>
             </Box>
-            <Box sx={{ mt: 2, height: 60, borderRadius: radius.sm, bgcolor: 'rgba(168,85,247,0.04)', position: 'relative', overflow: 'hidden' }}>
+            <Box sx={{ mt: 2, height: 60, borderRadius: radius.sm, bgcolor: 'rgba(98, 73, 223,0.04)', position: 'relative', overflow: 'hidden' }}>
               <Sparkline color={palette.accent} data={overview.sparkline} />
             </Box>
           </Box>
@@ -488,7 +488,7 @@ function ProposalsView({ proposals, onChanged, demoMode }: { proposals: TalentPr
               ) : null}
               <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
                 {p.requested_scopes.slice(0, 5).map((s) => (
-                  <Chip key={s} label={s} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.10)', color: palette.textMuted, height: 18, fontSize: '0.7rem' }} />
+                  <Chip key={s} label={s} size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.10)', color: palette.textMuted, height: 18, fontSize: '0.7rem' }} />
                 ))}
               </Stack>
             </Stack>
@@ -609,7 +609,7 @@ function FeaturedCard({ talent }: { talent: TalentSearchHit }) {
   const langs = (talent.languages ?? []).map((l) => l.label).slice(0, 2).join(', ');
   return (
     <Box sx={{ p: 1.2, borderRadius: radius.md, bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`, display: 'flex', gap: 1.2 }}>
-      <Avatar src={talent.headshot_url ?? undefined} sx={{ width: 56, height: 56, borderRadius: 1, bgcolor: 'rgba(168,85,247,0.18)' }}>
+      <Avatar src={talent.headshot_url ?? undefined} sx={{ width: 56, height: 56, borderRadius: 1, bgcolor: 'rgba(98, 73, 223,0.18)' }}>
         {!talent.headshot_url ? <PersonOutlineIcon /> : null}
       </Avatar>
       <Stack spacing={0.2} sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -689,7 +689,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
   const skills = (talent.skills ?? []).slice(0, 3);
   return (
     <Box sx={{ borderRadius: radius.lg, bgcolor: palette.bgCard, border: `1px solid ${palette.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ position: 'relative', aspectRatio: '1 / 1', bgcolor: 'rgba(168,85,247,0.08)' }}>
+      <Box sx={{ position: 'relative', aspectRatio: '1 / 1', bgcolor: 'rgba(98, 73, 223,0.08)' }}>
         {talent.headshot_url ? (
           <Box component="img" src={talent.headshot_url} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={talent.display_name} />
         ) : (
@@ -697,7 +697,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
             <PersonOutlineIcon sx={{ fontSize: 80, color: palette.textMuted }} />
           </Box>
         )}
-        <IconButton sx={{ position: 'absolute', top: 8, right: 8, color: palette.accentBright, bgcolor: 'rgba(15,7,33,0.7)', '&:hover': { bgcolor: 'rgba(168,85,247,0.3)' } }}>
+        <IconButton sx={{ position: 'absolute', top: 8, right: 8, color: palette.accentBright, bgcolor: 'rgba(16, 11, 30,0.7)', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.3)' } }}>
           <BookmarkIcon fontSize="small" />
         </IconButton>
       </Box>
@@ -715,7 +715,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
         {langs ? <Typography sx={{ color: palette.textMuted, fontSize: '0.75rem' }}>{langs}</Typography> : null}
         <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
           {skills.map((s, i) => (
-            <Chip key={i} label={typeof s === 'string' ? s : s.label} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.12)', color: palette.accentBright, fontSize: '0.7rem', height: 20 }} />
+            <Chip key={i} label={typeof s === 'string' ? s : s.label} size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.12)', color: palette.accentBright, fontSize: '0.7rem', height: 20 }} />
           ))}
         </Stack>
         <Box sx={{ flexGrow: 1 }} />
@@ -754,8 +754,8 @@ function SavedSearchRow({ search, onApply, onDelete }: { search: SavedSearch; on
     return parts.length ? parts.join(' · ') : 'Alle';
   }, [search.filters]);
   return (
-    <Box onClick={onApply} sx={{ p: 1.2, borderRadius: radius.sm, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' }, display: 'grid', gridTemplateColumns: '32px 1fr 24px', gap: 1, alignItems: 'center' }}>
-      <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: 'rgba(168,85,247,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Box onClick={onApply} sx={{ p: 1.2, borderRadius: radius.sm, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' }, display: 'grid', gridTemplateColumns: '32px 1fr 24px', gap: 1, alignItems: 'center' }}>
+      <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: 'rgba(98, 73, 223,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <SearchIcon sx={{ color: palette.accentBright, fontSize: 16 }} />
       </Box>
       <Stack spacing={0.1} sx={{ minWidth: 0 }}>
@@ -821,7 +821,7 @@ function Sparkline({ color, data }: { color: string; data?: Array<{ day: string;
   if (!data || data.length === 0) {
     return (
       <svg viewBox="0 0 320 60" width="100%" height="100%" preserveAspectRatio="none">
-        <text x="160" y="34" textAnchor="middle" fill="rgba(168,85,247,0.45)" fontSize="11" fontFamily="-apple-system, sans-serif">
+        <text x="160" y="34" textAnchor="middle" fill="rgba(98, 73, 223,0.45)" fontSize="11" fontFamily="-apple-system, sans-serif">
           Ingen aktivitet siste 30 dager
         </text>
       </svg>

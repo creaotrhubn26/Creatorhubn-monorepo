@@ -35,6 +35,7 @@ import type express from "express";
 import type { Pool } from "pg";
 import crypto from "node:crypto";
 import { sendTransactionalEmail } from "./transactional-email-service";
+import { recordConsent, resolveAuthMethod, sha256 } from "./consent-ledger-service.js";
 
 interface SessionLike {
   userId: string;
@@ -177,9 +178,9 @@ Mvh
 The Role Room Talents
 `;
       const html = `<!doctype html>
-<html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 20px; background: #0a0118; color: #f5f3ff;">
-  <div style="background: #150b2e; border: 1px solid rgba(168,85,247,0.18); border-radius: 16px; padding: 32px;">
-    <div style="color: #c084fc; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 12px;">
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 20px; background: #0a0515; color: #f5f3ff;">
+  <div style="background: #18122b; border: 1px solid rgba(136, 117, 235,0.18); border-radius: 16px; padding: 32px;">
+    <div style="color: #9e8cf8; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 12px;">
       Forslag fra et casting-byrå
     </div>
     <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
@@ -187,17 +188,17 @@ The Role Room Talents
     </h1>
     <p style="color: #c4b5fd; line-height: 1.6;">${escapeHtml(agency.about || `Et ${agency.type.replace("_", " ")} på The Role Room Talents.`)}</p>
 
-    ${personal_message ? `<div style="margin: 20px 0; padding: 14px 18px; background: #1a0f3a; border-left: 3px solid #a855f7; border-radius: 0 8px 8px 0;">
+    ${personal_message ? `<div style="margin: 20px 0; padding: 14px 18px; background: #18122b; border-left: 3px solid #8875eb; border-radius: 0 8px 8px 0;">
       <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Personlig melding:</div>
       <div style="color: #c4b5fd; font-style: italic; font-size: 15px;">"${escapeHtml(String(personal_message))}"</div>
     </div>` : ""}
 
-    ${context_role ? `<div style="margin: 16px 0; padding: 12px 16px; background: #1a0f3a; border-radius: 8px;">
+    ${context_role ? `<div style="margin: 16px 0; padding: 12px 16px; background: #18122b; border-radius: 8px;">
       <div style="color: #8b7ec4; font-size: 12px; margin-bottom: 4px;">Rolle/produksjon:</div>
       <div style="color: #f5f3ff; font-size: 14px;">${escapeHtml(String(context_role))}</div>
     </div>` : ""}
 
-    <div style="margin: 24px 0; padding: 18px; background: rgba(168,85,247,0.10); border: 1px solid rgba(168,85,247,0.32); border-radius: 12px;">
+    <div style="margin: 24px 0; padding: 18px; background: rgba(136, 117, 235,0.10); border: 1px solid rgba(136, 117, 235,0.32); border-radius: 12px;">
       <div style="color: #f5f3ff; font-weight: 700; margin-bottom: 6px;">🛡️ Du eier dette valget</div>
       <div style="color: #c4b5fd; font-size: 14px;">Hvis du <b>aksepterer</b>, opprettes profil + de får tilgangen under. Du kan trekke når som helst. Hvis du <b>avslår</b>, deles ingenting.</div>
     </div>
@@ -209,12 +210,12 @@ The Role Room Talents
       </ul>
     </div>
 
-    <a href="${escapeHtml(acceptUrl)}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #a855f7 0%, #d946ef 100%); color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 16px; margin: 12px 0;">
+    <a href="${escapeHtml(acceptUrl)}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #8875eb 0%, #6249df 100%); color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 16px; margin: 12px 0;">
       Åpne forslaget
     </a>
 
     <p style="color: #8b7ec4; font-size: 12px; margin-top: 32px;">
-      Forslaget utløper om 30 dager. The Role Room Talents · Creatorhub AS · <a href="https://theroleroom.com/privacy" style="color: #c084fc;">Personvern</a>
+      Forslaget utløper om 30 dager. The Role Room Talents · Creatorhub AS · <a href="https://theroleroom.com/privacy" style="color: #9e8cf8;">Personvern</a>
     </p>
   </div>
 </body></html>`;
@@ -383,6 +384,38 @@ The Role Room Talents
             JSON.stringify({ via: "agency_proposal", proposal_id: proposal.id }),
           ],
         );
+      }
+
+      // Steg 3b: skriv samtykket i den append-only loggen.
+      //
+      // talent_consent_registry over er en TILSTAND som endres når scope
+      // trekkes. Loggen er beviset: denne personen sa ja til akkurat disse
+      // scopene for akkurat dette byrået på dette tidspunktet. Uten den har
+      // vi ingenting å vise til den dagen samtykket bestrides.
+      //
+      // Dokument-hashen dekker det talenten faktisk godtok — byrå, type og
+      // scope-liste — ikke en beskrivelse av det.
+      const consentStatement = [
+        `Samtykke til deling av profil`,
+        `Byrå: ${agency.name} (${agency.type}, id ${agency.id})`,
+        `Scopes: ${[...scopes].sort().join(", ")}`,
+        `Forslag: ${proposal.id}`,
+      ].join("\n");
+
+      try {
+        await recordConsent(pool, {
+          userId: session.userId,
+          subjectType: "agency_share",
+          subjectRef: String(agency.id),
+          documentHash: sha256(consentStatement),
+          action: "granted",
+          authMethod: await resolveAuthMethod(pool, session.userId),
+        });
+      } catch (ledgerError) {
+        // Samtykket er allerede gitt i registeret; en feilet logg skal ikke
+        // rulle det tilbake. Men den skal ikke være stille — et samtykke uten
+        // logg er et samtykke vi ikke kan bevise.
+        console.error("[talent-proposals accept] samtykke-logg feilet", ledgerError);
       }
 
       // Steg 4: marker akseptert

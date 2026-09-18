@@ -1,4 +1,4 @@
-import { test, expect, type ConsoleMessage, type Page } from '@playwright/test';
+import { test, expect, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
 
 type RuntimeCollector = {
   pageErrors: string[];
@@ -445,6 +445,39 @@ const getBoxCenter = (box: BoxLike) => ({
   y: box.y + box.height / 2,
 });
 
+const dragToWithSettledTarget = async (
+  page: Page,
+  source: Locator,
+  target: Locator,
+  targetPosition: { x: number; y: number },
+) => {
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  expect(sourceBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+  if (!sourceBox || !targetBox) {
+    return;
+  }
+
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  const eventInit = {
+    dataTransfer,
+    clientX: targetBox.x + targetPosition.x,
+    clientY: targetBox.y + targetPosition.y,
+  };
+  try {
+    await source.dispatchEvent('dragstart', eventInit);
+    await target.dispatchEvent('dragover', eventInit);
+    await page.waitForTimeout(150);
+    await target.dispatchEvent('drop', eventInit);
+    await source.dispatchEvent('dragend', eventInit);
+  } finally {
+    await dataTransfer.dispose();
+  }
+};
+
 test.describe('Visual Editor Regression', () => {
   test('enhanced editor supports quick start, preview, analytics, and audit flows', async ({
     page,
@@ -507,8 +540,9 @@ test.describe('Visual Editor Regression', () => {
     if (headingBeforeReorder && ctaBeforeReorder) {
       expect(ctaBeforeReorder.y).toBeGreaterThan(headingBeforeReorder.y);
     }
-    await heroCtaDragHandle.dragTo(heroHeadingNode, {
-      targetPosition: { x: 24, y: 4 },
+    await dragToWithSettledTarget(page, heroCtaDragHandle, heroHeadingNode, {
+      x: 24,
+      y: 4,
     });
     await expect
       .poll(async () => {

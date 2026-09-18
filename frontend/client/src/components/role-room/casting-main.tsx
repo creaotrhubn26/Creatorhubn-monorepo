@@ -24,6 +24,7 @@ import LeadgridImportPage from '@/pages/leadgrid-import';
 import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
 import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
 import LeadgridDealsPage from '@/pages/leadgrid-deals';
+import LeadgridMarkedsforingPage from '@/pages/leadgrid-markedsforing';
 import LeadgridSkaffeLeadsGuidePage from '@/pages/leadgrid-skaffe-leads-guide';
 import LeadgridFeltsalgSalgsteamPage from '@/pages/leadgrid-feltsalg-salgsteam';
 import LeadgridAkademiPage from '@/pages/leadgrid-akademi';
@@ -41,6 +42,7 @@ import TalentsApp, {
   parseTalentsAppPage,
   isPartnerInviteAcceptPath, PartnerInviteAcceptPage,
   isTalentProposalAcceptPath, TalentProposalAcceptPage,
+  isTalentSignupPath, TalentSignupPage,
 } from './talents-app/TalentsApp';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
@@ -96,6 +98,8 @@ import {
 // prosjekt er åpent. /admin-room-ruten åpner AdminRoom direkte uten å
 // gå via dashboard-subtab (som var begravd bak email-gate + project-state).
 import SuperAdminOverlay from './components/admin/SuperAdminOverlay';
+import { useSuperAdminGate } from './components/admin/useSuperAdminGate';
+import { useAuth } from '../../hooks/useAuth';
 import SuperAdminAdminRoomShell, {
   isSuperAdminAdminRoomPath,
 } from './components/admin/SuperAdminAdminRoomShell';
@@ -429,6 +433,12 @@ function CastingStandaloneAppContent() {
       leadgridPath === '/leadgrid/deals/') {
     return <LeadgridDealsPage />;
   }
+  // Markedssjef-modus (vertikal, opt-in modul leadgrid:marketing) — Role
+  // Room-agentens markedsplan i Leadgrid-skall for egen org.
+  if (leadgridPath === '/leadgrid/markedsforing' ||
+      leadgridPath === '/leadgrid/markedsforing/') {
+    return <LeadgridMarkedsforingPage />;
+  }
   // Developer-docs (public)
   if (leadgridPath === '/leadgrid/utviklere' ||
       leadgridPath === '/leadgrid/utviklere/' ||
@@ -527,6 +537,30 @@ function CastingStandaloneRuntimeContent() {
   // Check if user is logged in - determines which view to show
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
+  // Admin Room-linsen bor i CastingPlannerPanel. På en talent- eller
+  // agentur-sesjon rendres panelet aldri, så ?lens=admin ville satt URL-en
+  // uten at noe leste den. Super admin skal nå linsen uansett hvilken portal
+  // kontoen ellers lander på.
+  const { isSuperAdmin: isSuperAdminSession } = useSuperAdminGate();
+  // Talents-skallet tegner «Logg ut» bare hvis den får en handler. Den ble
+  // aldri sendt inn herfra, så en innlogget talent hadde ingen vei ut av
+  // appen — hverken for å bytte konto eller for å logge av på delt maskin.
+  const auth = useAuth();
+  // useAuth.logout rydder creatorhub_*-nøklene, men Role Room har sin egen
+  // sesjon i role_room_auth_token/-session. Uten denne overlever den
+  // utloggingen: serveren svarer 200, siden laster på nytt, og appen tegner
+  // seg fortsatt som innlogget på kontoen du nettopp forlot.
+  const handleLogout = useCallback(async () => {
+    try {
+      await authSessionService.clearSession();
+    } catch {
+      // Utlogging skal skje uansett om opprydningen feiler.
+    }
+    await auth.logout();
+  }, [auth]);
+  const adminLensRequested = isSuperAdminSession
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search || '').get('lens') === 'admin';
 
   // Presence-heartbeat: pinger /api/presence/heartbeat hvert 30s mens innlogget
   usePresenceHeartbeat(isAuthenticated);
@@ -814,9 +848,19 @@ function CastingStandaloneRuntimeContent() {
   const talentsAppPage = useMemo(() => parseTalentsAppPage(), []);
   const isInviteAcceptPath = useMemo(() => isPartnerInviteAcceptPath(), []);
   const isProposalAcceptPath = useMemo(() => isTalentProposalAcceptPath(), []);
-  const shouldRenderTalentsApp = !guestMode && talentsAppPage !== null && !isInviteAcceptPath && !isProposalAcceptPath;
-  const shouldRenderAgencyPortal = !guestMode && !shouldRenderTalentsApp && normalizedRole === 'agency';
-  const shouldRenderTalentPortal = !guestMode && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
+  const isSignupPath = useMemo(() => isTalentSignupPath(), []);
+  // Talents-appen er hjemmet for et innlogget talent: både /talents-stiene og
+  // rot-flaten. Talentportalen (?portal=talent / /talentportal) er prosjekt-
+  // spesifikk og sjekkes først, slik at invitasjonslenker som allerede er
+  // sendt ut fortsetter å åpne kandidatflaten.
+  const shouldRenderTalentsApp = !guestMode
+    && !adminLensRequested
+    && !isInviteAcceptPath
+    && !isProposalAcceptPath
+    && !isSignupPath
+    && (talentsAppPage !== null || (normalizedRole === 'talent' && !talentPortalIntent));
+  const shouldRenderAgencyPortal = !guestMode && !adminLensRequested && !shouldRenderTalentsApp && normalizedRole === 'agency';
+  const shouldRenderTalentPortal = !guestMode && !adminLensRequested && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
     || normalizedRole === 'talent'
     || normalizedRequestedRole === 'talent'
@@ -852,10 +896,10 @@ function CastingStandaloneRuntimeContent() {
             justifyContent: 'center',
             gap: 1.5,
             color: 'rgba(255,255,255,0.84)',
-            bgcolor: 'var(--role-chrome-bg, #050816)',
+            bgcolor: 'var(--role-chrome-bg, #0a0515)',
           }}
         >
-          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
+          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8875eb)' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
             {processingGoogleLogin
               ? 'Fullfører Google-innlogging…'
@@ -864,7 +908,9 @@ function CastingStandaloneRuntimeContent() {
                 : 'Laster Role Room…'}
           </Typography>
         </Box>
-      ) : isInviteAcceptPath ? (
+      ) : isSignupPath ? (
+          <TalentSignupPage />
+        ) : isInviteAcceptPath ? (
           <PartnerInviteAcceptPage />
         ) : isProposalAcceptPath ? (
           <TalentProposalAcceptPage />
@@ -876,7 +922,10 @@ function CastingStandaloneRuntimeContent() {
           <TheRoleRoomLanding onEnter={handleEnter} />
         ) : shouldRenderTalentsApp ? (
           <ToastProvider position="bottom-right">
-            <TalentsApp initialPage={talentsAppPage ?? undefined} />
+            <TalentsApp
+              initialPage={talentsAppPage ?? undefined}
+              onLogout={() => { void handleLogout(); }}
+            />
           </ToastProvider>
         ) : (
           <ToastProvider position="bottom-right">
@@ -1019,7 +1068,7 @@ export default function CastingStandaloneApp() {
 
   // CreatorHub Design (Fase C): token-driv Role Room-aksenten (casting-admin-panelene) fra
   // design-tokens (ws=theroleroom, RÅ override m/ raw:true-markør). Ingen override →
-  // literalene (#b86bff) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
+  // literalene (#8875eb) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
@@ -1044,7 +1093,7 @@ export default function CastingStandaloneApp() {
         if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
           root.style.setProperty('--role-cyan', cyan);
         }
-        // Fiolett-aksent (primær sekundærfarge #8b5cf6 — dekorative flater, ikke kategorisk koding).
+        // Fiolett-aksent (primær sekundærfarge #8875eb — dekorative flater, ikke kategorisk koding).
         const violet = d.tokens.violetAccent;
         if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
           root.style.setProperty('--role-violet', violet);

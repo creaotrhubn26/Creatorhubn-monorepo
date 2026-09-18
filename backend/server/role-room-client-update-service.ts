@@ -191,25 +191,25 @@ function renderEmail(
       (h) => `
         <tr>
           <td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top">${escapeHtml(h.label)}</td>
-          <td style="padding:6px 0;color:#1a0f2e;font-size:14px;font-weight:600">${escapeHtml(h.value)}</td>
+          <td style="padding:6px 0;color:#18122b;font-size:14px;font-weight:600">${escapeHtml(h.value)}</td>
         </tr>`,
     )
     .join('');
 
   const noteBlock = digest.producerNote
-    ? `<div style="background:#f6f2ff;border-radius:8px;padding:14px 16px;margin:16px 0;color:#3a2a5e;font-size:14px;line-height:1.6">${escapeHtml(digest.producerNote)}</div>`
+    ? `<div style="background:#f6f5ff;border-radius:8px;padding:14px 16px;margin:16px 0;color:#261763;font-size:14px;line-height:1.6">${escapeHtml(digest.producerNote)}</div>`
     : '';
 
   const html = `
-    <div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#1a0f2e">
-      <h2 style="color:#6e3fc7;margin:0 0 16px">${escapeHtml(digest.headline)}</h2>
+    <div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#18122b">
+      <h2 style="color:#472bd4;margin:0 0 16px">${escapeHtml(digest.headline)}</h2>
       <p>${escapeHtml(greeting)},</p>
       <p>Her er en kort oppdatering på markedsføringen din.</p>
       ${noteBlock}
       <table style="border-collapse:collapse;margin:8px 0 20px">${highlightRows}</table>
       <p>
         <a href="${portalLink}"
-           style="display:inline-block;background:linear-gradient(135deg,#6e3fc7,#a030c0);color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+           style="display:inline-block;background:linear-gradient(135deg,#472bd4,#3c27a5);color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
           Se detaljer i portalen
         </a>
       </p>

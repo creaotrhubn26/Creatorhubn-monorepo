@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   CastingProject,
   Role,
@@ -14,6 +13,7 @@ import type {
   CastingShot,
   SceneBreakdown,
   UserRole,
+  CastingProjectAccess,
   Consent,
 } from '../models/casting';
 import type {
@@ -990,22 +990,25 @@ const remapEntityIds = <T extends Record<string, unknown>>(
   const idMap = new Map<string, string>();
   const nextItems = items.map((item, index) => {
     const next = deepCloneProject(item);
-    const currentId = typeof next.id === 'string' && next.id.trim().length > 0
-      ? next.id.trim()
+    // Skriv gjennom en indeksert visning: T er generisk, så TypeScript kan
+    // ikke vite at feltene finnes, men hver modell har en indekssignatur.
+    const draft = next as Record<string, unknown>;
+    const currentId = typeof draft.id === 'string' && draft.id.trim().length > 0
+      ? draft.id.trim()
       : `${prefix}-${index + 1}`;
     const nextId = `${projectId}-${prefix}-${index + 1}`;
     idMap.set(currentId, nextId);
-    next.id = nextId;
+    draft.id = nextId;
     if ('projectId' in next || 'projectId' in item) {
-      next.projectId = projectId;
+      draft.projectId = projectId;
     }
     if ('project_id' in next || 'project_id' in item) {
-      next.project_id = projectId;
+      draft.project_id = projectId;
     }
     if (options?.clearAssignments) {
-      if ('userId' in next) next.userId = undefined;
-      if ('user_id' in next) next.user_id = undefined;
-      if ('addedBy' in next) next.addedBy = undefined;
+      if ('userId' in next) draft.userId = undefined;
+      if ('user_id' in next) draft.user_id = undefined;
+      if ('addedBy' in next) draft.addedBy = undefined;
     }
     return next;
   });
@@ -1076,13 +1079,13 @@ const createProjectSnapshot = (
     userRoles: [],
   };
 
-  nextProject.roles = remapEntityIds(nextProject.roles as Array<Record<string, unknown>>, nextProjectId, 'role');
-  nextProject.candidates = remapEntityIds(nextProject.candidates as Array<Record<string, unknown>>, nextProjectId, 'candidate');
-  nextProject.crew = remapEntityIds(nextProject.crew as Array<Record<string, unknown>>, nextProjectId, 'crew');
-  nextProject.schedules = remapEntityIds(nextProject.schedules as Array<Record<string, unknown>>, nextProjectId, 'schedule');
-  nextProject.locations = remapEntityIds(nextProject.locations as Array<Record<string, unknown>>, nextProjectId, 'location');
-  nextProject.props = remapEntityIds(nextProject.props as Array<Record<string, unknown>>, nextProjectId, 'prop');
-  nextProject.productionDays = remapEntityIds(nextProject.productionDays as Array<Record<string, unknown>>, nextProjectId, 'day');
+  nextProject.roles = remapEntityIds(nextProject.roles, nextProjectId, 'role');
+  nextProject.candidates = remapEntityIds(nextProject.candidates, nextProjectId, 'candidate');
+  nextProject.crew = remapEntityIds(nextProject.crew, nextProjectId, 'crew');
+  nextProject.schedules = remapEntityIds(nextProject.schedules, nextProjectId, 'schedule');
+  nextProject.locations = remapEntityIds(nextProject.locations, nextProjectId, 'location');
+  nextProject.props = remapEntityIds(nextProject.props, nextProjectId, 'prop');
+  nextProject.productionDays = remapEntityIds(nextProject.productionDays, nextProjectId, 'day');
   nextProject.sceneBreakdowns = Array.isArray(nextProject.sceneBreakdowns)
     ? nextProject.sceneBreakdowns.map((scene, index) => {
         const nextScene = deepCloneProject(scene);
@@ -1982,7 +1985,7 @@ export const castingService = {
    */
   async saveProject(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
     const existingProject = getProjectsFromStorage().find((entry) => entry.id === project.id);
-    let nextProject = {
+    let nextProject: CastingProject = {
       // Slå sammen med HELE det eksisterende lagrede prosjektet — ikke bare
       // eier-feltene. Uten dette nullstiller et delvis save (f.eks. når panelet
       // kun skriver crew, userRoles eller producerWorkflow-status etter at et
@@ -2465,17 +2468,17 @@ export const castingService = {
     
     // Sync crew assigned scenes
     project.crew?.forEach(crew => {
-      crew.assignedScenes = crew.assignedScenes.filter(id => availableSceneIds.has(id));
+      crew.assignedScenes = (crew.assignedScenes ?? []).filter(id => availableSceneIds.has(id));
     });
     
     // Sync location assigned scenes
     project.locations?.forEach(location => {
-      location.assignedScenes = location.assignedScenes.filter(id => availableSceneIds.has(id));
+      location.assignedScenes = (location.assignedScenes ?? []).filter(id => availableSceneIds.has(id));
     });
     
     // Sync prop assigned scenes
     project.props?.forEach(prop => {
-      prop.assignedScenes = prop.assignedScenes.filter(id => availableSceneIds.has(id));
+      prop.assignedScenes = (prop.assignedScenes ?? []).filter(id => availableSceneIds.has(id));
     });
     
     // Sync shot lists
@@ -3267,6 +3270,52 @@ export const castingService = {
   // ============================================================================
 
   /**
+   * The caller's server-resolved access to a project.
+   *
+   * Returns `null` when the server cannot answer — local fallback mode, an
+   * offline client, or a backend without the endpoint. Callers then keep their
+   * previous client-side derivation rather than losing the surface entirely;
+   * the server enforces the same rules on every mutation regardless.
+   */
+  async getProjectAccess(projectId: string): Promise<CastingProjectAccess | null> {
+    projectId = normalizeRequiredProjectId(projectId, 'getProjectAccess');
+    if (shouldUseRoleRoomLocalFallback()) return null;
+    try {
+      const response = await fetch(`/api/role-room/projects/${projectId}/access`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
+      if (response.status === 404) {
+        return {
+          projectId,
+          role: null,
+          roles: [],
+          isOwner: false,
+          isMember: false,
+          permissions: {},
+          grants: {},
+        };
+      }
+      if (!response.ok) return null;
+      const payload = await response.json();
+      const access = payload?.access;
+      if (!access || typeof access !== 'object') return null;
+      return {
+        projectId,
+        role: typeof access.role === 'string' && access.role ? access.role : null,
+        roles: Array.isArray(access.roles)
+          ? access.roles.filter((role: unknown): role is string => typeof role === 'string' && role.length > 0)
+          : [],
+        isOwner: access.isOwner === true,
+        isMember: access.isMember === true,
+        permissions: access.permissions && typeof access.permissions === 'object' ? access.permissions : {},
+        grants: access.grants && typeof access.grants === 'object' ? access.grants : {},
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * Get user roles for a project
    */
   async getUserRoles(projectId: string): Promise<UserRole[]> {
@@ -3650,6 +3699,8 @@ export const castingService = {
       {
         id: 'cp-day-1',
         projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        crew: [],
+        props: [],
         date: '2026-04-12',
         callTime: '08:30',
         wrapTime: '11:00',
@@ -3662,6 +3713,8 @@ export const castingService = {
       {
         id: 'cp-day-2',
         projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        crew: [],
+        props: [],
         date: '2026-04-18',
         callTime: '07:30',
         wrapTime: '17:00',
@@ -3674,6 +3727,8 @@ export const castingService = {
       {
         id: 'cp-day-3',
         projectId: CONTENT_PRODUCER_DEMO_PROJECT_ID,
+        crew: [],
+        props: [],
         date: '2026-04-22',
         callTime: '10:00',
         wrapTime: '15:00',

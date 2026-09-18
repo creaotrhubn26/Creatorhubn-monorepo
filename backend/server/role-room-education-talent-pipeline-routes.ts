@@ -153,6 +153,10 @@ interface Credential { institution?: string | null; program?: string | null; yea
  */
 async function notifyStudentPromoted(pool: Pool, email: string, name: string, credential: Credential): Promise<void> {
   const base = (process.env.PUBLIC_APP_URL ?? process.env.APP_URL ?? "").replace(/\/$/, "") || "https://theroleroom.com";
+  // Studenten har som regel ingen konto ennå. Lenk til selvregistreringen
+  // (den har «logg inn»-lenke for dem som allerede har en) — ikke til
+  // forsiden, som bare viser landingssiden for en uinnlogget bruker.
+  const signupUrl = `${base}/talents/registrer`;
   const cred = credential.institution ? [credential.program, credential.institution, credential.year].filter(Boolean).join(", ") : "utdanningen din";
   const text = [
     `Hei ${name},`,
@@ -163,7 +167,7 @@ async function notifyStudentPromoted(pool: Pool, email: string, name: string, cr
     "",
     ROLE_ROOM_TALENTS_INFO.visibility,
     "",
-    `Logg inn på Role Room med denne e-postadressen for å lese mer og velge om du vil overta profilen eller avslå (da slettes utkastet): ${base}`,
+    `Opprett konto (eller logg inn) med denne e-postadressen for å lese mer og velge om du vil overta profilen eller avslå (da slettes utkastet): ${signupUrl}`,
     "",
     "Du bestemmer helt selv. Gjør du ingenting, forblir profilen et usynlig utkast.",
     "",
@@ -177,9 +181,9 @@ async function notifyStudentPromoted(pool: Pool, email: string, name: string, cr
       <p>${ROLE_ROOM_TALENTS_INFO.summary}</p>
       <p style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;color:#166534;font-size:13px">${ROLE_ROOM_TALENTS_INFO.visibility}</p>
       <p style="margin:24px 0">
-        <a href="${base}" style="background:#8B5CF6;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Les mer og velg selv</a>
+        <a href="${signupUrl}" style="background:#8875eb;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Les mer og velg selv</a>
       </p>
-      <p style="font-size:12px;color:#666">Logg inn med denne e-postadressen for å overta profilen eller avslå (da slettes utkastet). Gjør du ingenting, forblir profilen et usynlig utkast.</p>
+      <p style="font-size:12px;color:#666">Bruk denne e-postadressen når du oppretter konto (eller logger inn) for å overta profilen eller avslå (da slettes utkastet). Gjør du ingenting, forblir profilen et usynlig utkast.</p>
       <p>Mvh,<br>The Role Room</p>
     </div>`;
   try {

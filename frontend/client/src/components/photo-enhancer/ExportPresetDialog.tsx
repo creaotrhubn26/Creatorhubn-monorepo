@@ -63,6 +63,7 @@ export interface ExportPresetDialogProps {
   onSavePreset: (preset: ExportPreset) => void;
   onDeletePreset?: (presetId: string) => void;
   images: SessionImage[];
+  projectId?: string;
   projectName?: string;
   clientName?: string;
   /** Logged-in photographer id — required for the delivery flow to
@@ -112,6 +113,7 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
     onSavePreset,
     onDeletePreset,
     images,
+    projectId,
     projectName,
     clientName,
     photographerId,
@@ -275,6 +277,7 @@ export function ExportPresetDialog(props: ExportPresetDialogProps) {
       }
       const form = new FormData();
       form.append('ownerUserId', photographerId!);
+      if (projectId) form.append('projectId', projectId);
       form.append('clientName', deliveryClientName.trim());
       form.append('clientEmail', deliveryClientEmail.trim());
       form.append(

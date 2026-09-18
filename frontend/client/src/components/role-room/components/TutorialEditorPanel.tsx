@@ -380,7 +380,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
       sx={{ zIndex: 100010 }}
       PaperProps={{
         sx: {
-          bgcolor: '#1a1a2e',
+          bgcolor: '#18122b',
           color: '#fff',
           minHeight: isMobile ? '100vh' : '80vh',
           maxHeight: isMobile ? '100vh' : '90vh',
@@ -457,7 +457,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
             PaperProps={{
               sx: {
                 width: sidebarWidth,
-                bgcolor: '#1a1a2e',
+                bgcolor: '#18122b',
                 color: '#fff',
               },
             }}
@@ -771,7 +771,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
         fullScreen={isMobile}
         container={document.body}
         sx={{ zIndex: 100011 }}
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', color: '#fff' } }}
+        PaperProps={{ sx: { bgcolor: '#18122b', color: '#fff' } }}
       >
         <DialogTitle sx={{ fontSize: fontSize.title, p: spacing }}>Ny veiledning</DialogTitle>
         <DialogContent sx={{ p: spacing }}>
@@ -855,7 +855,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
         fullScreen={isMobile}
         container={document.body}
         sx={{ zIndex: 100011 }}
-        PaperProps={{ sx: { bgcolor: '#1a1a2e', color: '#fff' } }}
+        PaperProps={{ sx: { bgcolor: '#18122b', color: '#fff' } }}
       >
         <DialogTitle sx={{ fontSize: fontSize.title, p: spacing }}>{editingStep ? 'Rediger steg' : 'Nytt steg'}</DialogTitle>
         <DialogContent sx={{ p: spacing }}>

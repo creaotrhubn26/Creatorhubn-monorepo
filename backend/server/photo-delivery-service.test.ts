@@ -91,17 +91,10 @@ function baseInput(db: unknown): Omit<DeliveryInput, 'images'> {
   return {
     db: db as DeliveryInput['db'],
     photographerId: 'phot-1',
+    projectId: 'project-1',
     clientName: 'Holy Crust',
     clientEmail: 'bakeri@holycrust.no',
     projectTitle: 'Uke 18 leveranse',
-    r2Config: {
-      enabled: true,
-      endpoint: 'https://r2.example',
-      bucket: 'test',
-      accessKeyId: 'x',
-      secretAccessKey: 'y',
-      prefix: 'ch-',
-    },
     tokenFactory: () => 'TOKEN-abc',
     upload: vi.fn(async () => {}),
     sign: vi.fn(async (key: string) => `https://signed.example/${key}`),
@@ -110,7 +103,7 @@ function baseInput(db: unknown): Omit<DeliveryInput, 'images'> {
 }
 
 describe('createClientGalleryFromBlobs', () => {
-  it('returns no_images for an empty batch without touching db or R2', async () => {
+  it('returns no_images for an empty batch without touching storage', async () => {
     const { db } = makeDbStub();
     const input = {
       ...baseInput(db),
@@ -168,6 +161,21 @@ describe('createClientGalleryFromBlobs', () => {
     expect(galleryInsert).toBeDefined();
     const v = galleryInsert!.values as { clientEmail: string };
     expect(v.clientEmail).toBe('bakeri@holycrust.no');
+  });
+
+  it('will not reuse an existing gallery from another project', async () => {
+    const { db } = makeDbStub({
+      existingGalleries: [{
+        id: 'gallery-other', photographerId: 'phot-1', projectId: 'project-2',
+        accessToken: 'other-token',
+      }],
+    });
+    const result = await createClientGalleryFromBlobs({
+      ...baseInput(db),
+      existingGalleryId: 'gallery-other',
+      images: [imageFrom('a.jpg')],
+    } as DeliveryInput);
+    expect(result).toEqual({ ok: false, error: 'existing_gallery_not_found' });
   });
 
   it('assigns a sortOrder that increments per image', async () => {
@@ -244,9 +252,9 @@ describe('createClientGalleryFromBlobs', () => {
     expect(result.error).toBe('persist_failed');
   });
 
-  it('skips the R2 PutObject path when a custom uploader is injected', async () => {
+  it('skips the real S3 PutObject path when a custom uploader is injected', async () => {
     // This is the core dependency-injection assurance — tests never hit
-    // the real R2 client even when `r2Config` is otherwise valid.
+    // the real CreatorHub S3 client.
     const { db } = makeDbStub();
     const customUpload = vi.fn(async () => {});
     await createClientGalleryFromBlobs({
@@ -255,11 +263,10 @@ describe('createClientGalleryFromBlobs', () => {
       images: [imageFrom('a.jpg')],
     } as DeliveryInput);
     expect(customUpload).toHaveBeenCalledTimes(1);
-    // First positional arg is the key — must carry the configured prefix.
-    expect(customUpload.mock.calls[0][0]).toMatch(/^ch-deliveries\/phot-1\/gal-1\//);
+    expect(customUpload.mock.calls[0][0]).toMatch(/^organizations\/personal-phot-1\/users\/phot-1\/projects\/project-1\/photo-room\/galleries\/gal-1\/deliveries\//);
   });
 
-  it('builds R2 keys under deliveries/<photographer>/<gallery>/', async () => {
+  it('builds tenant-scoped CreatorHub S3 delivery keys', async () => {
     const { db } = makeDbStub();
     const upload = vi.fn(async () => {});
     await createClientGalleryFromBlobs({
@@ -268,7 +275,7 @@ describe('createClientGalleryFromBlobs', () => {
       images: [imageFrom('rolls.jpg')],
     } as DeliveryInput);
     const key = upload.mock.calls[0][0] as string;
-    expect(key).toMatch(/^ch-deliveries\/phot-1\/gal-1\/[a-f0-9]{8}-rolls\.jpg$/);
+    expect(key).toMatch(/^organizations\/personal-phot-1\/users\/phot-1\/projects\/project-1\/photo-room\/galleries\/gal-1\/deliveries\/[a-f0-9]{8}-rolls\.jpg$/);
   });
 
   it('sanitises filenames that contain path separators or control chars', async () => {

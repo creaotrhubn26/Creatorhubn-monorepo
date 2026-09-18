@@ -91,7 +91,7 @@ const getSeverityColor = (severity: GrammarError['severity']) => {
     case 'error':
       return '#f44336';
     case 'warning':
-      return '#9333ea';
+      return '#6249df';
     case 'suggestion':
       return '#2196f3';
     default:
@@ -240,7 +240,7 @@ export const GrammarSuggestionsOverlay: React.FC<GrammarSuggestionsOverlayProps>
     return null;
   }
 
-  const bgColor = 'rgba(30, 30, 50, 0.95)';
+  const bgColor = 'rgba(33, 28, 59, 0.95)';
   const textColor = '#fff';
   const borderColor = 'rgba(255,255,255,0.1)';
 
@@ -556,7 +556,7 @@ export const GrammarStatsWidget: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const bgColor = 'rgba(30, 30, 50, 0.8)';
+  const bgColor = 'rgba(33, 28, 59, 0.8)';
 
   return (
     <Paper

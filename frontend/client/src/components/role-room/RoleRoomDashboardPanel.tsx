@@ -487,7 +487,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     const candidateCount = candidates?.length ?? 0;
     const crewCount = crew?.length ?? 0;
     return [
-      { label: 'Prosjekter', value: projectCount, icon: <FolderIcon />, color: '#6366f1' },
+      { label: 'Prosjekter', value: projectCount, icon: <FolderIcon />, color: '#8875eb' },
       { label: 'Roller', value: roleCount, icon: <TheaterIcon />, color: '#f59e0b' },
       { label: 'Kandidater', value: candidateCount, icon: <PersonIcon />, color: '#10b981' },
       { label: 'Crew', value: crewCount, icon: <GroupIcon />, color: '#ec4899' },
@@ -802,10 +802,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               onClick={(event) => handleOpenProfile(event.currentTarget)}
               aria-label="Åpne profil"
               sx={{
-                bgcolor: 'rgba(139,92,246,0.95)',
+                bgcolor: 'rgba(136, 117, 235,0.95)',
                 color: '#fff',
                 boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
-                '&:hover': { bgcolor: 'rgba(124,58,237,1)' },
+                '&:hover': { bgcolor: 'rgba(98, 73, 223,1)' },
               }}
             >
               {memberProfileImageUrl ? (
@@ -922,8 +922,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   size="small"
                   label={workspaceSummary.statusLabel}
                   sx={{
-                    bgcolor: 'rgba(124,58,237,0.12)',
-                    color: '#6d28d9',
+                    bgcolor: 'rgba(98, 73, 223,0.12)',
+                    color: '#472bd4',
                     fontWeight: 700,
                   }}
                 />
@@ -934,7 +934,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   label={workspaceSummary.planName}
                   variant="outlined"
                   sx={{
-                    borderColor: 'rgba(124,58,237,0.25)',
+                    borderColor: 'rgba(98, 73, 223,0.25)',
                     color: 'rgba(17,24,39,0.82)',
                     fontWeight: 600,
                   }}
@@ -1005,7 +1005,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }}
                         imgProps={{ style: { objectPosition: memberAvatarObjectPosition } }} />
               ) : profileInitials ? (
-                <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366f1', fontSize: '0.85rem', fontWeight: 700 }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: '#8875eb', fontSize: '0.85rem', fontWeight: 700 }}>
                   {profileInitials}
                 </Avatar>
               ) : (
@@ -1058,7 +1058,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             <CardHeader
               title="Prosjekter"
               titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
-              avatar={<MovieIcon fontSize="small" sx={{ color: '#6366f1' }} />}
+              avatar={<MovieIcon fontSize="small" sx={{ color: '#8875eb' }} />}
             />
             <Divider />
             {!projects?.length ? (
@@ -1253,7 +1253,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     px: { xs: 1.5, sm: 2 },
                     WebkitTapHighlightColor: 'transparent',
                     touchAction: 'manipulation',
-                    '&:active': { bgcolor: 'rgba(139,92,246,0.08)' },
+                    '&:active': { bgcolor: 'rgba(136, 117, 235,0.08)' },
                   },
                   '& .MuiTabs-scrollButtons.Mui-disabled': {
                     opacity: 0.3,
@@ -1282,7 +1282,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                         label={tabLabel(v)}
                         icon={<TabIconComp fontSize="small" />}
                         iconPosition="start"
-                        sx={def.highlight ? { minHeight: 48, color: '#a78bfa' } : { minHeight: 48 }}
+                        sx={def.highlight ? { minHeight: 48, color: '#9e8cf8' } : { minHeight: 48 }}
                       />
                     );
                   })}
@@ -1334,7 +1334,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                         Instagram-innboks
                       </Button>
                     </Box>
-                    <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8b5cf6" />
+                    <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8875eb" />
                     {!publishingProjectId && (
                       <Alert severity="info" variant="outlined">
                         YouTube-publisering virker nå i The Role Room, men dette prosjektet er ikke koblet til et CreatorHub-prosjekt ennå.
@@ -2004,13 +2004,13 @@ function CrewSubPanel({
         <Stack direction="row" spacing={1}>
           {isProjectLeader && (
             <Button size="small" startIcon={<GroupIcon />} onClick={() => setMembersOpen(true)}
-                    sx={{ color: '#6d28d9' }}>
+                    sx={{ color: '#472bd4' }}>
               Medlemmer
             </Button>
           )}
           {isProjectLeader && (
             <Button size="small" startIcon={<TuneIcon />} onClick={() => setTabAccessOpen(true)}
-                    sx={{ color: '#6d28d9' }}>
+                    sx={{ color: '#472bd4' }}>
               Tab-tilganger
             </Button>
           )}
@@ -2150,8 +2150,8 @@ function CrewSubPanel({
           icon={false}
           sx={{
             mb: 2,
-            background: 'linear-gradient(135deg, rgba(160, 48, 192, 0.10) 0%, rgba(110, 63, 199, 0.05) 100%)',
-            border: '1px solid rgba(160, 48, 192, 0.30)',
+            background: 'linear-gradient(135deg, rgba(71, 43, 212, 0.10) 0%, rgba(71, 43, 212, 0.05) 100%)',
+            border: '1px solid rgba(71, 43, 212, 0.30)',
             color: 'text.primary',
           }}
           action={
@@ -2159,7 +2159,7 @@ function CrewSubPanel({
               size="small"
               variant="contained"
               href={`/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}`}
-              sx={{ bgcolor: '#a030c0', '&:hover': { bgcolor: '#b94dd6' } }}
+              sx={{ bgcolor: '#472bd4', '&:hover': { bgcolor: '#6249df' } }}
             >
               Aktiver i marketplace
             </Button>
@@ -2191,9 +2191,9 @@ function CrewSubPanel({
               disabled={!!bulkProgress}
               onClick={handleBulkGrant}
               sx={{
-                borderColor: '#a030c0',
-                color: '#a030c0',
-                '&:hover': { borderColor: '#b94dd6', bgcolor: 'rgba(160,48,192,0.05)' },
+                borderColor: '#472bd4',
+                color: '#472bd4',
+                '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(71, 43, 212,0.05)' },
               }}
             >
               {bulkProgress
@@ -2253,9 +2253,9 @@ function CrewSubPanel({
                       disabled={isBusy}
                       onClick={() => handleToggle(c, undefined)}
                       sx={{
-                        borderColor: '#a030c0',
-                        color: '#a030c0',
-                        '&:hover': { borderColor: '#b94dd6', bgcolor: 'rgba(160,48,192,0.05)' },
+                        borderColor: '#472bd4',
+                        color: '#472bd4',
+                        '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(71, 43, 212,0.05)' },
                       }}
                     >
                       {isBusy ? '...' : 'Tildel seat'}
@@ -2331,7 +2331,7 @@ function ScheduleSubPanel({
     <List dense>
       {schedules.map((s, i) => (
         <ListItem key={String(s.id ?? i)}>
-          <Avatar sx={{ mr: 1.5, bgcolor: '#6366f1', width: 32, height: 32 }}>
+          <Avatar sx={{ mr: 1.5, bgcolor: '#8875eb', width: 32, height: 32 }}>
             <ScheduleIcon fontSize="small" />
           </Avatar>
           <ListItemText

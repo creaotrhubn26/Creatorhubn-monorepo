@@ -1,4 +1,4 @@
--- 0613_narrative_review_share_links.sql
+-- 0624_narrative_review_share_links.sql
 -- Gjeste-reviewere for Story Graph-scener (Fase 7e-2): delingslenke per
 -- review-runde (hash-token, aldri klartekst) + navngitt reviewer-sesjon.
 -- Mønster: storyboard_review_share_links / _sessions (0592). Kommentarer

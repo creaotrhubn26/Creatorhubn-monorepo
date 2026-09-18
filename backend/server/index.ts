@@ -498,6 +498,11 @@ import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
+import { registerRoleRoomAccessMatrixRoutes } from "./role-room-access-matrix-routes.js";
+import {
+  readRoleRoomContinuityS3Config,
+  roleRoomS3Client,
+} from "./casting-production-continuity-s3.js";
 import { registerCastingPosterArchiveRoutes } from "./role-room-casting-poster-archive-routes.js";
 import { registerB2ArchiveCronRoutes } from "./b2-archive-cron-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
@@ -591,6 +596,9 @@ import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes"
 import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
+import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
+import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
+import { setupRoleRoomEidRoutes } from "./role-room-eid-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
@@ -639,6 +647,8 @@ import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
+import { registerLeadgridMarketingRoutes } from "./leadgrid-marketing-routes.js";
+import { createLeadgridMarketingBridge } from "./leadgrid-marketing-bridge.js";
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
@@ -2690,6 +2700,41 @@ registerB2CompanyArchiveRoutes({
   routePrefix: "/api/role-room/admin/b2-archive",
   envPrefix: "B2_ROLE_ROOM_",
 });
+// The Role Room sin private AWS-bøtte — der produksjonsmedia (scout,
+// continuity) faktisk ligger etter flyttingen fra B2. Samme browser, egen
+// klient, og lesetilgang alene: appflytene eier livssyklusen til disse
+// objektene, ikke admin-browseren.
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/role-room/admin/s3-archive",
+  readOnly: true,
+  resolveConfig: () => {
+    let config;
+    try {
+      config = readRoleRoomContinuityS3Config();
+    } catch {
+      return null;
+    }
+    if (!config) return null;
+    // Runtime-rollen (TheRoleRoomStorageRuntimeProd) har ikke s3:ListBucket —
+    // verifisert mot prod 2026-09-15: både ListBucket og GetObject svarte
+    // AccessDenied. Den er bygget for at appen skal lese og skrive sine egne
+    // objekter, ikke for å bla i bøtta. Arkiv-browseren bruker derfor den
+    // statiske adminnøkkelen når den finnes, og faller tilbake til
+    // runtime-klienten bare hvis den ikke gjør det.
+    const accessKeyId = process.env.AWS_ROLE_ROOM_ACCESS_KEY_ID?.trim();
+    const secretAccessKey = process.env.AWS_ROLE_ROOM_SECRET_ACCESS_KEY?.trim();
+    const client = accessKeyId && secretAccessKey
+      ? new S3Client({
+          region: config.region,
+          credentials: { accessKeyId, secretAccessKey },
+        })
+      : roleRoomS3Client(config);
+    return { bucketName: config.bucket, client };
+  },
+});
+registerRoleRoomAccessMatrixRoutes({ app, requireAdminSession });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
 registerB2ArchiveCronRoutes({ app, pool });
 
@@ -2787,6 +2832,14 @@ registerRoleRoomContentPlanRoutes(app, { pool, activeSessions });
 registerRoleRoomDeadlineReminderRoutes(app, { pool });
 registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
 registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
+// Leadgrid Markedssjef-modus — bro som autoriserer `lg-<leadgrid-prosjekt>`-
+// nøkler via Leadgrids egne regler (prosjekt + marketing.content.brief +
+// modul leadgrid:marketing) FØR Role Rooms markedsplan-ruter. No-op for alle
+// andre nøkler. MÅ monteres før versions-/activity-feed-/marketing-plan-rutene.
+app.use(
+  "/api/role-room/marketing-plan",
+  createLeadgridMarketingBridge({ pool, activeSessions }),
+);
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomMarketingActivityFeedRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
@@ -2852,12 +2905,12 @@ app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
 );
-// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0608_game_billing.sql.
+// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0619_game_billing.sql.
 app.use(
   "/api/game/billing",
   createGameBillingRouter(pool, { activeSessions }),
 );
-// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0612_game_team.sql.
+// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0623_game_team.sql.
 app.use(
   "/api/game/teams",
   createGameTeamRouter(pool, { activeSessions }),
@@ -2878,7 +2931,7 @@ app.use(
   "/api/dance/addons",
   createDanceAddonRouter(pool, { activeSessions }),
 );
-// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0613). Montert før
+// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0624). Montert før
 // narrative-routeren så /review/:token aldri treffer prosjekt-rutene.
 app.use(
   "/api/role-room/narrative/review",
@@ -2991,7 +3044,10 @@ app.use(
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/google-workspace", createGoogleWorkspaceExtraRouter(pool));
-app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
+app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool, {
+  getActiveSessionFromRequest,
+  requireUserSession,
+}));
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
   "/api/integrations/v1/role-room",
@@ -25654,6 +25710,32 @@ setupRoleRoomTalentsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
+// Åpen selvregistrering for skuespillere. Uten denne finnes ingen vei til en
+// konto for et talent: invite-requests krever org.nr med Brreg-oppslag, og
+// både byrå-forslag og skole-claim krever en konto som allerede eksisterer.
+setupRoleRoomTalentSignupRoutes({
+  app,
+  pool,
+  activeSessions,
+  normalizeMailConfigValue,
+  getDefaultRoleRoomPublicOrigin,
+});
+// Skuespiller-CV: krediteringer (migrasjon 0611). Rolle, produksjon,
+// regissør og år — strukturen resume_url aldri ga oss.
+setupRoleRoomTalentCreditsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Norsk eID (BankID) — identitetsverifisering for talents (migrasjon 0614).
+// Rutene svarer «ikke konfigurert» når EID_*-variablene mangler, slik at
+// flaten kan vise det i stedet for å feile.
+setupRoleRoomEidRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  getPublicOrigin: getDefaultRoleRoomPublicOrigin,
+});
 // B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
 // Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
 // VIKTIG: Må registreres FØR setupRoleRoomAgenciesRoutes, fordi sistnevnte
@@ -25828,6 +25910,11 @@ registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
 // POST /forecasting/pipeline/refresh, GET /forecasting/attribution.
 // Gated på forecasting.view (admin/salgssjef/teamleder).
 registerLeadgridForecastingRoutes({ app, pool, activeSessions });
+// Markedssjef-modus (vertikal, opt-in via module_feature_entitlements
+// leadgrid:marketing) — bootstrap av egen org + status. Selve planen går
+// via Role Rooms /api/role-room/marketing-plan/* med `lg-`-nøkkel.
+// Gated på marketing.content.brief (mig 302) + modulen.
+registerLeadgridMarketingRoutes({ app, pool, activeSessions });
 // Momentum Engine — sales-goal + daglig activity-target + momentum-score
 // 0-100 + neste-handling-anbefaling (mig 327).
 // 3 endepunkter: GET /momentum/today, GET /momentum/goal, POST /momentum/goal
@@ -44784,6 +44871,25 @@ type AdminRoleCatalogEntry = {
 
 const ADMIN_ROLE_CATALOG: AdminRoleCatalogEntry[] = [
   {
+    // Høyeste tier. MÅ ligge i katalogen: normalizeAdminRoleId() faller
+    // tilbake til "user" for ukjente id-er, så uten denne ble en DB-rolle
+    // 'super_admin' vasket til 'user' og sesjonen endte på 'admin' —
+    // super_admin-gatede flater (affiliate/utbetalinger, Control Center)
+    // ble da usynlige for faktiske superadmins.
+    id: "super_admin",
+    name: "Super Admin",
+    description:
+      "Full plattformkontroll, inkludert affiliate/utbetalinger og andre super_admin-gatede flater.",
+    permissions: [
+      "users:read",
+      "users:write",
+      "roles:write",
+      "academy:admin",
+      "billing:admin",
+      "impersonate",
+    ],
+  },
+  {
     id: "admin",
     name: "Admin",
     description: "Full tilgang til admin-dashboard, brukere, roller og innstillinger.",
@@ -44812,6 +44918,16 @@ const ADMIN_ROLE_CATALOG: AdminRoleCatalogEntry[] = [
     id: "user",
     name: "Bruker",
     description: "Standard CreatorHub-bruker med tilgang til egen arbeidsflate.",
+    permissions: ["dashboard:read"],
+  },
+  {
+    // Skuespiller/talent med egen konto i The Role Room Talents. Ingen
+    // adminrettigheter — den MÅ likevel stå her, fordi normalizeAdminRoleId()
+    // returnerer "user" for id-er som ikke finnes i katalogen, og rollen ville
+    // da bli vasket bort i sesjonsoppbyggingen.
+    id: "talent",
+    name: "Talent",
+    description: "Skuespiller med egen profil, samtykke-styring og self-tapes i Talents-appen.",
     permissions: ["dashboard:read"],
   },
   {
@@ -45815,6 +45931,13 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
         : sessionRoleId === "user" && accountRoleId !== "user"
           ? accountRoleId
           : sessionRoleId || accountRoleId;
+  // Sesjonssnapshotet minter rollen ved login og blir stående. requireAdminSession
+  // leser dette snapshotet direkte, så en sesjon som sier 'admin' mens DB sier
+  // 'super_admin' ville fått panelet vist i UI-et og 403 fra API-et. Løft
+  // snapshotet i minnet når DB er kilden som sier super_admin — aldri nedover.
+  if (roleId === "super_admin" && session.role !== "super_admin") {
+    session.role = "super_admin";
+  }
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);

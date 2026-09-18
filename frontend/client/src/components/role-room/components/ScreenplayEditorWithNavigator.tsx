@@ -945,7 +945,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           right: 0,
           bottom: 0,
           zIndex: 1300,
-          bgcolor: '#1a1a2e',
+          bgcolor: '#18122b',
         }),
       }}
     >
@@ -958,7 +958,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           alignItems: 'center',
           gap: isMobile ? 0.5 : 1,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(30,30,50,0.8)',
+          bgcolor: 'rgba(33, 28, 59,0.8)',
           flexWrap: 'wrap',
           position: 'relative',
         }}
@@ -1246,7 +1246,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             sx={{
               '& .MuiDrawer-paper': {
                 width: responsive.sidebarWidth,
-                bgcolor: 'rgba(30,30,50,0.95)',
+                bgcolor: 'rgba(33, 28, 59,0.95)',
               },
             }}
           >
@@ -1297,13 +1297,13 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           }}
         >
           {hasStoryFoundation && (
-            <Box sx={{ flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(139,92,246,0.06)' }}>
+            <Box sx={{ flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(136, 117, 235,0.06)' }}>
               <Box
                 onClick={() => setStoryFoundationOpen((prev) => !prev)}
-                sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' } }}
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)' } }}
               >
-                <StoryFoundationIcon sx={{ fontSize: responsive.iconSize - 2, color: '#a78bfa' }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#c4b5fd' }}>
+                <StoryFoundationIcon sx={{ fontSize: responsive.iconSize - 2, color: '#9e8cf8' }} />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#c6bdf4' }}>
                   Story Foundation
                 </Typography>
                 {!storyFoundationOpen && storyFoundationLogline && (
@@ -1315,7 +1315,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   </Typography>
                 )}
                 <Box sx={{ flex: storyFoundationOpen || !storyFoundationLogline ? 1 : 'unset' }} />
-                {storyFoundationOpen ? <ExpandLessIcon sx={{ fontSize: 18, color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#a78bfa' }} />}
+                {storyFoundationOpen ? <ExpandLessIcon sx={{ fontSize: 18, color: '#9e8cf8' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#9e8cf8' }} />}
               </Box>
               <Collapse in={storyFoundationOpen}>
                 <Box sx={{ px: 1.5, pb: 1.25, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -1326,10 +1326,10 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   )}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.25 }}>
                     {storyLogicData?.concept?.genre && (
-                      <Chip size="small" label={`Sjanger: ${storyLogicData.concept.genre}`} sx={{ bgcolor: 'rgba(139,92,246,0.15)', color: '#ddd6fe' }} />
+                      <Chip size="small" label={`Sjanger: ${storyLogicData.concept.genre}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: '#e0dbfa' }} />
                     )}
                     {storyLogicData?.theme?.centralTheme && (
-                      <Chip size="small" label={`Tema: ${storyLogicData.theme.centralTheme}`} sx={{ bgcolor: 'rgba(139,92,246,0.15)', color: '#ddd6fe' }} />
+                      <Chip size="small" label={`Tema: ${storyLogicData.theme.centralTheme}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: '#e0dbfa' }} />
                     )}
                     {storyLogicData?.logline?.antagonisticForce && (
                       <Chip size="small" label={`Konflikt: ${storyLogicData.logline.antagonisticForce}`} sx={{ bgcolor: 'rgba(239,68,68,0.12)', color: '#fecaca' }} />
@@ -1442,7 +1442,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               '& .MuiDrawer-paper': {
                 width: '85vw',
                 maxWidth: 400,
-                bgcolor: 'rgba(30,30,50,0.95)',
+                bgcolor: 'rgba(33, 28, 59,0.95)',
               },
             }}
           >

@@ -30,7 +30,7 @@ const escapeHtml = (s: string): string =>
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #b86bff',
+    outline: '3px solid #8875eb',
     outlineOffset: 2,
   },
 };
@@ -248,14 +248,14 @@ function AuditionSchedulePanelInner({
 
   const { showSuccess, showError, showInfo } = useToast();
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
-  const roleTabAccent = 'var(--role-accent, #b86bff)';
-  const roleTabAccentHover = '#a855f7';
-  const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
-  const roleSurface = 'rgba(20,14,48,0.84)';
-  const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
-  const roleText = '#f3eaff';
-  const roleTextMuted = 'rgba(220,205,255,0.82)';
+  const roleTabAccent = 'var(--role-accent, #8875eb)';
+  const roleTabAccentHover = '#8875eb';
+  const roleTabAccentSoft = 'rgba(136, 117, 235,0.18)';
+  const roleSurface = 'rgba(24, 18, 43,0.84)';
+  const roleSurfaceMuted = 'rgba(33, 28, 59,0.72)';
+  const roleBorder = 'var(--role-border, rgba(136, 117, 235,0.32))';
+  const roleText = '#ebe7fd';
+  const roleTextMuted = 'rgba(224, 219, 250,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
   const auditionContextLabel = profession === 'photographer'
     ? 'Planlegg auditions og callbacks for foto-casting'
@@ -454,7 +454,7 @@ function AuditionSchedulePanelInner({
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'confirmed':         return '#3b82f6';  // blue
-      case 'awaiting_callback': return '#a855f7';  // purple
+      case 'awaiting_callback': return '#8875eb';  // purple
       case 'completed':         return '#10b981';  // green
       case 'cancelled':         return '#ef4444';  // red
       case 'pool':              return '#94a3b8';  // neutral
@@ -1508,7 +1508,7 @@ function AuditionSchedulePanelInner({
     const safeCandidate = (id: string) => escapeHtml(candidateById.get(id) ?? 'Ukjent');
     const safeRole      = (id: string) => escapeHtml(roleById.get(id) ?? 'Ukjent');
 
-    const scheduleIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const scheduleIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8875eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
       <line x1="16" y1="2" x2="16" y2="6"/>
       <line x1="8" y1="2" x2="8" y2="6"/>
@@ -1525,19 +1525,19 @@ function AuditionSchedulePanelInner({
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
     .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #8b5cf6; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #8b5cf6; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #8875eb; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #8875eb; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
     .title svg { flex-shrink: 0; }
     .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #8b5cf6; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #8b5cf6; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #8875eb; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #8875eb; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
     .summary-title svg { flex-shrink: 0; }
     .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
     .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #8b5cf6; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #8875eb; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg, #8b5cf6 0%, #7c3aed 100%); border-radius: 10px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #8875eb 0%, #6249df 100%); border-radius: 10px; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
     .section-title { font-size: 24px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 12px; letter-spacing: -0.4px; }
@@ -1546,7 +1546,7 @@ function AuditionSchedulePanelInner({
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #8875eb 0%, #6249df 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -1678,9 +1678,9 @@ function AuditionSchedulePanelInner({
         boxSizing: 'border-box',
         borderRadius: 2.5,
         backgroundImage: [
-          'linear-gradient(180deg, rgba(9,6,26,0.9) 0%, rgba(10,7,30,0.92) 100%)',
-          'radial-gradient(circle at 18% -25%, rgba(184,107,255,0.3), transparent 55%)',
-          'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.28), transparent 46%)',
+          'linear-gradient(180deg, rgba(10, 5, 21,0.9) 0%, rgba(16, 11, 30,0.92) 100%)',
+          'radial-gradient(circle at 18% -25%, rgba(136, 117, 235,0.3), transparent 55%)',
+          'radial-gradient(circle at 82% -10%, rgba(98, 73, 223,0.28), transparent 46%)',
           rolePanelBackdrop,
         ].join(', '),
         backgroundSize: 'auto, auto, auto, cover',
@@ -1712,8 +1712,8 @@ function AuditionSchedulePanelInner({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: 2,
-              background: 'linear-gradient(145deg, rgba(184,107,255,0.34) 0%, rgba(110,75,52,0.32) 100%)',
-              border: '1px solid rgba(184,107,255,0.48)',
+              background: 'linear-gradient(145deg, rgba(136, 117, 235,0.34) 0%, rgba(110,75,52,0.32) 100%)',
+              border: '1px solid rgba(136, 117, 235,0.48)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1734,7 +1734,7 @@ function AuditionSchedulePanelInner({
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #f7e7d5 0%, #b86bff 100%)',
+                background: 'linear-gradient(135deg, #f7e7d5 0%, #8875eb 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -1848,7 +1848,7 @@ function AuditionSchedulePanelInner({
               onClick={setShowStats}
               sx={{
                 borderColor: showStats ? roleTabAccent : roleBorder,
-                color: showStats ? '#160a24' : roleText,
+                color: showStats ? '#100b1e' : roleText,
                 bgcolor: showStats ? roleTabAccent : 'transparent',
                 minHeight: TOUCH_TARGET_SIZE,
                 '&:hover': {
@@ -1869,11 +1869,11 @@ function AuditionSchedulePanelInner({
               disabled={candidates.length === 0 || roles.length === 0}
               sx={{
                 bgcolor: roleTabAccent,
-                color: '#160a24',
+                color: '#100b1e',
                 fontWeight: 700,
                 minHeight: TOUCH_TARGET_SIZE,
                 '&:hover': { bgcolor: roleTabAccentHover },
-                '&:disabled': { bgcolor: 'rgba(184,107,255,0.3)', color: 'rgba(22,10,36,0.75)' },
+                '&:disabled': { bgcolor: 'rgba(136, 117, 235,0.3)', color: 'rgba(16, 11, 30,0.75)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -1921,7 +1921,7 @@ function AuditionSchedulePanelInner({
             bgcolor: poolMode === 'project' ? roleTabAccentSoft : 'transparent',
             color: poolMode === 'project' ? roleTabAccent : roleTextMuted,
             borderColor: poolMode === 'project' ? roleTabAccent : roleBorder,
-            '&:hover': { bgcolor: poolMode === 'project' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.05)' },
+            '&:hover': { bgcolor: poolMode === 'project' ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.05)' },
             ...focusVisibleStyles,
           }}
         >
@@ -1941,7 +1941,7 @@ function AuditionSchedulePanelInner({
             bgcolor: poolMode === 'pool' ? roleTabAccentSoft : 'transparent',
             color: poolMode === 'pool' ? roleTabAccent : roleTextMuted,
             borderColor: poolMode === 'pool' ? roleTabAccent : roleBorder,
-            '&:hover': { bgcolor: poolMode === 'pool' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.05)' },
+            '&:hover': { bgcolor: poolMode === 'pool' ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.05)' },
             ...focusVisibleStyles,
           }}
         >
@@ -1981,7 +1981,7 @@ function AuditionSchedulePanelInner({
               color: workspaceView === 'standard' ? roleTabAccent : 'rgba(255,255,255,0.7)',
               borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
               '&:hover': {
-                bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+                bgcolor: workspaceView === 'standard' ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.06)',
               },
             }}
           >
@@ -1997,7 +1997,7 @@ function AuditionSchedulePanelInner({
               color: workspaceView === 'pro' ? roleTabAccent : 'rgba(255,255,255,0.7)',
               borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
               '&:hover': {
-                bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+                bgcolor: workspaceView === 'pro' ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.06)',
               },
             }}
           >
@@ -2117,7 +2117,7 @@ function AuditionSchedulePanelInner({
             sx={{
               minHeight: 38,
               borderColor: roleBorder,
-              color: proViewMode === 'pipeline' ? '#160a24' : roleText,
+              color: proViewMode === 'pipeline' ? '#100b1e' : roleText,
               bgcolor: proViewMode === 'pipeline' ? roleTabAccent : 'transparent',
             }}
           >
@@ -2131,7 +2131,7 @@ function AuditionSchedulePanelInner({
             sx={{
               minHeight: 38,
               borderColor: roleBorder,
-              color: proViewMode === 'timeline' ? '#160a24' : roleText,
+              color: proViewMode === 'timeline' ? '#100b1e' : roleText,
               bgcolor: proViewMode === 'timeline' ? roleTabAccent : 'transparent',
             }}
           >
@@ -2313,7 +2313,7 @@ function AuditionSchedulePanelInner({
                             onClick={() => setSelectedProScheduleId(schedule.id)}
                             sx={{
                               cursor: 'pointer',
-                              bgcolor: isFocused ? 'rgba(184,107,255,0.18)' : roleSurface,
+                              bgcolor: isFocused ? 'rgba(136, 117, 235,0.18)' : roleSurface,
                               border: isFocused ? `1px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
                               borderLeft: `3px solid ${getStatusColor(schedule.status)}`,
                               borderRadius: 1.25,
@@ -2409,7 +2409,7 @@ function AuditionSchedulePanelInner({
                   size="small"
                   variant={proTimelineMode === 'day' ? 'contained' : 'outlined'}
                   onClick={() => setProTimelineMode('day')}
-                  sx={{ minHeight: 34, borderColor: roleBorder, color: proTimelineMode === 'day' ? '#160a24' : roleText, bgcolor: proTimelineMode === 'day' ? roleTabAccent : 'transparent' }}
+                  sx={{ minHeight: 34, borderColor: roleBorder, color: proTimelineMode === 'day' ? '#100b1e' : roleText, bgcolor: proTimelineMode === 'day' ? roleTabAccent : 'transparent' }}
                 >
                   Dag
                 </Button>
@@ -2417,7 +2417,7 @@ function AuditionSchedulePanelInner({
                   size="small"
                   variant={proTimelineMode === 'week' ? 'contained' : 'outlined'}
                   onClick={() => setProTimelineMode('week')}
-                  sx={{ minHeight: 34, borderColor: roleBorder, color: proTimelineMode === 'week' ? '#160a24' : roleText, bgcolor: proTimelineMode === 'week' ? roleTabAccent : 'transparent' }}
+                  sx={{ minHeight: 34, borderColor: roleBorder, color: proTimelineMode === 'week' ? '#100b1e' : roleText, bgcolor: proTimelineMode === 'week' ? roleTabAccent : 'transparent' }}
                 >
                   Uke
                 </Button>
@@ -2456,7 +2456,7 @@ function AuditionSchedulePanelInner({
                               p: 0.75,
                               borderRadius: 1,
                               border: `1px solid ${selectedProSchedule?.id === schedule.id ? roleTabAccent : roleBorder}`,
-                              bgcolor: selectedProSchedule?.id === schedule.id ? 'rgba(184,107,255,0.14)' : roleSurface,
+                              bgcolor: selectedProSchedule?.id === schedule.id ? 'rgba(136, 117, 235,0.14)' : roleSurface,
                               cursor: 'pointer',
                             }}
                           >
@@ -2528,7 +2528,7 @@ function AuditionSchedulePanelInner({
               </Box>
 
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Button size="small" variant="contained" onClick={() => onEditSchedule(selectedProSchedule)} sx={{ bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}>
+                <Button size="small" variant="contained" onClick={() => onEditSchedule(selectedProSchedule)} sx={{ bgcolor: roleTabAccent, color: '#100b1e', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}>
                   Rediger
                 </Button>
                 <Button size="small" variant="outlined" onClick={() => void handleStatusChange(selectedProSchedule.id, 'confirmed')} sx={{ color: '#46d9ff', borderColor: 'rgba(70,217,255,0.45)' }}>
@@ -2549,7 +2549,7 @@ function AuditionSchedulePanelInner({
                   onClick={() => handleToggleCompare(selectedProSchedule.id)}
                   startIcon={<CompareIcon sx={{ fontSize: 14 }} />}
                   sx={{
-                    color: proCompareIds.has(selectedProSchedule.id) ? '#160a24' : roleText,
+                    color: proCompareIds.has(selectedProSchedule.id) ? '#100b1e' : roleText,
                     bgcolor: proCompareIds.has(selectedProSchedule.id) ? roleTabAccent : 'transparent',
                     borderColor: roleBorder,
                   }}
@@ -2757,7 +2757,7 @@ function AuditionSchedulePanelInner({
             minWidth: { xs: '100%', sm: 155 },
             '& .MuiOutlinedInput-root': {
               color: dateFilter ? roleTabAccent : '#fff',
-              '& fieldset': { borderColor: dateFilter ? 'rgba(184,107,255,0.5)' : 'rgba(255,255,255,0.15)' },
+              '& fieldset': { borderColor: dateFilter ? 'rgba(136, 117, 235,0.5)' : 'rgba(255,255,255,0.15)' },
               '&.Mui-focused fieldset': { borderColor: roleTabAccent },
             },
           }}
@@ -2775,7 +2775,7 @@ function AuditionSchedulePanelInner({
               sx={{
                 color: candidateFilter !== 'all' ? roleTabAccent : '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: candidateFilter !== 'all' ? 'rgba(184,107,255,0.5)' : 'rgba(255,255,255,0.15)' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: candidateFilter !== 'all' ? 'rgba(136, 117, 235,0.5)' : 'rgba(255,255,255,0.15)' },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 '& .MuiSvgIcon-root:last-child': { color: 'rgba(255,255,255,0.5)' },
               }}
@@ -2886,10 +2886,10 @@ function AuditionSchedulePanelInner({
                   height: TOUCH_TARGET_SIZE,
                   borderRadius: 1,
                   color: viewMode === mode ? roleTabAccent : 'rgba(255,255,255,0.4)',
-                  bgcolor: viewMode === mode ? 'rgba(184,107,255,0.12)' : 'transparent',
+                  bgcolor: viewMode === mode ? 'rgba(136, 117, 235,0.12)' : 'transparent',
                   border: '1px solid',
-                  borderColor: viewMode === mode ? 'rgba(184,107,255,0.4)' : 'rgba(255,255,255,0.12)',
-                  '&:hover': { bgcolor: 'rgba(184,107,255,0.08)', borderColor: 'rgba(184,107,255,0.3)' },
+                  borderColor: viewMode === mode ? 'rgba(136, 117, 235,0.4)' : 'rgba(255,255,255,0.12)',
+                  '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)', borderColor: 'rgba(136, 117, 235,0.3)' },
                   ...focusVisibleStyles,
                 }}
               >
@@ -2920,10 +2920,10 @@ function AuditionSchedulePanelInner({
                 height: TOUCH_TARGET_SIZE,
                 borderRadius: 1,
                 color: auditionGroupedView ? roleTabAccent : 'rgba(255,255,255,0.4)',
-                bgcolor: auditionGroupedView ? 'rgba(184,107,255,0.12)' : 'transparent',
+                bgcolor: auditionGroupedView ? 'rgba(136, 117, 235,0.12)' : 'transparent',
                 border: '1px solid',
-                borderColor: auditionGroupedView ? 'rgba(184,107,255,0.4)' : 'rgba(255,255,255,0.12)',
-                '&:hover': { bgcolor: 'rgba(184,107,255,0.08)', borderColor: 'rgba(184,107,255,0.3)' },
+                borderColor: auditionGroupedView ? 'rgba(136, 117, 235,0.4)' : 'rgba(255,255,255,0.12)',
+                '&:hover': { bgcolor: 'rgba(136, 117, 235,0.08)', borderColor: 'rgba(136, 117, 235,0.3)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -2956,10 +2956,10 @@ function AuditionSchedulePanelInner({
           variant={favoritesOnly ? 'filled' : 'outlined'}
           sx={{
             cursor: 'pointer',
-            bgcolor: favoritesOnly ? 'rgba(184,107,255,0.2)' : 'transparent',
+            bgcolor: favoritesOnly ? 'rgba(136, 117, 235,0.2)' : 'transparent',
             color: favoritesOnly ? roleTabAccent : 'rgba(255,255,255,0.6)',
-            borderColor: favoritesOnly ? 'rgba(184,107,255,0.5)' : 'rgba(255,255,255,0.15)',
-            '&:hover': { bgcolor: 'rgba(184,107,255,0.15)', borderColor: 'rgba(184,107,255,0.4)' },
+            borderColor: favoritesOnly ? 'rgba(136, 117, 235,0.5)' : 'rgba(255,255,255,0.15)',
+            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.15)', borderColor: 'rgba(136, 117, 235,0.4)' },
           }}
         />
 
@@ -3022,27 +3022,27 @@ function AuditionSchedulePanelInner({
           <Chip size="small" label={`"${searchQuery}"`}
             onDelete={() => setSearchQuery('')}
             icon={<SearchIcon sx={{ fontSize: '13px !important', color: `${roleTabAccent} !important` }} />}
-            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: roleTabAccent, borderColor: 'rgba(184,107,255,0.3)', '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
+            sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: roleTabAccent, borderColor: 'rgba(136, 117, 235,0.3)', '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {dateFilter && (
           <Chip size="small" label={`📅 ${dateFilter}`}
             onDelete={() => setDateFilter('')}
-            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
+            sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {candidateFilter !== 'all' && (
           <Chip size="small" label={getCandidateName(candidateFilter)}
             onDelete={() => setCandidateFilter('all')}
-            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
+            sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {roleFilter !== 'all' && (
           <Chip size="small" label={getRoleName(roleFilter)}
             onDelete={() => setRoleFilter('all')}
-            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
+            sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {locationFilter !== 'all' && (
           <Chip size="small" label={`📍 ${locationFilter}`}
             onDelete={() => setLocationFilter('all')}
-            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
+            sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
 
         {/* Clear all */}
@@ -3087,7 +3087,7 @@ function AuditionSchedulePanelInner({
                   px: 4,
                   py: 1.5,
                   minHeight: TOUCH_TARGET_SIZE,
-                  '&:hover': { borderColor: roleTabAccent, bgcolor: 'rgba(184,107,255,0.1)' },
+                  '&:hover': { borderColor: roleTabAccent, bgcolor: 'rgba(136, 117, 235,0.1)' },
                   ...focusVisibleStyles,
                 }}
               >
@@ -3296,9 +3296,9 @@ function AuditionSchedulePanelInner({
                           sx={{
                             height: 56,
                             cursor: 'pointer',
-                            bgcolor: isSelected ? 'rgba(184,107,255,0.07)' : 'transparent',
-                            '&:hover': { bgcolor: isSelected ? 'rgba(184,107,255,0.11)' : 'rgba(255,255,255,0.03)' },
-                            '&:focus-within': { outline: '2px solid rgba(184,107,255,0.4)', outlineOffset: -1 },
+                            bgcolor: isSelected ? 'rgba(136, 117, 235,0.07)' : 'transparent',
+                            '&:hover': { bgcolor: isSelected ? 'rgba(136, 117, 235,0.11)' : 'rgba(255,255,255,0.03)' },
+                            '&:focus-within': { outline: '2px solid rgba(136, 117, 235,0.4)', outlineOffset: -1 },
                             transition: 'background-color 0.15s',
                           }}
                         >
@@ -3392,7 +3392,7 @@ function AuditionSchedulePanelInner({
                 anchorEl={rowMenuAnchor?.el}
                 open={Boolean(rowMenuAnchor)}
                 onClose={() => setRowMenuAnchor(null)}
-                PaperProps={{ sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', minWidth: 180 } }}
+                PaperProps={{ sx: { bgcolor: '#211c3b', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', minWidth: 180 } }}
               >
                 <MenuItem onClick={() => { if (rowMenuAnchor) { closeDrawer(); onEditSchedule(rowMenuAnchor.schedule); } setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
                   <EditIcon sx={{ fontSize: 16, color: roleTabAccent }} /> Rediger
@@ -3402,7 +3402,7 @@ function AuditionSchedulePanelInner({
                 </MenuItem>
                 <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                 <MenuItem onClick={() => { if (rowMenuAnchor) handleSaveToPool(rowMenuAnchor.schedule); setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
-                  <InventoryIcon sx={{ fontSize: 16, color: '#9c27b0' }} /> Lagre til pool
+                  <InventoryIcon sx={{ fontSize: 16, color: '#3c27a5' }} /> Lagre til pool
                 </MenuItem>
                 <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                 <MenuItem onClick={() => { if (rowMenuAnchor) handleDeleteWithUndo(rowMenuAnchor.schedule); setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14, color: '#ef4444' }}>
@@ -3436,9 +3436,9 @@ function AuditionSchedulePanelInner({
                   px: 1.5,
                   height: 40,
                   cursor: 'pointer',
-                  bgcolor: isSelected ? 'rgba(184,107,255,0.07)' : 'transparent',
+                  bgcolor: isSelected ? 'rgba(136, 117, 235,0.07)' : 'transparent',
                   borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  '&:hover': { bgcolor: isSelected ? 'rgba(184,107,255,0.1)' : 'rgba(255,255,255,0.03)' },
+                  '&:hover': { bgcolor: isSelected ? 'rgba(136, 117, 235,0.1)' : 'rgba(255,255,255,0.03)' },
                   transition: 'background-color 0.12s',
                 }}
               >
@@ -3526,7 +3526,7 @@ function AuditionSchedulePanelInner({
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
-                    bgcolor: selectedIds.has(schedule.id) ? 'rgba(184,107,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    bgcolor: selectedIds.has(schedule.id) ? 'rgba(136, 117, 235,0.15)' : 'rgba(255,255,255,0.05)',
                     border: selectedIds.has(schedule.id) ? `2px solid ${roleTabAccent}` : '1px solid rgba(255,255,255,0.1)',
                     borderLeft: `4px solid ${statusColor}`,
                     borderRadius: 2,
@@ -3778,8 +3778,8 @@ function AuditionSchedulePanelInner({
                           label={sceneName}
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(139,92,246,0.15)',
-                            color: 'var(--role-violet, #8b5cf6)',
+                            bgcolor: 'rgba(136, 117, 235,0.15)',
+                            color: 'var(--role-violet, #8875eb)',
                             height: { xs: 24, md: 28 },
                             fontSize: { xs: '0.7rem', md: '0.75rem' },
                           }}
@@ -3799,7 +3799,7 @@ function AuditionSchedulePanelInner({
                             p: 0,
                             minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
                             fontSize: { xs: '0.75rem', md: '0.8rem' },
-                            '&:hover': { color: roleTabAccentHover, bgcolor: 'rgba(184,107,255,0.1)' },
+                            '&:hover': { color: roleTabAccentHover, bgcolor: 'rgba(136, 117, 235,0.1)' },
                             '@keyframes writing': {
                               '0%, 100%': { transform: 'rotate(-5deg) translateY(0px)' },
                               '25%': { transform: 'rotate(0deg) translateY(-1px)' },
@@ -3820,9 +3820,9 @@ function AuditionSchedulePanelInner({
                               mt: 1,
                               p: { xs: 2, md: 2.5 },
                               borderRadius: 2,
-                              bgcolor: 'rgba(184,107,255,0.08)',
-                              border: '2px solid rgba(184,107,255,0.3)',
-                              boxShadow: '0 4px 16px rgba(184,107,255,0.1)',
+                              bgcolor: 'rgba(136, 117, 235,0.08)',
+                              border: '2px solid rgba(136, 117, 235,0.3)',
+                              boxShadow: '0 4px 16px rgba(136, 117, 235,0.1)',
                               position: 'relative',
                               overflow: 'hidden',
                               '&::before': {
@@ -3844,8 +3844,8 @@ function AuditionSchedulePanelInner({
                                   width: { xs: 36, md: 40 },
                                   height: { xs: 36, md: 40 },
                                   borderRadius: 2,
-                                  bgcolor: 'rgba(184,107,255,0.2)',
-                                  border: '2px solid rgba(184,107,255,0.4)',
+                                  bgcolor: 'rgba(136, 117, 235,0.2)',
+                                  border: '2px solid rgba(136, 117, 235,0.4)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -3862,7 +3862,7 @@ function AuditionSchedulePanelInner({
                                     fontSize: { xs: 20, md: 24 },
                                     color: roleTabAccent,
                                     animation: 'writing 2.5s ease-in-out infinite',
-                                    filter: 'drop-shadow(0 2px 4px rgba(184,107,255,0.3))',
+                                    filter: 'drop-shadow(0 2px 4px rgba(136, 117, 235,0.3))',
                                   }}
                                 />
                               </Box>
@@ -3941,7 +3941,7 @@ function AuditionSchedulePanelInner({
                               minWidth: { xs: TOUCH_TARGET_SIZE, md: 48 },
                               minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
                               color: 'rgba(255,255,255,0.87)',
-                              '&:hover': { color: '#9c27b0' },
+                              '&:hover': { color: '#3c27a5' },
                               ...focusVisibleStyles,
                             }}
                           >
@@ -3973,7 +3973,7 @@ function AuditionSchedulePanelInner({
                           fontWeight: 600,
                           minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
                           px: { xs: 1, md: 2 },
-                          '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
+                          '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)' },
                           ...focusVisibleStyles,
                         }}
                       >
@@ -3999,12 +3999,12 @@ function AuditionSchedulePanelInner({
             sx={{
               mb: 3,
               p: 2,
-              bgcolor: 'rgba(156, 39, 176, 0.08)',
+              bgcolor: 'rgba(60, 39, 165, 0.08)',
               borderRadius: 2,
-              border: '1px solid rgba(156, 39, 176, 0.2)',
+              border: '1px solid rgba(60, 39, 165, 0.2)',
             }}
           >
-            <Typography variant="subtitle1" sx={{ color: '#9c27b0', fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle1" sx={{ color: '#3c27a5', fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
               <InventoryIcon sx={{ fontSize: 20 }} />
               Slik bruker du audition-maler
             </Typography>
@@ -4029,9 +4029,9 @@ function AuditionSchedulePanelInner({
                 textAlign: 'center',
                 py: { xs: 4, sm: 8 },
                 px: 4,
-                bgcolor: 'rgba(156, 39, 176, 0.03)',
+                bgcolor: 'rgba(60, 39, 165, 0.03)',
                 borderRadius: 3,
-                border: '2px dashed rgba(156, 39, 176, 0.2)',
+                border: '2px dashed rgba(60, 39, 165, 0.2)',
               }}
             >
               <Box
@@ -4039,7 +4039,7 @@ function AuditionSchedulePanelInner({
                   width: { xs: 60, sm: 80 },
                   height: { xs: 60, sm: 80 },
                   borderRadius: '50%',
-                  bgcolor: 'rgba(156, 39, 176, 0.1)',
+                  bgcolor: 'rgba(60, 39, 165, 0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4047,7 +4047,7 @@ function AuditionSchedulePanelInner({
                   mb: { xs: 2, sm: 3 },
                 }}
               >
-                <InventoryIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: '#9c27b0' }} />
+                <InventoryIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: '#3c27a5' }} />
               </Box>
               <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
                 Ingen audition-maler ennå
@@ -4062,14 +4062,14 @@ function AuditionSchedulePanelInner({
                 <Grid item xs={12} sm={6} md={4} lg={3} key={poolAudition.id}>
                   <Card
                     sx={{
-                      bgcolor: 'rgba(156, 39, 176, 0.08)',
-                      border: '1px solid rgba(156, 39, 176, 0.3)',
+                      bgcolor: 'rgba(60, 39, 165, 0.08)',
+                      border: '1px solid rgba(60, 39, 165, 0.3)',
                       borderRadius: 2,
                       transition: 'all 0.2s',
                       '&:hover': {
-                        borderColor: '#9c27b0',
+                        borderColor: '#3c27a5',
                         transform: 'translateY(-2px)',
-                        boxShadow: '0 4px 12px rgba(156, 39, 176, 0.2)',
+                        boxShadow: '0 4px 12px rgba(60, 39, 165, 0.2)',
                       },
                     }}
                   >
@@ -4083,8 +4083,8 @@ function AuditionSchedulePanelInner({
                           label="Mal"
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(156, 39, 176, 0.2)',
-                            color: '#ce93d8',
+                            bgcolor: 'rgba(60, 39, 165, 0.2)',
+                            color: '#8875eb',
                             fontSize: '0.7rem',
                             height: 24,
                           }}
@@ -4130,11 +4130,11 @@ function AuditionSchedulePanelInner({
                           startIcon={<ExportIcon />}
                           onClick={() => handleImportFromPool(poolAudition)}
                           sx={{
-                            bgcolor: '#9c27b0',
+                            bgcolor: '#3c27a5',
                             color: '#fff',
                             flex: 1,
                             minHeight: TOUCH_TARGET_SIZE,
-                            '&:hover': { bgcolor: '#7b1fa2' },
+                            '&:hover': { bgcolor: '#3c27a5' },
                           }}
                         >
                           Importer
@@ -4220,10 +4220,10 @@ function AuditionSchedulePanelInner({
                         minWidth: 32,
                         height: 32,
                         px: 1,
-                        bgcolor: safePage === p ? 'var(--role-accent, #b86bff)' : 'transparent',
+                        bgcolor: safePage === p ? 'var(--role-accent, #8875eb)' : 'transparent',
                         color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
                         fontWeight: safePage === p ? 700 : 500,
-                        '&:hover': { bgcolor: safePage === p ? '#a855f7' : 'rgba(184,107,255,0.18)' },
+                        '&:hover': { bgcolor: safePage === p ? '#8875eb' : 'rgba(136, 117, 235,0.18)' },
                       }}
                     >
                       {p}
@@ -4252,13 +4252,13 @@ function AuditionSchedulePanelInner({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(184,107,255,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(136, 117, 235,0.3)' },
                 '& .MuiSelect-select': { py: 0.5, fontSize: '0.85rem' },
               }}
               MenuProps={{
                 PaperProps: {
                   sx: {
-                    background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+                    background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
                     border: '1px solid rgba(148,163,184,0.26)',
                   },
                 },
@@ -4296,7 +4296,7 @@ function AuditionSchedulePanelInner({
             Angre
           </Button>
         )}
-        sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#261d37' } }}
+        sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#211c3b' } }}
       />
 
       <Dialog
@@ -4387,7 +4387,7 @@ function AuditionSchedulePanelInner({
             px: 2,
             py: 1,
             borderRadius: 2,
-            bgcolor: '#1e1e2e',
+            bgcolor: '#211c3b',
             border: '1px solid rgba(255,255,255,0.15)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
             minWidth: 360,

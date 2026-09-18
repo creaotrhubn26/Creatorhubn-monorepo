@@ -588,3 +588,104 @@ describe("continuous Discovery v2 adapter", () => {
     expect(workflow).toContain("run_id: result.runId");
   });
 });
+
+describe("Fastlegeregister supersedes the BRREG stand-in", () => {
+  const flrEnvironment = {
+    LEADGRID_DISCOVERY_FLR_ENABLED: "true",
+    LEADGRID_FLR_MASKINPORTEN_CLIENT_ID: "client",
+    LEADGRID_FLR_MASKINPORTEN_KEY_ID: "key",
+    LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY: "private-key",
+  } as const;
+
+  function withFlrEnvironment<T>(
+    configured: boolean,
+    body: () => Promise<T>,
+  ): Promise<T> {
+    const previous = new Map(
+      Object.keys(flrEnvironment).map((key) => [key, process.env[key]]),
+    );
+    for (const [key, value] of Object.entries(flrEnvironment)) {
+      if (configured) process.env[key] = value;
+      else delete process.env[key];
+    }
+    return body().finally(() => {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+  }
+
+  function poolWith(rowCount: number) {
+    const query = vi.fn(async () => ({ rows: [], rowCount }));
+    return { query, pool: { query } as unknown as Pool };
+  }
+
+  it("pauses the stand-in and hands the default over when Maskinporten is configured", async () => {
+    const { query, pool } = poolWith(1);
+    await withFlrEnvironment(true, () =>
+      __test.reconcileFlrSupersededProfiles(pool),
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([
+      "medside.gp_offices",
+      "medside.gp_offices_brreg",
+      "nhn_flr_public",
+    ]);
+    expect(sql).toContain("SET status = 'paused'");
+    expect(sql).toContain("'auto_paused_held_default', superseded.is_default");
+    // Paused only where the authoritative profile is present and active, so no
+    // project is left without GP coverage.
+    expect(sql).toContain("authoritative.template_key = $1");
+    expect(sql).toContain("authoritative.status = 'active'");
+    // A user who re-activates it keeps it: the marker blocks a second pause.
+    expect(sql).toContain("fallback.source_config->>'auto_paused_by' IS NULL");
+    // The default only moves when the stand-in actually held it.
+    expect(sql).toContain("paused.was_default");
+  });
+
+  it("restores the stand-in and takes the default back when Maskinporten goes away", async () => {
+    const { query, pool } = poolWith(1);
+    await withFlrEnvironment(false, () =>
+      __test.reconcileFlrSupersededProfiles(pool),
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([
+      "medside.gp_offices",
+      "medside.gp_offices_brreg",
+      "nhn_flr_public",
+    ]);
+    expect(sql).toContain("SET status = 'active'");
+    // Only profiles this reconcile paused are ever restored.
+    expect(sql).toContain(
+      "fallback.source_config->>'auto_paused_by' = $3::text",
+    );
+    expect(sql).toContain("fallback.status = 'paused'");
+    // The marker is cleared, so a later Maskinporten setup can pause it again.
+    expect(sql).toContain("- 'auto_paused_by' - 'auto_paused_held_default'");
+    // The default comes back only if the stand-in held it and the authoritative
+    // profile still has it — or if the project lost its default entirely.
+    expect(sql).toContain("auto_paused_held_default");
+    expect(sql).toContain("sibling.is_default");
+  });
+
+  it("never fails the poller tick when the reconcile query errors", async () => {
+    const query = vi.fn(async () => {
+      throw new Error("connection terminated");
+    });
+    await expect(
+      withFlrEnvironment(true, () =>
+        __test.reconcileFlrSupersededProfiles({ query } as unknown as Pool),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      withFlrEnvironment(false, () =>
+        __test.reconcileFlrSupersededProfiles({ query } as unknown as Pool),
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
