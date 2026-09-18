@@ -1,0 +1,159 @@
+# SenseAid Explore (ipad/Reiseguide) — fastlane Fastfile
+#
+# Hva dette dekker:
+#   * fastlane ios beta        — archive + upload til TestFlight
+#   * fastlane ios release     — archive + upload til App Store Review (ikke submit)
+#   * fastlane ios bump_build  — sett CFBundleVersion til UTC-tidsstempel
+#
+# Hva dette IKKE dekker (engangs-steg i Apple Developer / App Store Connect,
+# se ../TESTFLIGHT.md): registrere bundle-ID-en, opprette app-recordet og
+# legge til testere.
+#
+# Samme mønster som ipad/LeadMapApp (manuell signering med importert
+# «Apple Distribution»-cert + App Store-profil hentet av sigh), fordi Xcodes
+# cloud signing feiler for teamet («Cloud signing permission error»).
+#
+# Auth (env vars, ALDRI committed):
+#   APP_STORE_CONNECT_API_KEY_ID
+#   APP_STORE_CONNECT_API_ISSUER_ID
+#   APP_STORE_CONNECT_API_KEY_CONTENT   (.p8 base64-encoded)
+
+require "base64"
+require "fileutils"
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.creatorhubn.reiseguide"
+PROFILE_NAME   = "SenseAid Explore App Store"
+SCHEME         = "Reiseguide"
+PROJECT        = "Reiseguide.xcodeproj"
+IPA_NAME       = "SenseAidExplore.ipa"
+
+platform :ios do
+  before_all do
+    # XcodeGen-prosjektet regenereres fra project.yml før hvert bygg.
+    sh("cd .. && xcodegen generate")
+  end
+
+  desc "Sett CFBundleVersion til UTC-tidsstempel (unikt og strengt økende)"
+  lane :bump_build do
+    # xcodegen setter CURRENT_PROJECT_VERSION tilbake til «1» hver gang, så
+    # +1 ville kollidert; tidsstempel er alltid høyere enn forrige opplasting.
+    build_number = Time.now.utc.strftime("%Y%m%d%H%M%S")
+    increment_build_number(build_number: build_number, xcodeproj: PROJECT)
+    UI.message("SenseAid Explore buildnummer: #{build_number}")
+  end
+
+  desc "Archive + upload til TestFlight"
+  lane :beta do
+    setup_api_key
+    download_app_store_profile
+    bump_build
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: File.expand_path("ExportOptions.plist", __dir__),
+      clean: true,
+      output_directory: "build/",
+      output_name: IPA_NAME,
+      xcargs: xcodebuild_auth_xcargs,
+    )
+
+    ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("Fant ingen IPA etter build_app") unless ipa_path && File.exist?(ipa_path)
+    ipa_mb = (File.size(ipa_path) / 1_000_000.0).round(1)
+    UI.message("IPA klar for upload: #{ipa_path} (#{ipa_mb} MB)")
+    UI.user_error!("IPA er #{ipa_mb} MB (> 200 MB), Apple avviser") if ipa_mb > 200
+
+    changelog_path = File.expand_path("changelog.txt", __dir__)
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: File.exist?(changelog_path) ? File.read(changelog_path) : nil,
+    )
+    UI.success("SenseAid Explore lastet opp til TestFlight")
+  end
+
+  desc "Archive + upload til App Store Review (submit er et manuelt steg)"
+  lane :release do
+    setup_api_key
+    download_app_store_profile
+    bump_build
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: File.expand_path("ExportOptions.plist", __dir__),
+      clean: true,
+      output_directory: "build/",
+      output_name: IPA_NAME,
+      xcargs: xcodebuild_auth_xcargs,
+    )
+
+    upload_to_app_store(
+      force: true,
+      precheck_include_in_app_purchases: false,
+      submit_for_review: false,
+      automatic_release: false,
+      skip_screenshots: true,
+      skip_metadata: true,
+    )
+  end
+
+  private_lane :setup_api_key do
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+    issuer_id = ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    key_content = ENV["APP_STORE_CONNECT_API_KEY_CONTENT"]
+
+    unless key_id && issuer_id && key_content
+      UI.important("ASC API-nøkkel er ikke satt; fastlane bruker Xcode-kontoen din (lokal dev)")
+      next
+    end
+
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: key_content,
+      is_key_content_base64: true,
+      duration: 1200,
+      in_house: false,
+    )
+
+    # xcodebuild -authenticationKey* trenger nøkkelen som fil.
+    pkey_dir = File.expand_path("~/.appstoreconnect/private_keys")
+    FileUtils.mkdir_p(pkey_dir)
+    pkey_path = File.join(pkey_dir, "AuthKey_#{key_id}.p8")
+    File.write(pkey_path, Base64.decode64(key_content))
+    ENV["ASC_KEY_PATH"]  = pkey_path
+    ENV["ASC_KEY_ID"]    = key_id
+    ENV["ASC_ISSUER_ID"] = issuer_id
+    UI.success("ASC API-nøkkel skrevet til #{pkey_path}")
+  end
+
+  # Henter (eller oppretter) den manuelle App Store-profilen for bundle-ID-en
+  # så manual signing i ExportOptions.plist finner den. force: true
+  # regenererer mot cert-en som er importert i keychainen. Krever at
+  # bundle-ID-en er registrert hos Apple (TESTFLIGHT.md steg 1).
+  private_lane :download_app_store_profile do
+    sigh(
+      app_identifier: APP_IDENTIFIER,
+      provisioning_name: PROFILE_NAME,
+      force: true,
+      platform: "ios",
+    )
+  end
+
+  private_lane :xcodebuild_auth_xcargs do
+    args = ["-allowProvisioningUpdates"]
+    if ENV["ASC_KEY_PATH"] && ENV["ASC_KEY_ID"] && ENV["ASC_ISSUER_ID"]
+      args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+      args << "-authenticationKeyID #{ENV['ASC_KEY_ID']}"
+      args << "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']}"
+    end
+    args.join(" ")
+  end
+end

@@ -49,7 +49,7 @@ targets:
         # Posisjon bes om først når brukeren trykker «Bruk posisjonen min»
         # (UI-spesifikasjon 6.1). Kun «når appen er i bruk» i POC; bakgrunns-
         # geofencing («alltid») er fase 2.
-        NSLocationWhenInUseUsageDescription: Reiseguide bruker posisjonen din til å vise severdigheter i nærheten og starte fortellingen når du er nær en av dem.
+        NSLocationWhenInUseUsageDescription: SenseAid Explore bruker posisjonen din til å vise severdigheter i nærheten og starte fortellingen når du er nær en av dem.
         # Fortellingen skal spille videre med skjermen låst og fra lomma
         # (UI-spesifikasjon 8.4, punkt 9).
         UIBackgroundModes:

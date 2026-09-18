@@ -37,6 +37,7 @@ Reiseguide/
   Localizable.xcstrings  nb (kilde) og en; UI-språket følger språkvelgeren
 ReiseguideTests/  Modell-dekoding mot ekte API-fixture, Geo, tekstingstidslinje,
                   besøkslogg, speiling til serveren, liknende steder, quiz og deep link
+fastlane/         TestFlight (lane `ios beta`, manuell signering), se TESTFLIGHT.md
 ```
 
 ## Hva som virker nå, og hva som venter
@@ -73,3 +74,11 @@ ReiseguideTests/  Modell-dekoding mot ekte API-fixture, Geo, tekstingstidslinje,
 
 Koden er skrevet uten tilgang til Xcode og kompileres første gang i CI
 (`.github/workflows/ipad-capture-ci.yml`, jobben «Reiseguide»).
+
+## TestFlight
+
+Workflowen `.github/workflows/senseaid-testflight.yml` (manuell trigger) arkiverer og
+laster opp til TestFlight med samme secrets som LeadMap. Engangs-stegene i Apple
+Developer og App Store Connect (bundle-ID `com.creatorhubn.reiseguide`, app-record) og
+feilsøking står i `TESTFLIGHT.md`. `Reiseguide/PrivacyInfo.xcprivacy` er personvern-
+manifestet Apple krever ved opplasting.
