@@ -198,6 +198,7 @@ import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
 import { createGameBillingRouter } from "./game-billing-routes.js";
+import { createGameStudioDisabledRouter, isGameStudioEnabled } from "./game-studio-kill-switch.js";
 import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
 import { createNarrativeReviewPublicRouter } from "./role-room-narrative-review-public-routes.js";
 import {
@@ -2917,6 +2918,13 @@ app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
 );
+// Spillstudio — av-bryter (Fase 8a). ROLE_ROOM_GAME_STUDIO_ENABLED=false gjør at alt under
+// /api/role-room/narrative og /api/game svarer 503 game_studio_disabled; routerne under nås
+// aldri, og resten av backend er upåvirket. Uten variabelen er vertikalen på.
+if (!isGameStudioEnabled()) {
+  console.warn("[game-studio] ROLE_ROOM_GAME_STUDIO_ENABLED er av — Story Graph svarer 503");
+  app.use(["/api/role-room/narrative", "/api/game"], createGameStudioDisabledRouter());
+}
 // Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0621_game_billing.sql.
 app.use(
   "/api/game/billing",

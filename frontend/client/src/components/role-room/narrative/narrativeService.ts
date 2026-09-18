@@ -71,6 +71,10 @@ import type {
 } from './narrativeTypes';
 
 const BASE = '/api/role-room/narrative';
+/** Feilkoden backend svarer med når ROLE_ROOM_GAME_STUDIO_ENABLED=false (503). */
+export const GAME_STUDIO_DISABLED_ERROR = 'game_studio_disabled';
+/** Sendes på window når tjenesten svarer 503 game_studio_disabled. */
+export const NARRATIVE_DISABLED_EVENT = 'narrative:disabled';
 
 export class NarrativeApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly code: string | null = null) {
@@ -119,6 +123,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; data?: unknown };
+    if (res.status === 503 && body.error === GAME_STUDIO_DISABLED_ERROR) {
+      // Fase 8a: server-side av-bryter. Arbeidsflaten lytter og viser helsidebanner.
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NARRATIVE_DISABLED_EVENT));
+      throw new NarrativeApiError('Spillstudio er midlertidig slått av.', 503, GAME_STUDIO_DISABLED_ERROR);
+    }
     if (res.status === 409 && body.error === 'conflict' && body.data) {
       throw new NarrativeConflictError(body.data as NarrativeElement);
     }
