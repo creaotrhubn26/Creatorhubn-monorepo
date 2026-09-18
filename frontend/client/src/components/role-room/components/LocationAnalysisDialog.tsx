@@ -66,6 +66,7 @@ import { externalDataService } from '@/services/ExternalDataService';
 import { analyzeLocation as analyzeLocationApi, type LocationAnalysis as LocationPermitAnalysis } from '../services/locationAnalysisService';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface LocationAnalysisDialogProps {
@@ -279,7 +280,7 @@ const createManualDraft = (
     typeof (analysis as any)?.accessAnalysis?.walkingDistance === 'number'
       ? String((analysis as any).accessAnalysis.walkingDistance)
       : '',
-  publicTransportText: ((analysis as any)?.accessAnalysis?.publicTransport ?? []).join(', '),
+  publicTransportText: ((analysis as any)?.accessAnalysis?.publicTransport ?? []).map(publicTransportLabel).filter(Boolean).join(', '),
   manualNotes: String((analysis as any)?.manualNotes ?? locationAccessNotes ?? ''),
 });
 
@@ -543,6 +544,27 @@ const buildPermitEmailTemplate = (params: {
 };
 
 // Helper function to open maps navigation
+/**
+ * Kollektivlinjer skal være tekst. Kartverket leverer strenger, men andre
+ * kilder — og lagrede analyser fra eldre versjoner — sender objekter. React
+ * kaster på et objekt som barn, og hele analysen forsvant for en scout som
+ * ikke hadde gjort noe annet enn å åpne lokasjonen sin. Ukjente former blir
+ * til lesbar tekst i stedet for å velte flaten.
+ */
+export function publicTransportLabel(entry: unknown): string {
+  if (typeof entry === 'string') return entry.trim();
+  if (typeof entry === 'number') return String(entry);
+  if (entry && typeof entry === 'object') {
+    const record = entry as Record<string, unknown>;
+    const parts = [record.name, record.line, record.type, record.distance]
+      .filter((part) => typeof part === 'string' || typeof part === 'number')
+      .map((part) => String(part).trim())
+      .filter(Boolean);
+    if (parts.length) return parts.join(' · ');
+  }
+  return '';
+}
+
 const openMapsNavigation = (lat: number, lng: number) => {
   const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
   const appleMapsUrl = `https://maps.apple.com/?daddr=${lat},${lng}`;
@@ -562,10 +584,13 @@ const openMapsNavigation = (lat: number, lng: number) => {
 // Reusable Parking/Charging Spot List Item Component
 interface SpotListItemProps {
   spot: {
-    name: string;
-    address: string;
-    coordinates: { lat: number; lng: number };
-    distance: number;
+    name?: string;
+    address?: string;
+    // Valgfri: en lagret analyse, en fallback-kilde eller en manuelt lagt
+    // parkering kan mangle koordinat. Da er stedet fortsatt verdt å vise —
+    // det er bare navigeringen som ikke finnes.
+    coordinates?: { lat?: number; lng?: number } | null;
+    distance?: number;
     spaces?: number;
   };
   variant?: 'default' | 'ev';
@@ -579,9 +604,14 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
   const hoverBgColor = variant === 'ev' ? 'rgba(93, 118, 203,0.24)' : 'rgba(93, 118, 203,0.24)';
   const hoverBorderColor = variant === 'ev' ? 'rgba(93, 118, 203,0.55)' : 'rgba(93, 118, 203,0.52)';
   
+  const lat = spot.coordinates?.lat;
+  const lng = spot.coordinates?.lng;
+  const canNavigate = Number.isFinite(lat) && Number.isFinite(lng);
+
   const handleClick = useCallback(() => {
-    openMapsNavigation(spot.coordinates.lat, spot.coordinates.lng);
-  }, [spot.coordinates.lat, spot.coordinates.lng]);
+    if (!canNavigate) return;
+    openMapsNavigation(lat as number, lng as number);
+  }, [canNavigate, lat, lng]);
 
   return (
     <ListItem
@@ -592,15 +622,18 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
         borderRadius: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
         bgcolor: bgColor,
         border: `1px solid ${borderColor}`,
-        cursor: 'pointer',
+        cursor: canNavigate ? 'pointer' : 'default',
+        opacity: canNavigate ? 1 : 0.72,
         transition: 'all 0.2s',
-        '&:hover': {
-          bgcolor: hoverBgColor,
-          borderColor: hoverBorderColor,
-          transform: 'translateX(4px)',
-        },
+        ...(canNavigate ? {
+          '&:hover': {
+            bgcolor: hoverBgColor,
+            borderColor: hoverBorderColor,
+            transform: 'translateX(4px)',
+          },
+        } : {}),
       }}
-      onClick={handleClick}
+      onClick={canNavigate ? handleClick : undefined}
     >
       <ListItemIcon sx={{ minWidth: { xs: 40, sm: 44, md: 42, lg: 48, xl: 52 } }}>
         <Box sx={{ 
@@ -627,6 +660,7 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
               {spot.address}
             </Typography>
             <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, alignItems: 'center', flexWrap: 'wrap' }}>
+              {Number.isFinite(spot.distance) && (
               <Chip
                 label={`${spot.distance} m unna`}
                 size="small"
@@ -640,6 +674,7 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
                   },
                 }}
               />
+              )}
               {spot.spaces && spaceLabel && (
                 <Chip
                   label={spaceLabel}
@@ -655,12 +690,14 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
                   }}
                 />
               )}
+              {canNavigate && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, ml: 'auto' }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
                   Trykk for navigering
                 </Typography>
                 <OpenInNewIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.9rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }} />
               </Box>
+              )}
             </Box>
           </Box>
         }
@@ -1461,7 +1498,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               onClick={() => setGuideOpen(true)}
               startIcon={<HelpIcon />}
               sx={{
-                minHeight: 40,
+                minHeight: TOUCH_TARGET_SIZE,
                 textTransform: 'none',
                 color: 'rgba(255,255,255,0.9)',
                 borderColor: 'rgba(255,255,255,0.24)',
@@ -1670,7 +1707,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         size="small"
                         onClick={() => setAnalysisOperationalFilter(filterKey)}
                         sx={{
-                          minHeight: 34,
+                          minHeight: TOUCH_TARGET_SIZE,
                           textTransform: 'none',
                           borderColor:
                             analysisOperationalFilter === filterKey ? ROLE_ROOM_DIALOG_COLORS.secondary : 'rgba(255,255,255,0.2)',
@@ -1711,6 +1748,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     onClick={handleToggleManualEdit}
                     startIcon={manualEditOpen ? <CloseIcon /> : <EditIcon />}
                     sx={{
+                      minHeight: TOUCH_TARGET_SIZE,
                       textTransform: 'none',
                       bgcolor: manualEditOpen ? 'transparent' : ROLE_ROOM_DIALOG_COLORS.secondary,
                       color: manualEditOpen ? 'rgba(255,255,255,0.87)' : '#02141a',
@@ -2060,6 +2098,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       onClick={handleSavePermitWorkflow}
                       disabled={savingPermitWorkflow}
                       sx={{
+                        minHeight: TOUCH_TARGET_SIZE,
                         bgcolor: ROLE_ROOM_DIALOG_COLORS.accent,
                         color: '#fff',
                         textTransform: 'none',
@@ -2245,7 +2284,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             fontSize: '0.72rem',
                             fontWeight: 600,
                             textTransform: 'none',
-                            minHeight: 28,
+                            minHeight: TOUCH_TARGET_SIZE,
                             px: 1.25,
                             '&:hover': { bgcolor: 'rgba(251,191,36,0.15)' },
                           }}
@@ -2445,7 +2484,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                   startIcon={<ContentCopyIcon />}
                                   onClick={() => handleCopyPermitTemplate(contact)}
                                   disabled={copyingContactId === contact.id}
-                                  sx={{ textTransform: 'none', color: '#fff' }}
+                                  sx={{ textTransform: 'none', color: '#fff', minHeight: TOUCH_TARGET_SIZE }}
                                 >
                                   {copyingContactId === contact.id ? 'Kopierer...' : 'Kopier mal'}
                                 </Button>
@@ -3137,7 +3176,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           </Box>
                         </Box>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, ml: { xs: 0, sm: 7, md: 6.5, lg: 7, xl: 8 } }}>
-                          {(analysis?.accessAnalysis.publicTransport ?? []).map((transport, idx) => (
+                          {(analysis?.accessAnalysis.publicTransport ?? [])
+                            .map(publicTransportLabel)
+                            .filter(Boolean)
+                            .map((transport, idx) => (
                             <Chip
                               key={idx}
                               label={transport}

@@ -77,47 +77,47 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
 }) => {
   return (
     <>
-      {(mode || customHeader) && (
-        <Box
-          sx={{
-            px: 2,
-            py: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 1,
-            flexWrap: 'wrap',
-            bgcolor: 'rgba(10,10,10,0.95)',
-            borderBottom: '1px solid rgba(93, 118, 203,0.18)',
-          }}
+      {/* Toppraden er alltid der. Den lå tidligere bak `mode || customHeader`,
+          og en workspace uten modus mistet dermed veien ut — og en egen header
+          erstattet flatevelgeren i stedet for å stå ved siden av den. Hvilken
+          app du er i skal stå samme sted uansett hva flaten ellers gjør. */}
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          flexWrap: 'wrap',
+          bgcolor: 'rgba(10,10,10,0.95)',
+          borderBottom: '1px solid rgba(93, 118, 203,0.18)',
+        }}
+      >
+        <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap">
+          {/* Merket først: hvilket produkt du er i, før hvilken app og hvilken
+              modus. Deretter flatevelgeren — veien ut av flaten står samme
+              sted uansett hva flaten ellers gjør. */}
+          <RoleRoomMark markSize={26} showTagline={false} />
+          <SurfaceSwitcher />
+          {customHeader ?? (mode ? (
+            <ProfessionModeChip mode={mode} onSwitch={onSwitchMode} />
+          ) : null)}
+        </Stack>
+        <Typography
+          variant="caption"
+          color="text.disabled"
+          sx={{ fontFamily: 'monospace', fontSize: 11 }}
         >
-          {customHeader ?? (
-            <Stack direction="row" spacing={1.2} alignItems="center">
-              {/* Merket først: hvilket produkt du er i, før hvilken app og
-                  hvilken modus. Produksjonsflaten hadde ingen logo i det
-                  hele tatt — du kunne ikke se hvilket produkt du satt i. */}
-              <RoleRoomMark markSize={26} showTagline={false} />
-              <SurfaceSwitcher />
-              {mode && (
-                <ProfessionModeChip mode={mode} onSwitch={onSwitchMode} />
-              )}
-            </Stack>
-          )}
-          <Typography
-            variant="caption"
-            color="text.disabled"
-            sx={{ fontFamily: 'monospace', fontSize: 11 }}
+          <Box
+            component="kbd"
+            sx={{ px: 0.5, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.08)' }}
           >
-            <Box
-              component="kbd"
-              sx={{ px: 0.5, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.08)' }}
-            >
-              ⌘K
-            </Box>{' '}
-            for å søke
-          </Typography>
-        </Box>
-      )}
+            ⌘K
+          </Box>{' '}
+          for å søke
+        </Typography>
+      </Box>
 
       {children}
 

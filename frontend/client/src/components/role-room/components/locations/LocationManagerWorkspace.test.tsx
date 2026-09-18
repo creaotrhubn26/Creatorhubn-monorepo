@@ -41,19 +41,20 @@ const renderWorkspace = (decisionActorRole?: 'director' | 'cinematographer' | 'p
 /**
  * Tidsgrenser for HELE filen, ikke per test.
  *
- * Målt alene på en ledig maskin: 2,0 s · 8,0 s · 9,0 s · 17,2 s · 3,8 s,
- * pluss 24 s modul-innsamling. Arbeidsflaten er 1321 linjer og rendrer ni
- * seksjoner med MUI i jsdom — kostnaden er ekte, ikke en henging.
+ * Målt alene på ledig maskin FØR inntastingen ble memoisert: 2,0 s · 8,0 s
+ * · 9,0 s · 17,2 s · 3,8 s, pluss 24 s modul-innsamling. Arbeidsflaten er
+ * 1321 linjer og rendrer ni seksjoner med MUI i jsdom.
  *
  * Standardgrensen på 5 s traff altså tre av fem tester så snart maskinen
  * var opptatt. Da feilet de på last, ikke på kode, og suiten løy i hver
  * kjøring. Grensen er satt for å fange en test som HENGER; 30 s er godt
  * over det tregeste målte og godt under en henging.
  *
- * Skal dette bli raskere, må selve arbeidsflaten deles opp — det er en
- * egen jobb, ikke noe en tidsgrense kan fikse.
+ * Grensen er 15 s, ikke 30: etter at inntastingen fikk sin egen memoiserte
+ * komponent falt den tyngste testen til ~6 s. Rom for maskinlast, men lavt
+ * nok til at den smeller hvis tregheten kommer tilbake.
  */
-vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+vi.setConfig({ testTimeout: 15_000, hookTimeout: 15_000 });
 
 describe('LocationManagerWorkspace', () => {
   beforeEach(() => {
@@ -138,7 +139,11 @@ describe('LocationManagerWorkspace', () => {
     expect(screen.getByText(/62 dBA ved nordport/)).toBeInTheDocument();
     expect(screen.getAllByText('Verifisert').length).toBeGreaterThan(0);
     expect(screen.getByText('Ulagrede endringer')).toBeInTheDocument();
-  });
+  // Testen brukte 11 s så lenge utkastet lå i arbeidsflaten og hvert tastetrykk
+  // tegnet hele lokasjonsflaten på nytt. Etter at inntastingen fikk sin egen
+  // memoiserte komponent tar den ~6 s. Grensen står med rom for maskinlast,
+  // men lavt nok til at den smeller hvis utkastet løftes opp igjen.
+  }, 15_000);
 
   it('submits a signer decision through the role-derived decision endpoint', async () => {
     const initial = buildLocationManagerOperations(project.locations![0], project);

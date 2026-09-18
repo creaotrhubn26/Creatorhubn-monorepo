@@ -19,7 +19,12 @@ describe('planOps', () => {
 
   it('planWindow starter 7 d før tidligste dato og dekker zoom-dager', () => {
     const w = planWindow([{ startAt: '2026-10-01T00:00:00Z', dueAt: null }], 'month', NOW);
-    expect(lokalDato(w.start)).toBe('2026-09-10');
+    // planWindow klipper til døgnstart i lokal tid, så fasiten må regnes
+    // ut på samme måte. Den hardkodede UTC-datoen var grønn bare i UTC og
+    // rød i Europa/Oslo — altså overalt der den faktisk skrives.
+    const forventetStart = new Date(NOW - 7 * 86_400_000);
+    forventetStart.setHours(0, 0, 0, 0);
+    expect(w.start).toBe(forventetStart.getTime());
     expect((w.end - w.start) / 86_400_000).toBe(124);
   });
 
