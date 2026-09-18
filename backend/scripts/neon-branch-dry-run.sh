@@ -23,7 +23,8 @@ set -euo pipefail
 
 if [ "${1:-}" = "--self-test" ]; then
   # Kontrakt-sjekk uten nettverk: skriptet parser, og hjelperne gir riktig form.
-  url="postgresql://u:p@ep-x.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+  # Uten passord i strengen (secret-skanneren flagger «postgres-url-with-password»).
+  url="postgresql://neondb_owner@ep-x.eu-central-1.aws.neon.tech/neondb?sslmode=require"
   db="$(node -e 'console.log(new URL(process.argv[1]).pathname.replace(/^\//, ""))' "$url")"
   [ "$db" = "neondb" ] || { echo "self-test: databasenavn feil ($db)"; exit 1; }
   echo "neon-branch-dry-run: self-test OK"
