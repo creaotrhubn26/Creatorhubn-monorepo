@@ -25,6 +25,7 @@ import express from "express";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { createHash } from "crypto";
+import { byggSporingsSnutt } from "./leadgrid-sporing-snutt.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -133,6 +134,45 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       res.setHeader("Access-Control-Max-Age", "600");
       res.status(204).end();
+    },
+  );
+
+  // ── Sporings-snutten ───────────────────────────────────────────────────
+  // Klient-halvdelen. Uten den kommer utm og klikk-ID aldri fram hit, og
+  // kolonnene fra mig 0637 blir stående tomme.
+  //
+  // Serveres til ethvert domene: dette er en offentlig, statisk JS-fil uten
+  // hemmeligheter. Nøkkelen i URL-en er den samme publiserbare nøkkelen som
+  // uansett står i kundens HTML. CORS er derfor `*` her, mens selve
+  // innsendingen fortsatt holdes til allowed_origins.
+  app.get(
+    "/api/leadgrid/public/forms/:publicKey/leadgrid.js",
+    async (req: Request, res: Response): Promise<void> => {
+      let endpoint: FormEndpointRow | null = null;
+      try {
+        endpoint = await loadEndpoint(req.params.publicKey);
+      } catch (err) {
+        console.error("[inbound-forms] snutt-oppslag feilet:", err);
+        res.status(500).type("application/javascript").send("/* leadgrid: feil */");
+        return;
+      }
+      if (!endpoint) {
+        // 200 med en kommentar, ikke 404: en 404 i konsollen på kundens
+        // nettsted ser ut som at Leadgrid er nede. Dette sier hva som er galt.
+        res
+          .status(200)
+          .type("application/javascript")
+          .send("/* leadgrid: ukjent eller tilbakekalt skjemanoekkel */");
+        return;
+      }
+      const base =
+        process.env.LEADGRID_PUBLIC_API_BASE?.replace(/\/+$/, "") ??
+        `${req.protocol}://${req.get("host")}`;
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.type("application/javascript").send(
+        byggSporingsSnutt({ publicKey: req.params.publicKey, apiBase: base }),
+      );
     },
   );
 
