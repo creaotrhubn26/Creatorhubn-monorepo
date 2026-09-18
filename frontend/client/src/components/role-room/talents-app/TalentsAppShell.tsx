@@ -46,7 +46,7 @@ import BusinessCenterOutlinedIcon from '@mui/icons-material/BusinessCenterOutlin
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 
-import TalentsLogo from './TalentsLogo';
+import { RoleRoomMark } from '../shared/RoleRoomMark';
 import { palette, radius } from './theme';
 import SurfaceSwitcher from '../shared/SurfaceSwitcher';
 
@@ -137,7 +137,7 @@ export default function TalentsAppShell({
       <>
         {/* Logo */}
         <Box sx={{ p: 2.4, pb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <TalentsLogo variant="large" />
+          <RoleRoomMark markSize={44} surface="Talents" />
           {forMobile ? (
             <IconButton onClick={() => setMobileNavOpen(false)} sx={{ color: palette.textMuted }}>
               <CloseIcon />
