@@ -269,6 +269,6 @@ describe("Fase 6: scene-verktøy (game_studio)", () => {
     const out = await findCapability("rr_project_overview")!.handler(pool, CTX, { projectId: "p1" }) as { scenes: { total: number; byStatus: Record<string, number> }; gates: { passed: number; total: number } };
     expect(out.scenes.total).toBe(2);
     expect(out.scenes.byStatus.approved).toBe(1);
-    expect(out.gates).toMatchObject({ passed: 1, total: 12 });
+    expect(out.gates).toMatchObject({ passed: 1, total: 6 }); // kun startede scener (status ≠ idea) × 6 gater
   });
 });

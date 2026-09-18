@@ -224,7 +224,7 @@ export default function ClientWorkspaceShell({
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box
               component="img"
-              src="/theroleroom-app-icon-1024.png"
+              src="/theroleroom-mark-1024.png"
               alt="The Role Room"
               sx={{ width: 36, height: 36, borderRadius: 1.5 }}
             />

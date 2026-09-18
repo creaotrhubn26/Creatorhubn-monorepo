@@ -599,6 +599,7 @@ import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-ro
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
 import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
+import { setupRoleRoomSceneRoleCardsRoutes } from "./role-room-scene-role-cards-routes";
 import { setupRoleRoomEidRoutes } from "./role-room-eid-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
@@ -16576,7 +16577,7 @@ const ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY: RoleRoomPlatformBrandingIden
   domain: "theroleroom.com",
   supportEmail: "support@theroleroom.com",
   docsUrl: "https://docs.theroleroom.com",
-  emailLogoUrl: "/role-room-assets/TheRoleRoom_Logo_Tagline.webp",
+  emailLogoUrl: "/theroleroom-mark-1024.png",
 };
 
 const ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME: RoleRoomPlatformEmailTheme = {
@@ -25735,6 +25736,13 @@ setupRoleRoomTalentSignupRoutes({
 // Skuespiller-CV: krediteringer (migrasjon 0611). Rolle, produksjon,
 // regissør og år — strukturen resume_url aldri ga oss.
 setupRoleRoomTalentCreditsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Rollekort for settet (migrasjon 0628): produksjonen ser alle kortene i en
+// scene, personen åpner sin egen lenke og ser bare sitt eget.
+setupRoleRoomSceneRoleCardsRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,

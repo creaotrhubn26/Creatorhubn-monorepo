@@ -7,6 +7,16 @@ const ms = (over: Partial<NarrativeMilestone>): NarrativeMilestone => ({ id: 'm'
 const sc = (over: Partial<NarrativeSceneSummary>): NarrativeSceneSummary => ({ id: 's', projectId: 'p', code: 'P01', title: 'S', subtitle: '', location: '', challenge: '', gameplayMechanic: '', environment: '', status: 'idea', assigneeUserId: null, dueAt: null, heroAssetId: null, sortOrder: 0, createdBy: null, createdAt: '', updatedAt: '', beforeState: '', action: '', control: '', afterState: '', audio: '', changeNote: '', bridge: '', timeNote: '', knowledge: {}, era: '1797', episodeId: null, startAt: null, sourceRefs: [], workingId: null, latestReview: null, taskCounts: { total: 0, done: 0 }, ...over });
 
 describe('planOps', () => {
+  // startOfDay() setter LOKAL midnatt — riktig for en tidslinje, der brukeren
+  // ser sine egne døgn. Testen leste den tilbake som UTC-dato, og da faller
+  // den i enhver tidssone foran UTC: lokal midnatt 10. september er 9.
+  // september klokken 22 i UTC. Den passerte i CI (UTC) og feilet i Oslo —
+  // altså sa den «grønt» et sted den ikke var sann.
+  const lokalDato = (t: number) => {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   it('planWindow starter 7 d før tidligste dato og dekker zoom-dager', () => {
     const w = planWindow([{ startAt: '2026-10-01T00:00:00Z', dueAt: null }], 'month', NOW);
     // planWindow klipper til døgnstart i lokal tid, så fasiten må regnes
@@ -16,6 +26,14 @@ describe('planOps', () => {
     forventetStart.setHours(0, 0, 0, 0);
     expect(w.start).toBe(forventetStart.getTime());
     expect((w.end - w.start) / 86_400_000).toBe(124);
+  });
+
+  it('gir samme lokale startdato uansett tidssone', () => {
+    // Samme inndata, to tidssoner: vinduet skal starte på lokal midnatt
+    // begge steder — det er poenget med startOfDay.
+    const w = planWindow([{ startAt: '2026-10-01T00:00:00Z', dueAt: null }], 'month', NOW);
+    const d = new Date(w.start);
+    expect([d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()]).toEqual([0, 0, 0, 0]);
   });
   it('dateToPercent klemmer til 0–100', () => {
     const w = { start: 0, end: 100 * 86_400_000 };

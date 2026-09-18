@@ -92,7 +92,12 @@ describe('production day change impact', () => {
         };
       }
       if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
-        return { rows: dayDate ? [{ id: 'day-6', date: dayDate }] : [], rowCount: dayDate ? 1 : 0 };
+        return {
+          rows: dayDate
+            ? [{ id: 'day-6', date: dayDate, scene_ids: ['scene-1', 'scene-2'] }]
+            : [],
+          rowCount: dayDate ? 1 : 0,
+        };
       }
       const table = Object.keys(counts).find((name) => text.includes(name));
       return { rows: [{ count: table ? counts[table] : 0 }], rowCount: 1 };
@@ -117,6 +122,45 @@ describe('production day change impact', () => {
 
     const response = await request(app)
       .get(`${PATH}?date=2026-09-20`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ unchanged: true, impacts: [], blocking: false });
+  });
+
+  it('previews what a scene change costs the day', async () => {
+    // Scenene er dagens innhold: fjernes en, forsvinner arbeidet som hører
+    // til den, og det skal stå i forhåndsvisningen før valget tas.
+    const app = createApp(impactQuery({ casting_roles: 3 }));
+
+    const response = await request(app)
+      .get(`${PATH}?sceneIds=scene-1`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.fromSceneIds).toEqual(['scene-1', 'scene-2']);
+    expect(response.body.toSceneIds).toEqual(['scene-1']);
+    expect(response.body.impacts.map((i: { area: string }) => i.area)).toContain('scene_cast');
+  });
+
+  it('treats an emptied scene list as a real change, not a missing parameter', async () => {
+    const app = createApp(impactQuery({ casting_production_continuity_media: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?sceneIds=`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.unchanged).toBe(false);
+    expect(response.body.toSceneIds).toEqual([]);
+    expect(response.body.blocking).toBe(true);
+  });
+
+  it('says nothing changes when the same scenes come back in another order', async () => {
+    const app = createApp(impactQuery({ casting_roles: 3 }));
+
+    const response = await request(app)
+      .get(`${PATH}?sceneIds=scene-2,scene-1`)
       .set('authorization', `Bearer ${SESSION_TOKEN}`);
 
     expect(response.status).toBe(200);

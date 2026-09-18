@@ -326,7 +326,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'equipment', label: 'Utstyr', icon: <CameraAlt /> },
       { id: 'files', label: 'Filer', icon: <FolderOpen /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
-      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/theroleroom-mark-1024.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','portrett','event','kommersiell'],
@@ -359,7 +359,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/theroleroom-mark-1024.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','commercial','portrett','produkt'],
@@ -392,7 +392,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/theroleroom-mark-1024.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
@@ -424,7 +424,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/theroleroom-mark-1024.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['album','singel','podcast','jingle'],
@@ -450,7 +450,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/theroleroom-mark-1024.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['utleie','salg','service','konsultasjon'],
@@ -484,7 +484,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
-      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/theroleroom-mark-1024.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       ...(import.meta.env.DEV ? [{ id: 'integration-test', label: 'Integration Test', icon: <Build /> }] : [])
     ],
     projectTypes: ['bryllup','corporate','event','musikkvideo','portrett','reklame'],

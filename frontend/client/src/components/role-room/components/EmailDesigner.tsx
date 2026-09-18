@@ -322,7 +322,7 @@ const TEMPLATE_TYPE_CONFIG: Record<string, {
   },
 };
 
-const CASTING_PLANNER_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
+const CASTING_PLANNER_LOGO_URL = '/theroleroom-mark-1024.png';
 
 interface EmailHeaderConfig {
   brandName: string;

@@ -191,7 +191,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
               transition={{ delay: 0.2 }}
             >
               <img
-                src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+                src="/theroleroom-mark-1024.png"
                 alt="The Role Room"
                 style={{
                   width: 120,

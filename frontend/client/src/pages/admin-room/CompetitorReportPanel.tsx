@@ -30,7 +30,7 @@ import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import { adminTokens, adminSx, statusChipSx } from './styles';
 
-const THEROLERROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
+const THEROLERROOM_LOGO_URL = '/theroleroom-mark-1024.png';
 
 interface Insight {
   category: 'opportunity' | 'threat' | 'gap' | 'trend';

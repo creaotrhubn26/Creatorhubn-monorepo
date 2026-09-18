@@ -38,6 +38,24 @@ const renderWorkspace = (decisionActorRole?: 'director' | 'cinematographer' | 'p
   />,
 );
 
+/**
+ * Tidsgrenser for HELE filen, ikke per test.
+ *
+ * Målt alene på ledig maskin FØR inntastingen ble memoisert: 2,0 s · 8,0 s
+ * · 9,0 s · 17,2 s · 3,8 s, pluss 24 s modul-innsamling. Arbeidsflaten er
+ * 1321 linjer og rendrer ni seksjoner med MUI i jsdom.
+ *
+ * Standardgrensen på 5 s traff altså tre av fem tester så snart maskinen
+ * var opptatt. Da feilet de på last, ikke på kode, og suiten løy i hver
+ * kjøring. Grensen er satt for å fange en test som HENGER; 30 s er godt
+ * over det tregeste målte og godt under en henging.
+ *
+ * Grensen er 15 s, ikke 30: etter at inntastingen fikk sin egen memoiserte
+ * komponent falt den tyngste testen til ~6 s. Rom for maskinlast, men lavt
+ * nok til at den smeller hvis tregheten kommer tilbake.
+ */
+vi.setConfig({ testTimeout: 15_000, hookTimeout: 15_000 });
+
 describe('LocationManagerWorkspace', () => {
   beforeEach(() => {
     list.mockReset().mockResolvedValue([]);

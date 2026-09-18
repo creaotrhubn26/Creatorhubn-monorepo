@@ -50,7 +50,7 @@ export interface PrerenderedPage {
 }
 
 const OG_IMAGE = 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp';
-const FAVICON = '/TheRoleRoom_App_Logo.png';
+const FAVICON = '/theroleroom-mark-1024.png';
 
 /** Merke-parametre for HTML-dokumentmalen (TRR vs Leadgrid). */
 interface SiteMeta {
