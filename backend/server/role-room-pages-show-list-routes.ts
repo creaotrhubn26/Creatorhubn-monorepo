@@ -25,6 +25,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupPagesShowListRoutesDeps {
   app: Application;
@@ -64,7 +65,7 @@ export function setupPagesShowListRoutes(deps: SetupPagesShowListRoutesDeps): vo
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${target}/accounts?${params.toString()}`,
+        `${META_GRAPH_BASE}/${target}/accounts?${params.toString()}`,
       );
       const body = (await upstream.json().catch(() => ({}))) as Record<string, unknown>;
       if (!upstream.ok) {

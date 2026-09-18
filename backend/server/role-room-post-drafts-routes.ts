@@ -18,6 +18,7 @@ import type { Pool } from 'pg';
 import { composePost, type ComposePostInput } from './role-room-post-composer-claude.js';
 import { THEROLERROOM_BOOTSTRAP } from './role-room-agent-profile-recommendations.js';
 import { dispatchPublish } from './social-publisher.js';
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupPostDraftsRoutesDeps {
   app: Application;
@@ -25,7 +26,6 @@ export interface SetupPostDraftsRoutesDeps {
   requireAdminOrDemoBypass: (req: Request, res: Response) => boolean;
 }
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
 type ImageResolveResult =
   | { ok: true; dataUrl: string }

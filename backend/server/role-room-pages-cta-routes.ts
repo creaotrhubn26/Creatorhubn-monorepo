@@ -22,6 +22,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupPagesCtaRoutesDeps {
   app: Application;
@@ -82,7 +83,7 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
     let legacyResponse: { ok: boolean; status: number; body: unknown };
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}`,
         { method: "POST", body: legacyParams },
       );
       legacyResponse = { ok: upstream.ok, status: upstream.status, body: await upstream.json().catch(() => ({})) };
@@ -116,7 +117,7 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
           access_token: pageAccessToken,
         });
         const upstream = await fetch(
-          `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}`,
+          `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}`,
           { method: "POST", body: modernParams },
         );
         modernResponse = {
@@ -185,7 +186,7 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${params.toString()}`,
       );
       const responseBody = (await upstream.json().catch(() => ({}))) as Record<string, unknown>;
       if (!upstream.ok) {

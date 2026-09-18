@@ -24,6 +24,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupIgBusinessBasicRoutesDeps {
   app: Application;
@@ -69,7 +70,7 @@ export function setupIgBusinessBasicRoutes(deps: SetupIgBusinessBasicRoutesDeps)
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(igUserId)}?${params.toString()}`,
       );
       const body = (await upstream.json().catch(() => ({}))) as Record<string, unknown>;
       if (!upstream.ok) {

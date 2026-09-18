@@ -19,6 +19,7 @@ import {
   type KpiSourcePlatform,
   type KpiTestResult,
 } from "./role-room-kpi-source-config.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export type DataSourceConnectionState =
   | "not_connected"      // Ingen connection-row finnes
@@ -433,7 +434,7 @@ async function testMetaConnection(pool: Pool, projectId: string): Promise<{ succ
     );
     const token = r.rows[0]?.access_token;
     if (!token) return { success: false, error: "Token mangler i raden." };
-    const url = `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(token)}`;
+    const url = `${META_GRAPH_BASE}/me?access_token=${encodeURIComponent(token)}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");

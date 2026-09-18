@@ -35,6 +35,7 @@
 
 import { createHash } from "crypto";
 import type express from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface MetaCapiDeps {
   app: express.Application;
@@ -200,7 +201,7 @@ export async function sendMetaCapiEvent(
     };
   }
 
-  const url = `https://graph.facebook.com/v18.0/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`;
+  const url = `${META_GRAPH_BASE}/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`;
 
   const body = {
     data: [event],

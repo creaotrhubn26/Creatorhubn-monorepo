@@ -23,10 +23,9 @@
 
 import crypto from 'crypto';
 import type { Pool } from 'pg';
+import { META_GRAPH_BASE, META_WWW_BASE } from "./meta-graph-version.js";
 
-const META_GRAPH_VERSION = 'v21.0';
-const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
-const META_OAUTH_DIALOG = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`;
+const META_OAUTH_DIALOG = `${META_WWW_BASE}/dialog/oauth`;
 
 const REQUIRED_SCOPES = [
   'instagram_basic',
@@ -719,4 +718,5 @@ export async function subscribeFbPageWebhookFields(
 }
 
 export const META_REQUIRED_SCOPES = REQUIRED_SCOPES;
-export const META_GRAPH_API_VERSION = META_GRAPH_VERSION;
+// Beholdt så filene som allerede importerer herfra ikke må endres.
+export { META_GRAPH_API_VERSION } from "./meta-graph-version.js";

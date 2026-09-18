@@ -16,9 +16,9 @@
  * vanlige brukere (Business Manager-oppgave) — mangler konto returneres
  * tydelig feil med henvisning. Utløpt token → needsReauth.
  */
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
-const META_GRAPH = "https://graph.facebook.com/v21.0";
-
+const META_GRAPH = META_GRAPH_BASE;
 export type MetaFetcher = (
   url: string,
   init: { method: string; body?: string },

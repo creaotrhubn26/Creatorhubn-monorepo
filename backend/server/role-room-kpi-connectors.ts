@@ -23,6 +23,7 @@ import {
   fetchOrganizationShareStatistics,
 } from "./social-linkedin-org-share-stats.js";
 import { decryptLinkedInToken } from "./social-publisher-linkedin.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // #177 — Meta Graph API connector (IG Business + Facebook Pages)
@@ -66,7 +67,7 @@ async function fetchInstagramMediaInsights(
   // Meta returnerer 400 hvis metric ikke finnes for posten — vi splittet
   // i to kall (standard + reel-only) for å håndtere det.
   const standardMetrics = "impressions,reach,saved,likes,comments,shares";
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(mediaId)}/insights` +
+  const url = `${META_GRAPH_BASE}/${encodeURIComponent(mediaId)}/insights` +
     `?metric=${standardMetrics}&access_token=${encodeURIComponent(accessToken)}`;
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(8000) });

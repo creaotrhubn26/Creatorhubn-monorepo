@@ -29,6 +29,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupIgPublicRoutesDeps {
   app: Application;
@@ -74,7 +75,7 @@ export function setupIgPublicRoutes(deps: SetupIgPublicRoutesDeps): void {
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/ig_hashtag_search?${params.toString()}`,
+        `${META_GRAPH_BASE}/ig_hashtag_search?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {
@@ -133,7 +134,7 @@ export function setupIgPublicRoutes(deps: SetupIgPublicRoutesDeps): void {
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(hashtagId)}/recent_media?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(hashtagId)}/recent_media?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {
@@ -187,7 +188,7 @@ export function setupIgPublicRoutes(deps: SetupIgPublicRoutesDeps): void {
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(userId)}?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(userId)}?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {

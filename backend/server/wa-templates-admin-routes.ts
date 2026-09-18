@@ -30,12 +30,12 @@ import {
   type WhatsAppSenderConfig,
 } from "./casting-whatsapp-sender.js";
 import { LEADGRID_WA_TEMPLATES } from "./leadgrid-whatsapp-templates.js";
+import { META_GRAPH_API_VERSION } from "./meta-graph-version.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
 
-const META_GRAPH_VERSION = "v22.0";
-
+const META_GRAPH_VERSION = META_GRAPH_API_VERSION;
 const WABA_ID_FALLBACK = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID ?? "";
 
 function getSession(req: Request, sessions: Map<string, SessionData>): SessionData | null {
