@@ -1,6 +1,6 @@
 /**
  * Seed demo-innholdet for lydguide-POC-en (Kvadraturen, Akershus festning og
- * Operaen) inn i tabellene fra migrasjon 0628_reiseguide_poc.sql.
+ * Operaen) inn i tabellene fra migrasjon 0629_reiseguide_poc.sql.
  *
  *   DATABASE_URL=… npm run seed:reiseguide
  *

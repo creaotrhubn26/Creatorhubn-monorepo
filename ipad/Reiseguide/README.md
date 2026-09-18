@@ -4,7 +4,7 @@ Appen heter «SenseAid Explore» (besluttet av Daniel 18.09.2026); Xcode-prosjek
 mappen heter fortsatt `Reiseguide`. Native iPhone-app i SwiftUI (iOS 17+) for POC-en «Interaktiv reiseguide med
 tilgjengelighet». Designet er Konsept 2 «Dark Mode / Premium» etter
 UI-spesifikasjonen av 18.09.2026. Backend er `/api/guide/*` i Creatorhubn-
-backend (`backend/server/reiseguide-routes.ts`, migrasjon 0628).
+backend (`backend/server/reiseguide-routes.ts`, migrasjon 0629).
 
 ## Bygge
 
@@ -16,7 +16,7 @@ open Reiseguide.xcodeproj
 ```
 
 Lokal backend: kjør `npm run seed:reiseguide` i `backend/` mot en database med
-migrasjon 0628, start backend, og sett miljøvariabelen
+migrasjon 0629, start backend, og sett miljøvariabelen
 `REISEGUIDE_API_BASE_URL=http://localhost:5000` i schemet (kun DEBUG). Uten
 overstyring brukes produksjons-URL-en fra `project.yml`.
 

@@ -1,4 +1,4 @@
--- 0628_reiseguide_poc.sql
+-- 0629_reiseguide_poc.sql
 -- Lydguide-POC («Interaktiv reiseguide med tilgjengelighet»), steg 1:
 -- datamodell for områder, severdigheter (POI), manus per språk og variant,
 -- lydfiler, teksting og (mock-)kjøp. Leses av backend/server/reiseguide-routes.ts.
