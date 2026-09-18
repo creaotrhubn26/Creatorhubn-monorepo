@@ -7,6 +7,9 @@ import {
   CONTACTS_PAGE_1,
   CONTACTS_PAGE_2,
   CONTACT_TO_COMPANY,
+  ALL_LINE_ITEMS,
+  ALL_PRODUCTS,
+  DEAL_TO_LINE_ITEMS,
   ENGAGEMENTS,
   OWNERS,
   PIPELINE_SALG_NORGE,
@@ -14,7 +17,9 @@ import {
 import {
   LEADGRID_ACTIVITY_TYPES,
   LEADGRID_LIFECYCLE_STAGES,
+  LEADGRID_BILLING_FREQUENCIES,
   LEADGRID_STAGES,
+  mapBillingFrequency,
   mapLifecycleStage,
   mapPipelineStage,
   planHubSpotMigration,
@@ -30,6 +35,9 @@ const input: MigrationInput = {
   pipelines: [PIPELINE_SALG_NORGE],
   contactToCompany: CONTACT_TO_COMPANY,
   companyToDeals: COMPANY_TO_DEALS,
+  products: ALL_PRODUCTS,
+  lineItems: ALL_LINE_ITEMS,
+  dealToLineItems: DEAL_TO_LINE_ITEMS,
   engagements: ENGAGEMENTS,
 };
 
@@ -209,7 +217,7 @@ describe("planen som helhet", () => {
       { companies: [], contacts: [], deals: [], owners: [], pipelines: [], contactToCompany: {}, companyToDeals: {}, engagements: [] },
       { fallbackOwnerUserId: "user-daniel" },
     );
-    expect(empty.counts).toEqual({ customers: 0, contacts: 0, merged: 0, issues: 0, silentLossPrevented: 0 });
+    expect(empty.counts).toEqual({ customers: 0, contacts: 0, merged: 0, products: 0, lineItems: 0, issues: 0, silentLossPrevented: 0 });
   });
 });
 
@@ -251,5 +259,79 @@ describe("livssyklus", () => {
     expect(issue).toBeDefined();
     expect(issue?.message).toContain("partner_prospect");
     expect(p.customers.find((c) => c.hubspotId === "7002")?.lifecycleStage).toBe("other");
+  });
+});
+
+describe("produktkatalog", () => {
+  it("tar med katalogen, også produkter uten SKU", () => {
+    const p = plan();
+    expect(p.counts.products).toBe(2);
+    const lisens = p.products.find((x) => x.hubspotId === "P100");
+    expect(lisens).toMatchObject({ sku: "LG-LIC", name: "Leadgrid lisens", unitPrice: 990 });
+    expect(p.products.find((x) => x.hubspotId === "P200")?.sku).toBeNull();
+  });
+
+  it("er tom når kunden ikke bruker katalog", () => {
+    const p = plan({ products: [], lineItems: [], dealToLineItems: {} });
+    expect(p.counts.products).toBe(0);
+    expect(p.counts.lineItems).toBe(0);
+  });
+});
+
+describe("produktlinjer på avtale", () => {
+  it("henger linjene på kunden som eier den avtalen vi tar med", () => {
+    const p = plan();
+    const paaNordvik = p.lineItems.filter((l) => l.customerHubspotId === "7001");
+    expect(paaNordvik.map((l) => l.hubspotId).sort()).toEqual(["L1", "L2", "L3"]);
+  });
+
+  it("regner net_total likt som databasen, med både prosent- og kronerabatt", () => {
+    const p = plan();
+    const byId = Object.fromEntries(p.lineItems.map((l) => [l.hubspotId, l]));
+    // 25 x 990 = 24 750, minus 10 % = 22 275
+    expect(byId.L1.netTotal).toBe(22275);
+    // 1 x 15 000, minus 2 500 i kroner = 12 500
+    expect(byId.L2.netTotal).toBe(12500);
+    // fritekstlinje uten rabatt
+    expect(byId.L3.netTotal).toBe(48000);
+  });
+
+  it("beholder koblingen til katalogen, og tillater fritekstlinje uten produkt", () => {
+    const p = plan();
+    const byId = Object.fromEntries(p.lineItems.map((l) => [l.hubspotId, l]));
+    expect(byId.L1.productHubspotId).toBe("P100");
+    expect(byId.L3.productHubspotId).toBeNull();
+  });
+
+  it("tar med abonnementsdetaljer på gjentakende linjer", () => {
+    const p = plan();
+    const lisens = p.lineItems.find((l) => l.hubspotId === "L1");
+    expect(lisens?.billingFrequency).toBe("monthly");
+    expect(lisens?.recurringStartDate).toBe("2027-02-01");
+    expect(p.lineItems.find((l) => l.hubspotId === "L2")?.billingFrequency).toBe("one_time");
+  });
+
+  it("sier høyt at linjene på en droppet avtale forsvinner med den", () => {
+    const p = plan();
+    const issue = issuesOf(p, "line_items_on_dropped_deal")[0];
+    expect(issue.silentLoss).toBe(true);
+    expect(issue.message).toContain("Serviceavtale timer");
+    expect(p.lineItems.some((l) => l.hubspotId === "L9")).toBe(false);
+  });
+});
+
+describe("mapBillingFrequency", () => {
+  it("gjenkjenner HubSpots frekvenser", () => {
+    expect(mapBillingFrequency("monthly")).toEqual({ frequency: "monthly", matched: true });
+    expect(mapBillingFrequency("annually").frequency).toBe("annually");
+    expect(mapBillingFrequency(null)).toEqual({ frequency: "one_time", matched: true });
+  });
+
+  it("lander innenfor CHECK-constrainten også for frekvenser vi ikke har", () => {
+    const ours = new Set<string>(LEADGRID_BILLING_FREQUENCIES);
+    for (const raw of ["per_four_years", "per_five_years", "tullball", ""]) {
+      expect(ours.has(mapBillingFrequency(raw).frequency)).toBe(true);
+    }
+    expect(mapBillingFrequency("per_five_years").matched).toBe(false);
   });
 });

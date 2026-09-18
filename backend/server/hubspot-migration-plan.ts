@@ -96,7 +96,9 @@ export type IssueCode =
   | "no_dedupe_key"
   | "calculated_property_skipped"
   | "missing_deal_amount"
-  | "custom_lifecycle_stage";
+  | "custom_lifecycle_stage"
+  | "line_items_on_dropped_deal"
+  | "unsupported_billing_frequency";
 
 export interface MigrationIssue {
   code: IssueCode;
@@ -143,15 +145,63 @@ export interface PlannedContact {
   ownerWithoutColumn: string | null;
 }
 
+/** Faktureringsfrekvensene leadgrid_products/-line_items tillater (mig 0632). */
+export const LEADGRID_BILLING_FREQUENCIES = [
+  "one_time", "weekly", "biweekly", "monthly", "quarterly",
+  "per_six_months", "annually", "per_two_years", "per_three_years",
+] as const;
+export type BillingFrequency = (typeof LEADGRID_BILLING_FREQUENCIES)[number];
+
+/** HubSpots recurringbillingfrequency -> vår. Tom verdi = engangssalg. */
+export function mapBillingFrequency(
+  raw: string | null | undefined,
+): { frequency: BillingFrequency; matched: boolean } {
+  const key = (raw ?? "").trim().toLowerCase();
+  if (!key) return { frequency: "one_time", matched: true };
+  const known = new Set<string>(LEADGRID_BILLING_FREQUENCIES);
+  if (known.has(key)) return { frequency: key as BillingFrequency, matched: true };
+  // HubSpot har per_four_years og per_five_years; vi stopper på tre år.
+  return { frequency: "annually", matched: false };
+}
+
+export interface PlannedProduct {
+  hubspotId: string;
+  sku: string | null;
+  name: string;
+  description: string | null;
+  unitPrice: number;
+  billingFrequency: BillingFrequency;
+}
+
+export interface PlannedLineItem {
+  hubspotId: string;
+  /** HubSpot-id-en til avtalens selskap, altså kunden linjen havner på. */
+  customerHubspotId: string;
+  productHubspotId: string | null;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+  discountAmount: number;
+  billingFrequency: BillingFrequency;
+  recurringStartDate: string | null;
+  /** Samme formel som net_total i databasen, så planen viser rett sum. */
+  netTotal: number;
+}
+
 export interface MigrationPlan {
   customers: PlannedCustomer[];
   contacts: PlannedContact[];
+  products: PlannedProduct[];
+  lineItems: PlannedLineItem[];
   mergedIntoExisting: Array<{ hubspotId: string; mergesWith: string; on: "email" }>;
   issues: MigrationIssue[];
   counts: {
     customers: number;
     contacts: number;
     merged: number;
+    products: number;
+    lineItems: number;
     issues: number;
     silentLossPrevented: number;
   };
@@ -165,6 +215,10 @@ export interface MigrationInput {
   pipelines: HubSpotPipeline[];
   contactToCompany: Record<string, HubSpotAssociation[]>;
   companyToDeals: Record<string, string[]>;
+  /** Katalogprodukter fra HubSpot. Tom liste = kunden bruker ikke katalog. */
+  products?: HubSpotObject[];
+  lineItems?: HubSpotObject[];
+  dealToLineItems?: Record<string, string[]>;
   engagements: ReadonlyArray<{ id: string; type: string; contactId: string }>;
 }
 
@@ -225,6 +279,8 @@ function contactDisplayName(properties: Record<string, string | null>): string {
 export function planHubSpotMigration(input: MigrationInput, options: MigrationOptions): MigrationPlan {
   const issues: MigrationIssue[] = [];
   const customers: PlannedCustomer[] = [];
+  const products: PlannedProduct[] = [];
+  const lineItems: PlannedLineItem[] = [];
   const contacts: PlannedContact[] = [];
   const mergedIntoExisting: MigrationPlan["mergedIntoExisting"] = [];
 
@@ -281,6 +337,66 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
     }
   };
 
+  // ── Katalogen ────────────────────────────────────────────────────────────
+  for (const product of input.products ?? []) {
+    const billing = mapBillingFrequency(product.properties.recurringbillingfrequency);
+    if (!billing.matched) {
+      issues.push({
+        code: "unsupported_billing_frequency",
+        hubspotId: product.id,
+        message: `Faktureringsfrekvensen «${product.properties.recurringbillingfrequency}» finnes ikke i Leadgrid. Settes til årlig.`,
+        silentLoss: false,
+      });
+    }
+    products.push({
+      hubspotId: product.id,
+      sku: product.properties.hs_sku ?? null,
+      name: product.properties.name ?? `HubSpot-produkt ${product.id}`,
+      description: product.properties.description ?? null,
+      unitPrice: toNumber(product.properties.price) ?? 0,
+      billingFrequency: billing.frequency,
+    });
+  }
+
+  const lineItemsById = new Map((input.lineItems ?? []).map((l) => [l.id, l]));
+
+  /** Samme formel som net_total i migrasjon 0632, avrundet likt. */
+  const netTotalOf = (quantity: number, unitPrice: number, pct: number, amount: number) =>
+    Math.round(Math.max(quantity * unitPrice * (1 - pct / 100) - amount, 0) * 100) / 100;
+
+  const addLineItems = (dealId: string, customerHubspotId: string) => {
+    for (const lineId of input.dealToLineItems?.[dealId] ?? []) {
+      const line = lineItemsById.get(lineId);
+      if (!line) continue;
+      const billing = mapBillingFrequency(line.properties.recurringbillingfrequency);
+      if (!billing.matched) {
+        issues.push({
+          code: "unsupported_billing_frequency",
+          hubspotId: line.id,
+          message: `Faktureringsfrekvensen «${line.properties.recurringbillingfrequency}» finnes ikke i Leadgrid. Settes til årlig.`,
+          silentLoss: false,
+        });
+      }
+      const quantity = toNumber(line.properties.quantity) ?? 1;
+      const unitPrice = toNumber(line.properties.price) ?? 0;
+      const discountPercent = toNumber(line.properties.hs_discount_percentage) ?? 0;
+      const discountAmount = toNumber(line.properties.discount) ?? 0;
+      lineItems.push({
+        hubspotId: line.id,
+        customerHubspotId,
+        productHubspotId: line.properties.hs_product_id ?? null,
+        name: line.properties.name ?? `Linje ${line.id}`,
+        quantity,
+        unitPrice,
+        discountPercent,
+        discountAmount,
+        billingFrequency: billing.frequency,
+        recurringStartDate: line.properties.hs_recurring_billing_start_date ?? null,
+        netTotal: netTotalOf(quantity, unitPrice, discountPercent, discountAmount),
+      });
+    }
+  };
+
   // ── Selskaper blir kunder ────────────────────────────────────────────────
   for (const company of input.companies) {
     noteCalculated(company);
@@ -292,6 +408,25 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
       (a, b) => (toNumber(b.properties.amount) ?? 0) - (toNumber(a.properties.amount) ?? 0),
     );
     const primaryDeal = sorted[0] ?? null;
+    if (primaryDeal) addLineItems(primaryDeal.id, company.id);
+
+    // Linjene på avtalene vi ikke tar med, forsvinner sammen med dem.
+    // Det skal sies høyt, med beløp, ikke bare antydes.
+    for (const dropped of sorted.slice(1)) {
+      const droppedLines = (input.dealToLineItems?.[dropped.id] ?? [])
+        .map((id) => lineItemsById.get(id))
+        .filter((l): l is HubSpotObject => Boolean(l));
+      if (droppedLines.length === 0) continue;
+      issues.push({
+        code: "line_items_on_dropped_deal",
+        hubspotId: dropped.id,
+        message: `${droppedLines.length} produktlinje(r) på «${dropped.properties.dealname ?? dropped.id}» blir ikke med, fordi avtalen selv ikke blir med: ${droppedLines
+          .map((l) => l.properties.name ?? l.id)
+          .join(", ")}.`,
+        silentLoss: true,
+      });
+    }
+
     if (sorted.length > 1) {
       issues.push({
         code: "extra_deals_dropped",
@@ -465,12 +600,16 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
   return {
     customers,
     contacts,
+    products,
+    lineItems,
     mergedIntoExisting,
     issues,
     counts: {
       customers: customers.length,
       contacts: contacts.length,
       merged: mergedIntoExisting.length,
+      products: products.length,
+      lineItems: lineItems.length,
       issues: issues.length,
       silentLossPrevented: issues.filter((i) => i.silentLoss).length,
     },
