@@ -1,5 +1,10 @@
 /**
- * RoleRoomEduLogo — gjenbrukbart The Role Room-logo-lockup for mørke flater.
+ * RoleRoomMark — The Role Room-merket, felles for alle flatene.
+ *
+ * Lå tidligere under education/ som RoleRoomEduLogo. Den var allerede skrevet
+ * generisk, men navnet og plasseringen gjorde at ingen andre flate fant den:
+ * Produksjon og Admin Room hadde ingen logo i det hele tatt, og Talents har
+ * sin egen. Ett merke, ett sted.
  *
  * Bruker det ekte merket (masker + klaffbrett) fra TheRoleRoom_Logo_v2.png,
  * beskåret via background-crop, + «THE ROLE ROOM» i HVITT (så ordmerket alltid
@@ -9,12 +14,15 @@
 
 import { Box, Stack, Typography } from '@mui/material';
 
-export function RoleRoomEduLogo({
+export function RoleRoomMark({
   markSize = 46,
   showTagline = true,
+  /** Flaten du er på, satt under ordmerket: «Produksjon», «Admin Room» … */
+  surface,
 }: {
   markSize?: number;
   showTagline?: boolean;
+  surface?: string;
 }) {
   return (
     <Stack direction="row" alignItems="center" spacing={1.4}>
@@ -36,14 +44,21 @@ export function RoleRoomEduLogo({
         <Typography sx={{ fontWeight: 800, fontSize: markSize * 0.33, letterSpacing: 1.2, lineHeight: 1.05, color: '#fff', whiteSpace: 'nowrap' }}>
           THE ROLE ROOM
         </Typography>
-        {showTagline && (
+        {surface ? (
+          <Typography sx={{ fontSize: markSize * 0.22, color: '#c6bdf4', letterSpacing: 0.6, lineHeight: 1, mt: 0.25 }}>
+            {surface}
+          </Typography>
+        ) : showTagline ? (
           <Typography sx={{ fontSize: markSize * 0.2, color: '#c6bdf4', letterSpacing: 0.4, lineHeight: 1, mt: 0.25 }}>
             Casting. Roles. Together.
           </Typography>
-        )}
+        ) : null}
       </Box>
     </Stack>
   );
 }
 
-export default RoleRoomEduLogo;
+export default RoleRoomMark;
+
+/** Gammelt navn, beholdt for education-flaten. */
+export const RoleRoomEduLogo = RoleRoomMark;
