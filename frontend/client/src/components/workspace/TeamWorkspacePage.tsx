@@ -32,6 +32,7 @@ import WorkspaceParticipantsTab from './tabs/WorkspaceParticipantsTab';
 import SoundRoomTab from './tabs/SoundRoomTab';
 import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
+import ProduksjonerTab from './tabs/ProduksjonerTab';
 import LaaterTab from './tabs/LaaterTab';
 import SesjonerTab from './tabs/SesjonerTab';
 import OppdragTab from './tabs/OppdragTab';
@@ -353,6 +354,7 @@ const TeamWorkspacePage: React.FC = () => {
       case 'sound-room':      return <SoundRoomTab projectId={projectId} />;
       case 'video-room':      return <VideoRoomTab projectId={projectId} />;
       case 'photo-room':      return <PhotoRoomTab projectId={projectId} readOnly={!workspaceAccess.canEdit} />;
+      case 'produksjoner':    return <ProduksjonerTab projectId={projectId} readOnly={!workspaceAccess.canEdit} />;
       case 'chat':            return <Box sx={{ height: 'calc(100dvh - 160px)', maxWidth: 760, mx: 'auto' }}><WorkspaceChatPanel projectId={projectId} category={workspaceCategory} /></Box>;
       default:                return <ComingTab label={navItem?.label || tab} />;
     }
