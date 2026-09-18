@@ -38,6 +38,23 @@ const renderWorkspace = (decisionActorRole?: 'director' | 'cinematographer' | 'p
   />,
 );
 
+/**
+ * Tidsgrenser for HELE filen, ikke per test.
+ *
+ * Målt alene på en ledig maskin: 2,0 s · 8,0 s · 9,0 s · 17,2 s · 3,8 s,
+ * pluss 24 s modul-innsamling. Arbeidsflaten er 1321 linjer og rendrer ni
+ * seksjoner med MUI i jsdom — kostnaden er ekte, ikke en henging.
+ *
+ * Standardgrensen på 5 s traff altså tre av fem tester så snart maskinen
+ * var opptatt. Da feilet de på last, ikke på kode, og suiten løy i hver
+ * kjøring. Grensen er satt for å fange en test som HENGER; 30 s er godt
+ * over det tregeste målte og godt under en henging.
+ *
+ * Skal dette bli raskere, må selve arbeidsflaten deles opp — det er en
+ * egen jobb, ikke noe en tidsgrense kan fikse.
+ */
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 describe('LocationManagerWorkspace', () => {
   beforeEach(() => {
     list.mockReset().mockResolvedValue([]);
@@ -121,10 +138,7 @@ describe('LocationManagerWorkspace', () => {
     expect(screen.getByText(/62 dBA ved nordport/)).toBeInTheDocument();
     expect(screen.getAllByText('Verifisert').length).toBeGreaterThan(0);
     expect(screen.getByText('Ulagrede endringer')).toBeInTheDocument();
-  // Fire interaksjoner mot hele feltarbeidsflaten koster ~9 s i jsdom, og den
-  // gamle grensen på 10 s lot testen falle på maskinlast alene. Grensen er her
-  // for å fange en hengende test, ikke for å måle ytelse.
-  }, 30_000);
+  });
 
   it('submits a signer decision through the role-derived decision endpoint', async () => {
     const initial = buildLocationManagerOperations(project.locations![0], project);
