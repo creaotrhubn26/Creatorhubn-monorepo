@@ -55,6 +55,10 @@ export interface ChangeImpactPreviewProps {
   currentSceneIds?: string[] | null;
   /** Scenene brukeren har valgt. */
   targetSceneIds?: string[] | null;
+  /** Rekvisittene dagen har i dag. `null` når de ikke redigeres her. */
+  currentPropIds?: string[] | null;
+  /** Rekvisittene brukeren har valgt. */
+  targetPropIds?: string[] | null;
   /** Sier fra når noe må ryddes før lagring er forsvarlig. */
   onBlockingChange?: (blocking: boolean) => void;
 }
@@ -72,6 +76,52 @@ function SeverityIcon({ severity }: { severity: ImpactSeverity }) {
   return <InfoOutlinedIcon sx={sx} />;
 }
 
+export interface ChangeSummaryInput {
+  readonly dateChanged: boolean;
+  readonly locationChanged: boolean;
+  readonly scenesChanged: boolean;
+  readonly propsChanged?: boolean;
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * Overskriften over funnene. Den navnga tidligere bare dato og lokasjon, så en
+ * sceneendring ble presentert som «Ny lokasjon påvirker:» — feil setning over
+ * riktige funn, som er verre enn ingen setning. Her bygges den av det som
+ * faktisk er endret.
+ */
+export function changeHeadline(input: ChangeSummaryInput): string {
+  const { dateChanged, locationChanged, scenesChanged, propsChanged = false, from, to } = input;
+  const deler: string[] = [];
+  if (dateChanged) {
+    deler.push(locationChanged || scenesChanged || propsChanged
+      ? 'ny dato'
+      : `flytting fra ${from} til ${to}`);
+  }
+  if (locationChanged) deler.push('ny lokasjon');
+  if (scenesChanged) deler.push('endrede scener');
+  if (propsChanged) deler.push('endrede rekvisitter');
+  if (deler.length === 0) return 'Endringen påvirker:';
+  const setning = deler.length === 1
+    ? deler[0]
+    : `${deler.slice(0, -1).join(', ')} og ${deler[deler.length - 1]}`;
+  return `${setning.charAt(0).toUpperCase()}${setning.slice(1)} påvirker:`;
+}
+
+/** Samme spørsmål når svaret er «ingenting». */
+export function emptyImpactText(input: ChangeSummaryInput): string {
+  const { dateChanged, locationChanged, scenesChanged, propsChanged = false, from } = input;
+  const hva = dateChanged
+    ? from
+    : [
+        locationChanged ? 'den gamle lokasjonen' : '',
+        scenesChanged ? 'scenene som endres' : '',
+        propsChanged ? 'rekvisittene som endres' : '',
+      ].filter(Boolean).join(' eller ') || 'endringen';
+  return `Ingenting annet henger på ${hva}. Endringen berører bare dagen selv.`;
+}
+
 export function ChangeImpactPreview({
   projectId,
   dayId,
@@ -81,6 +131,8 @@ export function ChangeImpactPreview({
   targetLocationId = null,
   currentSceneIds = null,
   targetSceneIds = null,
+  currentPropIds = null,
+  targetPropIds = null,
   onBlockingChange,
 }: ChangeImpactPreviewProps): JSX.Element | null {
   const [data, setData] = useState<ImpactResponse | null>(null);
@@ -96,7 +148,11 @@ export function ChangeImpactPreview({
   const sceneKey = targetSceneIds ? [...targetSceneIds].sort().join(',') : null;
   const currentSceneKey = currentSceneIds ? [...currentSceneIds].sort().join(',') : null;
   const scenesChanged = sceneKey !== null && sceneKey !== (currentSceneKey ?? '');
-  const shouldAsk = Boolean(dayId) && (dateChanged || locationChanged || scenesChanged);
+  const propKey = targetPropIds ? [...targetPropIds].sort().join(',') : null;
+  const currentPropKey = currentPropIds ? [...currentPropIds].sort().join(',') : null;
+  const propsChanged = propKey !== null && propKey !== (currentPropKey ?? '');
+  const shouldAsk = Boolean(dayId)
+    && (dateChanged || locationChanged || scenesChanged || propsChanged);
 
   const load = useCallback(async () => {
     if (!dayId || !shouldAsk) return;
@@ -108,6 +164,7 @@ export function ChangeImpactPreview({
       if (locationChanged && targetLocationId) params.set('locationId', targetLocationId);
       // Tom liste er en ekte verdi her: «dagen har ingen scener igjen».
       if (scenesChanged) params.set('sceneIds', (targetSceneIds ?? []).join(','));
+      if (propsChanged) params.set('propIds', (targetPropIds ?? []).join(','));
       const response = await fetch(
         `/api/role-room/projects/${encodeURIComponent(projectId)}`
         + `/production-days/${encodeURIComponent(dayId)}/impact?${params.toString()}`,
@@ -122,8 +179,8 @@ export function ChangeImpactPreview({
       setLoading(false);
     }
   }, [
-    projectId, dayId, targetDate, targetLocationId, targetSceneIds,
-    dateChanged, locationChanged, scenesChanged, shouldAsk,
+    projectId, dayId, targetDate, targetLocationId, targetSceneIds, targetPropIds,
+    dateChanged, locationChanged, scenesChanged, propsChanged, shouldAsk,
   ]);
 
   useEffect(() => {
@@ -191,9 +248,7 @@ export function ChangeImpactPreview({
   if (data.impacts.length === 0) {
     return (
       <Alert severity="success" icon={<CheckCircleOutlineIcon fontSize="small" />} sx={{ mt: 1 }}>
-        {dateChanged
-          ? `Ingenting annet henger på ${data.from}. Endringen berører bare dagen selv.`
-          : 'Ingenting annet henger på den gamle lokasjonen. Endringen berører bare dagen selv.'}
+        {emptyImpactText({ dateChanged, locationChanged, scenesChanged, propsChanged, from: data.from, to: data.to })}
       </Alert>
     );
   }
@@ -201,11 +256,7 @@ export function ChangeImpactPreview({
   return (
     <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, border: '1px solid rgba(255,255,255,0.12)' }}>
       <Typography variant="subtitle2" sx={{ color: '#fff', mb: 1 }}>
-        {dateChanged && locationChanged
-          ? `Ny dato og ny lokasjon påvirker:`
-          : dateChanged
-            ? `Flytting fra ${data.from} til ${data.to} påvirker:`
-            : 'Ny lokasjon påvirker:'}
+        {changeHeadline({ dateChanged, locationChanged, scenesChanged, propsChanged, from: data.from, to: data.to })}
       </Typography>
       <Stack spacing={1}>
         {data.impacts.map((impact) => (

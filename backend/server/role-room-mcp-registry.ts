@@ -33,6 +33,7 @@ import {
   createElement as createNarrativeElement,
 } from "./role-room-narrative-service.js";
 import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
+import { loadGuardianSnapshot, runGuardianRules } from "./ai-script-guardian-agent.js";
 // Fase 3: Arcweave-kompatibel eksport + Markdown fra det delte format-laget.
 import { plainTextToHtml, toArcweaveProject, toCsv, toMarkdown } from "../../frontend/shared/narrative-format/index.ts";
 
@@ -720,6 +721,23 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
         episodes: o.episodes,
         milestones: o.milestones.map((m) => ({ id: m.id, title: m.title, lane: m.lane, status: m.status, startAt: m.startAt, dueAt: m.dueAt, sceneIds: m.sceneIds })),
         activity: o.activity,
+      };
+    },
+  },
+
+  {
+    name: "rr_script_guardian_check",
+    description: "Manusvakt (Story Graph, Fase 8d) — deterministisk pass uten modell: epoke-brudd, ukjent taler, replikk uten kildetype, scene uten episode, bilde/lyd «bestått» uten bevis-referanse, gamle åpne spørsmål, ufullstendige kunnskapsfelt. Read-only: lagrer ingen forslag (bruk UI-ets «Kjør manusvakt» for KI-passet og godkjenning). Returnerer funn med alvorlighet, berørte scener, bevis og foreslått spørsmål.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const snap = await loadGuardianSnapshot(pool, projectId);
+      const issues = runGuardianRules(snap);
+      return {
+        scenes: snap.scenes.length, lines: snap.lines.length,
+        issues: issues.map((i) => ({ issueType: i.issueType, severity: i.severity, title: i.title, description: i.description, sceneCodes: i.sceneCodes, evidence: i.evidence, suggestedQuestion: i.suggestedQuestion })),
+        summary: { total: issues.length, high: issues.filter((i) => i.severity === "high").length, medium: issues.filter((i) => i.severity === "medium").length, low: issues.filter((i) => i.severity === "low").length },
       };
     },
   },

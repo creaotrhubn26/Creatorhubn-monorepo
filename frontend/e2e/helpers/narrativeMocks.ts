@@ -36,7 +36,10 @@ export async function installGameBillingMocks(page: Page, plan: MockGamePlanSlug
     const req = route.request();
     const path = new URL(req.url()).pathname.replace(/^.*\/api\/game\/billing/, '');
     const method = req.method();
-    const body = (method === 'POST' || method === 'PATCH' || method === 'PUT') ? (req.postDataJSON() as Rec | null) ?? {} : {};
+    // Multipart (manusimport) er ikke JSON — postDataJSON() ville kastet.
+    const body: Rec = (method === 'POST' || method === 'PATCH' || method === 'PUT')
+      ? (() => { try { return (req.postDataJSON() as Rec | null) ?? {}; } catch { return {}; } })()
+      : {};
     if (path === '/plans' && method === 'GET') return route.fulfill(ok(plans));
     if (path === '/admin/plans' && method === 'GET') return route.fulfill(ok(plans));
     if (path === '/admin/plans' && method === 'POST') { const p = { ...body, createdAt: now(), updatedAt: now() }; plans.push(p as typeof plans[number]); return route.fulfill(ok(p, 201)); }
@@ -262,6 +265,9 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   const lines: Rec[] = [];
   const episodes: Rec[] = [];
   const openQuestions: Rec[] = [];
+  // Fase 8c: CI-hooks + leveringslogg (seedes med én anvendt og én avvist levering ved what-follows-us).
+  const ciHooks: Rec[] = [];
+  const ciDeliveries: Rec[] = [];
   const sources: Rec[] = [];
   const milestones: Rec[] = [];
   const platformTargets: Rec[] = [];
@@ -295,9 +301,16 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       for (const cid of sc.components ?? []) { const oid = componentIdByCustomId.get(cid); if (oid) links.push({ sceneId: id, ownerKind: 'component', ownerId: oid, sortOrder: links.length }); }
       for (const l of sc.lines ?? []) lines.push({ id: nextId('nsl'), sceneId: id, projectId, cueId: l.cueId.toUpperCase(), speakerComponentId: l.speaker ? componentIdByCustomId.get(l.speaker) ?? null : null, speakerLabel: l.speakerLabel, perspective: l.perspective ?? '', textEn: l.textEn, textNb: l.textNb ?? '', sourceType: l.sourceType, recordingStatus: l.recordingStatus ?? 'none', note: l.note ?? '', sortOrder: lines.filter((x) => x.sceneId === id).length, createdBy: 'u-seed', createdAt: now(), updatedAt: now() });
       for (const gt of sc.gates ?? []) gates.push({ sceneId: id, projectId, gateKey: gt.key, status: gt.status, evidence: gt.evidence ?? '', evidenceRefs: gt.evidenceRefs ?? [], checkedBy: 'u-seed', checkedAt: now(), updatedAt: now() });
+      // Fase 8c: P01/gråboks er satt av CI med nedlastbart bevis (asset:) i seeden.
+      if (sc.code === 'P01') { const gb = gates.find((x) => x.sceneId === id && x.gateKey === 'greybox'); if (gb) { gb.checkedBy = 'ci:nch_seed0000-e2e0-4000-8000-000000000000'; gb.evidenceRefs = [...(gb.evidenceRefs as string[]), 'asset:nas_seed_xcresult', 'commit:abcdef1']; } }
       for (const t of sc.tasks ?? []) tasks.push({ id: nextId('nst'), sceneId: id, projectId, title: t.title, status: t.status ?? 'todo', assigneeUserId: null, dueAt: null, completedAt: null, sortOrder: tasks.length, createdBy: 'u-seed', createdAt: now(), updatedAt: now() });
     }
     for (const q of fx.openQuestions) openQuestions.push({ id: nextId('noq'), projectId, code: q.code, kind: q.kind, question: q.question, context: q.context ?? '', status: q.status ?? 'open', decision: q.decision ?? '', decidedBy: null, decidedAt: null, sourceRefs: q.sourceRefs ?? [], sortOrder: openQuestions.length, createdAt: now(), updatedAt: now() });
+    ciHooks.push({ id: 'nch_seed0000-e2e0-4000-8000-000000000000', projectId, label: 'Xcode Cloud (seed)', createdBy: 'u-seed', createdAt: now(), revokedAt: null, lastDeliveryAt: now(), deliveryCount: 2 });
+    ciDeliveries.push(
+      { id: 'ncd_seed_1', hookId: 'nch_seed0000-e2e0-4000-8000-000000000000', projectId, receivedAt: now(), status: 'applied', sceneCode: 'P01', gateKey: 'greybox', gateStatus: 'passed', error: null, commitSha: 'abcdef1234567', runUrl: 'https://ci.example/run/42' },
+      { id: 'ncd_seed_2', hookId: 'nch_seed0000-e2e0-4000-8000-000000000000', projectId, receivedAt: now(), status: 'rejected', sceneCode: 'P02', gateKey: 'playthrough', gateStatus: 'passed', error: 'gate_evidence_required', commitSha: 'abcdef1234567', runUrl: null },
+    );
     for (const m of fx.milestones) milestones.push({ id: nextId('nms'), projectId, title: m.title, lane: m.lane, status: m.status ?? 'planned', startAt: m.startAt ?? null, dueAt: m.dueAt ?? null, ownerUserId: null, description: m.description ?? '', acceptance: m.acceptance ?? '', evidence: m.evidence ?? '', sortOrder: milestones.length, sceneIds: (m.scenes ?? []).map((c) => scenes.find((x) => x.code === c.toUpperCase())?.id).filter(Boolean), createdAt: now(), updatedAt: now() });
     for (const t of fx.platformTargets) platformTargets.push({ id: nextId('npt'), projectId, name: t.name, platform: t.platform, isPrimary: t.isPrimary ?? false, engine: t.engine ?? '', osMin: t.osMin ?? '', deviceMin: t.deviceMin ?? '', inputModel: t.inputModel ?? '', budgets: t.budgets ?? {}, requirements: t.requirements ?? [], visualDirection: t.visualDirection ?? {}, notes: t.notes ?? '', sortOrder: platformTargets.length, createdAt: now(), updatedAt: now() });
     g.settings.title = fx.meta.title;
@@ -320,6 +333,53 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   };
   const nextSceneCode = () => { let max = 0; for (const sc of scenes) { const mm = /^S(\d+)$/.exec(String(sc.code)); if (mm) max = Math.max(max, Number(mm[1])); } return `S${max + 1}`; };
   const comments: Rec[] = [];
+  // Fase 8d — manusvakt: KI-forslag (story.guardian-issue) over AI Suggestion-endepunktene.
+  // Generate lager deterministiske funn fra mock-tilstanden; accept speiler applier-en (åpent spørsmål AI-<id>).
+  const aiSuggestions: Rec[] = [];
+  const suggestionJson = (data: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(data) });
+  await page.route('**/api/role-room/projects/*/ai-suggestions**', async (route: Route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    if (req.method() === 'GET') {
+      const agent = url.searchParams.get('agentName');
+      const status = (url.searchParams.get('status') ?? 'pending').split(',');
+      const min = Number(url.searchParams.get('minConfidence') ?? 0);
+      return route.fulfill(suggestionJson(aiSuggestions.filter((x) => (!agent || x.agentName === agent) && status.includes(String(x.status)) && Number(x.confidence) >= min)));
+    }
+    if (req.method() === 'POST' && /\/ai-suggestions\/generate$/.test(url.pathname)) {
+      const b = (() => { try { return (req.postDataJSON() as Rec | null) ?? {}; } catch { return {}; } })();
+      if (b.agentName !== 'script-guardian-agent') return route.fulfill(suggestionJson([], 201));
+      const mode = String((b.payload as Rec | undefined)?.mode ?? 'deterministic');
+      const first = scenes[0];
+      const issues: Rec[] = [{
+        issueType: 'era_mismatch', severity: 'high', title: `Epoke-brudd i ${first?.code ?? 'P01'}`,
+        description: `Scenen har epoke «${first?.era ?? '1797'}», men undertittelen nevner 1817.`, sceneIds: first ? [first.id] : [], sceneCodes: first ? [first.code] : [],
+        evidence: [{ ref: String(first?.code ?? 'P01'), quote: String(first?.subtitle ?? '') }], suggestedQuestion: `Hvilken epoke gjelder for ${first?.code ?? 'P01'} — feltet eller undertittelen?`, origin: 'rule',
+      }];
+      if (mode === 'full') issues.push({
+        issueType: 'knowledge_leak', severity: 'medium', title: 'Nora nevner lykten før den er vist', description: 'Replikken forutsetter kunnskap spilleren ikke har fått ennå.',
+        sceneIds: first ? [first.id] : [], sceneCodes: first ? [first.code] : [], evidence: [{ ref: 'W04.03', quote: 'The lantern…' }], suggestedQuestion: 'Kan Nora vite om lykten her?', origin: 'llm',
+      });
+      const created = issues.map((payload) => ({ id: nextId('sug'), projectId, suggestionType: 'story.guardian-issue', payload, sourceType: 'project', sourceId: projectId, agentName: 'script-guardian-agent', modelVersion: (payload.origin === 'llm' ? 'claude-opus-5' : 'rules-v1'), confidence: payload.origin === 'llm' ? 0.8 : 0.95, status: 'pending', createdAt: now(), updatedAt: now() }));
+      aiSuggestions.push(...created);
+      return route.fulfill(suggestionJson(created, 201));
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+  });
+  await page.route('**/api/role-room/ai-suggestions/*/{accept,reject}', async (route: Route) => {
+    const url = new URL(route.request().url());
+    const [, id, action] = url.pathname.match(/\/ai-suggestions\/([^/]+)\/(accept|reject)$/) ?? [];
+    const sug = aiSuggestions.find((x) => x.id === id);
+    if (!sug) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+    sug.status = action === 'accept' ? 'accepted' : 'rejected'; sug.reviewedAt = now(); sug.reviewedBy = 'u-e2e';
+    if (action === 'accept') {
+      const p = sug.payload as Rec;
+      const code = `AI-${String(id).replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}`;
+      openQuestions.push({ id: nextId('noq'), projectId, code, kind: 'question', question: p.suggestedQuestion, context: `${p.title}\n\n${p.description}`, status: 'open', decision: '', decidedBy: null, decidedAt: null, sourceRefs: [{ tag: 'A', ref: 'script-guardian', note: (p.sceneCodes as string[] | undefined)?.join(', ') ?? '' }], sortOrder: openQuestions.length, createdAt: now(), updatedAt: now() });
+      sug.appliedResult = { openQuestionCode: code };
+    }
+    return route.fulfill(suggestionJson(sug));
+  });
   await page.route('**/api/role-room/editor-comments**', async (route: Route) => {
     const req = route.request();
     const method = req.method();
@@ -352,7 +412,10 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     const url = new URL(req.url());
     const method = req.method();
     const path = url.pathname.replace(/^.*\/api\/role-room\/narrative/, '');
-    const body = (method === 'POST' || method === 'PATCH' || method === 'PUT') ? (req.postDataJSON() as Rec | null) ?? {} : {};
+    // Multipart (manusimport) er ikke JSON — postDataJSON() ville kastet.
+    const body: Rec = (method === 'POST' || method === 'PATCH' || method === 'PUT')
+      ? (() => { try { return (req.postDataJSON() as Rec | null) ?? {}; } catch { return {}; } })()
+      : {};
 
     const m = (re: RegExp) => path.match(re);
 
@@ -596,6 +659,105 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       return route.fulfill(ok({ title: g.settings.title ?? 'Story Graph', mode, graph }));
     }
 
+    // ── Fase 8c: CI-bevis-hooks ────────────────────────────────────────
+    if (m(/\/projects\/[^/]+\/ci-hooks$/) && method === 'GET') return route.fulfill(ok(ciHooks));
+    if (m(/\/projects\/[^/]+\/ci-hooks$/) && method === 'POST') {
+      const hook = { id: `nch_${String(ciHooks.length + 1).padStart(8, '0')}-e2e0-4000-8000-000000000000`, projectId, label: body.label ?? 'CI', createdBy: 'u-e2e', createdAt: now(), revokedAt: null, lastDeliveryAt: null, deliveryCount: 0 };
+      ciHooks.unshift(hook);
+      return route.fulfill(ok({ hook, secret: 'sgh_e2e_hemmelighet_som_vises_en_gang', webhookPath: `/api/role-room/narrative/hooks/ci/${hook.id}` }, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/ci-hooks\/([^/]+)\/revoke$/);
+    if (mm && method === 'POST') { const h = ciHooks.find((x) => x.id === mm![1]); if (!h) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); h.revokedAt = now(); return route.fulfill(ok(h)); }
+    mm = m(/\/projects\/[^/]+\/ci-hooks\/([^/]+)\/deliveries$/);
+    if (mm && method === 'GET') return route.fulfill(ok(ciDeliveries.filter((d) => d.hookId === mm![1])));
+    if (m(/\/projects\/[^/]+\/ci-deliveries$/) && method === 'GET') return route.fulfill(ok(ciDeliveries));
+    mm = m(/\/projects\/[^/]+\/assets\/([^/]+)\/download$/);
+    if (mm && method === 'GET') return route.fulfill(ok({ url: `https://storage.e2e.invalid/${mm[1]}?sig=e2e`, expiresInSeconds: 300 }));
+
+    // ── Fase 8b: manusimport (dry-run + apply) ─────────────────────────
+    if (m(/\/projects\/[^/]+\/import-document$/) && method === 'POST') {
+      const raw = req.postDataBuffer()?.toString('utf8') ?? '';
+      const fm = /filename="([^"]*)"[\s\S]*?\r?\n\r?\n([\s\S]*?)\r?\n--/.exec(raw);
+      const fileName = fm?.[1] ?? 'manus.md';
+      const text = fm?.[2] ?? '';
+      const ext = (fileName.split('.').pop() ?? '').toLowerCase();
+      if (!['md', 'markdown', 'txt', 'docx', 'pdf'].includes(ext)) return route.fulfill({ status: 415, contentType: 'application/json', body: JSON.stringify({ error: 'unsupported_type', message: 'Støttede formater: .docx, .pdf, .md, .txt' }) });
+      // Mini-parser (samme grammatikk som backend, redusert): scener + felt + replikkrader.
+      type PLine = { cueId: string; speakerLabel: string; sourceType: string | null; textEn: string };
+      type PScene = { workingId: string; title: string; subtitle: string; era: string; cueBlocks: string[]; fields: Record<string, string>; lines: PLine[] };
+      const parsedScenes: PScene[] = []; const blocks: Record<string, PLine[]> = {};
+      let cur: PScene | null = null; let title: string | null = null;
+      const labels: Array<[string, RegExp]> = [['beforeState', /^\*\*Før:\*\*\s*/], ['action', /^\*\*Handling:\*\*\s*/], ['control', /^\*\*Kontroll(?:\/utgang)?:\*\*\s*/], ['afterState', /^\*\*Etter(?:\/utløser)?:\*\*\s*/], ['audio', /^\*\*Lyd:\*\*\s*/]];
+      for (const line of text.split('\n')) {
+        const t = line.trim();
+        if (!title && /^#\s+/.test(t)) { title = t.replace(/^#\s+/, ''); continue; }
+        const bh = /^#{1,6}\s*([WUK]\d{2}[A-Z]?)\s+[—–-]\s+/.exec(t);
+        if (bh) { blocks[bh[1]] ??= []; cur = null; continue; }
+        const sh = /^#{1,6}\s*([A-Z]{1,3}\d{2,4}[A-Z]?)\s+[—–-]\s+(.+)$/.exec(t);
+        if (sh) {
+          const parts = sh[2].split(/\s+·\s+/); const st = parts.slice(1).join(' · ');
+          cur = { workingId: sh[1], title: parts[0], subtitle: st, era: (/\b(1797|1802|1817)\b/.exec(sh[2])?.[1]) ?? 'other', cueBlocks: [...st.matchAll(/\b([WUK]\d{2}[A-Z]?)\b/g)].map((x) => x[1]), fields: { beforeState: '', action: '', control: '', afterState: '', audio: '' }, lines: [] };
+          parsedScenes.push(cur); continue;
+        }
+        const cm = /^\|\s*([WUK]\d{2}[A-Z]?\.\d{2})\s*\|\s*([^|]+?)\s*\|\s*(E\+T|E|T|U|A)\s*\|\s*(.+?)\s*\|$/.exec(t);
+        if (cm) { (blocks[cm[1].slice(0, cm[1].indexOf('.'))] ??= []).push({ cueId: cm[1], speakerLabel: cm[2], sourceType: cm[3], textEn: cm[4] }); continue; }
+        if (!cur) continue;
+        for (const [key, re] of labels) if (re.test(t)) { cur.fields[key] = t.replace(re, ''); break; }
+      }
+      for (const sc of parsedScenes) for (const b of sc.cueBlocks) if (blocks[b]) sc.lines.push(...blocks[b]);
+      const lineCount = Object.values(blocks).reduce((n, r) => n + r.length, 0);
+      if (!parsedScenes.length && !lineCount) return route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: 'nothing_recognized', message: 'Fant verken scener eller replikker.' }) });
+      const norm = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+      const create: Rec[] = []; const update: Rec[] = []; const unchanged: Rec[] = []; const missingLines: Rec[] = [];
+      for (const ps of parsedScenes) {
+        const ex = scenes.find((sc) => String(sc.workingId ?? '').toUpperCase() === ps.workingId || String(sc.code).toUpperCase() === ps.workingId);
+        if (!ex) { create.push({ workingId: ps.workingId, code: ps.workingId, scene: ps }); continue; }
+        const changes: Rec = {};
+        for (const k of ['beforeState', 'action', 'control', 'afterState', 'audio']) if (norm(ps.fields[k]) && norm(ps.fields[k]) !== norm(ex[k])) changes[k] = { from: norm(ex[k]), to: norm(ps.fields[k]) };
+        if (norm(ps.title) && norm(ps.title) !== norm(ex.title)) changes.title = { from: norm(ex.title), to: norm(ps.title) };
+        const exLines = lines.filter((l) => l.sceneId === ex.id);
+        const lc: PLine[] = []; const lu: Rec[] = []; let same = 0; const seen = new Set<string>();
+        for (const pl of ps.lines) {
+          seen.add(pl.cueId);
+          const el = exLines.find((l) => String(l.cueId).toUpperCase() === pl.cueId);
+          if (!el) { lc.push(pl); continue; }
+          if (norm(el.textEn) !== norm(pl.textEn)) lu.push({ lineId: el.id, cueId: el.cueId, changes: { textEn: { from: norm(el.textEn), to: norm(pl.textEn) } } }); else same += 1;
+        }
+        for (const el of exLines) if (!seen.has(String(el.cueId).toUpperCase()) && ps.cueBlocks.some((b) => String(el.cueId).toUpperCase().startsWith(`${b}.`))) missingLines.push({ sceneId: ex.id, code: ex.code, lineId: el.id, cueId: el.cueId });
+        if (Object.keys(changes).length || lc.length || lu.length) update.push({ sceneId: ex.id, code: ex.code, workingId: ex.workingId ?? ex.code, changes, lines: { create: lc, update: lu, unchanged: same } });
+        else unchanged.push({ sceneId: ex.id, code: ex.code });
+      }
+      const diff = {
+        create, update, unchanged, missingInDoc: { scenes: [], lines: missingLines }, warnings: [],
+        stats: { create: create.length, update: update.length, unchanged: unchanged.length, linesCreate: create.reduce((n, c) => n + (c.scene as PScene).lines.length, 0) + update.reduce((n, u) => n + ((u.lines as Rec).create as PLine[]).length, 0), linesUpdate: update.reduce((n, u) => n + ((u.lines as Rec).update as Rec[]).length, 0), missingScenes: 0, missingLines: missingLines.length },
+      };
+      return route.fulfill(ok({ fileName, sizeBytes: text.length, kind: ext === 'markdown' ? 'md' : ext, sourceSha256: '0123456789abcdef'.repeat(4), title, stats: { scenes: parsedScenes.length, lines: lineCount, unassignedBlocks: 0 }, diff }));
+    }
+    if (m(/\/projects\/[^/]+\/scenes\/import-document\/apply$/) && method === 'POST') {
+      const createdSceneIds: string[] = []; const updatedSceneIds: string[] = []; let linesCreated = 0; let linesUpdated = 0;
+      const addLine = (sceneId: string, l: Rec, i: number) => { lines.push({ id: nextId('nsl'), sceneId, projectId, cueId: String(l.cueId).toUpperCase(), speakerComponentId: null, speakerLabel: l.speakerLabel ?? '', perspective: '', textEn: l.textEn ?? '', textNb: '', sourceType: l.sourceType ?? 'T', recordingStatus: 'none', note: '', sortOrder: i, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() }); linesCreated += 1; };
+      for (const c of (body.create as Rec[] | undefined) ?? []) {
+        const ps = c.scene as Rec; const f = (ps.fields ?? {}) as Rec;
+        const id = `nsc_${String(c.code).toLowerCase()}`;
+        const sc = { id, projectId, code: String(c.code).toUpperCase(), title: ps.title ?? '', subtitle: ps.subtitle ?? '', location: '', challenge: '', gameplayMechanic: '', environment: '', status: 'idea', assigneeUserId: null, dueAt: null, heroAssetId: null, sortOrder: scenes.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now(), beforeState: f.beforeState ?? '', action: f.action ?? '', control: f.control ?? '', afterState: f.afterState ?? '', audio: f.audio ?? '', changeNote: '', bridge: '', timeNote: '', knowledge: {}, era: ps.era ?? 'other', episodeId: null, startAt: null, sourceRefs: [], workingId: c.workingId ?? c.code };
+        scenes.push(sc); createdSceneIds.push(id);
+        ((ps.lines ?? []) as Rec[]).forEach((l, i) => addLine(id, l, i));
+      }
+      for (const u of (body.update as Rec[] | undefined) ?? []) {
+        const sc = scenes.find((x) => x.id === u.sceneId); if (!sc) continue;
+        for (const [k, ch] of Object.entries((u.changes ?? {}) as Record<string, Rec>)) sc[k] = ch.to;
+        sc.updatedAt = now();
+        const ul = (u.lines ?? {}) as Rec; const start = lines.filter((l) => l.sceneId === sc.id).length;
+        ((ul.create ?? []) as Rec[]).forEach((l, i) => addLine(sc.id as string, l, start + i));
+        for (const lc of (ul.update ?? []) as Rec[]) { const el = lines.find((l) => l.id === lc.lineId); if (el) { for (const [k, ch] of Object.entries((lc.changes ?? {}) as Record<string, Rec>)) el[k] = ch.to; linesUpdated += 1; } }
+        updatedSceneIds.push(sc.id as string);
+      }
+      let openQuestionsCreated = 0;
+      for (const q of (body.openQuestions as Rec[] | undefined) ?? []) { openQuestions.push({ id: nextId('noq'), projectId, code: `IMP-${String(openQuestionsCreated + 1).padStart(2, '0')}`, kind: 'check', question: q.question, context: q.context ?? '', status: 'open', decision: '', decidedBy: null, decidedAt: null, sourceRefs: [], sortOrder: openQuestions.length, createdAt: now(), updatedAt: now() }); openQuestionsCreated += 1; }
+      const source = { id: 'nso_import', projectId, code: String(body.sourceCode ?? 'W').toUpperCase(), label: body.sourceLabel ?? 'Manus', kind: body.sourceKind ?? 'md', sha256: body.sourceSha256 ?? null, pathHint: '', notes: '', sortOrder: 0, verifiedAt: now(), verifiedBy: 'u-e2e', createdAt: now(), updatedAt: now() };
+      return route.fulfill(ok({ source, createdSceneIds, updatedSceneIds, linesCreated, linesUpdated, openQuestionsCreated }, 201));
+    }
+
     // ── Fase 6: scener & gameplay + review ─────────────────────────────
     if (m(/\/projects\/[^/]+\/members-lite$/) && method === 'GET') return route.fulfill(ok(members));
     if (m(/\/projects\/[^/]+\/scenes$/) && method === 'GET') return route.fulfill(ok({ scenes: scenes.map(sceneSummary), nextCode: nextSceneCode() }));
@@ -800,7 +962,8 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       const byStatus: Record<string, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
       const byEra: Record<string, number> = {};
       for (const sc of scenes) { byStatus[String(sc.status)] = (byStatus[String(sc.status)] ?? 0) + 1; byEra[String(sc.era ?? 'other')] = (byEra[String(sc.era ?? 'other')] ?? 0) + 1; }
-      const byKey = Object.fromEntries(GATE_KEYS.map((k) => [k, { passed: gates.filter((x) => x.gateKey === k && x.status === 'passed').length, total: scenes.length }]));
+      const startedScenes = scenes.filter((sc) => sc.status !== 'idea').length; // speiler getProjectOverview: idé-scener gates ikke
+      const byKey = Object.fromEntries(GATE_KEYS.map((k) => [k, { passed: gates.filter((x) => x.gateKey === k && x.status === 'passed').length, total: startedScenes }]));
       const nowMs = Date.now();
       const openTasks = tasks.filter((t) => t.status !== 'done');
       const primary = platformTargets.find((t) => t.isPrimary) ?? platformTargets[0];
@@ -808,7 +971,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       const activity = [...scenes.map((sc) => ({ kind: 'scene', id: sc.id, title: `${sc.code} – ${sc.title}`, detail: 'Scene oppdatert', at: sc.updatedAt, sceneId: sc.id })), ...milestones.map((ms) => ({ kind: 'milestone', id: ms.id, title: ms.title, detail: `Milepæl: ${ms.status}`, at: ms.updatedAt, sceneId: null }))].slice(0, 20);
       return route.fulfill(ok({
         scenes: { total: scenes.length, byStatus, byEra, withoutDates: scenes.filter((sc) => !sc.startAt && !sc.dueAt).length },
-        gates: { total: scenes.length * GATE_KEYS.length, passed: gates.filter((x) => x.status === 'passed').length, failed: gates.filter((x) => x.status === 'failed').length, byKey },
+        gates: { total: startedScenes * GATE_KEYS.length, passed: gates.filter((x) => x.status === 'passed').length, failed: gates.filter((x) => x.status === 'failed').length, byKey },
         tasks: { open: openTasks.length, overdue: openTasks.filter((t) => t.dueAt && new Date(String(t.dueAt)).getTime() < nowMs).length, done: tasks.filter((t) => t.status === 'done').length },
         reviews: { open: reviews.filter((r) => r.status === 'in_review').length },
         lines: { total: lines.length, approved: lines.filter((l) => l.recordingStatus === 'approved').length },
@@ -818,6 +981,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
         activity,
         unreadInbox: inbox.filter((n) => !n.readAt).length,
+        guardian: { pending: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending').length, high: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending' && (x.payload as Rec).severity === 'high').length },
       }));
     }
     if (m(/\/projects\/[^/]+\/inbox$/) && method === 'GET') return route.fulfill(ok(inbox));

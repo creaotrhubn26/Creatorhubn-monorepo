@@ -55,7 +55,7 @@ export function sortNextUp(items: readonly NextUpItem[]): NextUpItem[] {
 }
 
 export interface HomeKpi {
-  key: 'scenes' | 'gates' | 'tasks' | 'reviews' | 'lines' | 'platform';
+  key: 'scenes' | 'gates' | 'tasks' | 'reviews' | 'lines' | 'platform' | 'guardian';
   label: string;
   value: string;
   sub: string;
@@ -68,12 +68,26 @@ const DONE_STATUSES: NarrativeSceneStatus[] = ['approved', 'implemented'];
 
 export function homeKpis(o: NarrativeProjectOverview): HomeKpi[] {
   const scenesDone = DONE_STATUSES.reduce((n, s) => n + (o.scenes.byStatus[s] ?? 0), 0);
+  const scenesStarted = o.scenes.total - (o.scenes.byStatus.idea ?? 0);
   return [
     { key: 'scenes', label: 'Scener', value: String(o.scenes.total), sub: `${scenesDone} godkjent/implementert · ${o.scenes.byStatus.in_review ?? 0} til review`, pct: pct(scenesDone, o.scenes.total), tab: 'scenes', tone: 'accent' },
-    { key: 'gates', label: 'Leveransegater', value: `${pct(o.gates.passed, o.gates.total)} %`, sub: `${o.gates.passed} av ${o.gates.total} bestått${o.gates.failed ? ` · ${o.gates.failed} feilet` : ''}`, pct: pct(o.gates.passed, o.gates.total), tab: 'scenes', tone: o.gates.failed ? 'warning' : 'accent' },
+    {
+      key: 'gates',
+      label: 'Leveransegater',
+      value: o.gates.total ? `${pct(o.gates.passed, o.gates.total)} %` : '–',
+      // Totalen gjelder bare startede scener (status ≠ idé) — se getProjectOverview.
+      sub: o.gates.total
+        ? `${o.gates.passed} av ${o.gates.total} bestått · ${scenesStarted} scener startet${o.gates.failed ? ` · ${o.gates.failed} feilet` : ''}`
+        : 'ingen scener startet ennå',
+      pct: pct(o.gates.passed, o.gates.total),
+      tab: 'scenes',
+      tone: o.gates.failed ? 'warning' : o.gates.total ? 'accent' : 'neutral',
+    },
     { key: 'tasks', label: 'Oppgaver', value: String(o.tasks.open), sub: o.tasks.overdue ? `${o.tasks.overdue} forfalt · ${o.tasks.done} ferdig` : `${o.tasks.done} ferdig`, pct: pct(o.tasks.done, o.tasks.open + o.tasks.done), tab: 'scenes', tone: o.tasks.overdue ? 'error' : 'neutral' },
     { key: 'reviews', label: 'Åpne runder', value: String(o.reviews.open), sub: o.reviews.open ? 'venter på beslutning' : 'ingen runder åpne', pct: null, tab: 'scenes', tone: o.reviews.open ? 'warning' : 'neutral' },
     { key: 'lines', label: 'Replikker', value: String(o.lines.total), sub: `${o.lines.approved} godkjente opptak`, pct: pct(o.lines.approved, o.lines.total), tab: 'characters', tone: 'neutral' },
+    // Fase 8d: manusvakt — ventende funn (høye teller mest).
+    { key: 'guardian', label: 'Manusvakt', value: o.guardian ? String(o.guardian.pending) : '–', sub: o.guardian ? (o.guardian.pending ? `${o.guardian.high} høye · godta = åpent spørsmål` : 'ingen ventende funn') : 'ikke kjørt', pct: null, tab: 'story', tone: o.guardian?.high ? 'error' : o.guardian?.pending ? 'warning' : 'neutral' },
     { key: 'platform', label: 'Plattformkrav', value: o.platform.requirements ? `${o.platform.verified}/${o.platform.requirements}` : '–', sub: o.platform.primaryName ? `verifisert · ${o.platform.primaryName}` : 'ingen målplattform satt', pct: o.platform.requirements ? pct(o.platform.verified, o.platform.requirements) : null, tab: 'platform', tone: 'neutral' },
   ];
 }

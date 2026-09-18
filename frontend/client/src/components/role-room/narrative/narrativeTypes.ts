@@ -8,7 +8,7 @@ export type NarrativeAttributeOwnerKind = 'element' | 'component' | 'board';
 export type NarrativeAttributeType =
   | 'rich_text' | 'string' | 'bool' | 'int' | 'float' | 'component_list' | 'asset_list';
 export type NarrativeVariableType = 'bool' | 'int' | 'float' | 'string';
-export type NarrativeAssetKind = 'image' | 'audio' | 'video';
+export type NarrativeAssetKind = 'image' | 'audio' | 'video' | 'file';
 
 export const NARRATIVE_ELEMENT_KINDS: readonly NarrativeElementKind[] = ['element', 'branch', 'jumper', 'note'];
 export const NARRATIVE_VARIABLE_TYPES: readonly NarrativeVariableType[] = ['bool', 'int', 'float', 'string'];
@@ -571,6 +571,8 @@ export interface NarrativeProjectOverview {
   reviews: { open: number };
   lines: { total: number; approved: number };
   questions: { open: number; checksOpen: number };
+  /** Fase 8d: ventende manusvakt-funn. Valgfri for eldre mocks. */
+  guardian?: { pending: number; high: number };
   platform: { requirements: number; verified: number; primaryName: string | null };
   milestones: NarrativeMilestone[];
   episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;

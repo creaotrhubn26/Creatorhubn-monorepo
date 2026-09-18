@@ -116,12 +116,19 @@ jobs:
       - name: Verify shell entrypoint
         run: bash -n backend/migrate.sh
 
+      - name: Verify Neon dry-run entrypoint
+        run: bash -n backend/scripts/neon-branch-dry-run.sh && bash backend/scripts/neon-branch-dry-run.sh --self-test
+
   migrate_deploy:
     name: Preflight, migrate, deploy Render, and smoke test
     if: github.event_name != 'pull_request'
     needs: validate
     environment: Production
     runs-on: ubuntu-latest
+    env:
+      # Fase 8a: Neon-branch-tørrkjøring (valgfri). Steget hoppes over når nøkkelen mangler.
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
     timeout-minutes: 60
     steps:
       - name: Checkout exact deploy commit
@@ -248,6 +255,15 @@ jobs:
             echo "::error::Release target became stale before migration: target=$TARGET_SHA currentMain=$current_main"
             exit 1
           fi
+
+      # Fase 8a: tørrkjør migrasjonene på en fersk Neon-branch av prod FØR prod røres.
+      # Branchen er samtidig gjenopprettingspunkt (beholdes 7 dager ved feil). Steget
+      # hoppes over når NEON_API_KEY ikke er satt, så jobben virker uten Neon-integrasjon.
+      - name: Dry-run migrations on a Neon branch of production
+        if: env.NEON_API_KEY != ''
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: bash backend/scripts/neon-branch-dry-run.sh
 
       - name: Acquire canonical database lock and apply migrations
         env:

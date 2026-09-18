@@ -71,6 +71,10 @@ import type {
 } from './narrativeTypes';
 
 const BASE = '/api/role-room/narrative';
+/** Feilkoden backend svarer med når ROLE_ROOM_GAME_STUDIO_ENABLED=false (503). */
+export const GAME_STUDIO_DISABLED_ERROR = 'game_studio_disabled';
+/** Sendes på window når tjenesten svarer 503 game_studio_disabled. */
+export const NARRATIVE_DISABLED_EVENT = 'narrative:disabled';
 
 export class NarrativeApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly code: string | null = null) {
@@ -119,6 +123,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; data?: unknown };
+    if (res.status === 503 && body.error === GAME_STUDIO_DISABLED_ERROR) {
+      // Fase 8a: server-side av-bryter. Arbeidsflaten lytter og viser helsidebanner.
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NARRATIVE_DISABLED_EVENT));
+      throw new NarrativeApiError('Spillstudio er midlertidig slått av.', 503, GAME_STUDIO_DISABLED_ERROR);
+    }
     if (res.status === 409 && body.error === 'conflict' && body.data) {
       throw new NarrativeConflictError(body.data as NarrativeElement);
     }
@@ -149,6 +158,22 @@ async function requestBlob(path: string): Promise<{ blob: Blob; filename: string
   const disposition = res.headers.get('content-disposition') ?? '';
   const m = /filename="([^"]+)"/.exec(disposition);
   return { blob: await res.blob(), filename: m ? m[1] : null };
+}
+
+/** Multipart-opplasting (manusimport). Ingen Content-Type: nettleseren setter boundary selv. */
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { method: 'POST', body: form, credentials: 'include', headers: narrativeAuthHeaders() });
+  } catch {
+    throw new NarrativeNetworkError();
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+  }
+  const json = (await res.json()) as Envelope<T>;
+  return json.data;
 }
 
 const p = (projectId: string, rest = ''): string => `/projects/${encodeURIComponent(projectId)}${rest}`;
@@ -639,4 +664,83 @@ export function createGuestReviewerSession(token: string, displayName: string, e
 }
 export function decideAsGuest(token: string, reviewerToken: string, input: { decision: 'approved' | 'changes_requested'; note: string | null; expectedSnapshotHash: string | null }): Promise<NarrativeSceneReview> {
   return publicRequest(token, '/decision', { method: 'POST', body: JSON.stringify(input) }, reviewerToken);
+}
+
+
+// ─── Fase 8b: manusimport (Word/PDF/Markdown → scener + replikker) ──────
+
+export type ImportLineSourceType = NarrativeLineSourceType;
+export interface ImportParsedLine { cueId: string; speakerLabel: string; sourceType: ImportLineSourceType | null; textEn: string; note?: string }
+export interface ImportParsedScene {
+  workingId: string; title: string; subtitle: string; era: NarrativeSceneEra; cueBlocks: string[];
+  fields: { beforeState: string; action: string; control: string; afterState: string; audio: string };
+  lines: ImportParsedLine[];
+}
+export type ImportSceneFieldKey = 'title' | 'subtitle' | 'era' | 'beforeState' | 'action' | 'control' | 'afterState' | 'audio';
+export interface ImportFieldChange { from: string; to: string }
+export interface ImportLineChange { lineId: string; cueId: string; changes: Partial<Record<'speakerLabel' | 'textEn' | 'sourceType', ImportFieldChange>> }
+export interface ImportDiff {
+  create: Array<{ workingId: string; code: string; scene: ImportParsedScene }>;
+  update: Array<{ sceneId: string; code: string; workingId: string; changes: Partial<Record<ImportSceneFieldKey, ImportFieldChange>>; lines: { create: ImportParsedLine[]; update: ImportLineChange[]; unchanged: number } }>;
+  unchanged: Array<{ sceneId: string; code: string }>;
+  missingInDoc: { scenes: Array<{ sceneId: string; code: string }>; lines: Array<{ sceneId: string; code: string; lineId: string; cueId: string }> };
+  warnings: string[];
+  stats: { create: number; update: number; unchanged: number; linesCreate: number; linesUpdate: number; missingScenes: number; missingLines: number };
+}
+export interface ImportDocumentDryRun {
+  fileName: string; sizeBytes: number; kind: 'docx' | 'pdf' | 'md' | 'txt';
+  sourceSha256: string; title: string | null;
+  stats: { scenes: number; lines: number; unassignedBlocks: number };
+  diff: ImportDiff;
+}
+export interface ImportDocumentApplyBody {
+  sourceSha256: string; sourceCode: string; sourceLabel: string; sourceKind: NarrativeSourceKind; fileName?: string;
+  create: ImportDiff['create']; update: ImportDiff['update'];
+  openQuestions: Array<{ question: string; context?: string; sceneCode?: string }>;
+}
+export interface ImportDocumentApplyResult {
+  source: NarrativeSource; createdSceneIds: string[]; updatedSceneIds: string[];
+  linesCreated: number; linesUpdated: number; openQuestionsCreated: number;
+}
+
+/** Dry-run: parser dokumentet og differ mot prosjektet. Skriver ingenting. */
+export function importDocumentDryRun(projectId: string, file: File): Promise<ImportDocumentDryRun> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  return requestForm<ImportDocumentDryRun>(p(projectId, '/import-document'), form);
+}
+
+/** Skriver en brukergodkjent diff (én transaksjon). */
+export function applyDocumentImport(projectId: string, body: ImportDocumentApplyBody): Promise<ImportDocumentApplyResult> {
+  return request<ImportDocumentApplyResult>(p(projectId, '/scenes/import-document/apply'), { method: 'POST', body: json(body) });
+}
+
+
+// ─── Fase 8c: CI-bevis-hooks + bevis-nedlasting ────────────────────────
+
+export interface NarrativeCiHook {
+  id: string; projectId: string; label: string; createdBy: string | null; createdAt: string;
+  revokedAt: string | null; lastDeliveryAt: string | null; deliveryCount: number;
+}
+export interface NarrativeCiDelivery {
+  id: string; hookId: string; projectId: string; receivedAt: string; status: 'applied' | 'rejected';
+  sceneCode: string | null; gateKey: string | null; gateStatus: string | null; error: string | null;
+  commitSha: string | null; runUrl: string | null;
+}
+export function listCiHooks(projectId: string): Promise<NarrativeCiHook[]> {
+  return request(p(projectId, '/ci-hooks'));
+}
+/** Hemmeligheten returneres kun her — vis den én gang. */
+export function createCiHook(projectId: string, label: string): Promise<{ hook: NarrativeCiHook; secret: string; webhookPath: string }> {
+  return request(p(projectId, '/ci-hooks'), { method: 'POST', body: json({ label }) });
+}
+export function revokeCiHook(projectId: string, hookId: string): Promise<NarrativeCiHook> {
+  return request(p(projectId, `/ci-hooks/${id(hookId)}/revoke`), { method: 'POST', body: json({}) });
+}
+export function listCiDeliveries(projectId: string, hookId?: string): Promise<NarrativeCiDelivery[]> {
+  return request(hookId ? p(projectId, `/ci-hooks/${id(hookId)}/deliveries`) : p(projectId, '/ci-deliveries'));
+}
+/** Kortlevd signert nedlastings-URL for et bevis-/fil-asset (eller ekstern URL). */
+export function getAssetDownloadUrl(projectId: string, assetId: string): Promise<{ url: string; expiresInSeconds: number | null }> {
+  return request(p(projectId, `/assets/${id(assetId)}/download`));
 }

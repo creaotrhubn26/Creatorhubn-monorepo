@@ -1372,6 +1372,8 @@ export type BrandingTextTokenKey =
   | 'gameTabPlanDescription'
   | 'gameTabTeam'                 // 'Team'
   | 'gameTabTeamDescription'
+  | 'gameTabIntegrations'         // 'Integrasjoner'
+  | 'gameTabIntegrationsDescription'
   | 'gameTabBoards'               // 'Brett'
   | 'gameTabBoardsDescription'
   | 'gameTabScenes'               // 'Scener & gameplay'
@@ -3065,6 +3067,8 @@ const DEFAULT_TOKENS: BrandingTokens = {
     gameTabPlanDescription: 'Milepæler per bane (manus, gråboks, karakterer, gjennomspilling, bilde/lyd, teknikk) i Gantt og liste, koblet til scener.',
     gameTabTeam: 'Team',
     gameTabTeamDescription: 'Roller, kapabiliteter, invitasjoner og seter for studioet.',
+    gameTabIntegrations: 'Integrasjoner',
+    gameTabIntegrationsDescription: 'CI-bevis-hooks: spillbygget setter leveransegater med bevis, signert.',
     gameTabBoards: 'Brett',
     gameTabBoardsDescription: 'Tegn historien som noder og koblinger: elementer, forgreninger, jumpere og notater på et fritt lerret.',
     gameTabScenes: 'Scener & gameplay',

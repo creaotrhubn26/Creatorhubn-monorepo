@@ -4,7 +4,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ChangeImpactPreview } from './ChangeImpactPreview';
+import { ChangeImpactPreview, changeHeadline, emptyImpactText } from './ChangeImpactPreview';
 
 const base = {
   projectId: 'project-1',
@@ -321,5 +321,103 @@ describe('ChangeImpactPreview ved sceneendring', () => {
 
     expect(await screen.findByText('2 kontinuitetsfiler er skutt på scener som fjernes.')).toBeInTheDocument();
     await waitFor(() => expect(onBlockingChange).toHaveBeenCalledWith(true));
+  });
+});
+
+describe('changeHeadline', () => {
+  const base = { dateChanged: false, locationChanged: false, scenesChanged: false, from: '2026-01-27', to: '2026-02-03' };
+
+  it('navngir en datoflytting med begge datoene', () => {
+    expect(changeHeadline({ ...base, dateChanged: true }))
+      .toBe('Flytting fra 2026-01-27 til 2026-02-03 påvirker:');
+  });
+
+  it('navngir en sceneendring som scener, ikke som lokasjon', () => {
+    // Overskriften sa «Ny lokasjon påvirker:» over funn om scener. Feil
+    // setning over riktige funn er verre enn ingen setning.
+    expect(changeHeadline({ ...base, scenesChanged: true })).toBe('Endrede scener påvirker:');
+  });
+
+  it('navngir en lokasjonsendring', () => {
+    expect(changeHeadline({ ...base, locationChanged: true })).toBe('Ny lokasjon påvirker:');
+  });
+
+  it('lister alle tre når alt er endret', () => {
+    expect(changeHeadline({ ...base, dateChanged: true, locationChanged: true, scenesChanged: true }))
+      .toBe('Ny dato, ny lokasjon og endrede scener påvirker:');
+  });
+});
+
+describe('emptyImpactText', () => {
+  const base = { dateChanged: false, locationChanged: false, scenesChanged: false, from: '2026-01-27', to: '2026-02-03' };
+
+  it('peker på datoen når det er datoen som flyttes', () => {
+    expect(emptyImpactText({ ...base, dateChanged: true }))
+      .toBe('Ingenting annet henger på 2026-01-27. Endringen berører bare dagen selv.');
+  });
+
+  it('peker på scenene når det er scenene som endres', () => {
+    expect(emptyImpactText({ ...base, scenesChanged: true }))
+      .toBe('Ingenting annet henger på scenene som endres. Endringen berører bare dagen selv.');
+  });
+});
+
+describe('ChangeImpactPreview ved rekvisittendring', () => {
+  const propBase = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    currentDate: '2026-09-20',
+    targetDate: '2026-09-20',
+    currentPropIds: ['prop-1'],
+  };
+
+  it('spør ikke når rekvisittene ikke redigeres', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChangeImpactPreview {...propBase} targetPropIds={null} />);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('ber om konsekvensen når en rekvisitt legges til', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromPropIds: ['prop-1'],
+      toPropIds: ['prop-1', 'prop-2'],
+      impacts: [{
+        area: 'prop_availability',
+        severity: 'warning',
+        summary: '1 av rekvisittene som legges til er ikke merket tilgjengelige.',
+        action: 'Bekreft at de kan skaffes til denne dagen.',
+        count: 1,
+      }],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...propBase} targetPropIds={['prop-1', 'prop-2']} />);
+
+    expect(await screen.findByText('1 av rekvisittene som legges til er ikke merket tilgjengelige.'))
+      .toBeInTheDocument();
+    const url = String((globalThis.fetch as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url).toContain('propIds=prop-1%2Cprop-2');
+  });
+
+  it('navngir rekvisitter i overskriften, ikke scener', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromPropIds: ['prop-1'],
+      toPropIds: [],
+      impacts: [{ area: 'prop_load', severity: 'warning', summary: 'Noe overlapper.', count: 1 }],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...propBase} targetPropIds={[]} />);
+
+    expect(await screen.findByText('Endrede rekvisitter påvirker:')).toBeInTheDocument();
   });
 });

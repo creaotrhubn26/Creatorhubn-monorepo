@@ -53,6 +53,8 @@ export function ComponentGalleryPanel({ projectId, kind, graph, store, refreshKe
   const items = useMemo(() => graph.components.filter((c) => c.kind === kind).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)), [graph.components, kind]);
   const [selectedId, setSelectedId] = useState<string | null>(() => { try { return new URLSearchParams(window.location.search).get(kind === 'character' ? 'character' : 'component'); } catch { return null; } });
   useEffect(() => { if (selectedId && !items.some((c) => c.id === selectedId)) setSelectedId(null); }, [items, selectedId]);
+  // Forhåndsvelg første kort så fanen ikke åpner tomt («Velg en karakter»). URL-valget vinner når det finnes.
+  useEffect(() => { if (!selectedId && items.length > 0) setSelectedId(items[0].id); }, [items, selectedId]);
   const selected = items.find((c) => c.id === selectedId) ?? null;
   const [newName, setNewName] = useState('');
   const [scenesFor, setScenesFor] = useState<Array<Pick<NarrativeScene, 'id' | 'code' | 'title' | 'status'>>>([]);

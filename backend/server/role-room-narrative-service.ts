@@ -26,7 +26,7 @@ export type NarrativeAttributeOwnerKind = 'element' | 'component' | 'board';
 export type NarrativeAttributeType =
   | 'rich_text' | 'string' | 'bool' | 'int' | 'float' | 'component_list' | 'asset_list';
 export type NarrativeVariableType = 'bool' | 'int' | 'float' | 'string';
-export type NarrativeAssetKind = 'image' | 'audio' | 'video';
+export type NarrativeAssetKind = 'image' | 'audio' | 'video' | 'file';
 
 export const NARRATIVE_ELEMENT_KINDS: readonly NarrativeElementKind[] = ['element', 'branch', 'jumper', 'note'];
 export const NARRATIVE_ATTRIBUTE_OWNER_KINDS: readonly NarrativeAttributeOwnerKind[] = ['element', 'component', 'board'];
@@ -2935,6 +2935,7 @@ export interface NarrativeProjectOverview {
   reviews: { open: number };
   lines: { total: number; approved: number };
   questions: { open: number; checksOpen: number };
+  guardian: { pending: number; high: number };
   platform: { requirements: number; verified: number; primaryName: string | null };
   milestones: NarrativeMilestone[];
   episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;
@@ -2943,7 +2944,7 @@ export interface NarrativeProjectOverview {
 }
 
 export async function getProjectOverview(db: Queryable, projectId: string, userId: string): Promise<NarrativeProjectOverview> {
-  const [scenes, gates, tasks, reviews, lines, questions, platform, milestones, episodes, activity, unread] = await Promise.all([
+  const [scenes, gates, tasks, reviews, lines, questions, platform, milestones, episodes, activity, unread, guardian] = await Promise.all([
     db.query(`SELECT status, era, start_at, due_at FROM narrative_scenes WHERE project_id = $1`, [projectId]),
     db.query(`SELECT gate_key, status, COUNT(*)::int AS n FROM narrative_scene_gates WHERE project_id = $1 GROUP BY gate_key, status`, [projectId]),
     db.query(`SELECT status, due_at FROM narrative_scene_tasks WHERE project_id = $1`, [projectId]),
@@ -2984,6 +2985,12 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
           AND n.audience IN ('producer_team', 'all') AND (n.event_type LIKE 'narrative_%' OR n.linked_entity_type LIKE 'narrative_%')`,
       [projectId, userId],
     ),
+    // Manusvakt (Fase 8d): ventende funn fra script-guardian-agent; tabellen kan mangle i eldre miljø → 0.
+    db.query(
+      `SELECT COUNT(*)::int AS pending, COUNT(*) FILTER (WHERE payload->>'severity' = 'high')::int AS high
+         FROM casting_ai_suggestions WHERE project_id = $1 AND agent_name = 'script-guardian-agent' AND status = 'pending'`,
+      [projectId],
+    ).catch(() => ({ rows: [] as Row[] })),
   ]);
   const byStatus: Record<NarrativeSceneStatus, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
   const byEra: Record<string, number> = {};
@@ -2995,7 +3002,10 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
     byEra[era] = (byEra[era] ?? 0) + 1;
     if (!r.start_at && !r.due_at) withoutDates += 1;
   }
-  const byKey = Object.fromEntries(NARRATIVE_GATE_KEYS.map((k) => [k, { passed: 0, total: scenes.rows.length }])) as Record<NarrativeGateKey, { passed: number; total: number }>;
+  // Gate-totalen teller bare scener som er startet (status ≠ idea): en scene på
+  // idéstadiet har ingen leveranse å gate ennå, og «6 av 204» skjuler reell fremdrift.
+  const startedScenes = scenes.rows.length - byStatus.idea;
+  const byKey = Object.fromEntries(NARRATIVE_GATE_KEYS.map((k) => [k, { passed: 0, total: startedScenes }])) as Record<NarrativeGateKey, { passed: number; total: number }>;
   let passed = 0; let failed = 0;
   for (const g of gates.rows as Row[]) {
     const key = String(g.gate_key) as NarrativeGateKey;
@@ -3016,11 +3026,12 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
   const reqs = primary ? normalizeRequirements(primary.requirements) : [];
   return {
     scenes: { total: scenes.rows.length, byStatus, byEra, withoutDates },
-    gates: { total: scenes.rows.length * NARRATIVE_GATE_KEYS.length, passed, failed, byKey },
+    gates: { total: startedScenes * NARRATIVE_GATE_KEYS.length, passed, failed, byKey },
     tasks: { open, overdue, done },
     reviews: { open: num(reviews.rows[0]?.n) },
     lines: { total: num(lines.rows[0]?.total), approved: num(lines.rows[0]?.approved) },
     questions: { open: num(qOpen?.n), checksOpen: num(cOpen?.n) },
+    guardian: { pending: num((guardian.rows as Row[])[0]?.pending), high: num((guardian.rows as Row[])[0]?.high) },
     platform: { requirements: reqs.length, verified: reqs.filter((r) => r.status === 'verified').length, primaryName: primary ? String(primary.name) : null },
     milestones,
     episodes: (episodes.rows as Row[]).map((e) => ({ id: String(e.id), code: String(e.code), title: String(e.title ?? ''), sceneCount: num(e.scene_count), approvedCount: num(e.approved_count) })),

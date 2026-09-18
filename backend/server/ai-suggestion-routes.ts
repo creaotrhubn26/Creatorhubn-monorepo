@@ -237,7 +237,12 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
         }
 
         // Fase 4d: Story Graph-forslag krever `ai_assist` i prosjekteierens plan (402 ellers).
-        if (sourceType === "narrative_element") {
+        // Fase 8d: manusvaktens KI-pass (mode 'full') gates likt; regelpasset er gratis for alle planer.
+        const guardianLlm =
+          agentName === "script-guardian-agent" &&
+          typeof body.payload === "object" && body.payload !== null &&
+          (body.payload as { mode?: unknown }).mode === "full";
+        if (sourceType === "narrative_element" || guardianLlm) {
           try {
             await assertGameFeature(pool, projectId, "ai_assist", resolveProjectPlan);
           } catch (gateErr) {
