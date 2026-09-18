@@ -95,6 +95,7 @@ const OPTIONAL: EnvVar[] = [
   { name: "META_APP_SECRET", description: "Hører sammen med META_APP_ID." },
   { name: "LINKEDIN_CLIENT_ID", description: "LinkedIn-innlogging." },
   { name: "LINKEDIN_CLIENT_SECRET", description: "Hører sammen med LINKEDIN_CLIENT_ID." },
+  { name: "ROLE_ROOM_LINKEDIN_ORG_SCOPES", description: "Valgfri. \"off\" dropper organisasjons-scopene i Role Room/Leadgrid LinkedIn-tilkoblingen (bedriftsside + statistikk). Default på." },
   { name: "R2_ACCESS_KEY_ID", description: "Cloudflare R2 for storage (avatar, storyboard-bilder)." },
   { name: "R2_SECRET_ACCESS_KEY", description: "Hører sammen med R2_ACCESS_KEY_ID." },
   { name: "FIKEN_TOKEN", description: "Norsk regnskap-integrasjon." },

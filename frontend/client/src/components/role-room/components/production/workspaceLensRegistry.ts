@@ -177,6 +177,21 @@ export function resolveWorkspaceLens(input: WorkspaceLensResolution): RoleRoomWo
   return 'full';
 }
 
+/**
+ * True while the caller has asked for a lens whose permission has not been
+ * decided yet. Only the admin lens has an asynchronous gate: it waits for the
+ * server to confirm the session. Until then neither answer is known, and both
+ * available answers are wrong — rendering the full workspace shows the wrong
+ * surface, and dropping the `lens` parameter destroys the deep link before the
+ * gate ever replies.
+ */
+export function isLensDecisionPending(
+  preference: RoleRoomWorkspaceLens | null,
+  superAdminGateReady: boolean,
+): boolean {
+  return preference === 'admin' && !superAdminGateReady;
+}
+
 export interface LensUrlStateInput {
   readonly lens: RoleRoomWorkspaceLens;
   readonly preference: RoleRoomWorkspaceLens | null;

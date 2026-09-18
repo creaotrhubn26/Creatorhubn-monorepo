@@ -55,7 +55,7 @@ function deriveLinkedInEncryptionKey(): Buffer | null {
   return crypto.createHash('sha256').update(secret).digest();
 }
 
-function decryptLinkedInToken(value: string | null | undefined): string | null {
+export function decryptLinkedInToken(value: string | null | undefined): string | null {
   if (!value) return null;
   const key = deriveLinkedInEncryptionKey();
   if (!key) return null;

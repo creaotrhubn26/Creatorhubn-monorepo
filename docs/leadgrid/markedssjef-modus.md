@@ -1,6 +1,6 @@
 # Leadgrid Markedssjef-modus — Role Room-agentens markedsplan i Leadgrid-skall
 
-**Status:** Fase 0 + fase 1 (chat-agent) + UX-rework av siden levert. **Modul:** `leadgrid:marketing` (opt-in).
+**Status:** Fase 0 + fase 1 (chat-agent) + UX-rework + fase 1b/1c (LinkedIn-publisering som bedriftsside med resultattall) levert. **Modul:** `leadgrid:marketing` (opt-in).
 **Eier:** Leadgrid. **Sist oppdatert:** 2026-09-16.
 
 ## Hva det er
@@ -220,14 +220,65 @@ må forlate siden for å rette org-profilen.
   stedene følger Leadgrid-paletten. Egen refaktor.
 - Kanban-PATCH i Leadgrid går utenom `applyStageChange` (observert, ikke rørt).
 
-## Kjente hull (fase 1b–2)
+## Fase 1b — LinkedIn-publisering og resultat-løkken
+
+Lukker det femte verdikriteriet («blir mer verdifull over tid»): en plan-post kan publiseres
+til LinkedIn fra `/leadgrid/markedsforing`, resultatet (likes/kommentarer) hentes som KPI-
+snapshots, og neste «Ny plan» får dem som `previousPlanKpiContext` — uten at brukeren gjør noe.
+
+**Flyt:** aktiv plan → kortet «Neste post på LinkedIn» (`components/leadgrid/LinkedInPublishCard.tsx`)
+viser posten som står for tur (`nextPostToPublish.ts`: LinkedIn-poster, ikke publisert/hoppet
+over, sortert på dag) med redigerbar tekst → ikke koblet: «Koble til LinkedIn» (popup mot
+`POST /api/role-room/linkedin/oauth/start` **uten** `projectId`, så raden blir brukerens globale
+tilkobling som publisher-en leser) → «Publiser på LinkedIn» → toast med «Åpne posten» → neste.
+Sekundært: «Hopp over». Resultatlinjen (`MarketingResultsLine.tsx`) kjører `kpi-sync` én gang
+per sidelast og viser «likes · kommentarer siste 30 dager» når det finnes tall; ellers skjult.
+
+**Ruter** (under `/api/role-room/marketing-plan`, så broen autoriserer `lg-`-nøkler):
+
+| Rute | Gjør | Autorisasjon |
+|---|---|---|
+| `POST /posts/:postId/publish` `{ projectId, platform:'linkedin', caption?, organizationUrn? }` | `dispatchPublish('linkedin', …)` som tekstpost; skriver `status='published'`, `published_at`, `external_post_id`, `external_permalink`, `published_by_user_id`, `published_platform`; ved feil `publish_error` + 502 med norsk `reason`-tekst | plan-eier eller `leadgridMarketingAuthorizedFor`; 403 ved prosjekt-mismatch; 409 hvis allerede publisert; 400 ved feil kanal/tom tekst/>3000 tegn; 10 per minutt per bruker |
+| `GET /linkedin/publish-options?projectId=` | `{ connected, state, memberName, companies, scopeMissing, captionMax }` | som over |
+| `POST /:planId/kpi-sync`, `GET /:planId/kpi-summary`, `POST /posts/:postId/kpi-snapshot` | uendret kontrakt; `kpi-sync` tar nå også poster med `external_post_id` | eier **eller** `leadgridMarketingAuthorizedFor` (var kun eier) |
+
+Migrasjon `0616_marketing_plan_posts_publish_state.sql` (additiv). `fetchLinkedInKpisForPosts`
+(`role-room-kpi-connectors.ts`) er ekte: likes/kommentarer/engagement via
+`social-linkedin-social-actions.ts` (delt med `social-linkedin-insights-worker.ts`), token fra
+`published_by_user_id` (fallback plan-eier). Role Room-flyten accept → feed-planner er urørt.
+
+**Avsender (fase 1c):** bedriftssiden er standard når markedssjefen administrerer én; profil er
+fallback. Grunn: `r_member_social` (lese egne profilposter) er stengt for nye søkere, mens
+bedriftsposter kan leses via `organizationalEntityShareStatistics` (`r_organization_social`).
+Medlemsflyten ber nå om `w_organization_social`, `r_organization_social` og `r_organization_admin`
+i tillegg (`buildRoleRoomLinkedInOauthScopes`, `role-room-linkedin-oauth-scopes.ts`), styrt av
+`ROLE_ROOM_LINKEDIN_ORG_SCOPES` (default på; `off` fjerner dem uten deploy). Eksisterende
+tilkoblinger må kobles til på nytt for å få scopene — kortet tilbyr «Koble til på nytt for
+bedriftsside» i overflow-menyen så lenge `publish-options.orgScopesGranted` er false.
+`published_author_urn` (migrasjon 0617) lagrer hvem posten ble publisert som.
+
+**Tall:** bedriftsposter → `social-linkedin-org-share-stats.ts` (ett batch-kall per organisasjon;
+snapshots `impressions`, `unique_impressions`, `clicks`, `likes`, `comments`, `shares`,
+`engagement_rate`, `engagement`). Personposter → `socialActions` (likes/kommentarer), som gir 403
+uten `r_member_social` → stille tomt. Resultatlinjen viser visninger når de finnes.
+Evidens: `docs/evidence/2026-09-linkedin-scopes-and-stats.yaml`.
+
+**Begrensninger (ærlig):** kun tekstposter (bilde/video er fase 2); ingen planlagt publisering
+(LinkedIn UGC støtter det ikke; `scheduled_for` er informativ); profilposter gir ingen tall;
+`/v2/ugcPosts` er legacy — Posts API (`/rest/posts`) er oppfølging for hele publisher-en.
+
+Tester: `role-room-marketing-plan-routes.publish.test.ts`, `role-room-kpi-connectors.linkedin.test.ts`,
+`social-linkedin-org-share-stats.test.ts`, `role-room-linkedin-oauth-scopes.test.ts`,
+`components/leadgrid/nextPostToPublish.test.ts`.
+
+## Kjente hull (fase 2)
 
 1. **iPad-verktøy** (`leadgrid_find_duplicates`, `_enrich_company`, `_log_visit`, …) mangler
    Anthropic-verktøyskjema og server-side kjøring; `context.leads` rendres ikke i prompten.
-2. **Feed-planner + LinkedIn-publisering** (`RoleRoomFeedPlannerPanel`,
-   `/api/role-room/agent/feed-plan/*`): trenger bootstrap-objektet fra fase 0 og lg-gren i
-   `role-room-agent-feed-plan-routes.ts`. LinkedIn-tilkoblinger er `user_id`-nøklet og
-   virker allerede for markedssjefen.
+2. **LinkedIn: media, planlagt publisering og Posts API.** Publisering er tekst-only og
+   umiddelbar; en kø-worker (mønster: `role-room-instagram-publish.ts`) trengs for
+   `scheduled_for`, og bilde/video krever media-generering per post. Publisher-en bruker
+   legacy `/v2/ugcPosts` — migrer til `/rest/posts` (gjelder også `cockpit-b2b-routes.ts`).
 3. **Versjonshistorikk** for lg-planer (FK på versjonstabellen).
 4. **Tenant-hardening**: `organization_id` på `brand_kits`, `role_room_marketing_plans`,
    `role_room_feed_plans`, `role_room_ai_consent` (0530-presedens) i stedet for syntetisk
