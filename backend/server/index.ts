@@ -543,6 +543,7 @@ import { setupAdminMarketingCatalogRoutes } from "./admin-room-marketing-catalog
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
 import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
+import { setupAdminWorkspaceFundingOpportunityRoutes } from "./admin-workspace-funding-opportunities-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -17707,6 +17708,18 @@ setupAdminOutreachRoutes({
 
 // ── AdminWorkspace «Saker» (cases + comments, multi-produkt)
 setupAdminWorkspaceCasesRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── AdminWorkspace finansieringsradar (eksterne ordninger: IN, Forskningsrådet, EU)
+// Tabellen admin_workspace_funding_opportunities ble opprettet av migrasjon 0455
+// og fylt med data, men ruten lå igjen i en stash og kom aldri på main — derfor
+// sto radaren tom. Gjenopprettet fra arkiv/admin-workspace-stash-20260826.
+setupAdminWorkspaceFundingOpportunityRoutes({
   app,
   pool,
   getActiveSessionFromRequest,

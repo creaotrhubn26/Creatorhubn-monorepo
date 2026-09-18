@@ -74,6 +74,12 @@ export function setupAdminWorkspaceAggregatorRoutes(
       // role_room_meetings.project_id → casting_projects.id (VARCHAR).
       // Vi viser møter som starter "i dag" i Europe/Oslo, uavhengig av
       // server-tz. Bruker AT TIME ZONE for trygg konvertering.
+      //
+      // 🔑 Eierkolonnen på casting_projects heter created_by, ikke user_id.
+      // Med user_id feilet spørringen med «column p.user_id does not exist»,
+      // og fallbacken under fanger bare feil som nevner
+      // casting_project_collaborators — så hele ruten svarte 500 og
+      // agenda-panelet i /admin-workspace sto tomt.
       const result = await pool.query<AgendaItem & { project_id: string | null }>(
         `SELECT
             m.id::text                                                 AS id,
@@ -92,7 +98,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
             AND (m.starts_at AT TIME ZONE 'Europe/Oslo')::date
                 = (NOW() AT TIME ZONE 'Europe/Oslo')::date
             AND (
-              p.user_id = $1
+              p.created_by = $1
               OR EXISTS (
                 SELECT 1 FROM casting_project_collaborators c
                  WHERE c.project_id = m.project_id AND c.user_id = $1
@@ -120,7 +126,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
                 AND m.status = 'upcoming'
                 AND (m.starts_at AT TIME ZONE 'Europe/Oslo')::date
                     = (NOW() AT TIME ZONE 'Europe/Oslo')::date
-                AND p.user_id = $1
+                AND p.created_by = $1
               ORDER BY m.starts_at ASC
               LIMIT 50`,
             [session.userId],
@@ -219,7 +225,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
         `SELECT m.id::text, m.title, m.starts_at, m.status
            FROM role_room_meetings m
            JOIN casting_projects p ON p.id = m.project_id
-          WHERE p.user_id = $1
+          WHERE p.created_by = $1
             AND m.starts_at IS NOT NULL
             AND m.status = 'upcoming'
             AND m.starts_at <= (NOW() + ($2::int || ' days')::interval)
