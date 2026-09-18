@@ -124,6 +124,7 @@ import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { exportAndSaveGif } from './mockupGifExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
+import { detectBpm } from './mockupBeat';
 import { exportCinematic } from './mockupCinematicExport';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
@@ -927,6 +928,8 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
   const [brandKits, setBrandKits] = useState<MockupBrandKit[]>(() => listBrandKits());
   const [bkName, setBkName] = useState('');
   const doSaveBrandKit = () => { if (saveBrandKit(bkName || 'Merkevare', canvas).ok) { setBrandKits(listBrandKits()); setBkName(''); } };
+  // Tempo-analysen av et nylig lastet lydspor: mens den går, og når den ikke fant noe.
+  const [tempoStatus, setTempoStatus] = useState<'leter' | 'fant-ikke' | null>(null);
   const [bgPrompt, setBgPrompt] = useState('');
   const [bgBusy, setBgBusy] = useState(false);
   const [bgErr, setBgErr] = useState<string | null>(null);
@@ -1104,18 +1107,38 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
             <input type="range" min={0.1} max={1} step={0.05} value={canvas.beatPunch ?? 0.6} onChange={(e) => patchCanvas({ beatPunch: Number(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
           </div>
         )}
-        {/* Lyd-spor → muxes inn i MP4-eksport (musicPath). Sett BPM = sporets tempo for beat-synk. */}
+        {/* Lyd-spor → muxes inn i WebM-eksporten. BPM leses ut av sporet, se detectBpm. */}
         {canvas.audio ? (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, fontSize: FS_SM, color: C.inkSoft }}>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🎵 {canvas.audio.name ?? 'lyd-spor'}</span>
-            <button onClick={() => patchCanvas({ audio: undefined })} style={{ ...listBtn, width: 'auto', padding: '4px 8px' }}>Fjern</button>
+          <div style={{ marginTop: 6, fontSize: FS_SM, color: C.inkSoft }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🎵 {canvas.audio.name ?? 'lyd-spor'}</span>
+              <button onClick={() => { setTempoStatus(null); patchCanvas({ audio: undefined }); }} style={{ ...listBtn, width: 'auto', padding: '4px 8px' }}>Fjern</button>
+            </div>
+            {/* Hva analysen kom fram til. Uten denne linjen vet ingen om BPM-tallet
+                kommer fra sporet eller fra standardverdien 120. */}
+            <div style={{ marginTop: 2 }}>
+              {tempoStatus === 'leter' ? 'Finner tempoet …'
+                : tempoStatus === 'fant-ikke' ? 'Fant ikke et tydelig tempo — sett BPM selv.'
+                : `${canvas.bpm ?? 120} BPM, funnet i sporet`}
+            </div>
           </div>
         ) : (
           <label style={{ ...listBtn, display: 'block', textAlign: 'center', cursor: 'pointer', marginTop: 6 }}>
-            🎵 Legg til lyd-spor (mux i MP4)
+            🎵 Legg til lyd-spor (mux i videoen)
             <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => {
               const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
-              const r = new FileReader(); r.onload = () => patchCanvas({ audio: { src: String(r.result), name: f.name } }); r.readAsDataURL(f);
+              const r = new FileReader();
+              r.onload = async () => {
+                const src = String(r.result);
+                patchCanvas({ audio: { src, name: f.name } });
+                setTempoStatus('leter');
+                const bpm = await detectBpm(src);
+                // Fant vi tempoet, følger punchen sporet. Fant vi det ikke, lar vi
+                // BPM-feltet stå: et gjettet tall driver ut av synk uten å si fra.
+                setTempoStatus(bpm ? null : 'fant-ikke');
+                if (bpm) patchCanvas({ bpm });
+              };
+              r.readAsDataURL(f);
             }} />
           </label>
         )}
