@@ -3,32 +3,37 @@
 Alt som kan skriptes ligger i repoet: `fastlane/` (lane `ios beta`),
 `fastlane/ExportOptions.plist` (manuell signering), `Reiseguide/PrivacyInfo.xcprivacy`
 (personvernmanifest) og GitHub-workflowen `.github/workflows/senseaid-testflight.yml`.
-Det som står igjen er klikk i Apple Developer og App Store Connect som krever
-Apple-ID med Admin/App Manager-rolle, og som gjøres én gang.
+Workflowen registrerer bundle-ID-en og lager App Store-profilen selv via
+App Store Connect API-et. Det ene som står igjen er app-recordet i App Store
+Connect: Apple tillater ikke å opprette det via API-et (dokumentasjonen for
+`/v1/apps` sier «Don't use this API to create new apps», sjekket 2026-09-18),
+så det er ett skjema som fylles ut én gang med Apple-ID som har
+Admin/App Manager-rolle.
 
 Signering og opplasting bruker de samme repo-secrets som LeadMap og Capture
 (`BUILD_CERTIFICATE_BASE64`, `P12_PASSWORD`, `KEYCHAIN_PASSWORD`,
 `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`,
 `APP_STORE_CONNECT_API_KEY_CONTENT`). Ingen nye secrets trengs.
 
-## Engangs-steg (ca. 10 minutter)
+## Engangs-steg (ca. 5 minutter)
 
-### 1. Registrer bundle-ID-en
+### 1. Bundle-ID og profil (automatisk)
 
+Første kjøring av workflowen registrerer bundle-ID-en `com.creatorhubn.reiseguide`
+(navn «SenseAid Explore», ingen ekstra capabilities: bakgrunnslyd og deep link
+trenger ingen, og bakgrunns-geofencing i fase 2 heller ikke) og lager
+provisioning-profilen «SenseAid Explore App Store» mot «Apple Distribution:
+Creatorhub AS»-certet i secrets. Det krever at ASC-nøkkelen i secrets har
+App Manager- eller Admin-rolle.
+
+Skulle det feile, gjør det manuelt på
 [developer.apple.com/account](https://developer.apple.com/account) →
-Certificates, Identifiers & Profiles → Identifiers → **+** → App IDs → App:
+Certificates, Identifiers & Profiles: Identifiers → **+** → App IDs → App
+(Description `SenseAid Explore`, explicit bundle ID `com.creatorhubn.reiseguide`),
+og Profiles → **+** → App Store Connect → velg bundle-ID-en og
+distribusjons-certet → navn `SenseAid Explore App Store`.
 
-- Description: `SenseAid Explore`
-- Bundle ID (explicit): `com.creatorhubn.reiseguide`
-- Capabilities: ingen ekstra. (Bakgrunnslyd og deep link trenger ikke
-  capability; bakgrunns-geofencing i fase 2 trenger heller ikke.)
-
-Provisioning-profilen «SenseAid Explore App Store» lages av fastlane (sigh)
-ved første kjøring, mot «Apple Distribution: Creatorhub AS»-certet i secrets.
-Skulle det feile, lag den manuelt: Profiles → **+** → App Store Connect →
-velg bundle-ID-en og distribusjons-certet → navn `SenseAid Explore App Store`.
-
-### 2. Opprett app-recordet
+### 2. Opprett app-recordet (må klikkes)
 
 [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → My Apps →
 **+** → New App:
@@ -48,6 +53,10 @@ GitHub → Actions → **SenseAid Explore TestFlight** → Run workflow → velg
 grenen (`claude/project-thread-xxx8zg` fram til PR #2384 er merget, deretter
 `main`). Jobben tar 10–15 minutter, og buildnummeret blir UTC-tidsstempelet
 (`20260918153000`), så hver kjøring er strengt høyere enn forrige.
+
+Kjøres workflowen før app-recordet finnes, stopper den etter bundle-ID og
+profil med beskjeden «Fant ikke app-record …» (før bygget, så det koster
+under ett minutt). Lag recordet og kjør på nytt.
 
 Alternativt lokalt på en Mac med Xcode 26 og fastlane:
 
@@ -89,9 +98,11 @@ settes automatisk.
 
 ## Hvis noe feiler
 
-- `No profiles for 'com.creatorhubn.reiseguide' were found`: bundle-ID-en er
-  ikke registrert (steg 1), eller ASC-nøkkelen mangler App Manager-rolle
-  (ASC → Users and Access → Integrations → nøkkelen → Edit Access).
+- `Fant ikke app-record for com.creatorhubn.reiseguide`: steg 2 er ikke gjort.
+- `403` / `FORBIDDEN` fra `ensure_bundle_id` eller sigh, eller
+  `No profiles for 'com.creatorhubn.reiseguide' were found`: ASC-nøkkelen
+  mangler App Manager-rolle (ASC → Users and Access → Integrations →
+  nøkkelen → Edit Access), eller gjør steg 1 manuelt.
 - `Cloud signing permission error`: ExportOptions bruker manuell signering
   nettopp for å unngå dette; sjekk at profilnavnet i `ExportOptions.plist` og
   `Fastfile` (`PROFILE_NAME`) er identiske.

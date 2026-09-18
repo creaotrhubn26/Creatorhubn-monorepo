@@ -12,8 +12,9 @@ name: SenseAid Explore TestFlight
 #   KEYCHAIN_PASSWORD
 #   APP_STORE_TEAM_ID / APP_STORE_CONNECT_TEAM_ID (valgfrie, Appfile)
 #
-# Engangs-steg som må gjøres i Apple Developer / App Store Connect før
-# første kjøring står i ipad/Reiseguide/TESTFLIGHT.md.
+# Bundle-ID og App Store-profil lages av fastlane ved første kjøring.
+# App-recordet i App Store Connect må klikkes inn én gang (Apple har ikke
+# API for det); se ipad/Reiseguide/TESTFLIGHT.md.
 
 on:
   workflow_dispatch:

@@ -5,9 +5,12 @@
 #   * fastlane ios release     — archive + upload til App Store Review (ikke submit)
 #   * fastlane ios bump_build  — sett CFBundleVersion til UTC-tidsstempel
 #
-# Hva dette IKKE dekker (engangs-steg i Apple Developer / App Store Connect,
-# se ../TESTFLIGHT.md): registrere bundle-ID-en, opprette app-recordet og
-# legge til testere.
+# Engangs-steg mot Apple: bundle-ID-en registreres automatisk (ensure_bundle_id,
+# ASC API POST /v1/bundleIds) og App Store-profilen lages av sigh. App-recordet i
+# App Store Connect kan IKKE lages via API-et (Apples dokumentasjon for
+# /v1/apps: «Don't use this API to create new apps», hentet 2026-09-18), så
+# ensure_app_record stopper tidlig med beskjed til den som må klikke i ASC.
+# Testere legges til i ASC, se ../TESTFLIGHT.md.
 #
 # Samme mønster som ipad/LeadMapApp (manuell signering med importert
 # «Apple Distribution»-cert + App Store-profil hentet av sigh), fordi Xcodes
@@ -24,6 +27,7 @@ require "fileutils"
 default_platform(:ios)
 
 APP_IDENTIFIER = "com.creatorhubn.reiseguide"
+APP_NAME       = "SenseAid Explore"
 PROFILE_NAME   = "SenseAid Explore App Store"
 SCHEME         = "Reiseguide"
 PROJECT        = "Reiseguide.xcodeproj"
@@ -47,7 +51,9 @@ platform :ios do
   desc "Archive + upload til TestFlight"
   lane :beta do
     setup_api_key
+    ensure_bundle_id
     download_app_store_profile
+    ensure_app_record
     bump_build
 
     build_app(
@@ -79,7 +85,9 @@ platform :ios do
   desc "Archive + upload til App Store Review (submit er et manuelt steg)"
   lane :release do
     setup_api_key
+    ensure_bundle_id
     download_app_store_profile
+    ensure_app_record
     bump_build
 
     build_app(
@@ -134,10 +142,55 @@ platform :ios do
     UI.success("ASC API-nøkkel skrevet til #{pkey_path}")
   end
 
+  # Registrerer bundle-ID-en i Developer Portal hvis den mangler (ASC API
+  # POST /v1/bundleIds; LeadMap-watch-bundlen ble laget på samme måte).
+  # Krever at ASC-nøkkelen har App Manager- eller Admin-rolle. Uten nøkkel
+  # (lokal dev) lar vi Xcode ordne det.
+  private_lane :ensure_bundle_id do
+    unless lane_context[SharedValues::APP_STORE_CONNECT_API_KEY]
+      UI.important("Ingen ASC-nøkkel; hopper over bundle-ID-sjekk (Xcode ordner det lokalt)")
+      next
+    end
+
+    existing = Spaceship::ConnectAPI::BundleId.find(APP_IDENTIFIER)
+    if existing
+      UI.message("Bundle-ID #{APP_IDENTIFIER} er registrert hos Apple (#{existing.id})")
+    else
+      UI.message("Registrerer bundle-ID #{APP_IDENTIFIER} («#{APP_NAME}») i Developer Portal")
+      created = Spaceship::ConnectAPI::BundleId.create(
+        name: APP_NAME,
+        identifier: APP_IDENTIFIER,
+        platform: "IOS",
+      )
+      UI.success("Bundle-ID registrert (#{created.id})")
+    end
+  end
+
+  # App-recordet i App Store Connect må finnes før upload_to_testflight, og
+  # Apple tillater ikke å opprette det via API-et. Sjekken ligger før
+  # build_app så en manglende record koster sekunder, ikke et 10-minutters bygg.
+  private_lane :ensure_app_record do
+    next unless lane_context[SharedValues::APP_STORE_CONNECT_API_KEY]
+
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    if app
+      UI.success("App-record «#{app.name}» finnes i App Store Connect (#{app.id})")
+      next
+    end
+
+    UI.user_error!(<<~MSG)
+      Fant ikke app-record for #{APP_IDENTIFIER} i App Store Connect.
+      Apple lar ikke API-et opprette app-records, så det må gjøres én gang på
+      appstoreconnect.apple.com → My Apps → + → New App (se ../TESTFLIGHT.md steg 2):
+        Platform: iOS · Name: #{APP_NAME} · Primary Language: Norwegian (Bokmål)
+        Bundle ID: #{APP_IDENTIFIER} · SKU: SENSEAID-EXPLORE-01
+      Bundle-ID-en og App Store-profilen er allerede på plass; kjør workflowen på nytt etterpå.
+    MSG
+  end
+
   # Henter (eller oppretter) den manuelle App Store-profilen for bundle-ID-en
   # så manual signing i ExportOptions.plist finner den. force: true
-  # regenererer mot cert-en som er importert i keychainen. Krever at
-  # bundle-ID-en er registrert hos Apple (TESTFLIGHT.md steg 1).
+  # regenererer mot cert-en som er importert i keychainen.
   private_lane :download_app_store_profile do
     sigh(
       app_identifier: APP_IDENTIFIER,
