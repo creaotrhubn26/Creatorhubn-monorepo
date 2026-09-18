@@ -45,6 +45,20 @@ function newToken(): string {
   return crypto.randomBytes(24).toString("base64url");
 }
 
+/**
+ * Posisjon til kolonnen. Returnerer SQL NULL, ikke JSON null.
+ *
+ * 🔑 JSON.stringify(null) er strengen "null", som Postgres lagrer som JSON
+ * null i en jsonb-kolonne. Fra JavaScript ser de to like ut — begge blir
+ * `null` — men i SQL gjør de det ikke: `WHERE position IS NULL` finner
+ * JSON null-radene IKKE. Verifisert mot ekte Postgres:
+ * position IS NULL → false, position = 'null'::jsonb → true.
+ */
+function positionParam(value: unknown): string | null {
+  const p = cleanPosition(value);
+  return p ? JSON.stringify(p) : null;
+}
+
 function cleanPosition(value: unknown): { x: number; y: number } | null {
   if (!value || typeof value !== "object") return null;
   const v = value as { x?: unknown; y?: unknown };
@@ -140,7 +154,7 @@ export function setupRoleRoomSceneRoleCardsRoutes(
           typeof body.talent_id === "string" ? body.talent_id : null,
           action,
           typeof body.cue === "string" ? body.cue.trim() || null : null,
-          JSON.stringify(cleanPosition(body.position)),
+          positionParam(body.position),
           typeof body.wardrobe === "string" ? body.wardrobe.trim() || null : null,
           typeof body.frame_image_url === "string" ? body.frame_image_url : null,
           typeof body.call_time === "string" ? body.call_time : null,
@@ -179,7 +193,7 @@ export function setupRoleRoomSceneRoleCardsRoutes(
     if (typeof body.scene_id === "string") sett("scene_id", body.scene_id || null);
     if (typeof body.person_kind === "string" && PERSON_KINDS.has(body.person_kind)) sett("person_kind", body.person_kind);
     if (typeof body.contact_email === "string") sett("contact_email", body.contact_email.trim().toLowerCase() || null);
-    if (body.position !== undefined) sett("position", JSON.stringify(cleanPosition(body.position)));
+    if (body.position !== undefined) sett("position", positionParam(body.position));
     if (Number.isFinite(Number(body.sort_order))) sett("sort_order", Number(body.sort_order));
     if (body.revoked === true) sett("revoked_at", new Date().toISOString());
     if (body.revoked === false) sett("revoked_at", null);

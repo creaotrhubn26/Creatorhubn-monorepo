@@ -129,6 +129,18 @@ describe("produksjonens side", () => {
     expect(JSON.parse(insert?.params[8] as string)).toEqual({ x: 1, y: 0 });
   });
 
+  it("lagrer manglende posisjon som SQL NULL, ikke JSON null", async () => {
+    await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards`)
+      .send({ person_name: "Statist 5", action: "Stå bak disken." });
+
+    const insert = t.spørringer.find((q) => q.sql.includes("INSERT"));
+    // JSON.stringify(null) er strengen "null", og Postgres lagrer den som
+    // JSON null. Da finner «WHERE position IS NULL» ingen av radene.
+    // Verifisert mot ekte Postgres før denne testen ble skrevet.
+    expect(insert?.params[8]).toBeNull();
+  });
+
   it("har project_id i WHERE ved endring, så et kort fra et annet prosjekt ikke treffes", async () => {
     await request(byggApp(t))
       .patch(`/api/role-room/projects/${PROSJEKT}/role-cards/${KORT_ID}`)
