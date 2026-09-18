@@ -694,6 +694,8 @@ import { registerPartnerApplicationsRoutes } from "./partner-applications-routes
 import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
 import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js";
 import { registerLeadgridGoogleAuthRoutes } from "./leadgrid-google-auth-routes.js";
+import { registerLinkedInLoginRoutes } from "./linkedin-login-routes.js";
+import { isLinkedInLoginState } from "./linkedin-login.js";
 import { registerUserOrgRoutes } from "./user-org-routes.js";
 import { registerLeadgridDripsRoutes } from "./leadgrid-drips-routes.js";
 import { registerPartnerApiRoutes } from "./partner-api-routes.js";
@@ -2777,6 +2779,9 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
   }
   registerLeadMapMeProfileRoutes({ app, pool, activeSessions, uploadImage, deleteImage });
   registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
+  // Logg inn med LinkedIn (web + Leadgrid iOS): finner/oppretter bruker og
+  // fyller tomme profilfelt (navn, bilde → R2) fra LinkedIn userinfo.
+  registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadImage });
 }
 registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
 registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
@@ -3125,9 +3130,12 @@ const forwardRoleRoomLinkedInCallback = (
   }
 
   const queryString = params.toString();
-  res.redirect(
-    `/api/role-room/linkedin/oauth/callback${queryString ? `?${queryString}` : ""}`,
-  );
+  // Logg inn med LinkedIn deler callback-URL med Role Room-tilkoblingen;
+  // state-prefikset lgn_ skiller dem (linkedin-login-routes.ts).
+  const targetPath = isLinkedInLoginState(params.get("state"))
+    ? "/api/auth/linkedin/login-callback"
+    : "/api/role-room/linkedin/oauth/callback";
+  res.redirect(`${targetPath}${queryString ? `?${queryString}` : ""}`);
 };
 
 app.get("/api/auth/linkedin/callback", forwardRoleRoomLinkedInCallback);
