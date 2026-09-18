@@ -41,6 +41,8 @@ import LeadgridFeltsalgSalgsteamPage from '../pages/leadgrid-feltsalg-salgsteam'
 import LeadgridAkademiPage from '../pages/leadgrid-akademi';
 import LeadgridAkademiSamarbeidPage from '../pages/leadgrid-akademi-samarbeid-salg-marked';
 import LeadgridAkademiVelgeCrmPage from '../pages/leadgrid-akademi-velge-crm-feltsalg';
+import PrivacyPolicy from '../pages/privacy-policy';
+import TermsAndConditions from '../pages/terms-and-conditions';
 import { AKADEMI_ARTICLES } from '../components/leadgrid/akademiConfig';
 
 export interface PrerenderedPage {
@@ -50,7 +52,7 @@ export interface PrerenderedPage {
 }
 
 const OG_IMAGE = 'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp';
-const FAVICON = '/theroleroom-mark-1024.png';
+const FAVICON = '/TheRoleRoom_App_Logo.png';
 
 /** Merke-parametre for HTML-dokumentmalen (TRR vs Leadgrid). */
 interface SiteMeta {
@@ -73,6 +75,47 @@ const LEADGRID_SITE: SiteMeta = {
   ogImage: 'https://leadgrid.no/leadgrid/backdrop2.png',
   favicon: '/leadgrid/logo.png',
 };
+
+const CREATORHUB_SITE: SiteMeta = {
+  origin: 'https://creatorhubn.com',
+  siteName: 'CreatorHub Norge',
+  ogImage: 'https://creatorhubn.com/og-image.png',
+  favicon: '/favicon.ico',
+};
+
+/**
+ * Juridiske sider på creatorhubn.com. Disse rutes til ALLE user-agents
+ * (uaPattern: null i netlify/host-routes.json), ikke bare crawlere:
+ * Googles OAuth-verifisering avviste personvernerklæringen 2026-08-14 med
+ * «does not have sufficient content» fordi den registrerte URL-en bare
+ * returnerte SPA-skallet (57 tegn synlig tekst) til alt som ikke kjører
+ * JavaScript. Å servere ulikt innhold til bot og menneske ville vært
+ * cloaking — derfor samme statiske dokument til begge.
+ */
+const CREATORHUB_LEGAL_PAGES: Array<{
+  key: string;
+  path: string;
+  title: string;
+  description: string;
+  element: () => ReactElement;
+}> = [
+  {
+    key: 'privacy-policy',
+    path: '/privacy-policy',
+    title: 'Personvernerklæring — CreatorHub Norge',
+    description:
+      'Personvernerklæring for CreatorHub Norge: hvilke personopplysninger vi behandler, behandlingsgrunnlag, lagringstid, bruk av Google Workspace-data (Drive, Gmail, Chat, Kalender) med Limited Use-erklæring, og dine rettigheter etter GDPR.',
+    element: () => <PrivacyPolicy />,
+  },
+  {
+    key: 'terms-and-conditions',
+    path: '/terms-and-conditions',
+    title: 'Vilkår og betingelser — CreatorHub Norge',
+    description:
+      'Vilkår og betingelser for bruk av CreatorHub Norge: avtaleinngåelse, bruksrett, betaling, ansvar og oppsigelse.',
+    element: () => <TermsAndConditions />,
+  },
+];
 
 /** Komponent per akademi-artikkel (nøkler fra akademiConfig). */
 const AKADEMI_COMPONENTS: Record<string, () => ReactElement> = {
@@ -263,6 +306,26 @@ export function renderLeadgridPages(): PrerenderedPage[] {
     const chunks = extractCriticalToChunks(appHtml);
     const css = chunks.styles.map((style) => style.css).join('\n');
     return { key: page.key, path: page.path, html: buildDocument(page, appHtml, css, LEADGRID_SITE) };
+  });
+}
+
+/**
+ * Rendrer de juridiske sidene for creatorhubn.com.
+ * `resolvePublicBrandFromWindow()` returnerer 'creatorhub' uten window,
+ * så SSR gir CreatorHub-varianten av den host-bevisste komponenten.
+ */
+export function renderCreatorhubLegalPages(): PrerenderedPage[] {
+  return CREATORHUB_LEGAL_PAGES.map((page) => {
+    const cache = createCache({ key: 'geo' });
+    const { extractCriticalToChunks } = createEmotionServer(cache);
+    const appHtml = renderToString(
+      <CacheProvider value={cache}>
+        <Router ssrPath={page.path}>{page.element()}</Router>
+      </CacheProvider>,
+    );
+    const chunks = extractCriticalToChunks(appHtml);
+    const css = chunks.styles.map((style) => style.css).join('\n');
+    return { key: page.key, path: page.path, html: buildDocument(page, appHtml, css, CREATORHUB_SITE) };
   });
 }
 

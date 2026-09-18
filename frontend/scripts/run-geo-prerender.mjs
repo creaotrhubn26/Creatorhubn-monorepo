@@ -28,17 +28,25 @@ const ssrBundle = existsSync(ssrBundleJs) ? ssrBundleJs : ssrBundleMjs;
 const outDir = resolve(frontendRoot, 'client/dist/geo');
 const hostRoutesPath = resolve(frontendRoot, '..', 'netlify/host-routes.json');
 
-const { renderPublishedPages, renderLeadgridPages } = await import(ssrBundle);
+const { renderPublishedPages, renderLeadgridPages, renderCreatorhubLegalPages } = await import(ssrBundle);
 
 const pages = renderPublishedPages();
 const leadgridPages = renderLeadgridPages();
-if (pages.length === 0 || leadgridPages.length === 0) {
+const creatorhubLegalPages = renderCreatorhubLegalPages();
+if (pages.length === 0 || leadgridPages.length === 0 || creatorhubLegalPages.length === 0) {
   console.error('geo-prerender: 0 sider i en av gruppene — det er alltid feil, avbryter.');
   process.exit(1);
 }
 
+// Juridiske sider serveres til ALLE user-agents, ikke bare crawlere. Google
+// avviste OAuth-verifiseringen 2026-08-14 fordi personvern-URL-en returnerte
+// SPA-skallet (57 tegn) til alt som ikke kjører JavaScript; å gi bots noe
+// annet enn mennesker ville vært cloaking.
+const ALL_UA_PATHS = new Set(['/personvern']);
+
 await mkdir(outDir, { recursive: true });
 await mkdir(resolve(outDir, 'leadgrid'), { recursive: true });
+await mkdir(resolve(outDir, 'creatorhub'), { recursive: true });
 
 async function writePage(page, relTarget) {
   const target = resolve(outDir, relTarget);
@@ -53,6 +61,7 @@ async function writePage(page, relTarget) {
 
 for (const page of pages) await writePage(page, `${page.key}.html`);
 for (const page of leadgridPages) await writePage(page, `leadgrid/${page.key}.html`);
+for (const page of creatorhubLegalPages) await writePage(page, `creatorhub/${page.key}.html`);
 
 // ── Valider Netlify host-/bot-ruter ───────────────────────────────
 const hostRoutesConfig = JSON.parse(await readFile(hostRoutesPath, 'utf8'));
@@ -77,16 +86,34 @@ for (const page of pages) {
 }
 for (const page of leadgridPages) {
   const expected = `/geo/leadgrid/${page.key}.html`;
+  const allUa = ALL_UA_PATHS.has(page.path);
   const found = routes.some(
     (route) =>
       route.source === page.path &&
       route.destination === expected &&
       typeof route.hostPattern === 'string' &&
       /leadgrid/.test(route.hostPattern) &&
-      typeof route.uaPattern === 'string' &&
-      route.uaPattern.length > 0,
+      (allUa
+        ? route.uaPattern === null
+        : typeof route.uaPattern === 'string' && route.uaPattern.length > 0),
   );
-  if (!found) missing.push(`leadgrid.no${page.path} → ${expected} (bot-rewrite)`);
+  if (!found) {
+    missing.push(`leadgrid.no${page.path} → ${expected} (${allUa ? 'alle user-agents' : 'bot-rewrite'})`);
+  }
+}
+
+// Juridiske CreatorHub-sider: host-betinget, men for ALLE user-agents.
+for (const page of creatorhubLegalPages) {
+  const expected = `/geo/creatorhub/${page.key}.html`;
+  const found = routes.some(
+    (route) =>
+      route.source === page.path &&
+      route.destination === expected &&
+      typeof route.hostPattern === 'string' &&
+      /creatorhubn/.test(route.hostPattern) &&
+      route.uaPattern === null,
+  );
+  if (!found) missing.push(`creatorhubn.com${page.path} → ${expected} (alle user-agents)`);
 }
 
 if (missing.length > 0) {
@@ -95,4 +122,4 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-console.log(`geo-prerender: OK — ${pages.length} TRR-sider + ${leadgridPages.length} Leadgrid-sider prerendret og rutet.`);
+console.log(`geo-prerender: OK — ${pages.length} TRR-sider + ${leadgridPages.length} Leadgrid-sider + ${creatorhubLegalPages.length} CreatorHub-juridiske sider prerendret og rutet.`);
