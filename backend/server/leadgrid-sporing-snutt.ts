@@ -113,12 +113,48 @@ export function byggSporingsSnutt(opts: {
     return body;
   }
 
+  // Hendelses-id deles med server-siden, så en innsending ikke telles to
+  // ganger når den samme konverteringen også sendes via Events API / CAPI.
+  function nyId() {
+    try {
+      if (crypto && crypto.randomUUID) return "lg-" + crypto.randomUUID();
+    } catch (e) {}
+    return "lg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  // Fyrer VERTSSIDENS egne pixler, ikke Leadgrids. ttq og fbq finnes bare om
+  // nettstedet selv har lastet dem: på leadgrid.no er det våre, på en kundes
+  // nettsted er det kundens. Ingen konfigurasjon, og ingen fare for at en
+  // kundes henvendelse havner i vår pixel.
+  //
+  // Samtykke håndteres av vertssiden. Har den ikke lastet pixelen fordi
+  // brukeren sa nei, finnes ikke ttq/fbq, og her skjer ingenting.
+  function meldTilPixler(eventId) {
+    try {
+      if (typeof window.ttq !== "undefined" && window.ttq.track) {
+        window.ttq.track("SubmitForm", {}, { event_id: eventId });
+      }
+    } catch (e) {}
+    try {
+      if (typeof window.fbq === "function") {
+        window.fbq("track", "Lead", {}, { eventID: eventId });
+      }
+    } catch (e) {}
+  }
+
   function send(felt) {
-    return fetch(ENDEPUNKT, {
+    var eventId = nyId();
+    var body = nyttelast(felt);
+    body.event_id = eventId;
+    var p = fetch(ENDEPUNKT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(nyttelast(felt)),
+      body: JSON.stringify(body),
     });
+    // Meldes etter at forespørselen er sendt, aldri før: en feil i et
+    // pixel-kall skal ikke kunne hindre at henvendelsen kommer fram.
+    meldTilPixler(eventId);
+    return p;
   }
 
   // Skjema merket data-leadgrid sendes automatisk. Feltene leses av name=,

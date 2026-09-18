@@ -15,7 +15,9 @@ import { byggSporingsSnutt } from "./leadgrid-sporing-snutt";
 
 interface Verden {
   nyttelast: () => Record<string, unknown>;
+  send: (felt?: Record<string, unknown>) => Promise<unknown>;
   lager: Map<string, string>;
+  win: Record<string, unknown>;
 }
 
 /** Minimal nettleser: nok til at snutten kjører, ikke mer. */
@@ -45,8 +47,11 @@ function kjor(url: string, lager = new Map<string, string>(), referrer = ""): Ve
     URLSearchParams,
     async () => ({ ok: true }),
   );
-  const lg = win.leadgrid as { attribusjon: () => Record<string, unknown> };
-  return { nyttelast: lg.attribusjon, lager };
+  const lg = win.leadgrid as {
+    attribusjon: () => Record<string, unknown>;
+    send: (felt?: Record<string, unknown>) => Promise<unknown>;
+  };
+  return { nyttelast: lg.attribusjon, send: lg.send, lager, win };
 }
 
 describe("attribusjon overlever fra landingsside til skjema", () => {
@@ -123,5 +128,66 @@ describe("attribusjon overlever fra landingsside til skjema", () => {
     expect(kode).toContain("const base = leadgridPublicOrigin();");
     expect(kode).not.toContain("req.get(\"host\")");
     expect(kode).not.toContain("LEADGRID_PUBLIC_API_BASE");
+  });
+});
+
+describe("hendelser til vertssidens egne pixler", () => {
+  /** Nettleser med ttq og fbq, slik en side med egne pixler ser ut. */
+  function medPixler(url: string) {
+    const kalt: Array<{ pixel: string; args: unknown[] }> = [];
+    const lager = new Map<string, string>();
+    const location = { search: new URL(url).search, href: url };
+    const win: Record<string, unknown> = {
+      ttq: { track: (...args: unknown[]) => kalt.push({ pixel: "ttq", args }) },
+      fbq: (...args: unknown[]) => kalt.push({ pixel: "fbq", args }),
+    };
+    const fn = new Function(
+      "window", "location", "localStorage", "document", "URLSearchParams", "fetch", "crypto",
+      byggSporingsSnutt({ publicKey: "lgf_test", apiBase: "https://api.test" }),
+    );
+    let sendtBody: Record<string, unknown> = {};
+    fn(
+      win, location,
+      { getItem: (k: string) => lager.get(k) ?? null, setItem: (k: string, v: string) => lager.set(k, v) },
+      {
+        readyState: "complete", referrer: "", querySelectorAll: () => [],
+        addEventListener: () => {}, set cookie(_v: string) {}, get cookie() { return ""; },
+      },
+      URLSearchParams,
+      async (_u: string, init: { body: string }) => {
+        sendtBody = JSON.parse(init.body);
+        return { ok: true };
+      },
+      { randomUUID: () => "11111111-2222-3333-4444-555555555555" },
+    );
+    const lg = win.leadgrid as { send: (f?: Record<string, unknown>) => Promise<unknown> };
+    return { kalt, send: lg.send, body: () => sendtBody };
+  }
+
+  it("fyrer SubmitForm på TikTok og Lead på Meta", async () => {
+    const v = medPixler("https://kunde.no/?ttclid=TT1&fbclid=FB1");
+    await v.send({ email: "kari@x.no" });
+    expect(v.kalt.map((k) => k.pixel).sort()).toEqual(["fbq", "ttq"]);
+    expect(v.kalt.find((k) => k.pixel === "ttq")?.args[0]).toBe("SubmitForm");
+    expect(v.kalt.find((k) => k.pixel === "fbq")?.args[1]).toBe("Lead");
+  });
+
+  it("deler hendelses-id med serveren, så konverteringen ikke telles to ganger", async () => {
+    const v = medPixler("https://kunde.no/?ttclid=TT1");
+    await v.send({ email: "kari@x.no" });
+    const id = v.body().event_id;
+    expect(typeof id).toBe("string");
+    const ttqOpts = v.kalt.find((k) => k.pixel === "ttq")?.args[2] as { event_id: string };
+    const fbqOpts = v.kalt.find((k) => k.pixel === "fbq")?.args[3] as { eventID: string };
+    expect(ttqOpts.event_id).toBe(id);
+    expect(fbqOpts.eventID).toBe(id);
+  });
+
+  it("gjør ingenting når vertssiden ikke har pixler", async () => {
+    // Det er dette som gjør at en kundes henvendelse aldri havner i VÅR
+    // pixel: snutten fyrer bare det nettstedet selv har lastet. Sa brukeren
+    // nei til samtykke, har vertssiden heller ikke lastet noe.
+    const v = kjor("https://kunde.no/?ttclid=TT1");
+    await expect(v.send({ email: "kari@x.no" })).resolves.toBeDefined();
   });
 });
