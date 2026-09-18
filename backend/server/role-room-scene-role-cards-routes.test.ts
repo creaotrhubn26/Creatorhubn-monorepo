@@ -52,6 +52,9 @@ function byggApp(t: Tilstand, innlogget = true) {
     query: async (sql: string, params?: unknown[]) => {
       t.spørringer.push({ sql, params: params ?? [] });
 
+      if (sql.includes("SET response")) {
+        return { rows: t.oppdaterteRader ? [{ id: KORT_ID }] : [], rowCount: t.oppdaterteRader };
+      }
       if (sql.includes("SET opened_at")) {
         if (t.feilPåMerking) throw new Error("databasen sa nei");
         return { rows: [], rowCount: 1 };
@@ -223,7 +226,7 @@ describe("statistens side", () => {
     const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
     const nøkler = Object.keys(res.body);
     // Strengt med vilje: hver nye toppnøkkel skal måtte forsvares her.
-    expect(nøkler.sort()).toEqual(["cards", "meeting", "person", "project"]);
+    expect(nøkler.sort()).toEqual(["cards", "meeting", "person", "project", "response"]);
     // Hele poenget: statisten skal ikke lete etter seg selv i scenen.
     // `cards` er nå personens EGNE scener — vakten må derfor være at ingen
     // andre personer finnes i svaret, ikke at nøkkelen mangler.
@@ -301,6 +304,56 @@ describe("statistens side", () => {
     expect(b.status).toBe(404);
     // Ulik ordlyd ville latt noen prøve seg fram til hvilke lenker som finnes.
     expect(a.body.error).toBe(b.body.error);
+  });
+});
+
+describe("kommer du?", () => {
+  let t: Tilstand;
+  beforeEach(() => {
+    t = { spørringer: [], oppdaterteRader: 1, offentligRad: null };
+  });
+
+  const svarPå = (kropp: Record<string, unknown>) =>
+    request(byggApp(t, false)).post("/api/role-room/role-cards/r/et-token/svar").send(kropp);
+
+  it("lagrer svaret på hele lenken, ikke på ett kort", async () => {
+    const res = await svarPå({ svar: "kommer" });
+    expect(res.status).toBe(200);
+
+    const skriving = t.spørringer.find((q) => q.sql.includes("SET response"));
+    // Du kommer til DAGEN, ikke til scene 3 — derfor på token.
+    expect(skriving?.sql).toContain("WHERE token = $1");
+    expect(skriving?.params[0]).toBe("et-token");
+    expect(skriving?.params[1]).toBe("kommer");
+  });
+
+  it("tar imot melding når personen ikke kan", async () => {
+    const res = await svarPå({ svar: "kan_ikke", melding: "  Er syk  " });
+    expect(res.status).toBe(200);
+    const skriving = t.spørringer.find((q) => q.sql.includes("SET response"));
+    expect(skriving?.params[2]).toBe("Er syk");
+  });
+
+  it("avviser noe annet enn de to svarene", async () => {
+    // En tredje tilstand ville ingen skjerm visst hvordan den skulle vise.
+    const res = await svarPå({ svar: "kanskje" });
+    expect(res.status).toBe(400);
+    expect(t.spørringer.some((q) => q.sql.includes("SET response"))).toBe(false);
+  });
+
+  it("svarer likt for ukjent og tilbaketrukket lenke", async () => {
+    const res = await request(byggApp({ ...t, oppdaterteRader: 0 }, false))
+      .post("/api/role-room/role-cards/r/finnes-ikke/svar").send({ svar: "kommer" });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Lenken gjelder ikke lenger");
+  });
+
+  it("kutter en veldig lang melding i stedet for å avvise den", async () => {
+    // Personen står kanskje på settet. Da er «for langt» en dårlig feilmelding.
+    const res = await svarPå({ svar: "kan_ikke", melding: "a".repeat(900) });
+    expect(res.status).toBe(200);
+    const skriving = t.spørringer.find((q) => q.sql.includes("SET response"));
+    expect(String(skriving?.params[2])).toHaveLength(500);
   });
 });
 
