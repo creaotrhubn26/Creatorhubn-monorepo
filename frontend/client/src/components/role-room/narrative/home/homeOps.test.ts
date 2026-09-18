@@ -33,10 +33,14 @@ describe('homeOps', () => {
     ], NOW));
     expect(items.map((i) => i.title)).toEqual(['Forfalt', 'Blokkert', 'Snart']);
   });
+  it('homeKpis: gate-KPI uten startede scener viser «–» i stedet for 0 %', () => {
+    const k = homeKpis(overview({ gates: { total: 0, passed: 0, failed: 0, byKey: { script_coverage: { passed: 0, total: 0 }, greybox: { passed: 0, total: 0 }, characters_animation: { passed: 0, total: 0 }, playthrough: { passed: 0, total: 0 }, picture: { passed: 0, total: 0 }, audio: { passed: 0, total: 0 } } } }));
+    expect(k.find((x) => x.key === 'gates')).toMatchObject({ value: '–', sub: 'ingen scener startet ennå', tone: 'neutral', pct: 0 });
+  });
   it('homeKpis regner prosent og toner', () => {
     const k = homeKpis(overview());
     expect(k.find((x) => x.key === 'scenes')).toMatchObject({ value: '10', pct: 30, tab: 'scenes' });
-    expect(k.find((x) => x.key === 'gates')).toMatchObject({ value: '10 %', tone: 'warning' });
+    expect(k.find((x) => x.key === 'gates')).toMatchObject({ value: '10 %', tone: 'warning', sub: '6 av 60 bestått · 6 scener startet · 1 feilet' });
     expect(k.find((x) => x.key === 'tasks')).toMatchObject({ value: '5', tone: 'error' });
     expect(k.find((x) => x.key === 'platform')).toMatchObject({ value: '2/5', pct: 40 });
   });

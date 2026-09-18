@@ -937,7 +937,8 @@ describe('narrative routes — Fase 7: produksjons-OS (gater, replikker, episode
     const res = await auth(request(createApp(pool)).get(`${base}/overview`));
     expect(res.status).toBe(200);
     expect(res.body.data.scenes).toMatchObject({ total: 2, byStatus: { idea: 1, approved: 1 }, byEra: { '1797': 1, '1817': 1 }, withoutDates: 1 });
-    expect(res.body.data.gates).toMatchObject({ total: 12, passed: 1, failed: 1 });
+    // Kun startede scener (status ≠ idea) teller i gate-totalen: 1 scene × 6 gater.
+    expect(res.body.data.gates).toMatchObject({ total: 6, passed: 1, failed: 1 });
     expect(res.body.data.tasks).toEqual({ open: 1, overdue: 1, done: 1 });
     expect(res.body.data.reviews).toEqual({ open: 1 });
     expect(res.body.data.platform).toEqual({ requirements: 2, verified: 1, primaryName: 'iPad Pro M1' });
