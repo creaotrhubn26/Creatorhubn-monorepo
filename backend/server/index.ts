@@ -196,11 +196,15 @@ import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
+import { createGameBillingRouter } from "./game-billing-routes.js";
+import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
+import { createNarrativeReviewPublicRouter } from "./role-room-narrative-review-public-routes.js";
 import {
   createDanceTeamRouter,
   createDanceInviteAcceptRouter,
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
+import { createRoleRoomNarrativeRouter } from "./role-room-narrative-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createStoryboardReviewRouter } from "./storyboard-review-routes.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
@@ -853,6 +857,11 @@ import {
   storySynopsisApplier,
   storyBeatOutlineApplier,
 } from "./ai-story-development-agent.js";
+// Story Graph (game_studio): KI-forslag for narrative elementer (next/enhance/branches).
+import {
+  createNarrativeElementAgent,
+  narrativeElementApplier,
+} from "./ai-narrative-element-agent.js";
 import {
   createCoverageGapAgent,
   coverageGapApplier,
@@ -2901,6 +2910,20 @@ app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
 );
+// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0621_game_billing.sql.
+app.use(
+  "/api/game/billing",
+  createGameBillingRouter(pool, { activeSessions }),
+);
+// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0625_game_team.sql.
+app.use(
+  "/api/game/teams",
+  createGameTeamRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/game/invites",
+  createGameInviteAcceptRouter(pool, { activeSessions }),
+);
 app.use(
   "/api/dance/teams",
   createDanceTeamRouter(pool, { activeSessions }),
@@ -2912,6 +2935,17 @@ app.use(
 app.use(
   "/api/dance/addons",
   createDanceAddonRouter(pool, { activeSessions }),
+);
+// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0626). Montert før
+// narrative-routeren så /review/:token aldri treffer prosjekt-rutene.
+app.use(
+  "/api/role-room/narrative/review",
+  createNarrativeReviewPublicRouter(pool),
+);
+// Spillstudio (game_studio) — Story Graph: narrativ graf, prosjekt-skopet.
+app.use(
+  "/api/role-room/narrative",
+  createRoleRoomNarrativeRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room",
@@ -15571,6 +15605,7 @@ aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
+aiSuggestionService.registerAgent(createNarrativeElementAgent(pool));
 aiSuggestionService.registerAgent(createCoverageGapAgent(pool));
 aiSuggestionService.registerAgent(createCoverageBestTakeAgent(pool));
 aiSuggestionService.registerAgent(createRoughCutAgent(pool));
@@ -15595,6 +15630,7 @@ aiSuggestionService.registerApplier(auditionSidesApplier);
 aiSuggestionService.registerApplier(storyLoglineApplier);
 aiSuggestionService.registerApplier(storySynopsisApplier);
 aiSuggestionService.registerApplier(storyBeatOutlineApplier);
+aiSuggestionService.registerApplier(narrativeElementApplier);
 aiSuggestionService.registerApplier(coverageGapApplier);
 aiSuggestionService.registerApplier(coverageBestTakeApplier);
 aiSuggestionService.registerApplier(roughCutApplier);

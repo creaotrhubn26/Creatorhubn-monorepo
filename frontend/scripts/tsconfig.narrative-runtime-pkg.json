@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["../shared/narrative-runtime-pkg/index.ts"],
+  "exclude": [],
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": false,
+    "rootDir": "../shared",
+    "outDir": "../../packages/story-graph-runtime/js/dist/types",
+    "types": ["node"]
+  }
+}

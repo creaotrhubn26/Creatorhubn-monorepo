@@ -21,7 +21,7 @@ import { PortfolioTab } from './PortfolioTab';
 import { IndustryTab } from './IndustryTab';
 import { FacultyTab } from './FacultyTab';
 import educationLtiService from './educationLtiService';
-import { RoleRoomEduLogo } from './RoleRoomEduLogo';
+import { RoleRoomMark } from '../shared/RoleRoomMark';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
   Box, Typography, Card, CardContent, Chip, Stack, InputBase, IconButton, Tooltip, Avatar, Drawer,
@@ -138,7 +138,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
     }}>
       {/* Logo — ekte merke + hvitt ordmerke (lesbart på mørk backdrop). */}
       <Box sx={{ px: 0.75, pt: 1.25, pb: 1, mb: 0.5 }}>
-        <RoleRoomEduLogo markSize={46} />
+        <RoleRoomMark markSize={46} surface="Utdanning" />
       </Box>
 
       {/* Nav */}
@@ -262,7 +262,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
         ModalProps={{ keepMounted: true }}
         sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: 272, boxSizing: 'border-box', p: 1.75, bgcolor: '#0a0515', color: '#fff', borderRight: '1px solid rgba(255,255,255,0.08)' } }}>
         <Box sx={{ px: 0.75, pt: 0.5, pb: 1, mb: 0.5 }}>
-          <RoleRoomEduLogo markSize={44} />
+          <RoleRoomMark markSize={44} surface="Utdanning" />
         </Box>
         <NavItems activeTab={activeTab} onNavigate={(t) => { setActiveTab(t); setMobileNavOpen(false); }} />
       </Drawer>

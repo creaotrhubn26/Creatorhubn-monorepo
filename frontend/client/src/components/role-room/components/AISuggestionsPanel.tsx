@@ -260,6 +260,42 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
     },
   },
 
+  // Story Graph (game_studio): next / enhance / branches fra narrative-element-agent
+  'narrative.element': {
+    icon: AutoStoriesIcon,
+    label: 'Story Graph-element',
+    render: (s) => {
+      const p = s.payload as {
+        mode: 'next' | 'enhance' | 'branches'; title: string; contentText: string; connectionLabel: string | null;
+        options: Array<{ label: string; title: string }>; branches: Array<{ script: string | null; label: string; targetTitle: string }>; rationale: string;
+      };
+      const modeLabel = p.mode === 'next' ? 'Neste element' : p.mode === 'enhance' ? 'Forbedret tekst' : 'Forgrening';
+      return (
+        <Box data-testid="narrative-ai-suggestion">
+          <Typography variant="caption" color="text.secondary" display="block">{modeLabel}{p.connectionLabel ? ` · valg: «${p.connectionLabel}»` : ''}</Typography>
+          <Typography variant="body2"><strong>{p.title}</strong></Typography>
+          {p.contentText ? (
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mt: 0.5 }}>
+              {p.contentText.length > 600 ? `${p.contentText.slice(0, 600)}…` : p.contentText}
+            </Typography>
+          ) : null}
+          {p.options?.length ? (
+            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>Valg videre: {p.options.map((o) => `«${o.label}» → ${o.title}`).join(' · ')}</Typography>
+          ) : null}
+          {p.branches?.length ? (
+            <Box sx={{ mt: 0.5 }}>
+              {p.branches.map((b, i) => (
+                <Typography key={i} variant="caption" display="block" sx={{ fontFamily: 'monospace' }}>
+                  {b.script == null ? 'ellers' : `if ${b.script}`} → {b.targetTitle}
+                </Typography>
+              ))}
+            </Box>
+          ) : null}
+          {p.rationale ? <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, fontStyle: 'italic' }}>{p.rationale}</Typography> : null}
+        </Box>
+      );
+    },
+  },
   'story.logline': {
     icon: AutoStoriesIcon,
     label: 'Logline',

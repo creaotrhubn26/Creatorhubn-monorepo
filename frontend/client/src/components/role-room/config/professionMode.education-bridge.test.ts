@@ -16,6 +16,11 @@ describe('professionRoleToMode', () => {
       expect(professionRoleToMode(r)).toBe('education');
     }
   });
+  it('spillstudio-roller → game_studio (Fase 4d)', () => {
+    for (const r of ['game_studio', 'game_studio_owner', 'narrative_designer', 'Spillstudio']) {
+      expect(professionRoleToMode(r)).toBe('game_studio');
+    }
+  });
   it('ikke-education / ukjent → null (uendret for eksisterende personaer)', () => {
     for (const r of ['photographer', 'production', 'dance_studio', 'random', '']) {
       expect(professionRoleToMode(r)).toBeNull();

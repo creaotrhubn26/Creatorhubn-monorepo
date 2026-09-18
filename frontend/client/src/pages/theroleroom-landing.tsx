@@ -30,6 +30,7 @@ import MovieFilterOutlinedIcon from '@mui/icons-material/MovieFilterOutlined';
 import CameraOutlinedIcon from '@mui/icons-material/CameraOutlined';
 import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
+import SportsEsportsOutlinedIcon from '@mui/icons-material/SportsEsportsOutlined';
 import { useEffect, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 import { useElementEdits } from '@/components/workspace/elementEdits';
@@ -72,11 +73,11 @@ const PHOTOS = {
   contentProducer: 'https://v3b.fal.media/files/b/0a9d5cad/pY3EZ9l4TvCjg9mPpB6Xr_f7423f5ba38c458e88b2e27269c00008.jpg',
 };
 
-// 4 LIVE vertikaler + 1 AI-lag i beta (2.1)
+// 4 LIVE vertikaler + Spillstudio (beta) + 1 AI-lag i beta (2.1)
 // Talents-personaen dekker BÅDE agency-brukere (Talent Registry-flate) og
 // skuespillere/talents (Talents-app/Self-tape Studio). LoginDialog viser
 // fellesinngang som lar brukeren velge rolle inne i dialogen.
-type VerticalPersona = 'production_team' | 'content_producer' | 'dance_studio' | 'talents' | '';
+type VerticalPersona = 'production_team' | 'content_producer' | 'dance_studio' | 'talents' | 'game_studio' | '';
 
 const VERTICALS: Array<{
   id: string;
@@ -161,6 +162,23 @@ const VERTICALS: Array<{
     status: 'live',
     persona: 'talents',
   },
+  {
+    id: 'game-studio',
+    Icon: SportsEsportsOutlinedIcon,
+    title: 'Spillstudio — Story Graph',
+    audience: 'Narrative designere + spillstudio (Unity, Unreal, Godot)',
+    priceNote: 'Solo gratis · Pro 149 kr/mnd · Studio 490 kr/mnd',
+    body:
+      'Forgrenet narrativ design i nettleseren: brett, elementer, forgreninger med skript, komponenter og variabler. Play Mode med debugger og opplesning, KI-forslag, oversettelser, sanntidssamarbeid — og eksport i JSON som Arcweaves Unity/Unreal/Godot-plugins leser direkte.',
+    bullets: [
+      'Arcweave-kompatibel JSON + import fra Arcweave, Twine og Ink',
+      'Play Mode med debugger, delbare spill-lenker og spillbar HTML',
+      'KI-forslag til elementer + Translation Mode',
+      'Prosjekthistorikk og sanntidsmarkører på alle planer',
+    ],
+    status: 'beta',
+    persona: 'game_studio',
+  },
 ];
 
 const PILLARS = [
@@ -237,7 +255,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
   // Login modal — gjenbruker LoginDialog fra casting-main shell.
   // Variant 'landing' = vanlig brukerlogg-inn, 'admin' = backoffice-tilgang.
   type LoginVariant = 'landing' | 'admin';
-  type LoginPersonaPrefill = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio' | 'talents';
+  type LoginPersonaPrefill = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio' | 'talents' | 'game_studio';
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginVariant, setLoginVariant] = useState<LoginVariant>('landing');
   const [loginPersona, setLoginPersona] = useState<LoginPersonaPrefill>('');
@@ -272,7 +290,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
       const params = new URLSearchParams(window.location.search);
       const signup = params.get('signup');
       const validPersonas: LoginPersonaPrefill[] = [
-        'production_team', 'content_producer', 'education_institution', 'dance_studio', 'talents',
+        'production_team', 'content_producer', 'education_institution', 'dance_studio', 'talents', 'game_studio',
       ];
       if (signup && (validPersonas as string[]).includes(signup)) {
         openLogin('landing', signup as LoginPersonaPrefill);
@@ -324,7 +342,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
     };
 
     const description =
-      'Operativsystemet som følger deg fra utdanning til bransje — fra idé via casting og gjennomføring til produksjonen er distribuert og sett av publikum. Fire live vertikaler for produksjonsteam, og LTI 1.3/Feide-integrasjon som kobler filmutdanning rett på samme system. EU-hostet, bygget i Norge.';
+      'Operativsystemet som følger deg fra utdanning til bransje — fra idé via casting og gjennomføring til produksjonen er distribuert og sett av publikum. Fire live vertikaler for produksjonsteam, Story Graph for spillstudio (beta), og LTI 1.3/Feide-integrasjon som kobler filmutdanning rett på samme system. EU-hostet, bygget i Norge.';
     const tags = [
       upsertMeta('description', description),
       upsertMeta('og:title', 'The Role Room — Fra klasserom til kino, ett system for film- og innholdsproduksjon', true),
@@ -348,6 +366,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         { '@type': 'Offer', name: 'Produksjonsteam', priceCurrency: 'NOK', price: '795', description: 'per sete/mnd, min. 3 seter' },
         { '@type': 'Offer', name: 'Innholdsprodusent', priceCurrency: 'NOK', price: '495', description: 'per sete/mnd, min. 1' },
         { '@type': 'Offer', name: 'Dansestudio', priceCurrency: 'NOK', description: '149–2 490 kr/mnd' },
+        { '@type': 'Offer', name: 'Spillstudio (Story Graph)', priceCurrency: 'NOK', price: '0', description: 'Solo gratis · Pro 149 kr/mnd · Studio 490 kr/mnd (beta)' },
       ],
       description,
       url: 'https://theroleroom.com',
@@ -361,6 +380,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         { '@type': 'Audience', audienceType: 'Production Team' },
         { '@type': 'Audience', audienceType: 'Content Producer' },
         { '@type': 'Audience', audienceType: 'Dance Studio' },
+        { '@type': 'Audience', audienceType: 'Game Studio / Narrative Designer' },
         { '@type': 'Audience', audienceType: 'Casting Agency' },
         { '@type': 'Audience', audienceType: 'Actor / Talent' },
         { '@type': 'EducationalAudience', audienceType: 'Film Education Institution' },
@@ -457,6 +477,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
               { label: 'Utdanning', href: '#utdanning' },
               { label: 'Innholdsprodusent', href: '#vertical-content-producer' },
               { label: 'Dans', href: '#vertical-dance' },
+              { label: 'Spill', href: '#vertical-game-studio' },
               { label: 'Talents', href: '#vertical-talents' },
               { label: 'Blog', href: '/blog' },
             ].map((it) => (
@@ -1063,7 +1084,7 @@ function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => 
       <Container maxWidth="lg">
         <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-            Fire live vertikaler + ett AI-lag i beta
+            Fire live vertikaler + spillstudio og AI-lag i beta
           </Typography>
           <Typography
             component="h2"

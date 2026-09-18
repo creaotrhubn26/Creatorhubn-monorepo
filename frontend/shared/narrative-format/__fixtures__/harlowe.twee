@@ -1,0 +1,24 @@
+:: StoryTitle
+Tårnet
+
+:: StoryData
+{"ifid":"7B3C0C1E-1F4B-4E1B-9C7E-0A9E4C0D1234","format":"Harlowe","format-version":"3.3.8","start":"Inngang"}
+
+:: Inngang
+(set: $keys to 1)
+Du står foran tårnet.
+(if: $keys > 0)[Du har en nøkkel.](else:)[Ingen nøkkel.]
+(link-goto: "Lås opp", "Trappen")
+[[Gå rundt->Hagen]]
+
+:: Trappen
+(set: $keys to it - 1)
+Trappen knirker.
+(goto: "Toppen")
+
+:: Hagen
+Roser.
+
+:: Toppen
+Utsikt.
+(live: 2s)[Vinden uler.]

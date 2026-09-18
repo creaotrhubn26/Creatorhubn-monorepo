@@ -1,0 +1,52 @@
+claim: >
+  Story Graph imports Twine (Twee 3 with SugarCube 2 / Harlowe 3 macros) and Ink source
+  files losslessly enough for authoring hand-off, converting them into the same graph model
+  as Arcweave imports; the runtime packages for Unity/Godot implement a documented arcscript
+  SUBSET rather than the full grammar.
+source_type: api_reference
+source: "https://github.com/iftechfoundation/twine-specs (twee-3-specification.md), https://github.com/klembot/twinejs (src/util/parse-links.ts), https://www.motoslave.net/sugarcube/2/docs/ (macros: set/if/elseif/else/link/button/goto; operators is eq neq gt gte lt lte and or not), https://github.com/inkle/ink (Documentation/WritingWithInk.md), https://github.com/arcweave/arcscript-interpreters (grammar)"
+authority_tier: 1
+vendor: Twine / Ink / Arcweave
+product: Twee 3, SugarCube 2, Harlowe 3, Ink, arcscript
+version_scope: "Twee 3 spec (2026-09), twinejs 2.x parse-links, SugarCube 2.37, Ink 1.2 docs; Harlowe UNVERIFIED (twine2.neocities.org blocked by egress proxy)"
+publication_date: "2026-09-15"
+valid_from: "2026-09"
+valid_to: "until Twee 3 / SugarCube / Ink change link or macro syntax (rare); Harlowe mapping should be verified when the docs host is reachable"
+evidence_summary: >
+  Twee 3: passages `:: Name [tags] {"position":"x,y","size":"w,h"}`, StoryTitle/StoryData
+  (ifid, format, format-version, start), escapes \[ \] \{ \} \\. Links (twinejs parse-links):
+  [[text|target]], [[text->target]], [[target<-text]], [[target]], setter suffix ][…] removed.
+  SugarCube: <<set $x to 1>> / +=, <<if>>/<<elseif>>/<<else>>/<</if>>, <<link "T" "P">>,
+  <<button>>, <<goto "P">>, operators is eq neq gt gte lt lte and or not. Ink: knots === k ===,
+  stitches = s, diverts -> k / END / DONE, choices * (once) / + (sticky) with [] suppression,
+  gathers -, VAR/CONST, ~ assignments, {cond: a | b}, multi-line { - cond: }, choice gates
+  * {cond}, comments, <> glue, INCLUDE, # tags, sequences {a|b} {&} {!} {~}.
+  Harlowe (set:)(if:)(else:)(link-goto:)(goto:) mapped best-effort from search snippets only.
+interpretation: >
+  Both formats are text → we reuse the same server import path (format discriminator) and
+  the shared pure-TS parsers; Ink's once-only choices and sequences have no graph equivalent
+  and are imported as ordinary choices/text with warnings. Engine loaders in C#/GDScript
+  implement only the arcscript subset that is cheap to keep in sync; full arcscript remains
+  available through Arcweave's own MIT plugins (same JSON) or our JS package.
+project_impact: >
+  frontend/shared/narrative-format/{twee,ink,sniff,text-import-common}.ts; POST
+  /api/role-room/narrative/projects/:id/import (format twee|ink, plan feature
+  import_twine_ink); packages/story-graph-runtime (js/unity/godot). Harlowe changes or a
+  SugarCube 3 release would require re-verification of the macro mapping.
+confidence: verified
+decision: >
+  Import Twine/Ink through the Arcweave import path with pure-TS parsers; document Ink
+  lossiness; ship engine loaders as a documented subset with a fixture-based parity check
+  instead of a full ANTLR port.
+affected:
+  - frontend/shared/narrative-format/twee.ts
+  - frontend/shared/narrative-format/ink.ts
+  - frontend/shared/narrative-format/sniff.ts
+  - frontend/shared/narrative-format/text-import-common.ts
+  - backend/server/role-room-narrative-routes.ts (POST import, format-diskriminator)
+  - frontend/client/src/components/role-room/narrative/panels/ExportsPanel.tsx
+  - frontend/shared/narrative-runtime-pkg/ + packages/story-graph-runtime/
+lesson: >
+  When a target format cannot express a source construct (Ink once-only), import it as the
+  nearest thing AND emit a warning the user sees — silent lossy imports are how trust in an
+  import feature dies.

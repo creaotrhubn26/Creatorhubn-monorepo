@@ -18,6 +18,7 @@ import {
   EmojiPeople as DanceFreelanceIcon,
   CastForEducation as EducationModeIcon,
   Backpack as StudentModeIcon,
+  SportsEsports as GameStudioIcon,
   CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import {
@@ -86,6 +87,13 @@ const MODE_META: Record<ProfessionMode, ModeMeta> = {
     description: 'Studentens «Min side» — produksjoner, oppgaver og tilbakemelding (super-admin-preview).',
     icon: <StudentModeIcon />,
     accent: '#8875eb',
+    beta: true,
+  },
+  game_studio: {
+    label: 'Spillstudio',
+    description: 'Story Graph — forgrenet narrativ design: brett, elementer, koblinger, komponenter, variabler og spillmodus.',
+    icon: <GameStudioIcon />,
+    accent: '#22c55e',
     beta: true,
   },
 };
