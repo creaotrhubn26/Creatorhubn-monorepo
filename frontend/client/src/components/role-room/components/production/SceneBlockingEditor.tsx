@@ -54,6 +54,19 @@ const feltSx = {
   '& .MuiInputLabel-root': { color: palette.textMuted },
 };
 
+/**
+ * Klokkeslett og dato, kort. «I dag 20:14» leser raskere enn en full dato når
+ * det som regel er i dag det gjelder.
+ */
+function tidspunkt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const idag = new Date();
+  const sammeDag = d.toDateString() === idag.toDateString();
+  const klokke = d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+  return sammeDag ? `i dag ${klokke}` : `${d.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })} ${klokke}`;
+}
+
 export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: Props) {
   const [blocking, setBlocking] = useState<SceneBlocking>({ planUrl: null, camera: null });
   const [kort, setKort] = useState<RoleCard[]>([]);
@@ -486,6 +499,19 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
                       Ikke plassert i planen ennå.
                     </Typography>
                   )}
+
+                  {/* Sendt er ikke det samme som sett. En statist som ikke har
+                      åpnet kortet vet ikke hvor hen skal stå, og det oppdages
+                      ellers først på settet. */}
+                  {k.opened_at ? (
+                    <Typography sx={{ color: palette.success, fontSize: '0.78rem', mt: 0.8 }}>
+                      Åpnet {tidspunkt(k.opened_at)}
+                    </Typography>
+                  ) : k.sent_at ? (
+                    <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.8 }}>
+                      Sendt {tidspunkt(k.sent_at)} · ikke åpnet ennå
+                    </Typography>
+                  ) : null}
                 </Box>
               ))}
             </Stack>
