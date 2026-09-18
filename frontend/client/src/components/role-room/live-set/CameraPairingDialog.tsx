@@ -45,6 +45,7 @@ import { ZcamAdapter } from "./cameras/zcam-adapter";
 import { GoProAdapter, requestGoProDevice, isWebBluetoothAvailable as isWebBluetoothAvailableForGoPro } from "./cameras/gopro-adapter";
 import { discoverBridgedCameras, getIpadBridge } from "./cameras/ipad-bridge-adapter";
 import type { CameraAdapter, CameraVendor } from "./cameras/types";
+import { ccapiHeaders } from "@/lib/ccapiAuth";
 
 interface CameraPairingDialogProps {
   open: boolean;
@@ -91,7 +92,7 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
     setScanResults([]);
     try {
       const response = await fetch("/api/ccapi/discover?scan=true&scanDuration=2000", {
-        headers: { "x-role-room-user-id": getUserIdHeader() },
+        headers: ccapiHeaders(),
       });
       const body = await response.json();
       if (Array.isArray(body.cameras)) {
@@ -676,13 +677,5 @@ export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, 
     </Dialog>
   );
 };
-
-function getUserIdHeader(): string {
-  if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem("role-room-user-id");
-    if (stored) return stored;
-  }
-  return "dev-user";
-}
 
 export default CameraPairingDialog;

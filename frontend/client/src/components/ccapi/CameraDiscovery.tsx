@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { ccapiHeaders } from '@/lib/ccapiAuth';
 
 interface Camera {
   id: string;
@@ -23,7 +24,9 @@ export function CameraDiscovery() {
     setError(null);
 
     try {
-      const { data } = await axios.get('/api/ccapi/discover?scanDuration=5000');
+      const { data } = await axios.get('/api/ccapi/discover?scanDuration=5000', {
+        headers: ccapiHeaders(),
+      });
 
       if (data.success) {
         setCameras(data.cameras);
@@ -42,7 +45,9 @@ export function CameraDiscovery() {
     setError(null);
 
     try {
-      const { data } = await axios.post(`/api/ccapi/cameras/${ip}/connect`);
+      const { data } = await axios.post(`/api/ccapi/cameras/${ip}/connect`, null, {
+        headers: ccapiHeaders(),
+      });
 
       if (data.success) {
         // Update camera status
@@ -59,7 +64,9 @@ export function CameraDiscovery() {
 
   const disconnect = async (ip: string) => {
     try {
-      await axios.post(`/api/ccapi/cameras/${ip}/disconnect`);
+      await axios.post(`/api/ccapi/cameras/${ip}/disconnect`, null, {
+        headers: ccapiHeaders(),
+      });
       setCameras((prev) =>
         prev.map((cam) => (cam.ipAddress === ip ? { ...cam, isConnected: false } : cam)),
       );
