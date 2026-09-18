@@ -15,8 +15,10 @@ import BlockIcon from '@mui/icons-material/Block';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import { narrativeColors } from '../narrativeTheme';
-import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook, type NarrativeCiDelivery, type NarrativeCiHook } from '../narrativeService';
+import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook, createPlaytestToken, listPlaytestTokens, revokePlaytestToken, type NarrativeCiDelivery, type NarrativeCiHook, type NarrativePlaytestToken } from '../narrativeService';
 import { sceneFieldSx } from '../scenes/sceneUi';
+import { useGamePlanGate } from '../../game/useGamePlanGate';
+import { PlanGateBanner } from '../../game/GameBillingPanels';
 
 export interface IntegrationsPanelProps {
   projectId: string;
@@ -48,12 +50,21 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
   const [creating, setCreating] = useState(false);
   const [fresh, setFresh] = useState<{ hook: NarrativeCiHook; secret: string; webhookPath: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // Fase 8g: Studio-gating for hooks og tokens (eksisterende fortsetter å virke).
+  const gate = useGamePlanGate();
+  const canCi = gate.has('ci_evidence');
+  const canTelemetry = gate.has('playtest_telemetry');
+  // Fase 8e: spilltest-tokens (råtoken vises én gang).
+  const [tokens, setTokens] = useState<NarrativePlaytestToken[] | null>(null);
+  const [tokenLabel, setTokenLabel] = useState('');
+  const [creatingToken, setCreatingToken] = useState(false);
+  const [freshToken, setFreshToken] = useState<{ token: NarrativePlaytestToken; rawToken: string; ingestPath: string } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [h, d] = await Promise.all([listCiHooks(projectId), listCiDeliveries(projectId)]);
-      setHooks(h); setDeliveries(d);
+      const [h, d, t] = await Promise.all([listCiHooks(projectId), listCiDeliveries(projectId), listPlaytestTokens(projectId).catch(() => [] as NarrativePlaytestToken[])]);
+      setHooks(h); setDeliveries(d); setTokens(t);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kunne ikke laste integrasjoner.');
     }
@@ -76,6 +87,22 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
     catch (err) { onNotice(err instanceof Error ? err.message : 'Kunne ikke tilbakekalle.', 'error'); }
   }, [projectId, load, onNotice]);
 
+  const createToken = useCallback(async () => {
+    setCreatingToken(true);
+    try {
+      const res = await createPlaytestToken(projectId, { label: tokenLabel.trim() || 'Spilltest', ttlDays: 90 });
+      setFreshToken(res); setTokenLabel('');
+      await load();
+    } catch (err) {
+      onNotice(err instanceof Error ? err.message : 'Kunne ikke opprette token.', 'error');
+    } finally { setCreatingToken(false); }
+  }, [projectId, tokenLabel, load, onNotice]);
+
+  const revokeToken = useCallback(async (t: NarrativePlaytestToken) => {
+    try { await revokePlaytestToken(projectId, t.id); onNotice(`Token «${t.label || t.id}» tilbakekalt.`, 'success'); await load(); }
+    catch (err) { onNotice(err instanceof Error ? err.message : 'Kunne ikke tilbakekalle.', 'error'); }
+  }, [projectId, load, onNotice]);
+
   const copy = useCallback(async (text: string, key: string) => {
     try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied((c) => (c === key ? null : c)), 1800); }
     catch { onNotice('Kunne ikke kopiere — marker teksten manuelt.', 'warning'); }
@@ -94,6 +121,17 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
 
   const active = (hooks ?? []).filter((h) => !h.revokedAt);
   const revoked = (hooks ?? []).filter((h) => h.revokedAt);
+  const activeTokens = (tokens ?? []).filter((t) => !t.revokedAt);
+  const telemetryExample = useMemo(() => {
+    if (!freshToken) return '';
+    return [
+      `curl -X POST "${backendOrigin()}${freshToken.ingestPath}" \\`,
+      `  -H "Authorization: Bearer ${freshToken.rawToken}" -H "Content-Type: application/json" \\`,
+      `  -d '{"events":[{"sessionId":"<tilfeldig-id>","sceneCode":"P01","event":"enter","build":"1.0 (42)","deviceClass":"iPad Pro M1"},`,
+      `               {"sessionId":"<tilfeldig-id>","sceneCode":"P01","event":"choice","connectionId":"<koblings-id>","tMs":12000},`,
+      `               {"sessionId":"<tilfeldig-id>","sceneCode":"P01","event":"exit","tMs":41000}]}'`,
+    ].join('\n');
+  }, [freshToken]);
 
   return (
     <Box sx={{ p: { xs: 1.5, md: 2.5 }, color: narrativeColors.text, maxWidth: 1100 }} data-testid="narrative-integrations-panel">
@@ -112,8 +150,9 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
         <Typography sx={{ fontSize: 13, fontWeight: 800, mb: 1 }}>Ny CI-hook</Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <TextField size="small" label="Etikett" placeholder="F.eks. Xcode Cloud – prolog" value={label} onChange={(e) => setLabel(e.target.value)} inputProps={{ 'data-testid': 'narrative-ci-hook-label', maxLength: 200 }} sx={{ ...sceneFieldSx, flex: 1 }} disabled={creating} />
-          <Button variant="contained" startIcon={creating ? <CircularProgress size={14} sx={{ color: '#04140a' }} /> : <AddIcon />} onClick={() => void create()} disabled={creating} data-testid="narrative-ci-hook-create" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, whiteSpace: 'nowrap', '&:hover': { bgcolor: narrativeColors.accentDark } }}>Opprett hook</Button>
+          <Button variant="contained" startIcon={creating ? <CircularProgress size={14} sx={{ color: '#04140a' }} /> : <AddIcon />} onClick={() => void create()} disabled={creating || !canCi} data-locked={canCi ? undefined : 'plan'} data-testid="narrative-ci-hook-create" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, whiteSpace: 'nowrap', '&:hover': { bgcolor: narrativeColors.accentDark } }}>Opprett hook</Button>
         </Stack>
+      <PlanGateBanner feature="ci_evidence" compact />
       </Box>
 
       {/* ── Hook-liste ───────────────────────────────────────────────── */}
@@ -167,6 +206,55 @@ export function IntegrationsPanel({ projectId, refreshKey = 0, onNotice }: Integ
           </tbody>
         </Box>
       )}
+
+      {/* ── Spilltest-tokens (Fase 8e) ───────────────────────────────── */}
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 3, mb: 1 }}>
+        <Typography sx={{ fontSize: 13, fontWeight: 800, flex: 1 }}>Spilltest-telemetri</Typography>
+      </Stack>
+      <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mb: 1 }}>
+        Spillet sender <code>enter</code>/<code>exit</code>/<code>choice</code>/<code>death</code>/<code>complete</code> per scene med et token; Spilltest-fanen på scenekortet viser økter, drop-off og valgfordeling. Ingen personopplysninger — kun scenekode, hendelse, tid, build og enhetsklasse.
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <TextField size="small" label="Etikett" placeholder="iPad testrunde uke 40" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} inputProps={{ 'data-testid': 'narrative-playtest-token-label' }} sx={{ ...sceneFieldSx, minWidth: 260 }} />
+        <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => void createToken()} disabled={creatingToken || !canTelemetry} data-locked={canTelemetry ? undefined : 'plan'} data-testid="narrative-playtest-token-create" sx={{ bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700 }}>Opprett token</Button>
+      </Stack>
+      <PlanGateBanner feature="playtest_telemetry" compact />
+      {tokens === null ? null : activeTokens.length === 0 ? (
+        <Box sx={{ color: narrativeColors.textDim, fontSize: 12, p: 2, border: `1px dashed ${narrativeColors.borderSoft}`, borderRadius: 2, mb: 2 }} data-testid="narrative-playtest-tokens-empty">Ingen aktive tokens. Tokens utløper etter 90 dager og kan tilbakekalles når som helst.</Box>
+      ) : (
+        <Stack spacing={0.75} sx={{ mb: 2 }}>
+          {activeTokens.map((t) => (
+            <Stack key={t.id} direction="row" alignItems="center" spacing={1} sx={{ border: `1px solid ${narrativeColors.borderSoft}`, borderRadius: 1.5, p: 1 }} data-testid={`narrative-playtest-token-${t.id}`}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t.label || 'Spilltest'}</Typography>
+                <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, fontFamily: 'monospace' }}>{t.id}</Typography>
+              </Box>
+              <Typography sx={{ fontSize: 11, color: narrativeColors.textDim }}>{t.eventCount} hendelser · sist {fmt(t.lastUsedAt)}{t.expiresAt ? ` · utløper ${fmt(t.expiresAt)}` : ''}</Typography>
+              <Tooltip title="Tilbakekall (hendelser droppes stille fra nå av)"><IconButton size="small" onClick={() => void revokeToken(t)} aria-label="Tilbakekall token" data-testid={`narrative-playtest-token-revoke-${t.id}`} sx={{ color: narrativeColors.error }}><BlockIcon fontSize="small" /></IconButton></Tooltip>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+
+      <Dialog open={!!freshToken} onClose={() => setFreshToken(null)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` }, 'data-testid': 'narrative-playtest-token-dialog' } as never}>
+        <DialogTitle sx={{ fontSize: 15, fontWeight: 800 }}>Spilltest-token opprettet — vises bare nå</DialogTitle>
+        <DialogContent>
+          {freshToken ? (
+            <Stack spacing={1.25} sx={{ mt: 0.5 }}>
+              <Alert severity="warning" sx={{ fontSize: 12 }}>Legg tokenet i spillets build-konfigurasjon (ikke i kildekoden). Kun en hash lagres her — det kan ikke hentes igjen.</Alert>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <TextField size="small" label="Token" value={freshToken.rawToken} InputProps={{ readOnly: true }} inputProps={{ 'data-testid': 'narrative-playtest-token-raw' }} sx={{ ...sceneFieldSx, flex: 1, fontFamily: 'monospace' }} />
+                <Button size="small" startIcon={<ContentCopyIcon />} onClick={() => void copy(freshToken.rawToken, 'ptoken')} sx={{ color: narrativeColors.accent }}>{copied === 'ptoken' ? 'Kopiert!' : 'Kopier'}</Button>
+              </Stack>
+              <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Eksempel (curl); Swift-snutt i docs/role-room/STORY_GRAPH_PLAYTEST_TELEMETRY.md:</Typography>
+              <Box component="pre" data-testid="narrative-playtest-token-example" sx={{ m: 0, p: 1.25, fontSize: 11, bgcolor: '#0a0a0a', border: `1px solid ${narrativeColors.borderSoft}`, borderRadius: 1.5, overflowX: 'auto', whiteSpace: 'pre' }}>{telemetryExample}</Box>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFreshToken(null)} data-testid="narrative-playtest-token-close" sx={{ color: narrativeColors.textDim }}>Jeg har kopiert tokenet</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Hemmelighet vist én gang ─────────────────────────────────── */}
       <Dialog open={!!fresh} onClose={() => setFresh(null)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` }, 'data-testid': 'narrative-ci-hook-secret-dialog' } as never}>

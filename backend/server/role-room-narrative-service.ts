@@ -1003,7 +1003,29 @@ export async function createRevision(db: Queryable, projectId: string, userId: s
        VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING *`,
     [generateId('nrv'), projectId, label, JSON.stringify(graph), userId],
   );
+  await pruneRevisions(db, projectId).catch((err) => console.warn('[narrative] pruneRevisions', err));
   return revisionMetaFromRow(rows[0] as Row);
+}
+
+/**
+ * Fase 8g: revisjons-retensjon — behold de 50 nyeste, og deretter én per dag (den nyeste den dagen)
+ * i 90 dager. Eldre enn 90 dager slettes uansett (utover de 50 nyeste). Kjøres etter hver ny revisjon.
+ */
+export async function pruneRevisions(db: Queryable, projectId: string, opts: { keepLatest?: number; keepDays?: number } = {}): Promise<number> {
+  const keepLatest = opts.keepLatest ?? 50;
+  const keepDays = opts.keepDays ?? 90;
+  const { rowCount } = await db.query(
+    `DELETE FROM narrative_revisions r
+      WHERE r.project_id = $1
+        AND r.id NOT IN (SELECT id FROM narrative_revisions WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2)
+        AND r.id NOT IN (
+          SELECT DISTINCT ON (date_trunc('day', created_at)) id FROM narrative_revisions
+           WHERE project_id = $1 AND created_at > now() - ($3::int * interval '1 day')
+           ORDER BY date_trunc('day', created_at), created_at DESC
+        )`,
+    [projectId, keepLatest, keepDays],
+  );
+  return rowCount ?? 0;
 }
 
 export async function getRevision(db: Queryable, projectId: string, id: string): Promise<{ meta: NarrativeRevisionMeta; snapshot: NarrativeGraph } | null> {
@@ -2936,6 +2958,8 @@ export interface NarrativeProjectOverview {
   lines: { total: number; approved: number };
   questions: { open: number; checksOpen: number };
   guardian: { pending: number; high: number };
+  /** Fase 8e: spilltest siste 7 dager (null uten data). */
+  playtest: { sessions7d: number; worstDropOff: { sceneCode: string; sessions: number } | null };
   platform: { requirements: number; verified: number; primaryName: string | null };
   milestones: NarrativeMilestone[];
   episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;
@@ -2944,7 +2968,7 @@ export interface NarrativeProjectOverview {
 }
 
 export async function getProjectOverview(db: Queryable, projectId: string, userId: string): Promise<NarrativeProjectOverview> {
-  const [scenes, gates, tasks, reviews, lines, questions, platform, milestones, episodes, activity, unread, guardian] = await Promise.all([
+  const [scenes, gates, tasks, reviews, lines, questions, platform, milestones, episodes, activity, unread, guardian, playtest] = await Promise.all([
     db.query(`SELECT status, era, start_at, due_at FROM narrative_scenes WHERE project_id = $1`, [projectId]),
     db.query(`SELECT gate_key, status, COUNT(*)::int AS n FROM narrative_scene_gates WHERE project_id = $1 GROUP BY gate_key, status`, [projectId]),
     db.query(`SELECT status, due_at FROM narrative_scene_tasks WHERE project_id = $1`, [projectId]),
@@ -2991,6 +3015,15 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
          FROM casting_ai_suggestions WHERE project_id = $1 AND agent_name = 'script-guardian-agent' AND status = 'pending'`,
       [projectId],
     ).catch(() => ({ rows: [] as Row[] })),
+    // Fase 8e: spilltest siste 7 dager — økter + scenen flest økter slutter i uten `complete`.
+    db.query(
+      `WITH recent AS (SELECT * FROM narrative_playtest_events WHERE project_id = $1 AND received_at > now() - interval '7 days'),
+            last AS (SELECT DISTINCT ON (session_id) session_id, scene_code, event FROM recent ORDER BY session_id, received_at DESC, id DESC)
+       SELECT (SELECT COUNT(DISTINCT session_id)::int FROM recent) AS sessions,
+              (SELECT scene_code FROM last WHERE event <> 'complete' GROUP BY scene_code ORDER BY COUNT(*) DESC, scene_code LIMIT 1) AS worst_scene,
+              (SELECT COUNT(*)::int FROM last WHERE event <> 'complete' AND scene_code = (SELECT scene_code FROM last WHERE event <> 'complete' GROUP BY scene_code ORDER BY COUNT(*) DESC, scene_code LIMIT 1)) AS worst_n`,
+      [projectId],
+    ).catch(() => ({ rows: [] as Row[] })),
   ]);
   const byStatus: Record<NarrativeSceneStatus, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
   const byEra: Record<string, number> = {};
@@ -3032,6 +3065,10 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
     lines: { total: num(lines.rows[0]?.total), approved: num(lines.rows[0]?.approved) },
     questions: { open: num(qOpen?.n), checksOpen: num(cOpen?.n) },
     guardian: { pending: num((guardian.rows as Row[])[0]?.pending), high: num((guardian.rows as Row[])[0]?.high) },
+    playtest: {
+      sessions7d: num((playtest.rows as Row[])[0]?.sessions),
+      worstDropOff: (playtest.rows as Row[])[0]?.worst_scene ? { sceneCode: String((playtest.rows as Row[])[0].worst_scene), sessions: num((playtest.rows as Row[])[0].worst_n) } : null,
+    },
     platform: { requirements: reqs.length, verified: reqs.filter((r) => r.status === 'verified').length, primaryName: primary ? String(primary.name) : null },
     milestones,
     episodes: (episodes.rows as Row[]).map((e) => ({ id: String(e.id), code: String(e.code), title: String(e.title ?? ''), sceneCount: num(e.scene_count), approvedCount: num(e.approved_count) })),

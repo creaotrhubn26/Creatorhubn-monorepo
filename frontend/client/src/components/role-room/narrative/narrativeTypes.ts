@@ -573,6 +573,8 @@ export interface NarrativeProjectOverview {
   questions: { open: number; checksOpen: number };
   /** Fase 8d: ventende manusvakt-funn. Valgfri for eldre mocks. */
   guardian?: { pending: number; high: number };
+  /** Fase 8e: spilltest siste 7 dager. */
+  playtest?: { sessions7d: number; worstDropOff: { sceneCode: string; sessions: number } | null };
   platform: { requirements: number; verified: number; primaryName: string | null };
   milestones: NarrativeMilestone[];
   episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;

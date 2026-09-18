@@ -68,11 +68,31 @@ export interface PlaySession {
   getVariableDefs: () => Array<{ name: string; type: string }>;
 }
 
+/**
+ * Fase 8e: hendelser fra spilløkta (til spilltest-telemetri). Samme hendelser som loggen
+ * (enter/choose/branch/jumper/restart/set) pluss `back`, som ikke logges. Kalleren
+ * (spill, standalone-spiller, iPad-runtime) velger selv hva som sendes videre.
+ */
+export interface PlayEvent {
+  kind: PlayLogEntry['kind'] | 'back';
+  elementId: string | null;
+  /** Valgt kobling (kun `choose`). */
+  connectionId?: string;
+  /** Mål-element (kun `choose`/`jumper`/`branch` når kjent). */
+  targetId?: string;
+  step: number;
+  changes: Record<string, ScriptValue>;
+  errorCount: number;
+  message: string;
+}
+
 export interface PlaySessionOptions {
   rng?: () => number;
   startElementId?: string | null;
   maxJumps?: number;
   maxLog?: number;
+  /** Fase 8e: kalles etter hver loggført hendelse + `back`. Feil i callbacken svelges (motoren skal aldri stoppe spillet). */
+  onEvent?: (event: PlayEvent) => void;
 }
 
 interface Snapshot {
@@ -120,10 +140,16 @@ export function createPlaySession(graph: RuntimeGraph, options: PlaySessionOptio
     });
   }
 
-  function pushLog(entry: Omit<PlayLogEntry, 'step'>): void {
+  function emit(event: PlayEvent): void {
+    if (!options.onEvent) return;
+    try { options.onEvent(event); } catch { /* telemetri skal aldri stoppe spillet */ }
+  }
+
+  function pushLog(entry: Omit<PlayLogEntry, 'step'>, extra: { connectionId?: string; targetId?: string } = {}): void {
     step += 1;
     log.push({ step, ...entry });
     if (log.length > maxLog) log = log.slice(log.length - maxLog);
+    emit({ kind: entry.kind, elementId: entry.elementId, step, changes: entry.changes, errorCount: entry.errors.length, message: entry.message, ...extra });
   }
 
   function startElementId(): string | null {
@@ -178,7 +204,7 @@ export function createPlaySession(graph: RuntimeGraph, options: PlaySessionOptio
 
     if (element.kind === 'jumper') {
       const target = element.jumperTargetId;
-      pushLog({ kind: 'jumper', elementId: element.id, message: target ? 'Jumper fulgt.' : 'Jumper uten mål.', changes: {}, errors: [] });
+      pushLog({ kind: 'jumper', elementId: element.id, message: target ? 'Jumper fulgt.' : 'Jumper uten mål.', changes: {}, errors: [] }, target ? { targetId: target } : {});
       if (!target || !elementById.has(target)) {
         view = makeView(element, '', [], true);
         return view;
@@ -206,7 +232,7 @@ export function createPlaySession(graph: RuntimeGraph, options: PlaySessionOptio
         kind: 'branch', elementId: element.id,
         message: chosen ? (next ? 'Forgrening: betingelse traff.' : 'Forgrening: betingelsen traff, men utgangen er ikke koblet.') : 'Forgrening: ingen betingelse traff.',
         changes: {}, errors,
-      });
+      }, next ? { connectionId: next.id, targetId: next.targetId } : {});
       if (!next || !elementById.has(next.targetId)) {
         view = makeView(element, '', [], true);
         return view;
@@ -265,9 +291,9 @@ export function createPlaySession(graph: RuntimeGraph, options: PlaySessionOptio
       snapshot();
       if (hasScript(connection.labelHtml)) {
         const r = interpreter.runScript(connection.labelHtml);
-        pushLog({ kind: 'choose', elementId: view.elementId, message: 'Valg tatt (etikett-skript kjørt).', changes: r.changes, errors: r.errors });
+        pushLog({ kind: 'choose', elementId: view.elementId, message: 'Valg tatt (etikett-skript kjørt).', changes: r.changes, errors: r.errors }, { connectionId, targetId: connection.targetId });
       } else {
-        pushLog({ kind: 'choose', elementId: view.elementId, message: 'Valg tatt.', changes: {}, errors: [] });
+        pushLog({ kind: 'choose', elementId: view.elementId, message: 'Valg tatt.', changes: {}, errors: [] }, { connectionId, targetId: connection.targetId });
       }
       return enter(connection.targetId);
     },
@@ -290,6 +316,7 @@ export function createPlaySession(graph: RuntimeGraph, options: PlaySessionOptio
       });
       const opts = buildOptions(element);
       view = makeView(element, preview.runScript(element.contentHtml ?? '').html, opts, opts.length === 0);
+      emit({ kind: 'back', elementId: element.id, step, changes: {}, errorCount: 0, message: 'Tilbake.' });
       return view;
     },
     canBack: () => history.length > 0,

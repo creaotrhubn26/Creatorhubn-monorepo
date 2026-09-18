@@ -60,10 +60,29 @@ export interface PlaySession {
         type: string;
     }>;
 }
+/**
+ * Fase 8e: hendelser fra spilløkta (til spilltest-telemetri). Samme hendelser som loggen
+ * (enter/choose/branch/jumper/restart/set) pluss `back`, som ikke logges. Kalleren
+ * (spill, standalone-spiller, iPad-runtime) velger selv hva som sendes videre.
+ */
+export interface PlayEvent {
+    kind: PlayLogEntry['kind'] | 'back';
+    elementId: string | null;
+    /** Valgt kobling (kun `choose`). */
+    connectionId?: string;
+    /** Mål-element (kun `choose`/`jumper`/`branch` når kjent). */
+    targetId?: string;
+    step: number;
+    changes: Record<string, ScriptValue>;
+    errorCount: number;
+    message: string;
+}
 export interface PlaySessionOptions {
     rng?: () => number;
     startElementId?: string | null;
     maxJumps?: number;
     maxLog?: number;
+    /** Fase 8e: kalles etter hver loggført hendelse + `back`. Feil i callbacken svelges (motoren skal aldri stoppe spillet). */
+    onEvent?: (event: PlayEvent) => void;
 }
 export declare function createPlaySession(graph: RuntimeGraph, options?: PlaySessionOptions): PlaySession;
