@@ -145,7 +145,7 @@ export interface PlannedContact {
   ownerWithoutColumn: string | null;
 }
 
-/** Faktureringsfrekvensene leadgrid_products/-line_items tillater (mig 0632). */
+/** Faktureringsfrekvensene leadgrid_products/-line_items tillater (mig 0633). */
 export const LEADGRID_BILLING_FREQUENCIES = [
   "one_time", "weekly", "biweekly", "monthly", "quarterly",
   "per_six_months", "annually", "per_two_years", "per_three_years",

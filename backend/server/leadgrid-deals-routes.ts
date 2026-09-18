@@ -12,6 +12,9 @@
  *   GET   /api/leadgrid/leads/:id/deal              — deal-info for lead
  *   PATCH /api/leadgrid/leads/:id/deal              — oppdater deal-felt
  *   GET   /api/leadgrid/leads/:id/deal-history      — stage-historikk
+ *   GET   /api/leadgrid/leads/:id/deals             — alle salg på bedriften
+ *   POST  /api/leadgrid/leads/:id/deals             — nytt salg på bedriften
+ *   PATCH /api/leadgrid/deals/:dealId               — endre ett salg
  *
  * RBAC:
  *   deals.view_forecast (forecast/by-month/at-risk)
@@ -81,6 +84,61 @@ async function resolveLeadOrgId(
   return lead?.organizationId ?? null;
 }
 
+/**
+ * Org-oppslag for endepunkter som identifiseres av salget, ikke av bedriften.
+ * Går via crm_customers slik at den vanlige lead-tilgangen fortsatt gjelder —
+ * et salg arver tilgangen til bedriften det hører til.
+ */
+async function resolveDealOrgId(
+  req: Request,
+  pool: Pool,
+  userId: string,
+): Promise<string | null> {
+  const dealId = req.params?.dealId;
+  if (typeof dealId !== "string" || !UUID_RE.test(dealId)) return null;
+  const r = await pool.query<{ customer_id: string }>(
+    `SELECT customer_id::text FROM leadgrid_deals WHERE id = $1::uuid LIMIT 1`,
+    [dealId],
+  );
+  const customerId = r.rows[0]?.customer_id;
+  if (!customerId) return null;
+  const lead = await loadAccessibleLeadgridLead(pool, {
+    leadId: customerId,
+    userId,
+  });
+  return lead?.organizationId ?? null;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const DEAL_STAGES = [
+  "new",
+  "first_contact",
+  "qualified",
+  "meeting",
+  "proposal",
+  "negotiation",
+  "won",
+  "lost",
+] as const;
+
+const DEAL_COLUMNS = `d.id::text,
+          d.customer_id::text AS customer_id,
+          d.title,
+          d.description,
+          d.primary_contact_id::text AS primary_contact_id,
+          d.pipeline_stage,
+          d.deal_probability,
+          d.deal_amount::text AS deal_amount,
+          d.currency,
+          d.expected_close_date::text AS expected_close_date,
+          d.renewal_date::text AS renewal_date,
+          d.owner_user_id,
+          d.is_primary,
+          d.won_at, d.lost_at, d.lost_reason,
+          d.stage_changed_at, d.created_at, d.updated_at`;
+
 function parseHorizon(req: Request): number {
   const raw = req.query.horizon;
   const n = typeof raw === "string" ? parseInt(raw, 10) : NaN;
@@ -102,6 +160,17 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
     resolveOrgId: resolveLeadOrgId,
   });
   const permEdit = requireLeadMapPermission("deals.edit", {
+    pool,
+    activeSessions,
+    resolveOrgId: resolveLeadOrgId,
+  });
+  // Samme rettighet, men identifisert av salget i stedet for bedriften.
+  const permEditDeal = requireLeadMapPermission("deals.edit", {
+    pool,
+    activeSessions,
+    resolveOrgId: resolveDealOrgId,
+  });
+  const permViewDeal = requireLeadMapPermission("deals.view_amount", {
     pool,
     activeSessions,
     resolveOrgId: resolveLeadOrgId,
@@ -510,6 +579,303 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
       } catch (err) {
         console.error("[leads/:id/deal-history]", err);
         res.status(500).json({ error: "history_failed" });
+      }
+    },
+  );
+
+  // ── GET /api/leadgrid/leads/:id/deals ──────────────────────────────
+  // Alle salg på bedriften. Bedriften registreres én gang; salgene er flere.
+  app.get(
+    "/api/leadgrid/leads/:id/deals",
+    permViewDeal,
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      try {
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!lead) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
+        const r = await pool.query(
+          `SELECT ${DEAL_COLUMNS}
+             FROM leadgrid_deals d
+            WHERE d.customer_id = $1::uuid
+              AND d.organization_id = $2::uuid
+              AND d.project_id = $3
+              AND d.archived_at IS NULL
+            ORDER BY d.is_primary DESC, d.created_at ASC`,
+          [lead.id, lead.organizationId, lead.projectId],
+        );
+        res.json({ lead_id: lead.id, deals: r.rows });
+      } catch (err) {
+        console.error("[leads/:id/deals GET]", err);
+        res.status(500).json({ error: "deals_failed" });
+      }
+    },
+  );
+
+  // ── POST /api/leadgrid/leads/:id/deals ─────────────────────────────
+  // Nytt salg på en bedrift vi allerede har. Rører ikke bedriftsraden:
+  // det er nettopp det som gjør at kunden slipper å registreres på nytt.
+  app.post(
+    "/api/leadgrid/leads/:id/deals",
+    permEdit,
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const title = typeof body.title === "string" ? body.title.trim() : "";
+      if (!title || title.length > 300) {
+        res.status(400).json({ error: "title_required" });
+        return;
+      }
+      const stage =
+        typeof body.pipeline_stage === "string" ? body.pipeline_stage : "new";
+      if (!(DEAL_STAGES as readonly string[]).includes(stage)) {
+        res.status(400).json({ error: "pipeline_stage_invalid" });
+        return;
+      }
+      const amountRaw = body.deal_amount;
+      let amount: number | null = null;
+      if (amountRaw !== undefined && amountRaw !== null) {
+        const n = typeof amountRaw === "number" ? amountRaw : Number(amountRaw);
+        if (!Number.isFinite(n) || n < 0) {
+          res.status(400).json({ error: "deal_amount_invalid" });
+          return;
+        }
+        amount = n;
+      }
+      const closeRaw = body.expected_close_date;
+      let closeDate: string | null = null;
+      if (typeof closeRaw === "string") {
+        if (!/^\d{4}-\d{2}-\d{2}/.test(closeRaw)) {
+          res.status(400).json({ error: "expected_close_date_invalid" });
+          return;
+        }
+        closeDate = closeRaw.slice(0, 10);
+      }
+      const contactRaw = body.primary_contact_id;
+      if (contactRaw !== undefined && contactRaw !== null) {
+        if (typeof contactRaw !== "string" || !UUID_RE.test(contactRaw)) {
+          res.status(400).json({ error: "primary_contact_id_invalid" });
+          return;
+        }
+      }
+
+      try {
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!lead) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
+        // Kontakten må høre til den samme bedriften. Uten denne sjekken
+        // kunne et salg peke på en person hos en annen kunde.
+        if (typeof contactRaw === "string") {
+          const c = await pool.query(
+            `SELECT 1 FROM leadgrid_customer_contacts
+              WHERE id = $1::uuid AND customer_id = $2::uuid
+                AND organization_id = $3::uuid AND project_id = $4`,
+            [contactRaw, lead.id, lead.organizationId, lead.projectId],
+          );
+          if (!c.rowCount) {
+            res.status(400).json({ error: "contact_not_on_customer" });
+            return;
+          }
+        }
+        const r = await pool.query(
+          `INSERT INTO leadgrid_deals
+             (organization_id, project_id, customer_id, title, description,
+              primary_contact_id, pipeline_stage, deal_amount,
+              expected_close_date, owner_user_id, source, created_by_user_id)
+           VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6::uuid, $7, $8, $9::date,
+                   $10, 'manual', $10)
+           RETURNING ${DEAL_COLUMNS.replace(/\bd\./g, "")}`,
+          [
+            lead.organizationId,
+            lead.projectId,
+            lead.id,
+            title,
+            typeof body.description === "string" ? body.description : null,
+            typeof contactRaw === "string" ? contactRaw : null,
+            stage,
+            amount,
+            closeDate,
+            session.userId,
+          ],
+        );
+        void emitWebhook(
+          pool,
+          "deal.created",
+          { lead_id: lead.id, deal_id: r.rows[0]?.id, title, pipeline_stage: stage },
+          lead.organizationId,
+          lead.projectId,
+        );
+        res.status(201).json({ deal: r.rows[0] });
+      } catch (err) {
+        console.error("[leads/:id/deals POST]", err);
+        res.status(500).json({ error: "deal_create_failed" });
+      }
+    },
+  );
+
+  // ── PATCH /api/leadgrid/deals/:dealId ──────────────────────────────
+  // Primærsalget speiler crm_customers og skrives derfor fortsatt gjennom
+  // PATCH /leads/:id/deal. Å tillate begge veier ville gitt to skrivere på
+  // samme verdi, og da er det et tidsspørsmål før de spriker.
+  app.patch(
+    "/api/leadgrid/deals/:dealId",
+    permEditDeal,
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const sets: string[] = [];
+      const params: unknown[] = [req.params.dealId];
+
+      const push = (sql: string, value: unknown): void => {
+        params.push(value);
+        sets.push(sql.replace("$n", `$${params.length}`));
+      };
+
+      if (typeof body.title === "string") {
+        const t = body.title.trim();
+        if (!t || t.length > 300) {
+          res.status(400).json({ error: "title_invalid" });
+          return;
+        }
+        push("title = $n", t);
+      }
+      if ("description" in body) {
+        push(
+          "description = $n",
+          typeof body.description === "string" ? body.description : null,
+        );
+      }
+      if ("pipeline_stage" in body) {
+        const stage = body.pipeline_stage;
+        if (
+          typeof stage !== "string" ||
+          !(DEAL_STAGES as readonly string[]).includes(stage)
+        ) {
+          res.status(400).json({ error: "pipeline_stage_invalid" });
+          return;
+        }
+        push("pipeline_stage = $n", stage);
+        sets.push("stage_changed_at = NOW()");
+        sets.push(
+          "won_at = CASE WHEN " +
+            `$${params.length} = 'won' THEN COALESCE(won_at, NOW()) ELSE won_at END`,
+        );
+        sets.push(
+          "lost_at = CASE WHEN " +
+            `$${params.length} = 'lost' THEN COALESCE(lost_at, NOW()) ELSE lost_at END`,
+        );
+      }
+      if ("deal_amount" in body) {
+        const v = body.deal_amount;
+        if (v === null) push("deal_amount = $n", null);
+        else {
+          const n = typeof v === "number" ? v : Number(v);
+          if (!Number.isFinite(n) || n < 0) {
+            res.status(400).json({ error: "deal_amount_invalid" });
+            return;
+          }
+          push("deal_amount = $n", n);
+        }
+      }
+      if ("deal_probability" in body) {
+        const v = body.deal_probability;
+        if (v === null) push("deal_probability = $n", null);
+        else {
+          const n = typeof v === "number" ? v : Number(v);
+          if (!Number.isFinite(n) || n < 0 || n > 100) {
+            res.status(400).json({ error: "deal_probability_invalid" });
+            return;
+          }
+          push("deal_probability = $n", Math.round(n));
+        }
+      }
+      for (const [key, column] of [
+        ["expected_close_date", "expected_close_date"],
+        ["renewal_date", "renewal_date"],
+      ] as const) {
+        if (!(key in body)) continue;
+        const v = body[key];
+        if (v === null) {
+          push(`${column} = $n::date`, null);
+          continue;
+        }
+        if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(v)) {
+          res.status(400).json({ error: `${key}_invalid` });
+          return;
+        }
+        push(`${column} = $n::date`, v.slice(0, 10));
+      }
+      if ("lost_reason" in body) {
+        push(
+          "lost_reason = $n",
+          typeof body.lost_reason === "string" ? body.lost_reason : null,
+        );
+      }
+      if ("primary_contact_id" in body) {
+        const v = body.primary_contact_id;
+        if (v !== null && (typeof v !== "string" || !UUID_RE.test(v))) {
+          res.status(400).json({ error: "primary_contact_id_invalid" });
+          return;
+        }
+        push("primary_contact_id = $n::uuid", v);
+      }
+
+      if (sets.length === 0) {
+        res.status(400).json({ error: "ingen_felt_a_oppdatere" });
+        return;
+      }
+
+      try {
+        const existing = await pool.query<{ is_primary: boolean; customer_id: string }>(
+          `SELECT is_primary, customer_id::text
+             FROM leadgrid_deals WHERE id = $1::uuid AND archived_at IS NULL`,
+          [req.params.dealId],
+        );
+        const row = existing.rows[0];
+        if (!row) {
+          res.status(404).json({ error: "salg_ikke_funnet" });
+          return;
+        }
+        if (row.is_primary) {
+          res.status(409).json({
+            error: "primaersalg_endres_via_lead",
+            detail: `PATCH /api/leadgrid/leads/${row.customer_id}/deal`,
+          });
+          return;
+        }
+        const r = await pool.query(
+          `UPDATE leadgrid_deals
+              SET ${sets.join(", ")}, updated_at = NOW()
+            WHERE id = $1::uuid AND archived_at IS NULL
+            RETURNING ${DEAL_COLUMNS.replace(/\bd\./g, "")}`,
+          params,
+        );
+        res.json({ deal: r.rows[0] });
+      } catch (err) {
+        console.error("[deals/:dealId PATCH]", err);
+        res.status(500).json({ error: "deal_update_failed" });
       }
     },
   );
