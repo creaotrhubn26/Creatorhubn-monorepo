@@ -493,7 +493,9 @@
       var LEADGRID_GA_MEASUREMENT_ID = 'G-3MS91ZHVKS';
       var LEADGRID_GOOGLE_TAG_MANAGER_ID = 'GTM-W8QZL75L';
       var LEADGRID_CLARITY_PROJECT_ID = 'xnzezvwkbm';
-      var LEADGRID_TIKTOK_PIXEL_CODE = '';
+      // Opprettet 18.09.2026 i Business Center «Creatorhub.no»
+      // (org 7686926023895695361), type «TikTok Pixel + Events API».
+      var LEADGRID_TIKTOK_PIXEL_CODE = 'DAMN753C77U7HMGS6DSG';
       var CREATORHUB_CLARITY_PROJECT_ID = 'wqg9kj1vxt';
       var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
       // TikTok Pixel — kommer fra TikTok Business UI etter at Daniel oppretter
@@ -690,16 +692,21 @@
 
       function ensureTiktokPixelLoaded(consentSettings) {
         // TikTok Pixel — fyrer pageview + støtter ttq.track() per host.
-        // Per-host pixel-code: ROLE_ROOM_TIKTOK_PIXEL_CODE for theroleroom.com,
-        // CREATORHUB_TIKTOK_PIXEL_CODE for creatorhubn.com. Begge er '' inntil
-        // Daniel oppretter pixel via Agent (klient_ads_configs + provision-pixel)
-        // eller manuelt via TikTok Business UI. Bytt verdi over.
+        // Per-host pixel-code: LEADGRID_TIKTOK_PIXEL_CODE for leadgrid.no.
+        // ROLE_ROOM_ og CREATORHUB_ er fortsatt '' og lastes ikke.
+        //
+        // Gates på MARKEDSFØRINGS-samtykke, ikke analytics — samme som Meta.
+        // Dette er en annonsepixel: den brukes til annonsemåling og
+        // remarketing, ikke til å telle sidevisninger. Fram til 18.09.2026 sto
+        // den på analytics-samtykke. Feilen var sovende så lenge alle
+        // pixel-kodene var tomme; den ble levende i det øyeblikket Leadgrid
+        // fikk sin.
         var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         var isOnline = navigator.onLine !== false;
         if (
           isLocalhost ||
           !isOnline ||
-          !hasAnalyticsConsent(consentSettings) ||
+          !hasMarketingConsent(consentSettings) ||
           !analyticsConfig.tiktokPixelCode
         ) {
           return false;
@@ -821,9 +828,12 @@
             ensureGoogleTagManagerLoaded(consentSettings);
             ensureGoogleAnalyticsLoaded(consentSettings);
             ensureClarityLoaded(consentSettings);
-            ensureTiktokPixelLoaded(consentSettings);
           }
+          // Annonsepixlene utenfor analytics-gaten. Begge gater selv på
+          // markedsføringssamtykke; en ytre analytics-sjekk ville stoppet dem
+          // for en bruker som godtok markedsføring, men ikke analyse.
           ensureMetaPixelLoaded(consentSettings);
+          ensureTiktokPixelLoaded(consentSettings);
           return true;
         };
         window.__creatorhubLoadAnalytics = function (consentSettings) {
@@ -841,11 +851,11 @@
           ensureGoogleTagManagerLoaded(storedConsent);
           ensureGoogleAnalyticsLoaded(storedConsent);
           ensureClarityLoaded(storedConsent);
-          ensureTiktokPixelLoaded(storedConsent);
         }
 
         if (!isLocalhost && isOnline && hasMarketingConsent(storedConsent)) {
           ensureMetaPixelLoaded(storedConsent);
+          ensureTiktokPixelLoaded(storedConsent);
         }
 
         if (isOnline) {
