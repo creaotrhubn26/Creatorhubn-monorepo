@@ -12,7 +12,7 @@ struct ScrimOverlay: View {
             stops: [
                 .init(color: AppColor.bgBase.opacity(0), location: 0),
                 .init(color: AppColor.bgBase.opacity(0), location: 0.35),
-                .init(color: AppColor.bgBase.opacity(0.92), location: 1),
+                .init(color: AppColor.bgBase.opacity(0.92), location: 1)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -167,12 +167,19 @@ struct InfoIconRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.contrastColors) private var contrast
 
-    private var items: [(icon: String, label: LocalizedStringKey, text: String?, present: Bool)] {
+    private struct Item {
+        let icon: String
+        let label: LocalizedStringKey
+        let text: String?
+        let present: Bool
+    }
+
+    private var items: [Item] {
         [
-            ("clock", "info.duration", durationText, durationText != nil),
-            ("speaker.wave.2", "info.audio", nil, hasAudio),
-            ("text.alignleft", "info.captions", nil, hasCaptions),
-            ("eye", "info.audioDescription", nil, hasAudioDescription),
+            Item(icon: "clock", label: "info.duration", text: durationText, present: durationText != nil),
+            Item(icon: "speaker.wave.2", label: "info.audio", text: nil, present: hasAudio),
+            Item(icon: "text.alignleft", label: "info.captions", text: nil, present: hasCaptions),
+            Item(icon: "eye", label: "info.audioDescription", text: nil, present: hasAudioDescription)
         ]
     }
 
@@ -211,7 +218,7 @@ struct InfoIconRow: View {
             .overlay(Circle().strokeBorder(AppColor.borderStrong, lineWidth: 1))
     }
 
-    private func label(_ item: (icon: String, label: LocalizedStringKey, text: String?, present: Bool)) -> some View {
+    private func label(_ item: Item) -> some View {
         Group {
             if let text = item.text {
                 Text(text)

@@ -49,106 +49,119 @@ struct POIDetailView: View {
     }
 
     private func content(_ poi: GuidePOI) -> some View {
-        let locked = env.isLocked(poi)
-        return GeometryReader { proxy in
+        GeometryReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
-                    ZStack(alignment: .top) {
-                        RemoteImage(url: poi.heroImageUrl)
-                            .frame(height: proxy.size.height * 0.46)
-                            .frame(maxWidth: .infinity)
-                            .clipped()
-                            .overlay(ScrimOverlay())
-                            .accessibilityLabel(Text(poi.heroImageAlt ?? poi.title))
-                        HStack {
-                            IconCircleButton(systemImage: "chevron.left", label: "action.back") {
-                                if path.isEmpty { dismiss() } else { path.removeLast() }
-                            }
-                            Spacer()
-                            IconCircleButton(
-                                systemImage: env.settings.isFavorite(poiId: poi.id) ? "heart.fill" : "heart",
-                                label: env.settings.isFavorite(poiId: poi.id) ? "action.removeFavorite" : "action.addFavorite",
-                                tint: env.settings.isFavorite(poiId: poi.id) ? AppColor.accent : AppColor.textPrimary
-                            ) {
-                                env.settings.toggleFavorite(poiId: poi.id)
-                            }
-                            ShareLink(item: shareText(poi)) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundStyle(AppColor.textPrimary)
-                                    .frame(width: 44, height: 44)
-                                    .background(AppColor.bgOverlay, in: Circle())
-                            }
-                            .accessibilityLabel(Text("action.share"))
-                        }
-                        .padding(.horizontal, AppSpacing.screenMargin)
-                        .padding(.top, proxy.safeAreaInsets.top + AppSpacing.s)
-                    }
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(poi.title)
-                            .font(AppFont.screenTitle)
-                            .foregroundStyle(AppColor.textPrimary)
-                            .asHeader()
-                        if let location = poi.locationLabel {
-                            Text(location)
-                                .font(AppFont.subtitle)
-                                .foregroundStyle(contrast.textSecondary)
-                                .padding(.top, AppSpacing.xs)
-                        }
-                        if let rating = DemoData.rating(forSlug: poi.slug) {
-                            ratingRow(rating)
-                                .padding(.top, AppSpacing.s)
-                        }
-                        if poi.lang.fallbackUsed || poi.lang.autoTranslated {
-                            languageNotice(poi)
-                                .padding(.top, AppSpacing.m)
-                        }
-                        SegmentTabs(selection: $tab, reduceMotion: reduceMotion)
-                            .padding(.top, AppSpacing.screenMargin)
-                        tabContent(poi)
-                            .padding(.top, AppSpacing.l)
-                            .padding(.bottom, AppSpacing.xl)
-                    }
-                    .padding(AppSpacing.screenMargin)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AppColor.bgBase)
-                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: AppRadius.sheet, topTrailingRadius: AppRadius.sheet))
-                    .offset(y: -AppSpacing.xl)
+                    heroHeader(poi, proxy: proxy)
+                    detailCard(poi)
                 }
             }
             .background(AppColor.bgBase)
             .ignoresSafeArea(edges: .top)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: AppSpacing.m) {
-                PrimaryButton(
-                    title: locked ? "detail.unlockToStart" : "detail.startExperience",
-                    systemImage: locked ? "lock.fill" : "play.fill",
-                    isEnabled: poi.primaryVariant != nil,
-                    disabledHint: "detail.noContentHint"
-                ) {
-                    if locked {
-                        showPaywall = true
-                    } else {
-                        env.player.start(poi: poi)
-                    }
-                }
-                SecondaryButton(
-                    title: env.settings.isFavorite(poiId: poi.id) ? "detail.addedToMyPlaces" : "detail.addToMyPlaces",
-                    systemImage: env.settings.isFavorite(poiId: poi.id) ? "bookmark.fill" : "bookmark",
-                    isSelected: env.settings.isFavorite(poiId: poi.id)
-                ) {
-                    env.settings.toggleFavorite(poiId: poi.id)
-                }
-            }
-            .padding(AppSpacing.screenMargin)
-            .background(AppColor.bgBase)
-            .overlay(alignment: .top) { Rectangle().fill(contrast.border).frame(height: 0.5) }
+            bottomBar(poi, locked: env.isLocked(poi))
         }
         .sheet(isPresented: $showPaywall) {
             MockPaywallSheet(areaId: poi.areaId)
         }
+    }
+
+    /// Heltebilde med scrim og knappene tilbake / favoritt / del.
+    private func heroHeader(_ poi: GuidePOI, proxy: GeometryProxy) -> some View {
+        ZStack(alignment: .top) {
+            RemoteImage(url: poi.heroImageUrl)
+                .frame(height: proxy.size.height * 0.46)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .overlay(ScrimOverlay())
+                .accessibilityLabel(Text(poi.heroImageAlt ?? poi.title))
+            HStack {
+                IconCircleButton(systemImage: "chevron.left", label: "action.back") {
+                    if path.isEmpty { dismiss() } else { path.removeLast() }
+                }
+                Spacer()
+                IconCircleButton(
+                    systemImage: env.settings.isFavorite(poiId: poi.id) ? "heart.fill" : "heart",
+                    label: env.settings.isFavorite(poiId: poi.id) ? "action.removeFavorite" : "action.addFavorite",
+                    tint: env.settings.isFavorite(poiId: poi.id) ? AppColor.accent : AppColor.textPrimary
+                ) {
+                    env.settings.toggleFavorite(poiId: poi.id)
+                }
+                ShareLink(item: shareText(poi)) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppColor.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .background(AppColor.bgOverlay, in: Circle())
+                }
+                .accessibilityLabel(Text("action.share"))
+            }
+            .padding(.horizontal, AppSpacing.screenMargin)
+            .padding(.top, proxy.safeAreaInsets.top + AppSpacing.s)
+        }
+    }
+
+    /// Kortet med tittel, sted, vurdering, språkvarsel og fanene.
+    private func detailCard(_ poi: GuidePOI) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(poi.title)
+                .font(AppFont.screenTitle)
+                .foregroundStyle(AppColor.textPrimary)
+                .asHeader()
+            if let location = poi.locationLabel {
+                Text(location)
+                    .font(AppFont.subtitle)
+                    .foregroundStyle(contrast.textSecondary)
+                    .padding(.top, AppSpacing.xs)
+            }
+            if let rating = DemoData.rating(forSlug: poi.slug) {
+                ratingRow(rating)
+                    .padding(.top, AppSpacing.s)
+            }
+            if poi.lang.fallbackUsed || poi.lang.autoTranslated {
+                languageNotice(poi)
+                    .padding(.top, AppSpacing.m)
+            }
+            SegmentTabs(selection: $tab, reduceMotion: reduceMotion)
+                .padding(.top, AppSpacing.screenMargin)
+            tabContent(poi)
+                .padding(.top, AppSpacing.l)
+                .padding(.bottom, AppSpacing.xl)
+        }
+        .padding(AppSpacing.screenMargin)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColor.bgBase)
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: AppRadius.sheet, topTrailingRadius: AppRadius.sheet))
+        .offset(y: -AppSpacing.xl)
+    }
+
+    /// Fast bunnfelt med primær- og sekundærknapp (UI-spesifikasjon 6.3).
+    private func bottomBar(_ poi: GuidePOI, locked: Bool) -> some View {
+        VStack(spacing: AppSpacing.m) {
+            PrimaryButton(
+                title: locked ? "detail.unlockToStart" : "detail.startExperience",
+                systemImage: locked ? "lock.fill" : "play.fill",
+                isEnabled: poi.primaryVariant != nil,
+                disabledHint: "detail.noContentHint"
+            ) {
+                if locked {
+                    showPaywall = true
+                } else {
+                    env.player.start(poi: poi)
+                }
+            }
+            SecondaryButton(
+                title: env.settings.isFavorite(poiId: poi.id) ? "detail.addedToMyPlaces" : "detail.addToMyPlaces",
+                systemImage: env.settings.isFavorite(poiId: poi.id) ? "bookmark.fill" : "bookmark",
+                isSelected: env.settings.isFavorite(poiId: poi.id)
+            ) {
+                env.settings.toggleFavorite(poiId: poi.id)
+            }
+        }
+        .padding(AppSpacing.screenMargin)
+        .background(AppColor.bgBase)
+        .overlay(alignment: .top) { Rectangle().fill(contrast.border).frame(height: 0.5) }
     }
 
     private func ratingRow(_ rating: DemoData.Rating) -> some View {

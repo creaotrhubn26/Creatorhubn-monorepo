@@ -20,7 +20,7 @@ enum DemoData {
         "christiania-torv": Rating(value: 4.4, count: 310),
         "bankplassen": Rating(value: 4.5, count: 420),
         "oslo-bors": Rating(value: 4.2, count: 150),
-        "gamle-radhus": Rating(value: 4.3, count: 96),
+        "gamle-radhus": Rating(value: 4.3, count: 96)
     ]
 
     static func rating(forSlug slug: String) -> Rating? { ratings[slug] }

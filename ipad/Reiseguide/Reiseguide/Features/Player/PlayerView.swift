@@ -53,7 +53,7 @@ struct PlayerView: View {
                     stops: [
                         .init(color: AppColor.bgBase.opacity(0.2), location: 0),
                         .init(color: AppColor.bgBase.opacity(0.92), location: 0.4),
-                        .init(color: AppColor.bgBase.opacity(0.98), location: 1),
+                        .init(color: AppColor.bgBase.opacity(0.98), location: 1)
                     ],
                     startPoint: .top,
                     endPoint: .bottom

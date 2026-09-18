@@ -202,7 +202,7 @@ final class AudioEngine {
             MPMediaItemPropertyTitle: info.title,
             MPMediaItemPropertyPlaybackDuration: info.durationS,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: 0,
-            MPNowPlayingInfoPropertyPlaybackRate: 0,
+            MPNowPlayingInfoPropertyPlaybackRate: 0
         ]
         if let chapter = info.chapterTitle {
             nowPlaying[MPMediaItemPropertyArtist] = chapter
