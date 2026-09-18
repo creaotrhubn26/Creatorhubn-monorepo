@@ -744,3 +744,63 @@ export function listCiDeliveries(projectId: string, hookId?: string): Promise<Na
 export function getAssetDownloadUrl(projectId: string, assetId: string): Promise<{ url: string; expiresInSeconds: number | null }> {
   return request(p(projectId, `/assets/${id(assetId)}/download`));
 }
+
+// ─── Fase 8e: spilltest-telemetri ───────────────────────────────────
+export interface NarrativePlaytestToken {
+  id: string; projectId: string; label: string; createdBy: string | null; createdAt: string;
+  expiresAt: string | null; revokedAt: string | null; lastUsedAt: string | null; eventCount: number;
+}
+export interface PlaytestSceneStats {
+  sceneCode: string; sessions: number; enters: number; exits: number; deaths: number; completes: number;
+  medianTimeMs: number | null; dropOff: number; choices: Record<string, number>;
+}
+export interface PlaytestSummary {
+  days: number; build: string | null; builds: string[]; sessions: number; events: number;
+  scenes: PlaytestSceneStats[]; worstDropOff: { sceneCode: string; sessions: number } | null;
+}
+export function listPlaytestTokens(projectId: string): Promise<NarrativePlaytestToken[]> {
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest-tokens`);
+}
+export function createPlaytestToken(projectId: string, input: { label?: string; ttlDays?: number | null }): Promise<{ token: NarrativePlaytestToken; rawToken: string; ingestPath: string }> {
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest-tokens`, { method: 'POST', body: JSON.stringify(input) });
+}
+export function revokePlaytestToken(projectId: string, tokenId: string): Promise<NarrativePlaytestToken> {
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest-tokens/${encodeURIComponent(tokenId)}/revoke`, { method: 'POST' });
+}
+export function getPlaytestSummary(projectId: string, opts: { build?: string | null; days?: number } = {}): Promise<PlaytestSummary> {
+  const q = new URLSearchParams();
+  if (opts.build) q.set('build', opts.build);
+  if (opts.days) q.set('days', String(opts.days));
+  const qs = q.toString();
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest/summary${qs ? `?${qs}` : ''}`);
+}
+
+// ─── Fase 8f: KI-referansebilde på scenekortet ──────────────────────
+export interface AiReferenceFrameResult {
+  assetId: string; storageKey: string; frame: NarrativeSceneFrame; usedToday: number; dailyLimit: number;
+}
+/** Genererer bildet via storyboard-KI (DALL·E). Persisterer ingenting — se `createAiReferenceFrame`. */
+export async function generateStoryboardImage(projectId: string, prompt: string, opts: { template?: string; cameraAngle?: string } = {}): Promise<{ imageBase64: string; prompt: string; model: string }> {
+  const res = await fetch('/api/storyboards/generate-frame', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...narrativeAuthHeaders() },
+    body: JSON.stringify({ prompt, project_id: projectId, template: opts.template ?? 'cinematic', camera_angle: opts.cameraAngle, size: '1792x1024' }),
+  });
+  const body = await res.json().catch(() => ({})) as { imageBase64?: string; prompt?: string; model?: string; error?: string; detail?: string };
+  if (!res.ok || !body.imageBase64) {
+    const code = body.error ?? `http_${res.status}`;
+    const msg = code === 'image_gen_disabled' ? 'Bildegenerering er ikke slått på på serveren (OPENAI_API_KEY).' : res.status === 402 ? 'Kredittgrensen for bildegenerering er nådd.' : (body.detail || 'Kunne ikke generere bilde.');
+    throw new NarrativeApiError(msg, res.status, code);
+  }
+  return { imageBase64: body.imageBase64, prompt: body.prompt ?? prompt, model: body.model ?? 'dall-e-3' };
+}
+export function createAiReferenceFrame(projectId: string, sceneId: string, input: { imageBase64: string; caption?: string; prompt?: string; model?: string }): Promise<AiReferenceFrameResult> {
+  return request(`/projects/${encodeURIComponent(projectId)}/scenes/${encodeURIComponent(sceneId)}/frames/from-base64`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+// ─── Fase 8g: prosjektmaler ─────────────────────────────────────────
+export type ProjectTemplate = 'blank' | 'demo-adventure' | 'wfu-sample';
+export interface ApplyTemplateResult { template: ProjectTemplate; revisionId: string | null; report: Record<string, { inserted: number; updated: number; skipped: number }> | null }
+export function applyProjectTemplate(projectId: string, template: ProjectTemplate): Promise<ApplyTemplateResult> {
+  return request(`/projects/${encodeURIComponent(projectId)}/apply-template`, { method: 'POST', body: JSON.stringify({ template }) });
+}

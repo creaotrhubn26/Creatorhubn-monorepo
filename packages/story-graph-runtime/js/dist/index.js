@@ -1198,10 +1198,18 @@ function createPlaySession(graph, options = {}) {
       resolveElementRef: resolvers.resolveElementRef
     });
   }
-  function pushLog(entry) {
+  function emit(event) {
+    if (!options.onEvent) return;
+    try {
+      options.onEvent(event);
+    } catch (e) {
+    }
+  }
+  function pushLog(entry, extra = {}) {
     step += 1;
     log.push({ step, ...entry });
     if (log.length > maxLog) log = log.slice(log.length - maxLog);
+    emit({ kind: entry.kind, elementId: entry.elementId, step, changes: entry.changes, errorCount: entry.errors.length, message: entry.message, ...extra });
   }
   function startElementId() {
     var _a2, _b2, _c2, _d2, _e, _f;
@@ -1256,7 +1264,7 @@ function createPlaySession(graph, options = {}) {
     interpreter.incrementVisit(element.id);
     if (element.kind === "jumper") {
       const target = element.jumperTargetId;
-      pushLog({ kind: "jumper", elementId: element.id, message: target ? "Jumper fulgt." : "Jumper uten mål.", changes: {}, errors: [] });
+      pushLog({ kind: "jumper", elementId: element.id, message: target ? "Jumper fulgt." : "Jumper uten mål.", changes: {}, errors: [] }, target ? { targetId: target } : {});
       if (!target || !elementById.has(target)) {
         view = makeView(element, "", [], true);
         return view;
@@ -1288,7 +1296,7 @@ function createPlaySession(graph, options = {}) {
         message: chosen ? next ? "Forgrening: betingelse traff." : "Forgrening: betingelsen traff, men utgangen er ikke koblet." : "Forgrening: ingen betingelse traff.",
         changes: {},
         errors
-      });
+      }, next ? { connectionId: next.id, targetId: next.targetId } : {});
       if (!next || !elementById.has(next.targetId)) {
         view = makeView(element, "", [], true);
         return view;
@@ -1344,9 +1352,9 @@ function createPlaySession(graph, options = {}) {
       snapshot();
       if (hasScript(connection.labelHtml)) {
         const r = interpreter.runScript(connection.labelHtml);
-        pushLog({ kind: "choose", elementId: view.elementId, message: "Valg tatt (etikett-skript kjørt).", changes: r.changes, errors: r.errors });
+        pushLog({ kind: "choose", elementId: view.elementId, message: "Valg tatt (etikett-skript kjørt).", changes: r.changes, errors: r.errors }, { connectionId, targetId: connection.targetId });
       } else {
-        pushLog({ kind: "choose", elementId: view.elementId, message: "Valg tatt.", changes: {}, errors: [] });
+        pushLog({ kind: "choose", elementId: view.elementId, message: "Valg tatt.", changes: {}, errors: [] }, { connectionId, targetId: connection.targetId });
       }
       return enter(connection.targetId);
     },
@@ -1371,6 +1379,7 @@ function createPlaySession(graph, options = {}) {
       });
       const opts = buildOptions(element);
       view = makeView(element, preview.runScript((_a2 = element.contentHtml) != null ? _a2 : "").html, opts, opts.length === 0);
+      emit({ kind: "back", elementId: element.id, step, changes: {}, errorCount: 0, message: "Tilbake." });
       return view;
     },
     canBack: () => history.length > 0,

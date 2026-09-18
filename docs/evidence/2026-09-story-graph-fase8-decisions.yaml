@@ -1,0 +1,49 @@
+claim: >
+  Story Graph Fase 8 (8a–8g) closes three loops — manuscript → Story Graph (document import with
+  dry-run diff), game build → gates (HMAC CI evidence webhook), Story Graph → game (Swift runtime,
+  onEvent hook, always-204 playtest telemetry) — plus a deterministic-first script guardian, scene
+  table read / AI reference frames, and a sales-ready packaging (templates, plan features, hardening).
+source_type: code_analysis
+source: "backend/server/narrative-document-import.ts, role-room-narrative-ci-hooks.ts (mounted before express.json in index.ts), ai-script-guardian-agent.ts, role-room-narrative-playtest.ts, role-room-narrative-frames-ai.ts, narrative-templates.ts; frontend/shared/narrative-runtime/engine.ts (onEvent); packages/story-graph-runtime/swift; migrations 0643–0645; PRs #2404, #2408, #2409, #2411 and the 8f/8g PRs"
+authority_tier: 3
+vendor: internal
+product: Story Graph (game_studio) Fase 8
+version_scope: "Story Graph Fase 8a–8g, migrations 0643_narrative_ci_hooks, 0644_narrative_playtest, 0645_game_plan_fase8_features"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "until the plan model, the CI/telemetry auth model, or the runtime packages change"
+evidence_summary: >
+  Decisions with long tails: (1) manuscript import is dry-run first and never deletes — missing
+  scenes/lines become open questions (AGENTS.md rule); (2) the CI webhook stores its secret in
+  plaintext (HMAC needs the raw secret; Leadgrid precedent) and is mounted before the global body
+  parser (raw body); gate writes go through setSceneGate so "passed requires evidence" also binds
+  CI; (3) the script guardian runs deterministic rules without a model first and sends only
+  scenes changed since the last run to claude-opus-5 (effort medium, cache_control, strict tool),
+  accept = open question, never a script edit; (4) playtest telemetry is always-204 with sha256
+  project tokens and no PII (random session id only), 500/batch, 600/min/token, 90-day retention
+  (manual delete for now); (5) the Swift runtime cannot be compiled in Linux CI — parity is by
+  fixture transcript + CHECKLIST §3 (`swift test` locally); (6) AI reference frames go through the
+  existing storyboard generate-frame (no persistence, no cost control) and are capped at 10/day
+  per project in our own persist route; the shared /api/ai/tts endpoint has no billing gate —
+  UI-gated only, documented hole; (7) `ci_evidence` and `playtest_telemetry` are Studio features
+  from 0645; existing hooks/tokens keep working because the webhook/ingest check only secret/token;
+  (8) maxProjects is enforced at the first Story Graph write in a new project (the film project
+  creation route is shared and does not know the game plan).
+interpretation: >
+  The vertical is now a closed loop for our own studio and sellable to others: data flows in from
+  the manuscript and the build, out to the iPad runtime, and back as telemetry, with the guardian
+  reading fresh data.
+project_impact: >
+  Any change to the plan model (game_plan features), the webhook mount order in index.ts, the
+  telemetry token scheme, or the runtime packages must revisit this file and the docs in
+  docs/role-room/STORY_GRAPH_{MANUSCRIPT_IMPORT,CI_EVIDENCE,PLAYTEST_TELEMETRY,STUDIO_GUIDE,API}.md.
+affected:
+  - backend/server/role-room-narrative-routes.ts
+  - backend/server/role-room-narrative-ci-hooks.ts
+  - backend/server/role-room-narrative-playtest.ts
+  - backend/server/ai-script-guardian-agent.ts
+  - backend/server/narrative-templates.ts
+  - backend/migrations/0645_game_plan_fase8_features.sql
+  - packages/story-graph-runtime/swift
+confidence: verified
+decided_by: "Story Graph Fase 8 (2026-09-18)"

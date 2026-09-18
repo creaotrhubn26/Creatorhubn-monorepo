@@ -268,6 +268,28 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   // Fase 8c: CI-hooks + leveringslogg (seedes med én anvendt og én avvist levering ved what-follows-us).
   const ciHooks: Rec[] = [];
   const ciDeliveries: Rec[] = [];
+  // Fase 8e: spilltest-tokens + hendelser (in-memory); aggregatet speiler getPlaytestSummary.
+  const playtestTokens: Rec[] = [];
+  const playtestEvents: Rec[] = [];
+  const playtestSummary = (build: string | null) => {
+    const evs = playtestEvents.filter((e) => !build || e.build === build);
+    const byScene = new Map<string, Rec[]>();
+    for (const e of evs) { const l = byScene.get(String(e.sceneCode)) ?? []; l.push(e); byScene.set(String(e.sceneCode), l); }
+    const lastBySession = new Map<string, Rec>();
+    for (const e of evs) lastBySession.set(String(e.sessionId), e);
+    const dropBy = new Map<string, number>();
+    for (const e of lastBySession.values()) if (e.event !== 'complete') dropBy.set(String(e.sceneCode), (dropBy.get(String(e.sceneCode)) ?? 0) + 1);
+    const scenes = [...byScene.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sceneCode, l]) => {
+      const exits = l.filter((e) => e.event === 'exit' && typeof e.tMs === 'number').map((e) => Number(e.tMs)).sort((a, b) => a - b);
+      const median = exits.length ? (exits.length % 2 ? exits[(exits.length - 1) / 2] : Math.round((exits[exits.length / 2 - 1] + exits[exits.length / 2]) / 2)) : null;
+      const choices: Record<string, number> = {};
+      for (const e of l) if (e.event === 'choice' && e.connectionId) choices[String(e.connectionId)] = (choices[String(e.connectionId)] ?? 0) + 1;
+      return { sceneCode, sessions: new Set(l.map((e) => e.sessionId)).size, enters: l.filter((e) => e.event === 'enter').length, exits: l.filter((e) => e.event === 'exit').length, deaths: l.filter((e) => e.event === 'death').length, completes: l.filter((e) => e.event === 'complete').length, medianTimeMs: median, dropOff: dropBy.get(sceneCode) ?? 0, choices };
+    });
+    let worst: { sceneCode: string; sessions: number } | null = null;
+    for (const [sceneCode, n] of dropBy) if (!worst || n > worst.sessions) worst = { sceneCode, sessions: n };
+    return { days: 30, build, builds: [...new Set(playtestEvents.map((e) => String(e.build)).filter(Boolean))].sort(), sessions: new Set(evs.map((e) => e.sessionId)).size, events: evs.length, scenes, worstDropOff: worst };
+  };
   const sources: Rec[] = [];
   const milestones: Rec[] = [];
   const platformTargets: Rec[] = [];
@@ -280,6 +302,12 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   const GATE_KEYS = ['script_coverage', 'greybox', 'characters_animation', 'playthrough', 'picture', 'audio'];
   const gatesFor = (sceneId: string) => GATE_KEYS.map((k) => gates.find((x) => x.sceneId === sceneId && x.gateKey === k) ?? { sceneId, projectId, gateKey: k, status: 'not_started', evidence: '', evidenceRefs: [], checkedBy: null, checkedAt: null, updatedAt: null });
   if (opts.seed === 'what-follows-us') {
+    // Spilltest-seed: 3 økter i P01 (én dør, én går videre til P02 og fullfører, én slutter i P01).
+    playtestTokens.push({ id: 'npk_seed0000-0000-4000-8000-000000000001', projectId, label: 'iPad testrunde', createdBy: 'u-e2e', createdAt: now(), expiresAt: null, revokedAt: null, lastUsedAt: now(), eventCount: 9 });
+    const seedEv = (sessionId: string, sceneCode: string, event: string, extra: Rec = {}) => playtestEvents.push({ sessionId, sceneCode, event, build: '1.0 (42)', deviceClass: 'iPad Pro M1', ...extra });
+    seedEv('s1', 'P01', 'enter'); seedEv('s1', 'P01', 'choice', { connectionId: 'ncn_seed_bok' }); seedEv('s1', 'P01', 'death', { tMs: 30000 });
+    seedEv('s2', 'P01', 'enter'); seedEv('s2', 'P01', 'choice', { connectionId: 'ncn_seed_bok' }); seedEv('s2', 'P01', 'exit', { tMs: 42000 }); seedEv('s2', 'P02', 'enter'); seedEv('s2', 'P02', 'complete', { tMs: 60000 });
+    seedEv('s3', 'P01', 'enter'); seedEv('s3', 'P01', 'choice', { connectionId: 'ncn_seed_lisse' }); seedEv('s3', 'P01', 'exit', { tMs: 38000 });
     const fx = loadWhatFollowsUsFixture();
     for (const src of fx.sources) sources.push({ id: nextId('nso'), projectId, code: src.code, label: src.label, kind: src.kind, sha256: src.sha256 ?? null, pathHint: src.pathHint ?? '', notes: src.notes ?? '', verifiedAt: null, verifiedBy: null, sortOrder: sources.length, createdAt: now(), updatedAt: now() });
     const episodeIdByCode = new Map<string, string>();
@@ -380,6 +408,15 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
     return route.fulfill(suggestionJson(sug));
   });
+  // Fase 8f: storyboard-KI (DALL·E) — returnerer en 1×1 PNG uten å persistere noe; solo → 402 fra narrative-ruten, ikke her.
+  const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  let aiFramesToday = 0;
+  await page.route('**/api/storyboards/generate-frame', async (route: Route) => {
+    const b = (() => { try { return (route.request().postDataJSON() as Rec | null) ?? {}; } catch { return {}; } })();
+    if (!b.prompt) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'prompt_required' }) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, imageBase64: TINY_PNG, prompt: `[mock] ${String(b.prompt).slice(0, 80)}`, template: b.template ?? 'cinematic', model: 'dall-e-3' }) });
+  });
+
   await page.route('**/api/role-room/editor-comments**', async (route: Route) => {
     const req = route.request();
     const method = req.method();
@@ -660,6 +697,44 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
 
     // ── Fase 8c: CI-bevis-hooks ────────────────────────────────────────
+    // Fase 8g: prosjektmaler (mock: legger inn en episode + tre scener + to karakterer for demo/WFU-utdrag).
+    if (m(/\/projects\/[^/]+\/apply-template$/) && method === 'POST') {
+      const template = String(body.template ?? '');
+      if (!['blank', 'demo-adventure', 'wfu-sample'].includes(template)) return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"invalid_body"}' });
+      if (gamePlan === 'solo' && url.searchParams.get('quota') === 'full') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_limit', limit: 'maxProjects', max: 3, planSlug: 'solo' }) });
+      if (template === 'blank') return route.fulfill(ok({ template, revisionId: null, report: null }, 201));
+      const demo = template === 'demo-adventure';
+      const ep = { id: nextId('nep'), projectId, code: 'E01', title: demo ? 'Lykten i Dalen' : 'Skoleveien', summary: '', playersLearn: '', sourceNote: '', status: 'draft', sortOrder: episodes.length, createdAt: now(), updatedAt: now() };
+      episodes.push(ep);
+      const codes = demo ? ['S01', 'S02', 'S03'] : ['P01', 'P02', 'P03'];
+      for (const code of codes) scenes.push({ id: nextId('nsc'), projectId, code, workingId: code, title: demo ? `Demo ${code}` : `WFU ${code}`, subtitle: '', location: '', challenge: '', gameplayMechanic: '', environment: '', beforeState: 'Før.', action: 'Handling.', control: '', afterState: '', audio: '', changeNote: '', bridge: '', timeNote: '', knowledge: {}, era: '1797', episodeId: ep.id, startAt: null, dueAt: null, sourceRefs: [{ tag: 'A', ref: 'D' }], status: 'idea', assigneeUserId: null, heroAssetId: null, sortOrder: scenes.length, createdBy: 'u-e2e', createdAt: now(), updatedAt: now() });
+      for (const name of demo ? ['Mira', 'Tor'] : ['Nora', 'Elise']) g.components.push({ id: nextId('ncp'), projectId, name, folderPath: '', coverAssetId: null, customId: `char_${name.toLowerCase()}`, kind: 'character', profile: {}, sortOrder: g.components.length, createdAt: now(), updatedAt: now() } as never);
+      return route.fulfill(ok({ template, revisionId: nextId('nrv'), report: { episodes: { inserted: 1, updated: 0, skipped: 0 }, scenes: { inserted: 3, updated: 0, skipped: 0 }, components: { inserted: 2, updated: 0, skipped: 0 } } }, 201));
+    }
+    // Fase 8f: KI-referansebilde → asset (storage_key, ingen external_url) + ramme.
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/frames\/from-base64$/);
+    if (mm && method === 'POST') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'ai_assist', planSlug: 'solo' }) });
+      if (aiFramesToday >= 10) return route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'daily_limit', message: 'Daglig tak nådd.' }) });
+      const sc = scenes.find((x) => x.id === mm![1]);
+      if (!sc) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      aiFramesToday += 1;
+      const assetId = nextId('nas');
+      g.assets.push({ id: assetId, projectId, kind: 'image', name: `${String(body.caption ?? 'KI-referanse')}.png`, storageKey: `narrative/${projectId}/frames/${sc.id}/${assetId}.png`, externalUrl: null, mime: 'image/png', sizeBytes: 68, folderPath: 'ki-referanse', createdBy: 'u-e2e', createdAt: now(), updatedAt: now() } as never);
+      const frame = { id: nextId('nsf'), sceneId: sc.id, projectId, assetId, externalUrl: null, caption: [String(body.caption ?? 'KI-referanse'), body.model ? `(${body.model})` : ''].filter(Boolean).join(' '), sortOrder: frames.filter((f) => f.sceneId === sc.id).length, createdAt: now(), updatedAt: now() };
+      frames.push(frame);
+      return route.fulfill(ok({ assetId, storageKey: `narrative/${projectId}/frames/${sc.id}/${assetId}.png`, frame, usedToday: aiFramesToday, dailyLimit: 10 }, 201));
+    }
+    // Fase 8e: spilltest-tokens + aggregat.
+    if (m(/\/projects\/[^/]+\/playtest-tokens$/) && method === 'GET') return route.fulfill(ok(playtestTokens));
+    if (m(/\/projects\/[^/]+\/playtest-tokens$/) && method === 'POST') {
+      const token = { id: nextId('npk'), projectId, label: String(body.label ?? ''), createdBy: 'u-e2e', createdAt: now(), expiresAt: body.ttlDays ? new Date(Date.now() + Number(body.ttlDays) * 86400000).toISOString() : null, revokedAt: null, lastUsedAt: null, eventCount: 0 };
+      playtestTokens.unshift(token);
+      return route.fulfill(ok({ token, rawToken: `sgp_${token.id.replace(/\W/g, '')}mockmockmockmockmockmockmock`, ingestPath: '/api/role-room/narrative/playtest/events' }, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/playtest-tokens\/([^/]+)\/revoke$/);
+    if (mm && method === 'POST') { const t = playtestTokens.find((x) => x.id === mm![1]); if (!t) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); t.revokedAt = now(); return route.fulfill(ok(t)); }
+    if (m(/\/projects\/[^/]+\/playtest\/summary$/) && method === 'GET') return route.fulfill(ok(playtestSummary(url.searchParams.get('build'))));
     if (m(/\/projects\/[^/]+\/ci-hooks$/) && method === 'GET') return route.fulfill(ok(ciHooks));
     if (m(/\/projects\/[^/]+\/ci-hooks$/) && method === 'POST') {
       const hook = { id: `nch_${String(ciHooks.length + 1).padStart(8, '0')}-e2e0-4000-8000-000000000000`, projectId, label: body.label ?? 'CI', createdBy: 'u-e2e', createdAt: now(), revokedAt: null, lastDeliveryAt: null, deliveryCount: 0 };
@@ -981,6 +1056,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
         activity,
         unreadInbox: inbox.filter((n) => !n.readAt).length,
+        playtest: (() => { const ps = playtestSummary(null); return { sessions7d: ps.sessions, worstDropOff: ps.worstDropOff }; })(),
         guardian: { pending: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending').length, high: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending' && (x.payload as Rec).severity === 'high').length },
       }));
     }

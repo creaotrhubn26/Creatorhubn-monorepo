@@ -1,0 +1,360 @@
+{
+ "meta": {
+  "slug": "demo-adventure",
+  "title": "Lykten i Dalen (demo)",
+  "version": "1.0",
+  "extractedAt": "2026-09-18",
+  "documents": [
+   "(ingen — demoinnhold uten IP, skrevet for malen)"
+  ],
+  "notes": "Prosjektmal «Demo-eventyr» (Fase 8g): ett kort eventyr så alle faner har innhold å klikke på. Fritt å endre eller slette."
+ },
+ "sources": [
+  {
+   "code": "D",
+   "label": "Demo-manus (innebygd i malen)",
+   "kind": "md",
+   "sha256": null,
+   "notes": "Ikke et ekte dokument — teksten finnes bare i scenekortene."
+  }
+ ],
+ "episodes": [
+  {
+   "code": "E01",
+   "title": "Lykten i Dalen",
+   "summary": "Mira finner en lykt som viser det som ikke vil bli sett. Broren Tor følger etter.",
+   "playersLearn": "Lys avslører, men det er stemmen som velger hva som får stå.",
+   "sourceNote": "Demo — ingen kilde.",
+   "status": "draft"
+  }
+ ],
+ "components": [
+  {
+   "customId": "char_mira",
+   "name": "Mira",
+   "kind": "character",
+   "profile": {
+    "drive": "Vil finne ut hvorfor dalen ble stille.",
+    "changeAction": "Slukker lykten frivillig i S06.",
+    "observable": "Nysgjerrig, rask, snakker før hun tenker.",
+    "voiceCast": {
+     "child": "(demo-stemme A)"
+    },
+    "ages": {
+     "1797": "12"
+    }
+   }
+  },
+  {
+   "customId": "char_tor",
+   "name": "Tor",
+   "kind": "character",
+   "profile": {
+    "drive": "Passe på søsteren.",
+    "changeAction": "Lar Mira gå først i S05.",
+    "observable": "Forsiktig, teller skritt, liker regler.",
+    "voiceCast": {
+     "child": "(demo-stemme B)"
+    }
+   }
+  },
+  {
+   "customId": "char_vokter",
+   "name": "Vokteren",
+   "kind": "character",
+   "profile": {
+    "drive": "Holde lyset borte fra dalen.",
+    "observable": "Høy skikkelse uten ansikt; beveger seg bare når ingen ser.",
+    "voiceCast": {
+     "adult": "(demo-stemme C)"
+    }
+   }
+  },
+  {
+   "customId": "char_forteller",
+   "name": "Fortelleren",
+   "kind": "character",
+   "profile": {
+    "observable": "Stemme som leser påskrifter og minner.",
+    "voiceCast": {
+     "adult": "(demo-stemme D)"
+    }
+   }
+  },
+  {
+   "customId": "loc_bru",
+   "name": "Brua ved kvernen",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797"
+    ],
+    "continuity": "Ett rekkverk mangler på nedstrøms side i alle scener.",
+    "props": [
+     "lykt",
+     "kvernhjul",
+     "tau"
+    ]
+   }
+  },
+  {
+   "customId": "loc_hule",
+   "name": "Hulen bak fossen",
+   "kind": "location",
+   "profile": {
+    "eras": [
+     "1797"
+    ],
+    "continuity": "Vannet dekker inngangen halvveis; lyd dempes innenfor.",
+    "props": [
+     "lykt",
+     "steinring"
+    ]
+   }
+  }
+ ],
+ "scenes": [
+  {
+   "code": "S01",
+   "workingId": "S01",
+   "episode": "E01",
+   "title": "Stille dal",
+   "subtitle": "Kveld · 1797",
+   "era": "1797",
+   "status": "in_progress",
+   "location": "Brua ved kvernen",
+   "beforeState": "Mira og Tor går hjem fra kvernen. Lykten henger slukket på Tors rygg.",
+   "action": "Spilleren styrer Mira over brua. Rekkverket mangler; Tor stopper ved hullet.",
+   "control": "Berøring: gå. Trykk og hold på lykten: tenn.",
+   "afterState": "Lykten tennes første gang. Vannet under brua står stille.",
+   "audio": "Kvernhjulet stopper når lykten tennes.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "D",
+     "note": "demo"
+    }
+   ],
+   "components": [
+    "char_mira",
+    "char_tor",
+    "loc_bru"
+   ],
+   "lines": [
+    {
+     "cueId": "U01.01",
+     "speaker": "char_tor",
+     "speakerLabel": "TOR",
+     "textEn": "Do not light it on the bridge.",
+     "textNb": "Ikke tenn den på brua.",
+     "sourceType": "U"
+    },
+    {
+     "cueId": "U01.02",
+     "speaker": "char_mira",
+     "speakerLabel": "MIRA",
+     "textEn": "Then how will we see the hole?",
+     "textNb": "Hvordan skal vi se hullet da?",
+     "sourceType": "U"
+    }
+   ],
+   "gates": [
+    {
+     "key": "script_coverage",
+     "status": "passed",
+     "evidence": "Scenekortet er komplett (demo)."
+    }
+   ],
+   "tasks": [
+    {
+     "title": "Gråboks av brua med manglende rekkverk",
+     "status": "todo"
+    }
+   ]
+  },
+  {
+   "code": "S02",
+   "workingId": "S02",
+   "episode": "E01",
+   "title": "Det som står stille",
+   "subtitle": "Kveld · 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Brua ved kvernen",
+   "beforeState": "Lykten er tent. Vannet står stille.",
+   "action": "Mira lyser på vannet; en skikkelse speiles som ikke står på brua.",
+   "control": "Sving lykten: pek. Slipp: slukk.",
+   "afterState": "Vokteren er sett første gang — bare i speilbildet.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "D"
+    }
+   ],
+   "components": [
+    "char_mira",
+    "char_vokter",
+    "loc_bru"
+   ],
+   "knowledge": {
+    "othersObserve": "Tor ser ingenting i vannet.",
+    "saidAloud": "Mira: «Der er noen.»"
+   }
+  },
+  {
+   "code": "S03",
+   "workingId": "S03",
+   "episode": "E01",
+   "title": "Tors regel",
+   "subtitle": "Natt · 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Brua ved kvernen",
+   "beforeState": "Tor nekter å gå videre med lykten tent.",
+   "action": "Valg: slukk lykten (Tor følger) eller gå alene (Tor blir).",
+   "control": "To knapper. Valget lagres som variabel `alene`.",
+   "afterState": "Forgrening: alene = true/false.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "D"
+    }
+   ],
+   "components": [
+    "char_mira",
+    "char_tor"
+   ]
+  },
+  {
+   "code": "S04",
+   "workingId": "S04",
+   "episode": "E01",
+   "title": "Fossen",
+   "subtitle": "Natt · 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Hulen bak fossen",
+   "beforeState": "Stien ender ved fossen. Lyden dempes.",
+   "action": "Spilleren finner inngangen ved å lyse på vannet der det ikke speiler.",
+   "control": "Lykt + gå. Ingen hopp.",
+   "afterState": "Inngangen er åpen.",
+   "audio": "Fossen går fra brus til dempet sus innenfor.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "D"
+    }
+   ],
+   "components": [
+    "char_mira",
+    "loc_hule"
+   ]
+  },
+  {
+   "code": "S05",
+   "workingId": "S05",
+   "episode": "E01",
+   "title": "Steinringen",
+   "subtitle": "Natt · 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Hulen bak fossen",
+   "beforeState": "Steinringen i hulen. Vokteren står i midten når lykten er slukket.",
+   "action": "Mira må slukke lykten for å se Vokteren, og tenne for å bevege seg. Tor (hvis med) teller skritt høyt.",
+   "control": "Hold: slukk. Slipp: tenn. Rytmen er mekanikken.",
+   "afterState": "Vokteren snakker for første gang.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "D"
+    }
+   ],
+   "components": [
+    "char_mira",
+    "char_tor",
+    "char_vokter",
+    "loc_hule"
+   ],
+   "lines": [
+    {
+     "cueId": "U05.01",
+     "speaker": "char_vokter",
+     "speakerLabel": "VOKTEREN",
+     "textEn": "You brought the light. Now choose what it may keep.",
+     "textNb": "Du tok med lyset. Velg nå hva det får beholde.",
+     "sourceType": "U"
+    }
+   ]
+  },
+  {
+   "code": "S06",
+   "workingId": "S06",
+   "episode": "E01",
+   "title": "Det lyset får beholde",
+   "subtitle": "Grålysning · 1797",
+   "era": "1797",
+   "status": "idea",
+   "location": "Hulen bak fossen",
+   "beforeState": "Valg fra S03 avgjør hvem som står ved siden av Mira.",
+   "action": "Mira slukker lykten frivillig. Dalen får lyden tilbake.",
+   "control": "Ett trykk. Ingen angre.",
+   "afterState": "Episoden slutter. Variabelen `alene` bestemmer sluttbildet.",
+   "audio": "Kvernhjulet starter igjen — hørbart gjennom fossen.",
+   "sourceRefs": [
+    {
+     "tag": "A",
+     "ref": "D"
+    }
+   ],
+   "components": [
+    "char_mira",
+    "char_tor",
+    "char_forteller",
+    "loc_hule"
+   ]
+  }
+ ],
+ "openQuestions": [
+  {
+   "code": "Q01",
+   "kind": "question",
+   "question": "Skal Tor kunne bli med inn i hulen hvis spilleren valgte «alene» i S03 og angrer?",
+   "context": "Demo — viser hvordan åpne spørsmål brukes.",
+   "status": "open"
+  }
+ ],
+ "milestones": [
+  {
+   "title": "Gråboks S01–S03 spillbar",
+   "lane": "greybox",
+   "status": "planned",
+   "acceptance": "Brua og valget i S03 kan spilles gjennom uten grafikk."
+  }
+ ],
+ "platformTargets": [
+  {
+   "name": "iPad (demo)",
+   "platform": "ipad",
+   "isPrimary": true,
+   "engine": "(velg motor)",
+   "osMin": "iPadOS 17",
+   "inputModel": "Berøring: gå, hold for lykt",
+   "budgets": {
+    "fps": 30
+   },
+   "requirements": [
+    {
+     "code": "R1",
+     "text": "Lykt-rytmen (hold/slipp) må være lesbar på 60 Hz og 120 Hz",
+     "status": "unverified"
+    }
+   ],
+   "visualDirection": {
+    "lookAndFeel": "Mørk dal, én lyskilde (lykten), lange skygger.",
+    "lighting": "Dynamisk lykt nær spilleren; alt annet forhåndsberegnet.",
+    "fog": "Tåke bevarer silhuetter; aldri løftet svart."
+   },
+   "notes": "Demo — erstatt med studioets faktiske mål."
+  }
+ ]
+}

@@ -171,10 +171,10 @@ const VERTICALS: Array<{
     body:
       'Forgrenet narrativ design i nettleseren: brett, elementer, forgreninger med skript, komponenter og variabler. Play Mode med debugger og opplesning, KI-forslag, oversettelser, sanntidssamarbeid — og eksport i JSON som Arcweaves Unity/Unreal/Godot-plugins leser direkte.',
     bullets: [
-      'Arcweave-kompatibel JSON + import fra Arcweave, Twine og Ink',
-      'Play Mode med debugger, delbare spill-lenker og spillbar HTML',
-      'KI-forslag til elementer + Translation Mode',
-      'Prosjekthistorikk og sanntidsmarkører på alle planer',
+      'Arcweave-kompatibel JSON + import fra Arcweave, Twine, Ink — og manus fra Word/PDF',
+      'Spillbygget setter leveransegater selv: CI-bevis-webhook med xcresult-artefakter',
+      'Spilltest-telemetri fra spillet: økter, drop-off og valgfordeling per scene',
+      'KI-manusvakt for kontinuitet, epoker og kilder — funn blir åpne spørsmål, aldri stille endringer',
     ],
     status: 'beta',
     persona: 'game_studio',

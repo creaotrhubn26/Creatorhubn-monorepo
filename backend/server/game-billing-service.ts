@@ -695,7 +695,9 @@ export const GAME_DEFAULT_PLAN_SLUG = 'solo';
 export type GameFeature =
   | 'play' | 'export_json' | 'export_md' | 'share_links' | 'export_html'
   | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages' | 'export_pdf' | 'scene_review'
-  | 'production_plan' | 'team_seats' | 'guest_reviewers';
+  | 'production_plan' | 'team_seats' | 'guest_reviewers'
+  // Fase 8g: CI-bevis-webhook (8c) og spilltest-telemetri (8e) — Studio.
+  | 'ci_evidence' | 'playtest_telemetry';
 
 /** Fallback hvis `solo`-raden mangler (før migrasjon/seed). Samme innhold som seeden. */
 export const SOLO_FALLBACK_PLAN: GamePlan = {
