@@ -2230,3 +2230,96 @@ export const marketingCatalogApi = {
   remove: (id: string): Promise<{ deleted: boolean }> =>
     jsonFetch(`/marketing-catalog/${id}`, { method: 'DELETE' }),
 };
+
+// ─────────────────────────────────────────────────────────
+// Finansieringsradar (eksterne ordninger: IN, Forskningsrådet, EU)
+//
+// Ruten og panelet ble skrevet i august, men lå igjen i en stash og kom aldri
+// på main — mens migrasjon 0455 og dataene gikk i produksjon. Denne klienten
+// manglet helt i stashen, og er skrevet mot rutene slik de faktisk svarer
+// (admin-workspace-funding-opportunities-routes.ts).
+
+// Statusene ruten faktisk godtar (VALID_STATUSES i
+// admin-workspace-funding-opportunities-routes.ts). Holdes i takt med den:
+// en status flaten kan sende men ruten avviser, blir en 400 uten forklaring.
+export type WorkspaceFundingOpportunityStatus =
+  | 'watching'
+  | 'planned'
+  | 'applying'
+  | 'submitted'
+  | 'not_relevant'
+  | 'closed';
+
+/** Ordningen kan gjelde ett produkt, eller huset generelt ('internal'). */
+export type WorkspaceFundingProductKey = 'role_room' | 'leadgrid' | 'internal';
+
+export interface WorkspaceFundingOpportunity {
+  id: string;
+  product_key: WorkspaceFundingProductKey | null;
+  catalog_key: string | null;
+  provider: string;
+  scheme_name: string;
+  description: string | null;
+  deadline: string | null;
+  is_rolling: boolean;
+  deadline_note: string | null;
+  status: WorkspaceFundingOpportunityStatus;
+  source_url: string;
+  application_url: string | null;
+  last_verified_at: string | null;
+  next_check_date: string | null;
+  assignee: string | null;
+  fit_notes: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkspaceFundingOpportunityInput {
+  provider?: string;
+  schemeName?: string;
+  description?: string | null;
+  deadline?: string | null;
+  isRolling?: boolean;
+  deadlineNote?: string | null;
+  status?: WorkspaceFundingOpportunityStatus;
+  sourceUrl?: string;
+  applicationUrl?: string | null;
+  productKey?: WorkspaceFundingProductKey | string | null;
+  catalogKey?: string | null;
+  assignee?: string | null;
+  fitNotes?: string | null;
+  nextCheckDate?: string | null;
+  lastVerifiedAt?: string | null;
+  tags?: string[];
+}
+
+/** Søknadsløpet en ordning kan starte: prosjekt + dokument + søknadsrad. */
+export interface WorkspaceFundingApplicationPlan {
+  projectId: string;
+  documentId: string;
+  fundingAppId: string;
+}
+
+export const workspaceFundingOpportunitiesApi = {
+  list: async (product?: string): Promise<WorkspaceFundingOpportunity[]> => {
+    const sti = product ? `/workspace/funding-opportunities?product=${encodeURIComponent(product)}` : '/workspace/funding-opportunities';
+    const data = await jsonFetch<{ items: WorkspaceFundingOpportunity[] }>(sti);
+    return data.items;
+  },
+  create: (input: WorkspaceFundingOpportunityInput): Promise<{ item: WorkspaceFundingOpportunity }> =>
+    jsonFetch('/workspace/funding-opportunities', { method: 'POST', body: JSON.stringify(input) }),
+  update: (id: string, patch: WorkspaceFundingOpportunityInput): Promise<{ item: WorkspaceFundingOpportunity }> =>
+    jsonFetch(`/workspace/funding-opportunities/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  delete: (id: string): Promise<{ ok: boolean }> =>
+    jsonFetch(`/workspace/funding-opportunities/${id}`, { method: 'DELETE' }),
+  /** Legger inn den kuraterte listen over ordninger. Hopper over dem som finnes. */
+  seed: (): Promise<{ items: WorkspaceFundingOpportunity[]; seeded: number }> =>
+    jsonFetch('/workspace/funding-opportunities/seed', { method: 'POST' }),
+  startPlan: (
+    id: string,
+    input: { productKey?: WorkspaceFundingProductKey | string | null; projectTitle?: string; targetDate?: string },
+  ): Promise<{ plan: WorkspaceFundingApplicationPlan; existing?: boolean }> =>
+    jsonFetch(`/workspace/funding-opportunities/${id}/start-plan`, { method: 'POST', body: JSON.stringify(input) }),
+};
