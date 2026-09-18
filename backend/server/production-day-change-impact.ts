@@ -22,7 +22,9 @@ export type ImpactArea =
   | 'schedule'
   | 'scene_prep'
   | 'scene_cast'
-  | 'scene_material';
+  | 'scene_material'
+  | 'prop_availability'
+  | 'prop_load';
 
 export interface ChangeImpact {
   area: ImpactArea;
@@ -286,6 +288,103 @@ export async function collectProductionDaySceneImpact(
         severity: 'info',
         summary: `${materialCount} fil${materialCount === 1 ? '' : 'er'} ligger allerede på de nye scenene.`,
         count: materialCount,
+      });
+    }
+  }
+
+  return impacts;
+}
+
+/**
+ * Hva brekker hvis dagens rekvisitter byttes.
+ *
+ * Målt mot produksjon 2026-09-18: casting_props har 16 rader, 8 av dem i
+ * Troll, og null produksjonsdager har `prop_ids` fylt ut. Koblingen finnes i
+ * skjemaet og er ubrukt — så dette er ikke en rapport over eksisterende
+ * arbeid, men porten som gjør at arbeidet kan begynne uten å skape rot.
+ *
+ * `availability` er det eneste feltet rekvisittene faktisk fører, så det er
+ * det eneste vi advarer på. En advarsel om noe annet ville vært oppdiktet.
+ */
+export async function collectProductionDayPropImpact(
+  pool: QueryablePool,
+  input: {
+    projectId: string;
+    dayId: string;
+    fromPropIds: string[];
+    toPropIds: string[];
+  },
+): Promise<ChangeImpact[]> {
+  const { projectId, dayId, fromPropIds, toPropIds } = input;
+  const before = new Set(fromPropIds.map(String));
+  const after = new Set(toPropIds.map(String));
+  const added = [...after].filter((id) => !before.has(id));
+  const removed = [...before].filter((id) => !after.has(id));
+  const impacts: ChangeImpact[] = [];
+
+  if (added.length === 0 && removed.length === 0) return impacts;
+
+  // 1. Publisert call sheet lister dagens rekvisitter.
+  const callSheets = await pool.query(
+    `SELECT count(*)::int AS count
+       FROM role_room_call_sheet_deliveries
+      WHERE project_id = $1 AND production_day_id = $2 AND status = 'published'`,
+    [projectId, dayId],
+  );
+  const publishedCallSheets = count(callSheets.rows);
+  if (publishedCallSheets > 0) {
+    impacts.push({
+      area: 'call_sheet',
+      severity: 'blocking',
+      summary: 'Call sheet er publisert med dagens rekvisitter.',
+      action: 'Må republiseres etter endringen.',
+      count: publishedCallSheets,
+    });
+  }
+
+  if (added.length > 0) {
+    // 2. Rekvisitter som ikke er merket tilgjengelige.
+    const unavailable = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_props
+        WHERE project_id = $1
+          AND id = ANY($2::text[])
+          AND COALESCE(availability, 'available') <> 'available'`,
+      [projectId, added],
+    );
+    const unavailableCount = count(unavailable.rows);
+    if (unavailableCount > 0) {
+      impacts.push({
+        area: 'prop_availability',
+        severity: 'warning',
+        summary: `${unavailableCount} av rekvisittene som legges til er ikke merket tilgjengelige.`,
+        action: 'Bekreft at de kan skaffes til denne dagen.',
+        count: unavailableCount,
+      });
+    }
+
+    // 3. Samme rekvisitt er allerede satt opp på en annen dag med samme dato.
+    const sameDay = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_production_days other
+         JOIN casting_production_days this
+           ON this.id = $2 AND this.project_id = other.project_id AND other.date = this.date
+        WHERE other.project_id = $1
+          AND other.id <> $2
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(COALESCE(other.prop_ids, '[]'::jsonb)) AS prop(id)
+             WHERE prop.id = ANY($3::text[])
+          )`,
+      [projectId, dayId, added],
+    );
+    const clashCount = count(sameDay.rows);
+    if (clashCount > 0) {
+      impacts.push({
+        area: 'prop_load',
+        severity: 'warning',
+        summary: `${clashCount} annen opptaksdag samme dato bruker de samme rekvisittene.`,
+        action: 'Avklar hvem som har dem når.',
+        count: clashCount,
       });
     }
   }
