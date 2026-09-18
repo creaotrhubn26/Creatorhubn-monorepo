@@ -50,14 +50,14 @@ import type { DanceTeamRole, DanceTeamMember, DanceTeamInvite, DanceTeamSummary,
 
 // ─── Branding tokens ────────────────────────────────────────────────────
 
-const PURPLE_DEEP   = '#301f84';
+const PURPLE_DEEP   = '#302a83';
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT  = danceFlowColors.lavender;
-const PURPLE_GLASS  = 'rgba(136, 117, 235,0.10)';
+const PURPLE_GLASS  = 'rgba(93, 118, 203,0.10)';
 const TEXT_DIM      = 'rgba(229,231,235,0.65)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.45)';
-const PANEL_BG      = 'rgba(16, 11, 30,0.62)';
-const PANEL_BORDER  = 'rgba(158, 140, 248,0.18)';
+const PANEL_BG      = 'rgba(42, 49, 82,0.62)';
+const PANEL_BORDER  = 'rgba(147, 164, 220,0.18)';
 
 const sectionLabel: React.CSSProperties = {
   fontSize: 10,
@@ -611,7 +611,7 @@ const InviteDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#100b1e', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#2a3152', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-invite-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(235, 231, 253,0.95)' }}>Inviter medlem</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>
@@ -713,7 +713,7 @@ const RoleEditorDialog: React.FC<{
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#100b1e', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: '#2a3152', border: `1px solid ${PANEL_BORDER}` }, 'data-testid': 'team-role-dialog' } as never}>
       <DialogTitle sx={{ color: 'rgba(235, 231, 253,0.95)' }}>
         {role ? `Rediger rolle: ${role.label}` : 'Ny rolle'}
         {isOwner ? <Chip label="Eier — capabilities er låst til alt" size="small" sx={{ ml: 2, bgcolor: 'rgba(245,158,11,0.18)', color: danceFlowColors.amber, fontWeight: 700 }} /> : null}

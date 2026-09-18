@@ -896,10 +896,10 @@ function CastingStandaloneRuntimeContent() {
             justifyContent: 'center',
             gap: 1.5,
             color: 'rgba(255,255,255,0.84)',
-            bgcolor: 'var(--role-chrome-bg, #0a0515)',
+            bgcolor: 'var(--role-chrome-bg, #1b122c)',
           }}
         >
-          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8875eb)' }} />
+          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #5d76cb)' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
             {processingGoogleLogin
               ? 'Fullfører Google-innlogging…'
@@ -1068,7 +1068,7 @@ export default function CastingStandaloneApp() {
 
   // CreatorHub Design (Fase C): token-driv Role Room-aksenten (casting-admin-panelene) fra
   // design-tokens (ws=theroleroom, RÅ override m/ raw:true-markør). Ingen override →
-  // literalene (#8875eb) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
+  // literalene (#5d76cb) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
@@ -1088,12 +1088,12 @@ export default function CastingStandaloneApp() {
           root.style.setProperty('--role-portal-accent', portal);
         }
         // Cyan-aksent (dominerende cyan-familie i casting-planner/producer-flatene). Ingen override →
-        // --role-cyan uset → hver forekomst faller til sin egen literal (#00d4ff/#22d3ee/#7dd3fc) → identisk.
+        // --role-cyan uset → hver forekomst faller til sin egen literal (#5d76cb/#5d76cb/#93a4dc) → identisk.
         const cyan = d.tokens.cyanAccent;
         if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
           root.style.setProperty('--role-cyan', cyan);
         }
-        // Fiolett-aksent (primær sekundærfarge #8875eb — dekorative flater, ikke kategorisk koding).
+        // Fiolett-aksent (primær sekundærfarge #5d76cb — dekorative flater, ikke kategorisk koding).
         const violet = d.tokens.violetAccent;
         if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
           root.style.setProperty('--role-violet', violet);

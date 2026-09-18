@@ -175,10 +175,10 @@ function LandingIntroImpl({ visible, onDismiss }: LandingIntroProps) {
                 minWidth: 44,
                 borderRadius: 999,
                 backdropFilter: 'blur(10px)',
-                bgcolor: 'rgba(10, 5, 21,0.34)',
+                bgcolor: 'rgba(27, 18, 44,0.34)',
                 '&:hover': {
                   color: 'rgba(255,255,255,0.88)',
-                  bgcolor: 'rgba(10, 5, 21,0.5)',
+                  bgcolor: 'rgba(27, 18, 44,0.5)',
                 },
                 '&:focus-visible': {
                   outline: '2px solid rgba(255,255,255,0.7)',

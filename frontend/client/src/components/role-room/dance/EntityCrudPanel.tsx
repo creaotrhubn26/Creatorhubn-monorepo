@@ -44,7 +44,7 @@ const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
 const BG = danceFlowColors.bgBase;
 const CARD = danceFlowColors.bgCard;
-const BORDER = 'rgba(136, 117, 235,0.25)';
+const BORDER = 'rgba(93, 118, 203,0.25)';
 
 export type FieldType =
   | { kind: 'text'; multiline?: boolean; placeholder?: string; required?: boolean }
@@ -344,7 +344,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
                             sx={{
                               height: 22,
                               fontSize: 11,
-                              bgcolor: 'rgba(136, 117, 235,0.10)',
+                              bgcolor: 'rgba(93, 118, 203,0.10)',
                               color: danceFlowColors.textSecondary,
                               maxWidth: 320,
                               '& .MuiChip-label': { display: 'flex', alignItems: 'center' },

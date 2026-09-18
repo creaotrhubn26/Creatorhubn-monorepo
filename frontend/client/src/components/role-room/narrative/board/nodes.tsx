@@ -161,7 +161,7 @@ export const BranchNode = React.memo(function BranchNode({ data, selected }: Nod
 
 export const JumperNode = React.memo(function JumperNode({ data, selected }: NodeProps<NarrativeFlowNode>) {
   return (
-    <NodeFrame data={data} selected={!!selected} icon={<JumperIcon sx={{ fontSize: 16, color: '#60a5fa' }} />}>
+    <NodeFrame data={data} selected={!!selected} icon={<JumperIcon sx={{ fontSize: 16, color: '#93a4dc' }} />}>
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>
         {data.jumperTargetTitle ? `→ ${data.jumperTargetTitle}` : 'Ingen mål valgt'}

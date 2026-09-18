@@ -43,8 +43,8 @@ interface ConfigStub {
 }
 
 const palette = {
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
   tiktok: '#ff0050',
 };

@@ -148,7 +148,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout ─────────────────────────────────────────────────────────────────
 
 function Callout({
-  color = '#8875eb',
+  color = '#5d76cb',
   children,
 }: {
   color?: string;
@@ -205,7 +205,7 @@ function StatPill({
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
-const ACCENT = '#8875eb';
+const ACCENT = '#5d76cb';
 
 const STEPS: Step[] = [
   // ── 1. Overview ──────────────────────────────────────────────────────────
@@ -326,9 +326,9 @@ const STEPS: Step[] = [
             >
               {[
                 { color: '#10b981', label: 'Bekreftet', desc: 'Cast confirmed and locked in.' },
-                { color: 'var(--role-violet, #8875eb)', label: 'Valgt', desc: 'Selected by the team, pending confirmation.' },
+                { color: 'var(--role-violet, #5d76cb)', label: 'Valgt', desc: 'Selected by the team, pending confirmation.' },
                 { color: '#ffb800', label: 'Shortlist', desc: 'On the shortlist for consideration.' },
-                { color: 'var(--role-cyan, #00d4ff)', label: 'Forespurt', desc: 'An offer or request has been sent.' },
+                { color: 'var(--role-cyan, #5d76cb)', label: 'Forespurt', desc: 'An offer or request has been sent.' },
                 { color: '#6b7280', label: 'Venter', desc: 'No action taken yet.' },
                 { color: '#ef4444', label: 'Avvist', desc: 'Not selected for this project.' },
               ].map(s => (
@@ -371,9 +371,9 @@ const STEPS: Step[] = [
               sx={{ borderColor: 'rgba(255,255,255,0.1)', p: 2, mb: 1.5, bgcolor: 'rgba(255,255,255,0.02)' }}
             >
               {[
-                { label: 'Ny rolle', color: 'var(--role-cyan, #00d4ff)', desc: 'Opens the role creation form. Add a character name, gender notes, and casting status.' },
+                { label: 'Ny rolle', color: 'var(--role-cyan, #5d76cb)', desc: 'Opens the role creation form. Add a character name, gender notes, and casting status.' },
                 { label: 'Ny kandidat', color: '#10b981', desc: 'Opens the candidate form. Add name, contact details, and attach to a role.' },
-                { label: 'Ny timeplan', color: 'var(--role-violet, #8875eb)', desc: 'Opens the audition scheduler. Requires at least one role and one candidate to be created first.' },
+                { label: 'Ny timeplan', color: 'var(--role-violet, #5d76cb)', desc: 'Opens the audition scheduler. Requires at least one role and one candidate to be created first.' },
               ].map(a => (
                 <Box key={a.label} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.25, '&:last-child': { mb: 0 } }}>
                   <Box
@@ -476,7 +476,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#00d4ff">
+            <Callout color="#5d76cb">
               On mobile the button shows only the share icon — on desktop the full
               "Del prosjekt" label is visible.
             </Callout>

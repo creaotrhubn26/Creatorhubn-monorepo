@@ -839,7 +839,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               mb: 1,
               borderRadius: 1,
               border: '1px dashed #2a3142',
-              bgcolor: 'rgba(158, 140, 248,0.04)',
+              bgcolor: 'rgba(147, 164, 220,0.04)',
             }}
           >
             <Typography sx={{ fontSize: 10, color: danceFlowColors.textSecondary, fontWeight: 600, mb: 0.5 }}>
@@ -863,13 +863,13 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 fontWeight: 700,
                 color: danceFlowColors.lavender,
                 bgcolor: 'transparent',
-                border: '1px solid #9e8cf8',
+                border: '1px solid #93a4dc',
                 borderRadius: 0.5,
                 px: 1,
                 py: 0.4,
                 cursor: 'pointer',
                 font: 'inherit',
-                '&:hover': { bgcolor: 'rgba(158, 140, 248,0.12)' },
+                '&:hover': { bgcolor: 'rgba(147, 164, 220,0.12)' },
               }}
             >
               Gå til Dancers →
@@ -1022,7 +1022,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                 borderColor: danceFlowColors.borderSoft,
                 fontSize: 11,
                 px: 1,
-                '&.Mui-selected': { color: '#fff', bgcolor: 'rgba(158, 140, 248,0.18)' },
+                '&.Mui-selected': { color: '#fff', bgcolor: 'rgba(147, 164, 220,0.18)' },
               },
             }}
           >
@@ -1045,7 +1045,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               sx={{
                 color: symmetry ? '#fff' : danceFlowColors.textMuted,
                 borderColor: danceFlowColors.borderSoft,
-                bgcolor: symmetry ? 'rgba(158, 140, 248,0.18)' : 'transparent',
+                bgcolor: symmetry ? 'rgba(147, 164, 220,0.18)' : 'transparent',
                 fontSize: 11,
                 px: 1,
               }}
@@ -1099,7 +1099,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               sx={{
                 color: curveMode ? '#fff' : danceFlowColors.textMuted,
                 borderColor: danceFlowColors.borderSoft,
-                bgcolor: curveMode ? 'rgba(96,165,250,0.18)' : 'transparent',
+                bgcolor: curveMode ? 'rgba(147, 164, 220,0.18)' : 'transparent',
                 fontSize: 11, px: 1,
               }}
             >
@@ -1372,7 +1372,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
               mb: 1,
               borderRadius: 1,
               border: '1px dashed #2a3142',
-              bgcolor: 'rgba(158, 140, 248,0.04)',
+              bgcolor: 'rgba(147, 164, 220,0.04)',
               textAlign: 'center',
             }}
           >
@@ -1420,7 +1420,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
                   p: 0.75,
                   borderRadius: 1,
                   border: `1px solid ${isActive ? danceFlowColors.lavender : danceFlowColors.borderStrong}`,
-                  bgcolor: isActive ? 'rgba(158, 140, 248,0.1)' : 'transparent',
+                  bgcolor: isActive ? 'rgba(147, 164, 220,0.1)' : 'transparent',
                 }}
               >
                 <Stack direction="row" alignItems="center" spacing={0.5}>
@@ -1779,7 +1779,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
               flex: 1, textAlign: 'center', cursor: 'pointer',
               py: 0.5, fontSize: 10, fontWeight: 700, letterSpacing: 1,
               color: stageMode === m ? '#fff' : 'rgba(229,231,235,0.45)',
-              bgcolor: stageMode === m ? 'rgba(158, 140, 248,0.22)' : 'transparent',
+              bgcolor: stageMode === m ? 'rgba(147, 164, 220,0.22)' : 'transparent',
               border: `1px solid ${stageMode === m ? danceFlowColors.lavender : 'rgba(255,255,255,0.12)'}`,
               borderRadius: 0.5,
               textTransform: 'uppercase',
@@ -1904,7 +1904,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             data-testid="formation-details-duration"
             sx={{
               fontSize: 10,
-              color: 'rgba(158, 140, 248,0.85)',
+              color: 'rgba(147, 164, 220,0.85)',
               mt: -0.5,
               mb: 1,
               ml: 0.5,
@@ -1936,7 +1936,7 @@ const FormationDetailsPanel: React.FC<FormationDetailsPanelProps> = ({
             size="small"
             label={t}
             onDelete={() => removeTag(t)}
-            sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight }}
+            sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }}
           />
         ))}
         {tags.length === 0 ? (
@@ -2227,7 +2227,7 @@ function drawStageBackground(
     for (let i = 1; i < gridX; i += 1) {
       const xx = innerLeft + (i / gridX) * innerWidth;
       canvas.add(new Line([xx, innerTop, xx, innerTop + innerHeight], {
-        stroke: 'rgba(158, 140, 248,0.10)',
+        stroke: 'rgba(147, 164, 220,0.10)',
         strokeWidth: 1,
         selectable: false,
         evented: false,
@@ -2236,7 +2236,7 @@ function drawStageBackground(
     for (let i = 1; i < gridY; i += 1) {
       const yy = innerTop + (i / gridY) * innerHeight;
       canvas.add(new Line([innerLeft, yy, innerLeft + innerWidth, yy], {
-        stroke: 'rgba(158, 140, 248,0.10)',
+        stroke: 'rgba(147, 164, 220,0.10)',
         strokeWidth: 1,
         selectable: false,
         evented: false,

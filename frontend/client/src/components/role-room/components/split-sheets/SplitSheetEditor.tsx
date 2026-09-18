@@ -818,8 +818,8 @@ export default function SplitSheetEditor({
 
                   {/* NFF Section */}
                   {(unionSettings.isFilmWorker || unionSettings.unionMembership === 'nff_member' || unionSettings.unionMembership === 'both') && (
-                    <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(0, 212, 255, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(0, 212, 255, 0.3)' }}>
-                      <Typography variant="subtitle2" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
+                    <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(93, 118, 203, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(93, 118, 203, 0.3)' }}>
+                      <Typography variant="subtitle2" sx={{ color: 'var(--role-cyan, #5d76cb)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
                         <MovieIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Norsk Filmforbund (NFF)
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 } }}>
@@ -876,8 +876,8 @@ export default function SplitSheetEditor({
                     </Box>
                   )}
 
-                  <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(59, 130, 246, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                    <Typography variant="subtitle2" sx={{ color: '#60a5fa', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
+                  <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(63, 81, 181, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(63, 81, 181, 0.3)' }}>
+                    <Typography variant="subtitle2" sx={{ color: '#93a4dc', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
                       <LanguageIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Rettighetsforvaltning
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25 } }}>
@@ -918,8 +918,8 @@ export default function SplitSheetEditor({
                   </Box>
 
                   {/* Compensation Settings */}
-                  <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(136, 117, 235, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(136, 117, 235, 0.3)' }}>
-                    <Typography variant="subtitle2" sx={{ color: 'var(--role-violet, #8875eb)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
+                  <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(93, 118, 203, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(93, 118, 203, 0.3)' }}>
+                    <Typography variant="subtitle2" sx={{ color: 'var(--role-violet, #5d76cb)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
                       <PaymentsIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Vederlag og kompensasjon
                     </Typography>
                     <Stack spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }}>
@@ -1387,7 +1387,7 @@ export default function SplitSheetEditor({
                   startIcon={<AddIcon />}
                   onClick={handleAddContributor}
                   sx={{ 
-                    bgcolor: '#8875eb',
+                    bgcolor: '#5d76cb',
                     fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
                     px: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
                     py: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
@@ -1558,17 +1558,17 @@ export default function SplitSheetEditor({
                       boxShadow: percentageError
                         ? '0 2px 8px rgba(244, 67, 54, 0.2)'
                         : percentageWarning
-                        ? '0 2px 8px rgba(98, 73, 223, 0.2)'
+                        ? '0 2px 8px rgba(75, 61, 143, 0.2)'
                         : '0 2px 8px rgba(76, 175, 80, 0.15)',
                       border: percentageError
                         ? '2px solid rgba(244, 67, 54, 0.3)'
                         : percentageWarning
-                        ? '2px solid rgba(98, 73, 223, 0.3)'
+                        ? '2px solid rgba(75, 61, 143, 0.3)'
                         : '2px solid rgba(76, 175, 80, 0.3)',
                       bgcolor: percentageError
                         ? alpha('#f44336', 0.08)
                         : percentageWarning
-                        ? alpha('#6249df', 0.08)
+                        ? alpha('#4b3d8f', 0.08)
                         : alpha('#4caf50', 0.08),
                       transition: 'all 0.3s ease',
                     }}
@@ -1591,7 +1591,7 @@ export default function SplitSheetEditor({
                             bgcolor: percentageError
                               ? '#f44336'
                               : percentageWarning
-                              ? '#6249df'
+                              ? '#4b3d8f'
                               : '#4caf50',
                             color: '#fff',
                             fontWeight: 700,
@@ -2520,8 +2520,8 @@ export default function SplitSheetEditor({
               onClick={handleSave}
               disabled={!isValid || saveMutation.isPending}
               sx={{ 
-                bgcolor: '#8875eb',
-                '&:hover': { bgcolor: '#8875eb' },
+                bgcolor: '#5d76cb',
+                '&:hover': { bgcolor: '#5d76cb' },
                 fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' },
                 px: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
                 py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 },

@@ -197,7 +197,7 @@ function generateCurvePath(points: CurvePoint[], width: number, height: number):
 // =============================================================================
 
 const EditorContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -218,14 +218,14 @@ const ControlPoint = styled(Box, {
   width: locked ? 8 : 14,
   height: locked ? 8 : 14,
   borderRadius: '50%',
-  backgroundColor: locked ? '#6b7280' : active ? '#3b82f6' : '#fff',
-  border: `2px solid ${locked ? '#4b5563' : active ? '#60a5fa' : '#9ca3af'}`,
+  backgroundColor: locked ? '#6b7280' : active ? '#3f51b5' : '#fff',
+  border: `2px solid ${locked ? '#4b5563' : active ? '#93a4dc' : '#9ca3af'}`,
   cursor: locked ? 'default' : 'move',
   transform: 'translate(-50%, -50%)',
   transition: 'box-shadow 0.15s',
   zIndex: active ? 10 : 5,
   '&:hover': locked ? {} : {
-    boxShadow: '0 0 12px rgba(59, 130, 246, 0.5)',
+    boxShadow: '0 0 12px rgba(63, 81, 181, 0.5)',
   },
 }));
 
@@ -434,7 +434,7 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
             <path
               d={curvePath}
               fill="none"
-              stroke="#3b82f6"
+              stroke="#3f51b5"
               strokeWidth={2.5}
               strokeLinecap="round"
             />
@@ -442,8 +442,8 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
             {/* Gradient fill under curve */}
             <defs>
               <linearGradient id="curveGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(59,130,246,0.3)" />
-                <stop offset="100%" stopColor="rgba(59,130,246,0)" />
+                <stop offset="0%" stopColor="rgba(63, 81, 181,0.3)" />
+                <stop offset="100%" stopColor="rgba(63, 81, 181,0)" />
               </linearGradient>
             </defs>
             <path

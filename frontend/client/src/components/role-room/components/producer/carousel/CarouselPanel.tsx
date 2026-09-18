@@ -235,11 +235,11 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
       <Box sx={{ maxWidth: 720, mx: 'auto' }}>
         <Card
           variant="outlined"
-          sx={{ p: 4, bgcolor: 'rgba(15,23,42,0.5)', borderColor: 'rgba(136, 117, 235,0.22)' }}
+          sx={{ p: 4, bgcolor: 'rgba(15,23,42,0.5)', borderColor: 'rgba(93, 118, 203,0.22)' }}
         >
           <Stack spacing={2.5}>
             <Stack direction="row" alignItems="center" spacing={1}>
-              <AutoAwesomeIcon sx={{ color: '#9e8cf8' }} />
+              <AutoAwesomeIcon sx={{ color: '#93a4dc' }} />
               <Typography variant="h6" sx={{ color: '#e2e8f0', fontWeight: 700 }}>
                 Lag 1 ukes innhold fra én URL
               </Typography>
@@ -262,7 +262,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#e2e8f0',
-                  '& fieldset': { borderColor: 'rgba(136, 117, 235,0.22)' },
+                  '& fieldset': { borderColor: 'rgba(93, 118, 203,0.22)' },
                 },
               }}
             />
@@ -276,7 +276,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#e2e8f0',
-                  '& fieldset': { borderColor: 'rgba(136, 117, 235,0.22)' },
+                  '& fieldset': { borderColor: 'rgba(93, 118, 203,0.22)' },
                 },
               }}
             />
@@ -286,8 +286,8 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
               onClick={handleGenerate}
               startIcon={<AutoAwesomeIcon />}
               sx={{
-                bgcolor: '#8875eb',
-                '&:hover': { bgcolor: '#6249df' },
+                bgcolor: '#5d76cb',
+                '&:hover': { bgcolor: '#4b3d8f' },
                 textTransform: 'none',
                 fontWeight: 600,
               }}
@@ -304,7 +304,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
         <Stack alignItems="center" spacing={2}>
-          <CircularProgress sx={{ color: '#9e8cf8' }} />
+          <CircularProgress sx={{ color: '#93a4dc' }} />
           <Typography sx={{ color: '#e2e8f0' }}>
             Analyserer {state.url} + lager 7 konsepter…
           </Typography>
@@ -367,8 +367,8 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
           size="small"
           onClick={() => setState({ kind: 'empty' })}
           sx={{
-            color: '#9e8cf8',
-            borderColor: 'rgba(136, 117, 235,0.45)',
+            color: '#93a4dc',
+            borderColor: 'rgba(93, 118, 203,0.45)',
             textTransform: 'none',
           }}
         >

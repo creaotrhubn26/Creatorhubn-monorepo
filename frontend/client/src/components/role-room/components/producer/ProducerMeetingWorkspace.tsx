@@ -73,7 +73,7 @@ interface MeetingSuggestion {
 }
 
 const MEETING_STATUS_TONES: Record<ProducerMeetingWorkspace['status'], { background: string; color: string }> = {
-  planned: { background: 'rgba(59,130,246,0.14)', color: '#bfdbfe' },
+  planned: { background: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' },
   lobby: { background: 'rgba(251,191,36,0.14)', color: '#fde68a' },
   live: { background: 'rgba(248,113,113,0.16)', color: '#fecaca' },
   follow_up: { background: 'rgba(34,197,94,0.16)', color: '#bbf7d0' },
@@ -637,7 +637,7 @@ export default function ProducerMeetingWorkspace({
                 ? 'Bruk denne flaten til å samle agenda, beslutninger og oppfølging rundt samme klientsync.'
                 : 'Fyll inn det som må være klart før, under og etter møtet i samme prosjektflyt.'}
             </Typography>
-            <Typography sx={{ color: 'rgba(191,219,254,0.68)', fontSize: '0.78rem', mt: 0.45, lineHeight: 1.45 }}>
+            <Typography sx={{ color: 'rgba(195, 203, 230,0.68)', fontSize: '0.78rem', mt: 0.45, lineHeight: 1.45 }}>
               {`${PRODUCER_MEETING_WORKSPACE_STATUS_LABELS[meetingWorkspace.status]} · ${agendaReadyCount} agenda · ${openFollowUpCount} åpne oppfølginger`}
             </Typography>
           </Box>
@@ -650,11 +650,11 @@ export default function ProducerMeetingWorkspace({
               px: 0.8,
               py: 0.7,
               borderRadius: 1.5,
-              border: '1px solid rgba(96,165,250,0.08)',
+              border: '1px solid rgba(147, 164, 220,0.08)',
               bgcolor: 'rgba(15,23,42,0.28)',
             }}
           >
-            <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ color: 'rgba(195, 203, 230,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
               Fremdrift
             </Typography>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
@@ -674,7 +674,7 @@ export default function ProducerMeetingWorkspace({
                   width: `${(meetingReadyCount / 5) * 100}%`,
                   height: '100%',
                   borderRadius: 999,
-                  bgcolor: '#38bdf8',
+                  bgcolor: '#5d76cb',
                 }}
               />
             </Box>
@@ -693,7 +693,7 @@ export default function ProducerMeetingWorkspace({
               px: 0.8,
               py: 0.72,
               borderRadius: 1.5,
-              border: '1px solid rgba(96,165,250,0.12)',
+              border: '1px solid rgba(147, 164, 220,0.12)',
               bgcolor: 'rgba(15,23,42,0.22)',
             }}
           >
@@ -702,14 +702,14 @@ export default function ProducerMeetingWorkspace({
                 <Chip
                   size="small"
                   label={PRODUCER_PLANNER_MEETING_TYPE_LABELS[meetingWorkspace.meetingType]}
-                  sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                  sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                 />
               ) : null}
               {meetingWorkspace.phase ? (
                 <Chip
                   size="small"
                   label={PRODUCER_PLANNING_PHASE_LABELS[meetingWorkspace.phase]}
-                  sx={{ bgcolor: 'rgba(158, 140, 248,0.16)', color: '#e0dbfa' }}
+                  sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#dfe4f3' }}
                 />
               ) : null}
               {meetingWorkspace.meetingMode ? (
@@ -737,14 +737,14 @@ export default function ProducerMeetingWorkspace({
                 <Chip
                   size="small"
                   label={`${participantCount} deltakere`}
-                  sx={{ bgcolor: 'rgba(14,165,233,0.16)', color: '#bae6fd' }}
+                  sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                 />
               ) : null}
               {assetCount > 0 ? (
                 <Chip
                   size="small"
                   label={`${assetCount} assets`}
-                  sx={{ bgcolor: 'rgba(158, 140, 248,0.16)', color: '#ebe7fd' }}
+                  sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#eef1fb' }}
                 />
               ) : null}
             </Stack>
@@ -754,7 +754,7 @@ export default function ProducerMeetingWorkspace({
               </Typography>
             ) : null}
             {(meetingWorkspace.expectations?.length ?? 0) > 0 ? (
-              <Typography sx={{ color: 'rgba(191,219,254,0.78)', fontSize: '0.78rem', mt: 0.45, lineHeight: 1.45 }}>
+              <Typography sx={{ color: 'rgba(195, 203, 230,0.78)', fontSize: '0.78rem', mt: 0.45, lineHeight: 1.45 }}>
                 {`Forventninger: ${(meetingWorkspace.expectations ?? []).join(' · ')}`}
               </Typography>
             ) : null}
@@ -768,11 +768,11 @@ export default function ProducerMeetingWorkspace({
               px: 0.8,
               py: meetingMissingItems.length <= 2 ? 0.58 : 0.72,
               borderRadius: 1.5,
-              border: '1px solid rgba(96,165,250,0.1)',
+              border: '1px solid rgba(147, 164, 220,0.1)',
               bgcolor: 'rgba(15,23,42,0.22)',
             }}
           >
-            <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
+            <Typography sx={{ color: 'rgba(195, 203, 230,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
               Dette mangler i møtet
             </Typography>
             <Stack spacing={0.18}>
@@ -828,7 +828,7 @@ export default function ProducerMeetingWorkspace({
               p: 1,
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.14)',
-              bgcolor: 'rgba(10, 5, 21,0.4)',
+              bgcolor: 'rgba(27, 18, 44,0.4)',
             }}
           >
             <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -893,7 +893,7 @@ export default function ProducerMeetingWorkspace({
               p: 1,
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.14)',
-              bgcolor: 'rgba(10, 5, 21,0.4)',
+              bgcolor: 'rgba(27, 18, 44,0.4)',
             }}
           >
             <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -947,7 +947,7 @@ export default function ProducerMeetingWorkspace({
                   p: 0.95,
                   borderRadius: 1.35,
                   border: '1px solid rgba(148,163,184,0.14)',
-                  bgcolor: 'rgba(10, 5, 21,0.45)',
+                  bgcolor: 'rgba(27, 18, 44,0.45)',
                 }}
               >
                 <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1}>
@@ -956,7 +956,7 @@ export default function ProducerMeetingWorkspace({
                       <Chip
                         size="small"
                         label={MEETING_SOURCE_LABELS[suggestion.sourceType ?? 'manual']}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                        sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                       />
                       {suggestion.phase ? (
                         <Chip
@@ -1050,7 +1050,7 @@ export default function ProducerMeetingWorkspace({
                   p: 1,
                   borderRadius: 1.35,
                   border: isHighlighted ? '1px solid rgba(251,191,36,0.48)' : '1px solid rgba(148,163,184,0.14)',
-                  bgcolor: isHighlighted ? 'rgba(120,53,15,0.2)' : 'rgba(10, 5, 21,0.45)',
+                  bgcolor: isHighlighted ? 'rgba(120,53,15,0.2)' : 'rgba(27, 18, 44,0.45)',
                 }}
               >
                 <Stack spacing={0.75}>
@@ -1059,7 +1059,7 @@ export default function ProducerMeetingWorkspace({
                       <Chip
                         size="small"
                         label={MEETING_SOURCE_LABELS[item.sourceType ?? 'manual']}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                        sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                       />
                       {item.phase ? (
                         <Chip
@@ -1206,7 +1206,7 @@ export default function ProducerMeetingWorkspace({
                     p: 0.95,
                     borderRadius: 1.35,
                     border: isHighlighted ? '1px solid rgba(251,191,36,0.48)' : '1px solid rgba(148,163,184,0.14)',
-                    bgcolor: isHighlighted ? 'rgba(120,53,15,0.2)' : 'rgba(10, 5, 21,0.45)',
+                    bgcolor: isHighlighted ? 'rgba(120,53,15,0.2)' : 'rgba(27, 18, 44,0.45)',
                   }}
                 >
                   <Stack spacing={0.75}>
@@ -1217,30 +1217,30 @@ export default function ProducerMeetingWorkspace({
                           label={DECISION_STATUS_LABELS[item.status ?? 'open']}
                           sx={{
                             alignSelf: 'flex-start',
-                            bgcolor: item.status === 'done' ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.14)',
-                            color: item.status === 'done' ? '#bbf7d0' : '#bfdbfe',
+                            bgcolor: item.status === 'done' ? 'rgba(34,197,94,0.14)' : 'rgba(63, 81, 181,0.14)',
+                            color: item.status === 'done' ? '#bbf7d0' : '#c3cbe6',
                           }}
                         />
                         {item.phase ? (
                           <Chip
                             size="small"
                             label={PRODUCER_PLANNING_PHASE_LABELS[item.phase]}
-                            sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }}
                           />
                         ) : null}
                         <Chip
                           size="small"
                           label={item.clientVisible ? MEETING_VISIBILITY_LABELS.client : MEETING_VISIBILITY_LABELS.internal}
                           sx={{
-                            bgcolor: item.clientVisible ? 'rgba(56,189,248,0.16)' : 'rgba(148,163,184,0.14)',
-                            color: item.clientVisible ? '#bfdbfe' : '#cbd5e1',
+                            bgcolor: item.clientVisible ? 'rgba(93, 118, 203,0.16)' : 'rgba(148,163,184,0.14)',
+                            color: item.clientVisible ? '#c3cbe6' : '#cbd5e1',
                           }}
                         />
                         {syncedReview ? (
                           <Chip
                             size="small"
                             label={`Klientsamarbeid · ${getProducerReviewStatusLabel(syncedReview.status)}`}
-                            sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#bfdbfe' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }}
                           />
                         ) : null}
                         {syncedTimelineItem ? (
@@ -1435,7 +1435,7 @@ export default function ProducerMeetingWorkspace({
                     p: 0.95,
                     borderRadius: 1.35,
                     border: isHighlighted ? '1px solid rgba(251,191,36,0.48)' : '1px solid rgba(148,163,184,0.14)',
-                    bgcolor: isHighlighted ? 'rgba(120,53,15,0.2)' : 'rgba(10, 5, 21,0.45)',
+                    bgcolor: isHighlighted ? 'rgba(120,53,15,0.2)' : 'rgba(27, 18, 44,0.45)',
                   }}
                 >
                   <Stack spacing={0.75}>
@@ -1450,19 +1450,19 @@ export default function ProducerMeetingWorkspace({
                               ? 'rgba(34,197,94,0.14)'
                               : item.status === 'in_progress'
                                 ? 'rgba(251,191,36,0.14)'
-                                : 'rgba(59,130,246,0.14)',
+                                : 'rgba(63, 81, 181,0.14)',
                             color: item.status === 'done'
                               ? '#bbf7d0'
                               : item.status === 'in_progress'
                                 ? '#fde68a'
-                                : '#bfdbfe',
+                                : '#c3cbe6',
                           }}
                         />
                         {item.phase ? (
                           <Chip
                             size="small"
                             label={PRODUCER_PLANNING_PHASE_LABELS[item.phase]}
-                            sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }}
                           />
                         ) : null}
                         {syncedTimelineItem ? (

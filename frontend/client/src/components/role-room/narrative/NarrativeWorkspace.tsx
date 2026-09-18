@@ -369,7 +369,7 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.75, borderBottom: `1px solid ${narrativeColors.borderStrong}`, bgcolor: narrativeColors.bgPanel, flexWrap: 'wrap' }}>
                 <Button size="small" startIcon={<AddIcon />} disabled={!activeBoardId} onClick={() => void addElement('element')} sx={{ color: narrativeColors.accent }} data-testid="narrative-add-element">Element</Button>
                 <Button size="small" startIcon={<BranchIcon />} disabled={!activeBoardId} onClick={() => void addElement('branch')} sx={{ color: narrativeColors.warning }} data-testid="narrative-add-branch">Forgrening</Button>
-                <Button size="small" startIcon={<JumperIcon />} disabled={!activeBoardId} onClick={() => void addElement('jumper')} sx={{ color: '#60a5fa' }} data-testid="narrative-add-jumper">Jumper</Button>
+                <Button size="small" startIcon={<JumperIcon />} disabled={!activeBoardId} onClick={() => void addElement('jumper')} sx={{ color: '#93a4dc' }} data-testid="narrative-add-jumper">Jumper</Button>
                 <Button size="small" startIcon={<NoteIcon />} disabled={!activeBoardId} onClick={() => void addElement('note')} sx={{ color: narrativeColors.textDim }} data-testid="narrative-add-note">Notat</Button>
                 <Box sx={{ flex: 1 }} />
                 {selectedConnectionId ? (

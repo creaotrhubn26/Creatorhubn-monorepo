@@ -124,7 +124,7 @@ export const SceneInfoColumn: React.FC<SceneInfoColumnProps> = ({
             px: 1.5,
           },
           '& .Mui-selected': { color: '#fff !important' },
-          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-violet, #8875eb)' },
+          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-violet, #5d76cb)' },
         }}
       >
         <Tab value="info" label="SCENE INFO" />
@@ -212,10 +212,10 @@ export const SceneInfoColumn: React.FC<SceneInfoColumnProps> = ({
                   Tags
                 </Typography>
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  <Chip label="Dialog" size="small" sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#9e8cf8', fontSize: 10, height: 18 }} />
-                  <Chip label="Reaksjon" size="small" sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#9e8cf8', fontSize: 10, height: 18 }} />
+                  <Chip label="Dialog" size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc', fontSize: 10, height: 18 }} />
+                  <Chip label="Reaksjon" size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc', fontSize: 10, height: 18 }} />
                   {scene.characters.length === 2 && (
-                    <Chip label="To personer" size="small" sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#9e8cf8', fontSize: 10, height: 18 }} />
+                    <Chip label="To personer" size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc', fontSize: 10, height: 18 }} />
                   )}
                   <Chip label="Viktig" size="small" sx={{ bgcolor: 'rgba(220,38,38,0.18)', color: '#fca5a5', fontSize: 10, height: 18 }} />
                 </Stack>
@@ -252,7 +252,7 @@ export const SceneInfoColumn: React.FC<SceneInfoColumnProps> = ({
           <QuickActionButton
             label="PICKUP SHOT"
             icon={<StarIcon sx={{ fontSize: 14 }} />}
-            color="#3b82f6"
+            color="#3f51b5"
             onClick={() => onQuickAction?.('pickup-shot')}
           />
           <QuickActionButton
@@ -264,7 +264,7 @@ export const SceneInfoColumn: React.FC<SceneInfoColumnProps> = ({
           <QuickActionButton
             label="CHECK FOCUS"
             icon={<CenterFocusStrongIcon sx={{ fontSize: 14 }} />}
-            color="#9e8cf8"
+            color="#93a4dc"
             onClick={() => onQuickAction?.('check-focus')}
           />
           <QuickActionButton

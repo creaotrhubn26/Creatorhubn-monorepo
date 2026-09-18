@@ -39,7 +39,7 @@ const ROLE_TYPE_META: Record<RoleTypeCanonical, RoleTypeMeta> = {
   minor: {
     canonical: 'minor',
     label: 'Liten rolle',
-    color: '#60a5fa',
+    color: '#93a4dc',
     order: 2,
   },
   extra: {

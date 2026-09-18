@@ -39,7 +39,7 @@ export default function LeadsGrowthTab() {
         onChange={(_e, next: SubTab) => setSub(next)}
         variant="scrollable"
         allowScrollButtonsMobile
-        sx={{ borderBottom: '1px solid rgba(148,163,184,0.14)', minHeight: 44, '& .Mui-selected': { color: '#22d3ee !important' }, '& .MuiTabs-indicator': { bgcolor: '#22d3ee' } }}
+        sx={{ borderBottom: '1px solid rgba(148,163,184,0.14)', minHeight: 44, '& .Mui-selected': { color: '#5d76cb !important' }, '& .MuiTabs-indicator': { bgcolor: '#5d76cb' } }}
       >
         <Tab value="leads" label="Leads" icon={<LeadsIcon fontSize="small" />} iconPosition="start" sx={{ textTransform: 'none', minHeight: 44 }} />
         <Tab value="mentions" label="Omtaler" icon={<MentionsIcon fontSize="small" />} iconPosition="start" sx={{ textTransform: 'none', minHeight: 44 }} />

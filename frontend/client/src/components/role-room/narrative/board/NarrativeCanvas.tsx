@@ -250,7 +250,7 @@ function CanvasInner(props: NarrativeCanvasProps) {
           nodeColor={(n) => {
             const kind = (n.data as NarrativeNodeData | undefined)?.element.kind;
             if (kind === 'branch') return narrativeColors.warning;
-            if (kind === 'jumper') return '#60a5fa';
+            if (kind === 'jumper') return '#93a4dc';
             if (kind === 'note') return '#6b7280';
             return narrativeColors.accent;
           }}

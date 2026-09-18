@@ -9,7 +9,7 @@
  * Bruk:
  *   <RoleStatPillRow
  *     pills={[
- *       { icon: <InventoryIcon />, count: 324, label: 'Totalt utstyr', color: '#9e8cf8' },
+ *       { icon: <InventoryIcon />, count: 324, label: 'Totalt utstyr', color: '#93a4dc' },
  *       { icon: <CheckIcon />, count: 212, label: 'Tilgjengelig nå', color: '#10b981' },
  *       ...
  *     ]}
@@ -17,7 +17,7 @@
  *   />
  *
  * Eller for én enkelt pill:
- *   <RoleStatPill icon={...} count={324} label="Totalt utstyr" color="#9e8cf8" />
+ *   <RoleStatPill icon={...} count={324} label="Totalt utstyr" color="#93a4dc" />
  */
 
 import React from 'react';
@@ -30,7 +30,7 @@ export interface RoleStatPillProps {
   count: number | string;
   /** Label under tallet — eks "Totalt utstyr" */
   label: string;
-  /** Hex-farge for ikon-bg + tall — eks "#9e8cf8" (lilla), "#10b981" (grønn) */
+  /** Hex-farge for ikon-bg + tall — eks "#93a4dc" (lilla), "#10b981" (grønn) */
   color: string;
   /** Optional onClick — gjør pill-en klikkbar (eks. for filter-toggle) */
   onClick?: () => void;

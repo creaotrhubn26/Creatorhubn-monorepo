@@ -137,8 +137,8 @@ function getCharacters(dialogueLines: DialogueLine[]): string[] {
 // Generate consistent colors for characters
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8875eb',
-    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#8875eb',
+    '#3f51b5', '#ef4444', '#22c55e', '#f59e0b', '#5d76cb',
+    '#ec4899', '#3f51b5', '#f97316', '#84cc16', '#5d76cb',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
@@ -339,7 +339,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#18122b',
+        bgcolor: '#2a3d56',
         overflow: 'hidden',
       }}
     >
@@ -349,7 +349,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         sx={{
           p: 2,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(33, 28, 59,0.9)',
+          bgcolor: 'rgba(60, 78, 109,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={2}>
@@ -456,7 +456,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
           sx={{
             p: 2,
             borderBottom: '1px solid rgba(255,255,255,0.1)',
-            bgcolor: 'rgba(24, 18, 43,0.9)',
+            bgcolor: 'rgba(42, 61, 86,0.9)',
           }}
         >
           <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
@@ -606,7 +606,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
             p: 2,
             mx: 2,
             mt: 2,
-            bgcolor: 'rgba(59,130,246,0.1)',
+            bgcolor: 'rgba(63, 81, 181,0.1)',
             borderLeft: `3px solid ${getCharacterColor(currentLine.character)}`,
             borderRadius: 1,
           }}
@@ -661,7 +661,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
                 mb: 0.5,
                 cursor: 'pointer',
                 bgcolor: idx === currentIndex
-                  ? 'rgba(59,130,246,0.2)'
+                  ? 'rgba(63, 81, 181,0.2)'
                   : 'transparent',
                 '&:hover': {
                   bgcolor: 'rgba(255,255,255,0.05)',

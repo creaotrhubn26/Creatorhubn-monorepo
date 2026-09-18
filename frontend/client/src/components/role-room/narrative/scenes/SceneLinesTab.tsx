@@ -15,7 +15,7 @@ import type { UseNarrativeScenesResult } from './useNarrativeScenes';
 import { EmptyHint, sceneFieldSx } from './sceneUi';
 
 const RECORDING: NarrativeLineRecordingStatus[] = ['none', 'needs_take', 'recorded', 'approved'];
-const RECORDING_COLOR: Record<NarrativeLineRecordingStatus, string> = { none: narrativeColors.textDim, needs_take: narrativeColors.warning, recorded: '#60a5fa', approved: narrativeColors.accent };
+const RECORDING_COLOR: Record<NarrativeLineRecordingStatus, string> = { none: narrativeColors.textDim, needs_take: narrativeColors.warning, recorded: '#93a4dc', approved: narrativeColors.accent };
 const selectSx = { ...sceneFieldSx, '& .MuiSelect-select': { py: 0.5, fontSize: 12 } } as const;
 const menuProps = { PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } };
 

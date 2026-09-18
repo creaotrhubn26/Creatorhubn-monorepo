@@ -55,7 +55,7 @@ const DEMOS: DemoEntry[] = [
     permission: "pages_manage_cta",
     title: "Set Role Agent Page CTA",
     oneLiner: "Choose CTA type (BOOK_NOW/SHOP_NOW/…) + target URL → POST /v21.0/{page-id} + GET-verify.",
-    badge: "#8875eb",
+    badge: "#5d76cb",
     demoPath: "/admin/pages-manage-cta-app-review-demo",
     runbookPath: "backend/docs/pages-manage-cta-app-review-runbook.md",
     recordingCmd: "node backend/scripts/record-pages-cta-app-review-demo.playwright.mjs",
@@ -140,7 +140,7 @@ const DEMOS: DemoEntry[] = [
     permission: "instagram_business_basic",
     title: "Show the connected Instagram professional account",
     oneLiner: "Read + display the connected IG Business account's username + profile picture so the user confirms the right account is linked.",
-    badge: "#8875eb",
+    badge: "#5d76cb",
     demoPath: "/admin/instagram-business-basic-app-review-demo",
     runbookPath: "backend/docs/ig-business-basic-app-review-runbook.md",
     recordingCmd: "node backend/scripts/record-ig-business-basic-app-review-demo.playwright.mjs",
@@ -221,7 +221,7 @@ export function setupMetaReviewIndexRoutes(deps: SetupMetaReviewIndexRoutesDeps)
   body{margin:0;background:#0f1729;color:#f1f5f9;padding:32px;min-height:100vh}
   .wrap{max-width:1180px;margin:0 auto}
   .hero{background:linear-gradient(135deg,#1e293b,#0f1729);border:1px solid #334155;border-radius:14px;padding:36px;box-shadow:0 22px 80px rgba(0,0,0,.4);margin-bottom:24px}
-  h1{margin:0 0 8px;font-size:34px;font-weight:800;background:linear-gradient(135deg,#9e8cf8,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  h1{margin:0 0 8px;font-size:34px;font-weight:800;background:linear-gradient(135deg,#93a4dc,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
   h2{margin:0 0 18px;font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
   .meta-row{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:#cbd5e1;margin-top:14px}
   .meta-row span strong{color:#f1f5f9}

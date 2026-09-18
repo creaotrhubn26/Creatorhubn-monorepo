@@ -306,7 +306,7 @@ export function ProductionManagementWorkspace({
           <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} alignItems={{ lg: 'center' }}>
             <Button variant="outlined" startIcon={<ScheduleIcon />} onClick={() => { if (confirmIfDirty()) onOpenSchedule(); }} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.35)' }}>Opptaksplan</Button>
             <Button variant="outlined" startIcon={<CrewIcon />} onClick={() => { if (confirmIfDirty()) onOpenCrew(); }} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.35)' }}>Team</Button>
-            {onOpenCoordination ? <Button variant="outlined" startIcon={<CrewIcon />} onClick={() => { if (confirmIfDirty()) onOpenCoordination(); }} sx={{ color: '#bae6fd', borderColor: 'rgba(56,189,248,.35)' }}>Koordinator</Button> : null}
+            {onOpenCoordination ? <Button variant="outlined" startIcon={<CrewIcon />} onClick={() => { if (confirmIfDirty()) onOpenCoordination(); }} sx={{ color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,.35)' }}>Koordinator</Button> : null}
             <Button variant="outlined" startIcon={<FullWorkspaceIcon />} onClick={() => { if (confirmIfDirty()) onOpenFullWorkspace(); }} sx={{ color: '#ccfbf1', borderColor: 'rgba(45,212,191,.35)' }}>Hele prosjektet</Button>
           </Stack>
         </Stack>
@@ -425,7 +425,7 @@ export function ProductionManagementWorkspace({
                   <Stack spacing={1} sx={{ mt: 1.5 }}>
                     {operations.checkpoints.map((checkpoint) => (
                       <Stack key={checkpoint.id} direction={{ xs: 'column', sm: 'row' }} gap={1} alignItems={{ sm: 'center' }}>
-                        <Chip size="small" label={CATEGORY_LABELS[checkpoint.category]} sx={{ color: '#a5f3fc', bgcolor: 'rgba(6,182,212,.1)', width: 105 }} />
+                        <Chip size="small" label={CATEGORY_LABELS[checkpoint.category]} sx={{ color: '#c3cbe6', bgcolor: 'rgba(63, 81, 181,.1)', width: 105 }} />
                         <Typography sx={{ flex: 1, fontSize: '.88rem' }}>{checkpoint.title}</Typography>
                         <FormControl size="small" sx={{ minWidth: 135, ...fieldSx }}>
                           <Select aria-label={`Status for ${checkpoint.title}`} value={checkpoint.status} disabled={readOnly} onChange={(event) => updateOperations((current) => ({ ...current, checkpoints: current.checkpoints.map((entry) => entry.id === checkpoint.id ? { ...entry, status: event.target.value as typeof entry.status, updatedAt: new Date().toISOString() } : entry) }))}>

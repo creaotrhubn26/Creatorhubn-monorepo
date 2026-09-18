@@ -54,8 +54,8 @@ type Bucket = 'urgent' | 'today' | 'soon' | 'attention';
 const BUCKET_META: Record<Bucket, { label: string; color: string; Icon: typeof UrgentIcon }> = {
   urgent: { label: 'Haster nå', color: '#fca5a5', Icon: UrgentIcon },
   today: { label: 'I dag', color: '#fbbf24', Icon: TodayIcon },
-  soon: { label: 'Kommende', color: 'var(--role-cyan, #22d3ee)', Icon: SoonIcon },
-  attention: { label: 'Krever oppmerksomhet', color: '#c6bdf4', Icon: AttentionIcon },
+  soon: { label: 'Kommende', color: 'var(--role-cyan, #5d76cb)', Icon: SoonIcon },
+  attention: { label: 'Krever oppmerksomhet', color: '#c3cbe6', Icon: AttentionIcon },
 };
 const BUCKET_ORDER: Bucket[] = ['urgent', 'today', 'soon', 'attention'];
 
@@ -97,7 +97,7 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
       sx={{
         borderRadius: '16px',
         border: '1px solid rgba(148,163,184,0.14)',
-        background: 'linear-gradient(180deg,#100b1e,#0a0515)',
+        background: 'linear-gradient(180deg,#2a3152,#1b122c)',
         p: { xs: 2, md: 2.5 },
         mb: 2.5,
         boxShadow: '0 18px 44px rgba(0,0,0,0.4)',
@@ -106,9 +106,9 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: collapsed ? 0 : 1.5 }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '16px' }}>Min dag</Typography>
+          <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '16px' }}>Min dag</Typography>
           {loading ? (
-            <CircularProgress size={14} sx={{ color: '#8875eb' }} />
+            <CircularProgress size={14} sx={{ color: '#5d76cb' }} />
           ) : (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>
               {totalActionable > 0
@@ -123,7 +123,7 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
           aria-label={collapsed ? 'Vis Min dag' : 'Skjul Min dag'}
           sx={{
             minWidth: 44, minHeight: 44, color: 'rgba(226,232,240,0.8)',
-            '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+            '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 },
           }}
         >
           <ExpandIcon sx={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform .15s' }} />
@@ -135,7 +135,7 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
         {!loading && items.length === 0 ? (
           <Stack alignItems="center" spacing={1} sx={{ py: 3 }}>
             <DoneIcon sx={{ fontSize: 30, color: '#86efac' }} />
-            <Typography sx={{ color: '#f6f5ff', fontWeight: 700, fontSize: '14px' }}>Ingenting venter — bra jobba</Typography>
+            <Typography sx={{ color: '#f7f9ff', fontWeight: 700, fontSize: '14px' }}>Ingenting venter — bra jobba</Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '12px' }}>
               Nye godkjenninger, frister og klient-svar dukker opp her.
             </Typography>
@@ -215,8 +215,8 @@ function MinDagRow({
         <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.2 }}>
           <Typography
             sx={{
-              color: 'rgba(198, 189, 244,0.92)', fontSize: '10.5px', fontWeight: 700,
-              px: 0.7, py: 0.1, borderRadius: '6px', background: 'rgba(136, 117, 235,0.14)',
+              color: 'rgba(195, 203, 230,0.92)', fontSize: '10.5px', fontWeight: 700,
+              px: 0.7, py: 0.1, borderRadius: '6px', background: 'rgba(93, 118, 203,0.14)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160,
             }}
             title={item.projectName}
@@ -230,7 +230,7 @@ function MinDagRow({
           ) : null}
         </Stack>
         <Typography
-          sx={{ color: '#f6f5ff', fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          sx={{ color: '#f7f9ff', fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           title={item.title}
         >
           {item.title}
@@ -247,9 +247,9 @@ function MinDagRow({
           endIcon={<ArrowIcon sx={{ fontSize: 15 }} />}
           sx={{
             flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '12px',
-            minHeight: 44, px: 1.2, borderRadius: '9px', color: '#c6bdf4',
-            '&:hover': { background: 'rgba(136, 117, 235,0.1)' },
-            '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 },
+            minHeight: 44, px: 1.2, borderRadius: '9px', color: '#c3cbe6',
+            '&:hover': { background: 'rgba(93, 118, 203,0.1)' },
+            '&:focus-visible': { outline: '2px solid #5d76cb', outlineOffset: 2 },
           }}
         >
           Åpne

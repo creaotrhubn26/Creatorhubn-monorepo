@@ -41,11 +41,11 @@ import roleRoomTalentsService, {
 } from '../services/roleRoomTalentsService';
 
 const SURFACE = 'rgba(7, 13, 26, 0.72)';
-const BORDER = 'rgba(125, 211, 252, 0.14)';
+const BORDER = 'rgba(147, 164, 220, 0.14)';
 const TEXT_PRIMARY = 'rgba(241, 245, 249, 0.96)';
-const TEXT_SECONDARY = 'rgba(191, 219, 254, 0.74)';
+const TEXT_SECONDARY = 'rgba(195, 203, 230, 0.74)';
 const TEXT_MUTED = 'rgba(148, 163, 184, 0.78)';
-const ACCENT = 'var(--role-portal-accent, #7dd3fc)';
+const ACCENT = 'var(--role-portal-accent, #93a4dc)';
 const SUCCESS = '#34d399';
 const DANGER = '#f87171';
 
@@ -266,7 +266,7 @@ export default function TalentConsentsSection() {
               bgcolor: ACCENT,
               color: '#031522',
               fontWeight: 700,
-              '&:hover': { bgcolor: '#bae6fd' },
+              '&:hover': { bgcolor: '#c3cbe6' },
             }}
           >
             Opprett talent-profil
@@ -310,7 +310,7 @@ export default function TalentConsentsSection() {
               bgcolor: ACCENT,
               color: '#031522',
               fontWeight: 700,
-              '&:hover': { bgcolor: '#bae6fd' },
+              '&:hover': { bgcolor: '#c3cbe6' },
             }}
           >
             Gi en partner tilgang
@@ -394,7 +394,7 @@ function ConsentRow({ consent, onRevoke, muted = false }: ConsentRowProps) {
             size="small"
             label={scopeLabel}
             sx={{
-              bgcolor: 'rgba(125, 211, 252, 0.16)',
+              bgcolor: 'rgba(147, 164, 220, 0.16)',
               color: ACCENT,
               fontWeight: 600,
               height: 22,

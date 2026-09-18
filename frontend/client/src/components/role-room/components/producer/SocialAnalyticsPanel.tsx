@@ -44,12 +44,12 @@ import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert, MetricCard } from
 
 const PLATFORM_COLOR: Record<string, string> = {
   instagram: '#ec4899',
-  facebook_page: '#3b82f6',
-  tiktok: 'var(--role-cyan, #22d3ee)',
+  facebook_page: '#3f51b5',
+  tiktok: 'var(--role-cyan, #5d76cb)',
   linkedin: '#0a66c2',
   youtube: '#ef4444',
   x: '#94a3b8',
-  threads: '#8875eb',
+  threads: '#5d76cb',
 };
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -201,7 +201,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
               label="Events 7d"
               value={formatNumber(summary?.last7d.totalEvents ?? 0)}
               caption={`${summary?.last7d.totalUnread ?? 0} ulest`}
-              accent="#22d3ee"
+              accent="#5d76cb"
               testId="kpi-events-7d"
             />
             <MetricCard
@@ -422,7 +422,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
                           </Typography>
                         ) : null}
                         {p.scheduled > 0 ? (
-                          <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: '0.7rem', fontWeight: 600 }}>
+                          <Typography sx={{ color: 'var(--role-cyan, #93a4dc)', fontSize: '0.7rem', fontWeight: 600 }}>
                             {formatNumber(p.scheduled)} planlagt
                           </Typography>
                         ) : null}

@@ -184,7 +184,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
             {inheritingFromWorkspace ? (
               <Alert
                 severity="info"
-                sx={{ bgcolor: 'rgba(125,211,252,0.08)', color: '#bfdbfe' }}
+                sx={{ bgcolor: 'rgba(147, 164, 220,0.08)', color: '#c3cbe6' }}
               >
                 Dette prosjektet bruker for øyeblikket bedriftens <strong>workspace-default-gruppe</strong>.
                 Sett en lenke under for å overstyre med en prosjekt-spesifikk gruppe.
@@ -268,7 +268,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
               >
                 Når du legger til {`{navn}`} i Crew-listen, sender The Role Room en WhatsApp-melding via bedriftens egen Cloud API:
                 <br />
-                <Box component="span" sx={{ fontStyle: 'italic', color: '#bfdbfe' }}>
+                <Box component="span" sx={{ fontStyle: 'italic', color: '#c3cbe6' }}>
                   "Hei {`{navn}`}, du er lagt til i {`{prosjekt}`}. Bli med i WhatsApp-gruppen → [link]"
                 </Box>
               </Box>
@@ -351,7 +351,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                         return (
                           <TableRow key={row.crewId}>
                             <TableCell sx={{ borderBottomColor: 'rgba(255,255,255,0.05)' }}>
-                              <Typography sx={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#bfdbfe' }}>
+                              <Typography sx={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#c3cbe6' }}>
                                 {row.crewId.slice(0, 8)}…
                               </Typography>
                               <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.55)' }}>
@@ -393,7 +393,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                                     size="small"
                                     onClick={() => handleResend(row.crewId)}
                                     disabled={Boolean(resendingFor)}
-                                    sx={{ color: 'var(--role-cyan, #7dd3fc)' }}
+                                    sx={{ color: 'var(--role-cyan, #93a4dc)' }}
                                   >
                                     {resendingFor === row.crewId ? (
                                       <CircularProgress size={14} />

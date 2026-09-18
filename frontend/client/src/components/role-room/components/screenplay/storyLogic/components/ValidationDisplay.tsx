@@ -108,7 +108,7 @@ export const ValidationDisplay: React.FC<ValidationDisplayProps> = ({
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <GpsFixedIcon sx={{ fontSize: '1.1rem', color: '#60a5fa', mt: 0.25 }} aria-hidden />
+            <GpsFixedIcon sx={{ fontSize: '1.1rem', color: '#93a4dc', mt: 0.25 }} aria-hidden />
             <Box sx={{ flex: 1 }}>
               <Typography variant="caption" sx={{ color: '#9ca3af', fontWeight: 600, letterSpacing: 0.5 }}>
                 STØRSTE MULIGHET
@@ -125,7 +125,7 @@ export const ValidationDisplay: React.FC<ValidationDisplayProps> = ({
                 <IconButton
                   size="small"
                   onClick={() => onJumpToField(topWarning.fieldId)}
-                  sx={{ color: '#60a5fa' }}
+                  sx={{ color: '#93a4dc' }}
                 >
                   <GpsFixedIcon fontSize="small" />
                 </IconButton>
@@ -177,7 +177,7 @@ export const ValidationDisplay: React.FC<ValidationDisplayProps> = ({
                         size="small"
                         onClick={() => onJumpToField(w.fieldId)}
                         aria-label={`Gå til ${getFieldLabelNb(w.fieldId)}`}
-                        sx={{ color: '#60a5fa' }}
+                        sx={{ color: '#93a4dc' }}
                       >
                         <GpsFixedIcon sx={{ fontSize: 16 }} />
                       </IconButton>
@@ -193,11 +193,11 @@ export const ValidationDisplay: React.FC<ValidationDisplayProps> = ({
                     gap: 1,
                     p: 1,
                     mb: 0.5,
-                    bgcolor: 'rgba(59, 130, 246, 0.04)',
+                    bgcolor: 'rgba(63, 81, 181, 0.04)',
                     borderRadius: 1,
                   }}
                 >
-                  <TipsIcon sx={{ fontSize: 16, color: '#60a5fa', mt: 0.2 }} />
+                  <TipsIcon sx={{ fontSize: 16, color: '#93a4dc', mt: 0.2 }} />
                   <Typography variant="body2" sx={{ color: '#93c5fd' }}>
                     {s}
                   </Typography>
@@ -253,7 +253,7 @@ export const ValidationDisplay: React.FC<ValidationDisplayProps> = ({
             startIcon={<SchoolIcon />}
             onClick={() => setShowCoaching(!showCoaching)}
             endIcon={showCoaching ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            sx={{ color: '#9e8cf8', textTransform: 'none', fontSize: '0.75rem' }}
+            sx={{ color: '#93a4dc', textTransform: 'none', fontSize: '0.75rem' }}
           >
             {showCoaching ? 'Skjul' : 'Vis'} mentor-tips ({result.coaching.length})
           </Button>
@@ -262,26 +262,26 @@ export const ValidationDisplay: React.FC<ValidationDisplayProps> = ({
               sx={{
                 mt: 1,
                 p: 1.5,
-                bgcolor: 'rgba(136, 117, 235, 0.06)',
+                bgcolor: 'rgba(93, 118, 203, 0.06)',
                 borderRadius: 1.5,
-                border: '1px solid rgba(136, 117, 235, 0.15)',
+                border: '1px solid rgba(93, 118, 203, 0.15)',
               }}
             >
               {result.coaching.map((tip, idx) => (
                 <Box key={idx} sx={{ mb: idx < result.coaching.length - 1 ? 2 : 0 }}>
-                  <Typography variant="caption" sx={{ color: '#9e8cf8', fontWeight: 600 }}>
+                  <Typography variant="caption" sx={{ color: '#93a4dc', fontWeight: 600 }}>
                     Eksempel:
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#d4d4d8', mb: 0.5, fontStyle: 'italic' }}>
                     "{tip.example}"
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#9e8cf8', fontWeight: 600 }}>
+                  <Typography variant="caption" sx={{ color: '#93a4dc', fontWeight: 600 }}>
                     Mal:
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#d4d4d8', mb: 0.5 }}>
                     {tip.template}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#9e8cf8', fontWeight: 600 }}>
+                  <Typography variant="caption" sx={{ color: '#93a4dc', fontWeight: 600 }}>
                     Pass på:
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#a1a1aa' }}>

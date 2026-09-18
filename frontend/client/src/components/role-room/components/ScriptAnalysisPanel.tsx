@@ -61,7 +61,7 @@ const getSeverityIcon = (severity: 'error' | 'warning' | 'info') => {
     case 'warning':
       return <WarningIcon sx={{ color: '#f59e0b' }} />;
     default:
-      return <InfoIcon sx={{ color: '#3b82f6' }} />;
+      return <InfoIcon sx={{ color: '#3f51b5' }} />;
   }
 };
 
@@ -72,7 +72,7 @@ const getSeverityColor = (severity: 'error' | 'warning' | 'info') => {
     case 'warning':
       return '#f59e0b';
     default:
-      return '#3b82f6';
+      return '#3f51b5';
   }
 };
 
@@ -106,7 +106,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#18122b',
+        bgcolor: '#2a3d56',
         overflow: 'hidden',
         // WCAG 2.2 - 2.5.5: 44x44 min touch target for alle IconButtons
         '& .MuiIconButton-root': {
@@ -121,7 +121,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         sx={{
           p: 2,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(33, 28, 59,0.9)',
+          bgcolor: 'rgba(60, 78, 109,0.9)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={2}>
@@ -172,7 +172,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                   icon={<InfoIcon />}
                   label={`${totalIssues - errors - warnings} observasjoner`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}
+                  sx={{ bgcolor: 'rgba(63, 81, 181,0.2)', color: '#3f51b5' }}
                 />
               )}
             </>
@@ -187,7 +187,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'stats'}
           onChange={handleAccordionChange('stats')}
           sx={{
-            bgcolor: 'rgba(33, 28, 59,0.5)',
+            bgcolor: 'rgba(60, 78, 109,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -205,7 +205,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                   sx={{
                     p: 2,
                     flex: 1,
-                    bgcolor: 'rgba(59,130,246,0.1)',
+                    bgcolor: 'rgba(63, 81, 181,0.1)',
                     borderRadius: 2,
                     textAlign: 'center',
                   }}
@@ -276,7 +276,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'conflicts'}
           onChange={handleAccordionChange('conflicts')}
           sx={{
-            bgcolor: 'rgba(33, 28, 59,0.5)',
+            bgcolor: 'rgba(60, 78, 109,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -372,7 +372,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'consistency'}
           onChange={handleAccordionChange('consistency')}
           sx={{
-            bgcolor: 'rgba(33, 28, 59,0.5)',
+            bgcolor: 'rgba(60, 78, 109,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -468,7 +468,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           expanded={expanded === 'scenes'}
           onChange={handleAccordionChange('scenes')}
           sx={{
-            bgcolor: 'rgba(33, 28, 59,0.5)',
+            bgcolor: 'rgba(60, 78, 109,0.5)',
             '&:before': { display: 'none' },
             mb: 1,
           }}
@@ -495,8 +495,8 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                       key={idx}
                       sx={{
                         p: 1.5,
-                        bgcolor: hasContent ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.03)',
-                        borderLeft: `3px solid ${hasContent ? '#3b82f6' : '#6b7280'}`,
+                        bgcolor: hasContent ? 'rgba(63, 81, 181,0.08)' : 'rgba(255,255,255,0.03)',
+                        borderLeft: `3px solid ${hasContent ? '#3f51b5' : '#6b7280'}`,
                         cursor: 'pointer',
                         '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                       }}

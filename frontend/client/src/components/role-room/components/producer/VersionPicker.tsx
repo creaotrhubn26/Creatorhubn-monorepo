@@ -153,8 +153,8 @@ export function VersionPicker({
                         height: 18,
                         fontSize: '0.62rem',
                         bgcolor: v.generatedByKind === 'agent'
-                          ? 'rgba(136, 117, 235,0.18)' : 'rgba(34,211,238,0.18)',
-                        color: v.generatedByKind === 'agent' ? '#9e8cf8' : '#67e8f9',
+                          ? 'rgba(93, 118, 203,0.18)' : 'rgba(93, 118, 203,0.18)',
+                        color: v.generatedByKind === 'agent' ? '#93a4dc' : '#93a4dc',
                         ml: 'auto',
                       }} />
                 {v.isActive && (

@@ -28,13 +28,13 @@ import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 
 const palette = {
-  bg: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bg: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
   tiktok: '#ff0050',
 };
 
@@ -61,7 +61,7 @@ const EVENT_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, { txt: string; color: string; bg: string }> = {
   delivered: { txt: 'SENDT', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
-  pending: { txt: 'PÅ VEI', color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
+  pending: { txt: 'PÅ VEI', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.18)' },
   retrying: { txt: 'PRØVER PÅ NYTT', color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
   failed: { txt: 'FEILET', color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
 };
@@ -211,14 +211,14 @@ export default function ClientTiktokCrmEventsPanel({
             disabled={!advertiserId}
             startIcon={<SendOutlinedIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
+              background: 'linear-gradient(135deg, #ff0050 0%, #4b3d8f 100%)',
               color: '#fff',
               textTransform: 'none',
               fontWeight: 700,
               fontSize: '0.96rem',
               px: 3, py: 1.2,
               borderRadius: 1.6,
-              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #3e3180 100%)' },
             }}
           >
             Send testhandling
@@ -244,7 +244,7 @@ export default function ClientTiktokCrmEventsPanel({
                 const status = STATUS_LABEL[ev.delivery_status] ?? STATUS_LABEL.pending;
                 return (
                   <Box key={ev.id} sx={{
-                    bgcolor: 'rgba(136, 117, 235,0.04)',
+                    bgcolor: 'rgba(93, 118, 203,0.04)',
                     border: `1px solid ${palette.border}`,
                     borderRadius: 1.2,
                     p: 1.4,
@@ -255,7 +255,7 @@ export default function ClientTiktokCrmEventsPanel({
                       ) : ev.delivery_status === 'failed' ? (
                         <ErrorOutlineOutlinedIcon sx={{ color: '#f87171', fontSize: 20 }} />
                       ) : (
-                        <CircularProgress size={16} sx={{ color: '#60a5fa' }} />
+                        <CircularProgress size={16} sx={{ color: '#93a4dc' }} />
                       )}
                       <Box sx={{ flex: 1 }}>
                         <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>
@@ -348,9 +348,9 @@ export default function ClientTiktokCrmEventsPanel({
             disabled={!testEmail || sending}
             startIcon={sending ? <CircularProgress size={16} /> : <SendOutlinedIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
+              background: 'linear-gradient(135deg, #ff0050 0%, #4b3d8f 100%)',
               color: '#fff', textTransform: 'none', fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #3e3180 100%)' },
             }}
           >
             {sending ? 'Sender…' : 'Send til TikTok'}

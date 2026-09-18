@@ -92,7 +92,7 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
           alignItems: 'stretch',
           height: `calc(${NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          bgcolor: 'rgba(16, 11, 30,0.96)',
+          bgcolor: 'rgba(42, 49, 82,0.96)',
           backdropFilter: 'saturate(180%) blur(12px)',
           WebkitBackdropFilter: 'saturate(180%) blur(12px)',
           borderTop: '1px solid rgba(255,255,255,0.08)',
@@ -115,7 +115,7 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
                 justifyContent: 'center',
                 gap: 0.25,
                 bgcolor: 'transparent',
-                color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.72)',
+                color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.72)',
                 border: 'none',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
@@ -134,15 +134,15 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
                       width: 24,
                       height: 3,
                       borderRadius: 1.5,
-                      bgcolor: '#9e8cf8',
+                      bgcolor: '#93a4dc',
                     }
                   : undefined,
                 '&:active': {
                   transform: 'scale(0.94)',
-                  color: '#9e8cf8',
+                  color: '#93a4dc',
                 },
                 '&:focus-visible': {
-                  outline: '3px solid #8875eb',
+                  outline: '3px solid #5d76cb',
                   outlineOffset: -2,
                 },
               }}
@@ -176,7 +176,7 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
             justifyContent: 'center',
             gap: 0.25,
             bgcolor: 'transparent',
-            color: isActiveInOverflow ? '#9e8cf8' : 'rgba(255,255,255,0.72)',
+            color: isActiveInOverflow ? '#93a4dc' : 'rgba(255,255,255,0.72)',
             border: 'none',
             cursor: 'pointer',
             fontFamily: 'inherit',
@@ -195,15 +195,15 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
                   width: 24,
                   height: 3,
                   borderRadius: 1.5,
-                  bgcolor: '#9e8cf8',
+                  bgcolor: '#93a4dc',
                 }
               : undefined,
             '&:active': {
               transform: 'scale(0.94)',
-              color: '#9e8cf8',
+              color: '#93a4dc',
             },
             '&:focus-visible': {
-              outline: '3px solid #8875eb',
+              outline: '3px solid #5d76cb',
               outlineOffset: -2,
             },
           }}
@@ -233,7 +233,7 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
           sx: {
             borderTopLeftRadius: 'var(--rr-bottom-sheet-radius, 16px)',
             borderTopRightRadius: 'var(--rr-bottom-sheet-radius, 16px)',
-            bgcolor: '#18122b',
+            bgcolor: '#2a3d56',
             color: 'rgba(255,255,255,0.92)',
             maxHeight: 'var(--rr-modal-max-height, 80dvh)',
             paddingBottom: 'env(safe-area-inset-bottom, 0px)',
@@ -289,18 +289,18 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
                   px: 2,
                   WebkitTapHighlightColor: 'transparent',
                   touchAction: 'manipulation',
-                  bgcolor: isActive ? 'rgba(158, 140, 248,0.12)' : 'transparent',
-                  '&:active': { bgcolor: 'rgba(158, 140, 248,0.18)' },
+                  bgcolor: isActive ? 'rgba(147, 164, 220,0.12)' : 'transparent',
+                  '&:active': { bgcolor: 'rgba(147, 164, 220,0.18)' },
                 }}
               >
-                <ListItemIcon sx={{ minWidth: 44, color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.72)' }}>
+                <ListItemIcon sx={{ minWidth: 44, color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.72)' }}>
                   <ItemIcon />
                 </ListItemIcon>
                 <ListItemText
                   primary={item.label}
                   primaryTypographyProps={{
                     fontWeight: isActive ? 600 : 500,
-                    color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.92)',
+                    color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.92)',
                   }}
                 />
               </ListItemButton>

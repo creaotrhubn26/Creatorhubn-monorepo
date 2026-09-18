@@ -59,7 +59,7 @@ export const ContinuityStrip: React.FC<ContinuityStripProps> = ({
         alignItems: 'center',
         gap: 0.75,
         p: compact ? 0.75 : 1,
-        bgcolor: 'rgba(16, 11, 30,0.92)',
+        bgcolor: 'rgba(42, 49, 82,0.92)',
         borderRadius: 1.5,
         border: '1px solid rgba(255,255,255,0.06)',
       }}

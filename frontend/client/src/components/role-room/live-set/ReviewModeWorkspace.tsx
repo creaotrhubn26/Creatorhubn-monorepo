@@ -66,7 +66,7 @@ const MOCK_COMMENTS: MockComment[] = [
 ];
 
 const ROLE_COLORS: Record<MockComment['role'], string> = {
-  director: '#8875eb',
+  director: '#5d76cb',
   producer: '#22c55e',
   client: '#fbbf24',
 };
@@ -100,13 +100,13 @@ function VersionCard({
         p: 1,
         bgcolor: selected
           ? variant === 'left'
-            ? 'rgba(136, 117, 235,0.15)'
+            ? 'rgba(93, 118, 203,0.15)'
             : 'rgba(220,38,38,0.12)'
           : 'rgba(255,255,255,0.02)',
         border: '1px solid',
         borderColor: selected
           ? variant === 'left'
-            ? '#8875eb'
+            ? '#5d76cb'
             : '#dc2626'
           : 'rgba(255,255,255,0.06)',
         borderRadius: 1,
@@ -127,7 +127,7 @@ function VersionCard({
               height: 16,
               fontSize: 9,
               fontWeight: 700,
-              bgcolor: variant === 'left' ? '#8875eb' : '#dc2626',
+              bgcolor: variant === 'left' ? '#5d76cb' : '#dc2626',
               color: '#fff',
               '& .MuiChip-label': { px: 0.5 },
             }}
@@ -156,7 +156,7 @@ function VideoPlayer({
   version: AISuggestion<RoughCutPayload> | null;
   variant: 'left' | 'right';
 }) {
-  const color = variant === 'left' ? '#8875eb' : '#dc2626';
+  const color = variant === 'left' ? '#5d76cb' : '#dc2626';
 
   if (!version) {
     return (
@@ -407,8 +407,8 @@ export const ReviewModeWorkspace: React.FC<ReviewModeWorkspaceProps> = ({ projec
                           mt: 0.5,
                           fontSize: 9,
                           height: 16,
-                          bgcolor: 'rgba(136, 117, 235,0.1)',
-                          color: '#c6bdf4',
+                          bgcolor: 'rgba(93, 118, 203,0.1)',
+                          color: '#c3cbe6',
                           fontFamily: 'monospace',
                           '& .MuiChip-label': { px: 0.75 },
                         }}
@@ -442,9 +442,9 @@ export const ReviewModeWorkspace: React.FC<ReviewModeWorkspaceProps> = ({ projec
               size="small"
               disabled={!newComment.trim()}
               sx={{
-                color: newComment.trim() ? '#9e8cf8' : 'rgba(255,255,255,0.3)',
+                color: newComment.trim() ? '#93a4dc' : 'rgba(255,255,255,0.3)',
                 border: '1px solid',
-                borderColor: newComment.trim() ? '#8875eb' : 'rgba(255,255,255,0.1)',
+                borderColor: newComment.trim() ? '#5d76cb' : 'rgba(255,255,255,0.1)',
               }}
             >
               <SendIcon fontSize="small" />

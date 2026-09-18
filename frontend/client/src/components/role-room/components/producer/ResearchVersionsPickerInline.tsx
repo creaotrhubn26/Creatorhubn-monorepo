@@ -59,7 +59,7 @@ export function ResearchVersionsPickerInline({
         void load();
         onActivated?.();
       }}
-      accentColor="#22d3ee"
+      accentColor="#5d76cb"
     />
   );
 }

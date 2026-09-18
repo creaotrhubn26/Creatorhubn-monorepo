@@ -169,13 +169,13 @@ export default function DanceAnnotateLayout({
           width: '100%', px: 1.5, py: 1,
           border: 'none', borderRadius: 1,
           cursor: 'pointer', font: 'inherit',
-          bgcolor: isActive ? 'rgba(158, 140, 248,0.12)' : 'transparent',
+          bgcolor: isActive ? 'rgba(147, 164, 220,0.12)' : 'transparent',
           color: isActive ? danceFlowColors.lavender : danceFlowColors.textSecondary,
           textAlign: 'left',
           fontSize: 13, fontWeight: isActive ? 700 : 500,
           transition: 'background-color 120ms, color 120ms',
           '&:hover': {
-            bgcolor: isActive ? 'rgba(158, 140, 248,0.16)' : 'rgba(158, 140, 248,0.08)',
+            bgcolor: isActive ? 'rgba(147, 164, 220,0.16)' : 'rgba(147, 164, 220,0.08)',
             color: danceFlowColors.lavender,
           },
           '&:focus-visible': {
@@ -318,7 +318,7 @@ export default function DanceAnnotateLayout({
                   minWidth: 140,
                   fontVariantNumeric: 'tabular-nums',
                   '&:hover': saveStatus === 'idle' ? {
-                    bgcolor: 'rgba(158, 140, 248,0.08)',
+                    bgcolor: 'rgba(147, 164, 220,0.08)',
                     color: danceFlowColors.lavender,
                     borderColor: danceFlowColors.lavender,
                   } : undefined,
@@ -427,7 +427,7 @@ export default function DanceAnnotateLayout({
               textAlign: 'left',
               fontSize: 13, fontWeight: 500,
               '&:hover': {
-                bgcolor: 'rgba(158, 140, 248,0.08)',
+                bgcolor: 'rgba(147, 164, 220,0.08)',
                 color: danceFlowColors.lavender,
               },
             }}

@@ -39,8 +39,8 @@ function mapPipeline(status: string | null): { stage: number; pill: string; colo
   const s = (status || '').toLowerCase();
   if (/lever|ferdig|done|complete|publish/.test(s)) return { stage: 4, pill: 'Levert', color: '#10b981', progress: 100 };
   if (/post|redig|edit/.test(s)) return { stage: 3, pill: 'Redigering', color: ACCENT, progress: 48 };
-  if (/opptak|innspill|shoot|filming/.test(s)) return { stage: 2, pill: 'Innspilling', color: '#38bdf8', progress: 62 };
-  if (/pre/.test(s)) return { stage: 1, pill: 'Pre-produksjon', color: '#38bdf8', progress: 34 };
+  if (/opptak|innspill|shoot|filming/.test(s)) return { stage: 2, pill: 'Innspilling', color: '#5d76cb', progress: 62 };
+  if (/pre/.test(s)) return { stage: 1, pill: 'Pre-produksjon', color: '#5d76cb', progress: 34 };
   return { stage: 0, pill: status || 'Planlegging', color: '#10b981', progress: 15 };
 }
 
@@ -66,7 +66,7 @@ function Pipeline({ stage, color }: { stage: number; color: string }) {
   );
 }
 
-const THUMBS = ['linear-gradient(135deg,#1e3a5f,#2a4a6f)', 'linear-gradient(135deg,#1a4a2e,#2f6b3f)', 'linear-gradient(135deg,#261763,#4a4560)', 'linear-gradient(135deg,#261763,#301f84)'];
+const THUMBS = ['linear-gradient(135deg,#1e3a5f,#2a4a6f)', 'linear-gradient(135deg,#1a4a2e,#2f6b3f)', 'linear-gradient(135deg,#2b2553,#4a4560)', 'linear-gradient(135deg,#2b2553,#302a83)'];
 
 function fmtDue(dueAt: string): string {
   const days = Math.round((new Date(dueAt).getTime() - Date.now()) / 86_400_000);
@@ -232,7 +232,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
             <Button variant="outlined" startIcon={<TemplateIcon />} onClick={openTemplateDialog} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
               <T eid="edu-sp-btn-template" component="span" sx={{ fontWeight: 600 }}>Opprett fra mal</T>
             </Button>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
               <T eid="edu-sp-btn-new" component="span" sx={{ fontWeight: 700 }}>Ny produksjon</T>
             </Button>
           </Stack>
@@ -241,7 +241,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
         <Collapse in={creating}>
-          <Panel sx={{ border: '1px solid rgba(136, 117, 235,0.35)' }}>
+          <Panel sx={{ border: '1px solid rgba(93, 118, 203,0.35)' }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
               <TextField size="small" label="Tittel" value={title} onChange={(e) => setTitle(e.target.value)} fullWidth />
               <TextField size="small" select label="Kull (valgfritt)" value={cohortId} onChange={(e) => setCohortId(e.target.value)} sx={{ minWidth: 200 }}>
@@ -251,7 +251,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
             </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1.5 }}>
               <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" onClick={handleCreate} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Opprett'}</Button>
+              <Button variant="contained" onClick={handleCreate} disabled={!title.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Opprett'}</Button>
             </Stack>
           </Panel>
         </Collapse>
@@ -261,7 +261,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
           {kpis.map((k) => (
             <Panel key={k.id} sx={{ p: 2 }}>
               <Stack direction="row" alignItems="center" spacing={1.5}>
-                <Box sx={{ width: 44, height: 44, borderRadius: 2.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', flexShrink: 0, '& svg': { fontSize: 22 } }}>{k.icon}</Box>
+                <Box sx={{ width: 44, height: 44, borderRadius: 2.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', flexShrink: 0, '& svg': { fontSize: 22 } }}>{k.icon}</Box>
                 <Box>
                   <T eid={`edu-sp-kpi-${k.id}-label`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
                   <Typography sx={{ fontSize: 25, fontWeight: 700, lineHeight: 1, mt: 0.25 }}>{k.value}</Typography>
@@ -305,7 +305,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
                 <Box sx={{ px: 1.5, py: 0.6, borderRadius: 5, flexShrink: 0, bgcolor: `${pl.color}22`, color: pl.color, fontSize: 12, fontWeight: 600, textAlign: 'center', minWidth: 96 }}>{pl.pill}</Box>
                 <Box sx={{ width: 110, flexShrink: 0 }}>
                   <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 0.75 }}>{pl.progress} %</Typography>
-                  <Box sx={{ height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}><Box sx={{ height: '100%', width: `${pl.progress}%`, borderRadius: 3, background: `linear-gradient(90deg, ${pl.color}, #9e8cf8)` }} /></Box>
+                  <Box sx={{ height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}><Box sx={{ height: '100%', width: `${pl.progress}%`, borderRadius: 3, background: `linear-gradient(90deg, ${pl.color}, #93a4dc)` }} /></Box>
                 </Box>
                 <Pipeline stage={pl.stage} color={pl.color} />
                 <Stack spacing={1} sx={{ flexShrink: 0 }}>
@@ -320,13 +320,13 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
         </Panel>
 
         {/* Kom i gang-bånd */}
-        <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} spacing={2} sx={{ p: 2.25, borderRadius: 3, border: '1px dashed rgba(136, 117, 235,0.35)', bgcolor: 'rgba(136, 117, 235,0.05)' }}>
-          <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'rgba(136, 117, 235,0.2)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><RocketIcon /></Box>
+        <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} spacing={2} sx={{ p: 2.25, borderRadius: 3, border: '1px dashed rgba(93, 118, 203,0.35)', bgcolor: 'rgba(93, 118, 203,0.05)' }}>
+          <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6', display: 'grid', placeItems: 'center', flexShrink: 0 }}><RocketIcon /></Box>
           <Box sx={{ flex: 1 }}>
             <T eid="edu-sp-cta-title" sx={{ fontSize: 15, fontWeight: 700 }}>Kom i gang</T>
             <T eid="edu-sp-cta-body" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', mt: 0.25 }}>Opprett din første studentproduksjon, eller bruk en av våre maler for å komme raskt i gang.</T>
           </Box>
-          <Button variant="contained" onClick={() => setCreating(true)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          <Button variant="contained" onClick={() => setCreating(true)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-sp-cta-btn" component="span" sx={{ fontWeight: 700 }}>Opprett første produksjon</T>
           </Button>
           <Button variant="outlined" startIcon={<TemplateIcon />} onClick={openTemplateDialog} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
@@ -349,7 +349,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
             return (
               <Stack key={a.id} direction="row" spacing={1.25} sx={{ py: 1, cursor: a.productionProjectId ? 'pointer' : 'default' }}
                 onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId)}>
-                <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: soon ? 'rgba(236,72,153,0.16)' : 'rgba(136, 117, 235,0.16)', color: soon ? '#ec4899' : '#c6bdf4', flexShrink: 0 }}><DeliverIcon sx={{ fontSize: 15 }} /></Box>
+                <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: soon ? 'rgba(236,72,153,0.16)' : 'rgba(93, 118, 203,0.16)', color: soon ? '#ec4899' : '#c3cbe6', flexShrink: 0 }}><DeliverIcon sx={{ fontSize: 15 }} /></Box>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
                   <Typography sx={{ fontSize: 11.5, color: soon ? '#ec4899' : 'text.secondary', mt: 0.25 }}>{fmtDue(a.dueAt as string)}{a.productionTitle ? ` · ${a.productionTitle}` : ''}</Typography>
@@ -370,18 +370,18 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
 
       {/* Mal-dialog */}
       <Dialog open={tmplOpen} onClose={() => setTmplOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: '#fff', border: '1px solid rgba(93, 118, 203,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Opprett produksjon fra mal</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: '1fr 1fr', mb: 2 }}>
             {PRODUCTION_TEMPLATES.map((t) => {
               const active = t.id === tmplId;
               return (
-                <Card key={t.id} sx={{ bgcolor: active ? 'rgba(136, 117, 235,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(136, 117, 235,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
+                <Card key={t.id} sx={{ bgcolor: active ? 'rgba(93, 118, 203,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(93, 118, 203,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
                   <CardActionArea onClick={() => { setTmplId(t.id); setTmplTitle(t.name); }} sx={{ p: 1.5, height: '100%' }}>
                     <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t.name}</Typography>
                     <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.4 }}>{t.description}</Typography>
-                    <Typography sx={{ fontSize: 11, color: '#c6bdf4', mt: 0.75, fontWeight: 600 }}>{t.assignments.length} oppgaver</Typography>
+                    <Typography sx={{ fontSize: 11, color: '#c3cbe6', mt: 0.75, fontWeight: 600 }}>{t.assignments.length} oppgaver</Typography>
                   </CardActionArea>
                 </Card>
               );
@@ -398,13 +398,13 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTmplOpen(false)} disabled={tmplBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={handleCreateFromTemplate} disabled={!tmplTitle.trim() || tmplBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700 }}>{tmplBusy ? 'Oppretter…' : 'Opprett fra mal'}</Button>
+          <Button variant="contained" onClick={handleCreateFromTemplate} disabled={!tmplTitle.trim() || tmplBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700 }}>{tmplBusy ? 'Oppretter…' : 'Opprett fra mal'}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Team-dialog — utdannings-bro til ekte prosjekt-tilgang */}
       <Dialog open={!!teamProd} onClose={() => setTeamProd(null)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: '#fff', border: '1px solid rgba(93, 118, 203,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Team — {teamProd?.title}</DialogTitle>
         <DialogContent>
           <T eid="edu-sp-team-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
@@ -423,12 +423,12 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
                     ? <Typography sx={{ fontSize: 11, color: '#34d399' }}>Har konto · tilgang aktiv</Typography>
                     : <Stack direction="row" alignItems="center" spacing={0.75}>
                         <Typography sx={{ fontSize: 11, color: '#f59e0b' }}>Ingen konto ennå</Typography>
-                        <Button size="small" onClick={() => inviteAccount(m)} sx={{ fontSize: 10.5, minWidth: 0, p: 0, color: '#c6bdf4', textTransform: 'none' }}>Inviter til konto</Button>
+                        <Button size="small" onClick={() => inviteAccount(m)} sx={{ fontSize: 10.5, minWidth: 0, p: 0, color: '#c3cbe6', textTransform: 'none' }}>Inviter til konto</Button>
                       </Stack>
                 )}
               </Box>
               <Select size="small" value={m.assigned ? m.role : 'none'} onChange={(e) => setMemberRole(m.studentId, e.target.value as MemberRole | 'none')}
-                sx={{ fontSize: 12.5, minWidth: 150, color: m.assigned ? '#e0dbfa' : 'rgba(255,255,255,0.72)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 } }}>
+                sx={{ fontSize: 12.5, minWidth: 150, color: m.assigned ? '#dfe4f3' : 'rgba(255,255,255,0.72)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 } }}>
                 <MenuItem value="none" sx={{ fontSize: 12.5 }}>Ikke med</MenuItem>
                 {(['viewer', 'contributor', 'lead'] as MemberRole[]).map((r) => <MenuItem key={r} value={r} sx={{ fontSize: 12.5 }}>{MEMBER_ROLE_LABELS[r]}</MenuItem>)}
               </Select>

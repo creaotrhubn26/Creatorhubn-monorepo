@@ -48,7 +48,7 @@ import {
 import type { Choreography } from './choreographyTypes';
 
 const PURPLE = danceFlowColors.lavenderDark;
-const PURPLE_SOFT = 'rgba(136, 117, 235,0.18)';
+const PURPLE_SOFT = 'rgba(93, 118, 203,0.18)';
 
 export interface ChoreographyBuilderConnectedProps {
   /** Når null, jobber bygget mot eierens "frie" koreografier (project_id IS NULL). */
@@ -400,7 +400,7 @@ export function ChoreographyBuilderConnected({
           sx={{
             minWidth: 220,
             '& .MuiInputBase-root': {
-              bgcolor: 'rgba(136, 117, 235,0.08)',
+              bgcolor: 'rgba(93, 118, 203,0.08)',
               color: '#fff',
               fontWeight: 600,
             },
@@ -418,7 +418,7 @@ export function ChoreographyBuilderConnected({
                 <Chip
                   size="small"
                   label={`${h.segmentCount} seg`}
-                  sx={{ height: 18, fontSize: 11, bgcolor: 'rgba(136, 117, 235,0.12)' }}
+                  sx={{ height: 18, fontSize: 11, bgcolor: 'rgba(93, 118, 203,0.12)' }}
                 />
               </Stack>
             </MenuItem>

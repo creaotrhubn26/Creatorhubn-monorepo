@@ -2,7 +2,7 @@
 /**
  * StoryboardBoardPage — piksel-tro implementasjon av mål-designet
  * («Neon City»-mockupen, STORYBOARD_DESIGN.md §4b) med Role Room-brand:
- * mockupens blå aksent er byttet mot fiolett #8875eb; chrome-gråtonene og
+ * mockupens blå aksent er byttet mot fiolett #5d76cb; chrome-gråtonene og
  * den lyse arbeidsflaten/arket følger mockupen.
  *
  * Fullskjerms-overlay montert fra StoryboardView (workspaceMode 'pro').
@@ -42,8 +42,8 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 
-const BRAND = '#8875eb';
-const BRAND_SOFT = 'rgba(136, 117, 235,0.16)';
+const BRAND = '#5d76cb';
+const BRAND_SOFT = 'rgba(93, 118, 203,0.16)';
 const CHROME = '#0b0b0e';
 const PANEL = '#141519';
 const PANEL_BORDER = 'rgba(255,255,255,0.07)';
@@ -59,7 +59,7 @@ const MOVEMENT_GLYPHS: Record<string, string> = {
 };
 const TRANSITIONS = ['Cut', 'Dissolve', 'Match Cut', 'Smash Cut', 'Wipe', 'Fade'];
 const FOCUS_OPTIONS = ['Shallow', 'Deep'];
-const LABEL_COLORS = ['#ffffff', '#8875eb', '#ef6a6a', '#f0c24b', '#3fa46a', '#2fbdb3'];
+const LABEL_COLORS = ['#ffffff', '#5d76cb', '#ef6a6a', '#f0c24b', '#3fa46a', '#2fbdb3'];
 
 // Shot size-ikon: enkel figur+ramme-glyf per størrelse (mockupens figurikoner)
 const ShotSizeGlyph: React.FC<{ size: string; active: boolean }> = ({ size, active }) => {
@@ -95,7 +95,7 @@ const parseStrokesJSON = (value: unknown): any[] => {
 
 // Lag-rekkefølge på arket (bunn → topp) — matcher mockupens Layers-panel.
 const BOARD_LAYERS = ['Drawing', 'Camera / Arrows', 'Dialog', 'Notes'] as const;
-const ANNOTATION_COLOR = '#8875eb';
+const ANNOTATION_COLOR = '#5d76cb';
 
 const InlineFrameCanvas: React.FC<{
   frame: any;
@@ -405,7 +405,7 @@ const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames
 
   const current = playable[index];
   return (
-    <Box data-testid="board-animatic" sx={{ position: 'fixed', inset: 0, zIndex: 1500, bgcolor: 'rgba(10, 5, 21,0.96)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+    <Box data-testid="board-animatic" sx={{ position: 'fixed', inset: 0, zIndex: 1500, bgcolor: 'rgba(27, 18, 44,0.96)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <IconButton onClick={onClose} sx={{ position: 'absolute', top: 16, right: 16, color: '#fff' }}><CloseIcon /></IconButton>
       {current ? (
         <Box sx={{ width: 'min(86vw, 1400px)', aspectRatio: '2.39 / 1', backgroundImage: `url(${current.thumbnailUrl || current.imageUrl})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', borderRadius: 1 }} />
@@ -413,7 +413,7 @@ const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames
         <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>Ingen tegnede frames å spille av ennå.</Typography>
       )}
       <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 3 }}>
-        <IconButton onClick={() => setPlaying((p) => !p)} sx={{ color: '#fff', bgcolor: '#8875eb', '&:hover': { bgcolor: '#6249df' } }}>
+        <IconButton onClick={() => setPlaying((p) => !p)} sx={{ color: '#fff', bgcolor: '#5d76cb', '&:hover': { bgcolor: '#4b3d8f' } }}>
           {playing ? <PauseIcon /> : <PlayArrowIcon />}
         </IconButton>
         <Typography sx={{ color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
@@ -422,7 +422,7 @@ const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames
       </Stack>
       <Stack direction="row" spacing={0.5} sx={{ mt: 2, width: 'min(86vw, 1400px)' }}>
         {playable.map((f, i) => (
-          <Box key={f.id} onClick={() => { setIndex(i); setPlaying(false); }} sx={{ flexGrow: Math.max(0.5, f.duration ?? 1), height: 5, borderRadius: 2, cursor: 'pointer', bgcolor: i === index ? '#8875eb' : 'rgba(255,255,255,0.2)' }} />
+          <Box key={f.id} onClick={() => { setIndex(i); setPlaying(false); }} sx={{ flexGrow: Math.max(0.5, f.duration ?? 1), height: 5, borderRadius: 2, cursor: 'pointer', bgcolor: i === index ? '#5d76cb' : 'rgba(255,255,255,0.2)' }} />
         ))}
       </Stack>
     </Box>
@@ -437,7 +437,7 @@ const PanelLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 // Pensel-tupper (mockupens Brushes-thumbnails): skaft + karakteristisk tupp.
 const BrushTipGlyph: React.FC<{ type: string; active: boolean }> = ({ type, active }) => {
-  const shaft = active ? '#c6bdf4' : 'rgba(255,255,255,0.55)';
+  const shaft = active ? '#c3cbe6' : 'rgba(255,255,255,0.55)';
   const tip = active ? '#fff' : 'rgba(255,255,255,0.8)';
   const tips: Record<string, React.ReactNode> = {
     pencil: <path d="M 15 30 L 19 40 L 23 30 Z" fill={tip} />,
@@ -672,7 +672,7 @@ export const StoryboardBoardPage: React.FC<{
     <Box data-testid="storyboard-board-page" sx={{ position: 'fixed', inset: 0, zIndex: 1400, display: 'flex', flexDirection: 'column', bgcolor: CHROME, fontFamily: 'Inter, "SF Pro Text", sans-serif' }}>
       {/* ── Topbar ─────────────────────────────────────────────── */}
       <Stack direction="row" alignItems="center" sx={{ height: 56, px: 2, borderBottom: `1px solid ${PANEL_BORDER}`, flexShrink: 0 }}>
-        <Box sx={{ width: 34, height: 34, borderRadius: 2, background: `linear-gradient(135deg, ${BRAND}, #8875eb)`, display: 'grid', placeItems: 'center', mr: 2 }}>
+        <Box sx={{ width: 34, height: 34, borderRadius: 2, background: `linear-gradient(135deg, ${BRAND}, #5d76cb)`, display: 'grid', placeItems: 'center', mr: 2 }}>
           <DashboardIcon sx={{ fontSize: 19, color: '#fff' }} />
         </Box>
         <Typography sx={{ fontSize: 11, letterSpacing: 1, color: TEXT_LABEL, fontWeight: 700, mr: 1 }}>PROJECT</Typography>
@@ -708,7 +708,7 @@ export const StoryboardBoardPage: React.FC<{
           {topTab('animatic', 'Animatic', <PlayCircleOutlineIcon sx={{ fontSize: 17 }} />, false, () => setAnimaticOpen(true))}
         </Stack>
         <Tooltip title={typeof window !== 'undefined' ? (window.localStorage.getItem('userEmail') || '') : ''}>
-          <Box sx={{ width: 30, height: 30, borderRadius: '50%', mr: 1.5, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, color: '#fff', background: `linear-gradient(135deg, ${BRAND}, #8875eb)` }}>
+          <Box sx={{ width: 30, height: 30, borderRadius: '50%', mr: 1.5, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, color: '#fff', background: `linear-gradient(135deg, ${BRAND}, #5d76cb)` }}>
             {(typeof window !== 'undefined' ? (window.localStorage.getItem('userEmail') || 'U') : 'U').slice(0, 2).toUpperCase()}
           </Box>
         </Tooltip>
@@ -1129,7 +1129,7 @@ export const StoryboardBoardPage: React.FC<{
               {comments.length === 0 && <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>Ingen kommentarer på dette shotet ennå — bruk Review-modusen for tråder med rolle.</Typography>}
               {comments.map((comment: any) => (
                 <Box key={comment.id} sx={{ mb: 1.25, p: 1.25, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${PANEL_BORDER}` }}>
-                  <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#c6bdf4' }}>{comment.role}</Typography>
+                  <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: '#c3cbe6' }}>{comment.role}</Typography>
                   <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.88)' }}>{comment.text}</Typography>
                 </Box>
               ))}

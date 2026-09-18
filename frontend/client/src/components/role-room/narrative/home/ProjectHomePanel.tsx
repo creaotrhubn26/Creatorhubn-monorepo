@@ -14,7 +14,7 @@ import { SCENE_STATUS_COLORS, SCENE_STATUS_LABELS } from '../scenes/sceneOps';
 import { homeKpis, isEmptyProject, NEXT_UP_LABELS, NEXT_UP_ORDER, nextUpFromMilestones, sortNextUp, type HomeKpi } from './homeOps';
 
 const TONE_COLOR: Record<HomeKpi['tone'], string> = { accent: narrativeColors.accent, warning: narrativeColors.warning, error: narrativeColors.error, neutral: narrativeColors.textDim };
-const MS_STATUS_COLOR = { planned: narrativeColors.textDim, in_progress: '#60a5fa', done: narrativeColors.accent, blocked: narrativeColors.error } as const;
+const MS_STATUS_COLOR = { planned: narrativeColors.textDim, in_progress: '#93a4dc', done: narrativeColors.accent, blocked: narrativeColors.error } as const;
 
 function when(iso: string | null): string {
   if (!iso) return '';
@@ -158,7 +158,7 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
               <Stack spacing={0.75}>
                 {overview.reviews.open ? (
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ cursor: 'pointer' }} onClick={() => onNavigate('scenes')}>
-                    <Chip size="small" label="Review" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(96,165,250,0.15)', color: '#60a5fa', fontWeight: 700 }} />
+                    <Chip size="small" label="Review" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(147, 164, 220,0.15)', color: '#93a4dc', fontWeight: 700 }} />
                     <Typography sx={{ fontSize: 13 }}>{overview.reviews.open} åpen{overview.reviews.open === 1 ? '' : 'ne'} runde{overview.reviews.open === 1 ? '' : 'r'} venter på beslutning</Typography>
                   </Stack>
                 ) : null}

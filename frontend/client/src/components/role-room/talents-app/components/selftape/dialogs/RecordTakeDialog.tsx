@@ -241,7 +241,7 @@ export default function RecordTakeDialog({
                   px: 3,
                   py: 1.2,
                   minHeight: 44, // Apple HIG touch-target
-                  '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #3e3180 0%, #32127a 100%)' },
                 }}
               >
                 Aktiver kamera + mikrofon
@@ -263,7 +263,7 @@ export default function RecordTakeDialog({
                     px: 3,
                     py: 1.2,
                     minHeight: 44,
-                    '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #3e3180 0%, #32127a 100%)' },
                   }}
                 >
                   Åpne kamera
@@ -351,7 +351,7 @@ export default function RecordTakeDialog({
                     fontWeight: 700,
                     px: 3,
                     py: 1.2,
-                    '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #3e3180 0%, #32127a 100%)' },
                   }}
                 >
                   Start opptak
@@ -455,7 +455,7 @@ export default function RecordTakeDialog({
               textTransform: 'none',
               fontWeight: 700,
               px: 2.4,
-              '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #3e3180 0%, #32127a 100%)' },
             }}
           >
             Last opp som ny take

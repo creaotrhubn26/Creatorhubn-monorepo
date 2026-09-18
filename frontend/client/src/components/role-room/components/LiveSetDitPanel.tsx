@@ -80,15 +80,15 @@ interface DitBackupJob {
 
 const DEST_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   original: { label: 'Original', color: '#94a3b8' },
-  primary: { label: 'Primary', color: 'var(--role-cyan, #22d3ee)' },
-  secondary: { label: 'Secondary', color: '#9e8cf8' },
+  primary: { label: 'Primary', color: 'var(--role-cyan, #5d76cb)' },
+  secondary: { label: 'Secondary', color: '#93a4dc' },
   offsite: { label: 'Offsite', color: '#f59e0b' },
   archive: { label: 'Archive', color: '#10b981' },
 };
 
 const JOB_STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   queued: { bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' },
-  copying: { bg: 'rgba(96,165,250,0.16)', fg: '#bfdbfe' },
+  copying: { bg: 'rgba(147, 164, 220,0.16)', fg: '#c3cbe6' },
   verifying: { bg: 'rgba(251,191,36,0.16)', fg: '#fcd34d' },
   verified: { bg: 'rgba(34,197,94,0.16)', fg: '#86efac' },
   failed: { bg: 'rgba(239,68,68,0.16)', fg: '#fca5a5' },
@@ -288,7 +288,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
           borderBottom: '1px solid rgba(148,163,184,0.16)',
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: 'rgba(226,232,240,0.78)', minHeight: 40, fontSize: '0.84rem' },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
+          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #5d76cb)' },
         }}
       >
         <Tab value="jobs" label={`Jobs (${jobs.length})`} />
@@ -304,7 +304,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
         {/* ── JOBS-vy ──────────────────────────────────────────────── */}
         {section === 'jobs' ? (
           jobs.length === 0 ? (
-            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+            <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.08)' }}>
               Ingen backup-jobs ennå. Start CLI-helperen på DIT-station for å begynne å motta jobs.
               Se <code>tools/dit-helper/README.md</code> for setup-guide.
             </Alert>
@@ -324,7 +324,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     sx={{
                       p: 1.2, borderRadius: 1.5,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      bgcolor: 'rgba(10, 5, 21,0.42)',
+                      bgcolor: 'rgba(27, 18, 44,0.42)',
                     }}
                   >
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
@@ -385,13 +385,13 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 size="small"
                 startIcon={<AddIcon />}
                 onClick={() => setAddDestOpen(true)}
-                sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none' }}
+                sx={{ color: 'var(--role-cyan, #5d76cb)', textTransform: 'none' }}
               >
                 Ny destinasjon
               </Button>
             </Stack>
             {destinations.length === 0 ? (
-              <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.08)' }}>
                 Ingen destinasjoner ennå. Klikk "Ny destinasjon" for å konfigurere første backup-mål.
               </Alert>
             ) : (
@@ -399,7 +399,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 {destinations.map((d) => {
                   const meta = DEST_TYPE_LABELS[d.destination_type] ?? { label: d.destination_type, color: '#94a3b8' };
                   return (
-                    <Box key={d.id} sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(10, 5, 21,0.42)' }}>
+                    <Box key={d.id} sx={{ p: 1.2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(27, 18, 44,0.42)' }}>
                       <Stack direction="row" alignItems="center" spacing={1}>
                         <Chip size="small" label={meta.label} sx={{ bgcolor: `${meta.color}26`, color: meta.color, fontWeight: 700, height: 20 }} />
                         <Chip size="small" label={d.storage_type} sx={{ bgcolor: 'rgba(148,163,184,0.10)', color: '#cbd5e1', fontWeight: 600, height: 20 }} />
@@ -429,7 +429,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem' }}>
                 Helper-tokens lar CLI-en på DIT-station rapportere status. Token vises kun EN gang ved generering.
               </Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none', flexShrink: 0 }}>
+              <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: 'var(--role-cyan, #5d76cb)', textTransform: 'none', flexShrink: 0 }}>
                 Generér
               </Button>
             </Stack>
@@ -516,7 +516,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
             ) : null}
 
             {tokens.length === 0 ? (
-              <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
+              <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.08)' }}>
                 Ingen tokens ennå. Klikk "Generér" for å lage første token til DIT-station.
               </Alert>
             ) : (
@@ -529,7 +529,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     <Box key={t.id} sx={{
                       p: 1.2, borderRadius: 1.5,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      bgcolor: 'rgba(10, 5, 21,0.42)',
+                      bgcolor: 'rgba(27, 18, 44,0.42)',
                       opacity: isActive ? 1 : 0.55,
                     }}>
                       <Stack direction="row" alignItems="center" spacing={1}>
@@ -562,7 +562,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       <Box sx={{ p: 1.5, borderTop: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(0,0,0,0.32)' }}>
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', textAlign: 'center' }}>
           Native CLI-helper:{' '}
-          <Box component="span" sx={{ fontFamily: 'monospace', color: 'var(--role-cyan, #22d3ee)' }}>
+          <Box component="span" sx={{ fontFamily: 'monospace', color: 'var(--role-cyan, #5d76cb)' }}>
             npx @theroleroom/dit-helper init
           </Box>
         </Typography>
@@ -639,7 +639,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
             variant="contained"
             disabled={!destDraft.label.trim() || savingDest}
             onClick={saveDestination}
-            sx={{ bgcolor: 'var(--role-cyan, #22d3ee)', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
+            sx={{ bgcolor: 'var(--role-cyan, #5d76cb)', color: '#0b1120', '&:hover': { bgcolor: '#93a4dc' } }}
           >
             {savingDest ? 'Lagrer…' : 'Opprett'}
           </Button>

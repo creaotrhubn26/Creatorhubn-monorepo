@@ -135,7 +135,7 @@ export function RoleRoomOnboardingConfigPanel() {
           </Button>
           <Button startIcon={saving ? <CircularProgress size={14} /> : <Save />}
                   onClick={save} disabled={saving}
-                  variant="contained" sx={{ bgcolor: 'var(--role-violet, #8875eb)', '&:hover': { bgcolor: '#6249df' } }}>
+                  variant="contained" sx={{ bgcolor: 'var(--role-violet, #5d76cb)', '&:hover': { bgcolor: '#4b3d8f' } }}>
             Lagre
           </Button>
         </Stack>
@@ -219,7 +219,7 @@ export function RoleRoomOnboardingConfigPanel() {
                   key={lang.code}
                   label={`${lang.name} (${lang.code})`}
                   onDelete={() => patch('languageOptions', config.languageOptions.filter((l) => l.code !== lang.code))}
-                  sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: 'rgba(255,255,255,0.87)' }}
+                  sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: 'rgba(255,255,255,0.87)' }}
                 />
               ))}
             </Stack>
@@ -240,7 +240,7 @@ export function RoleRoomOnboardingConfigPanel() {
                   ]);
                   setNewLangCode(''); setNewLangName('');
                 }}
-                sx={{ color: 'var(--role-violet, #8875eb)' }}
+                sx={{ color: 'var(--role-violet, #5d76cb)' }}
               >
                 <Add />
               </IconButton>
@@ -301,7 +301,7 @@ function ChipEditor({ items, onChange, newValue, setNewValue, placeholder }: {
             label={item}
             onDelete={() => onChange(items.filter((i) => i !== item))}
             deleteIcon={<Close />}
-            sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: 'rgba(255,255,255,0.87)' }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: 'rgba(255,255,255,0.87)' }}
           />
         ))}
       </Stack>
@@ -312,7 +312,7 @@ function ChipEditor({ items, onChange, newValue, setNewValue, placeholder }: {
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
           sx={{ ...textFieldDarkSx, flex: 1 }}
         />
-        <IconButton onClick={add} disabled={!newValue.trim()} sx={{ color: 'var(--role-violet, #8875eb)' }}>
+        <IconButton onClick={add} disabled={!newValue.trim()} sx={{ color: 'var(--role-violet, #5d76cb)' }}>
           <Add />
         </IconButton>
       </Stack>
@@ -325,7 +325,7 @@ const textFieldDarkSx = {
     color: 'rgba(255,255,255,0.87)',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-    '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8875eb)' },
+    '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #5d76cb)' },
   },
   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
 } as const;

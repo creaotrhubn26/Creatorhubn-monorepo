@@ -101,7 +101,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
   if (loading) {
     return (
       <Stack alignItems="center" sx={{ py: 4 }}>
-        <CircularProgress size={32} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <CircularProgress size={32} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
       </Stack>
     );
   }
@@ -111,7 +111,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       <Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
           <Stack direction="row" alignItems="center" spacing={0.8}>
-            <GraphIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+            <GraphIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>KPI-tracking</Typography>
           </Stack>
           <Button
@@ -127,7 +127,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
         </Stack>
         <Alert
           severity="info"
-          sx={{ bgcolor: 'rgba(34,211,238,0.08)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.24)' }}
+          sx={{ bgcolor: 'rgba(93, 118, 203,0.08)', color: '#cbd5e1', border: '1px solid rgba(93, 118, 203,0.24)' }}
         >
           Ingen KPI-data ennå. Aksepter noen posts til feed-planner først, publisér dem, og klikk «Synk fra plattformer» når det har gått 24t+. Meta-data hentes via koblet Instagram-konto; TikTok og LinkedIn krever videre OAuth-oppsett.
         </Alert>
@@ -140,7 +140,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Stack direction="row" alignItems="center" spacing={0.8}>
-          <GraphIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+          <GraphIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
           <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>KPI-tracking</Typography>
           <Chip
             size="small"
@@ -227,7 +227,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
                 {sparkData.length > 0 ? (
                   <Box sx={{ width: 100, height: 28, flexShrink: 0 }}>
                     <svg width="100" height="28" viewBox="0 0 100 100" preserveAspectRatio="none">
-                      <polyline points={points} fill="none" stroke="#22d3ee" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                      <polyline points={points} fill="none" stroke="#5d76cb" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                     </svg>
                   </Box>
                 ) : null}
@@ -264,7 +264,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
           <Stack spacing={0.6}>
             {data.corrections.map((c) => {
               const Icon = c.severity === 'critical' ? WarningIcon : c.severity === 'warning' ? WarningIcon : CheckIcon;
-              const color = c.severity === 'critical' ? '#f87171' : c.severity === 'warning' ? '#fbbf24' : '#60a5fa';
+              const color = c.severity === 'critical' ? '#f87171' : c.severity === 'warning' ? '#fbbf24' : '#93a4dc';
               return (
                 <Box key={c.id} sx={{ p: 0.8, borderRadius: 1.2, bgcolor: `${color}11`, border: `1px solid ${color}33` }}>
                   <Stack direction="row" spacing={0.6} alignItems="flex-start">
@@ -367,9 +367,9 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
             max={10}
             value={whatIfFrequency}
             onChange={(e) => setWhatIfFrequency(Number(e.target.value))}
-            style={{ flex: 1, accentColor: 'var(--role-cyan, #22d3ee)' }}
+            style={{ flex: 1, accentColor: 'var(--role-cyan, #5d76cb)' }}
           />
-          <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontFamily: 'monospace', fontWeight: 700, minWidth: 40 }}>
+          <Typography sx={{ color: 'var(--role-cyan, #5d76cb)', fontFamily: 'monospace', fontWeight: 700, minWidth: 40 }}>
             {whatIfFrequency}/uke
           </Typography>
         </Stack>
@@ -384,8 +384,8 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
           const projectedWeekly = Math.round(avgPerPost * whatIfFrequency);
           const projectedMonthly = projectedWeekly * 4;
           return (
-            <Box sx={{ mt: 0.8, p: 0.8, borderRadius: 1, bgcolor: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.24)' }}>
-              <Typography sx={{ color: '#a5f3fc', fontSize: '0.82rem' }}>
+            <Box sx={{ mt: 0.8, p: 0.8, borderRadius: 1, bgcolor: 'rgba(93, 118, 203,0.08)', border: '1px solid rgba(93, 118, 203,0.24)' }}>
+              <Typography sx={{ color: '#c3cbe6', fontSize: '0.82rem' }}>
                 Forventet impressions: <strong>{projectedWeekly.toLocaleString('nb-NO')}/uke</strong> · <strong>{projectedMonthly.toLocaleString('nb-NO')}/mnd</strong>
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem', mt: 0.2 }}>

@@ -121,7 +121,7 @@ export default function YouTubeChannelSetup({
                 textTransform: 'none',
                 fontSize: '0.78rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang
@@ -214,9 +214,9 @@ export default function YouTubeChannelSetup({
                           sx={{
                             height: 18,
                             fontSize: '0.62rem',
-                            bgcolor: 'rgba(136, 117, 235,0.18)',
-                            color: '#c6bdf4',
-                            border: '1px solid rgba(136, 117, 235,0.3)',
+                            bgcolor: 'rgba(93, 118, 203,0.18)',
+                            color: '#c3cbe6',
+                            border: '1px solid rgba(93, 118, 203,0.3)',
                           }}
                         />
                       ) : null}
@@ -283,7 +283,7 @@ export default function YouTubeChannelSetup({
                 textTransform: 'none',
                 fontSize: '0.82rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang
@@ -334,8 +334,8 @@ function SetupCard({
       };
     }
     return {
-      bg: 'rgba(59,130,246,0.06)',
-      border: 'rgba(59,130,246,0.25)',
+      bg: 'rgba(63, 81, 181,0.06)',
+      border: 'rgba(63, 81, 181,0.25)',
       accent: '#93c5fd',
     };
   }, [intent]);
@@ -464,9 +464,9 @@ function ChannelPlanView({
                   label={k}
                   size="small"
                   sx={{
-                    bgcolor: 'rgba(59,130,246,0.1)',
-                    color: '#bfdbfe',
-                    border: '1px solid rgba(59,130,246,0.25)',
+                    bgcolor: 'rgba(63, 81, 181,0.1)',
+                    color: '#c3cbe6',
+                    border: '1px solid rgba(63, 81, 181,0.25)',
                     fontSize: '0.72rem',
                     height: 22,
                   }}
@@ -488,11 +488,11 @@ function ChannelPlanView({
                   sx={{
                     p: 1,
                     borderRadius: 1.2,
-                    bgcolor: 'rgba(136, 117, 235,0.06)',
-                    border: '1px solid rgba(136, 117, 235,0.2)',
+                    bgcolor: 'rgba(93, 118, 203,0.06)',
+                    border: '1px solid rgba(93, 118, 203,0.2)',
                   }}
                 >
-                  <Typography sx={{ color: '#c6bdf4', fontSize: '0.82rem', fontWeight: 700 }}>
+                  <Typography sx={{ color: '#c3cbe6', fontSize: '0.82rem', fontWeight: 700 }}>
                     {p.name}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.76rem', mb: 0.5 }}>
@@ -555,8 +555,8 @@ function ChannelPlanView({
                       label={v.contentPillar}
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(136, 117, 235,0.15)',
-                        color: '#c6bdf4',
+                        bgcolor: 'rgba(93, 118, 203,0.15)',
+                        color: '#c3cbe6',
                         fontSize: '0.66rem',
                         height: 18,
                       }}

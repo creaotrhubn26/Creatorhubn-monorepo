@@ -74,17 +74,17 @@ interface TabSpec {
 const ALL_TABS: TabSpec[] = [
   { value: 'roles', label: 'Roller', Icon: TheaterIcon, color: '#f48fb1' },
   { value: 'candidates', label: 'Kandidater', Icon: PersonIcon, color: '#10b981' },
-  { value: 'crew', label: 'Crew', Icon: GroupIcon, color: 'var(--role-cyan, #00d4ff)' },
-  { value: 'schedule', label: 'Tidsplan', Icon: CalendarIcon, color: '#3c27a5' },
+  { value: 'crew', label: 'Crew', Icon: GroupIcon, color: 'var(--role-cyan, #5d76cb)' },
+  { value: 'schedule', label: 'Tidsplan', Icon: CalendarIcon, color: '#32127a' },
   { value: 'publishing', label: 'Publisering', Icon: YouTubeIcon, color: '#ff0000' },
   { value: 'carousel', label: 'Ukescontent', Icon: EditIcon, color: '#84cc16' },
   { value: 'approval', label: 'Godkjenning', Icon: CheckCircleIcon, color: '#10b981' },
-  { value: 'brief', label: 'Brief', Icon: EditIcon, color: '#3b82f6' },
-  { value: 'planner', label: 'Planner', Icon: ScheduleIcon, color: '#9e8cf8' },
+  { value: 'brief', label: 'Brief', Icon: EditIcon, color: '#3f51b5' },
+  { value: 'planner', label: 'Planner', Icon: ScheduleIcon, color: '#93a4dc' },
   { value: 'shooting', label: 'Skyting', Icon: MovieIcon, color: '#ef4444' },
   { value: 'shotlist', label: 'Shotliste', Icon: TheaterIcon, color: '#ec4899' },
-  { value: 'mannskap', label: 'Mannskap', Icon: GroupIcon, color: '#06b6d4' },
-  { value: 'agent', label: 'Agent', Icon: AutoFixHighIcon, color: '#9e8cf8' },
+  { value: 'mannskap', label: 'Mannskap', Icon: GroupIcon, color: '#3f51b5' },
+  { value: 'agent', label: 'Agent', Icon: AutoFixHighIcon, color: '#93a4dc' },
 ];
 
 const TAB_BY_VALUE: Record<SubTabValue, TabSpec> = ALL_TABS.reduce(
@@ -180,7 +180,7 @@ export const RoleNavConfigTab: React.FC = () => {
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-        <CircularProgress sx={{ color: '#9e8cf8' }} />
+        <CircularProgress sx={{ color: '#93a4dc' }} />
       </Box>
     );
   }
@@ -234,8 +234,8 @@ export const RoleNavConfigTab: React.FC = () => {
                         py: 1,
                         borderRadius: 1,
                         border: '1px solid',
-                        borderColor: isActive ? '#9e8cf8' : 'rgba(148,163,184,0.16)',
-                        bgcolor: isActive ? 'rgba(158, 140, 248,0.16)' : 'transparent',
+                        borderColor: isActive ? '#93a4dc' : 'rgba(148,163,184,0.16)',
+                        bgcolor: isActive ? 'rgba(147, 164, 220,0.16)' : 'transparent',
                         color: isActive ? '#fff' : '#cbd5e1',
                         textAlign: 'left',
                         fontSize: '0.85rem',
@@ -243,7 +243,7 @@ export const RoleNavConfigTab: React.FC = () => {
                         cursor: 'pointer',
                         fontFamily: 'inherit',
                         WebkitTapHighlightColor: 'transparent',
-                        '&:hover': { bgcolor: 'rgba(158, 140, 248,0.08)' },
+                        '&:hover': { bgcolor: 'rgba(147, 164, 220,0.08)' },
                       }}
                     >
                       <span>{USER_ROLE_LABELS[role]}</span>
@@ -254,8 +254,8 @@ export const RoleNavConfigTab: React.FC = () => {
                           sx={{
                             height: 18,
                             fontSize: '0.6rem',
-                            bgcolor: 'rgba(158, 140, 248,0.2)',
-                            color: '#c6bdf4',
+                            bgcolor: 'rgba(147, 164, 220,0.2)',
+                            color: '#c3cbe6',
                           }}
                         />
                       )}
@@ -296,11 +296,11 @@ export const RoleNavConfigTab: React.FC = () => {
                     onClick={handleSave}
                     disabled={!isDirty || updateMut.isPending}
                     sx={{
-                      bgcolor: '#9e8cf8',
-                      color: '#0a0515',
+                      bgcolor: '#93a4dc',
+                      color: '#1b122c',
                       textTransform: 'none',
                       fontWeight: 700,
-                      '&:hover': { bgcolor: 'var(--role-violet, #8875eb)' },
+                      '&:hover': { bgcolor: 'var(--role-violet, #5d76cb)' },
                     }}
                   >
                     {updateMut.isPending ? 'Lagrer…' : 'Lagre'}
@@ -433,10 +433,10 @@ export const RoleNavConfigTab: React.FC = () => {
                     onClick={() => addTab(addValue)}
                     disabled={!addValue}
                     sx={{
-                      color: '#9e8cf8',
+                      color: '#93a4dc',
                       textTransform: 'none',
                       fontWeight: 600,
-                      '&:hover': { bgcolor: 'rgba(158, 140, 248,0.08)' },
+                      '&:hover': { bgcolor: 'rgba(147, 164, 220,0.08)' },
                     }}
                   >
                     Legg til
@@ -514,8 +514,8 @@ function PhoneMockup({ tabs }: MockupProps) {
           width: PHONE_W,
           height: PHONE_H,
           borderRadius: 4.5,
-          bgcolor: '#0a0515',
-          border: '3px solid #18122b',
+          bgcolor: '#1b122c',
+          border: '3px solid #2a3d56',
           boxShadow: '0 8px 24px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)',
           position: 'relative',
           overflow: 'hidden',
@@ -541,7 +541,7 @@ function PhoneMockup({ tabs }: MockupProps) {
             position: 'absolute',
             inset: 4,
             borderRadius: 3.5,
-            bgcolor: '#18122b',
+            bgcolor: '#2a3d56',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -553,7 +553,7 @@ function PhoneMockup({ tabs }: MockupProps) {
           {/* Mock content */}
           <Box sx={{ flex: 1, p: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Box sx={{ height: 22, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)' }} />
-            <Box sx={{ height: 36, borderRadius: 0.75, bgcolor: 'rgba(158, 140, 248,0.1)', border: '1px solid rgba(158, 140, 248,0.24)' }} />
+            <Box sx={{ height: 36, borderRadius: 0.75, bgcolor: 'rgba(147, 164, 220,0.1)', border: '1px solid rgba(147, 164, 220,0.24)' }} />
             <Box sx={{ height: 14, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', width: '70%' }} />
             <Box sx={{ flex: 1 }} />
           </Box>
@@ -564,7 +564,7 @@ function PhoneMockup({ tabs }: MockupProps) {
               display: 'grid',
               gridTemplateColumns: 'repeat(5, 1fr)',
               borderTop: '1px solid rgba(255,255,255,0.08)',
-              bgcolor: 'rgba(16, 11, 30,0.96)',
+              bgcolor: 'rgba(42, 49, 82,0.96)',
               px: 0.25,
               py: 0.5,
             }}
@@ -575,8 +575,8 @@ function PhoneMockup({ tabs }: MockupProps) {
               const Icon = spec.Icon;
               return (
                 <Stack key={v} alignItems="center" spacing={0.25} sx={{ py: 0.25 }}>
-                  <Icon sx={{ fontSize: 12, color: i === 0 ? '#9e8cf8' : 'rgba(255,255,255,0.6)' }} />
-                  <Typography sx={{ fontSize: '0.45rem', color: i === 0 ? '#9e8cf8' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
+                  <Icon sx={{ fontSize: 12, color: i === 0 ? '#93a4dc' : 'rgba(255,255,255,0.6)' }} />
+                  <Typography sx={{ fontSize: '0.45rem', color: i === 0 ? '#93a4dc' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
                     {spec.label.length > 7 ? spec.label.slice(0, 6) + '…' : spec.label}
                   </Typography>
                 </Stack>
@@ -607,8 +607,8 @@ function IpadPortraitMockup({ tabs }: MockupProps) {
           width: IPAD_P_W,
           height: IPAD_P_H,
           borderRadius: 3,
-          bgcolor: '#0a0515',
-          border: '4px solid #18122b',
+          bgcolor: '#1b122c',
+          border: '4px solid #2a3d56',
           boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           position: 'relative',
           overflow: 'hidden',
@@ -619,7 +619,7 @@ function IpadPortraitMockup({ tabs }: MockupProps) {
             position: 'absolute',
             inset: 4,
             borderRadius: 2,
-            bgcolor: '#18122b',
+            bgcolor: '#2a3d56',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -651,11 +651,11 @@ function IpadPortraitMockup({ tabs }: MockupProps) {
                     gap: 0.4,
                     px: 0.5,
                     py: 0.5,
-                    borderBottom: isActive ? '2px solid #9e8cf8' : '2px solid transparent',
+                    borderBottom: isActive ? '2px solid #93a4dc' : '2px solid transparent',
                     flexShrink: 0,
                   }}
                 >
-                  <Icon sx={{ fontSize: 10, color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.6)' }} />
+                  <Icon sx={{ fontSize: 10, color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.6)' }} />
                   <Typography sx={{ fontSize: '0.5rem', color: isActive ? '#fff' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
                     {spec.label.length > 8 ? spec.label.slice(0, 7) + '…' : spec.label}
                   </Typography>
@@ -670,7 +670,7 @@ function IpadPortraitMockup({ tabs }: MockupProps) {
           </Box>
           {/* Content area */}
           <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            <Box sx={{ height: 28, borderRadius: 0.75, bgcolor: 'rgba(158, 140, 248,0.1)', border: '1px solid rgba(158, 140, 248,0.24)' }} />
+            <Box sx={{ height: 28, borderRadius: 0.75, bgcolor: 'rgba(147, 164, 220,0.1)', border: '1px solid rgba(147, 164, 220,0.24)' }} />
             <Box sx={{ height: 12, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.06)' }} />
             <Box sx={{ height: 12, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.06)', width: '70%' }} />
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, mt: 0.5 }}>
@@ -694,8 +694,8 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
           width: IPAD_L_W,
           height: IPAD_L_H,
           borderRadius: 3,
-          bgcolor: '#0a0515',
-          border: '4px solid #18122b',
+          bgcolor: '#1b122c',
+          border: '4px solid #2a3d56',
           boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           position: 'relative',
           overflow: 'hidden',
@@ -706,7 +706,7 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
             position: 'absolute',
             inset: 4,
             borderRadius: 2,
-            bgcolor: '#18122b',
+            bgcolor: '#2a3d56',
             overflow: 'hidden',
             display: 'flex',
           }}
@@ -717,7 +717,7 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
               width: 56,
               flexShrink: 0,
               borderRight: '1px solid rgba(255,255,255,0.08)',
-              bgcolor: 'rgba(24, 18, 43,0.55)',
+              bgcolor: 'rgba(42, 61, 86,0.55)',
               py: 0.5,
               display: 'flex',
               flexDirection: 'column',
@@ -738,14 +738,14 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
                   sx={{
                     py: 0.5,
                     position: 'relative',
-                    bgcolor: isActive ? 'rgba(158, 140, 248,0.12)' : 'transparent',
+                    bgcolor: isActive ? 'rgba(147, 164, 220,0.12)' : 'transparent',
                   }}
                 >
                   {isActive && (
-                    <Box sx={{ position: 'absolute', left: 2, top: 6, bottom: 6, width: 2, bgcolor: '#9e8cf8', borderRadius: 1 }} />
+                    <Box sx={{ position: 'absolute', left: 2, top: 6, bottom: 6, width: 2, bgcolor: '#93a4dc', borderRadius: 1 }} />
                   )}
-                  <Icon sx={{ fontSize: 12, color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.6)' }} />
-                  <Typography sx={{ fontSize: '0.46rem', color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.6)', lineHeight: 1, textAlign: 'center', maxWidth: 50, overflow: 'hidden' }}>
+                  <Icon sx={{ fontSize: 12, color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.6)' }} />
+                  <Typography sx={{ fontSize: '0.46rem', color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.6)', lineHeight: 1, textAlign: 'center', maxWidth: 50, overflow: 'hidden' }}>
                     {spec.label.length > 7 ? spec.label.slice(0, 6) + '…' : spec.label}
                   </Typography>
                 </Stack>
@@ -756,8 +756,8 @@ function IpadLandscapeMockup({ tabs }: MockupProps) {
           <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Box sx={{ height: 18, borderRadius: 0.5, bgcolor: 'rgba(255,255,255,0.06)', width: '50%' }} />
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, mt: 0.5 }}>
-              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(158, 140, 248,0.1)' }} />
-              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(158, 140, 248,0.1)' }} />
+              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(147, 164, 220,0.1)' }} />
+              <Box sx={{ height: 30, borderRadius: 0.75, bgcolor: 'rgba(147, 164, 220,0.1)' }} />
             </Box>
             <Box sx={{ height: 60, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.04)' }} />
           </Box>
@@ -780,8 +780,8 @@ function MacbookMockup({ tabs }: MockupProps) {
             width: MAC_W,
             height: MAC_SCREEN_H,
             borderRadius: '8px 8px 2px 2px',
-            bgcolor: '#0a0515',
-            border: '4px solid #18122b',
+            bgcolor: '#1b122c',
+            border: '4px solid #2a3d56',
             boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
             position: 'relative',
             overflow: 'hidden',
@@ -796,7 +796,7 @@ function MacbookMockup({ tabs }: MockupProps) {
               transform: 'translateX(-50%)',
               width: 30,
               height: 5,
-              bgcolor: '#0a0515',
+              bgcolor: '#1b122c',
               borderRadius: '0 0 4px 4px',
               zIndex: 2,
             }}
@@ -806,14 +806,14 @@ function MacbookMockup({ tabs }: MockupProps) {
               position: 'absolute',
               inset: 4,
               borderRadius: 1,
-              bgcolor: '#18122b',
+              bgcolor: '#2a3d56',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
             }}
           >
             {/* Browser chrome */}
-            <Box sx={{ height: 14, bgcolor: 'rgba(24, 18, 43,0.8)', display: 'flex', alignItems: 'center', px: 0.75, gap: 0.4, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <Box sx={{ height: 14, bgcolor: 'rgba(42, 61, 86,0.8)', display: 'flex', alignItems: 'center', px: 0.75, gap: 0.4, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#ff5f56' }} />
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#ffbd2e' }} />
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#27c93f' }} />
@@ -847,11 +847,11 @@ function MacbookMockup({ tabs }: MockupProps) {
                       gap: 0.3,
                       px: 0.5,
                       py: 0.4,
-                      borderBottom: isActive ? '2px solid #9e8cf8' : '2px solid transparent',
+                      borderBottom: isActive ? '2px solid #93a4dc' : '2px solid transparent',
                       flexShrink: 0,
                     }}
                   >
-                    <Icon sx={{ fontSize: 9, color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.6)' }} />
+                    <Icon sx={{ fontSize: 9, color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.6)' }} />
                     <Typography sx={{ fontSize: '0.5rem', color: isActive ? '#fff' : 'rgba(255,255,255,0.6)', lineHeight: 1 }}>
                       {spec.label.length > 9 ? spec.label.slice(0, 8) + '…' : spec.label}
                     </Typography>
@@ -876,7 +876,7 @@ function MacbookMockup({ tabs }: MockupProps) {
           sx={{
             width: MAC_W + 24,
             height: MAC_BASE_H,
-            background: 'linear-gradient(180deg, #211c3b 0%, #18122b 60%, #100b1e 100%)',
+            background: 'linear-gradient(180deg, #3c4e6d 0%, #2a3d56 60%, #2a3152 100%)',
             borderRadius: '0 0 12px 12px',
             position: 'relative',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
@@ -890,7 +890,7 @@ function MacbookMockup({ tabs }: MockupProps) {
               transform: 'translateX(-50%)',
               width: 60,
               height: 3,
-              bgcolor: '#0a0515',
+              bgcolor: '#1b122c',
               borderRadius: '0 0 4px 4px',
             }}
           />

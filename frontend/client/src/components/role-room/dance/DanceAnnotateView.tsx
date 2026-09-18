@@ -346,7 +346,7 @@ export default function DanceAnnotateView({
             data-testid="dance-annotate-video-time-overlay"
             sx={{
               position: 'absolute', top: 8, left: 8,
-              bgcolor: 'rgba(158, 140, 248,0.18)',
+              bgcolor: 'rgba(147, 164, 220,0.18)',
               color: PURPLE, fontSize: 11, fontWeight: 700,
               fontFamily: 'ui-monospace, Menlo, monospace',
               px: 1, py: 0.25, borderRadius: 0.5,

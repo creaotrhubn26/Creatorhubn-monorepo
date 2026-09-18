@@ -133,20 +133,20 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
   const categoryConfig: Record<VfxCategory, { icon: React.ReactElement; label: string; color: string }> = {
     greenscreen: { icon: <GreenScreenIcon />, label: 'Green Screen', color: '#4caf50' },
     tracking: { icon: <TrackingIcon />, label: 'Tracking', color: '#2196f3' },
-    composite: { icon: <CompositeIcon />, label: 'Compositing', color: '#3c27a5' },
-    cgi: { icon: <ThreeDIcon />, label: 'CGI/3D', color: '#6249df' },
+    composite: { icon: <CompositeIcon />, label: 'Compositing', color: '#32127a' },
+    cgi: { icon: <ThreeDIcon />, label: 'CGI/3D', color: '#4b3d8f' },
     cleanup: { icon: <PaintIcon />, label: 'Cleanup', color: '#795548' },
     animation: { icon: <AnimationIcon />, label: 'Animasjon', color: '#e91e63' },
     matte_painting: { icon: <PaintIcon />, label: 'Matte Painting', color: '#607d8b' },
-    particle: { icon: <VfxIcon />, label: 'Partikler', color: '#6249df' },
+    particle: { icon: <VfxIcon />, label: 'Partikler', color: '#4b3d8f' },
     other: { icon: <VfxIcon />, label: 'Annet', color: '#9e9e9e' },
   };
 
   const statusConfig: Record<VfxStatus, { label: string; color: string }> = {
     identified: { label: 'Identifisert', color: '#6b7280' },
-    planned: { label: 'Planlagt', color: '#3b82f6' },
+    planned: { label: 'Planlagt', color: '#3f51b5' },
     in_progress: { label: 'Pågår', color: '#f59e0b' },
-    review: { label: 'Review', color: 'var(--role-violet, #8875eb)' },
+    review: { label: 'Review', color: 'var(--role-violet, #5d76cb)' },
     approved: { label: 'Godkjent', color: '#10b981' },
     final: { label: 'Final', color: '#059669' },
   };
@@ -155,7 +155,7 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
     simple: { label: 'Enkel', hours: '1-4 timer', color: '#10b981' },
     medium: { label: 'Medium', hours: '4-16 timer', color: '#f59e0b' },
     complex: { label: 'Kompleks', hours: '16-40 timer', color: '#ef4444' },
-    hero: { label: 'Hero Shot', hours: '40+ timer', color: 'var(--role-violet, #8875eb)' },
+    hero: { label: 'Hero Shot', hours: '40+ timer', color: 'var(--role-violet, #5d76cb)' },
   };
 
   const [newNote, setNewNote] = useState<Partial<VfxNote>>({

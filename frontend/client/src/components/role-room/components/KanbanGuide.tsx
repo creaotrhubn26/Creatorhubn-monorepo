@@ -181,7 +181,7 @@ function Callout({
 const KANBAN_STATUSES: Record<string, { label: string; color: string; bg: string }> = {
   pending:   { label: 'Pending',   color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
   shortlist: { label: 'Shortlist', color: '#ffb800', bg: 'rgba(255,184,0,0.15)'   },
-  selected:  { label: 'Selected',  color: 'var(--role-violet, #8875eb)', bg: 'rgba(136, 117, 235,0.15)'  },
+  selected:  { label: 'Selected',  color: 'var(--role-violet, #5d76cb)', bg: 'rgba(93, 118, 203,0.15)'  },
   confirmed: { label: 'Confirmed', color: '#10b981', bg: 'rgba(16,185,129,0.15)'  },
   rejected:  { label: 'Rejected',  color: '#ef4444', bg: 'rgba(239,68,68,0.15)'   },
 };
@@ -540,12 +540,12 @@ const STEPS: Step[] = [
               {[
                 { role: 'Casting Director', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#f59e0b' },
                 { role: 'Producer', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#10b981' },
-                { role: 'Admin', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: 'var(--role-violet, #8875eb)' },
-                { role: 'Agent', cols: 'All 5', add: '✓', move: '—', bulk: '—', event: '—', color: 'var(--role-cyan, #00d4ff)' },
-                { role: 'Director', cols: 'Shortlist → Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#3b82f6' },
+                { role: 'Admin', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: 'var(--role-violet, #5d76cb)' },
+                { role: 'Agent', cols: 'All 5', add: '✓', move: '—', bulk: '—', event: '—', color: 'var(--role-cyan, #5d76cb)' },
+                { role: 'Director', cols: 'Shortlist → Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#3f51b5' },
                 { role: 'Talent', cols: 'Pending → Confirmed + Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#ec4899' },
                 { role: 'Photographer', cols: 'Selected + Confirmed', add: '—', move: '—', bulk: '—', event: '—', color: '#f97316' },
-                { role: 'Client', cols: 'Selected + Confirmed', add: '—', move: '—', bulk: '—', event: '—', color: '#9e8cf8' },
+                { role: 'Client', cols: 'Selected + Confirmed', add: '—', move: '—', bulk: '—', event: '—', color: '#93a4dc' },
                 { role: 'Camera / Sound / Crew', cols: 'Confirmed only', add: '—', move: '—', bulk: '—', event: '—', color: '#6b7280' },
               ].map(row => (
                 <Box key={row.role} sx={{ display: 'flex', gap: 1, mb: 0.75, alignItems: 'center' }}>
@@ -611,7 +611,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               You need at least one audition slot in the Auditions tab before this
               dialog will show any options. Go to the <strong>Auditions</strong> tab
               to create slots first.

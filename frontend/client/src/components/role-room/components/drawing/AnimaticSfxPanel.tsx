@@ -99,13 +99,13 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
         p: 0.75,
         borderRadius: 1,
         bgcolor: 'rgba(0,0,0,0.4)',
-        border: '1px solid rgba(198, 189, 244,0.15)',
+        border: '1px solid rgba(195, 203, 230,0.15)',
       }}
       data-testid="animatic-sfx-panel"
     >
       <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
-        <GraphicEq sx={{ fontSize: 12, color: '#c6bdf4' }} />
-        <Typography variant="caption" sx={{ fontSize: 10, color: '#c6bdf4', fontWeight: 700, letterSpacing: '0.05em' }}>
+        <GraphicEq sx={{ fontSize: 12, color: '#c3cbe6' }} />
+        <Typography variant="caption" sx={{ fontSize: 10, color: '#c3cbe6', fontWeight: 700, letterSpacing: '0.05em' }}>
           SFX
         </Typography>
         {visualDetectLoading && (
@@ -125,7 +125,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
               size="small"
               onClick={onAnalyzeVisually}
               disabled={visualDetectLoading}
-              sx={{ p: 0.25, color: '#c6bdf4' }}
+              sx={{ p: 0.25, color: '#c3cbe6' }}
               data-testid="animatic-sfx-visual-detect"
             >
               <Visibility sx={{ fontSize: 12 }} />
@@ -169,7 +169,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
                   bgcolor:
                     ev.layer === 'event' ? '#fcd34d'
                     : ev.layer === 'ambient' ? '#a7f3d0'
-                    : '#c6bdf4',
+                    : '#c3cbe6',
                 }}
               />
               <Typography variant="caption" sx={{ fontSize: 10, color: 'rgba(255,255,255,0.85)', flex: 1 }}>
@@ -183,7 +183,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => onSuggest(ev)}
-                    sx={{ p: 0.25, color: '#c6bdf4' }}
+                    sx={{ p: 0.25, color: '#c3cbe6' }}
                     data-testid={`animatic-sfx-suggest-${ev.id}`}
                     disabled={sfxSuggestions[ev.id]?.loading}
                   >
@@ -196,7 +196,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => onGenerate(ev)}
-                    sx={{ p: 0.25, color: '#c6bdf4' }}
+                    sx={{ p: 0.25, color: '#c3cbe6' }}
                     data-testid={`animatic-sfx-generate-${ev.id}`}
                     disabled={sfxGenerating[ev.id]?.loading}
                   >
@@ -279,7 +279,7 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
                   onOffsetChange(ev.id, v);
                 }}
                 sx={{
-                  color: '#c6bdf4',
+                  color: '#c3cbe6',
                   flex: 1,
                   '& .MuiSlider-thumb': { width: 10, height: 10 },
                 }}
@@ -300,14 +300,14 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
               sx={{
                 pl: 1.5,
                 py: 0.5,
-                borderLeft: '2px solid rgba(198, 189, 244,0.3)',
-                bgcolor: 'rgba(198, 189, 244,0.05)',
+                borderLeft: '2px solid rgba(195, 203, 230,0.3)',
+                bgcolor: 'rgba(195, 203, 230,0.05)',
               }}
               data-testid={`animatic-sfx-generating-${ev.id}`}
             >
               <Stack direction="row" alignItems="center" spacing={0.5}>
-                <Psychology sx={{ fontSize: 10, color: '#c6bdf4' }} />
-                <Typography variant="caption" sx={{ fontSize: 9, color: '#c6bdf4' }}>
+                <Psychology sx={{ fontSize: 10, color: '#c3cbe6' }} />
+                <Typography variant="caption" sx={{ fontSize: 9, color: '#c3cbe6' }}>
                   {gen.loading
                     ? `Genererer "${ev.category.label}" via ElevenLabs…`
                     : gen.error
@@ -328,14 +328,14 @@ export const AnimaticSfxPanel: React.FC<AnimaticSfxPanelProps> = ({
               sx={{
                 pl: 1.5,
                 py: 0.5,
-                borderLeft: '2px solid rgba(198, 189, 244,0.3)',
-                bgcolor: 'rgba(198, 189, 244,0.05)',
+                borderLeft: '2px solid rgba(195, 203, 230,0.3)',
+                bgcolor: 'rgba(195, 203, 230,0.05)',
               }}
               data-testid={`animatic-sfx-suggestions-${ev.id}`}
             >
               <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
-                <AutoAwesome sx={{ fontSize: 10, color: '#c6bdf4' }} />
-                <Typography variant="caption" sx={{ fontSize: 9, color: '#c6bdf4', flex: 1 }}>
+                <AutoAwesome sx={{ fontSize: 10, color: '#c3cbe6' }} />
+                <Typography variant="caption" sx={{ fontSize: 9, color: '#c3cbe6', flex: 1 }}>
                   Forslag for: {ev.category.label}
                 </Typography>
               </Stack>

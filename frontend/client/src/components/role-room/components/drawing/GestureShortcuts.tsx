@@ -218,7 +218,7 @@ export const DEFAULT_GESTURE_SETTINGS: GestureSettings = {
 // =============================================================================
 
 const GestureContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -243,7 +243,7 @@ const GestureIcon = styled(Box, {
     width: 14,
     height: 14,
     borderRadius: '50%',
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#3f51b5',
     color: 'white',
     fontSize: 9,
     fontWeight: 600,
@@ -563,7 +563,7 @@ export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
                           height: 16,
                           fontSize: 9,
                           mt: 0.25,
-                          bgcolor: 'rgba(59,130,246,0.2)',
+                          bgcolor: 'rgba(63, 81, 181,0.2)',
                           color: 'primary.light',
                         }}
                       />

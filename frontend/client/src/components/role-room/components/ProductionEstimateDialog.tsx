@@ -72,9 +72,9 @@ interface ProductionEstimate {
 const getRiskColor = (level: 'low' | 'medium' | 'high' | 'critical'): string => {
   switch (level) {
     case 'low': return '#4caf50';
-    case 'medium': return '#6249df';
+    case 'medium': return '#4b3d8f';
     case 'high': return '#f44336';
-    case 'critical': return '#3c27a5';
+    case 'critical': return '#32127a';
   }
 };
 
@@ -282,7 +282,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#18122b',
+          bgcolor: '#2a3d56',
           color: '#fff',
         },
       }}
@@ -354,11 +354,11 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <Card sx={{ bgcolor: '#16213e', border: '1px solid rgba(60, 39, 165, 0.3)' }}>
+              <Card sx={{ bgcolor: '#16213e', border: '1px solid rgba(50, 18, 122, 0.3)' }}>
                 <CardContent>
                   <Stack spacing={1} alignItems="center">
-                    <VideocamIcon sx={{ fontSize: 32, color: '#3c27a5' }} />
-                    <Typography variant="h4" sx={{ color: '#3c27a5', fontWeight: 700 }}>
+                    <VideocamIcon sx={{ fontSize: 32, color: '#32127a' }} />
+                    <Typography variant="h4" sx={{ color: '#32127a', fontWeight: 700 }}>
                       {estimate.breakdown.totalShots}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -519,7 +519,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
 
           {/* Scene Breakdown */}
           <Paper sx={{ p: 2, bgcolor: '#16213e', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, color: '#3c27a5', fontWeight: 600 }}>
+            <Typography variant="subtitle2" sx={{ mb: 2, color: '#32127a', fontWeight: 600 }}>
               SCENE-OVERSIKT
             </Typography>
             <Grid container spacing={2}>
@@ -558,7 +558,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                     Natt
                   </Typography>
-                  <Typography variant="h6" sx={{ color: '#6249df' }}>
+                  <Typography variant="h6" sx={{ color: '#4b3d8f' }}>
                     {estimate.breakdown.nightScenes} scener
                   </Typography>
                 </Stack>

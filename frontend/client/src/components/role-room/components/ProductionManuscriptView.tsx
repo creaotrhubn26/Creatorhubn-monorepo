@@ -294,13 +294,13 @@ interface ProductionManuscriptViewProps {
 // UI Design Tokens — single source for all scene-list colours
 // ============================================
 const UI = {
-  bg:       { selected: 'rgba(59,130,246,0.1)', selectedHover: 'rgba(59,130,246,0.15)', hover: 'rgba(255,255,255,0.02)', transparent: 'transparent', thumbnail: '#1a2230' },
+  bg:       { selected: 'rgba(63, 81, 181,0.1)', selectedHover: 'rgba(63, 81, 181,0.15)', hover: 'rgba(255,255,255,0.02)', transparent: 'transparent', thumbnail: '#1a2230' },
   text:     { primary: '#d1d5db', secondary: '#9ca3af', muted: '#6b7280', dimmed: '#4b5563', white: '#fff' },
-  border:   { default: '#252d3d', selected: '#3b82f6', transparent: 'transparent' },
-  accent:   { blue: '#3b82f6', red: '#ef4444' },
-  status:   { complete: '#4caf50', partial: '#6249df', missing: '#f44336' },
-  needs:    { cam: '#f97316', light: '#fbbf24', sound: '#06b6d4' },
-  ring:     { selected: '0 0 0 1px rgba(59,130,246,0.35)' },
+  border:   { default: '#252d3d', selected: '#3f51b5', transparent: 'transparent' },
+  accent:   { blue: '#3f51b5', red: '#ef4444' },
+  status:   { complete: '#4caf50', partial: '#4b3d8f', missing: '#f44336' },
+  needs:    { cam: '#f97316', light: '#fbbf24', sound: '#3f51b5' },
+  ring:     { selected: '0 0 0 1px rgba(63, 81, 181,0.35)' },
 } as const;
 
 // Status colors
@@ -311,7 +311,7 @@ const SHOT_COLORS: Record<string, string> = {
   'Wide': '#e74c3c',
   'Medium': '#3498db',
   'Close-up': '#e67e22',
-  'Extreme Close-up': '#472bd4',
+  'Extreme Close-up': '#3e3180',
   'Establishing': '#1abc9c',
   'Detail': '#f39c12',
   'Two Shot': '#2ecc71',
@@ -444,8 +444,8 @@ const SortableTimelineShotBlock: FC<SortableTimelineShotBlockProps> = memo(({
               bottom: -5,
               width: 2,
               borderRadius: 2,
-              bgcolor: '#60a5fa',
-              boxShadow: '0 0 10px rgba(96,165,250,0.4)',
+              bgcolor: '#93a4dc',
+              boxShadow: '0 0 10px rgba(147, 164, 220,0.4)',
             }}
           />
         )}
@@ -3591,11 +3591,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 aria-label={showTalentPanel ? 'Skjul cast' : 'Vis cast'}
                 size={responsive.buttonSize}
                 sx={{
-                  color: showTalentPanel ? '#3b82f6' : '#6b7280',
-                  bgcolor: showTalentPanel ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                  color: showTalentPanel ? '#3f51b5' : '#6b7280',
+                  bgcolor: showTalentPanel ? 'rgba(63, 81, 181, 0.1)' : 'transparent',
                   '&:hover': { 
-                    color: '#3b82f6', 
-                    bgcolor: 'rgba(59, 130, 246, 0.15)' 
+                    color: '#3f51b5', 
+                    bgcolor: 'rgba(63, 81, 181, 0.15)' 
                   },
                   p: isMobile ? 0.5 : 1,
                 }}
@@ -3637,7 +3637,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
-                  '&:hover': { color: 'var(--role-violet, #8875eb)', bgcolor: 'rgba(136, 117, 235, 0.15)' },
+                  '&:hover': { color: 'var(--role-violet, #5d76cb)', bgcolor: 'rgba(93, 118, 203, 0.15)' },
                   '&:disabled': { opacity: 0.4 },
                   p: 1,
                 }}
@@ -3696,7 +3696,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
-                  '&:hover': { color: '#06b6d4', bgcolor: 'rgba(6, 182, 212, 0.15)' },
+                  '&:hover': { color: '#3f51b5', bgcolor: 'rgba(63, 81, 181, 0.15)' },
                   p: 1,
                 }}
               >
@@ -3869,7 +3869,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
       {/* Story Arc Context Bar — progressive disclosure layer (#5) */}
       {storyLogicData && (storyLogicData.logline?.fullLogline || storyLogicData.concept?.genre) && (
-        <Box sx={{ borderBottom: '1px solid rgba(136, 117, 235, 0.15)' }}>
+        <Box sx={{ borderBottom: '1px solid rgba(93, 118, 203, 0.15)' }}>
           {/* Toggle strip — always visible */}
           <Box
             onClick={() => setFilters(p => ({ ...p, showStoryContext: !p.showStoryContext }))}
@@ -3880,16 +3880,16 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               px: responsive.headerPx,
               py: 0.25,
               cursor: 'pointer',
-              bgcolor: 'rgba(136, 117, 235, 0.04)',
-              '&:hover': { bgcolor: 'rgba(136, 117, 235, 0.08)' },
+              bgcolor: 'rgba(93, 118, 203, 0.04)',
+              '&:hover': { bgcolor: 'rgba(93, 118, 203, 0.08)' },
               transition: 'background-color 0.15s',
             }}
           >
-            <Typography sx={{ fontSize: 10, color: '#9e8cf8', fontWeight: 600, letterSpacing: 0.5 }}>
+            <Typography sx={{ fontSize: 10, color: '#93a4dc', fontWeight: 600, letterSpacing: 0.5 }}>
               STORY ARC
             </Typography>
             {storyLogicData.concept?.genre && (
-              <Chip label={storyLogicData.concept.genre} size="small" sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: '#c6bdf4', fontSize: 9, height: 16, '& .MuiChip-label': { px: 0.8 } }} />
+              <Chip label={storyLogicData.concept.genre} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.12)', color: '#c3cbe6', fontSize: 9, height: 16, '& .MuiChip-label': { px: 0.8 } }} />
             )}
             <Box sx={{ flex: 1 }} />
             {autosaveStatus !== 'idle' && (
@@ -3897,7 +3897,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 {autosaveStatus === 'saving' ? 'Saving…' : '✓ Saved'}
               </Typography>
             )}
-            {filters.showStoryContext ? <ExpandLessIcon sx={{ fontSize: 14, color: '#9e8cf8' }} /> : <ExpandMoreIcon sx={{ fontSize: 14, color: '#9e8cf8' }} />}
+            {filters.showStoryContext ? <ExpandLessIcon sx={{ fontSize: 14, color: '#93a4dc' }} /> : <ExpandMoreIcon sx={{ fontSize: 14, color: '#93a4dc' }} />}
           </Box>
           {/* Expandable detail panel */}
           <Collapse in={filters.showStoryContext}>
@@ -3908,7 +3908,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 gap: 1.5,
                 px: responsive.headerPx,
                 py: 0.5,
-                bgcolor: 'rgba(136, 117, 235, 0.08)',
+                bgcolor: 'rgba(93, 118, 203, 0.08)',
                 overflow: 'hidden',
                 flexWrap: 'nowrap',
               }}
@@ -3918,8 +3918,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   label={`${storyLogicData.concept.genre}${storyLogicData.concept.subGenre ? ` / ${storyLogicData.concept.subGenre}` : ''}`}
                   size="small"
                   sx={{
-                    bgcolor: 'rgba(136, 117, 235, 0.15)',
-                    color: '#c6bdf4',
+                    bgcolor: 'rgba(93, 118, 203, 0.15)',
+                    color: '#c3cbe6',
                     fontSize: 10,
                     fontWeight: 600,
                     height: 20,
@@ -4028,16 +4028,16 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: filters.viewMode === 'scenes' ? 'rgba(59,130,246,0.2)' : '#1a2230',
-                  border: filters.viewMode === 'scenes' ? '1px solid #3b82f6' : '1px solid #252d3d',
+                  bgcolor: filters.viewMode === 'scenes' ? 'rgba(63, 81, 181,0.2)' : '#1a2230',
+                  border: filters.viewMode === 'scenes' ? '1px solid #3f51b5' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: filters.viewMode === 'scenes' ? 'rgba(59,130,246,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.viewMode === 'scenes' ? 'rgba(63, 81, 181,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   {filters.viewMode === 'scenes' ? <VideoLibraryIcon sx={{ fontSize: 14 }} /> : <MovieIcon sx={{ fontSize: 14 }} />}
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.viewMode === 'scenes' ? '#60a5fa' : '#9ca3af' }}>
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.viewMode === 'scenes' ? '#93a4dc' : '#9ca3af' }}>
                     {filters.viewMode === 'scenes' ? 'Scener' : 'Shots'}
                   </Typography>
                 </Stack>
@@ -4086,16 +4086,16 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: filters.missing.sound ? 'rgba(6,182,212,0.2)' : '#1a2230',
-                  border: filters.missing.sound ? '1px solid #06b6d4' : '1px solid #252d3d',
+                  bgcolor: filters.missing.sound ? 'rgba(63, 81, 181,0.2)' : '#1a2230',
+                  border: filters.missing.sound ? '1px solid #3f51b5' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: filters.missing.sound ? 'rgba(6,182,212,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.missing.sound ? 'rgba(63, 81, 181,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <MicIcon sx={{ fontSize: 14, color: filters.missing.sound ? '#22d3ee' : '#9ca3af' }} />
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.missing.sound ? '#22d3ee' : '#9ca3af' }}>
+                  <MicIcon sx={{ fontSize: 14, color: filters.missing.sound ? '#5d76cb' : '#9ca3af' }} />
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.missing.sound ? '#5d76cb' : '#9ca3af' }}>
                     Lyd
                   </Typography>
                 </Stack>
@@ -4186,7 +4186,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     '& .MuiMenuItem-root': {
                       fontSize: 12,
                       color: '#e5e7eb',
-                      '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.15)' },
+                      '&:hover': { bgcolor: 'rgba(63, 81, 181, 0.15)' },
                     },
                   },
                 },
@@ -4251,14 +4251,14 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         width: 32,
                         height: 32,
                         borderRadius: '10px',
-                        bgcolor: isExpanded ? 'rgba(59,130,246,0.15)' : '#1a2230',
-                        border: isExpanded ? '1px solid rgba(59,130,246,0.3)' : '1px solid #252d3d',
+                        bgcolor: isExpanded ? 'rgba(63, 81, 181,0.15)' : '#1a2230',
+                        border: isExpanded ? '1px solid rgba(63, 81, 181,0.3)' : '1px solid #252d3d',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         mr: 1.5,
                       }}>
-                        <Typography sx={{ fontSize: 13, fontWeight: 700, color: isExpanded ? '#60a5fa' : '#9ca3af' }}>
+                        <Typography sx={{ fontSize: 13, fontWeight: 700, color: isExpanded ? '#93a4dc' : '#9ca3af' }}>
                           {act.actNumber}
                         </Typography>
                       </Box>
@@ -4305,8 +4305,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               data-scene-id={scene.id}
                               sx={{
                                 position: 'relative',
-                                bgcolor: isBatchSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
-                                borderLeft: isBatchSelected ? '3px solid #3b82f6' : '3px solid transparent',
+                                bgcolor: isBatchSelected ? 'rgba(63, 81, 181,0.08)' : 'transparent',
+                                borderLeft: isBatchSelected ? '3px solid #3f51b5' : '3px solid transparent',
                               }}
                               onClick={(e) => {
                                 if (batchMode && (e.ctrlKey || e.metaKey || e.shiftKey)) {
@@ -4332,13 +4332,13 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                     width: 18,
                                     height: 18,
                                     borderRadius: '4px',
-                                    border: `2px solid ${isBatchSelected ? '#3b82f6' : '#6b7280'}`,
-                                    bgcolor: isBatchSelected ? '#3b82f6' : 'transparent',
+                                    border: `2px solid ${isBatchSelected ? '#3f51b5' : '#6b7280'}`,
+                                    bgcolor: isBatchSelected ? '#3f51b5' : 'transparent',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     cursor: 'pointer',
-                                    '&:hover': { borderColor: '#3b82f6' },
+                                    '&:hover': { borderColor: '#3f51b5' },
                                   }}
                                 >
                                   {isBatchSelected && <CheckIcon sx={{ fontSize: 12, color: '#fff' }} />}
@@ -4373,12 +4373,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               sx={{
                 p: 1.5,
                 borderTop: '1px solid #1e2536',
-                bgcolor: 'rgba(59,130,246,0.1)',
-                borderBottom: '1px solid rgba(59,130,246,0.3)',
+                bgcolor: 'rgba(63, 81, 181,0.1)',
+                borderBottom: '1px solid rgba(63, 81, 181,0.3)',
               }}
             >
               <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                <Typography sx={{ fontSize: 12, color: '#60a5fa', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: 12, color: '#93a4dc', fontWeight: 600 }}>
                   {selectedMapSize(selectedScenes)} scene{selectedMapSize(selectedScenes) !== 1 ? 's' : ''} selected
                 </Typography>
                 <Stack direction="row" spacing={0.5}>
@@ -4459,7 +4459,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 bgcolor: '#1a2230',
                 border: '1px solid #252d3d',
                 borderRadius: '8px',
-                '&:hover': { bgcolor: '#252d3d', color: '#3b82f6' },
+                '&:hover': { bgcolor: '#252d3d', color: '#3f51b5' },
               }}>
                 <MovieIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -4489,7 +4489,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   bgcolor: '#1a2230',
                   border: '1px solid #252d3d',
                   borderRadius: '8px',
-                  '&:hover': { bgcolor: '#252d3d', color: '#9e8cf8' },
+                  '&:hover': { bgcolor: '#252d3d', color: '#93a4dc' },
                 }}
               >
                 <PrintIcon sx={{ fontSize: 18 }} />
@@ -4523,7 +4523,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   bgcolor: '#1a2230',
                   border: '1px solid #252d3d',
                   borderRadius: '8px',
-                  '&:hover': { bgcolor: '#252d3d', color: '#06b6d4' },
+                  '&:hover': { bgcolor: '#252d3d', color: '#3f51b5' },
                 }}
               >
                 <CallSheetIcon sx={{ fontSize: 18 }} />
@@ -4553,10 +4553,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 px: isMobile ? 1 : 1.5,
                 py: 0.5,
                 borderRadius: '6px',
-                bgcolor: readThroughMode ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
-                border: readThroughMode ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(59,130,246,0.3)',
+                bgcolor: readThroughMode ? 'rgba(16,185,129,0.15)' : 'rgba(63, 81, 181,0.15)',
+                border: readThroughMode ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(63, 81, 181,0.3)',
               }}>
-                <Typography sx={{ fontSize: responsiveBodyFontSize - 1, fontWeight: 700, color: readThroughMode ? '#10b981' : '#60a5fa', letterSpacing: 1 }}>
+                <Typography sx={{ fontSize: responsiveBodyFontSize - 1, fontWeight: 700, color: readThroughMode ? '#10b981' : '#93a4dc', letterSpacing: 1 }}>
                   {readThroughMode ? (isMobile ? 'READ' : 'READ THROUGH') : (isMobile ? 'MANUS' : 'MANUSKRIPT')}
                 </Typography>
               </Box>
@@ -4578,8 +4578,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       fontSize: 10,
                       fontWeight: 800,
                       color: centerWorkspace === 'script' ? '#fff' : '#9ca3af',
-                      bgcolor: centerWorkspace === 'script' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.035)',
-                      border: centerWorkspace === 'script' ? '1px solid rgba(96,165,250,0.5)' : '1px solid #252d3d',
+                      bgcolor: centerWorkspace === 'script' ? 'rgba(63, 81, 181,0.2)' : 'rgba(255,255,255,0.035)',
+                      border: centerWorkspace === 'script' ? '1px solid rgba(147, 164, 220,0.5)' : '1px solid #252d3d',
                     }}
                   >
                     Manus
@@ -4705,19 +4705,19 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             color:
                               readThroughAnalysis.status === 'ready' &&
                               readThroughAnalysis.analyzedSceneId === selectedScene.id
-                                ? '#9e8cf8'
+                                ? '#93a4dc'
                                 : '#6b7280',
                             bgcolor:
                               readThroughAnalysis.status === 'ready' &&
                               readThroughAnalysis.analyzedSceneId === selectedScene.id
-                                ? 'rgba(136, 117, 235,0.12)'
+                                ? 'rgba(93, 118, 203,0.12)'
                                 : 'transparent',
-                            '&:hover': { color: '#9e8cf8', bgcolor: 'rgba(136, 117, 235,0.15)' },
+                            '&:hover': { color: '#93a4dc', bgcolor: 'rgba(93, 118, 203,0.15)' },
                             p: 0.5,
                           }}
                         >
                           {readThroughAnalysis.status === 'loading' ? (
-                            <CircularProgress size={14} sx={{ color: '#9e8cf8' }} />
+                            <CircularProgress size={14} sx={{ color: '#93a4dc' }} />
                           ) : (
                             <AutoAwesomeIcon sx={{ fontSize: responsive.iconSize - 2 }} />
                           )}
@@ -4750,9 +4750,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           data-testid="pmv-tts-toggle"
                           aria-label={ttsEnabled ? 'Slå av AI-stemme' : 'Slå på AI-stemme'}
                           sx={{
-                            color: ttsEnabled ? '#8875eb' : '#4b5563',
-                            bgcolor: ttsEnabled ? 'rgba(136, 117, 235,0.1)' : 'transparent',
-                            '&:hover': { color: 'var(--role-violet, #8875eb)', bgcolor: 'rgba(136, 117, 235,0.15)' },
+                            color: ttsEnabled ? '#5d76cb' : '#4b5563',
+                            bgcolor: ttsEnabled ? 'rgba(93, 118, 203,0.1)' : 'transparent',
+                            '&:hover': { color: 'var(--role-violet, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.15)' },
                             p: 0.5,
                           }}
                         >
@@ -4769,7 +4769,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             disableUnderline
                             displayEmpty
                             sx={{
-                              color: ttsLanguage ? '#3b82f6' : '#9ca3af',
+                              color: ttsLanguage ? '#3f51b5' : '#9ca3af',
                               fontSize: responsiveBodyFontSize - 2,
                               minWidth: 52,
                               '& .MuiSelect-select': { py: 0, px: 0.5 },
@@ -4852,9 +4852,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               aria-label={ttsUseCharacterVoices ? 'Slå av karakterstemmer' : 'Slå på karakterstemmer'}
                               onClick={() => setTtsUseCharacterVoices(prev => !prev)}
                               sx={{
-                                color: ttsUseCharacterVoices ? '#8875eb' : '#4b5563',
+                                color: ttsUseCharacterVoices ? '#5d76cb' : '#4b5563',
                                 p: 0.5,
-                                '&:hover': { color: 'var(--role-violet, #8875eb)', bgcolor: 'rgba(136, 117, 235,0.15)' },
+                                '&:hover': { color: 'var(--role-violet, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.15)' },
                               }}
                             >
                               <TheaterIcon sx={{ fontSize: 14 }} />
@@ -4877,10 +4877,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                   sx={{
                                     height: 18,
                                     fontSize: 9,
-                                    bgcolor: 'rgba(136, 117, 235,0.15)',
-                                    color: '#c6bdf4',
-                                    border: '1px solid rgba(136, 117, 235,0.4)',
-                                    '& .MuiChip-icon': { color: '#9e8cf8', ml: '4px' },
+                                    bgcolor: 'rgba(93, 118, 203,0.15)',
+                                    color: '#c3cbe6',
+                                    border: '1px solid rgba(93, 118, 203,0.4)',
+                                    '& .MuiChip-icon': { color: '#93a4dc', ml: '4px' },
                                   }}
                                 />
                               </Tooltip>
@@ -4926,7 +4926,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   onClick={handleManuscriptFullscreen}
                   aria-label={isManuscriptFullscreen ? 'Avslutt fullskjerm' : 'Åpne fullskjerm'}
                   sx={{
-                    color: isManuscriptFullscreen ? '#3b82f6' : '#6b7280',
+                    color: isManuscriptFullscreen ? '#3f51b5' : '#6b7280',
                     '&:hover': { color: '#fff' },
                     p: isMobile ? 0.5 : 1,
                   }}
@@ -4948,15 +4948,15 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 sx={{
                   px: isMobile ? 1.5 : 3,
                   py: 1.5,
-                  borderBottom: '1px solid rgba(136, 117, 235,0.25)',
+                  borderBottom: '1px solid rgba(93, 118, 203,0.25)',
                   background:
                     'linear-gradient(180deg, rgba(48, 31, 132,0.18), rgba(15,23,42,0.6))',
                 }}
               >
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                  <AutoAwesomeIcon sx={{ fontSize: 14, color: '#9e8cf8' }} />
+                  <AutoAwesomeIcon sx={{ fontSize: 14, color: '#93a4dc' }} />
                   <Typography
-                    sx={{ fontSize: 10, fontWeight: 700, color: '#9e8cf8', letterSpacing: 1 }}
+                    sx={{ fontSize: 10, fontWeight: 700, color: '#93a4dc', letterSpacing: 1 }}
                   >
                     SCENE BRIEF
                   </Typography>
@@ -5003,9 +5003,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         sx={{
                           height: 20,
                           fontSize: 10,
-                          bgcolor: 'rgba(136, 117, 235,0.12)',
-                          color: '#c6bdf4',
-                          border: '1px solid rgba(136, 117, 235,0.3)',
+                          bgcolor: 'rgba(93, 118, 203,0.12)',
+                          color: '#c3cbe6',
+                          border: '1px solid rgba(93, 118, 203,0.3)',
                         }}
                       />
                     ))}
@@ -5050,7 +5050,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 {/* Scene Header Card */}
                 <Box sx={{
                   p: isMobile ? 2 : 3,
-                  background: 'linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(136, 117, 235,0.1) 100%)',
+                  background: 'linear-gradient(135deg, rgba(63, 81, 181,0.15) 0%, rgba(93, 118, 203,0.1) 100%)',
                   borderBottom: '1px solid #252d3d',
                 }}>
                   <Stack direction="row" spacing={isMobile ? 1.5 : 2} alignItems="flex-start">
@@ -5059,12 +5059,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       width: isMobile ? 48 : 64,
                       height: isMobile ? 48 : 64,
                       borderRadius: isMobile ? '10px' : '12px',
-                      bgcolor: '#3b82f6',
+                      bgcolor: '#3f51b5',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 4px 15px rgba(59,130,246,0.4)',
+                      boxShadow: '0 4px 15px rgba(63, 81, 181,0.4)',
                       flexShrink: 0,
                     }}>
                       <Typography sx={{ fontSize: isMobile ? 8 : 10, color: 'rgba(255,255,255,0.87)', fontWeight: 600 }}>SCENE</Typography>
@@ -5087,12 +5087,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ gap: 0.5 }}>
                         <Box sx={{
                           px: isMobile ? 1 : 1.5, py: 0.5, borderRadius: '6px',
-                          bgcolor: selectedScene.intExt === 'INT' ? 'rgba(136, 117, 235,0.2)' : 'rgba(34,197,94,0.2)',
-                          border: selectedScene.intExt === 'INT' ? '1px solid rgba(136, 117, 235,0.4)' : '1px solid rgba(34,197,94,0.4)',
+                          bgcolor: selectedScene.intExt === 'INT' ? 'rgba(93, 118, 203,0.2)' : 'rgba(34,197,94,0.2)',
+                          border: selectedScene.intExt === 'INT' ? '1px solid rgba(93, 118, 203,0.4)' : '1px solid rgba(34,197,94,0.4)',
                         }}>
                           <Stack direction="row" spacing={0.5} alignItems="center">
-                            {selectedScene.intExt === 'INT' ? <HomeIcon sx={{ fontSize: isMobile ? 12 : 14, color: '#9e8cf8' }} /> : <ParkIcon sx={{ fontSize: isMobile ? 12 : 14, color: '#4ade80' }} />}
-                            <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: selectedScene.intExt === 'INT' ? '#9e8cf8' : '#4ade80' }}>
+                            {selectedScene.intExt === 'INT' ? <HomeIcon sx={{ fontSize: isMobile ? 12 : 14, color: '#93a4dc' }} /> : <ParkIcon sx={{ fontSize: isMobile ? 12 : 14, color: '#4ade80' }} />}
+                            <Typography sx={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: selectedScene.intExt === 'INT' ? '#93a4dc' : '#4ade80' }}>
                               {selectedScene.intExt === 'INT' ? 'Interior' : 'Exterior'}
                             </Typography>
                           </Stack>
@@ -5110,10 +5110,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         {getShotsForScene(selectedScene.id).length > 0 && (
                           <Box sx={{
                             px: 1.5, py: 0.5, borderRadius: '6px',
-                            bgcolor: 'rgba(59,130,246,0.2)',
-                            border: '1px solid rgba(59,130,246,0.4)',
+                            bgcolor: 'rgba(63, 81, 181,0.2)',
+                            border: '1px solid rgba(63, 81, 181,0.4)',
                           }}>
-                            <Stack direction="row" spacing={0.5} alignItems="center" component="span" sx={{ fontSize: 11, fontWeight: 600, color: '#60a5fa' }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center" component="span" sx={{ fontSize: 11, fontWeight: 600, color: '#93a4dc' }}>
                               <MovieIcon sx={{ fontSize: 14 }} />
                               <Typography component="span">{getShotsForScene(selectedScene.id).length} shots</Typography>
                             </Stack>
@@ -5164,7 +5164,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         <Box component="span" sx={{ ml: 0.5, display: 'flex', gap: 0.25 }}>
                           {sceneNeeds[selectedScene.id]?.cam && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#f97316' }} />}
                           {sceneNeeds[selectedScene.id]?.light && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#fbbf24' }} />}
-                          {sceneNeeds[selectedScene.id]?.sound && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#06b6d4' }} />}
+                          {sceneNeeds[selectedScene.id]?.sound && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#3f51b5' }} />}
                         </Box>
                       )}
                     </Button>
@@ -5376,15 +5376,15 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             display: 'inline-block',
                             px: 2,
                             py: 0.5,
-                            bgcolor: isCurrentLine ? 'rgba(16, 185, 129, 0.3)' : 'rgba(136, 117, 235,0.2)',
+                            bgcolor: isCurrentLine ? 'rgba(16, 185, 129, 0.3)' : 'rgba(93, 118, 203,0.2)',
                             borderRadius: '20px',
-                            border: isCurrentLine ? '1px solid rgba(16, 185, 129, 0.6)' : '1px solid rgba(136, 117, 235,0.4)',
+                            border: isCurrentLine ? '1px solid rgba(16, 185, 129, 0.6)' : '1px solid rgba(93, 118, 203,0.4)',
                             mb: 1.5,
                           }}>
                             <Typography sx={{
                               fontSize: 13,
                               fontWeight: 700,
-                              color: isCurrentLine ? '#10b981' : '#9e8cf8',
+                              color: isCurrentLine ? '#10b981' : '#93a4dc',
                               textTransform: 'uppercase',
                               fontFamily: 'Courier New, monospace',
                               letterSpacing: 1,
@@ -5448,7 +5448,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             ? '#f87171'
                             : hint.emphasis === 'low'
                               ? '#94a3b8'
-                              : '#9e8cf8';
+                              : '#93a4dc';
                         return (
                           <Box
                             data-testid="pmv-line-hint"
@@ -5456,17 +5456,17 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               mb: 2,
                               p: 1.5,
                               borderRadius: '8px',
-                              bgcolor: 'rgba(136, 117, 235,0.08)',
-                              border: '1px solid rgba(136, 117, 235,0.25)',
+                              bgcolor: 'rgba(93, 118, 203,0.08)',
+                              border: '1px solid rgba(93, 118, 203,0.25)',
                             }}
                           >
                             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                              <AutoAwesomeIcon sx={{ fontSize: 12, color: '#9e8cf8' }} />
+                              <AutoAwesomeIcon sx={{ fontSize: 12, color: '#93a4dc' }} />
                               <Typography
                                 sx={{
                                   fontSize: 9,
                                   fontWeight: 700,
-                                  color: '#9e8cf8',
+                                  color: '#93a4dc',
                                   letterSpacing: 1,
                                 }}
                               >
@@ -5501,7 +5501,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             {hint.delivery && (
                               <Typography
                                 data-testid="pmv-line-hint-delivery"
-                                sx={{ fontSize: 12, color: '#c6bdf4', fontStyle: 'italic' }}
+                                sx={{ fontSize: 12, color: '#c3cbe6', fontStyle: 'italic' }}
                               >
                                 {hint.delivery}
                               </Typography>
@@ -5630,8 +5630,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           aria-label="Legg til shot"
                           sx={{
                             color: '#6b7280',
-                            bgcolor: 'rgba(59,130,246,0.1)',
-                            '&:hover': { bgcolor: 'rgba(59,130,246,0.2)', color: '#3b82f6' },
+                            bgcolor: 'rgba(63, 81, 181,0.1)',
+                            '&:hover': { bgcolor: 'rgba(63, 81, 181,0.2)', color: '#3f51b5' },
                           }}
                         >
                           <AddIcon sx={{ fontSize: 14 }} />
@@ -5653,7 +5653,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             overflow: 'hidden',
                             cursor: 'pointer',
                             border: selectedShot?.id === shot.id 
-                              ? '2px solid #3b82f6' 
+                              ? '2px solid #3f51b5' 
                               : '1px solid #252d3d',
                             transition: 'all 0.2s',
                             '&:hover': { 
@@ -5684,7 +5684,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               px: 1,
                               py: 0.25,
                               borderRadius: '4px',
-                              bgcolor: selectedShot?.id === shot.id ? '#3b82f6' : 'rgba(0,0,0,0.7)',
+                              bgcolor: selectedShot?.id === shot.id ? '#3f51b5' : 'rgba(0,0,0,0.7)',
                             }}>
                               <Typography sx={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>
                                 {shot.shotType || `SHOT ${idx + 1}`}
@@ -5724,13 +5724,13 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         width: 48,
                         height: 48,
                         borderRadius: '12px',
-                        bgcolor: 'rgba(59,130,246,0.1)',
+                        bgcolor: 'rgba(63, 81, 181,0.1)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         mb: 2,
                       }}>
-                        <MovieIcon sx={{ fontSize: 24, color: '#3b82f6' }} />
+                        <MovieIcon sx={{ fontSize: 24, color: '#3f51b5' }} />
                       </Box>
                       <Typography sx={{ fontSize: 13, color: '#6b7280', mb: 1 }}>
                         Ingen shots i denne scenen
@@ -5741,7 +5741,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         startIcon={<AddIcon />}
                         onClick={handleAddNewShot}
                         sx={{
-                          bgcolor: '#3b82f6',
+                          bgcolor: '#3f51b5',
                           fontSize: 11,
                           px: 2,
                           '&:hover': { bgcolor: '#2563eb' },
@@ -5766,13 +5766,13 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   width: 80,
                   height: 80,
                   borderRadius: '20px',
-                  bgcolor: 'rgba(59,130,246,0.1)',
-                  border: '2px dashed #3b82f6',
+                  bgcolor: 'rgba(63, 81, 181,0.1)',
+                  border: '2px dashed #3f51b5',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                  <MovieIcon sx={{ fontSize: 36, color: '#3b82f6' }} />
+                  <MovieIcon sx={{ fontSize: 36, color: '#3f51b5' }} />
                 </Box>
                 <Typography sx={{ fontSize: 16, color: '#6b7280', fontWeight: 500 }}>
                   Velg en scene fra listen
@@ -5812,10 +5812,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               px: isTablet ? 1 : 1.5,
               py: 0.5,
               borderRadius: '6px',
-              bgcolor: 'rgba(136, 117, 235,0.15)',
-              border: '1px solid rgba(136, 117, 235,0.3)',
+              bgcolor: 'rgba(93, 118, 203,0.15)',
+              border: '1px solid rgba(93, 118, 203,0.3)',
             }}>
-              <Typography sx={{ fontSize: responsiveBodyFontSize - 2, fontWeight: 700, color: '#9e8cf8', letterSpacing: 1 }}>
+              <Typography sx={{ fontSize: responsiveBodyFontSize - 2, fontWeight: 700, color: '#93a4dc', letterSpacing: 1 }}>
                 TIMELINE
               </Typography>
             </Box>
@@ -5845,7 +5845,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   aria-label="Zoom inn timeline"
                   sx={{
                     color: '#6b7280',
-                    '&:hover': { color: '#3b82f6' },
+                    '&:hover': { color: '#3f51b5' },
                     '&:disabled': { color: '#374151' },
                     p: isTablet ? 0.5 : 1,
                   }}
@@ -5861,7 +5861,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   aria-label="Zoom ut timeline"
                   sx={{
                     color: '#6b7280',
-                    '&:hover': { color: '#3b82f6' },
+                    '&:hover': { color: '#3f51b5' },
                     '&:disabled': { color: '#374151' },
                     p: isTablet ? 0.5 : 1,
                   }}
@@ -5890,9 +5890,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       px: 0.75,
                       fontSize: 10,
                       color: timelineZoom === preset ? '#fff' : '#9ca3af',
-                      bgcolor: timelineZoom === preset ? 'rgba(59,130,246,0.26)' : 'rgba(255,255,255,0.04)',
-                      border: timelineZoom === preset ? '1px solid rgba(96,165,250,0.65)' : '1px solid #252d3d',
-                      '&:hover': { bgcolor: 'rgba(59,130,246,0.18)', borderColor: '#3b82f6' },
+                      bgcolor: timelineZoom === preset ? 'rgba(63, 81, 181,0.26)' : 'rgba(255,255,255,0.04)',
+                      border: timelineZoom === preset ? '1px solid rgba(147, 164, 220,0.65)' : '1px solid #252d3d',
+                      '&:hover': { bgcolor: 'rgba(63, 81, 181,0.18)', borderColor: '#3f51b5' },
                     }}
                   >
                     {preset}x
@@ -5929,9 +5929,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     px: 1,
                     fontSize: 10,
                     color: timelineScope === 'selected-scene' ? '#fff' : '#9ca3af',
-                    bgcolor: timelineScope === 'selected-scene' ? 'rgba(136, 117, 235,0.22)' : 'rgba(255,255,255,0.04)',
-                    border: timelineScope === 'selected-scene' ? '1px solid rgba(158, 140, 248,0.58)' : '1px solid #252d3d',
-                    '&:hover': { bgcolor: 'rgba(136, 117, 235,0.16)', borderColor: 'var(--role-violet, #8875eb)' },
+                    bgcolor: timelineScope === 'selected-scene' ? 'rgba(93, 118, 203,0.22)' : 'rgba(255,255,255,0.04)',
+                    border: timelineScope === 'selected-scene' ? '1px solid rgba(147, 164, 220,0.58)' : '1px solid #252d3d',
+                    '&:hover': { bgcolor: 'rgba(93, 118, 203,0.16)', borderColor: 'var(--role-violet, #5d76cb)' },
                     '&:disabled': { color: '#374151', borderColor: '#1e2536' },
                   }}
                 >
@@ -5964,9 +5964,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     px: 1,
                     fontSize: 10,
                     color: timelineScope === 'all' ? '#fff' : '#9ca3af',
-                    bgcolor: timelineScope === 'all' ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.04)',
-                    border: timelineScope === 'all' ? '1px solid rgba(96,165,250,0.52)' : '1px solid #252d3d',
-                    '&:hover': { bgcolor: 'rgba(59,130,246,0.14)', borderColor: '#3b82f6' },
+                    bgcolor: timelineScope === 'all' ? 'rgba(63, 81, 181,0.18)' : 'rgba(255,255,255,0.04)',
+                    border: timelineScope === 'all' ? '1px solid rgba(147, 164, 220,0.52)' : '1px solid #252d3d',
+                    '&:hover': { bgcolor: 'rgba(63, 81, 181,0.14)', borderColor: '#3f51b5' },
                   }}
                 >
                   Alt
@@ -6020,10 +6020,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     height: 28,
                     px: 1,
                     fontSize: 10,
-                    color: '#bfdbfe',
-                    bgcolor: 'rgba(59,130,246,0.08)',
-                    border: '1px solid rgba(59,130,246,0.22)',
-                    '&:hover': { bgcolor: 'rgba(59,130,246,0.16)', borderColor: '#3b82f6' },
+                    color: '#c3cbe6',
+                    bgcolor: 'rgba(63, 81, 181,0.08)',
+                    border: '1px solid rgba(63, 81, 181,0.22)',
+                    '&:hover': { bgcolor: 'rgba(63, 81, 181,0.16)', borderColor: '#3f51b5' },
                     '&:disabled': { color: '#374151', borderColor: '#1e2536' },
                   }}
                 >
@@ -6075,8 +6075,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 onClick={() => handleTimelineViewChange('grid')}
                 aria-label="Vis timeline som grid"
                 sx={{
-                  color: timelineViewMode === 'grid' ? '#3b82f6' : '#6b7280',
-                  bgcolor: timelineViewMode === 'grid' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                  color: timelineViewMode === 'grid' ? '#3f51b5' : '#6b7280',
+                  bgcolor: timelineViewMode === 'grid' ? 'rgba(63, 81, 181,0.15)' : 'rgba(255,255,255,0.05)',
                   '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' },
                   p: isTablet ? 0.5 : 1,
                 }}
@@ -6090,8 +6090,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 onClick={() => handleTimelineViewChange('list')}
                 aria-label="Vis timeline som liste"
                 sx={{
-                  color: timelineViewMode === 'list' ? '#3b82f6' : '#6b7280',
-                  bgcolor: timelineViewMode === 'list' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+                  color: timelineViewMode === 'list' ? '#3f51b5' : '#6b7280',
+                  bgcolor: timelineViewMode === 'list' ? 'rgba(63, 81, 181,0.15)' : 'rgba(255,255,255,0.05)',
                   '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' },
                   p: isTablet ? 0.5 : 1,
                 }}
@@ -6130,15 +6130,15 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   cursor: 'pointer',
                   py: 0.5,
                   borderRadius: '4px',
-                  bgcolor: selectedScene?.id === segment.scene.id ? 'rgba(59,130,246,0.2)' : 'transparent',
-                  borderLeft: segment.sceneIndex > 0 ? '1px solid rgba(96,165,250,0.22)' : 'none',
+                  bgcolor: selectedScene?.id === segment.scene.id ? 'rgba(63, 81, 181,0.2)' : 'transparent',
+                  borderLeft: segment.sceneIndex > 0 ? '1px solid rgba(147, 164, 220,0.22)' : 'none',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: 'rgba(59,130,246,0.1)' },
+                  '&:hover': { bgcolor: 'rgba(63, 81, 181,0.1)' },
                 }}
               >
                 <Typography sx={{ 
                   fontSize: 10, 
-                  color: selectedScene?.id === segment.scene.id ? '#60a5fa' : '#6b7280',
+                  color: selectedScene?.id === segment.scene.id ? '#93a4dc' : '#6b7280',
                   fontWeight: 600,
                 }}>
                   S{(segment.scene.sceneNumber ?? segment.sceneIndex + 1).toString().padStart(2, '0')}
@@ -6207,7 +6207,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   sx={{
                     width: 2,
                     height: `${Math.sin(i * 0.2) * 30 + 40 + Math.random() * 20}%`,
-                    bgcolor: i < 15 ? 'rgba(59,130,246,0.6)' : 'rgba(234,179,8,0.4)',
+                    bgcolor: i < 15 ? 'rgba(63, 81, 181,0.6)' : 'rgba(234,179,8,0.4)',
                     borderRadius: '1px',
                     transition: 'all 0.1s',
                   }}
@@ -6241,13 +6241,13 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               width: 24,
               height: 24,
               borderRadius: '6px',
-              bgcolor: 'rgba(59,130,246,0.15)',
-              border: '1px solid rgba(59,130,246,0.3)',
+              bgcolor: 'rgba(63, 81, 181,0.15)',
+              border: '1px solid rgba(63, 81, 181,0.3)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <MovieIcon sx={{ fontSize: 12, color: '#60a5fa' }} />
+              <MovieIcon sx={{ fontSize: 12, color: '#93a4dc' }} />
             </Box>
           </Box>
           <Box
@@ -6334,7 +6334,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               borderRadius: '8px',
               border: '1px solid #252d3d',
               cursor: 'pointer',
-              '&:hover': { borderColor: '#3b82f6' },
+              '&:hover': { borderColor: '#3f51b5' },
             }}
           >
             {/* Time markers */}
@@ -6465,20 +6465,20 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 sx={{
                   height: 20,
                   fontSize: 10,
-                  bgcolor: 'rgba(59,130,246,0.15)',
-                  color: '#60a5fa',
-                  border: '1px solid rgba(59,130,246,0.3)',
+                  bgcolor: 'rgba(63, 81, 181,0.15)',
+                  color: '#93a4dc',
+                  border: '1px solid rgba(63, 81, 181,0.3)',
                   cursor: 'pointer',
-                  '&:hover': { bgcolor: 'rgba(59,130,246,0.25)' },
+                  '&:hover': { bgcolor: 'rgba(63, 81, 181,0.25)' },
                 }}
               />
             )}
             {currentCallSheet && (
               <Chip
-                icon={<CallSheetIcon sx={{ fontSize: 10, color: '#06b6d4' }} />}
+                icon={<CallSheetIcon sx={{ fontSize: 10, color: '#3f51b5' }} />}
                 label={`CS: ${currentCallSheet.shootingDayId}`}
                 size="small"
-                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(6,182,212,0.15)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)' }}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(63, 81, 181,0.15)', color: '#3f51b5', border: '1px solid rgba(63, 81, 181,0.3)' }}
               />
             )}
             {editingShotDuration && (
@@ -6494,7 +6494,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {/* Scene Actions */}
           <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
             <Tooltip title="Scene referansebilde">
-              <IconButton size="small" onClick={() => selectedScene && dispatchSearch({ type: 'OPEN' })} aria-label="Scene referansebilde" sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#60a5fa' } }}>
+              <IconButton size="small" onClick={() => selectedScene && dispatchSearch({ type: 'OPEN' })} aria-label="Scene referansebilde" sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#93a4dc' } }}>
                 <ImageIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
@@ -6518,7 +6518,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     if (results.length > 0) dispatchSearch({ type: 'SET_FILM_RESULTS', films: results });
                   }
                 }}
-                sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#9e8cf8' } }}
+                sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#93a4dc' } }}
               >
                 <SearchIcon sx={{ fontSize: 14 }} />
               </IconButton>
@@ -6579,8 +6579,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   }}
                   sx={{
                     color: '#fff',
-                    '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.2)' },
-                    bgcolor: selectedShot?.id === shot.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                    '&:hover': { bgcolor: 'rgba(63, 81, 181, 0.2)' },
+                    bgcolor: selectedShot?.id === shot.id ? 'rgba(63, 81, 181, 0.1)' : 'transparent',
                   }}
                 >
                   SHOT {idx + 1}: {shot.shotType}
@@ -6591,7 +6591,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 <MenuItem
                   key={idx}
                   onClick={() => setShotSelectorOpen(false)}
-                  sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.2)' } }}
+                  sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(63, 81, 181, 0.2)' } }}
                 >
                   SHOT {idx}: {idx === 1 ? 'WIDE' : idx === 2 ? 'CLOSE-UP' : 'MEDIUM'}
                 </MenuItem>
@@ -6682,7 +6682,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       variant="outlined"
                       onClick={handleOpenSelectedShotStoryboardLinkDialog}
                       data-testid="pmv-shot-storyboard-link"
-                      sx={{ color: '#93c5fd', borderColor: 'rgba(59,130,246,0.32)' }}
+                      sx={{ color: '#93c5fd', borderColor: 'rgba(63, 81, 181,0.32)' }}
                     >
                       {selectedShotStoryboardLink?.status === 'linked' ? 'Relink' : 'Koble'}
                     </Button>
@@ -6720,7 +6720,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       size="small"
                       variant="outlined"
                       onClick={handleCreateStoryboardFrameFromSelectedShot}
-                      sx={{ color: '#c6bdf4', borderColor: 'rgba(136, 117, 235,0.28)' }}
+                      sx={{ color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,0.28)' }}
                     >
                       Ny frame fra shot
                     </Button>
@@ -6741,9 +6741,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       size="small"
                       label={`${selectedSceneStoryboardCoverage.coveredFrames}/${selectedSceneStoryboardCoverage.totalFrames} frames brukt`}
                       sx={{
-                        bgcolor: 'rgba(59,130,246,0.14)',
+                        bgcolor: 'rgba(63, 81, 181,0.14)',
                         color: '#93c5fd',
-                        border: '1px solid rgba(59,130,246,0.24)',
+                        border: '1px solid rgba(63, 81, 181,0.24)',
                       }}
                     />
                     <Chip
@@ -6784,7 +6784,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       variant="outlined"
                       onClick={handleOpenSelectedSceneStoryboard}
                       data-testid="pmv-scene-open-storyboard"
-                      sx={{ color: '#93c5fd', borderColor: 'rgba(59,130,246,0.32)' }}
+                      sx={{ color: '#93c5fd', borderColor: 'rgba(63, 81, 181,0.32)' }}
                     >
                       Åpne scene-storyboard
                     </Button>
@@ -6794,7 +6794,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       onClick={handleOpenSelectedSceneCoverageLinkedFrame}
                       data-testid="pmv-scene-open-linked-frame"
                       disabled={selectedSceneStoryboardFirstLinkedFrameIndex === undefined}
-                      sx={{ color: '#bfdbfe', borderColor: 'rgba(96,165,250,0.26)' }}
+                      sx={{ color: '#c3cbe6', borderColor: 'rgba(147, 164, 220,0.26)' }}
                     >
                       Åpne linked frame
                     </Button>
@@ -6905,7 +6905,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {/* KAMERAUTSTYR Section - Enhanced Professional Design */}
           <Box sx={{ 
             borderBottom: '1px solid #2a3142',
-            background: 'linear-gradient(180deg, rgba(59,130,246,0.03) 0%, transparent 100%)',
+            background: 'linear-gradient(180deg, rgba(63, 81, 181,0.03) 0%, transparent 100%)',
           }}>
             <Box
               onClick={() => dispatchInspector({ type: 'TOGGLE_SECTION', section: 'camera' })}
@@ -6916,9 +6916,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   cursor: 'pointer',
-                  borderLeft: '3px solid #3b82f6',
+                  borderLeft: '3px solid #3f51b5',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: 'rgba(59,130,246,0.08)' },
+                  '&:hover': { bgcolor: 'rgba(63, 81, 181,0.08)' },
                 }}
               >
                 <Stack direction="row" spacing={1.5} alignItems="center">
@@ -6926,12 +6926,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     width: 28,
                     height: 28,
                     borderRadius: '8px',
-                    bgcolor: 'rgba(59,130,246,0.15)',
+                    bgcolor: 'rgba(63, 81, 181,0.15)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3f51b5" strokeWidth="2">
                       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                       <circle cx="12" cy="13" r="4"/>
                     </svg>
@@ -6962,7 +6962,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     </Tooltip>
                   )}
                   {expandedSections.camera ? (
-                    <ExpandLessIcon sx={{ fontSize: 18, color: '#3b82f6' }} />
+                    <ExpandLessIcon sx={{ fontSize: 18, color: '#3f51b5' }} />
                   ) : (
                     <ExpandMoreIcon sx={{ fontSize: 18, color: '#6b7280' }} />
                   )}
@@ -6976,11 +6976,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     {/* 1. Kamera */}
                     <FormControl fullWidth size="small">
                       <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#93a4dc" strokeWidth="2">
                           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                           <circle cx="12" cy="13" r="4"/>
                         </svg>
-                        <Typography sx={{ fontSize: 10, color: '#60a5fa', fontWeight: 600 }}>KAMERA</Typography>
+                        <Typography sx={{ fontSize: 10, color: '#93a4dc', fontWeight: 600 }}>KAMERA</Typography>
                       </Stack>
                       <Select
                         value={getValidCameraValue(shotProperties.camera)}
@@ -6992,24 +6992,24 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           borderRadius: '8px',
                           border: '1px solid #374151',
                           '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                          '& .MuiSelect-icon': { color: '#60a5fa' },
-                          '&:hover': { bgcolor: '#2d3748', borderColor: '#3b82f6' },
-                          '&.Mui-focused': { borderColor: '#3b82f6' },
+                          '& .MuiSelect-icon': { color: '#93a4dc' },
+                          '&:hover': { bgcolor: '#2d3748', borderColor: '#3f51b5' },
+                          '&.Mui-focused': { borderColor: '#3f51b5' },
                         }}
                         MenuProps={{
                           sx: { zIndex: 1400 },
                           PaperProps: {
                             sx: {
                               bgcolor: '#1e2536',
-                              border: '1px solid #3b82f6',
+                              border: '1px solid #3f51b5',
                               borderRadius: '8px',
                               boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                               '& .MuiMenuItem-root': {
                                 fontSize: 13,
                                 color: '#fff',
                                 py: 1,
-                                '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.2)' },
-                                '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)' },
+                                '&:hover': { bgcolor: 'rgba(63, 81, 181, 0.2)' },
+                                '&.Mui-selected': { bgcolor: 'rgba(63, 81, 181, 0.15)' },
                               },
                             },
                           },
@@ -7041,12 +7041,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     {/* 2. Linse */}
                     <FormControl fullWidth size="small">
                       <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9e8cf8" strokeWidth="2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#93a4dc" strokeWidth="2">
                           <circle cx="12" cy="12" r="10"/>
                           <circle cx="12" cy="12" r="6"/>
                           <circle cx="12" cy="12" r="2"/>
                         </svg>
-                        <Typography sx={{ fontSize: 10, color: '#9e8cf8', fontWeight: 600 }}>LINSE</Typography>
+                        <Typography sx={{ fontSize: 10, color: '#93a4dc', fontWeight: 600 }}>LINSE</Typography>
                       </Stack>
                       <Select
                         value={shotProperties.lens}
@@ -7058,24 +7058,24 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           borderRadius: '8px',
                           border: '1px solid #374151',
                           '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                          '& .MuiSelect-icon': { color: '#9e8cf8' },
-                          '&:hover': { bgcolor: '#2d3748', borderColor: 'var(--role-violet, #8875eb)' },
-                          '&.Mui-focused': { borderColor: 'var(--role-violet, #8875eb)' },
+                          '& .MuiSelect-icon': { color: '#93a4dc' },
+                          '&:hover': { bgcolor: '#2d3748', borderColor: 'var(--role-violet, #5d76cb)' },
+                          '&.Mui-focused': { borderColor: 'var(--role-violet, #5d76cb)' },
                         }}
                         MenuProps={{
                           sx: { zIndex: 1400 },
                           PaperProps: {
                             sx: {
                               bgcolor: '#1e2536',
-                              border: '1px solid #8875eb',
+                              border: '1px solid #5d76cb',
                               borderRadius: '8px',
                               boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
                               '& .MuiMenuItem-root': {
                                 fontSize: 13,
                                 color: '#fff',
                                 py: 1,
-                                '&:hover': { bgcolor: 'rgba(136, 117, 235, 0.2)' },
-                                '&.Mui-selected': { bgcolor: 'rgba(136, 117, 235, 0.15)' },
+                                '&:hover': { bgcolor: 'rgba(93, 118, 203, 0.2)' },
+                                '&.Mui-selected': { bgcolor: 'rgba(93, 118, 203, 0.15)' },
                               },
                             },
                           },
@@ -7250,12 +7250,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     mt: 1,
                     p: 1.5,
                     borderRadius: '8px',
-                    bgcolor: 'rgba(59,130,246,0.08)',
-                    border: '1px solid rgba(59,130,246,0.2)',
+                    bgcolor: 'rgba(63, 81, 181,0.08)',
+                    border: '1px solid rgba(63, 81, 181,0.2)',
                   }}>
                     <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
                       <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>
-                        <span style={{ color: '#60a5fa', fontWeight: 600 }}>{shotProperties.camera}</span> + <span style={{ color: '#9e8cf8' }}>{shotProperties.lens}</span>
+                        <span style={{ color: '#93a4dc', fontWeight: 600 }}>{shotProperties.camera}</span> + <span style={{ color: '#93a4dc' }}>{shotProperties.lens}</span>
                       </Typography>
                       <Stack direction="row" spacing={1}>
                         <Tooltip title="Kopier innstillinger til neste shot">
@@ -7263,7 +7263,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             size="small"
                             onClick={handleCopySettingsToNextShot}
                             aria-label="Kopier innstillinger til neste shot"
-                            sx={{ p: 0.5, color: '#6b7280', '&:hover': { color: '#3b82f6' } }}
+                            sx={{ p: 0.5, color: '#6b7280', '&:hover': { color: '#3f51b5' } }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -7299,7 +7299,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               renderValue={() => 'Presets'}
                             >
                               {Object.keys(savedPresets).map(name => (
-                                <MenuItem key={name} value={name} sx={{ fontSize: 11, color: '#fff', bgcolor: '#1e2536', '&:hover': { bgcolor: 'rgba(59,130,246,0.2)' } }}>
+                                <MenuItem key={name} value={name} sx={{ fontSize: 11, color: '#fff', bgcolor: '#1e2536', '&:hover': { bgcolor: 'rgba(63, 81, 181,0.2)' } }}>
                                   {name}
                                 </MenuItem>
                               ))}
@@ -7407,7 +7407,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             {/* LYD Section - Enhanced */}
             <Box sx={{ 
               borderBottom: '1px solid #2a3142',
-              background: 'linear-gradient(180deg, rgba(59,130,246,0.03) 0%, transparent 100%)',
+              background: 'linear-gradient(180deg, rgba(63, 81, 181,0.03) 0%, transparent 100%)',
             }}>
               <Box
                 onClick={() => dispatchInspector({ type: 'TOGGLE_SECTION', section: 'audio' })}
@@ -7418,9 +7418,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   cursor: 'pointer',
-                  borderLeft: '3px solid #3b82f6',
+                  borderLeft: '3px solid #3f51b5',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: 'rgba(59,130,246,0.08)' },
+                  '&:hover': { bgcolor: 'rgba(63, 81, 181,0.08)' },
                 }}
               >
                 <Stack direction="row" spacing={1.5} alignItems="center">
@@ -7428,12 +7428,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     width: 28,
                     height: 28,
                     borderRadius: '8px',
-                    bgcolor: 'rgba(59,130,246,0.15)',
+                    bgcolor: 'rgba(63, 81, 181,0.15)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3f51b5" strokeWidth="2">
                       <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                       <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
                     </svg>
@@ -7448,7 +7448,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   </Box>
                 </Stack>
                 {expandedSections.audio ? (
-                  <ExpandLessIcon sx={{ fontSize: 18, color: '#3b82f6' }} />
+                  <ExpandLessIcon sx={{ fontSize: 18, color: '#3f51b5' }} />
                 ) : (
                   <ExpandMoreIcon sx={{ fontSize: 18, color: '#6b7280' }} />
                 )}
@@ -7704,7 +7704,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         justifyContent: 'center',
                         gap: 0.5,
                         p: 1,
-                        bgcolor: '#3b82f6',
+                        bgcolor: '#3f51b5',
                         borderRadius: 1,
                         cursor: 'pointer',
                         transition: 'all 0.2s',
@@ -7809,7 +7809,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                         sx={{
                                           px: 2,
                                           py: 0.5,
-                                          bgcolor: '#3b82f6',
+                                          bgcolor: '#3f51b5',
                                           borderRadius: 1,
                                           cursor: 'pointer',
                                           '&:hover': { bgcolor: '#2563eb' },
@@ -7827,7 +7827,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                     bgcolor: '#252d3d',
                                     '& fieldset': { borderColor: '#374151' },
                                     '&:hover fieldset': { borderColor: '#4b5563' },
-                                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                    '&.Mui-focused fieldset': { borderColor: '#3f51b5' },
                                   },
                                   '& .MuiInputBase-input': { color: '#fff', fontSize: 14 },
                                 }}
@@ -7847,7 +7847,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                     sx={{
                                       px: 1.5,
                                       py: 0.5,
-                                      bgcolor: searchSource === source.id ? '#3b82f6' : '#374151',
+                                      bgcolor: searchSource === source.id ? '#3f51b5' : '#374151',
                                       borderRadius: 1,
                                       cursor: 'pointer',
                                       transition: 'all 0.2s',
@@ -7925,7 +7925,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                 width: 40, 
                                 height: 40, 
                                 border: '3px solid #374151', 
-                                borderTopColor: '#3b82f6',
+                                borderTopColor: '#3f51b5',
                                 borderRadius: '50%',
                                 animation: 'spin 1s linear infinite',
                                 '@keyframes spin': {
@@ -7996,7 +7996,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                         sx={{
                                           flex: 1,
                                           p: 0.75,
-                                          bgcolor: '#3b82f6',
+                                          bgcolor: '#3f51b5',
                                           borderRadius: 0.75,
                                           color: '#fff',
                                           fontSize: 10,
@@ -8094,7 +8094,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                           transition: 'all 0.2s',
                                           border: '1px solid #374151',
                                           '&:hover': { 
-                                            borderColor: '#3b82f6',
+                                            borderColor: '#3f51b5',
                                             transform: 'translateY(-2px)',
                                           },
                                         }}
@@ -8116,7 +8116,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                             <Typography sx={{ fontSize: 10, color: '#6b7280' }}>
                                               {film.year}
                                             </Typography>
-                                            <Typography sx={{ fontSize: 10, color: '#3b82f6' }}>
+                                            <Typography sx={{ fontSize: 10, color: '#3f51b5' }}>
                                               {film.imageCount} frames
                                             </Typography>
                                           </Stack>
@@ -8198,7 +8198,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                             sx={{
                                               flex: 1,
                                               p: 0.75,
-                                              bgcolor: '#3b82f6',
+                                              bgcolor: '#3f51b5',
                                               borderRadius: 0.75,
                                               color: '#fff',
                                               fontSize: 10,
@@ -8330,7 +8330,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             bgcolor: '#0c0f14',
           }}>
             <Typography sx={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
-              <Stack direction="row" spacing={1} alignItems="center"><StripboardIcon sx={{ color: '#60a5fa' }} /> Stripboard - TROLL</Stack>
+              <Stack direction="row" spacing={1} alignItems="center"><StripboardIcon sx={{ color: '#93a4dc' }} /> Stripboard - TROLL</Stack>
             </Typography>
             <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} aria-label="Lukk stripboard" sx={{ color: '#9ca3af' }}>
               <CloseIcon />
@@ -8400,7 +8400,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             bgcolor: '#0c0f14',
           }}>
             <Typography sx={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
-              <Stack direction="row" spacing={1} alignItems="center"><CalendarIcon sx={{ color: '#60a5fa' }} /> Opptaksplan - TROLL</Stack>
+              <Stack direction="row" spacing={1} alignItems="center"><CalendarIcon sx={{ color: '#93a4dc' }} /> Opptaksplan - TROLL</Stack>
             </Typography>
             <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} aria-label="Lukk opptaksplan" sx={{ color: '#9ca3af' }}>
               <CloseIcon />
@@ -8511,8 +8511,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     size="small"
                     label={day.status === 'wrapped' ? 'Ferdig' : day.status === 'in-progress' ? 'Pågår' : 'Planlagt'}
                     sx={{
-                      bgcolor: day.status === 'wrapped' ? 'rgba(16,185,129,0.2)' : day.status === 'in-progress' ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)',
-                      color: day.status === 'wrapped' ? '#10b981' : day.status === 'in-progress' ? '#ef4444' : '#3b82f6',
+                      bgcolor: day.status === 'wrapped' ? 'rgba(16,185,129,0.2)' : day.status === 'in-progress' ? 'rgba(239,68,68,0.2)' : 'rgba(63, 81, 181,0.2)',
+                      color: day.status === 'wrapped' ? '#10b981' : day.status === 'in-progress' ? '#ef4444' : '#3f51b5',
                       fontSize: 10,
                     }}
                   />
@@ -8645,7 +8645,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             startIcon={<DownloadIcon />}
             data-testid="pmv-export-production-json"
             sx={{
-              bgcolor: '#3b82f6',
+              bgcolor: '#3f51b5',
               '&:hover': { bgcolor: '#2563eb' },
             }}
           >
@@ -8769,12 +8769,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             px: 1,
                             py: 0.25,
                             borderRadius: '6px',
-                            bgcolor: 'rgba(136, 117, 235, 0.2)',
-                            border: '1px solid rgba(136, 117, 235, 0.3)',
+                            bgcolor: 'rgba(93, 118, 203, 0.2)',
+                            border: '1px solid rgba(93, 118, 203, 0.3)',
                             mb: 0.5,
                           }}
                         >
-                          <Typography sx={{ fontSize: 11, color: '#9e8cf8', fontWeight: 600 }}>
+                          <Typography sx={{ fontSize: 11, color: '#93a4dc', fontWeight: 600 }}>
                             {assignedRole.name}
                           </Typography>
                         </Box>
@@ -8958,7 +8958,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       borderRadius: '6px',
                       border: '1px solid #252d3d',
                       cursor: 'pointer',
-                      '&:hover': { bgcolor: '#252d3d', borderColor: '#3b82f6' },
+                      '&:hover': { bgcolor: '#252d3d', borderColor: '#3f51b5' },
                     }}
                   >
                     <Typography sx={{ fontSize: 12, color: '#e5e7eb', fontWeight: 500 }}>{name}</Typography>
@@ -9026,8 +9026,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     sx={{
                       color: sortBy === option ? '#fff' : '#9ca3af',
                       borderColor: '#374151',
-                      bgcolor: sortBy === option ? '#3b82f6' : 'transparent',
-                      '&:hover': { bgcolor: sortBy === option ? '#2563eb' : 'rgba(59,130,246,0.1)' },
+                      bgcolor: sortBy === option ? '#3f51b5' : 'transparent',
+                      '&:hover': { bgcolor: sortBy === option ? '#2563eb' : 'rgba(63, 81, 181,0.1)' },
                     }}
                   >
                     {option.charAt(0).toUpperCase() + option.slice(1)}
@@ -9047,7 +9047,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 const tags = sceneTags[sceneId] || [];
                 return (
                   <Box key={sceneId} sx={{ mb: 1.5, p: 1.5, borderRadius: 1, bgcolor: '#0f1318', border: '1px solid #2a3142' }}>
-                    <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', mb: 0.75 }}>
+                    <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#93a4dc', mb: 0.75 }}>
                       Scene {scene?.sceneNumber || sceneId}
                     </Typography>
                     <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
@@ -9057,7 +9057,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           label={tag}
                           size="small"
                           onDelete={() => handleRemoveTag(sceneId, tag)}
-                          sx={{ height: 22, fontSize: 10, bgcolor: 'rgba(136, 117, 235,0.2)', color: '#c6bdf4', '& .MuiChip-deleteIcon': { fontSize: 14, color: '#9e8cf8' } }}
+                          sx={{ height: 22, fontSize: 10, bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6', '& .MuiChip-deleteIcon': { fontSize: 14, color: '#93a4dc' } }}
                         />
                       ))}
                       <Chip
@@ -9067,7 +9067,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           const tag = window.prompt('Enter tag name:');
                           if (tag) handleAddTag(sceneId, tag);
                         }}
-                        sx={{ height: 22, fontSize: 10, bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', cursor: 'pointer', '&:hover': { bgcolor: 'rgba(59,130,246,0.3)' } }}
+                        sx={{ height: 22, fontSize: 10, bgcolor: 'rgba(63, 81, 181,0.15)', color: '#93a4dc', cursor: 'pointer', '&:hover': { bgcolor: 'rgba(63, 81, 181,0.3)' } }}
                       />
                     </Stack>
                   </Box>
@@ -9092,10 +9092,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     }}
                     variant={selectedTags.has(tag) ? 'filled' : 'outlined'}
                     sx={{
-                      bgcolor: selectedTags.has(tag) ? '#8875eb' : 'transparent',
+                      bgcolor: selectedTags.has(tag) ? '#5d76cb' : 'transparent',
                       color: selectedTags.has(tag) ? '#fff' : '#9ca3af',
                       borderColor: '#374151',
-                      '&:hover': { bgcolor: selectedTags.has(tag) ? '#6249df' : 'rgba(136, 117, 235,0.1)' },
+                      '&:hover': { bgcolor: selectedTags.has(tag) ? '#4b3d8f' : 'rgba(93, 118, 203,0.1)' },
                     }}
                   />
                 ))}
@@ -9112,7 +9112,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   <Checkbox
                     checked={filters.missing.cam}
                     onChange={(e) => setFilters(p => ({ ...p, missing: { ...p.missing, cam: e.target.checked } }))}
-                    sx={{ color: '#3b82f6' }}
+                    sx={{ color: '#3f51b5' }}
                   />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>Missing Camera Equipment</Typography>
                 </Box>
@@ -9120,7 +9120,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   <Checkbox
                     checked={filters.missing.light}
                     onChange={(e) => setFilters(p => ({ ...p, missing: { ...p.missing, light: e.target.checked } }))}
-                    sx={{ color: '#3b82f6' }}
+                    sx={{ color: '#3f51b5' }}
                   />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>Missing Lighting</Typography>
                 </Box>
@@ -9128,7 +9128,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   <Checkbox
                     checked={filters.missing.sound}
                     onChange={(e) => setFilters(p => ({ ...p, missing: { ...p.missing, sound: e.target.checked } }))}
-                    sx={{ color: '#3b82f6' }}
+                    sx={{ color: '#3f51b5' }}
                   />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>Missing Audio Equipment</Typography>
                 </Box>
@@ -9160,7 +9160,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           'data-testid': 'pmv-save-preset-dialog',
           sx: {
             bgcolor: '#1a1f2e',
-            border: '1px solid #3b82f6',
+            border: '1px solid #3f51b5',
             minWidth: 400,
           },
         }}
@@ -9193,12 +9193,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 bgcolor: '#0d1117',
                 color: '#fff',
                 '& fieldset': { borderColor: '#374151' },
-                '&:hover fieldset': { borderColor: '#3b82f6' },
-                '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                '&:hover fieldset': { borderColor: '#3f51b5' },
+                '&.Mui-focused fieldset': { borderColor: '#3f51b5' },
               },
             }}
           />
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(59,130,246,0.1)', borderRadius: 2 }}>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(63, 81, 181,0.1)', borderRadius: 2 }}>
             <Typography sx={{ fontSize: 11, color: '#6b7280', mb: 1 }}>Innstillinger som lagres:</Typography>
             <Stack spacing={0.5}>
               <Stack direction="row" spacing={0.5} alignItems="center">
@@ -9288,7 +9288,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           {selectedSceneStoryboardCandidates.length === 0 ? (
-            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#bfdbfe' }}>
+            <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.12)', color: '#c3cbe6' }}>
               Scenen har ingen storyboard frames eller scene-matchede bibliotekselementer ennå.
             </Alert>
           ) : (
@@ -9305,8 +9305,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       p: 1.5,
                       borderRadius: 1.5,
                       cursor: 'pointer',
-                      border: selected ? '1px solid #3b82f6' : '1px solid #253046',
-                      bgcolor: selected ? 'rgba(59,130,246,0.12)' : 'rgba(15,23,42,0.82)',
+                      border: selected ? '1px solid #3f51b5' : '1px solid #253046',
+                      bgcolor: selected ? 'rgba(63, 81, 181,0.12)' : 'rgba(15,23,42,0.82)',
                     }}
                   >
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
@@ -9317,7 +9317,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                           height: 74,
                           borderRadius: 1,
                           overflow: 'hidden',
-                          bgcolor: '#0a0515',
+                          bgcolor: '#1b122c',
                           border: '1px solid rgba(255,255,255,0.06)',
                         }}
                       >
@@ -9339,7 +9339,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         </Typography>
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                           <Chip size="small" label={candidate.sourceLabel} sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#6ee7b7' }} />
-                          <Chip size="small" label={candidate.shotType || 'Medium'} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#93c5fd' }} />
+                          <Chip size="small" label={candidate.shotType || 'Medium'} sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#93c5fd' }} />
                           {candidate.cameraAngle && (
                             <Chip size="small" label={candidate.cameraAngle} sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
                           )}
@@ -9466,24 +9466,24 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 sx={{
                   p: 2,
                   borderRadius: '10px',
-                  bgcolor: sceneNeeds[editingSceneNeedsId]?.sound ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.03)',
-                  border: sceneNeeds[editingSceneNeedsId]?.sound ? '1px solid #06b6d4' : '1px solid #2a3142',
+                  bgcolor: sceneNeeds[editingSceneNeedsId]?.sound ? 'rgba(63, 81, 181,0.15)' : 'rgba(255,255,255,0.03)',
+                  border: sceneNeeds[editingSceneNeedsId]?.sound ? '1px solid #3f51b5' : '1px solid #2a3142',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { borderColor: '#06b6d4' },
+                  '&:hover': { borderColor: '#3f51b5' },
                 }}
               >
                 <Stack direction="row" alignItems="center" justifyContent="space-between">
                   <Stack direction="row" spacing={2} alignItems="center">
-                    <MicIcon sx={{ color: sceneNeeds[editingSceneNeedsId]?.sound ? '#06b6d4' : '#6b7280' }} />
+                    <MicIcon sx={{ color: sceneNeeds[editingSceneNeedsId]?.sound ? '#3f51b5' : '#6b7280' }} />
                     <Box>
-                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#fff' }}><Stack direction="row" spacing={0.5} alignItems="center" component="span"><MicIcon sx={{ fontSize: 14, color: '#06b6d4' }} /> Lyd</Stack></Typography>
+                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#fff' }}><Stack direction="row" spacing={0.5} alignItems="center" component="span"><MicIcon sx={{ fontSize: 14, color: '#3f51b5' }} /> Lyd</Stack></Typography>
                       <Typography sx={{ fontSize: 11, color: '#9ca3af' }}>Lydplan/mikrofon ikke satt</Typography>
                     </Box>
                   </Stack>
                   <Checkbox
                     checked={sceneNeeds[editingSceneNeedsId]?.sound || false}
-                    sx={{ color: '#06b6d4', '&.Mui-checked': { color: '#06b6d4' } }}
+                    sx={{ color: '#3f51b5', '&.Mui-checked': { color: '#3f51b5' } }}
                   />
                 </Stack>
               </Box>
@@ -9609,7 +9609,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AssignmentIcon sx={{ color: 'var(--role-violet, #8875eb)' }} />
+          <AssignmentIcon sx={{ color: 'var(--role-violet, #5d76cb)' }} />
           Pre-Production Checklist - Scene {selectedScene?.sceneNumber}
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
@@ -9622,7 +9622,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     value={getChecklistProgress(selectedScene.id)}
                     size={60}
                     thickness={4}
-                    sx={{ color: getChecklistProgress(selectedScene.id) === 100 ? '#10b981' : '#8875eb' }}
+                    sx={{ color: getChecklistProgress(selectedScene.id) === 100 ? '#10b981' : '#5d76cb' }}
                   />
                   <Box
                     sx={{
@@ -9651,10 +9651,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <Stack spacing={1.5}>
                 {[
                   { key: 'locationConfirmed', label: 'Lokasjon bekreftet', icon: PinIcon, color: '#10b981' },
-                  { key: 'castConfirmed', label: 'Cast bekreftet tilgjengelig', icon: PeopleIcon, color: '#3b82f6' },
+                  { key: 'castConfirmed', label: 'Cast bekreftet tilgjengelig', icon: PeopleIcon, color: '#3f51b5' },
                   { key: 'propsReady', label: 'Rekvisitter klare', icon: TheaterIcon, color: '#f59e0b' },
                   { key: 'equipmentAllocated', label: 'Utstyr tildelt', icon: CameraIcon, color: '#ef4444' },
-                  { key: 'permitsObtained', label: 'Tillatelser innhentet', icon: AssignmentIcon, color: 'var(--role-violet, #8875eb)' },
+                  { key: 'permitsObtained', label: 'Tillatelser innhentet', icon: AssignmentIcon, color: 'var(--role-violet, #5d76cb)' },
                   { key: 'scriptLocked', label: 'Manus låst', icon: NoteIcon, color: '#ec4899' },
                 ].map(({ key, label, icon: IconComponent, color }) => (
                   <Box
@@ -9724,7 +9724,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <MovieIcon sx={{ color: '#3b82f6' }} />
+          <MovieIcon sx={{ color: '#3f51b5' }} />
           Generer Shot List - Scene {selectedScene?.sceneNumber}
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
@@ -9740,7 +9740,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 titleIcon: MovieIcon,
                 description: 'Wide, Medium, Close-up (3 shots)',
                 shots: 3,
-                color: '#3b82f6',
+                color: '#3f51b5',
               },
               {
                 key: 'dialogue' as const,
@@ -9814,7 +9814,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             variant="contained"
             startIcon={<AddIcon />}
             sx={{
-              bgcolor: '#3b82f6',
+              bgcolor: '#3f51b5',
               '&:hover': { bgcolor: '#2563eb' },
             }}
           >
@@ -9863,10 +9863,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         sx={{
                           p: 1.5,
                           borderRadius: '8px',
-                          bgcolor: selectedShot?.id === shot.id ? 'rgba(59,130,246,0.15)' : '#0f1318',
-                          border: selectedShot?.id === shot.id ? '1px solid #3b82f6' : '1px solid #2a3142',
+                          bgcolor: selectedShot?.id === shot.id ? 'rgba(63, 81, 181,0.15)' : '#0f1318',
+                          border: selectedShot?.id === shot.id ? '1px solid #3f51b5' : '1px solid #2a3142',
                           cursor: 'pointer',
-                          '&:hover': { borderColor: '#3b82f6' },
+                          '&:hover': { borderColor: '#3f51b5' },
                         }}
                         onClick={() => setSelectedShot(shot)}
                       >
@@ -10018,7 +10018,7 @@ const EditableDetailRow: FC<EditableDetailRowProps> = ({
           py: 0.5,
           bgcolor: '#374151',
           borderRadius: 1,
-          border: '1px solid #3b82f6',
+          border: '1px solid #3f51b5',
         }}
       >
         <Box sx={{ color: '#9ca3af', display: 'flex', alignItems: 'center' }}>{icon}</Box>
@@ -10092,7 +10092,7 @@ const EditableDetailRow: FC<EditableDetailRowProps> = ({
               p: 0.25, 
               color: '#9ca3af',
               transition: 'opacity 0.2s',
-              '&:hover': { color: '#3b82f6' },
+              '&:hover': { color: '#3f51b5' },
             }}
           >
             <EditIcon sx={{ fontSize: 14 }} />
@@ -10126,8 +10126,8 @@ const EditableDetailRow: FC<EditableDetailRowProps> = ({
             sx={{
               color: '#fff',
               fontSize: 13,
-              '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.2)' },
-              bgcolor: value === option ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+              '&:hover': { bgcolor: 'rgba(63, 81, 181, 0.2)' },
+              bgcolor: value === option ? 'rgba(63, 81, 181, 0.1)' : 'transparent',
             }}
           >
             {option}

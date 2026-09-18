@@ -117,7 +117,7 @@ function buildHtml(data: PdfReportData): string {
       <section class="kpi-stripe">
         ${kpiCard("Total leads", String(data.metrics.totalLeads), "#fbbf24")}
         ${kpiCard("Follow-ups", String(data.metrics.followUpsDue), "#fb923c")}
-        ${kpiCard("Møter", String(data.metrics.meetingsBooked), "#9e8cf8")}
+        ${kpiCard("Møter", String(data.metrics.meetingsBooked), "#93a4dc")}
         ${kpiCard("Conversion", `${data.metrics.conversionRate}%`, "#34d399")}
         ${kpiCard("Konkurrenter", String(data.competitorCount), "#ef4444")}
       </section>
@@ -204,7 +204,7 @@ function buildHtml(data: PdfReportData): string {
       padding: 0;
     }
     header.report-header {
-      border-bottom: 2px solid #9e8cf8;
+      border-bottom: 2px solid #93a4dc;
       padding-bottom: 16px;
       margin-bottom: 24px;
       display: flex;
@@ -222,22 +222,22 @@ function buildHtml(data: PdfReportData): string {
     }
     .logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .logo .fallback {
-      font-weight: 800; font-size: 24px; color: #9e8cf8;
+      font-weight: 800; font-size: 24px; color: #93a4dc;
     }
     h1 { margin: 0; font-size: 26px; }
     .subtitle { color: #666; font-size: 13px; margin-top: 4px; }
     .meta { color: #999; font-size: 11px; margin-top: 8px; }
-    h2 { font-size: 16px; margin: 24px 0 12px; color: #9e8cf8; text-transform: uppercase; letter-spacing: 0.04em; }
+    h2 { font-size: 16px; margin: 24px 0 12px; color: #93a4dc; text-transform: uppercase; letter-spacing: 0.04em; }
     h3 { font-size: 14px; margin: 0 0 10px; color: #444; text-transform: uppercase; letter-spacing: 0.04em; }
     .positioning {
       padding: 12px 14px;
-      background: rgba(158, 140, 248,0.06);
-      border-left: 3px solid #9e8cf8;
+      background: rgba(147, 164, 220,0.06);
+      border-left: 3px solid #93a4dc;
       margin: 8px 0;
       font-size: 13px;
     }
     .positioning .label {
-      font-size: 10px; font-weight: 700; color: #9e8cf8; text-transform: uppercase;
+      font-size: 10px; font-weight: 700; color: #93a4dc; text-transform: uppercase;
       letter-spacing: 0.04em; margin-bottom: 4px;
     }
     .goal {
@@ -272,7 +272,7 @@ function buildHtml(data: PdfReportData): string {
     .bucket .label { font-size: 10px; margin-top: 6px; text-transform: uppercase; }
     .bucket.urgent { background: rgba(248,113,113,0.1); color: #b91c1c; }
     .bucket.warn { background: rgba(251,191,36,0.1); color: #d97706; }
-    .bucket.info { background: rgba(96,165,250,0.1); color: #2563eb; }
+    .bucket.info { background: rgba(147, 164, 220,0.1); color: #2563eb; }
     footer.report-footer {
       margin-top: 32px; padding-top: 12px;
       border-top: 1px solid #eee;

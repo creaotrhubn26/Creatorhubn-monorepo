@@ -168,14 +168,14 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
       PaperProps={{
         sx: {
           bgcolor: 'rgba(15,23,42,0.98)',
-          border: '1px solid rgba(136, 117, 235,0.32)',
+          border: '1px solid rgba(93, 118, 203,0.32)',
           backdropFilter: 'blur(8px)',
           color: '#fff',
         },
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pr: 1 }}>
-        <CompareIcon sx={{ color: '#8875eb' }} />
+        <CompareIcon sx={{ color: '#5d76cb' }} />
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontSize: '1.05rem', fontWeight: 700 }}>
             Verifiser mot Kartverket
@@ -192,7 +192,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
       <DialogContent sx={{ pt: 1.5 }}>
         {loading && (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4, gap: 1.5 }}>
-            <CircularProgress size={24} sx={{ color: '#8875eb' }} />
+            <CircularProgress size={24} sx={{ color: '#5d76cb' }} />
             <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontSize: '0.9rem' }}>
               Henter fersk data fra Kartverket …
             </Typography>
@@ -317,11 +317,11 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
             disabled={applying}
             startIcon={applying ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <RefreshIcon />}
             sx={{
-              bgcolor: '#6249df',
+              bgcolor: '#4b3d8f',
               color: '#fff',
               textTransform: 'none',
               fontWeight: 600,
-              '&:hover': { bgcolor: '#8875eb' },
+              '&:hover': { bgcolor: '#5d76cb' },
             }}
           >
             {applying ? 'Oppdaterer …' : 'Bruk Kartverket-data'}

@@ -57,7 +57,7 @@ const ManuscriptPane: React.FC<{
         fontFamily: 'Courier New, monospace',
         fontSize: '0.82rem',
         lineHeight: 1.55,
-        bgcolor: 'rgba(10, 5, 21, 0.6)',
+        bgcolor: 'rgba(27, 18, 44, 0.6)',
       }}
     >
       {content || 'Tomt manus'}
@@ -108,7 +108,7 @@ export const ManuscriptConflictDialog: React.FC<ManuscriptConflictDialogProps> =
             title="Nyeste skyversjon"
             detail={`v${currentVersion ?? cloudManuscript.version ?? '?'} · ${lineCount(cloudManuscript.content)} linjer`}
             content={cloudManuscript.content}
-            accent="#3b82f6"
+            accent="#3f51b5"
           />
         ) : (
           <Paper

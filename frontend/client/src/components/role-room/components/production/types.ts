@@ -38,7 +38,7 @@ export const NOTE_TYPE_META: Record<NoteType, {
   color: string;
   bgAlpha: string;
 }> = {
-  camera:   { label: 'Camera',    labelNo: 'Kamera',   icon: 'CameraIcon',  color: '#3b82f6', bgAlpha: 'rgba(59,130,246,0.08)' },
+  camera:   { label: 'Camera',    labelNo: 'Kamera',   icon: 'CameraIcon',  color: '#3f51b5', bgAlpha: 'rgba(63, 81, 181,0.08)' },
   director: { label: 'Director',  labelNo: 'Regissør', icon: 'MovieIcon',   color: '#f97316', bgAlpha: 'rgba(249,115,22,0.08)' },
   sound:    { label: 'Sound',     labelNo: 'Lyd',      icon: 'MicIcon',     color: '#10b981', bgAlpha: 'rgba(16,185,129,0.08)' },
   vfx:      { label: 'VFX',       labelNo: 'VFX',      icon: 'SceneIcon',   color: '#f59e0b', bgAlpha: 'rgba(245,158,11,0.08)' },

@@ -65,10 +65,10 @@ interface Props {
 }
 
 const COLORS = {
-  cardBg: 'rgba(10, 5, 21,0.72)',
-  cardBorder: 'rgba(56,189,248,0.28)',
-  accent: '#38bdf8',
-  accentBg: 'rgba(56,189,248,0.14)',
+  cardBg: 'rgba(27, 18, 44,0.72)',
+  cardBorder: 'rgba(93, 118, 203,0.28)',
+  accent: '#5d76cb',
+  accentBg: 'rgba(93, 118, 203,0.14)',
   success: '#34d399',
   successBg: 'rgba(52,211,153,0.16)',
   warn: '#fbbf24',
@@ -185,10 +185,10 @@ export default function AgencyPartnershipPicker({
         <Stack direction="row" alignItems="center" spacing={1.2}>
           <HandshakeOutlinedIcon sx={{ color: COLORS.accent, fontSize: 22 }} />
           <Box>
-            <Typography sx={{ color: '#e0f2fe', fontWeight: 700, fontSize: '0.95rem' }}>
+            <Typography sx={{ color: '#dfe4f3', fontWeight: 700, fontSize: '0.95rem' }}>
               Casting-byråer for dette prosjektet
             </Typography>
-            <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.8rem' }}>
+            <Typography sx={{ color: 'rgba(195, 203, 230,0.78)', fontSize: '0.8rem' }}>
               {castingProjectName ? `${castingProjectName} · ` : ''}
               Velg hvilke byråer som skal jobbe på dette prosjektet — en og samme partnership kan brukes på flere prosjekter, men du må eksplisitt invitere per prosjekt.
             </Typography>
@@ -204,7 +204,7 @@ export default function AgencyPartnershipPicker({
             color: '#0f172a',
             bgcolor: COLORS.accent,
             px: 1.6,
-            '&:hover': { bgcolor: '#0ea5e9' },
+            '&:hover': { bgcolor: '#3f51b5' },
           }}
         >
           Foreslå nytt byrå
@@ -219,21 +219,21 @@ export default function AgencyPartnershipPicker({
           sx={{
             p: 2.2,
             borderRadius: 2,
-            border: '1px dashed rgba(56,189,248,0.32)',
-            bgcolor: 'rgba(10, 5, 21,0.55)',
+            border: '1px dashed rgba(93, 118, 203,0.32)',
+            bgcolor: 'rgba(27, 18, 44,0.55)',
             textAlign: 'center',
           }}
         >
-          <Typography sx={{ color: '#e0f2fe', fontWeight: 700, mb: 0.6, fontSize: '0.92rem' }}>
+          <Typography sx={{ color: '#dfe4f3', fontWeight: 700, mb: 0.6, fontSize: '0.92rem' }}>
             Ingen partnerships ennå
           </Typography>
-          <Typography sx={{ color: 'rgba(186,230,253,0.78)', fontSize: '0.84rem', mb: 1.4 }}>
+          <Typography sx={{ color: 'rgba(195, 203, 230,0.78)', fontSize: '0.84rem', mb: 1.4 }}>
             Foreslå samarbeid med et casting-byrå for å få tilgang til deres talent-register.
           </Typography>
           <Button
             startIcon={<AddCircleOutlineIcon />}
             onClick={() => setProposeOpen(true)}
-            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#0ea5e9' } }}
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#3f51b5' } }}
           >
             Finn et byrå
           </Button>
@@ -270,7 +270,7 @@ export default function AgencyPartnershipPicker({
           onClose={() => !busy && setInviteTarget(null)}
           maxWidth="sm"
           fullWidth
-          PaperProps={{ sx: { bgcolor: 'rgba(10, 5, 21,0.95)', color: '#e0f2fe', border: `1px solid ${COLORS.accent}` } }}
+          PaperProps={{ sx: { bgcolor: 'rgba(27, 18, 44,0.95)', color: '#dfe4f3', border: `1px solid ${COLORS.accent}` } }}
         >
           <DialogTitle sx={{ fontWeight: 800 }}>
             Inviter {inviteTarget.agency_name} til {castingProjectName ?? 'dette prosjektet'}
@@ -303,7 +303,7 @@ export default function AgencyPartnershipPicker({
               onClick={() => void handleInvite()}
               disabled={busy}
               startIcon={busy ? <CircularProgress size={14} /> : <CheckCircleOutlineIcon />}
-              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#0ea5e9' } }}
+              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#3f51b5' } }}
             >
               Send invitasjon
             </Button>
@@ -362,8 +362,8 @@ function PartnershipRow(props: {
       sx={{
         p: 1.4,
         borderRadius: 2,
-        border: '1px solid rgba(56,189,248,0.22)',
-        bgcolor: 'rgba(10, 5, 21,0.5)',
+        border: '1px solid rgba(93, 118, 203,0.22)',
+        bgcolor: 'rgba(27, 18, 44,0.5)',
         display: 'flex',
         alignItems: 'center',
         gap: 1.6,
@@ -404,7 +404,7 @@ function PartnershipRow(props: {
             startIcon={<HandshakeOutlinedIcon />}
             onClick={props.onInviteToProject}
             disabled={props.busy}
-            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#0ea5e9' } }}
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#3f51b5' } }}
           >
             Inviter til dette prosjektet
           </Button>
@@ -418,9 +418,9 @@ function PartnershipRow(props: {
             sx={{
               textTransform: 'none',
               fontWeight: 600,
-              color: '#e0f2fe',
+              color: '#dfe4f3',
               border: `1px solid ${COLORS.accent}`,
-              '&:hover': { bgcolor: 'rgba(56,189,248,0.12)' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.12)' },
             }}
           >
             Søk talenter
@@ -505,11 +505,11 @@ function ProposePartnershipDialog(props: {
       onClose={() => !busy && props.onClose()}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: 'rgba(10, 5, 21,0.96)', color: '#e0f2fe', border: `1px solid ${COLORS.accent}`, minHeight: 560 } }}
+      PaperProps={{ sx: { bgcolor: 'rgba(27, 18, 44,0.96)', color: '#dfe4f3', border: `1px solid ${COLORS.accent}`, minHeight: 560 } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Foreslå samarbeid med casting-byrå
-        <IconButton onClick={props.onClose} disabled={busy} sx={{ color: '#e0f2fe' }}>
+        <IconButton onClick={props.onClose} disabled={busy} sx={{ color: '#dfe4f3' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -535,7 +535,7 @@ function ProposePartnershipDialog(props: {
           ) : (
             <Stack spacing={1}>
               {agencies.length === 0 ? (
-                <Typography sx={{ color: 'rgba(186,230,253,0.7)', textAlign: 'center', py: 2 }}>
+                <Typography sx={{ color: 'rgba(195, 203, 230,0.7)', textAlign: 'center', py: 2 }}>
                   Ingen byråer funnet.
                 </Typography>
               ) : (
@@ -548,8 +548,8 @@ function ProposePartnershipDialog(props: {
                       sx={{
                         p: 1.4,
                         borderRadius: 2,
-                        border: `1px solid ${isSel ? COLORS.accent : 'rgba(56,189,248,0.2)'}`,
-                        bgcolor: isSel ? COLORS.accentBg : 'rgba(10, 5, 21,0.5)',
+                        border: `1px solid ${isSel ? COLORS.accent : 'rgba(93, 118, 203,0.2)'}`,
+                        bgcolor: isSel ? COLORS.accentBg : 'rgba(27, 18, 44,0.5)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -567,7 +567,7 @@ function ProposePartnershipDialog(props: {
                           {a.verified ? <VerifiedOutlinedIcon sx={{ fontSize: 14, color: COLORS.accent }} /> : null}
                         </Stack>
                         {a.about ? (
-                          <Typography sx={{ color: 'rgba(186,230,253,0.7)', fontSize: '0.78rem', mt: 0.2 }}>
+                          <Typography sx={{ color: 'rgba(195, 203, 230,0.7)', fontSize: '0.78rem', mt: 0.2 }}>
                             {a.about}
                           </Typography>
                         ) : null}
@@ -601,14 +601,14 @@ function ProposePartnershipDialog(props: {
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.4 }}>
-        <Button onClick={props.onClose} disabled={busy} sx={{ textTransform: 'none', color: 'rgba(186,230,253,0.8)' }}>
+        <Button onClick={props.onClose} disabled={busy} sx={{ textTransform: 'none', color: 'rgba(195, 203, 230,0.8)' }}>
           Avbryt
         </Button>
         <Button
           onClick={() => void handlePropose()}
           disabled={!selected || busy}
           startIcon={busy ? <CircularProgress size={14} /> : <HandshakeOutlinedIcon />}
-          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#0ea5e9' } }}
+          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: COLORS.accent, color: '#0f172a', '&:hover': { bgcolor: '#3f51b5' } }}
         >
           Send forslag
         </Button>

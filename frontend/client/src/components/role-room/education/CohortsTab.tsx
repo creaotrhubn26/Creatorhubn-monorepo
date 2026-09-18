@@ -30,7 +30,7 @@ import { educationAssignmentsService } from './educationAssignmentsService';
 import educationLtiService, { type LtiContext, type LtiSections } from './educationLtiService';
 import type { EducationTabId } from './EducationWorkspace';
 
-const ACCENT = '#8875eb';
+const ACCENT = '#5d76cb';
 const CARD = 'rgba(255,255,255,0.035)';
 const BORDER = '1px solid rgba(255,255,255,0.08)';
 
@@ -64,7 +64,7 @@ function parseCsvStudents(text: string): { name: string; email?: string; student
 function QuickAction({ eid, icon, label, onClick }: { eid: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
   return (
     <Stack direction="row" alignItems="center" spacing={1.25} onClick={onClick} sx={{ py: 1.1, cursor: 'pointer', color: 'rgba(255,255,255,0.85)', '&:hover': { color: '#fff' } }}>
-      <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', flexShrink: 0, '& svg': { fontSize: 16 } }}>{icon}</Box>
+      <Box sx={{ width: 30, height: 30, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', flexShrink: 0, '& svg': { fontSize: 16 } }}>{icon}</Box>
       <T eid={eid} sx={{ fontSize: 13, flex: 1 }}>{label}</T>
       <ChevronIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }} />
     </Stack>
@@ -270,8 +270,8 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   const ungrouped = students.filter((s) => !s.groupId).length;
 
   const kpis = [
-    { id: 'studenter', label: 'Studenter', value: totalStudents, hint: 'På tvers av alle kull', color: '#c6bdf4', bg: 'rgba(136, 117, 235,0.16)', icon: <CohortIcon /> },
-    { id: 'kull', label: 'Kull', value: cohorts.filter((c) => !c.archived).length, hint: 'Aktive dette semesteret', color: '#38bdf8', bg: 'rgba(56,189,248,0.16)', icon: <CanvasIcon /> },
+    { id: 'studenter', label: 'Studenter', value: totalStudents, hint: 'På tvers av alle kull', color: '#c3cbe6', bg: 'rgba(93, 118, 203,0.16)', icon: <CohortIcon /> },
+    { id: 'kull', label: 'Kull', value: cohorts.filter((c) => !c.archived).length, hint: 'Aktive dette semesteret', color: '#5d76cb', bg: 'rgba(93, 118, 203,0.16)', icon: <CanvasIcon /> },
     { id: 'grupper', label: 'Grupper', value: groups.length, hint: selected ? `I ${selected.name}` : 'Velg et kull', color: '#34d399', bg: 'rgba(16,185,129,0.16)', icon: <CohortIcon /> },
     { id: 'utengruppe', label: 'Studenter uten gruppe', value: ungrouped, hint: 'Klar for gruppering', color: '#f59e0b', bg: 'rgba(245,158,11,0.16)', icon: <InviteIcon /> },
   ];
@@ -298,7 +298,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         {/* Header */}
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
           <Stack direction="row" spacing={1.75} alignItems="flex-start">
-            <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CohortIcon /></Box>
+            <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CohortIcon /></Box>
             <Box>
               <T eid="edu-ks-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Kull &amp; studenter</T>
               <T eid="edu-ks-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Administrer kull, studenter, roller og synkronisering mot Canvas.</T>
@@ -313,7 +313,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
               </span>
             </Tooltip>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating((v) => !v)}
-              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
               <T eid="edu-ks-btn-create" component="span" sx={{ fontWeight: 700 }}>Opprett kull</T>
             </Button>
           </Stack>
@@ -323,7 +323,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
 
         {/* Opprett-kull-skjema */}
         <Collapse in={creating}>
-          <Panel sx={{ border: '1px solid rgba(136, 117, 235,0.35)' }}>
+          <Panel sx={{ border: '1px solid rgba(93, 118, 203,0.35)' }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
               <TextField size="small" label="Navn (f.eks. Film 1. år 2026)" value={newName} onChange={(e) => setNewName(e.target.value)} fullWidth />
               <TextField size="small" label="Program (valgfritt)" value={newProgram} onChange={(e) => setNewProgram(e.target.value)} fullWidth />
@@ -331,21 +331,21 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1.5 }}>
               <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" onClick={handleCreate} disabled={!newName.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Opprett'}</Button>
+              <Button variant="contained" onClick={handleCreate} disabled={!newName.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none' }}>{busy ? 'Oppretter…' : 'Opprett'}</Button>
             </Stack>
           </Panel>
         </Collapse>
 
         {/* Canvas-oppdagelsesbanner — vises kun i en ekte LTI-launchet økt */}
         <Collapse in={!!launchId && bannerOpen}>
-          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2.25, p: 2.5, borderRadius: 3.5, background: 'linear-gradient(100deg, rgba(136, 117, 235,0.16), rgba(136, 117, 235,0.08))', border: '1px solid rgba(136, 117, 235,0.32)', flexWrap: 'wrap' }}>
-            <Box sx={{ width: 58, height: 58, borderRadius: 3.5, bgcolor: 'rgba(136, 117, 235,0.22)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CanvasIcon sx={{ fontSize: 28 }} /></Box>
+          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2.25, p: 2.5, borderRadius: 3.5, background: 'linear-gradient(100deg, rgba(93, 118, 203,0.16), rgba(93, 118, 203,0.08))', border: '1px solid rgba(93, 118, 203,0.32)', flexWrap: 'wrap' }}>
+            <Box sx={{ width: 58, height: 58, borderRadius: 3.5, bgcolor: 'rgba(93, 118, 203,0.22)', color: '#c3cbe6', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CanvasIcon sx={{ fontSize: 28 }} /></Box>
             <Box sx={{ flex: 1, minWidth: 200 }}>
               <Stack direction="row" alignItems="center" spacing={1}>
                 <T eid="edu-ks-canvas-title" sx={{ fontWeight: 700, fontSize: 16 }}>Canvas-emne tilkoblet</T>
                 <Chip data-edit-id="edu-ks-canvas-tag" label="LTI" size="small" sx={{ height: 18, bgcolor: ACCENT, color: '#fff', fontWeight: 800, fontSize: 9.5 }} />
               </Stack>
-              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#e0dbfa', fontWeight: 600, mt: 0.25 }}>
+              <T eid="edu-ks-canvas-course" sx={{ fontSize: 15, color: '#dfe4f3', fontWeight: 600, mt: 0.25 }}>
                 {ctx && (ctx.courseTitle || ctx.courseCode)
                   ? [ctx.courseCode, ctx.courseTitle].filter(Boolean).join(' – ')
                   : 'Klasse-roster fra LMS-en er klart'}
@@ -358,12 +358,12 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             </Box>
             {sections && sections.sections.length > 0 ? (
               <Tooltip title={`Oppretter ett kull per Canvas-seksjon (${sections.sections.map((s) => `${s.section}: ${s.studentCount}`).join(' · ')})${sections.unsectioned ? ` · ${sections.unsectioned} uten seksjon` : ''}`}>
-                <Button variant="contained" startIcon={<CohortIcon />} disabled={importing} onClick={handleImportBySection} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+                <Button variant="contained" startIcon={<CohortIcon />} disabled={importing} onClick={handleImportBySection} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
                   <T eid="edu-ks-canvas-import-sections" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : `Importer ${sections.sections.length} kull (seksjoner)`}</T>
                 </Button>
               </Tooltip>
             ) : (
-              <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
+              <Button variant="contained" startIcon={<InviteIcon />} disabled={importing} onClick={() => handleImportFromCanvas({ cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2, whiteSpace: 'nowrap' }}>
                 <T eid="edu-ks-canvas-import" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Importerer…' : 'Importer studenter'}</T>
               </Button>
             )}
@@ -428,7 +428,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
               const active = c.id === selectedId;
               return (
                 <Box key={c.id} sx={{ position: 'relative', mb: 1 }}>
-                  <Card sx={{ bgcolor: active ? 'rgba(136, 117, 235,0.08)' : 'transparent', border: `1px solid ${active ? 'rgba(136, 117, 235,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
+                  <Card sx={{ bgcolor: active ? 'rgba(93, 118, 203,0.08)' : 'transparent', border: `1px solid ${active ? 'rgba(93, 118, 203,0.55)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 2.5 }}>
                     <CardActionArea onClick={() => setSelectedId(c.id)} sx={{ p: 1.5, pr: 5 }}>
                       <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</Typography>
                       <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3 }}>{[c.term, `${c.studentCount} studenter`].filter(Boolean).join(' · ')}</Typography>
@@ -438,7 +438,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                 </Box>
               );
             })}
-            <Button fullWidth startIcon={<ArchiveIcon />} onClick={() => setShowArchived((v) => !v)} sx={{ mt: 0.5, borderRadius: 2, textTransform: 'none', color: showArchived ? '#c6bdf4' : 'rgba(255,255,255,0.7)', border: `1px solid ${showArchived ? 'rgba(136, 117, 235,0.5)' : 'rgba(255,255,255,0.12)'}` }}>
+            <Button fullWidth startIcon={<ArchiveIcon />} onClick={() => setShowArchived((v) => !v)} sx={{ mt: 0.5, borderRadius: 2, textTransform: 'none', color: showArchived ? '#c3cbe6' : 'rgba(255,255,255,0.7)', border: `1px solid ${showArchived ? 'rgba(93, 118, 203,0.5)' : 'rgba(255,255,255,0.12)'}` }}>
               <T eid="edu-ks-archived" component="span">{showArchived ? 'Vis aktive kull' : 'Arkiverte kull'}</T>
             </Button>
           </Panel>
@@ -459,7 +459,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ px: 2, pb: 1.5 }}>
                 <TextField size="small" placeholder="Navn" value={addName} onChange={(e) => setAddName(e.target.value)} sx={{ flex: 1 }} />
                 <TextField size="small" placeholder="E-post (valgfritt)" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} sx={{ flex: 1 }} />
-                <Button variant="outlined" startIcon={<InviteIcon />} onClick={handleAddStudent} disabled={!addName.trim() || busy} sx={{ borderColor: 'rgba(136, 117, 235,0.5)', color: '#e0dbfa', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Legg til</Button>
+                <Button variant="outlined" startIcon={<InviteIcon />} onClick={handleAddStudent} disabled={!addName.trim() || busy} sx={{ borderColor: 'rgba(93, 118, 203,0.5)', color: '#dfe4f3', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Legg til</Button>
               </Stack>
             )}
             <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', minWidth: 560, px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: BORDER, borderBottom: BORDER }}>
@@ -478,7 +478,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
               return (
                 <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', minWidth: 560, alignItems: 'center', px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-                    <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }}>{initials(s.name)}</Avatar>
+                    <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: 'rgba(93, 118, 203,0.3)', color: '#dfe4f3' }}>{initials(s.name)}</Avatar>
                     <Box sx={{ minWidth: 0 }}>
                       <Typography sx={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</Typography>
                       {s.email && <Typography sx={{ fontSize: 11, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.email}</Typography>}
@@ -524,13 +524,13 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           </Stack>
           <Tooltip title={launchId ? (selected ? `Synk rosteret inn i «${selected.name}»` : 'Synk rosteret til et nytt kull') : 'Åpne Role Room fra Canvas for å synkronisere'}>
             <span style={{ display: 'block' }}>
-              <Button fullWidth variant="contained" startIcon={<SyncIcon />} disabled={!launchId || importing} onClick={() => handleImportFromCanvas(selected ? { cohortId: selected.id } : { cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+              <Button fullWidth variant="contained" startIcon={<SyncIcon />} disabled={!launchId || importing} onClick={() => handleImportFromCanvas(selected ? { cohortId: selected.id } : { cohortName: canvasCohortName })} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
                 <T eid="edu-ks-sync-btn" component="span" sx={{ fontWeight: 700 }}>{importing ? 'Synkroniserer…' : 'Synkroniser nå'}</T>
               </Button>
             </span>
           </Tooltip>
         </Panel>
-        <Panel sx={{ bgcolor: 'rgba(136, 117, 235,0.09)', border: '1px solid rgba(136, 117, 235,0.26)' }}>
+        <Panel sx={{ bgcolor: 'rgba(93, 118, 203,0.09)', border: '1px solid rgba(93, 118, 203,0.26)' }}>
           <T eid="edu-ks-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>
           <T eid="edu-ks-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.76)', lineHeight: 1.5 }}>Importer studenter fra Canvas (åpne Role Room fra emnet) eller via CSV for å komme raskt i gang.</T>
         </Panel>
@@ -538,13 +538,13 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
 
       {/* CSV-import-dialog */}
       <Dialog open={csvOpen} onClose={() => setCsvOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: '#fff', border: '1px solid rgba(93, 118, 203,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Importer studenter fra CSV</DialogTitle>
         <DialogContent>
           <T eid="edu-ks-csv-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 1.5 }}>
             Lim inn eller last opp CSV. Kolonner: <b>navn, e-post, studentnr</b> (komma eller semikolon). Header-rad hoppes over.
           </T>
-          <Button component="label" size="small" startIcon={<CsvIcon />} sx={{ mb: 1.5, color: '#c6bdf4', textTransform: 'none' }}>
+          <Button component="label" size="small" startIcon={<CsvIcon />} sx={{ mb: 1.5, color: '#c3cbe6', textTransform: 'none' }}>
             Last opp .csv-fil
             <input hidden type="file" accept=".csv,text/csv,text/plain" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(setCsvText); }} />
           </Button>
@@ -555,7 +555,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setCsvOpen(false)} disabled={csvBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={handleImportCsv} disabled={csvPreview.length === 0 || csvBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700 }}>{csvBusy ? 'Importerer…' : `Importer ${csvPreview.length || ''}`}</Button>
+          <Button variant="contained" onClick={handleImportCsv} disabled={csvPreview.length === 0 || csvBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700 }}>{csvBusy ? 'Importerer…' : `Importer ${csvPreview.length || ''}`}</Button>
         </DialogActions>
       </Dialog>
 

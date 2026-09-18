@@ -147,7 +147,7 @@ function toFinding(row: ProducerProjectNotification): BriefFinding {
 const PANEL_BG = 'rgba(15,23,42,0.55)';
 const CARD_BG = 'rgba(15,23,42,0.6)';
 const BORDER = '1px solid rgba(148,163,184,0.18)';
-const ACCENT = 'var(--role-cyan, #22d3ee)';
+const ACCENT = 'var(--role-cyan, #5d76cb)';
 
 export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBriefCardProps): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
@@ -219,7 +219,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
             width: 30,
             height: 30,
             borderRadius: 1.4,
-            bgcolor: 'rgba(34,211,238,0.12)',
+            bgcolor: 'rgba(93, 118, 203,0.12)',
             color: ACCENT,
           }}
         >
@@ -364,7 +364,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
                             fontWeight: 700,
                             mt: 0.7,
                             textDecoration: 'none',
-                            '&:hover': { color: '#a5f3fc' },
+                            '&:hover': { color: '#c3cbe6' },
                           }}
                         >
                           Gå til {finding.faneLabel}

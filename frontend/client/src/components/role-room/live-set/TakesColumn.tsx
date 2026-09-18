@@ -37,7 +37,7 @@ const STATUS_DISPLAY: Record<
   queued: { label: 'I KØ', bg: 'rgba(100,116,139,0.18)', color: '#94a3b8' },
   processing: { label: 'PROSESSERER', bg: 'rgba(245,158,11,0.18)', color: '#fbbf24' },
   analyzed: { label: 'GODKJENT', bg: 'rgba(34,197,94,0.18)', color: '#86efac' },
-  failed: { label: 'PICKUP', bg: 'rgba(59,130,246,0.18)', color: '#93c5fd' },
+  failed: { label: 'PICKUP', bg: 'rgba(63, 81, 181,0.18)', color: '#93c5fd' },
 };
 
 interface TakesColumnProps {
@@ -84,7 +84,7 @@ function TakeCard({
     <Box
       onClick={onClick}
       sx={{
-        bgcolor: selected ? 'rgba(136, 117, 235,0.1)' : 'rgba(255,255,255,0.02)',
+        bgcolor: selected ? 'rgba(93, 118, 203,0.1)' : 'rgba(255,255,255,0.02)',
         border: '1px solid',
         borderColor: selected ? '#dc2626' : 'rgba(255,255,255,0.06)',
         borderRadius: 1,
@@ -92,7 +92,7 @@ function TakeCard({
         cursor: 'pointer',
         transition: 'all 120ms',
         '&:hover': {
-          bgcolor: selected ? 'rgba(136, 117, 235,0.15)' : 'rgba(255,255,255,0.04)',
+          bgcolor: selected ? 'rgba(93, 118, 203,0.15)' : 'rgba(255,255,255,0.04)',
           borderColor: selected ? '#dc2626' : 'rgba(255,255,255,0.12)',
         },
       }}

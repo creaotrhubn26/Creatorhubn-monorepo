@@ -504,7 +504,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LocalOfferIcon sx={{ color: 'var(--role-violet, #8875eb)' }} />
+            <LocalOfferIcon sx={{ color: 'var(--role-violet, #5d76cb)' }} />
             Tilbud og Kontrakter
           </Typography>
           <Tooltip title="Oppdater tilbud og kontrakter">
@@ -523,7 +523,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
               variant="outlined"
               startIcon={<LocalOfferIcon />}
               onClick={() => setOfferDialogOpen(true)}
-              sx={{ borderColor: 'var(--role-violet, #8875eb)', color: 'var(--role-violet, #8875eb)' }}
+              sx={{ borderColor: 'var(--role-violet, #5d76cb)', color: 'var(--role-violet, #5d76cb)' }}
             >
               Nytt tilbud
             </Button>
@@ -531,7 +531,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
               variant="contained"
               startIcon={<DescriptionIcon />}
               onClick={() => setContractDialogOpen(true)}
-              sx={{ bgcolor: 'var(--role-violet, #8875eb)' }}
+              sx={{ bgcolor: 'var(--role-violet, #5d76cb)' }}
             >
               Ny kontrakt
             </Button>
@@ -545,8 +545,8 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         sx={{
           mb: 3,
           '& .MuiTab-root': { color: 'rgba(255,255,255,0.87)' },
-          '& .Mui-selected': { color: 'var(--role-violet, #8875eb)' },
-          '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #8875eb)' },
+          '& .Mui-selected': { color: 'var(--role-violet, #5d76cb)' },
+          '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #5d76cb)' },
         }}
       >
         <Tab label={`Tilbud (${offers.length})`} icon={<LocalOfferIcon />} iconPosition="start" />
@@ -558,7 +558,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       {tabValue === 0 && (
         <Box>
           {offers.length === 0 ? (
-            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+            <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.1)', color: '#93a4dc' }}>
               Ingen tilbud sendt ennå. Klikk "Nytt tilbud" for å sende et tilbud til en kandidat.
             </Alert>
           ) : (
@@ -569,8 +569,8 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'rgba(136, 117, 235,0.2)', width: 40, height: 40 }}>
-                            <PersonIcon sx={{ color: 'var(--role-violet, #8875eb)' }} />
+                          <Avatar sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', width: 40, height: 40 }}>
+                            <PersonIcon sx={{ color: 'var(--role-violet, #5d76cb)' }} />
                           </Avatar>
                           <Box>
                             <Typography sx={{ color: '#fff', fontWeight: 600 }}>
@@ -644,7 +644,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       {tabValue === 1 && (
         <Box>
           {contracts.length === 0 ? (
-            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+            <Alert severity="info" sx={{ bgcolor: 'rgba(63, 81, 181,0.1)', color: '#93a4dc' }}>
               Ingen kontrakter opprettet ennå. Klikk "Ny kontrakt" for å opprette en kontrakt.
             </Alert>
           ) : (
@@ -655,8 +655,8 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'rgba(6,182,212,0.2)', width: 40, height: 40 }}>
-                            <DescriptionIcon sx={{ color: '#06b6d4' }} />
+                          <Avatar sx={{ bgcolor: 'rgba(63, 81, 181,0.2)', width: 40, height: 40 }}>
+                            <DescriptionIcon sx={{ color: '#3f51b5' }} />
                           </Avatar>
                           <Box>
                             <Typography sx={{ color: '#fff', fontWeight: 600 }}>
@@ -701,7 +701,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                           variant="contained"
                           startIcon={<DrawIcon />}
                           onClick={() => handleSignContract(contract.id)}
-                          sx={{ mt: 2, bgcolor: '#06b6d4' }}
+                          sx={{ mt: 2, bgcolor: '#3f51b5' }}
                         >
                           Marker som signert
                         </Button>
@@ -717,7 +717,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
       <Dialog open={!readOnly && offerDialogOpen} onClose={() => setOfferDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <LocalOfferIcon sx={{ color: 'var(--role-violet, #8875eb)' }} />
+          <LocalOfferIcon sx={{ color: 'var(--role-violet, #5d76cb)' }} />
           Send tilbud
         </DialogTitle>
       <DialogContent>
@@ -807,7 +807,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             variant="contained"
             startIcon={submitting ? <CircularProgress size={16} /> : <SendIcon />}
             disabled={submitting || !selectedCandidate}
-            sx={{ bgcolor: 'var(--role-violet, #8875eb)' }}
+            sx={{ bgcolor: 'var(--role-violet, #5d76cb)' }}
           >
             Send tilbud
           </Button>
@@ -816,7 +816,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
       <Dialog open={!readOnly && contractDialogOpen} onClose={() => setContractDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DescriptionIcon sx={{ color: '#06b6d4' }} />
+          <DescriptionIcon sx={{ color: '#3f51b5' }} />
           Opprett kontrakt
         </DialogTitle>
       <DialogContent>
@@ -916,7 +916,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             variant="contained"
             startIcon={submitting ? <CircularProgress size={16} /> : <AddIcon />}
             disabled={submitting || !selectedCandidate}
-            sx={{ bgcolor: '#06b6d4' }}
+            sx={{ bgcolor: '#3f51b5' }}
           >
             Opprett kontrakt
           </Button>

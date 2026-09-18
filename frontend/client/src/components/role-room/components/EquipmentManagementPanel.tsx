@@ -24,7 +24,7 @@ import { RoleStatPillRow } from "./primitives";
 
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #6249df',
+    outline: '3px solid #4b3d8f',
     outlineOffset: 2,
   },
 };
@@ -402,24 +402,24 @@ const CATALOG_BRIDGE_CARD_SX = {
   height: '100%',
   display: 'flex',
   flexDirection: 'column',
-  background: 'linear-gradient(155deg, rgba(10, 5, 21,0.84) 0%, rgba(15,23,42,0.74) 52%, rgba(30,41,59,0.62) 100%)',
+  background: 'linear-gradient(155deg, rgba(27, 18, 44,0.84) 0%, rgba(15,23,42,0.74) 52%, rgba(30,41,59,0.62) 100%)',
   border: '1px solid rgba(148,163,184,0.2)',
   borderRadius: 2,
-  boxShadow: '0 10px 24px rgba(10, 5, 21,0.26)',
+  boxShadow: '0 10px 24px rgba(27, 18, 44,0.26)',
   transition: 'all 0.26s ease',
   '&:hover': {
-    borderColor: 'rgba(125,211,252,0.38)',
-    boxShadow: '0 14px 30px rgba(10, 5, 21,0.38)',
+    borderColor: 'rgba(147, 164, 220,0.38)',
+    boxShadow: '0 14px 30px rgba(27, 18, 44,0.38)',
     transform: 'translateY(-2px)',
   },
 };
 
 const CATALOG_BRIDGE_SURFACE_SX = {
   p: 2.5,
-  background: 'linear-gradient(150deg, rgba(10, 5, 21,0.74) 0%, rgba(15,23,42,0.64) 100%)',
+  background: 'linear-gradient(150deg, rgba(27, 18, 44,0.74) 0%, rgba(15,23,42,0.64) 100%)',
   border: '1px solid rgba(148,163,184,0.22)',
   borderRadius: 2,
-  boxShadow: '0 10px 24px rgba(10, 5, 21,0.24)',
+  boxShadow: '0 10px 24px rgba(27, 18, 44,0.24)',
 };
 
 const CATALOG_BRIDGE_TAB_PANEL_SX = {
@@ -427,8 +427,8 @@ const CATALOG_BRIDGE_TAB_PANEL_SX = {
   m: { xs: 1.5, md: 2 },
   borderRadius: 2.5,
   border: '1px solid rgba(148,163,184,0.2)',
-  background: 'linear-gradient(155deg, rgba(10, 5, 21,0.56) 0%, rgba(15,23,42,0.44) 55%, rgba(30,41,59,0.34) 100%)',
-  boxShadow: '0 12px 28px rgba(10, 5, 21,0.26)',
+  background: 'linear-gradient(155deg, rgba(27, 18, 44,0.56) 0%, rgba(15,23,42,0.44) 55%, rgba(30,41,59,0.34) 100%)',
+  boxShadow: '0 12px 28px rgba(27, 18, 44,0.26)',
 };
 
 type RoleRoomDialogAccent =
@@ -447,10 +447,10 @@ const ROLE_ROOM_DIALOG_ACCENTS: Record<RoleRoomDialogAccent, {
   iconShadow: string;
 }> = {
   primary: {
-    headerGradient: 'linear-gradient(135deg, rgba(98, 73, 223,0.15) 0%, rgba(71, 43, 212,0.1) 100%)',
-    iconGradient: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+    headerGradient: 'linear-gradient(135deg, rgba(75, 61, 143,0.15) 0%, rgba(62, 49, 128,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
     iconBorder: '1px solid rgba(224, 219, 250,0.34)',
-    iconShadow: '0 8px 20px rgba(98, 73, 223,0.3)',
+    iconShadow: '0 8px 20px rgba(75, 61, 143,0.3)',
   },
   info: {
     headerGradient: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
@@ -465,10 +465,10 @@ const ROLE_ROOM_DIALOG_ACCENTS: Record<RoleRoomDialogAccent, {
     iconShadow: '0 8px 20px rgba(76,175,80,0.3)',
   },
   warning: {
-    headerGradient: 'linear-gradient(135deg, rgba(98, 73, 223,0.15) 0%, rgba(245,124,0,0.1) 100%)',
-    iconGradient: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+    headerGradient: 'linear-gradient(135deg, rgba(75, 61, 143,0.15) 0%, rgba(245,124,0,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
     iconBorder: '1px solid rgba(250,204,21,0.34)',
-    iconShadow: '0 8px 20px rgba(98, 73, 223,0.3)',
+    iconShadow: '0 8px 20px rgba(75, 61, 143,0.3)',
   },
   danger: {
     headerGradient: 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)',
@@ -477,10 +477,10 @@ const ROLE_ROOM_DIALOG_ACCENTS: Record<RoleRoomDialogAccent, {
     iconShadow: '0 8px 20px rgba(244,67,54,0.3)',
   },
   violet: {
-    headerGradient: 'linear-gradient(135deg, rgba(60, 39, 165,0.15) 0%, rgba(60, 39, 165,0.1) 100%)',
-    iconGradient: 'linear-gradient(135deg, #3c27a5 0%, #301f84 100%)',
+    headerGradient: 'linear-gradient(135deg, rgba(50, 18, 122,0.15) 0%, rgba(50, 18, 122,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #32127a 0%, #302a83 100%)',
     iconBorder: '1px solid rgba(224, 219, 250,0.32)',
-    iconShadow: '0 8px 20px rgba(60, 39, 165,0.3)',
+    iconShadow: '0 8px 20px rgba(50, 18, 122,0.3)',
   },
   teal: {
     headerGradient: 'linear-gradient(135deg, rgba(0,150,136,0.15) 0%, rgba(0,137,123,0.1) 100%)',
@@ -3116,7 +3116,7 @@ export function EquipmentManagementPanel({
             body {
               margin: 0;
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: #100b1e;
+              background: #2a3152;
               color: #fff;
               display: flex;
               align-items: center;
@@ -3125,16 +3125,16 @@ export function EquipmentManagementPanel({
             }
             .label {
               width: 420px;
-              border: 2px solid #6249df;
+              border: 2px solid #4b3d8f;
               border-radius: 16px;
               padding: 20px;
-              background: #18122b;
+              background: #2a3d56;
               box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
             }
             h2 {
               margin: 0 0 6px 0;
               font-size: 24px;
-              color: #9e8cf8;
+              color: #93a4dc;
             }
             .meta {
               margin: 0 0 12px 0;
@@ -3148,7 +3148,7 @@ export function EquipmentManagementPanel({
               padding: 12px;
               border: 1px solid rgba(255,255,255,0.15);
               border-radius: 12px;
-              background: #100b1e;
+              background: #2a3152;
             }
             img {
               width: 300px;
@@ -3905,15 +3905,15 @@ export function EquipmentManagementPanel({
       kamera: '#e91e63',
       lighting: '#ffeb3b',
       lys: '#ffeb3b',
-      audio: '#3c27a5',
-      lyd: '#3c27a5',
+      audio: '#32127a',
+      lyd: '#32127a',
       grip: '#795548',
       rig: '#795548',
-      safety: '#6249df',
-      sikkerhet: '#6249df',
+      safety: '#4b3d8f',
+      sikkerhet: '#4b3d8f',
       transport: '#607d8b',
       props: '#00bcd4',
-      wardrobe: '#472bd4',
+      wardrobe: '#3e3180',
       makeup: '#f06292',
       linse: '#2196f3',
       optikk: '#00bcd4',
@@ -3927,7 +3927,7 @@ export function EquipmentManagementPanel({
 
   return (
     <Box sx={{ p: containerPadding }}>
-      {loading && <LinearProgress sx={{ mb: 2, bgcolor: 'rgba(98, 73, 223,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#6249df' } }} />}
+      {loading && <LinearProgress sx={{ mb: 2, bgcolor: 'rgba(75, 61, 143,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#4b3d8f' } }} />}
       
       {/* Header with gradient background */}
       <Box sx={{ 
@@ -3939,19 +3939,19 @@ export function EquipmentManagementPanel({
         mb: 3,
         p: 2,
         borderRadius: 3,
-        background: 'linear-gradient(135deg, rgba(98, 73, 223,0.15) 0%, rgba(71, 43, 212,0.1) 100%)',
-        border: '1px solid rgba(98, 73, 223,0.2)',
+        background: 'linear-gradient(135deg, rgba(75, 61, 143,0.15) 0%, rgba(62, 49, 128,0.1) 100%)',
+        border: '1px solid rgba(75, 61, 143,0.2)',
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box sx={{
             width: 48,
             height: 48,
             borderRadius: 2,
-            background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+            background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(98, 73, 223,0.3)',
+            boxShadow: '0 4px 12px rgba(75, 61, 143,0.3)',
           }}>
             <BuildIcon sx={{ color: '#fff', fontSize: 28 }} />
           </Box>
@@ -3975,12 +3975,12 @@ export function EquipmentManagementPanel({
             onClick={() => setWorkspaceView('standard')}
             sx={{
               minHeight: TOUCH_TARGET_SIZE,
-              bgcolor: workspaceView === 'standard' ? 'rgba(98, 73, 223,0.24)' : 'transparent',
+              bgcolor: workspaceView === 'standard' ? 'rgba(75, 61, 143,0.24)' : 'transparent',
               color: '#fff',
-              borderColor: workspaceView === 'standard' ? '#9e8cf8' : 'rgba(255,255,255,0.2)',
+              borderColor: workspaceView === 'standard' ? '#93a4dc' : 'rgba(255,255,255,0.2)',
               '&:hover': {
-                bgcolor: workspaceView === 'standard' ? 'rgba(98, 73, 223,0.3)' : 'rgba(255,255,255,0.08)',
-                borderColor: '#9e8cf8',
+                bgcolor: workspaceView === 'standard' ? 'rgba(75, 61, 143,0.3)' : 'rgba(255,255,255,0.08)',
+                borderColor: '#93a4dc',
               },
               ...focusVisibleStyles,
             }}
@@ -3992,12 +3992,12 @@ export function EquipmentManagementPanel({
             onClick={() => setWorkspaceView('pro')}
             sx={{
               minHeight: TOUCH_TARGET_SIZE,
-              bgcolor: workspaceView === 'pro' ? 'rgba(98, 73, 223,0.24)' : 'transparent',
+              bgcolor: workspaceView === 'pro' ? 'rgba(75, 61, 143,0.24)' : 'transparent',
               color: '#fff',
-              borderColor: workspaceView === 'pro' ? '#9e8cf8' : 'rgba(255,255,255,0.2)',
+              borderColor: workspaceView === 'pro' ? '#93a4dc' : 'rgba(255,255,255,0.2)',
               '&:hover': {
-                bgcolor: workspaceView === 'pro' ? 'rgba(98, 73, 223,0.3)' : 'rgba(255,255,255,0.08)',
-                borderColor: '#9e8cf8',
+                bgcolor: workspaceView === 'pro' ? 'rgba(75, 61, 143,0.3)' : 'rgba(255,255,255,0.08)',
+                borderColor: '#93a4dc',
               },
               ...focusVisibleStyles,
             }}
@@ -4025,11 +4025,11 @@ export function EquipmentManagementPanel({
                 ...focusVisibleStyles, 
                 minWidth: TOUCH_TARGET_SIZE, 
                 minHeight: TOUCH_TARGET_SIZE,
-                bgcolor: filterOpen ? 'rgba(98, 73, 223,0.2)' : 'rgba(255,255,255,0.05)',
-                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.2)' },
+                bgcolor: filterOpen ? 'rgba(75, 61, 143,0.2)' : 'rgba(255,255,255,0.05)',
+                '&:hover': { bgcolor: 'rgba(75, 61, 143,0.2)' },
               }}
             >
-              <FilterIcon sx={{ color: filterOpen ? '#6249df' : 'inherit' }} />
+              <FilterIcon sx={{ color: filterOpen ? '#4b3d8f' : 'inherit' }} />
             </IconButton>
           </Tooltip>
           <Tooltip title={viewMode === 'grid' ? 'Tabellvisning' : 'Rutenettvisning'}>
@@ -4051,14 +4051,14 @@ export function EquipmentManagementPanel({
             startIcon={<AddIcon />}
             onClick={handleOpenCreateTypeDialog}
             sx={{
-              background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+              background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
               color: '#fff',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
-              boxShadow: '0 4px 12px rgba(98, 73, 223,0.3)',
+              boxShadow: '0 4px 12px rgba(75, 61, 143,0.3)',
               '&:hover': { 
-                background: 'linear-gradient(135deg, #9e8cf8 0%, #8875eb 100%)',
-                boxShadow: '0 6px 16px rgba(98, 73, 223,0.4)',
+                background: 'linear-gradient(135deg, #93a4dc 0%, #5d76cb 100%)',
+                boxShadow: '0 6px 16px rgba(75, 61, 143,0.4)',
               },
               ...focusVisibleStyles,
             }}
@@ -4098,10 +4098,10 @@ export function EquipmentManagementPanel({
                 setCatalogBridgeOpen(true);
               }}
               sx={{
-                borderColor: '#6249df',
-                color: '#6249df',
+                borderColor: '#4b3d8f',
+                color: '#4b3d8f',
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(98, 73, 223,0.1)' },
+                '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(75, 61, 143,0.1)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -4117,12 +4117,12 @@ export function EquipmentManagementPanel({
                 setWarehouseDialogOpen(true);
               }}
               sx={{
-                borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#9e8cf8',
-                color: warehouseIssueCount > 0 ? '#ef5350' : '#9e8cf8',
+                borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#93a4dc',
+                color: warehouseIssueCount > 0 ? '#ef5350' : '#93a4dc',
                 minHeight: TOUCH_TARGET_SIZE,
                 '&:hover': {
-                  borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#c6bdf4',
-                  bgcolor: warehouseIssueCount > 0 ? 'rgba(239,83,80,0.1)' : 'rgba(158, 140, 248,0.1)',
+                  borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#c3cbe6',
+                  bgcolor: warehouseIssueCount > 0 ? 'rgba(239,83,80,0.1)' : 'rgba(147, 164, 220,0.1)',
                 },
                 ...focusVisibleStyles,
               }}
@@ -4179,10 +4179,10 @@ export function EquipmentManagementPanel({
                 setReportsDialogOpen(true);
               }}
               sx={{
-                borderColor: '#3c27a5',
-                color: '#3c27a5',
+                borderColor: '#32127a',
+                color: '#32127a',
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(60, 39, 165,0.1)' },
+                '&:hover': { borderColor: '#4b3d8f', bgcolor: 'rgba(50, 18, 122,0.1)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -4201,8 +4201,8 @@ export function EquipmentManagementPanel({
                       setOfflineOutboxOpen(true);
                     }}
                 sx={{
-                  borderColor: isOnline ? '#6249df' : '#f44336',
-                  color: isOnline ? '#6249df' : '#f44336',
+                  borderColor: isOnline ? '#4b3d8f' : '#f44336',
+                  color: isOnline ? '#4b3d8f' : '#f44336',
                   minHeight: TOUCH_TARGET_SIZE,
                   animation: isOnline ? 'pulse 1.5s infinite' : 'none',
                   '@keyframes pulse': {
@@ -4210,7 +4210,7 @@ export function EquipmentManagementPanel({
                     '50%': { opacity: 0.6 },
                     '100%': { opacity: 1 },
                   },
-                  '&:hover': { bgcolor: isOnline ? 'rgba(98, 73, 223,0.1)' : 'rgba(244,67,54,0.1)' },
+                  '&:hover': { bgcolor: isOnline ? 'rgba(75, 61, 143,0.1)' : 'rgba(244,67,54,0.1)' },
                   ...focusVisibleStyles,
                 }}
               >
@@ -4224,10 +4224,10 @@ export function EquipmentManagementPanel({
               startIcon={<ShoppingCartIcon />}
               onClick={handleOpenShopDialog}
               sx={{
-                borderColor: '#6249df',
-                color: '#9e8cf8',
+                borderColor: '#4b3d8f',
+                color: '#93a4dc',
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(98, 73, 223,0.14)' },
+                '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(75, 61, 143,0.14)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -4279,12 +4279,12 @@ export function EquipmentManagementPanel({
             gap: 2, 
             p: 1.5, 
             mt: 1.5,
-            bgcolor: 'rgba(98, 73, 223,0.1)', 
+            bgcolor: 'rgba(75, 61, 143,0.1)', 
             borderRadius: 2,
-            border: '1px solid rgba(98, 73, 223,0.3)',
+            border: '1px solid rgba(75, 61, 143,0.3)',
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckboxIcon sx={{ color: '#6249df' }} />
+              <CheckboxIcon sx={{ color: '#4b3d8f' }} />
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
                 {selectedEquipmentIds.size} valgt
               </Typography>
@@ -4301,7 +4301,7 @@ export function EquipmentManagementPanel({
               size="small"
               startIcon={<EditIcon />}
               onClick={() => handleBulkAction('status')}
-              sx={{ color: '#6249df', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.15)' } }}
+              sx={{ color: '#4b3d8f', '&:hover': { bgcolor: 'rgba(75, 61, 143,0.15)' } }}
             >
               Endre status
             </Button>
@@ -4347,7 +4347,7 @@ export function EquipmentManagementPanel({
             mb: 2,
             p: 2,
             borderRadius: 3,
-            border: '1px solid rgba(158, 140, 248,0.35)',
+            border: '1px solid rgba(147, 164, 220,0.35)',
             background: 'linear-gradient(140deg, rgba(15,23,42,0.82) 0%, rgba(38, 23, 99,0.58) 100%)',
             display: 'flex',
             flexDirection: 'column',
@@ -4381,12 +4381,12 @@ export function EquipmentManagementPanel({
                     sx={{
                       minHeight: 32,
                       textTransform: 'none',
-                      bgcolor: active ? 'rgba(98, 73, 223,0.3)' : 'transparent',
-                      borderColor: active ? '#9e8cf8' : 'rgba(148,163,184,0.35)',
+                      bgcolor: active ? 'rgba(75, 61, 143,0.3)' : 'transparent',
+                      borderColor: active ? '#93a4dc' : 'rgba(148,163,184,0.35)',
                       color: '#fff',
                       '&:hover': {
-                        bgcolor: active ? 'rgba(98, 73, 223,0.38)' : 'rgba(148,163,184,0.12)',
-                        borderColor: '#9e8cf8',
+                        bgcolor: active ? 'rgba(75, 61, 143,0.38)' : 'rgba(148,163,184,0.12)',
+                        borderColor: '#93a4dc',
                       },
                     }}
                   >
@@ -4403,8 +4403,8 @@ export function EquipmentManagementPanel({
                 { label: 'Tilgjengelig', value: equipmentProInsights.available, color: '#4caf50' },
                 { label: 'I bruk', value: equipmentProInsights.inUse, color: '#64b5f6' },
                 { label: 'Service', value: equipmentProInsights.service, color: '#ffb74d' },
-                { label: 'Synlig nå', value: `${equipmentProInsights.visibleRatio}%`, color: '#9e8cf8' },
-                { label: 'Kamera-kategorier', value: equipmentProInsights.cameraCategoryCount, color: '#9e8cf8' },
+                { label: 'Synlig nå', value: `${equipmentProInsights.visibleRatio}%`, color: '#93a4dc' },
+                { label: 'Kamera-kategorier', value: equipmentProInsights.cameraCategoryCount, color: '#93a4dc' },
               ].map((item) => (
                 <Box
                   key={item.label}
@@ -4493,9 +4493,9 @@ export function EquipmentManagementPanel({
                   minHeight: 42,
                   justifyContent: 'space-between',
                   textTransform: 'none',
-                  borderColor: equipmentProInsights.offlineQueue > 0 ? 'rgba(98, 73, 223,0.65)' : 'rgba(148,163,184,0.35)',
+                  borderColor: equipmentProInsights.offlineQueue > 0 ? 'rgba(75, 61, 143,0.65)' : 'rgba(148,163,184,0.35)',
                   color: '#fff',
-                  bgcolor: equipmentProInsights.offlineQueue > 0 ? 'rgba(98, 73, 223,0.12)' : 'rgba(148,163,184,0.08)',
+                  bgcolor: equipmentProInsights.offlineQueue > 0 ? 'rgba(75, 61, 143,0.12)' : 'rgba(148,163,184,0.08)',
                 }}
               >
                 <span>{isOnline ? 'Offline-kø (sync)' : 'Offline-kø'}</span>
@@ -4569,11 +4569,11 @@ export function EquipmentManagementPanel({
           <Box sx={{ mb: 2, px: 1 }}>
             <RoleStatPillRow
               pills={[
-                { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#9e8cf8' },
+                { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#93a4dc' },
                 { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981' },
                 { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b' },
                 { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444' },
-                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa' },
+                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#93a4dc' },
               ]}
             />
           </Box>
@@ -4619,9 +4619,9 @@ export function EquipmentManagementPanel({
               size="small"
               onClick={() => setSidebarOpen(prev => !prev)}
               sx={{
-                color: sidebarOpen ? '#6249df' : 'rgba(255,255,255,0.5)',
-                bgcolor: sidebarOpen ? 'rgba(98, 73, 223,0.12)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.15)' },
+                color: sidebarOpen ? '#4b3d8f' : 'rgba(255,255,255,0.5)',
+                bgcolor: sidebarOpen ? 'rgba(75, 61, 143,0.12)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(75, 61, 143,0.15)' },
                 borderRadius: 1,
                 p: 0.5,
               }}
@@ -4669,14 +4669,14 @@ export function EquipmentManagementPanel({
                 py: 0.75,
                 borderRadius: 1.5,
                 cursor: 'pointer',
-                bgcolor: categoryFilter === 'all' ? 'rgba(98, 73, 223,0.18)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' },
+                bgcolor: categoryFilter === 'all' ? 'rgba(75, 61, 143,0.18)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(75, 61, 143,0.1)' },
                 transition: 'background 0.15s',
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BuildIcon sx={{ fontSize: 15, color: categoryFilter === 'all' ? '#6249df' : 'rgba(255,255,255,0.5)' }} />
-                <Typography variant="body2" sx={{ color: categoryFilter === 'all' ? '#9e8cf8' : 'rgba(255,255,255,0.8)', fontWeight: categoryFilter === 'all' ? 700 : 400, fontSize: '0.82rem' }}>
+                <BuildIcon sx={{ fontSize: 15, color: categoryFilter === 'all' ? '#4b3d8f' : 'rgba(255,255,255,0.5)' }} />
+                <Typography variant="body2" sx={{ color: categoryFilter === 'all' ? '#93a4dc' : 'rgba(255,255,255,0.8)', fontWeight: categoryFilter === 'all' ? 700 : 400, fontSize: '0.82rem' }}>
                   Alle
                 </Typography>
               </Box>
@@ -4713,18 +4713,18 @@ export function EquipmentManagementPanel({
                       py: 0.75,
                       borderRadius: 1.5,
                       cursor: 'pointer',
-                      bgcolor: isActive ? 'rgba(98, 73, 223,0.18)' : 'transparent',
-                      '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' },
+                      bgcolor: isActive ? 'rgba(75, 61, 143,0.18)' : 'transparent',
+                      '&:hover': { bgcolor: 'rgba(75, 61, 143,0.1)' },
                       transition: 'background 0.15s',
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(cat), flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.8)', fontWeight: isActive ? 700 : 400, fontSize: '0.82rem' }}>
+                      <Typography variant="body2" sx={{ color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.8)', fontWeight: isActive ? 700 : 400, fontSize: '0.82rem' }}>
                         {cat}
                       </Typography>
                     </Box>
-                    <Typography variant="caption" sx={{ color: isActive ? '#9e8cf8' : 'rgba(255,255,255,0.35)', fontSize: '0.72rem', fontWeight: isActive ? 700 : 400 }}>
+                    <Typography variant="caption" sx={{ color: isActive ? '#93a4dc' : 'rgba(255,255,255,0.35)', fontSize: '0.72rem', fontWeight: isActive ? 700 : 400 }}>
                       {count}
                     </Typography>
                   </Box>
@@ -4747,7 +4747,7 @@ export function EquipmentManagementPanel({
                               px: 0.5,
                               borderRadius: 1,
                               cursor: 'pointer',
-                              '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
+                              '&:hover': { bgcolor: 'rgba(75, 61, 143,0.08)' },
                             }}
                           >
                             <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: getCategoryColor(cat), flexShrink: 0 }} />
@@ -4843,7 +4843,7 @@ export function EquipmentManagementPanel({
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: '#6249df' }} />
+                  <SearchIcon sx={{ color: '#4b3d8f' }} />
                 </InputAdornment>
               ),
             }}
@@ -4854,8 +4854,8 @@ export function EquipmentManagementPanel({
                 color: '#fff',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
-                '&.Mui-focused fieldset': { borderColor: '#6249df' },
+                '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
+                '&.Mui-focused fieldset': { borderColor: '#4b3d8f' },
               },
             }}
           />
@@ -4870,11 +4870,11 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
                 }
               }}
             >
@@ -4900,11 +4900,11 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
                 }
               }}
             >
@@ -4930,11 +4930,11 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
                 },
               }}
             >
@@ -4942,7 +4942,7 @@ export function EquipmentManagementPanel({
               {locations.map((loc) => (
                 <MenuItem key={loc.id} value={loc.id}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <LocationIcon sx={{ fontSize: 14, color: 'rgba(98, 73, 223,0.7)' }} />
+                    <LocationIcon sx={{ fontSize: 14, color: 'rgba(75, 61, 143,0.7)' }} />
                     {loc.name}
                   </Box>
                 </MenuItem>
@@ -4965,11 +4965,11 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
                 },
               }}
             >
@@ -5013,7 +5013,7 @@ export function EquipmentManagementPanel({
               label={`Søk: "${searchQuery}"`}
               size="small"
               onDelete={() => setSearchQuery('')}
-              sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#9e8cf8', borderColor: 'rgba(98, 73, 223,0.3)', border: '1px solid' }}
+              sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#93a4dc', borderColor: 'rgba(75, 61, 143,0.3)', border: '1px solid' }}
             />
           )}
           {categoryFilter !== 'all' && (
@@ -5022,7 +5022,7 @@ export function EquipmentManagementPanel({
               size="small"
               icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(categoryFilter), ml: '8px !important' }} />}
               onDelete={() => setCategoryFilter('all')}
-              sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#9e8cf8', borderColor: 'rgba(98, 73, 223,0.3)', border: '1px solid' }}
+              sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#93a4dc', borderColor: 'rgba(75, 61, 143,0.3)', border: '1px solid' }}
             />
           )}
           {statusFilter !== 'all' && (
@@ -5030,7 +5030,7 @@ export function EquipmentManagementPanel({
               label={STATUS_LABELS[statusFilter as keyof typeof STATUS_LABELS] ?? statusFilter}
               size="small"
               onDelete={() => setStatusFilter('all')}
-              sx={{ bgcolor: `${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#6249df'}20`, color: STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9e8cf8', border: `1px solid ${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#6249df'}40` }}
+              sx={{ bgcolor: `${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#4b3d8f'}20`, color: STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#93a4dc', border: `1px solid ${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#4b3d8f'}40` }}
             />
           )}
           <Chip
@@ -5072,7 +5072,7 @@ export function EquipmentManagementPanel({
                     subtitle={searchQuery || categoryFilter !== 'all' || statusFilter !== 'all'
                       ? 'Prøv å endre søkekriteriene'
                       : 'Legg til ditt første utstyr for å komme i gang'}
-                    color="#6249df"
+                    color="#4b3d8f"
                     buttonLabel="Legg til utstyr"
                     onAction={handleOpenCreateTypeDialog}
                   />
@@ -5089,7 +5089,7 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(28, 33, 40, 0.8)',
                 backdropFilter: 'blur(10px)',
                 border: selectedEquipmentIds.has(eq.id) 
-                  ? '2px solid #6249df' 
+                  ? '2px solid #4b3d8f' 
                   : '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 3,
                 height: '100%',
@@ -5099,9 +5099,9 @@ export function EquipmentManagementPanel({
                 overflow: 'hidden',
                 position: 'relative',
                 '&:hover': {
-                  borderColor: selectedEquipmentIds.has(eq.id) ? '#9e8cf8' : 'rgba(98, 73, 223,0.5)',
+                  borderColor: selectedEquipmentIds.has(eq.id) ? '#93a4dc' : 'rgba(75, 61, 143,0.5)',
                   transform: 'translateY(-4px)',
-                  boxShadow: '0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(98, 73, 223,0.2)',
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(75, 61, 143,0.2)',
                 },
               }}>
                 {/* Selection checkbox */}
@@ -5116,9 +5116,9 @@ export function EquipmentManagementPanel({
                     onClick={(e) => { e.stopPropagation(); toggleSelectEquipment(eq.id); }}
                     aria-label={selectedEquipmentIds.has(eq.id) ? `Fjern markering for ${eq.name}` : `Velg ${eq.name}`}
                     sx={{
-                      bgcolor: selectedEquipmentIds.has(eq.id) ? '#6249df' : 'rgba(0,0,0,0.5)',
+                      bgcolor: selectedEquipmentIds.has(eq.id) ? '#4b3d8f' : 'rgba(0,0,0,0.5)',
                       backdropFilter: 'blur(4px)',
-                      '&:hover': { bgcolor: selectedEquipmentIds.has(eq.id) ? '#9e8cf8' : 'rgba(0,0,0,0.7)' },
+                      '&:hover': { bgcolor: selectedEquipmentIds.has(eq.id) ? '#93a4dc' : 'rgba(0,0,0,0.7)' },
                     }}
                   >
                     {selectedEquipmentIds.has(eq.id)
@@ -5301,11 +5301,11 @@ export function EquipmentManagementPanel({
                         label={eq.category} 
                         size="small" 
                         sx={{ 
-                          bgcolor: 'rgba(98, 73, 223,0.15)', 
-                          color: '#9e8cf8', 
+                          bgcolor: 'rgba(75, 61, 143,0.15)', 
+                          color: '#93a4dc', 
                           fontSize: '0.7rem',
                           fontWeight: 600,
-                          border: '1px solid rgba(98, 73, 223,0.2)',
+                          border: '1px solid rgba(75, 61, 143,0.2)',
                         }} 
                       />
                     )}
@@ -5416,7 +5416,7 @@ export function EquipmentManagementPanel({
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
-                          '&:hover': { color: '#6249df', bgcolor: 'rgba(98, 73, 223,0.1)' },
+                          '&:hover': { color: '#4b3d8f', bgcolor: 'rgba(75, 61, 143,0.1)' },
                         }}
                       >
                         <ScheduleIcon sx={{ fontSize: 18 }} />
@@ -5476,7 +5476,7 @@ export function EquipmentManagementPanel({
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
-                          '&:hover': { color: '#3c27a5', bgcolor: 'rgba(60, 39, 165,0.1)' },
+                          '&:hover': { color: '#32127a', bgcolor: 'rgba(50, 18, 122,0.1)' },
                         }}
                       >
                         <QrCodeIcon sx={{ fontSize: 18 }} />
@@ -5490,7 +5490,7 @@ export function EquipmentManagementPanel({
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
-                          '&:hover': { color: '#472bd4', bgcolor: 'rgba(71, 43, 212,0.1)' },
+                          '&:hover': { color: '#3e3180', bgcolor: 'rgba(62, 49, 128,0.1)' },
                         }}
                       >
                         <HistoryIcon sx={{ fontSize: 18 }} />
@@ -5574,14 +5574,14 @@ export function EquipmentManagementPanel({
           <Table>
             <TableHead>
               <TableRow sx={{ 
-                background: 'linear-gradient(135deg, rgba(98, 73, 223,0.1) 0%, rgba(71, 43, 212,0.05) 100%)',
+                background: 'linear-gradient(135deg, rgba(75, 61, 143,0.1) 0%, rgba(62, 49, 128,0.05) 100%)',
               }}>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>
                   <TableSortLabel
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#6249df' }, '& .MuiTableSortLabel-icon': { color: '#6249df !important' } }}
+                    sx={{ color: '#fff', '&.Mui-active': { color: '#4b3d8f' }, '& .MuiTableSortLabel-icon': { color: '#4b3d8f !important' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -5591,7 +5591,7 @@ export function EquipmentManagementPanel({
                     active={sortField === 'category'}
                     direction={sortField === 'category' ? sortDirection : 'asc'}
                     onClick={() => handleSort('category')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#6249df' }, '& .MuiTableSortLabel-icon': { color: '#6249df !important' } }}
+                    sx={{ color: '#fff', '&.Mui-active': { color: '#4b3d8f' }, '& .MuiTableSortLabel-icon': { color: '#4b3d8f !important' } }}
                   >
                     Kategori
                   </TableSortLabel>
@@ -5602,7 +5602,7 @@ export function EquipmentManagementPanel({
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#6249df' }, '& .MuiTableSortLabel-icon': { color: '#6249df !important' } }}
+                    sx={{ color: '#fff', '&.Mui-active': { color: '#4b3d8f' }, '& .MuiTableSortLabel-icon': { color: '#4b3d8f !important' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -5622,7 +5622,7 @@ export function EquipmentManagementPanel({
                   key={eq.id} 
                   sx={{ 
                     transition: 'all 0.2s',
-                    '&:hover': { bgcolor: 'rgba(98, 73, 223,0.05)' },
+                    '&:hover': { bgcolor: 'rgba(75, 61, 143,0.05)' },
                     '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
                   }}
                 >
@@ -5670,8 +5670,8 @@ export function EquipmentManagementPanel({
                       label={eq.category || '-'} 
                       size="small"
                       sx={{ 
-                        bgcolor: 'rgba(98, 73, 223,0.1)', 
-                        color: '#9e8cf8',
+                        bgcolor: 'rgba(75, 61, 143,0.1)', 
+                        color: '#93a4dc',
                         fontSize: '0.75rem',
                       }}
                     />
@@ -5764,7 +5764,7 @@ export function EquipmentManagementPanel({
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
-                            '&:hover': { color: '#6249df', bgcolor: 'rgba(98, 73, 223,0.1)' },
+                            '&:hover': { color: '#4b3d8f', bgcolor: 'rgba(75, 61, 143,0.1)' },
                           }}
                         >
                           <ScheduleIcon sx={{ fontSize: 18 }} />
@@ -5815,7 +5815,7 @@ export function EquipmentManagementPanel({
                           sx={{
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
-                            '&:hover': { color: '#3c27a5', bgcolor: 'rgba(60, 39, 165,0.1)' },
+                            '&:hover': { color: '#32127a', bgcolor: 'rgba(50, 18, 122,0.1)' },
                           }}
                         >
                           <QrCodeIcon sx={{ fontSize: 18 }} />
@@ -5912,10 +5912,10 @@ export function EquipmentManagementPanel({
                         minWidth: 32,
                         height: 32,
                         px: 1,
-                        bgcolor: safePage === p ? '#6249df' : 'transparent',
+                        bgcolor: safePage === p ? '#4b3d8f' : 'transparent',
                         color: safePage === p ? '#fff' : 'rgba(255,255,255,0.7)',
                         fontWeight: safePage === p ? 700 : 500,
-                        '&:hover': { bgcolor: safePage === p ? '#8875eb' : 'rgba(98, 73, 223,0.18)' },
+                        '&:hover': { bgcolor: safePage === p ? '#5d76cb' : 'rgba(75, 61, 143,0.18)' },
                       }}
                     >
                       {p}
@@ -5944,12 +5944,12 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                 '& .MuiSelect-select': { py: 0.5, fontSize: '0.85rem' },
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
+                  sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' },
                 },
               }}
             >
@@ -5972,7 +5972,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -6014,14 +6014,14 @@ export function EquipmentManagementPanel({
                 p: 2,
                 minHeight: 170,
                 borderRadius: 2.5,
-                borderColor: 'rgba(98, 73, 223,0.35)',
+                borderColor: 'rgba(75, 61, 143,0.35)',
                 color: '#fff',
                 textTransform: 'none',
                 alignItems: 'flex-start',
                 justifyContent: 'flex-start',
                 '&:hover': {
-                  borderColor: '#6249df',
-                  bgcolor: 'rgba(98, 73, 223,0.12)',
+                  borderColor: '#4b3d8f',
+                  bgcolor: 'rgba(75, 61, 143,0.12)',
                 },
                 ...focusVisibleStyles,
               }}
@@ -6032,13 +6032,13 @@ export function EquipmentManagementPanel({
                     width: 42,
                     height: 42,
                     borderRadius: 1.5,
-                    bgcolor: 'rgba(98, 73, 223,0.2)',
+                    bgcolor: 'rgba(75, 61, 143,0.2)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <BuildIcon sx={{ color: '#9e8cf8', fontSize: 24 }} />
+                  <BuildIcon sx={{ color: '#93a4dc', fontSize: 24 }} />
                 </Box>
                 <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
                   Filmutstyr
@@ -6056,14 +6056,14 @@ export function EquipmentManagementPanel({
                 p: 2,
                 minHeight: 170,
                 borderRadius: 2.5,
-                borderColor: 'rgba(158, 140, 248,0.35)',
+                borderColor: 'rgba(147, 164, 220,0.35)',
                 color: '#fff',
                 textTransform: 'none',
                 alignItems: 'flex-start',
                 justifyContent: 'flex-start',
                 '&:hover': {
-                  borderColor: '#9e8cf8',
-                  bgcolor: 'rgba(158, 140, 248,0.12)',
+                  borderColor: '#93a4dc',
+                  bgcolor: 'rgba(147, 164, 220,0.12)',
                 },
                 ...focusVisibleStyles,
               }}
@@ -6074,13 +6074,13 @@ export function EquipmentManagementPanel({
                     width: 42,
                     height: 42,
                     borderRadius: 1.5,
-                    bgcolor: 'rgba(158, 140, 248,0.2)',
+                    bgcolor: 'rgba(147, 164, 220,0.2)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <PropsIcon sx={{ color: '#9e8cf8', fontSize: 24 }} />
+                  <PropsIcon sx={{ color: '#93a4dc', fontSize: 24 }} />
                 </Box>
                 <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
                   Rekvisitter
@@ -6110,7 +6110,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -6166,8 +6166,8 @@ export function EquipmentManagementPanel({
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(98, 73, 223,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: formErrors.name ? '#f44336' : '#6249df' },
+                    '&:hover fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(75, 61, 143,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: formErrors.name ? '#f44336' : '#4b3d8f' },
                   },
                   '& .MuiInputLabel-root': { color: formErrors.name ? '#f44336' : 'rgba(255,255,255,0.6)' },
                   '& .MuiFormHelperText-root': { color: '#f44336' },
@@ -6192,10 +6192,10 @@ export function EquipmentManagementPanel({
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)', maxHeight: 350 } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)', maxHeight: 350 } }
                   }}
                 >
                   {allCategories.map(cat => (
@@ -6283,8 +6283,8 @@ export function EquipmentManagementPanel({
                         color: '#fff',
                         borderRadius: 2,
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                        '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
-                        '&.Mui-focused fieldset': { borderColor: '#6249df' },
+                        '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
+                        '&.Mui-focused fieldset': { borderColor: '#4b3d8f' },
                       },
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                       '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
@@ -6404,8 +6404,8 @@ export function EquipmentManagementPanel({
                         color: '#fff',
                         borderRadius: 2,
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                        '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
-                        '&.Mui-focused fieldset': { borderColor: '#6249df' },
+                        '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
+                        '&.Mui-focused fieldset': { borderColor: '#4b3d8f' },
                       },
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                       '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
@@ -6436,9 +6436,9 @@ export function EquipmentManagementPanel({
                     p: 2,
                     background:
                       'linear-gradient(145deg, rgba(15,23,42,0.88) 0%, rgba(30,41,59,0.82) 52%, rgba(17,24,39,0.9) 100%)',
-                    border: '1px solid rgba(125,211,252,0.22)',
+                    border: '1px solid rgba(147, 164, 220,0.22)',
                     borderRadius: 2,
-                    boxShadow: '0 14px 34px rgba(10, 5, 21,0.45)',
+                    boxShadow: '0 14px 34px rgba(27, 18, 44,0.45)',
                   }}
                 >
                   <Stack
@@ -6459,7 +6459,7 @@ export function EquipmentManagementPanel({
                       <Chip
                         size="small"
                         label={selectedCameraForForm.type === 'video' ? 'Cine/Video' : 'Foto'}
-                        sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 700 }}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#c3cbe6', fontWeight: 700 }}
                       />
                       {selectedCameraForForm.isNetflixCertified &&
                         renderNetflixBadge('Netflix-sertifisert', false)}
@@ -6503,11 +6503,11 @@ export function EquipmentManagementPanel({
                         onClick={() => setCameraSpecsExpanded((prev) => !prev)}
                         sx={{
                           mt: 1,
-                          color: '#bfdbfe',
+                          color: '#c3cbe6',
                           fontWeight: 700,
                           textTransform: 'none',
                           px: 0,
-                          '&:hover': { bgcolor: 'transparent', color: '#dbeafe' },
+                          '&:hover': { bgcolor: 'transparent', color: '#dfe4f3' },
                         }}
                       >
                         {cameraSpecsExpanded ? 'Skjul spesifikasjoner' : 'Les mer om spesifikasjoner'}
@@ -6552,12 +6552,12 @@ export function EquipmentManagementPanel({
                 <Paper
                   sx={{
                     p: 1.5,
-                    bgcolor: 'rgba(136, 117, 235,0.08)',
-                    border: '1px solid rgba(158, 140, 248,0.28)',
+                    bgcolor: 'rgba(93, 118, 203,0.08)',
+                    border: '1px solid rgba(147, 164, 220,0.28)',
                     borderRadius: 2,
                   }}
                 >
-                  <Typography variant="subtitle2" sx={{ color: '#e0dbfa', fontWeight: 700, mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ color: '#dfe4f3', fontWeight: 700, mb: 1 }}>
                     Kamera-treff fra produsentdatabase
                   </Typography>
                   <Stack spacing={1}>
@@ -6584,7 +6584,7 @@ export function EquipmentManagementPanel({
                             <Chip
                               size="small"
                               label={camera.type === 'video' ? 'Cine/Video' : 'Foto'}
-                              sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 600 }}
+                              sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#c3cbe6', fontWeight: 600 }}
                             />
                             {camera.isNetflixCertified && renderNetflixBadge('Netflix-sertifisert', false)}
                           </Stack>
@@ -6660,8 +6660,8 @@ export function EquipmentManagementPanel({
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : 'rgba(98, 73, 223,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : '#6249df' },
+                    '&:hover fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : 'rgba(75, 61, 143,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : '#4b3d8f' },
                   },
                   '& .MuiInputLabel-root': { color: formErrors.serialNumber ? '#f44336' : 'rgba(255,255,255,0.87)' },
                   '& .MuiFormHelperText-root': { color: formErrors.serialNumber ? '#f44336' : 'rgba(255,255,255,0.6)' },
@@ -6682,8 +6682,8 @@ export function EquipmentManagementPanel({
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#6249df' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#4b3d8f' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -6701,10 +6701,10 @@ export function EquipmentManagementPanel({
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
@@ -6730,10 +6730,10 @@ export function EquipmentManagementPanel({
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   {Object.entries(CONDITION_LABELS).map(([value, label]) => (
@@ -6759,10 +6759,10 @@ export function EquipmentManagementPanel({
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   <MenuItem value="">Ingen</MenuItem>
@@ -6791,8 +6791,8 @@ export function EquipmentManagementPanel({
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#6249df' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#4b3d8f' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -6812,8 +6812,8 @@ export function EquipmentManagementPanel({
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(98, 73, 223,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#6249df' },
+                    '&:hover fieldset': { borderColor: 'rgba(75, 61, 143,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#4b3d8f' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -6915,14 +6915,14 @@ export function EquipmentManagementPanel({
                 sx={{ 
                   p: 2, 
                   borderRadius: 2, 
-                  bgcolor: isDragging ? 'rgba(98, 73, 223,0.1)' : 'rgba(0,0,0,0.2)',
-                  border: isDragging ? '2px dashed #6249df' : '1px solid rgba(255,255,255,0.08)',
+                  bgcolor: isDragging ? 'rgba(75, 61, 143,0.1)' : 'rgba(0,0,0,0.2)',
+                  border: isDragging ? '2px dashed #4b3d8f' : '1px solid rgba(255,255,255,0.08)',
                   transition: 'all 0.2s',
                 }}
               >
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 1.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
                   Utstyrsbilde
-                  {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#6249df', color: '#fff', fontSize: '0.7rem' }} />}
+                  {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#4b3d8f', color: '#fff', fontSize: '0.7rem' }} />}
                 </Typography>
                 <Box
                   sx={{
@@ -6939,7 +6939,7 @@ export function EquipmentManagementPanel({
                     aspectRatio: '7 / 5',
                     bgcolor: 'rgba(255,255,255,0.03)',
                     borderRadius: 2,
-                    border: isDragging ? '2px solid #6249df' : '2px dashed rgba(255,255,255,0.15)',
+                    border: isDragging ? '2px solid #4b3d8f' : '2px dashed rgba(255,255,255,0.15)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -6947,7 +6947,7 @@ export function EquipmentManagementPanel({
                     justifySelf: { xs: 'center', md: 'stretch' },
                     transition: 'all 0.2s',
                     '&:hover': {
-                      borderColor: 'rgba(98, 73, 223,0.3)',
+                      borderColor: 'rgba(75, 61, 143,0.3)',
                     },
                   }}>
                     {formData.imageUrl ? (
@@ -6980,13 +6980,13 @@ export function EquipmentManagementPanel({
                         setImageSearchQuery(formData.name || formData.category || '');
                       }}
                       sx={{ 
-                        borderColor: 'rgba(98, 73, 223,0.5)', 
-                        color: '#6249df',
+                        borderColor: 'rgba(75, 61, 143,0.5)', 
+                        color: '#4b3d8f',
                         borderRadius: 2,
                         py: 1,
                         justifyContent: 'flex-start',
                         minHeight: TOUCH_TARGET_SIZE,
-                        '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(98, 73, 223,0.1)' },
+                        '&:hover': { borderColor: '#4b3d8f', bgcolor: 'rgba(75, 61, 143,0.1)' },
                       }}
                     >
                       Søk bilder
@@ -7075,7 +7075,7 @@ export function EquipmentManagementPanel({
                                 objectFit: 'cover',
                                 cursor: 'pointer',
                                 flexShrink: 0,
-                                border: formData.imageUrl === img.url ? '2px solid #6249df' : '1px solid rgba(255,255,255,0.15)',
+                                border: formData.imageUrl === img.url ? '2px solid #4b3d8f' : '1px solid rgba(255,255,255,0.15)',
                               }}
                             />
                           </Tooltip>
@@ -7114,16 +7114,16 @@ export function EquipmentManagementPanel({
             variant="contained"
             startIcon={<SaveIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+              background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
               color: '#fff',
               fontWeight: 700,
               minHeight: TOUCH_TARGET_SIZE,
               borderRadius: 2,
               px: 4,
-              boxShadow: '0 4px 14px rgba(98, 73, 223,0.3)',
+              boxShadow: '0 4px 14px rgba(75, 61, 143,0.3)',
               '&:hover': { 
-                background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 100%)',
-                boxShadow: '0 6px 20px rgba(98, 73, 223,0.4)',
+                background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 100%)',
+                boxShadow: '0 6px 20px rgba(75, 61, 143,0.4)',
               },
               ...focusVisibleStyles,
             }}
@@ -7141,7 +7141,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7197,7 +7197,7 @@ export function EquipmentManagementPanel({
                 '&:hover fieldset': { borderColor: 'rgba(33,150,243,0.3)' },
               }}
               MenuProps={{
-                PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
+                PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
               }}
             >
               {crewMembers.map(crew => (
@@ -7278,7 +7278,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7346,7 +7346,7 @@ export function EquipmentManagementPanel({
                       label={booking.status}
                       size="small"
                       sx={{ 
-                        bgcolor: booking.status === 'confirmed' ? '#4caf50' : '#6249df',
+                        bgcolor: booking.status === 'confirmed' ? '#4caf50' : '#4b3d8f',
                         color: '#fff',
                         fontWeight: 600,
                         borderRadius: 1.5,
@@ -7361,18 +7361,18 @@ export function EquipmentManagementPanel({
               {availability.map(avail => (
                 <Box key={avail.id} sx={{ 
                   p: 2.5, 
-                  bgcolor: avail.status === 'service' ? 'rgba(98, 73, 223, 0.08)' : 'rgba(244, 67, 54, 0.08)', 
+                  bgcolor: avail.status === 'service' ? 'rgba(75, 61, 143, 0.08)' : 'rgba(244, 67, 54, 0.08)', 
                   borderRadius: 2,
-                  border: `1px solid ${avail.status === 'service' ? 'rgba(98, 73, 223, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
+                  border: `1px solid ${avail.status === 'service' ? 'rgba(75, 61, 143, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
                   transition: 'all 0.2s',
                   '&:hover': { 
-                    bgcolor: avail.status === 'service' ? 'rgba(98, 73, 223, 0.12)' : 'rgba(244, 67, 54, 0.12)',
+                    bgcolor: avail.status === 'service' ? 'rgba(75, 61, 143, 0.12)' : 'rgba(244, 67, 54, 0.12)',
                   },
                 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {avail.status === 'service' ? (
-                        <WarningIcon sx={{ color: '#6249df' }} />
+                        <WarningIcon sx={{ color: '#4b3d8f' }} />
                       ) : (
                         <BlockIcon sx={{ color: '#f44336' }} />
                       )}
@@ -7435,7 +7435,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7529,7 +7529,7 @@ export function EquipmentManagementPanel({
                           )}
                           {template.name}
                           {template.is_default && (
-                            <StarIcon sx={{ color: '#6249df', fontSize: 18 }} />
+                            <StarIcon sx={{ color: '#4b3d8f', fontSize: 18 }} />
                           )}
                         </Typography>
                         {template.description && (
@@ -7670,7 +7670,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -7891,7 +7891,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.28)',
@@ -7923,22 +7923,22 @@ export function EquipmentManagementPanel({
           <Box sx={{ 
             textAlign: 'center', 
             py: 5,
-            background: 'linear-gradient(135deg, rgba(98, 73, 223,0.08) 0%, rgba(98, 73, 223,0.03) 100%)',
+            background: 'linear-gradient(135deg, rgba(75, 61, 143,0.08) 0%, rgba(75, 61, 143,0.03) 100%)',
             borderRadius: 2,
-            border: '1px solid rgba(98, 73, 223,0.15)',
+            border: '1px solid rgba(75, 61, 143,0.15)',
           }}>
             <Box sx={{
               width: 80,
               height: 80,
               borderRadius: '50%',
-              bgcolor: 'rgba(98, 73, 223,0.1)',
+              bgcolor: 'rgba(75, 61, 143,0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               mx: 'auto',
               mb: 2,
             }}>
-              <ShoppingCartIcon sx={{ fontSize: 40, color: '#6249df' }} />
+              <ShoppingCartIcon sx={{ fontSize: 40, color: '#4b3d8f' }} />
             </Box>
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
               Bygg nytt lager via foto.no
@@ -7954,13 +7954,13 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Kamera', 'https://www.foto.no/foto/kamera')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+                  background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
-                  '&:hover': { background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 100%)' } 
                 }}
               >
                 Kameraer
@@ -7971,13 +7971,13 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Lys', 'https://www.foto.no/foto/foto-tilbehor/belysning')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+                  background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
-                  '&:hover': { background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 100%)' } 
                 }}
               >
                 Lys og belysning
@@ -7988,13 +7988,13 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Video', 'https://www.foto.no/video')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+                  background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
-                  '&:hover': { background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 100%)' } 
                 }}
               >
                 Videoutstyr
@@ -8005,13 +8005,13 @@ export function EquipmentManagementPanel({
                 startIcon={<OpenInNewIcon />}
                 onClick={() => handleOpenShopCategory('Lyd', 'https://www.foto.no/lyd')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+                  background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
                   color: '#fff !important',
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
-                  '&:hover': { background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 100%)' } 
                 }}
               >
                 Lydopptak
@@ -8025,12 +8025,12 @@ export function EquipmentManagementPanel({
                   window.open('https://www.foto.no', '_blank', 'noopener,noreferrer');
                 }}
                 sx={{ 
-                  borderColor: 'rgba(98, 73, 223,0.5)', 
-                  color: '#6249df', 
+                  borderColor: 'rgba(75, 61, 143,0.5)', 
+                  color: '#4b3d8f', 
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
-                  '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(98, 73, 223,0.1)' } 
+                  '&:hover': { borderColor: '#4b3d8f', bgcolor: 'rgba(75, 61, 143,0.1)' } 
                 }}
               >
                 Alle kategorier
@@ -8046,11 +8046,11 @@ export function EquipmentManagementPanel({
                 size="small"
                 onClick={() => setSelectedVendorCategory('all')}
                 sx={{
-                  bgcolor: selectedVendorCategory === 'all' ? '#6249df' : 'rgba(98, 73, 223,0.12)',
-                  color: selectedVendorCategory === 'all' ? '#fff' : '#6249df',
+                  bgcolor: selectedVendorCategory === 'all' ? '#4b3d8f' : 'rgba(75, 61, 143,0.12)',
+                  color: selectedVendorCategory === 'all' ? '#fff' : '#4b3d8f',
                   fontWeight: selectedVendorCategory === 'all' ? 700 : 400,
                   cursor: 'pointer',
-                  '&:hover': { bgcolor: selectedVendorCategory === 'all' ? '#472bd4' : 'rgba(98, 73, 223,0.25)' },
+                  '&:hover': { bgcolor: selectedVendorCategory === 'all' ? '#3e3180' : 'rgba(75, 61, 143,0.25)' },
                 }}
               />
               {effectiveVendorCategories.map(vc => (
@@ -8060,11 +8060,11 @@ export function EquipmentManagementPanel({
                   size="small"
                   onClick={() => setSelectedVendorCategory(vc.category)}
                   sx={{
-                    bgcolor: selectedVendorCategory === vc.category ? '#6249df' : 'rgba(98, 73, 223,0.12)',
-                    color: selectedVendorCategory === vc.category ? '#fff' : '#6249df',
+                    bgcolor: selectedVendorCategory === vc.category ? '#4b3d8f' : 'rgba(75, 61, 143,0.12)',
+                    color: selectedVendorCategory === vc.category ? '#fff' : '#4b3d8f',
                     fontWeight: selectedVendorCategory === vc.category ? 700 : 400,
                     cursor: 'pointer',
-                    '&:hover': { bgcolor: selectedVendorCategory === vc.category ? '#472bd4' : 'rgba(98, 73, 223,0.25)' },
+                    '&:hover': { bgcolor: selectedVendorCategory === vc.category ? '#3e3180' : 'rgba(75, 61, 143,0.25)' },
                   }}
                 />
               ))}
@@ -8076,10 +8076,10 @@ export function EquipmentManagementPanel({
               severity="info"
               sx={{
                 mt: 3,
-                bgcolor: 'rgba(98, 73, 223,0.12)',
-                border: '1px solid rgba(98, 73, 223,0.35)',
-                color: '#e0dbfa',
-                '& .MuiAlert-icon': { color: '#9e8cf8' },
+                bgcolor: 'rgba(75, 61, 143,0.12)',
+                border: '1px solid rgba(75, 61, 143,0.35)',
+                color: '#dfe4f3',
+                '& .MuiAlert-icon': { color: '#93a4dc' },
               }}
             >
               Viser kvalitetssikrede produktforslag mens leverandørfeed synkroniseres.
@@ -8140,7 +8140,7 @@ export function EquipmentManagementPanel({
                             </Typography>
                           )}
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                            <Chip label={link.category} size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.2)', color: '#6249df' }} />
+                            <Chip label={link.category} size="small" sx={{ bgcolor: 'rgba(75, 61, 143,0.2)', color: '#4b3d8f' }} />
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
                               {link.vendor_name}
                             </Typography>
@@ -8188,7 +8188,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8321,7 +8321,7 @@ export function EquipmentManagementPanel({
         fullWidth
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3, 
             minHeight: 500,
@@ -8371,9 +8371,9 @@ export function EquipmentManagementPanel({
                 '&:hover': { bgcolor: 'rgba(148,163,184,0.08)' },
               },
               '& .MuiTab-root.Mui-selected': {
-                color: '#e0dbfa',
-                borderColor: 'rgba(158, 140, 248,0.42)',
-                bgcolor: 'rgba(98, 73, 223,0.22)',
+                color: '#dfe4f3',
+                borderColor: 'rgba(147, 164, 220,0.42)',
+                bgcolor: 'rgba(75, 61, 143,0.22)',
               },
               '& .MuiTabs-indicator': { display: 'none' },
             }}
@@ -8412,10 +8412,10 @@ export function EquipmentManagementPanel({
                 onClick={() => searchImages(imagePickerTab === 1 ? imageSearchQuery + ' cinema film' : imageSearchQuery)}
                 disabled={imageSearchLoading || !imageSearchQuery.trim()}
                 sx={{ 
-                  bgcolor: '#6249df', 
+                  bgcolor: '#4b3d8f', 
                   color: '#fff',
                   minWidth: 100,
-                  '&:hover': { bgcolor: '#472bd4' },
+                  '&:hover': { bgcolor: '#3e3180' },
                 }}
               >
                 {imageSearchLoading ? <CircularProgress size={20} /> : 'Søk'}
@@ -8442,7 +8442,7 @@ export function EquipmentManagementPanel({
                     bgcolor: 'rgba(255,255,255,0.1)', 
                     color: '#fff',
                     cursor: 'pointer',
-                    '&:hover': { bgcolor: 'rgba(98, 73, 223,0.2)' },
+                    '&:hover': { bgcolor: 'rgba(75, 61, 143,0.2)' },
                   }}
                 />
               ))}
@@ -8501,7 +8501,7 @@ export function EquipmentManagementPanel({
                       setTempImageUrl('');
                     }
                   }}
-                  sx={{ bgcolor: '#6249df', color: '#fff', '&:hover': { bgcolor: '#472bd4' }, alignSelf: 'flex-start' }}
+                  sx={{ bgcolor: '#4b3d8f', color: '#fff', '&:hover': { bgcolor: '#3e3180' }, alignSelf: 'flex-start' }}
                 >
                   Bruk bilde
                 </Button>
@@ -8511,7 +8511,7 @@ export function EquipmentManagementPanel({
             {/* Search Results */}
             {imageSearchLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4, flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <CircularProgress sx={{ color: '#6249df' }} />
+                <CircularProgress sx={{ color: '#4b3d8f' }} />
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                   Søker i Pexels, Pixabay, Unsplash, Openverse, Wikimedia...
                 </Typography>
@@ -8527,9 +8527,9 @@ export function EquipmentManagementPanel({
                       { name: 'pexels', color: '#05bc9e', label: 'Pexels' },
                       { name: 'pixabay', color: '#27a955', label: 'Pixabay' },
                       { name: 'unsplash', color: '#2196f3', label: 'Unsplash' },
-                      { name: 'openverse', color: '#3c27a5', label: 'Openverse' },
+                      { name: 'openverse', color: '#32127a', label: 'Openverse' },
                       { name: 'wikimedia', color: '#3e85ba', label: 'Wikimedia' },
-                      { name: 'shotcafe', color: '#6249df', label: 'shot.cafe' },
+                      { name: 'shotcafe', color: '#4b3d8f', label: 'shot.cafe' },
                     ].filter(s => imageSearchResults.some(r => r.source === s.name))
                     .map(s => (
                       <Box
@@ -8563,7 +8563,7 @@ export function EquipmentManagementPanel({
                         border: '2px solid transparent',
                         transition: 'all 0.2s',
                         '&:hover': { 
-                          border: '2px solid #6249df',
+                          border: '2px solid #4b3d8f',
                           transform: 'scale(1.02)',
                         },
                       }}
@@ -8585,9 +8585,9 @@ export function EquipmentManagementPanel({
                                 img.source === 'unsplash' ? 'rgba(33,150,243,0.4)' : 
                                 img.source === 'pexels' ? 'rgba(5,188,158,0.4)' :
                                 img.source === 'pixabay' ? 'rgba(39,169,85,0.4)' :
-                                img.source === 'openverse' ? 'rgba(60, 39, 165,0.4)' :
+                                img.source === 'openverse' ? 'rgba(50, 18, 122,0.4)' :
                                 img.source === 'wikimedia' ? 'rgba(62,133,186,0.4)' :
-                                img.source === 'shotcafe' ? 'rgba(98, 73, 223,0.4)' :
+                                img.source === 'shotcafe' ? 'rgba(75, 61, 143,0.4)' :
                                 'rgba(100,100,100,0.4)',
                               px: 0.5,
                               borderRadius: 0.5,
@@ -8652,7 +8652,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(255,77,77,0.3)',
@@ -8714,7 +8714,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8788,8 +8788,8 @@ export function EquipmentManagementPanel({
             onClick={handleConfirmBulkAction}
             variant="contained"
             sx={{ 
-              bgcolor: bulkActionType === 'delete' ? '#f44336' : '#6249df',
-              '&:hover': { bgcolor: bulkActionType === 'delete' ? '#d32f2f' : '#472bd4' },
+              bgcolor: bulkActionType === 'delete' ? '#f44336' : '#4b3d8f',
+              '&:hover': { bgcolor: bulkActionType === 'delete' ? '#d32f2f' : '#3e3180' },
             }}
           >
             Bekreft
@@ -8806,7 +8806,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8837,7 +8837,7 @@ export function EquipmentManagementPanel({
                 p: 2, 
                 bgcolor: 'rgba(255,255,255,0.03)', 
                 borderRadius: 2,
-                borderLeft: '3px solid #3c27a5',
+                borderLeft: '3px solid #32127a',
               }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{entry.action}</Typography>
@@ -8865,7 +8865,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -8975,7 +8975,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -9042,13 +9042,13 @@ export function EquipmentManagementPanel({
             {!conflictChecking && bookingConflicts.length > 0 && (
               <Box sx={{
                 p: 2, borderRadius: 2,
-                bgcolor: 'rgba(98, 73, 223,0.12)',
-                border: '1px solid rgba(98, 73, 223,0.4)',
+                bgcolor: 'rgba(75, 61, 143,0.12)',
+                border: '1px solid rgba(75, 61, 143,0.4)',
                 display: 'flex', alignItems: 'flex-start', gap: 1.5,
               }}>
-                <WarningIcon sx={{ color: '#6249df', mt: 0.25, flexShrink: 0 }} />
+                <WarningIcon sx={{ color: '#4b3d8f', mt: 0.25, flexShrink: 0 }} />
                 <Box>
-                  <Typography variant="body2" sx={{ color: '#9e8cf8', fontWeight: 600 }}>
+                  <Typography variant="body2" sx={{ color: '#93a4dc', fontWeight: 600 }}>
                     {bookingConflicts.length} konflikt{bookingConflicts.length > 1 ? 'er' : ''} funnet
                   </Typography>
                   {bookingConflicts.map(c => (
@@ -9120,7 +9120,7 @@ export function EquipmentManagementPanel({
 
       {/* ── Check-out Dialog ─────────────────────────── */}
       <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
         <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('info'), pb: 1 }}>
           <Box sx={getRoleRoomDialogIconSx('info', 40)}>
             <CheckOutIcon sx={{ color: '#fff' }} />
@@ -9150,9 +9150,9 @@ export function EquipmentManagementPanel({
             <TextField label="Formål" value={checkoutForm.purpose} onChange={(e) => setCheckoutForm(f => ({ ...f, purpose: e.target.value }))} fullWidth
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
             {!isOnline && (
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(98, 73, 223,0.1)', border: '1px solid rgba(98, 73, 223,0.3)', display: 'flex', gap: 1, alignItems: 'center' }}>
-                <OfflineIcon sx={{ color: '#6249df', fontSize: 18 }} />
-                <Typography variant="caption" sx={{ color: '#9e8cf8' }}>Du er offline — operasjonen lagres i kø og synkroniseres automatisk</Typography>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(75, 61, 143,0.1)', border: '1px solid rgba(75, 61, 143,0.3)', display: 'flex', gap: 1, alignItems: 'center' }}>
+                <OfflineIcon sx={{ color: '#4b3d8f', fontSize: 18 }} />
+                <Typography variant="caption" sx={{ color: '#93a4dc' }}>Du er offline — operasjonen lagres i kø og synkroniseres automatisk</Typography>
               </Box>
             )}
           </Stack>
@@ -9168,7 +9168,7 @@ export function EquipmentManagementPanel({
 
       {/* ── Check-in Dialog ──────────────────────────── */}
       <Dialog open={checkinDialogOpen} onClose={() => setCheckinDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
         <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('success'), pb: 1 }}>
           <Box sx={getRoleRoomDialogIconSx('success', 40)}>
             <CheckInIcon sx={{ color: '#fff' }} />
@@ -9225,8 +9225,8 @@ export function EquipmentManagementPanel({
             overflow: 'hidden',
             border: '1px solid rgba(148,163,184,0.28)',
             background:
-              'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.94) 56%, rgba(30,41,59,0.9) 100%)',
-            boxShadow: '0 24px 64px rgba(10, 5, 21,0.56)',
+              'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.94) 56%, rgba(30,41,59,0.9) 100%)',
+            boxShadow: '0 24px 64px rgba(27, 18, 44,0.56)',
             backdropFilter: 'blur(22px)',
           },
         }}
@@ -9241,7 +9241,7 @@ export function EquipmentManagementPanel({
             py: 2,
             borderBottom: '1px solid rgba(148,163,184,0.22)',
             background:
-              'linear-gradient(120deg, rgba(98, 73, 223,0.2) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.25) 100%)',
+              'linear-gradient(120deg, rgba(75, 61, 143,0.2) 0%, rgba(63, 81, 181,0.1) 52%, rgba(15,23,42,0.25) 100%)',
           }}
         >
           <Box sx={getRoleRoomDialogIconSx('primary', 42)}>
@@ -9256,7 +9256,7 @@ export function EquipmentManagementPanel({
             </Typography>
           </Box>
           <Stack direction="row" spacing={0.75} sx={{ ml: 'auto', mr: 1, display: { xs: 'none', md: 'flex' } }}>
-            <Chip size="small" label={`${equipment.length} totalt`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
+            <Chip size="small" label={`${equipment.length} totalt`} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
             <Chip size="small" label={`${missingItems.length} mangler ansvarlig`} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
             <Chip size="small" label={`${maintenanceItems.length} vedlikehold`} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
           </Stack>
@@ -9269,7 +9269,7 @@ export function EquipmentManagementPanel({
             pt: 1.5,
             pb: 1,
             borderBottom: '1px solid rgba(148,163,184,0.16)',
-            background: 'linear-gradient(180deg, rgba(15,23,42,0.42) 0%, rgba(10, 5, 21,0.08) 100%)',
+            background: 'linear-gradient(180deg, rgba(15,23,42,0.42) 0%, rgba(27, 18, 44,0.08) 100%)',
           }}
         >
           <Tabs
@@ -9290,10 +9290,10 @@ export function EquipmentManagementPanel({
                 mr: 1,
                 px: 1.5,
                 '&.Mui-selected': {
-                  color: '#e0dbfa',
-                  borderColor: 'rgba(158, 140, 248,0.48)',
-                  bgcolor: 'rgba(98, 73, 223,0.24)',
-                  boxShadow: '0 8px 22px rgba(98, 73, 223,0.24)',
+                  color: '#dfe4f3',
+                  borderColor: 'rgba(147, 164, 220,0.48)',
+                  bgcolor: 'rgba(75, 61, 143,0.24)',
+                  boxShadow: '0 8px 22px rgba(75, 61, 143,0.24)',
                 },
               },
             }}
@@ -9383,18 +9383,18 @@ export function EquipmentManagementPanel({
           )}
         </DialogContent>
         <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2.25, borderTop: '1px solid rgba(148,163,184,0.2)', gap: 1 }}>
-          <Button onClick={() => setReportsDialogOpen(false)} variant="outlined" sx={{ borderColor: 'rgba(148,163,184,0.46)', color: 'rgba(226,232,240,0.88)', '&:hover': { borderColor: 'rgba(158, 140, 248,0.62)', bgcolor: 'rgba(98, 73, 223,0.12)' } }}>Lukk</Button>
+          <Button onClick={() => setReportsDialogOpen(false)} variant="outlined" sx={{ borderColor: 'rgba(148,163,184,0.46)', color: 'rgba(226,232,240,0.88)', '&:hover': { borderColor: 'rgba(147, 164, 220,0.62)', bgcolor: 'rgba(75, 61, 143,0.12)' } }}>Lukk</Button>
           <Button
             onClick={handleDownloadGearList}
             variant="contained"
             startIcon={<DownloadIcon />}
             sx={{
               ml: 'auto',
-              color: '#0a0515',
+              color: '#1b122c',
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #8875eb 0%, #6249df 60%, #3b82f6 100%)',
-              boxShadow: '0 12px 28px rgba(98, 73, 223,0.38)',
-              '&:hover': { background: 'linear-gradient(135deg, #9e8cf8 0%, #6249df 60%, #60a5fa 100%)' },
+              background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 60%, #3f51b5 100%)',
+              boxShadow: '0 12px 28px rgba(75, 61, 143,0.38)',
+              '&:hover': { background: 'linear-gradient(135deg, #93a4dc 0%, #4b3d8f 60%, #93a4dc 100%)' },
             }}
           >
             Last ned CSV
@@ -9404,7 +9404,7 @@ export function EquipmentManagementPanel({
 
       {/* ── Offline outbox viewer ────────────────────── */}
       <Dialog open={offlineOutboxOpen} onClose={() => setOfflineOutboxOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
         <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('danger'), pb: 1 }}>
           <Box sx={getRoleRoomDialogIconSx('danger', 40)}>
             <OfflineIcon sx={{ color: '#fff' }} />
@@ -9434,7 +9434,7 @@ export function EquipmentManagementPanel({
                       {new Date(e.ts).toLocaleString('nb-NO')}
                     </Typography>
                   </Box>
-                  <Chip label="Venter" size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#9e8cf8' }} />
+                  <Chip label="Venter" size="small" sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#93a4dc' }} />
                 </Box>
               ))}
             </Box>
@@ -9459,7 +9459,7 @@ export function EquipmentManagementPanel({
         fullScreen
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.98) 0%, rgba(15,23,42,0.94) 50%, rgba(30,41,59,0.88) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.98) 0%, rgba(15,23,42,0.94) 50%, rgba(30,41,59,0.88) 100%)',
             color: '#fff',
           },
         }}
@@ -9470,7 +9470,7 @@ export function EquipmentManagementPanel({
             ...getRoleRoomDialogTitleSx('primary'),
             borderBottom: '1px solid rgba(148,163,184,0.24)',
             pb: 0.5,
-            background: 'linear-gradient(90deg, rgba(98, 73, 223,0.16) 0%, rgba(56,189,248,0.1) 100%)',
+            background: 'linear-gradient(90deg, rgba(75, 61, 143,0.16) 0%, rgba(93, 118, 203,0.1) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -9482,9 +9482,9 @@ export function EquipmentManagementPanel({
               label="Importer til prosjekt"
               size="small"
               sx={{
-                bgcolor: 'rgba(158, 140, 248,0.2)',
-                color: '#e0dbfa',
-                border: '1px solid rgba(158, 140, 248,0.45)',
+                bgcolor: 'rgba(147, 164, 220,0.2)',
+                color: '#dfe4f3',
+                border: '1px solid rgba(147, 164, 220,0.45)',
               }}
             />
           </Box>
@@ -9521,10 +9521,10 @@ export function EquipmentManagementPanel({
                 '&:hover': { bgcolor: 'rgba(148,163,184,0.1)' },
               },
               '& .MuiTab-root.Mui-selected': {
-                color: '#e0dbfa',
-                borderColor: 'rgba(158, 140, 248,0.48)',
-                bgcolor: 'rgba(98, 73, 223,0.24)',
-                boxShadow: '0 8px 20px rgba(98, 73, 223,0.22)',
+                color: '#dfe4f3',
+                borderColor: 'rgba(147, 164, 220,0.48)',
+                bgcolor: 'rgba(75, 61, 143,0.24)',
+                boxShadow: '0 8px 20px rgba(75, 61, 143,0.22)',
               },
             }}
           >
@@ -9554,12 +9554,12 @@ export function EquipmentManagementPanel({
           {catalogDialogTab === 1 && (
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <NewspaperIcon sx={{ color: '#6249df' }} />
+                <NewspaperIcon sx={{ color: '#4b3d8f' }} />
                 Utstyrsnyheter
               </Typography>
               {gearNewsLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
-                  <CircularProgress sx={{ color: '#6249df' }} />
+                  <CircularProgress sx={{ color: '#4b3d8f' }} />
                   <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter nyheter...</Typography>
                 </Box>
               ) : gearNewsArticles.length === 0 ? (
@@ -9584,7 +9584,7 @@ export function EquipmentManagementPanel({
                       <Card sx={CATALOG_BRIDGE_CARD_SX}>
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
-                            {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.2)', color: '#9e8cf8', fontSize: '0.7rem' }} />}
+                            {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(75, 61, 143,0.2)', color: '#93a4dc', fontSize: '0.7rem' }} />}
                             {article.isNew && <Chip label="NY" size="small" color="error" sx={{ fontSize: '0.7rem' }} />}
                             {article.isTrending && <Chip label="Trend" size="small" color="warning" sx={{ fontSize: '0.7rem' }} />}
                           </Box>
@@ -9611,14 +9611,14 @@ export function EquipmentManagementPanel({
                           )}
                           {article.rating !== undefined && (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                              <Rating value={article.rating / 2} precision={0.5} size="small" readOnly sx={{ '& .MuiRating-iconFilled': { color: '#6249df' } }} />
+                              <Rating value={article.rating / 2} precision={0.5} size="small" readOnly sx={{ '& .MuiRating-iconFilled': { color: '#4b3d8f' } }} />
                               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{article.rating}</Typography>
                             </Box>
                           )}
                         </CardContent>
                         <Box sx={{ p: 1.5, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
                           {article.url && (
-                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" aria-label={`Åpne artikkel ${article.title ?? article.url}`} sx={{ color: '#6249df' }}>
+                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" aria-label={`Åpne artikkel ${article.title ?? article.url}`} sx={{ color: '#4b3d8f' }}>
                               <OpenInNewIcon fontSize="small" />
                             </IconButton>
                           )}
@@ -9662,8 +9662,8 @@ export function EquipmentManagementPanel({
                       </Paper>
                     </Box>
                     <Box sx={{ width: { xs: '100%', sm: 'calc(33.333% - 11px)' }, minWidth: 0 }}>
-                      <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(98, 73, 223,0.35)' }}>
-                        <AttachMoneyIcon sx={{ color: '#6249df', mb: 1 }} />
+                      <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(75, 61, 143,0.35)' }}>
+                        <AttachMoneyIcon sx={{ color: '#4b3d8f', mb: 1 }} />
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
                           Fra: {marketItems.length > 0 ? Math.min(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
                         </Typography>
@@ -9741,7 +9741,7 @@ export function EquipmentManagementPanel({
                               </IconButton>
                             )}
                             <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromMarket(item)}
-                              sx={{ ml: 'auto', borderColor: '#6249df', color: '#6249df', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' } }}>
+                              sx={{ ml: 'auto', borderColor: '#4b3d8f', color: '#4b3d8f', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(75, 61, 143,0.1)' } }}>
                               Importer
                             </Button>
                           </Box>
@@ -9758,12 +9758,12 @@ export function EquipmentManagementPanel({
           {catalogDialogTab === 3 && (
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <PhotoLibraryIcon sx={{ color: '#6249df' }} />
+                <PhotoLibraryIcon sx={{ color: '#4b3d8f' }} />
                 Objektiv Database
               </Typography>
               {lensDbLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
-                  <CircularProgress sx={{ color: '#6249df' }} />
+                  <CircularProgress sx={{ color: '#4b3d8f' }} />
                   <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter objektivdatabase...</Typography>
                 </Box>
               ) : lensItems.length === 0 ? (
@@ -9792,7 +9792,7 @@ export function EquipmentManagementPanel({
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
                             {lens.focalLength && lens.aperture && (
-                              <Chip label={`${lens.focalLength} ${lens.aperture}`} size="small" sx={{ bgcolor: 'rgba(98, 73, 223,0.2)', color: '#9e8cf8', fontWeight: 600, fontSize: '0.72rem' }} />
+                              <Chip label={`${lens.focalLength} ${lens.aperture}`} size="small" sx={{ bgcolor: 'rgba(75, 61, 143,0.2)', color: '#93a4dc', fontWeight: 600, fontSize: '0.72rem' }} />
                             )}
                             {lens.mount && <Chip label={lens.mount} size="small" variant="outlined" sx={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.72rem' }} />}
                             {lens.lensType && <Chip label={lens.lensType} size="small" variant="outlined" sx={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.72rem' }} />}
@@ -9816,7 +9816,7 @@ export function EquipmentManagementPanel({
                             {lens.currentPrice && (
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: 700, color: '#6249df' }}>
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: '#4b3d8f' }}>
                                   {parseFloat(lens.currentPrice).toLocaleString('nb-NO')} kr
                                 </Typography>
                               </Box>
@@ -9825,7 +9825,7 @@ export function EquipmentManagementPanel({
                         </CardContent>
                         <Box sx={{ p: 1.5, pt: 0 }}>
                           <Button size="small" fullWidth variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromLens(lens)}
-                            sx={{ borderColor: '#6249df', color: '#6249df', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(98, 73, 223,0.1)' } }}>
+                            sx={{ borderColor: '#4b3d8f', color: '#4b3d8f', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(75, 61, 143,0.1)' } }}>
                             Legg til i prosjekt
                           </Button>
                         </Box>
@@ -9842,18 +9842,18 @@ export function EquipmentManagementPanel({
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Inventory2Icon sx={{ color: '#9e8cf8' }} />
+                  <Inventory2Icon sx={{ color: '#93a4dc' }} />
                   Kamera + Minnekort
                 </Typography>
                 <Button
                   variant="outlined"
                   onClick={handleSyncCameraDiscovery}
-                  startIcon={cameraSyncing ? <CircularProgress size={14} sx={{ color: '#9e8cf8' }} /> : <SyncIcon />}
+                  startIcon={cameraSyncing ? <CircularProgress size={14} sx={{ color: '#93a4dc' }} /> : <SyncIcon />}
                   disabled={cameraSyncing}
                   sx={{
-                    borderColor: '#9e8cf8',
-                    color: '#9e8cf8',
-                    '&:hover': { borderColor: '#c6bdf4', bgcolor: 'rgba(198, 189, 244,0.08)' },
+                    borderColor: '#93a4dc',
+                    color: '#93a4dc',
+                    '&:hover': { borderColor: '#c3cbe6', bgcolor: 'rgba(195, 203, 230,0.08)' },
                   }}
                 >
                   Kjør discovery sync
@@ -9966,7 +9966,7 @@ export function EquipmentManagementPanel({
 
               {cameraCatalogLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1.5, py: 8 }}>
-                  <CircularProgress sx={{ color: '#9e8cf8' }} />
+                  <CircularProgress sx={{ color: '#93a4dc' }} />
                   <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>Henter kameradata...</Typography>
                 </Box>
               ) : cameraCatalogItems.length === 0 ? (
@@ -9992,13 +9992,13 @@ export function EquipmentManagementPanel({
                               cursor: 'pointer',
                               position: 'relative',
                               overflow: 'hidden',
-                              border: selectedCameraId === camera.id ? '1px solid #9e8cf8' : '1px solid rgba(255,255,255,0.08)',
+                              border: selectedCameraId === camera.id ? '1px solid #93a4dc' : '1px solid rgba(255,255,255,0.08)',
                               background: selectedCameraId === camera.id
-                                ? 'linear-gradient(150deg, rgba(158, 140, 248,0.2) 0%, rgba(30,41,59,0.85) 100%)'
+                                ? 'linear-gradient(150deg, rgba(147, 164, 220,0.2) 0%, rgba(30,41,59,0.85) 100%)'
                                 : 'linear-gradient(150deg, rgba(15,23,42,0.78) 0%, rgba(30,41,59,0.55) 100%)',
                               boxShadow: selectedCameraId === camera.id
-                                ? '0 10px 26px rgba(98, 73, 223,0.34)'
-                                : '0 8px 20px rgba(10, 5, 21,0.28)',
+                                ? '0 10px 26px rgba(75, 61, 143,0.34)'
+                                : '0 8px 20px rgba(27, 18, 44,0.28)',
                               '&::before': {
                                 content: '""',
                                 position: 'absolute',
@@ -10007,12 +10007,12 @@ export function EquipmentManagementPanel({
                                 right: 0,
                                 height: 2,
                                 background: selectedCameraId === camera.id
-                                  ? 'linear-gradient(90deg, #9e8cf8, #38bdf8)'
-                                  : 'linear-gradient(90deg, rgba(148,163,184,0.65), rgba(125,211,252,0.55))',
+                                  ? 'linear-gradient(90deg, #93a4dc, #5d76cb)'
+                                  : 'linear-gradient(90deg, rgba(148,163,184,0.65), rgba(147, 164, 220,0.55))',
                               },
                               '&:hover': {
                                 background: 'linear-gradient(150deg, rgba(51,65,85,0.92) 0%, rgba(30,41,59,0.78) 100%)',
-                                borderColor: 'rgba(125,211,252,0.38)',
+                                borderColor: 'rgba(147, 164, 220,0.38)',
                               },
                             }}
                           >
@@ -10026,8 +10026,8 @@ export function EquipmentManagementPanel({
                                     size="small"
                                     label={camera.type === 'photo' ? 'Foto' : 'Video'}
                                     sx={{
-                                      bgcolor: camera.type === 'photo' ? 'rgba(33,150,243,0.2)' : 'rgba(60, 39, 165,0.25)',
-                                      color: camera.type === 'photo' ? '#90caf9' : '#c6bdf4',
+                                      bgcolor: camera.type === 'photo' ? 'rgba(33,150,243,0.2)' : 'rgba(50, 18, 122,0.25)',
+                                      color: camera.type === 'photo' ? '#90caf9' : '#c3cbe6',
                                     }}
                                   />
                                   {camera.isNetflixCertified && renderNetflixBadge('Netflix', true)}
@@ -10053,9 +10053,9 @@ export function EquipmentManagementPanel({
                                   handleImportFromCameraRecord(camera);
                                 }}
                                 sx={{
-                                  borderColor: '#9e8cf8',
-                                  color: '#9e8cf8',
-                                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.1)', borderColor: '#c6bdf4' },
+                                  borderColor: '#93a4dc',
+                                  color: '#93a4dc',
+                                  '&:hover': { bgcolor: 'rgba(147, 164, 220,0.1)', borderColor: '#c3cbe6' },
                                 }}
                               >
                                 Importer kamera
@@ -10072,10 +10072,10 @@ export function EquipmentManagementPanel({
                       sx={{
                         p: 2,
                         background:
-                          'linear-gradient(160deg, rgba(10, 5, 21,0.84) 0%, rgba(15,23,42,0.72) 44%, rgba(30,41,59,0.62) 100%)',
-                        border: '1px solid rgba(125,211,252,0.18)',
+                          'linear-gradient(160deg, rgba(27, 18, 44,0.84) 0%, rgba(15,23,42,0.72) 44%, rgba(30,41,59,0.62) 100%)',
+                        border: '1px solid rgba(147, 164, 220,0.18)',
                         borderRadius: 2,
-                        boxShadow: '0 14px 30px rgba(10, 5, 21,0.35)',
+                        boxShadow: '0 14px 30px rgba(27, 18, 44,0.35)',
                       }}
                     >
                       <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, mb: 1.5 }}>
@@ -10104,7 +10104,7 @@ export function EquipmentManagementPanel({
                             <Alert severity="warning">Minnekort-endepunkt er utilgjengelig.</Alert>
                           ) : memoryCardsLoading ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
-                              <CircularProgress size={18} sx={{ color: '#9e8cf8' }} />
+                              <CircularProgress size={18} sx={{ color: '#93a4dc' }} />
                               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                                 Henter minnekort...
                               </Typography>
@@ -10142,10 +10142,10 @@ export function EquipmentManagementPanel({
                                     startIcon={<AddIcon />}
                                     onClick={() => handleImportFromMemoryCard(card)}
                                     sx={{
-                                      borderColor: '#9e8cf8',
-                                      color: '#9e8cf8',
+                                      borderColor: '#93a4dc',
+                                      color: '#93a4dc',
                                       minWidth: 98,
-                                      '&:hover': { bgcolor: 'rgba(158, 140, 248,0.1)', borderColor: '#c6bdf4' },
+                                      '&:hover': { bgcolor: 'rgba(147, 164, 220,0.1)', borderColor: '#c3cbe6' },
                                     }}
                                   >
                                     Importer
@@ -10184,7 +10184,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -10240,7 +10240,7 @@ export function EquipmentManagementPanel({
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Chip
                   label={`ID: ${qrTargetEquipment.id}`}
-                  sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#9e8cf8', maxWidth: '100%' }}
+                  sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#93a4dc', maxWidth: '100%' }}
                 />
                 <Chip
                   label={`Serienr: ${qrTargetEquipment.serial_number || 'N/A'}`}
@@ -10281,10 +10281,10 @@ export function EquipmentManagementPanel({
             startIcon={<DownloadIcon />}
             onClick={() => qrTargetEquipment && handlePrintQR(qrTargetEquipment)}
             sx={{
-              bgcolor: '#6249df',
+              bgcolor: '#4b3d8f',
               color: '#fff',
               fontWeight: 700,
-              '&:hover': { bgcolor: '#8875eb' },
+              '&:hover': { bgcolor: '#5d76cb' },
             }}
           >
             Skriv ut etikett
@@ -10300,7 +10300,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -10351,8 +10351,8 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(158, 140, 248,0.45)' },
-                '&.Mui-focused fieldset': { borderColor: '#9e8cf8' },
+                '&:hover fieldset': { borderColor: 'rgba(147, 164, 220,0.45)' },
+                '&.Mui-focused fieldset': { borderColor: '#93a4dc' },
               },
             }}
           />
@@ -10378,7 +10378,7 @@ export function EquipmentManagementPanel({
                 setQrScanError('Kunne ikke lese fra utklippstavle.');
               }
             }}
-            sx={{ borderColor: '#9e8cf8', color: '#9e8cf8' }}
+            sx={{ borderColor: '#93a4dc', color: '#93a4dc' }}
           >
             Lim inn
           </Button>
@@ -10387,10 +10387,10 @@ export function EquipmentManagementPanel({
             startIcon={<QrCodeScannerIcon />}
             onClick={() => handleResolveScannedQr(qrScanInput)}
             sx={{
-              background: 'linear-gradient(135deg, #8875eb, #6249df)',
+              background: 'linear-gradient(135deg, #5d76cb, #4b3d8f)',
               color: '#fff',
               fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #9e8cf8, #6249df)' },
+              '&:hover': { background: 'linear-gradient(135deg, #93a4dc, #4b3d8f)' },
             }}
           >
             Tolk QR
@@ -10406,7 +10406,7 @@ export function EquipmentManagementPanel({
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            background: 'linear-gradient(160deg, rgba(10, 5, 21,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            background: 'linear-gradient(160deg, rgba(27, 18, 44,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(148,163,184,0.26)',
@@ -10463,8 +10463,8 @@ export function EquipmentManagementPanel({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(158, 140, 248,0.45)' },
-                '&.Mui-focused fieldset': { borderColor: '#9e8cf8' },
+                '&:hover fieldset': { borderColor: 'rgba(147, 164, 220,0.45)' },
+                '&.Mui-focused fieldset': { borderColor: '#93a4dc' },
               },
             }}
           />
@@ -10490,7 +10490,7 @@ export function EquipmentManagementPanel({
                 setSerialScanError('Kunne ikke lese fra utklippstavle.');
               }
             }}
-            sx={{ borderColor: '#9e8cf8', color: '#9e8cf8' }}
+            sx={{ borderColor: '#93a4dc', color: '#93a4dc' }}
           >
             Lim inn
           </Button>
@@ -10499,10 +10499,10 @@ export function EquipmentManagementPanel({
             startIcon={<QrCodeScannerIcon />}
             onClick={() => handleApplyScannedSerialNumber(serialScanInput)}
             sx={{
-              background: 'linear-gradient(135deg, #8875eb, #6249df)',
+              background: 'linear-gradient(135deg, #5d76cb, #4b3d8f)',
               color: '#fff',
               fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #9e8cf8, #6249df)' },
+              '&:hover': { background: 'linear-gradient(135deg, #93a4dc, #4b3d8f)' },
             }}
           >
             Bruk kode
@@ -10521,11 +10521,11 @@ export function EquipmentManagementPanel({
         PaperProps={{
           sx: {
             background:
-              'linear-gradient(160deg, rgba(10, 5, 21,0.96) 0%, rgba(15,23,42,0.9) 48%, rgba(30,41,59,0.82) 100%)',
+              'linear-gradient(160deg, rgba(27, 18, 44,0.96) 0%, rgba(15,23,42,0.9) 48%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             border: '1px solid rgba(148,163,184,0.3)',
             borderRadius: 2,
-            boxShadow: '0 18px 38px rgba(10, 5, 21,0.5)',
+            boxShadow: '0 18px 38px rgba(27, 18, 44,0.5)',
           },
         }}
       >
@@ -10534,7 +10534,7 @@ export function EquipmentManagementPanel({
           sx={{
             ...getRoleRoomDialogTitleSx('primary'),
             borderBottom: '1px solid rgba(148,163,184,0.24)',
-            background: 'linear-gradient(90deg, rgba(98, 73, 223,0.16) 0%, rgba(56,189,248,0.12) 100%)',
+            background: 'linear-gradient(90deg, rgba(75, 61, 143,0.16) 0%, rgba(93, 118, 203,0.12) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>

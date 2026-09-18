@@ -76,7 +76,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
           borderRadius: radius.md,
           p: 1.4,
           display: 'inline-flex',
-          boxShadow: '0 4px 16px rgba(98, 73, 223,0.18), 0 1px 3px rgba(0,0,0,0.4)',
+          boxShadow: '0 4px 16px rgba(75, 61, 143,0.18), 0 1px 3px rgba(0,0,0,0.4)',
           // Subtil hvit-glow så card-en pop'er mot mørk sidebar
         }}
       >

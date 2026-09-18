@@ -142,10 +142,10 @@ const ToolButton = styled(IconButton, {
 })<{ active?: boolean }>(({ active }) => ({
   borderRadius: 6,
   padding: 6,
-  backgroundColor: active ? 'rgba(59, 130, 246, 0.3)' : 'transparent',
-  border: active ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid transparent',
+  backgroundColor: active ? 'rgba(63, 81, 181, 0.3)' : 'transparent',
+  border: active ? '1px solid rgba(63, 81, 181, 0.5)' : '1px solid transparent',
   '&:hover': {
-    backgroundColor: active ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255,255,255,0.1)',
+    backgroundColor: active ? 'rgba(63, 81, 181, 0.4)' : 'rgba(255,255,255,0.1)',
   },
 }));
 
@@ -230,7 +230,7 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
         sx={{
           position: 'absolute',
           inset: -2,
-          border: '2px solid #3b82f6',
+          border: '2px solid #3f51b5',
           borderRadius: 1,
           pointerEvents: 'auto',
           cursor: 'move',
@@ -260,12 +260,12 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
             width: handleSize,
             height: handleSize,
             bgcolor: 'white',
-            border: '2px solid #3b82f6',
+            border: '2px solid #3f51b5',
             borderRadius: 0.5,
             cursor: handle.cursor,
             pointerEvents: 'auto',
             '&:hover': {
-              bgcolor: '#3b82f6',
+              bgcolor: '#3f51b5',
             },
           }}
           onPointerDown={(e) => onTransformStart(handle.id, e)}
@@ -320,7 +320,7 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
           pointerEvents: 'auto',
           boxShadow: bounds.customPivot
             ? '0 0 0 2px rgba(245,158,11,0.24), 0 0 18px rgba(245,158,11,0.32)'
-            : '0 0 0 1px rgba(59,130,246,0.32)',
+            : '0 0 0 1px rgba(63, 81, 181,0.32)',
           '&::before, &::after': {
             content: '""',
             position: 'absolute',
@@ -351,7 +351,7 @@ export const SelectionBox: React.FC<SelectionBoxProps> = ({
               top: -rotateHandleOffset,
               width: 1,
               height: rotateHandleOffset - handleSize,
-              bgcolor: '#3b82f6',
+              bgcolor: '#3f51b5',
               pointerEvents: 'none',
             }}
           />
