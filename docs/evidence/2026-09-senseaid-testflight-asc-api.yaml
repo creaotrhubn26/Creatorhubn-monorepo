@@ -1,0 +1,43 @@
+claim: >
+  SenseAid Explore kan få bundle-ID og App Store-provisioning-profil opprettet
+  headless fra GitHub Actions via App Store Connect API-et, men app-recordet i
+  App Store Connect må opprettes manuelt i nettgrensesnittet; API-et har ingen
+  endepunkt for det.
+source_type: official_docs
+source: "Apple Developer Documentation, App Store Connect API: «Apps» (https://developer.apple.com/documentation/appstoreconnectapi/apps, Discussion: «Don't use this API to create new apps; instead, create new apps on the App Store Connect website») og «Bundle IDs» (https://developer.apple.com/documentation/appstoreconnectapi/bundle-ids, «Register a new bundle id», POST /v1/bundleIds). Begge hentet 2026-09-18 via Markdown-varianten av sidene. fastlane produce (produce/lib/produce/itunes_connect.rb, master 2026-09-18) bekrefter: app-opprettelse går via Spaceship::ConnectAPI.login med Apple-ID, ikke API-nøkkel."
+authority_tier: 1
+vendor: Apple
+product: App Store Connect API
+version_scope: "App Store Connect API v1 per 2026-09-18"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "til Apple legger til POST /v1/apps (sjekk «Apps»-siden ved neste app; da kan ensure_app_record opprette recordet selv)"
+evidence_summary: >
+  «Apps»-ressursen i App Store Connect API-et er lese/oppdatere; opprettelse
+  henviser eksplisitt til nettsiden. «Bundle IDs» har POST /v1/bundleIds, og
+  «Profiles» har POST /v1/profiles (det sigh bruker). LeadMap-watch-bundlen
+  (com.creatorhubn.LeadMapApp.watchkitapp) ble registrert via POST /v1/bundleIds
+  2026-06-28 med samme ASC-nøkkel, så nøkkelen har rettighetene som trengs.
+interpretation: >
+  Verdikt (Fable 5.1, produksjonskonsekvens): fastlane-lanen gjør alt Apple
+  tillater headless (ensure_bundle_id + sigh) og feiler tidlig med tydelig
+  beskjed når app-recordet mangler (ensure_app_record før build_app), så en
+  kjøring uten record koster under ett minutt i stedet for et fullt bygg.
+  Daniel må fylle ut ett skjema i App Store Connect én gang.
+project_impact: >
+  ipad/Reiseguide/fastlane/Fastfile (ensure_bundle_id, ensure_app_record i
+  lanene beta og release), ipad/Reiseguide/TESTFLIGHT.md (steg 1 automatisk,
+  steg 2 manuelt), .github/workflows/senseaid-testflight.yml (kommentar).
+confidence: verified
+decision: >
+  Daniel 18.09.2026: «sett i gang med testflight vi har alt i creatorhub
+  engineering. jeg kan logge inn i apple connect så kan du fortsette der fra».
+  Valgt: automatiser bundle-ID og profil i workflowen; app-recordet er Daniels
+  ene klikk (verdiene står i TESTFLIGHT.md og i feilmeldingen fra lanen).
+affected:
+  - ipad/Reiseguide/fastlane/Fastfile
+  - ipad/Reiseguide/TESTFLIGHT.md
+  - .github/workflows/senseaid-testflight.yml
+lesson: >
+  Sjekk «Discussion»-avsnittet på ASC-API-ressursene før man lover headless
+  oppsett; opprettelse av apps er det ene steget Apple holder i nettgrensesnittet.
