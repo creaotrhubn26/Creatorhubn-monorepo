@@ -82,6 +82,7 @@ const WELCOME_SUBTITLE_BY_MODE: Record<ProfessionMode, string> = {
   dance_freelance: 'Dans (frilans) — her holder du oversikt over oppdrag, tilgjengelighet og produksjonene du er med i. Vi tar deg gjennom 3 viktige snarveier.',
   education: 'Utdanningsmodus — her underviser du: kull, studentproduksjoner, oppgaver og vurdering. Vi tar deg gjennom 3 viktige snarveier.',
   student: 'Studentmodus — her ser du produksjonene, oppgavene og tilbakemeldingene dine. Vi tar deg gjennom 3 viktige snarveier.',
+  game_studio: 'Spillstudio — her designer du historien som en graf: brett, elementer, forgreninger, komponenter og variabler, og spiller den gjennom. Vi tar deg gjennom 3 viktige snarveier.',
 };
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
@@ -113,7 +114,7 @@ const castingQueryClient = new QueryClient({
 });
 
 const ROLE_ROOM_DOCUMENT_TITLE = 'The Role Room - CreatorHub';
-const ROLE_ROOM_FAVICON_URL = '/TheRoleRoom_App_Logo.png';
+const ROLE_ROOM_FAVICON_URL = '/theroleroom-mark-1024.png';
 
 function upsertHeadLink(rel: string, href: string) {
   if (typeof document === 'undefined') {
@@ -148,6 +149,7 @@ const RrTesterInviteLanding = React.lazy(() =>
   import('@/components/role-room/dance/BillingPanels').then((m) => ({ default: m.TesterInviteLanding })),
 );
 const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dance/InviteLandingPage'));
+const RrGameInviteLanding = React.lazy(() => import('@/components/role-room/game/GameInviteLandingPage').then((m) => ({ default: m.GameInviteLandingPage })));
 const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
 const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
@@ -170,14 +172,20 @@ const LeadgridTermsAndConditions = React.lazy(() => import('@/pages/terms-and-co
 // dedikerte bootstrapen i stedet for App.tsx, så ruten må finnes begge steder.
 const RrMockupReview = React.lazy(() => import('@/pages/mockup-review'));
 const RrStoryboardReview = React.lazy(() => import('@/pages/storyboard-review'));
+// Story Graph (game_studio): offentlig spill-lenke — samme rute finnes i App.tsx.
+const RrStoryPlay = React.lazy(() => import('@/pages/story-play'));
+const RrStoryReview = React.lazy(() => import('@/pages/story-review'));
 
 const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
   { test: /^\/privacy-policy$/, path: '/privacy-policy', component: RrPrivacyPolicy },
   { test: /^\/personvern$/, path: '/personvern', component: RrPrivacyPolicy },
   { test: /^\/mockup-review\/[^/]+$/, path: '/mockup-review/:token', component: RrMockupReview },
   { test: /^\/storyboard-review\/[^/]+$/, path: '/storyboard-review/:token', component: RrStoryboardReview },
+  { test: /^\/story\/[^/]+$/, path: '/story/:token', component: RrStoryPlay },
+  { test: /^\/story-review\/[^/]+$/, path: '/story-review/:token', component: RrStoryReview },
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
+  { test: /^\/game\/invite\/[^/]+$/, path: '/game/invite/:token', component: RrGameInviteLanding },
   { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
   { test: /^\/role-room\/student\/claim$/, path: '/role-room/student/claim', component: RrClaimStudentAccess },
   { test: /^\/role-room\/censor\/claim$/, path: '/role-room/censor/claim', component: RrClaimCensorAccess },
@@ -888,10 +896,10 @@ function CastingStandaloneRuntimeContent() {
             justifyContent: 'center',
             gap: 1.5,
             color: 'rgba(255,255,255,0.84)',
-            bgcolor: 'var(--role-chrome-bg, #0a0515)',
+            bgcolor: 'var(--role-chrome-bg, #1b122c)',
           }}
         >
-          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8875eb)' }} />
+          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #5d76cb)' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
             {processingGoogleLogin
               ? 'Fullfører Google-innlogging…'
@@ -1060,7 +1068,7 @@ export default function CastingStandaloneApp() {
 
   // CreatorHub Design (Fase C): token-driv Role Room-aksenten (casting-admin-panelene) fra
   // design-tokens (ws=theroleroom, RÅ override m/ raw:true-markør). Ingen override →
-  // literalene (#8875eb) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
+  // literalene (#5d76cb) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
@@ -1080,12 +1088,12 @@ export default function CastingStandaloneApp() {
           root.style.setProperty('--role-portal-accent', portal);
         }
         // Cyan-aksent (dominerende cyan-familie i casting-planner/producer-flatene). Ingen override →
-        // --role-cyan uset → hver forekomst faller til sin egen literal (#00d4ff/#22d3ee/#7dd3fc) → identisk.
+        // --role-cyan uset → hver forekomst faller til sin egen literal (#5d76cb/#5d76cb/#93a4dc) → identisk.
         const cyan = d.tokens.cyanAccent;
         if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
           root.style.setProperty('--role-cyan', cyan);
         }
-        // Fiolett-aksent (primær sekundærfarge #8875eb — dekorative flater, ikke kategorisk koding).
+        // Fiolett-aksent (primær sekundærfarge #5d76cb — dekorative flater, ikke kategorisk koding).
         const violet = d.tokens.violetAccent;
         if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
           root.style.setProperty('--role-violet', violet);

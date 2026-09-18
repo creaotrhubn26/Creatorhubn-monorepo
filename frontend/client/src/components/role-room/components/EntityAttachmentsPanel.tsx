@@ -36,14 +36,14 @@ import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 
 const palette = {
-  bg: 'rgba(136, 117, 235,0.04)',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
-  textMuted: '#6249df',
-  accent: '#9e8cf8',
-  accentBright: '#8875eb',
+  bg: 'rgba(93, 118, 203,0.04)',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
+  textMuted: '#4b3d8f',
+  accent: '#93a4dc',
+  accentBright: '#5d76cb',
   danger: '#f87171',
 };
 
@@ -200,10 +200,10 @@ export default function EntityAttachmentsPanel({
             sx={{
               display: 'inline-flex', alignItems: 'center', gap: 0.4,
               px: 0.8, py: 0.4, borderRadius: 1,
-              bgcolor: files.length > 0 ? 'rgba(136, 117, 235,0.18)' : 'transparent',
+              bgcolor: files.length > 0 ? 'rgba(93, 118, 203,0.18)' : 'transparent',
               border: `1px solid ${files.length > 0 ? palette.borderStrong : palette.border}`,
               color: files.length > 0 ? palette.accent : palette.textMuted,
-              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.12)' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.12)' },
             }}
           >
             <AttachFileOutlinedIcon sx={{ fontSize: 14 }} />
@@ -230,7 +230,7 @@ export default function EntityAttachmentsPanel({
             Vedlegg {files.length > 0 && <Chip
               label={files.length}
               size="small"
-              sx={{ ml: 0.6, height: 18, fontSize: '0.68rem', bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent, fontWeight: 700 }}
+              sx={{ ml: 0.6, height: 18, fontSize: '0.68rem', bgcolor: 'rgba(93, 118, 203,0.18)', color: palette.accent, fontWeight: 700 }}
             />}
           </Typography>
         </Stack>
@@ -273,7 +273,7 @@ export default function EntityAttachmentsPanel({
             return (
               <Box key={f.id} sx={{
                 p: 0.8, borderRadius: 1,
-                bgcolor: 'rgba(136, 117, 235,0.06)',
+                bgcolor: 'rgba(93, 118, 203,0.06)',
                 border: `1px solid ${palette.border}`,
                 display: 'flex', alignItems: 'center', gap: 1,
               }}>

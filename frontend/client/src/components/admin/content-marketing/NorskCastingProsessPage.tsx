@@ -132,14 +132,14 @@ export function NorskCastingProsessPage() {
       <Container maxWidth="md">
         <Stack spacing={2.5} sx={{ mb: 5 }}>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            <MovieFilterIcon sx={{ color: '#9e8cf8' }} />
+            <MovieFilterIcon sx={{ color: '#93a4dc' }} />
             <Typography
               sx={{
                 fontFamily: '"Courier New", Courier, monospace',
                 fontSize: { xs: '0.84rem', md: '0.92rem' },
                 letterSpacing: '0.25em',
                 textTransform: 'uppercase',
-                color: '#9e8cf8',
+                color: '#93a4dc',
                 fontWeight: 700,
               }}
             >
@@ -174,7 +174,7 @@ export function NorskCastingProsessPage() {
           <Stack spacing={2.5}>
             {STEPS.map((s, i) => (
               <Box key={s.title}>
-                <Typography component="h3" sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '1.05rem', mb: 0.5 }}>
+                <Typography component="h3" sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '1.05rem', mb: 0.5 }}>
                   {i + 1}. {s.title}
                 </Typography>
                 <Typography sx={{ color: 'rgba(229,231,235,0.85)', fontSize: '0.95rem', lineHeight: 1.65 }}>
@@ -195,7 +195,7 @@ export function NorskCastingProsessPage() {
           <Stack spacing={2.5}>
             {FAQ.map((f) => (
               <Box key={f.q}>
-                <Typography component="h3" sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '1.05rem', mb: 0.5 }}>
+                <Typography component="h3" sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '1.05rem', mb: 0.5 }}>
                   {f.q}
                 </Typography>
                 <Typography sx={{ color: 'rgba(229,231,235,0.85)', fontSize: '0.95rem', lineHeight: 1.65 }}>
@@ -212,8 +212,8 @@ export function NorskCastingProsessPage() {
             href="/talentportal"
             sx={{
               flex: 1, display: 'block', p: 2.5, borderRadius: 2,
-              bgcolor: 'rgba(158, 140, 248,0.08)', border: '1px solid rgba(158, 140, 248,0.3)',
-              textDecoration: 'none', '&:hover': { bgcolor: 'rgba(158, 140, 248,0.14)' },
+              bgcolor: 'rgba(147, 164, 220,0.08)', border: '1px solid rgba(147, 164, 220,0.3)',
+              textDecoration: 'none', '&:hover': { bgcolor: 'rgba(147, 164, 220,0.14)' },
             }}
           >
             <Typography sx={{ color: '#c4b5fd', fontWeight: 800, fontSize: '1.05rem', mb: 0.5 }}>

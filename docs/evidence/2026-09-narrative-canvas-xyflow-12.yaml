@@ -1,0 +1,53 @@
+claim: >
+  The Story Graph canvas (and admin/CustomerJourneyBuilder) run on @xyflow/react 12.11.6;
+  reactflow 11 is removed from the frontend entirely because both packages ship the same
+  global .react-flow__* CSS selectors and cannot coexist safely in one SPA.
+source_type: changelog
+source: "https://registry.npmjs.org/@xyflow/react (version 12.11.6, published 2026-09-01; peers react>=17, @types/react>=17); https://registry.npmjs.org/reactflow (11.11.4, last publish 2024-06-20, not flagged deprecated); github.com/xyflow/xyflow packages/react/CHANGELOG.md (12.0.0 + 12.0.0-next.* breaking-change entries); node_modules/@xyflow/react/dist/esm/types/*.d.ts (installed)"
+authority_tier: 1
+vendor: xyflow
+product: "@xyflow/react (React Flow 12)"
+version_scope: "@xyflow/react 12.11.6; React 18.3.1; TS target ES2015"
+publication_date: "2026-09-16"
+valid_from: "2026-09"
+valid_to: "until @xyflow/react 13 or a change in Node/NodeProps generics (watch xyflow/xyflow releases monthly)"
+evidence_summary: >
+  reactflow.dev (the migration guide) is blocked by the egress proxy; the migration was
+  driven by the upstream CHANGELOG plus the installed type declarations, and validated by
+  tsc + Playwright. Verified in d.ts: named `ReactFlow` export (no default); CSS at
+  `@xyflow/react/dist/style.css`; `Node<Data extends Record<string, unknown>, Type>`;
+  `NodeProps<NodeType extends Node>`; `NodeTypes = Record<string, ComponentType<NodeProps & {data:any;type:any}>>`;
+  `IsValidConnection<Edge> = (edge: Edge | Connection) => boolean` with `Connection.source/target: string`;
+  `OnNodeDrag<NodeType> = (event, node, nodes)`; `OnMoveEnd = (event | null, viewport)`;
+  `fitView`/`setViewport` return `Promise<boolean>`; `useReactFlow<NodeType, EdgeType>()`;
+  `applyNodeChanges<NodeType>`; `colorMode: 'light' | 'dark' | 'system'`. Class names
+  `.react-flow__node/__edge/__handle-right` are unchanged (Playwright selectors kept).
+  UNVERIFIED (guide unreachable): any guide-only notes on nodeOrigin, defaultViewport,
+  BaseEdge/EdgeLabelRenderer prop changes — none of these are used by our code.
+interpretation: >
+  A full replacement is cheaper than coexistence: the only other consumer (CustomerJourneyBuilder)
+  uses reactflow statically, so the migration there is an import swap, and dropping v11 avoids
+  the CSS collision and the 27-month-stale dependency.
+project_impact: >
+  frontend/client/src/components/role-room/narrative/board/{NarrativeCanvas,nodes}.tsx,
+  realtime/CursorLayer.tsx, NarrativeWorkspace.tsx (type import), admin/CustomerJourneyBuilder.tsx;
+  frontend/package.json + both lockfiles (root workspace + frontend-local used by CI);
+  docs/baselines/frontend.yaml. Node data must be a `type` alias (not `interface`) to satisfy
+  `Record<string, unknown>`; node components are typed with `NodeProps<NarrativeFlowNode>`.
+confidence: verified
+decision: >
+  Replace reactflow 11 with @xyflow/react 12.11.6 everywhere; type the canvas with
+  `NarrativeFlowNode = Node<NarrativeNodeData, kind>`; keep the custom SVG arrow marker and the
+  sx class overrides; enable `colorMode="dark"`.
+affected:
+  - frontend/client/src/components/role-room/narrative/board/NarrativeCanvas.tsx
+  - frontend/client/src/components/role-room/narrative/board/nodes.tsx
+  - frontend/client/src/components/role-room/narrative/realtime/CursorLayer.tsx
+  - frontend/client/src/components/role-room/narrative/NarrativeWorkspace.tsx
+  - frontend/client/src/components/admin/CustomerJourneyBuilder.tsx
+  - frontend/package.json, frontend/package-lock.json, package-lock.json
+  - docs/baselines/frontend.yaml
+lesson: >
+  When the vendor's docs host is blocked, the installed .d.ts plus the repo CHANGELOG are a
+  sufficient primary source for a typed migration — the compiler and the e2e suite are the
+  validators, and the evidence file must say which guide claims stayed unverified.

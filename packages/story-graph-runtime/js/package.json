@@ -1,0 +1,21 @@
+{
+  "name": "@creatorhub/story-graph-runtime",
+  "version": "0.1.0",
+  "description": "Runtime for Story Graph (The Role Room) exports: play branching narratives from Arcweave-compatible project.json without the Arcweave plugins. Same engine as Play Mode.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/narrative-runtime-pkg/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/narrative-runtime-pkg/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./global": "./dist/index.global.js"
+  },
+  "files": ["dist", "examples", "README.md"],
+  "sideEffects": false,
+  "keywords": ["story-graph", "arcweave", "branching-narrative", "interactive-fiction", "game", "runtime"]
+}

@@ -214,9 +214,9 @@ export default function FeedPostMockupLinks({
   return (
     <Box
       sx={{
-        border: "1px solid rgba(34,211,238,0.2)",
+        border: "1px solid rgba(93, 118, 203,0.2)",
         borderRadius: 2,
-        bgcolor: "rgba(8,47,73,0.18)",
+        bgcolor: "rgba(42, 61, 86,0.18)",
         overflow: "hidden",
       }}
     >
@@ -227,7 +227,7 @@ export default function FeedPostMockupLinks({
         flexWrap="wrap"
         sx={{ px: 1.4, py: 1.1 }}
       >
-        <DesignServicesIcon sx={{ color: "#22d3ee", fontSize: 20 }} />
+        <DesignServicesIcon sx={{ color: "#5d76cb", fontSize: 20 }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography
             sx={{ color: "#e2e8f0", fontSize: "0.86rem", fontWeight: 750 }}
@@ -242,7 +242,7 @@ export default function FeedPostMockupLinks({
               : "Gjenbruk design som allerede finnes i Post Agent"}
           </Typography>
         </Box>
-        {loading && <CircularProgress size={16} sx={{ color: "#22d3ee" }} />}
+        {loading && <CircularProgress size={16} sx={{ color: "#5d76cb" }} />}
         <Button
           size="small"
           variant={links.length ? "outlined" : "contained"}

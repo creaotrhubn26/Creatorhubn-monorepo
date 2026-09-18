@@ -30,7 +30,7 @@ import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import { adminTokens, adminSx, statusChipSx } from './styles';
 
-const THEROLERROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
+const THEROLERROOM_LOGO_URL = '/theroleroom-mark-1024.png';
 
 interface Insight {
   category: 'opportunity' | 'threat' | 'gap' | 'trend';
@@ -339,7 +339,7 @@ export default function CompetitorReportPanel() {
             sx={{
               height: 36, width: 'auto', maxWidth: 180,
               objectFit: 'contain',
-              filter: 'drop-shadow(0 0 12px rgba(136, 117, 235,0.25))',
+              filter: 'drop-shadow(0 0 12px rgba(93, 118, 203,0.25))',
             }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
@@ -422,7 +422,7 @@ export default function CompetitorReportPanel() {
         {!report && !loading && (
           <Alert severity="info" data-testid="report-empty-state"
             sx={{
-              background: 'rgba(59,130,246,0.10)',
+              background: 'rgba(63, 81, 181,0.10)',
               border: `1px solid ${adminTokens.status.info.border}`,
               color: adminTokens.status.info.text,
               '& .MuiAlert-icon': { color: adminTokens.status.info.base },

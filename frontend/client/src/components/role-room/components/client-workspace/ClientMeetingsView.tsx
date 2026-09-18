@@ -117,10 +117,10 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
       </Box>
 
       {/* Planlegg møte */}
-      <Box sx={{ borderRadius: 2.5, border: '1px solid rgba(136, 117, 235,0.24)', background: 'rgba(98, 73, 223,0.05)', p: { xs: 1.5, md: 2 } }}>
+      <Box sx={{ borderRadius: 2.5, border: '1px solid rgba(93, 118, 203,0.24)', background: 'rgba(75, 61, 143,0.05)', p: { xs: 1.5, md: 2 } }}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-          <PlanIcon sx={{ color: '#c6bdf4', fontSize: 20 }} />
-          <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '1rem' }}>Planlegg møte</Typography>
+          <PlanIcon sx={{ color: '#c3cbe6', fontSize: 20 }} />
+          <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '1rem' }}>Planlegg møte</Typography>
         </Stack>
         <Stack spacing={1.25}>
           <TextField label="Tittel" value={title} onChange={(e) => setTitle(e.target.value)} size="small" fullWidth sx={fieldSx} placeholder="F.eks. Oppstartsmøte · Vårkampanje 2026" />
@@ -143,7 +143,7 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
                 </Stack>
               ))}
             </Stack>
-            <Button onClick={() => setParticipants((prev) => [...prev, { name: '', email: '', role: 'Klient' }])} startIcon={<AddPersonIcon />} size="small" sx={{ mt: 0.75, textTransform: 'none', fontWeight: 700, color: '#c6bdf4', minHeight: 40 }}>
+            <Button onClick={() => setParticipants((prev) => [...prev, { name: '', email: '', role: 'Klient' }])} startIcon={<AddPersonIcon />} size="small" sx={{ mt: 0.75, textTransform: 'none', fontWeight: 700, color: '#c3cbe6', minHeight: 40 }}>
               Legg til deltaker
             </Button>
           </Box>
@@ -158,7 +158,7 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
           <Button
             onClick={() => void handleCreate()} disabled={creating}
             startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <MeetIcon />}
-            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 46, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}
+            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 46, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}
           >
             {creating ? 'Oppretter …' : 'Opprett møte & generer Google Meet'}
           </Button>
@@ -171,7 +171,7 @@ export default function ClientMeetingsView({ projectId }: { projectId: string })
           Kommende møter {loading ? '' : `· ${upcoming.length}`}
         </Typography>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#8875eb' }} /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#5d76cb' }} /></Box>
         ) : upcoming.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen kommende møter ennå.</Typography>
         ) : (
@@ -196,7 +196,7 @@ function MeetingCard({ m, past = false }: { m: RoleRoomMeeting; past?: boolean }
   const [copied, setCopied] = useState(false);
   const notesReady = m.notesStatus === 'ready' && Boolean(m.notes);
   return (
-    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: { xs: 1.25, md: 1.5 }, opacity: past ? 0.85 : 1 }}>
+    <Box sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: { xs: 1.25, md: 1.5 }, opacity: past ? 0.85 : 1 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ color: '#f1f5f9', fontWeight: 800, fontSize: '0.95rem' }}>{m.title}</Typography>
@@ -235,7 +235,7 @@ function MeetingCard({ m, past = false }: { m: RoleRoomMeeting; past?: boolean }
       <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.75 }}>
         {m.meetLink && !past ? (
           <Button href={m.meetLink} target="_blank" rel="noopener" startIcon={<MeetIcon />} size="small"
-            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}>
+            sx={{ textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}>
             Bli med (Google Meet)
           </Button>
         ) : null}

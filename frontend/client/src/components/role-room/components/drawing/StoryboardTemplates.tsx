@@ -171,7 +171,7 @@ export const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
     width: 16,
     height: 9,
     description: 'Standard HD/4K TV',
-    color: '#3b82f6',
+    color: '#3f51b5',
     popular: true,
   },
   {
@@ -181,7 +181,7 @@ export const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
     width: 4,
     height: 3,
     description: 'Classic TV format',
-    color: '#3b82f6',
+    color: '#3f51b5',
   },
   {
     id: 'tv-21x9',
@@ -190,7 +190,7 @@ export const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
     width: 21,
     height: 9,
     description: 'Ultrawide monitor (21:9)',
-    color: '#3b82f6',
+    color: '#3f51b5',
   },
   {
     id: 'tv-32x9',
@@ -199,7 +199,7 @@ export const ASPECT_RATIO_PRESETS: AspectRatioPreset[] = [
     width: 32,
     height: 9,
     description: 'Dual monitor/Samsung Odyssey',
-    color: '#3b82f6',
+    color: '#3f51b5',
   },
   
   // Social Media Formats
@@ -349,16 +349,16 @@ const TemplateCard = styled(Paper, {
   padding: 14,
   cursor: 'pointer',
   background: selected
-    ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.18) 0%, rgba(37, 99, 235, 0.16) 100%)'
+    ? 'linear-gradient(135deg, rgba(93, 118, 203, 0.18) 0%, rgba(37, 99, 235, 0.16) 100%)'
     : 'linear-gradient(145deg, rgba(18, 24, 40, 0.95) 0%, rgba(11, 16, 30, 0.95) 100%)',
-  border: selected ? '1px solid rgba(56, 189, 248, 0.7)' : '1px solid rgba(136, 117, 235, 0.22)',
+  border: selected ? '1px solid rgba(93, 118, 203, 0.7)' : '1px solid rgba(93, 118, 203, 0.22)',
   transition: 'all 0.2s ease',
   minHeight: 128,
   boxShadow: selected
-    ? '0 14px 30px rgba(14, 165, 233, 0.25)'
+    ? '0 14px 30px rgba(63, 81, 181, 0.25)'
     : '0 10px 24px rgba(4, 8, 22, 0.55)',
   '&:hover': {
-    borderColor: selected ? 'rgba(56, 189, 248, 0.85)' : 'rgba(136, 117, 235, 0.38)',
+    borderColor: selected ? 'rgba(93, 118, 203, 0.85)' : 'rgba(93, 118, 203, 0.38)',
     transform: 'translateY(-2px) scale(1.01)',
   },
 }));
@@ -389,9 +389,9 @@ const CategoryChip = styled(Chip, {
 const TemplateSection = styled(Paper)({
   padding: 14,
   borderRadius: 12,
-  border: '1px solid rgba(136, 117, 235, 0.22)',
+  border: '1px solid rgba(93, 118, 203, 0.22)',
   background: 'linear-gradient(145deg, rgba(8, 14, 28, 0.95) 0%, rgba(8, 12, 24, 0.95) 100%)',
-  boxShadow: '0 12px 26px rgba(10, 5, 21, 0.45)',
+  boxShadow: '0 12px 26px rgba(27, 18, 44, 0.45)',
 });
 
 // =============================================================================
@@ -586,7 +586,7 @@ export const createTemplateFromPreset = (
     frameWidth: Math.round(width),
     frameHeight: Math.round(height),
     guides: guideDefaults,
-    backgroundColor: '#18122b',
+    backgroundColor: '#2a3d56',
     borderColor: '#333344',
     borderWidth: 2,
     showFrameNumber: true,
@@ -796,7 +796,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       width: safeCustomWidth,
       height: safeCustomHeight,
       description: `Custom ${safeCustomWidth}:${safeCustomHeight}`,
-      color: 'var(--role-violet, #8875eb)',
+      color: 'var(--role-violet, #5d76cb)',
     };
     
     const template = createTemplateFromPreset(customPreset, canvasWidth, canvasHeight);
@@ -867,7 +867,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <IconButton
                 size="small"
                 onClick={() => setShowCustomDialog(true)}
-                sx={{ color: 'var(--role-violet, #8875eb)' }}
+                sx={{ color: 'var(--role-violet, #5d76cb)' }}
               >
                 <Add />
               </IconButton>
@@ -899,13 +899,13 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               p: 1.5,
               mb: 1.75,
               borderRadius: 2,
-              border: '1px solid rgba(56, 189, 248, 0.35)',
+              border: '1px solid rgba(93, 118, 203, 0.35)',
               background: 'linear-gradient(135deg, rgba(6, 24, 46, 0.92) 0%, rgba(15, 23, 42, 0.92) 100%)',
             }}
           >
             <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
               <Box>
-                <Typography variant="caption" sx={{ color: '#67e8f9', fontWeight: 700 }}>
+                <Typography variant="caption" sx={{ color: '#93a4dc', fontWeight: 700 }}>
                   AKTIV TEMPLATE
                 </Typography>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -943,7 +943,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <Search sx={{ fontSize: 16, color: 'rgba(125, 211, 252, 0.85)' }} />
+                <Search sx={{ fontSize: 16, color: 'rgba(147, 164, 220, 0.85)' }} />
               </InputAdornment>
             ),
           }}
@@ -1004,7 +1004,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                             justifyContent: 'center',
                           }}
                         >
-                          {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 20 }} />}
+                          {isSelected && <Check sx={{ color: '#3f51b5', fontSize: 20 }} />}
                         </Box>
                       </AspectPreview>
                       <IconButton
@@ -1018,8 +1018,8 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                           position: 'absolute',
                           top: -8,
                           right: -8,
-                          bgcolor: 'rgba(10, 5, 21, 0.72)',
-                          border: '1px solid rgba(136, 117, 235, 0.35)',
+                          bgcolor: 'rgba(27, 18, 44, 0.72)',
+                          border: '1px solid rgba(93, 118, 203, 0.35)',
                         }}
                       >
                         {isFavorite
@@ -1076,7 +1076,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                               justifyContent: 'center',
                             }}
                           >
-                            {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 16 }} />}
+                            {isSelected && <Check sx={{ color: '#3f51b5', fontSize: 16 }} />}
                           </Box>
                         </AspectPreview>
                         <IconButton
@@ -1090,8 +1090,8 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                             position: 'absolute',
                             top: -8,
                             right: -8,
-                            bgcolor: 'rgba(10, 5, 21, 0.72)',
-                            border: '1px solid rgba(136, 117, 235, 0.35)',
+                            bgcolor: 'rgba(27, 18, 44, 0.72)',
+                            border: '1px solid rgba(93, 118, 203, 0.35)',
                           }}
                         >
                           {isFavorite
@@ -1155,7 +1155,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                               justifyContent: 'center',
                             }}
                           >
-                            {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 16 }} />}
+                            {isSelected && <Check sx={{ color: '#3f51b5', fontSize: 16 }} />}
                           </Box>
                         </AspectPreview>
                       </Box>
@@ -1236,10 +1236,10 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                         p: 0.5,
                         cursor: 'pointer',
                         backgroundColor: selectedTemplate.guides.type === type 
-                          ? 'rgba(59, 130, 246, 0.2)' 
+                          ? 'rgba(63, 81, 181, 0.2)' 
                           : 'rgba(0,0,0,0.2)',
                         border: selectedTemplate.guides.type === type
-                          ? '1px solid rgba(59, 130, 246, 0.5)'
+                          ? '1px solid rgba(63, 81, 181, 0.5)'
                           : '1px solid transparent',
                         textAlign: 'center',
                         borderRadius: 1,

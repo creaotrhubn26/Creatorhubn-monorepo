@@ -23,8 +23,8 @@ import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRo
 
 const FORMAT_META: Record<FirstWeekIdea['format'], { label: string; color: string; Icon: React.ComponentType<{ fontSize?: 'small' | 'medium' | 'large' | 'inherit' }> }> = {
   reel: { label: 'Reel', color: '#f472b6', Icon: ReelIcon },
-  carousel: { label: 'Carousel', color: '#9e8cf8', Icon: CarouselIcon },
-  image: { label: 'Bilde', color: 'var(--role-cyan, #22d3ee)', Icon: ImageIcon },
+  carousel: { label: 'Carousel', color: '#93a4dc', Icon: CarouselIcon },
+  image: { label: 'Bilde', color: 'var(--role-cyan, #5d76cb)', Icon: ImageIcon },
   story: { label: 'Story', color: '#fbbf24', Icon: StoryIcon },
 };
 

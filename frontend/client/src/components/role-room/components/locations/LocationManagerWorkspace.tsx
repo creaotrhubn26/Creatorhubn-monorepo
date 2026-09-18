@@ -1,4 +1,4 @@
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -277,6 +277,47 @@ function formatMoney(value: number, currency: string): string {
   }
 }
 
+export interface ObservationDraft {
+  category: LocationScoutObservationCategory;
+  status: LocationScoutEvidenceStatus;
+  value: string;
+}
+
+/**
+ * Inntasting av en observasjon, med sitt eget utkast.
+ *
+ * Utkastet lå tidligere i arbeidsflaten, så hvert tastetrykk tegnet hele
+ * lokasjonsflaten på nytt — målt til 1,9 s per tegn i jsdom. En scout som
+ * skriver «62 dBA ved nordport» i felt betalte den prisen 18 ganger.
+ * Utkastet hører hjemme her; arbeidsflaten trenger bare den ferdige
+ * observasjonen.
+ */
+const ObservationEntryRow = memo(function ObservationEntryRow({
+  readOnly,
+  onAdd,
+}: {
+  readOnly: boolean;
+  onAdd: (draft: ObservationDraft) => void;
+}) {
+  const [category, setCategory] = useState<LocationScoutObservationCategory>('access');
+  const [status, setStatus] = useState<LocationScoutEvidenceStatus>('observed');
+  const [value, setValue] = useState('');
+  const submit = () => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onAdd({ category, status, value: trimmed });
+    setValue('');
+  };
+  return (
+    <>
+      <FormControl size="small" sx={fieldSx}><InputLabel>Kategori</InputLabel><Select label="Kategori" inputProps={{ 'aria-label': 'Observasjonskategori' }} value={category} disabled={readOnly} onChange={(event) => setCategory(event.target.value as LocationScoutObservationCategory)}>{Object.entries(OBSERVATION_CATEGORY_LABELS).map(([item, label]) => <MenuItem key={item} value={item}>{label}</MenuItem>)}</Select></FormControl>
+      <FormControl size="small" sx={fieldSx}><InputLabel>Evidensstatus</InputLabel><Select label="Evidensstatus" inputProps={{ 'aria-label': 'Evidensstatus' }} value={status} disabled={readOnly} onChange={(event) => setStatus(event.target.value as LocationScoutEvidenceStatus)}><MenuItem value="unknown">Ukjent</MenuItem><MenuItem value="observed">Observert</MenuItem><MenuItem value="verified">Verifisert</MenuItem></Select></FormControl>
+      <TextField size="small" label="Hva ble observert eller målt?" value={value} disabled={readOnly} onChange={(event) => setValue(event.target.value)} sx={fieldSx} />
+      <Button variant="outlined" onClick={submit} disabled={readOnly || !value.trim()} sx={{ minHeight: 48, color: '#99f6e4', borderColor: 'rgba(94,234,212,.3)' }}>Legg til</Button>
+    </>
+  );
+});
+
 export function LocationManagerWorkspace({
   project,
   readOnly = false,
@@ -317,9 +358,6 @@ export function LocationManagerWorkspace({
   const [captureDevice, setCaptureDevice] = useState('');
   const [linkedCheckId, setLinkedCheckId] = useState('');
   const [pinLabel, setPinLabel] = useState('');
-  const [observationValue, setObservationValue] = useState('');
-  const [observationCategory, setObservationCategory] = useState<LocationScoutObservationCategory>('access');
-  const [observationStatus, setObservationStatus] = useState<LocationScoutEvidenceStatus>('observed');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const { confirmIfDirty } = useBeforeUnloadIfDirty({
     isDirty: dirty,
@@ -506,7 +544,7 @@ export function LocationManagerWorkspace({
     setDirty(false);
   }, [project, selectedLocation]);
 
-  const updateOperations = (updater: (current: LocationManagerOperations) => LocationManagerOperations) => {
+  const updateOperations = useCallback((updater: (current: LocationManagerOperations) => LocationManagerOperations) => {
     if (readOnly) return;
     if (operations?.decisionReview.lockedAt) {
       setFeedback({ type: 'warning', text: 'Beslutningen er låst. Gjenåpne den før feltgrunnlaget endres.' });
@@ -515,7 +553,7 @@ export function LocationManagerWorkspace({
     setOperations((current) => current ? updater(current) : current);
     setDirty(true);
     setFeedback(null);
-  };
+  }, [readOnly, operations?.decisionReview.lockedAt]);
 
   const selectLocation = (locationId: string) => {
     if (locationId === selectedLocationId || !confirmIfDirty()) return;
@@ -761,17 +799,17 @@ export function LocationManagerWorkspace({
     if (selectedMediaUrl) window.open(selectedMediaUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const addObservation = () => {
-    if (!observationValue.trim() || !operations || readOnly) return;
+  const addObservation = useCallback((draft: ObservationDraft) => {
+    if (!draft.value || !operations || readOnly) return;
     updateOperations((current) => ({
       ...current,
       scoutCapture: {
         ...current.scoutCapture,
         observations: [{
           id: scoutId('observation'),
-          category: observationCategory,
-          status: observationStatus,
-          value: observationValue.trim(),
+          category: draft.category,
+          status: draft.status,
+          value: draft.value,
           source: 'field_observation',
           observedAt: new Date().toISOString(),
           coordinates: current.scoutCapture.coordinates,
@@ -781,8 +819,7 @@ export function LocationManagerWorkspace({
         }, ...current.scoutCapture.observations],
       },
     }));
-    setObservationValue('');
-  };
+  }, [operations, readOnly, updateOperations, selectedMediaId, mediaSceneRefs, linkedCheckId]);
 
   const addPinAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!selectedMediaId || readOnly || event.currentTarget !== event.target) return;
@@ -999,7 +1036,7 @@ export function LocationManagerWorkspace({
                     <Typography sx={{ color: 'rgba(226,232,240,.62)', mt: .25 }}>{selectedLocation.address || 'Adresse er ikke registrert'}</Typography>
                     <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap sx={{ mt: 1.25 }}>
                       <Chip size="small" label={STAGE_LABELS[operations.stage]} sx={{ bgcolor: 'rgba(45,212,191,.14)', color: '#99f6e4' }} />
-                      <Chip size="small" label={DECISION_LABELS[operations.decisionStatus]} sx={{ bgcolor: 'rgba(56,189,248,.12)', color: '#7dd3fc' }} />
+                      <Chip size="small" label={DECISION_LABELS[operations.decisionStatus]} sx={{ bgcolor: 'rgba(93, 118, 203,.12)', color: '#93a4dc' }} />
                       <Chip size="small" label={`${readiness.verifiedGates}/${readiness.totalMandatoryGates} klareringer`} sx={{ bgcolor: 'rgba(255,255,255,.07)', color: '#e2e8f0' }} />
                     </Stack>
                   </Box>
@@ -1075,7 +1112,7 @@ export function LocationManagerWorkspace({
                     </Typography>
                   </Box>
 
-                  <Box data-testid="scout-media-panel" sx={{ p: { xs: 1.1, sm: 1.5 }, borderRadius: 2, bgcolor: 'rgba(56,189,248,.045)', border: '1px solid rgba(56,189,248,.18)' }}>
+                  <Box data-testid="scout-media-panel" sx={{ p: { xs: 1.1, sm: 1.5 }, borderRadius: 2, bgcolor: 'rgba(93, 118, 203,.045)', border: '1px solid rgba(93, 118, 203,.18)' }}>
                     <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} gap={1}>
                       <Box>
                         <Stack direction="row" alignItems="center" spacing={.75} flexWrap="wrap" useFlexGap>
@@ -1103,7 +1140,7 @@ export function LocationManagerWorkspace({
                         ['video', 'Ta video', <VideoIcon />, 'video/mp4,video/quicktime,video/webm', 'environment', 'camera'],
                         ['audio', 'Ta opp lyd', <AudioIcon />, 'audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a', 'user', 'recorder'],
                       ] as const).map(([kind, label, icon, accept, capture, source]) => (
-                        <Button key={kind} component="label" variant="outlined" startIcon={icon} disabled={readOnly || mediaUploading} sx={{ minHeight: 48, color: '#7dd3fc', borderColor: 'rgba(125,211,252,.3)', flex: { xs: '1 1 145px', sm: '0 1 auto' } }}>
+                        <Button key={kind} component="label" variant="outlined" startIcon={icon} disabled={readOnly || mediaUploading} sx={{ minHeight: 48, color: '#93a4dc', borderColor: 'rgba(147, 164, 220,.3)', flex: { xs: '1 1 145px', sm: '0 1 auto' } }}>
                           {label}
                           <input
                             hidden
@@ -1124,7 +1161,7 @@ export function LocationManagerWorkspace({
                     {mediaLoading ? <LinearProgress sx={{ mt: 1.1 }} /> : (
                       <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                         {visibleMedia.map((item) => (
-                          <Button key={item.id} size="small" startIcon={item.kind === 'audio' ? <AudioIcon /> : item.kind === 'video' ? <VideoIcon /> : item.kind === 'panorama' ? <PanoramaIcon /> : <PhotoCameraIcon />} onClick={() => void selectScoutMedia(item)} aria-pressed={selectedMediaId === item.id} sx={{ minHeight: 44, color: '#bae6fd', bgcolor: selectedMediaId === item.id ? 'rgba(45,212,191,.18)' : 'rgba(56,189,248,.08)', maxWidth: '100%' }}>
+                          <Button key={item.id} size="small" startIcon={item.kind === 'audio' ? <AudioIcon /> : item.kind === 'video' ? <VideoIcon /> : item.kind === 'panorama' ? <PanoramaIcon /> : <PhotoCameraIcon />} onClick={() => void selectScoutMedia(item)} aria-pressed={selectedMediaId === item.id} sx={{ minHeight: 44, color: '#c3cbe6', bgcolor: selectedMediaId === item.id ? 'rgba(45,212,191,.18)' : 'rgba(93, 118, 203,.08)', maxWidth: '100%' }}>
                             <Typography noWrap component="span" sx={{ maxWidth: 220, fontSize: '.75rem' }}>{MEDIA_KIND_LABELS[item.kind]} · {item.displayName}</Typography>
                           </Button>
                         ))}
@@ -1136,20 +1173,20 @@ export function LocationManagerWorkspace({
                       <Box sx={{ mt: 1.25 }}>
                         <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1} sx={{ mb: .75 }}>
                           <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 750 }}>{selectedMedia.displayName}</Typography><Typography sx={{ color: 'rgba(226,232,240,.5)', fontSize: '.7rem' }}>{MEDIA_KIND_LABELS[selectedMedia.kind]} · {(selectedMedia.sizeBytes / 1024 / 1024).toFixed(1)} MB</Typography></Box>
-                          <IconButton aria-label="Åpne original" onClick={openScoutMedia} sx={{ minWidth: 44, minHeight: 44, color: '#bae6fd' }}><OpenInNewIcon /></IconButton>
+                          <IconButton aria-label="Åpne original" onClick={openScoutMedia} sx={{ minWidth: 44, minHeight: 44, color: '#c3cbe6' }}><OpenInNewIcon /></IconButton>
                         </Stack>
                         <Stack direction="row" spacing={.6} flexWrap="wrap" useFlexGap sx={{ mb: .75 }}>
                           <Chip size="small" label={MEDIA_SOURCE_LABELS[selectedMedia.captureMetadata.source]} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />
                           {selectedMedia.captureMetadata.capturedAt && <Chip size="small" label={new Date(selectedMedia.captureMetadata.capturedAt).toLocaleString('nb-NO')} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />}
                           {selectedMedia.captureMetadata.coordinates && <Chip size="small" label={`${selectedMedia.captureMetadata.coordinates.latitude.toFixed(5)}, ${selectedMedia.captureMetadata.coordinates.longitude.toFixed(5)}`} sx={{ bgcolor: 'rgba(45,212,191,.08)', color: '#99f6e4' }} />}
-                          {selectedMedia.captureMetadata.bearingDegrees !== undefined && <Chip size="small" label={`${selectedMedia.captureMetadata.bearingDegrees}°`} sx={{ bgcolor: 'rgba(56,189,248,.08)', color: '#bae6fd' }} />}
+                          {selectedMedia.captureMetadata.bearingDegrees !== undefined && <Chip size="small" label={`${selectedMedia.captureMetadata.bearingDegrees}°`} sx={{ bgcolor: 'rgba(93, 118, 203,.08)', color: '#c3cbe6' }} />}
                           {selectedMedia.captureMetadata.deviceLabel && <Chip size="small" label={selectedMedia.captureMetadata.deviceLabel} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />}
-                          {selectedMedia.captureMetadata.sceneIds.map((sceneId) => <Chip key={sceneId} size="small" label={`Scene ${sceneId}`} sx={{ bgcolor: 'rgba(136, 117, 235,.1)', color: '#e0dbfa' }} />)}
+                          {selectedMedia.captureMetadata.sceneIds.map((sceneId) => <Chip key={sceneId} size="small" label={`Scene ${sceneId}`} sx={{ bgcolor: 'rgba(93, 118, 203,.1)', color: '#dfe4f3' }} />)}
                         </Stack>
                         {(selectedMedia.kind === 'photo' || selectedMedia.kind === 'panorama') && (
                           <>
                             <TextField fullWidth size="small" label="Pin-kommentar" placeholder="Skriv kommentar, trykk så på bildet" value={pinLabel} onChange={(event) => setPinLabel(event.target.value)} disabled={readOnly} sx={{ ...fieldSx, mb: .75 }} />
-                            <Box data-testid="scout-pin-canvas" onPointerDown={addPinAt} sx={{ position: 'relative', overflow: 'hidden', borderRadius: 2, minHeight: 220, maxHeight: 520, bgcolor: '#0a0515', border: '1px solid rgba(125,211,252,.2)', touchAction: 'pan-y', cursor: readOnly ? 'default' : 'crosshair' }}>
+                            <Box data-testid="scout-pin-canvas" onPointerDown={addPinAt} sx={{ position: 'relative', overflow: 'hidden', borderRadius: 2, minHeight: 220, maxHeight: 520, bgcolor: '#1b122c', border: '1px solid rgba(147, 164, 220,.2)', touchAction: 'pan-y', cursor: readOnly ? 'default' : 'crosshair' }}>
                               <Box component="img" src={selectedMediaUrl} alt={selectedMedia.displayName} draggable={false} sx={{ width: '100%', height: 'auto', maxHeight: 520, display: 'block', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }} />
                               {selectedPins.map((pin, index) => (
                                 <IconButton key={pin.id} aria-label={`Flytt pin ${index + 1}: ${pin.label}`} title={`${pin.label} · dra for å flytte`} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => movePin(event, pin.id)} sx={{ position: 'absolute', left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, transform: 'translate(-50%,-50%)', width: 44, height: 44, color: '#fff', bgcolor: pin.status === 'verified' ? '#059669' : '#e11d48', border: '2px solid white', boxShadow: '0 4px 16px rgba(0,0,0,.45)', '&:hover': { bgcolor: pin.status === 'verified' ? '#047857' : '#be123c' }, touchAction: 'none', zIndex: 2 }}><Typography component="span" sx={{ fontSize: '.75rem', fontWeight: 900 }}>{index + 1}</Typography></IconButton>
@@ -1158,7 +1195,7 @@ export function LocationManagerWorkspace({
                             {selectedPins.length > 0 && <Stack spacing={.6} sx={{ mt: .75 }}>{selectedPins.map((pin, index) => <Box key={pin.id} sx={{ display: 'flex', alignItems: 'center', gap: .7, minHeight: 44 }}><PinIcon sx={{ color: pin.status === 'verified' ? '#34d399' : '#fb7185' }} /><Typography sx={{ flex: 1, fontSize: '.78rem' }}>{index + 1}. {pin.label}</Typography><Button size="small" disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, pins: current.scoutCapture.pins.map((entry) => entry.id === pin.id ? { ...entry, status: entry.status === 'verified' ? 'observed' : 'verified' } : entry) } }))} sx={{ minHeight: 44, color: '#99f6e4' }}>{pin.status === 'verified' ? 'Verifisert' : 'Observert'}</Button><IconButton aria-label={`Slett pin ${index + 1}`} disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, pins: current.scoutCapture.pins.filter((entry) => entry.id !== pin.id) } }))} sx={{ minWidth: 44, minHeight: 44, color: '#fda4af' }}><DeleteIcon /></IconButton></Box>)}</Stack>}
                           </>
                         )}
-                        {selectedMedia.kind === 'video' && <Box component="video" src={selectedMediaUrl} controls playsInline sx={{ width: '100%', maxHeight: 480, borderRadius: 2, bgcolor: '#0a0515' }} />}
+                        {selectedMedia.kind === 'video' && <Box component="video" src={selectedMediaUrl} controls playsInline sx={{ width: '100%', maxHeight: 480, borderRadius: 2, bgcolor: '#1b122c' }} />}
                         {selectedMedia.kind === 'audio' && <Box component="audio" src={selectedMediaUrl} controls sx={{ width: '100%' }} />}
                       </Box>
                     )}
@@ -1168,13 +1205,10 @@ export function LocationManagerWorkspace({
                     <Typography sx={{ fontWeight: 800 }}>Strukturerte observasjoner</Typography>
                     <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.75rem', mb: 1 }}>Bare eksplisitt verifisert evidens kan behandles som fakta i videre analyse.</Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '150px 150px minmax(0,1fr) auto' }, gap: .8, alignItems: 'center' }}>
-                      <FormControl size="small" sx={fieldSx}><InputLabel>Kategori</InputLabel><Select label="Kategori" inputProps={{ 'aria-label': 'Observasjonskategori' }} value={observationCategory} disabled={readOnly} onChange={(event) => setObservationCategory(event.target.value as LocationScoutObservationCategory)}>{Object.entries(OBSERVATION_CATEGORY_LABELS).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</Select></FormControl>
-                      <FormControl size="small" sx={fieldSx}><InputLabel>Evidensstatus</InputLabel><Select label="Evidensstatus" inputProps={{ 'aria-label': 'Evidensstatus' }} value={observationStatus} disabled={readOnly} onChange={(event) => setObservationStatus(event.target.value as LocationScoutEvidenceStatus)}><MenuItem value="unknown">Ukjent</MenuItem><MenuItem value="observed">Observert</MenuItem><MenuItem value="verified">Verifisert</MenuItem></Select></FormControl>
-                      <TextField size="small" label="Hva ble observert eller målt?" value={observationValue} disabled={readOnly} onChange={(event) => setObservationValue(event.target.value)} sx={fieldSx} />
-                      <Button variant="outlined" onClick={addObservation} disabled={readOnly || !observationValue.trim()} sx={{ minHeight: 48, color: '#99f6e4', borderColor: 'rgba(94,234,212,.3)' }}>Legg til</Button>
+                      <ObservationEntryRow readOnly={readOnly} onAdd={addObservation} />
                     </Box>
                     <Stack spacing={.6} sx={{ mt: operations.scoutCapture.observations.length ? 1 : 0 }}>
-                      {operations.scoutCapture.observations.map((observation) => <Box key={observation.id} sx={{ display: 'flex', gap: .75, alignItems: 'center', minHeight: 44, p: .65, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.025)' }}><Chip size="small" label={observation.status === 'verified' ? 'Verifisert' : observation.status === 'observed' ? 'Observert' : 'Ukjent'} sx={{ bgcolor: observation.status === 'verified' ? 'rgba(52,211,153,.12)' : observation.status === 'observed' ? 'rgba(56,189,248,.12)' : 'rgba(148,163,184,.1)', color: observation.status === 'verified' ? '#6ee7b7' : '#bae6fd' }} /><Typography sx={{ flex: 1, fontSize: '.78rem' }}><strong>{OBSERVATION_CATEGORY_LABELS[observation.category]}:</strong> {observation.value}</Typography><IconButton aria-label={`Slett observasjon ${observation.value}`} disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, observations: current.scoutCapture.observations.filter((entry) => entry.id !== observation.id) } }))} sx={{ minWidth: 44, minHeight: 44, color: '#fda4af' }}><DeleteIcon /></IconButton></Box>)}
+                      {operations.scoutCapture.observations.map((observation) => <Box key={observation.id} sx={{ display: 'flex', gap: .75, alignItems: 'center', minHeight: 44, p: .65, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.025)' }}><Chip size="small" label={observation.status === 'verified' ? 'Verifisert' : observation.status === 'observed' ? 'Observert' : 'Ukjent'} sx={{ bgcolor: observation.status === 'verified' ? 'rgba(52,211,153,.12)' : observation.status === 'observed' ? 'rgba(93, 118, 203,.12)' : 'rgba(148,163,184,.1)', color: observation.status === 'verified' ? '#6ee7b7' : '#c3cbe6' }} /><Typography sx={{ flex: 1, fontSize: '.78rem' }}><strong>{OBSERVATION_CATEGORY_LABELS[observation.category]}:</strong> {observation.value}</Typography><IconButton aria-label={`Slett observasjon ${observation.value}`} disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, observations: current.scoutCapture.observations.filter((entry) => entry.id !== observation.id) } }))} sx={{ minWidth: 44, minHeight: 44, color: '#fda4af' }}><DeleteIcon /></IconButton></Box>)}
                     </Stack>
                   </Box>
 

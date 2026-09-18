@@ -30,7 +30,7 @@ function iconForEvent(type: string) {
 
 function colorForEvent(type: string): string {
   if (type === 'shortlisted') return '#fbbf24';
-  if (type === 'viewed') return '#60a5fa';
+  if (type === 'viewed') return '#93a4dc';
   return palette.accentBright;
 }
 

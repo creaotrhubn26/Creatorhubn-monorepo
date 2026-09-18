@@ -96,6 +96,7 @@ const OPTIONAL: EnvVar[] = [
   { name: "LINKEDIN_CLIENT_ID", description: "LinkedIn-innlogging." },
   { name: "LINKEDIN_CLIENT_SECRET", description: "Hører sammen med LINKEDIN_CLIENT_ID." },
   { name: "ROLE_ROOM_LINKEDIN_ORG_SCOPES", description: "Valgfri. \"off\" dropper organisasjons-scopene i Role Room/Leadgrid LinkedIn-tilkoblingen (bedriftsside + statistikk). Default på." },
+  { name: "LINKEDIN_LOGIN_ENABLED", description: "Valgfri. \"off\" skjuler «Fortsett med LinkedIn» på web og i Leadgrid iOS og gir 503 på start. Default på (krever LinkedIn client id/secret)." },
   { name: "R2_ACCESS_KEY_ID", description: "Cloudflare R2 for storage (avatar, storyboard-bilder)." },
   { name: "R2_SECRET_ACCESS_KEY", description: "Hører sammen med R2_ACCESS_KEY_ID." },
   { name: "FIKEN_TOKEN", description: "Norsk regnskap-integrasjon." },

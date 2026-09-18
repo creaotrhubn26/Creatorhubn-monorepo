@@ -9,7 +9,7 @@ import { RR_COLORS, RR_RADIUS, RR_TYPE } from './tokens';
  *
  * @example
  * <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
- *   <MetricCard label="Events 7d" value="1.2K" caption="42 ulest" accent="#22d3ee" />
+ *   <MetricCard label="Events 7d" value="1.2K" caption="42 ulest" accent="#5d76cb" />
  *   <MetricCard label="Positive 30d" value="318" accent="#86efac" />
  * </Stack>
  */

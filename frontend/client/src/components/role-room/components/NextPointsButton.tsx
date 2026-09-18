@@ -18,9 +18,9 @@ import type { NextPoint, NextPointTone } from '../utils/producerNextPoints';
 
 const TONE_ICON: Record<NextPointTone, ReactElement> = {
   action: <ActionIcon sx={{ color: '#fbbf24' }} />,
-  waiting: <WaitingIcon sx={{ color: '#60a5fa' }} />,
+  waiting: <WaitingIcon sx={{ color: '#93a4dc' }} />,
   done: <DoneIcon sx={{ color: '#34d399' }} />,
-  info: <InfoIcon sx={{ color: '#9e8cf8' }} />,
+  info: <InfoIcon sx={{ color: '#93a4dc' }} />,
 };
 
 interface NextPointsButtonProps {

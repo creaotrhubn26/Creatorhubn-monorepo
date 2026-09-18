@@ -9,7 +9,7 @@ import type { StoryboardSeedCandidate } from "../../services/storyboardLibrarySe
 
 // ─── Shared dialog paper styles ───────────────────────────────────────────────
 const PAPER_SX = {
-  bgcolor: '#18122b',
+  bgcolor: '#2a3d56',
   backgroundImage: 'none',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: 2,
@@ -233,8 +233,8 @@ export function CreateEditShotListDialog({
                     width: 44,
                     height: 30,
                     borderRadius: 1,
-                    bgcolor: 'rgba(59,130,246,0.12)',
-                    color: '#60a5fa',
+                    bgcolor: 'rgba(63, 81, 181,0.12)',
+                    color: '#93a4dc',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -428,8 +428,8 @@ export function CreateEditShotListDialog({
                             sx={{
                               width: '100%',
                               height: 96,
-                              bgcolor: 'rgba(59,130,246,0.12)',
-                              color: '#60a5fa',
+                              bgcolor: 'rgba(63, 81, 181,0.12)',
+                              color: '#93a4dc',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -570,7 +570,7 @@ export function ExportDialog({
           variant="outlined"
           startIcon={<ExportIcon />}
           onClick={() => { onExportCleanStills(shotListId); onClose(); }}
-          sx={{ justifyContent: 'flex-start', textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#c6bdf4' }}
+          sx={{ justifyContent: 'flex-start', textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#c3cbe6' }}
         >
           Clean Stills (.zip)
         </Button>

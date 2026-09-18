@@ -322,12 +322,12 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
       sx={{
         p: 1.8,
         borderRadius: 1.5,
-        bgcolor: 'rgba(34,211,238,0.06)',
-        border: '1px solid rgba(34,211,238,0.25)',
+        bgcolor: 'rgba(93, 118, 203,0.06)',
+        border: '1px solid rgba(93, 118, 203,0.25)',
       }}
     >
       <Stack direction="row" spacing={1.4} alignItems="center" flexWrap="wrap" useFlexGap>
-        <LockIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <LockIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
         <Box sx={{ flex: 1, minWidth: 220 }}>
           <Typography sx={{ color: '#f8fafc', fontSize: '0.92rem', fontWeight: 700 }}>
             Slipp magic-link neste gang — opprett en bruker
@@ -348,9 +348,9 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: 'var(--role-cyan, #22d3ee)',
+            bgcolor: 'var(--role-cyan, #5d76cb)',
             color: '#0b1226',
-            '&:hover': { bgcolor: '#06b6d4' },
+            '&:hover': { bgcolor: '#3f51b5' },
           }}
         >
           {expanded ? 'Skjul' : 'Opprett bruker'}
@@ -365,11 +365,11 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
               sx={{
                 p: 1.4,
                 borderRadius: 1.5,
-                bgcolor: 'rgba(96,165,250,0.06)',
-                border: '1px solid rgba(96,165,250,0.2)',
+                bgcolor: 'rgba(147, 164, 220,0.06)',
+                border: '1px solid rgba(147, 164, 220,0.2)',
               }}
             >
-              <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#60a5fa', mb: 0.6 }}>
+              <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#93a4dc', mb: 0.6 }}>
                 Steg 1 av 2 — Bekreft e-posten din
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.7)', mb: 1.2 }}>
@@ -382,9 +382,9 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
                   size="small"
                   sx={{
                     textTransform: 'none',
-                    color: '#60a5fa',
-                    borderColor: 'rgba(96,165,250,0.5)',
-                    '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(96,165,250,0.08)' },
+                    color: '#93a4dc',
+                    borderColor: 'rgba(147, 164, 220,0.5)',
+                    '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(147, 164, 220,0.08)' },
                   }}
                 >
                   Send bekreftelseskode
@@ -421,9 +421,9 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
                       sx={{
                         textTransform: 'none',
                         fontWeight: 700,
-                        bgcolor: 'var(--role-cyan, #22d3ee)',
+                        bgcolor: 'var(--role-cyan, #5d76cb)',
                         color: '#0b1226',
-                        '&:hover': { bgcolor: '#06b6d4' },
+                        '&:hover': { bgcolor: '#3f51b5' },
                       }}
                     >
                       {codeStage === 'verifying' ? 'Sjekker …' : 'Verifiser'}
@@ -447,7 +447,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
 
           {/* Steg 2: sett passord — vises kun når kode er verifisert */}
           {codeStage === 'verified' ? (
-            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', mt: 0.4 }}>
+            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--role-cyan, #5d76cb)', mt: 0.4 }}>
               Steg 2 av 2 — Sett passord
             </Typography>
           ) : null}
@@ -504,9 +504,9 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                bgcolor: 'var(--role-cyan, #22d3ee)',
+                bgcolor: 'var(--role-cyan, #5d76cb)',
                 color: '#0b1226',
-                '&:hover': { bgcolor: '#06b6d4' },
+                '&:hover': { bgcolor: '#3f51b5' },
               }}
             >
               {submitting ? 'Oppretter…' : 'Opprett bruker'}

@@ -281,14 +281,14 @@ export function SecondAssistantDirectorWorkspace({
                   {latestDelivery ? (
                     <>
                       <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75} sx={{ mt: 1 }}>
-                        <Chip size="small" label={`Sendt ${latestDelivery.sent}/${latestDelivery.total}`} sx={{ color: '#bae6fd', bgcolor: 'rgba(14,165,233,.14)' }} />
+                        <Chip size="small" label={`Sendt ${latestDelivery.sent}/${latestDelivery.total}`} sx={{ color: '#c3cbe6', bgcolor: 'rgba(63, 81, 181,.14)' }} />
                         <Chip size="small" label={`Feilet ${latestDelivery.failed}/${latestDelivery.total}`} sx={{ color: '#fecaca', bgcolor: 'rgba(239,68,68,.14)' }} />
                         <Chip size="small" label={`Bekreftet ${latestDelivery.acknowledged}/${latestDelivery.total}`} sx={{ color: '#bbf7d0', bgcolor: 'rgba(34,197,94,.14)' }} />
                       </Stack>
                       <Stack spacing={0.5} sx={{ mt: 1 }} data-testid="call-sheet-recipient-statuses">
                         {latestDelivery.recipients.map((recipient) => {
                           const label = recipient.acknowledgedAt ? 'Bekreftet' : recipient.deliveryStatus === 'failed' ? 'Feilet' : recipient.deliveryStatus === 'sent' ? 'Sendt' : 'Venter';
-                          const color = recipient.acknowledgedAt ? '#86efac' : recipient.deliveryStatus === 'failed' ? '#fca5a5' : '#7dd3fc';
+                          const color = recipient.acknowledgedAt ? '#86efac' : recipient.deliveryStatus === 'failed' ? '#fca5a5' : '#93a4dc';
                           return (
                             <Stack key={recipient.id} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={0.25}>
                               <Typography sx={{ fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{recipient.name || recipient.email} · {recipient.email}</Typography>

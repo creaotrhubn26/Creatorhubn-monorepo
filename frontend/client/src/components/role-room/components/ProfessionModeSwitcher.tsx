@@ -18,6 +18,7 @@ import {
   EmojiPeople as DanceFreelanceIcon,
   CastForEducation as EducationModeIcon,
   Backpack as StudentModeIcon,
+  SportsEsports as GameStudioIcon,
   CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import {
@@ -52,7 +53,7 @@ const MODE_META: Record<ProfessionMode, ModeMeta> = {
     label: 'Innholdsprodusent',
     description: 'Markedsinnhold, kampanjer, redaksjonell planlegging.',
     icon: <ContentProducerIcon />,
-    accent: '#3c27a5',
+    accent: '#32127a',
   },
   content_creator: {
     label: 'Innholdsskaper',
@@ -64,28 +65,35 @@ const MODE_META: Record<ProfessionMode, ModeMeta> = {
     label: 'Dansestudio',
     description: 'Studioeier-vertikalen — koreografi, formasjoner, repertoar, kursplan.',
     icon: <DanceStudioIcon />,
-    accent: '#8875eb',
+    accent: '#5d76cb',
     beta: true,
   },
   dance_freelance: {
     label: 'Dans — frilans',
     description: 'Frilansdanser — bookinger, auditions, ferdighetsprofil, tilgjengelighet.',
     icon: <DanceFreelanceIcon />,
-    accent: '#8875eb',
+    accent: '#5d76cb',
     beta: true,
   },
   education: {
     label: 'Utdanningsinstitusjon',
     description: 'Kull, studentproduksjoner, oppgaver og faglærer-oversikt i én flate.',
     icon: <EducationModeIcon />,
-    accent: '#8875eb',
+    accent: '#5d76cb',
     beta: true,
   },
   student: {
     label: 'Student',
     description: 'Studentens «Min side» — produksjoner, oppgaver og tilbakemelding (super-admin-preview).',
     icon: <StudentModeIcon />,
-    accent: '#8875eb',
+    accent: '#5d76cb',
+    beta: true,
+  },
+  game_studio: {
+    label: 'Spillstudio',
+    description: 'Story Graph — forgrenet narrativ design: brett, elementer, koblinger, komponenter, variabler og spillmodus.',
+    icon: <GameStudioIcon />,
+    accent: '#22c55e',
     beta: true,
   },
 };

@@ -58,8 +58,8 @@ export function exportMarketingPlanAsPdf(input: {
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 40;
   const usable = pageWidth - margin * 2;
-  const [pr, pg, pb] = hexToRgb(brandPrimaryHex ?? '#22d3ee');
-  const [ar, ag, ab] = hexToRgb(brandAccentHex ?? '#3b82f6');
+  const [pr, pg, pb] = hexToRgb(brandPrimaryHex ?? '#5d76cb');
+  const [ar, ag, ab] = hexToRgb(brandAccentHex ?? '#3f51b5');
 
   // Header bar
   doc.setFillColor(pr, pg, pb);

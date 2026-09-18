@@ -56,12 +56,12 @@ function LandingStickyCTAImpl({ onStartClick, visible }: LandingStickyCTAProps) 
             fontWeight: 700,
             borderRadius: 999,
             minHeight: 52,
-            background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
-            boxShadow: '0 14px 40px rgba(136, 117, 235,0.55), 0 4px 12px rgba(0,0,0,0.35)',
+            background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
+            boxShadow: '0 14px 40px rgba(93, 118, 203,0.55), 0 4px 12px rgba(0,0,0,0.35)',
             backdropFilter: 'blur(8px)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
-              boxShadow: '0 18px 52px rgba(136, 117, 235,0.65), 0 6px 16px rgba(0,0,0,0.4)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
+              boxShadow: '0 18px 52px rgba(93, 118, 203,0.65), 0 6px 16px rgba(0,0,0,0.4)',
               transform: 'translateY(-2px)',
             },
             '&:focus-visible': {

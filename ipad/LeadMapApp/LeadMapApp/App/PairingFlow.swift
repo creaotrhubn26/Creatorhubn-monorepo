@@ -22,6 +22,9 @@ struct PairingView: View {
     @State private var pairCode: String = ""
     @State private var isPairing = false
     @State private var isGoogleSigning = false
+    @State private var isLinkedInSigning = false
+    // Knappen vises bare når backend sier LinkedIn-innlogging er tilgjengelig.
+    @State private var linkedInLoginEnabled = false
     @State private var errorMessage: String?
     @State private var showManualCode = false
     @State private var showGetStarted = false
@@ -97,8 +100,37 @@ struct PairingView: View {
                 .background(.white, in: RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
-            .disabled(isGoogleSigning)
+            .disabled(isGoogleSigning || isLinkedInSigning)
             .padding(.horizontal, 32)
+
+            // LinkedIn Sign-In (samme flyt; backend fyller navn/bilde i profilen)
+            if linkedInLoginEnabled {
+                Button {
+                    Task { await signInWithLinkedIn() }
+                } label: {
+                    HStack(spacing: 12) {
+                        if isLinkedInSigning {
+                            ProgressView().progressViewStyle(.circular).tint(.white)
+                        } else {
+                            Image(systemName: "person.crop.square.fill")
+                                .font(.title3)
+                                .foregroundStyle(.white)
+                        }
+                        Text("Fortsett med LinkedIn")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .padding(.vertical, 14)
+                    .background(Color(red: 10 / 255, green: 102 / 255, blue: 194 / 255), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(isGoogleSigning || isLinkedInSigning)
+                .padding(.horizontal, 32)
+            }
 
             // Separator
             HStack {
@@ -214,6 +246,7 @@ struct PairingView: View {
         // Topp-padding fjernet — Spacer() øverst og Spacer() foran footer
         // sentrerer nå innholdet vertikalt.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task { await loadLinkedInLoginStatus() }
     }
 
     private var instructionsCard: some View {
@@ -234,6 +267,34 @@ struct PairingView: View {
         .padding(12)
         .background(Color.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 32)
+    }
+
+    // MARK: - LinkedIn Sign-In
+
+    private func loadLinkedInLoginStatus() async {
+        guard let url = URL(string: "\(APIClient.baseURL)/api/auth/linkedin/login-status") else { return }
+        struct StatusResp: Decodable { let enabled: Bool }
+        if let (data, _) = try? await URLSession.shared.data(from: url),
+           let status = try? JSONDecoder().decode(StatusResp.self, from: data) {
+            linkedInLoginEnabled = status.enabled
+        } else {
+            linkedInLoginEnabled = false
+        }
+    }
+
+    private func signInWithLinkedIn() async {
+        isLinkedInSigning = true
+        errorMessage = nil
+        defer { isLinkedInSigning = false }
+        do {
+            let transfer = try await LinkedInSignInService.shared.signIn()
+            let response = try await PairExchangeService.shared.exchangeLinkedInTransfer(transfer)
+            await appState.signIn(token: response.bearer, email: response.user.email)
+        } catch LinkedInSignInService.SignInError.cancelled {
+            // Brukeren lukket LinkedIn-vinduet selv — ingen feilmelding.
+        } catch {
+            errorMessage = "LinkedIn-innlogging feilet: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Google Sign-In

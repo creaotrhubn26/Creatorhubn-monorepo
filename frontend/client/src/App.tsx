@@ -259,6 +259,9 @@ const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shar
 const VideoReviewPage = React.lazy(() => import('@/pages/video-review'));
 const VideoApprovalPage = React.lazy(() => import('@/pages/video-approval'));
 const MockupReviewPage = React.lazy(() => import('@/pages/mockup-review'));
+// Story Graph (game_studio): offentlig spill-lenke — registrert også i casting-main.tsx.
+const StoryPlayPage = React.lazy(() => import('@/pages/story-play'));
+const StoryReviewPage = React.lazy(() => import('@/pages/story-review'));
 const StoryboardReviewPage = React.lazy(() => import('@/pages/storyboard-review'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
 const ChatGuidePage = React.lazy(() => import('@/pages/chat-guide'));
@@ -889,6 +892,27 @@ function App() {
                       );
                     }}
                   </Route>
+                  {/* Spillstudio team-invite landing (Story Graph, Fase 7e-1) */}
+                  <Route path="/game/invite/:token">
+                    {(params: { token: string }) => {
+                      const GameTeamInviteLanding = React.lazy(() =>
+                        import('./components/role-room/game/GameInviteLandingPage').then((m) => ({
+                          default: m.GameInviteLandingPage,
+                        })),
+                      );
+                      return (
+                        <React.Suspense
+                          fallback={
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                              <CircularProgress />
+                            </Box>
+                          }
+                        >
+                          <GameTeamInviteLanding token={params.token} />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
                   {/* <Route path="/test" component={TestMinimal} /> */}
                   {/* TEMPORARY: Demo route for Evendi Timeline Admin - bypasses auth */}
                   <Route path="/wedding-timeline-admin-demo" component={() => (
@@ -1027,6 +1051,8 @@ function App() {
                   <Route path="/video-approval/:token" component={VideoApprovalPage as React.ComponentType<any>} />
                   <Route path="/sound-room" component={SoundRoomCommandCenterRouteWrapper} />
                   <Route path="/mockup-review/:token" component={MockupReviewPage as React.ComponentType<any>} />
+                  <Route path="/story/:token" component={StoryPlayPage as React.ComponentType<any>} />
+                  <Route path="/story-review/:token" component={StoryReviewPage as React.ComponentType<any>} />
                   <Route path="/storyboard-review/:token" component={StoryboardReviewPage as React.ComponentType<any>} />
                   <Route path="/participant-document/:documentId" component={ParticipantDocumentBootstrapHandoff} />
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />

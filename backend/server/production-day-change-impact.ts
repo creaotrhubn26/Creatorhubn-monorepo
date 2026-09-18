@@ -19,7 +19,10 @@ export type ImpactArea =
   | 'location_readiness'
   | 'scout_media'
   | 'continuity'
-  | 'schedule';
+  | 'schedule'
+  | 'scene_prep'
+  | 'scene_cast'
+  | 'scene_material';
 
 export interface ChangeImpact {
   area: ImpactArea;
@@ -149,6 +152,142 @@ export async function collectProductionDayChangeImpact(
       summary: `${continuityCount} kontinuitetsfil${continuityCount === 1 ? '' : 'er'} følger dagen.`,
       count: continuityCount,
     });
+  }
+
+  return impacts;
+}
+
+/**
+ * Hva brekker hvis dagens scener byttes.
+ *
+ * Kantene er valgt etter hva som faktisk er fylt ut i produksjon, målt
+ * 2026-09-18: storyboards 34 rader med scene, dialog 54, brukerfiler 121,
+ * roller med scener 16, shotlister 8, kontinuitet 1. Take-godkjenninger og
+ * casting_schedules.scene_id er tomme og tas derfor ikke inn — en advarsel
+ * bygget på en kolonne ingen skriver til er en gjetning med selvtillit.
+ *
+ * Scener som fjernes veier tyngst: arbeidet er gjort, og det er dagen som
+ * mister det. Scener som legges til varsler om manglende forarbeid.
+ */
+export async function collectProductionDaySceneImpact(
+  pool: QueryablePool,
+  input: {
+    projectId: string;
+    dayId: string;
+    fromSceneIds: string[];
+    toSceneIds: string[];
+  },
+): Promise<ChangeImpact[]> {
+  const { projectId, dayId, fromSceneIds, toSceneIds } = input;
+  const before = new Set(fromSceneIds.map(String));
+  const after = new Set(toSceneIds.map(String));
+  const removed = [...before].filter((id) => !after.has(id));
+  const added = [...after].filter((id) => !before.has(id));
+  const impacts: ChangeImpact[] = [];
+
+  if (removed.length === 0 && added.length === 0) return impacts;
+
+  // 1. Publisert call sheet lister dagens scener og hvem som er kalt inn.
+  const callSheets = await pool.query(
+    `SELECT count(*)::int AS count
+       FROM role_room_call_sheet_deliveries
+      WHERE project_id = $1 AND production_day_id = $2 AND status = 'published'`,
+    [projectId, dayId],
+  );
+  const publishedCallSheets = count(callSheets.rows);
+  if (publishedCallSheets > 0) {
+    impacts.push({
+      area: 'call_sheet',
+      severity: 'blocking',
+      summary: 'Call sheet er publisert med dagens scener.',
+      action: 'Må republiseres etter endringen.',
+      count: publishedCallSheets,
+    });
+  }
+
+  if (removed.length > 0) {
+    // 2. Kontinuitet er allerede skutt på en scene som nå forsvinner fra dagen.
+    const continuity = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_production_continuity_media
+        WHERE project_id = $1 AND production_day_id = $2 AND scene_id = ANY($3::text[])`,
+      [projectId, dayId, removed],
+    );
+    const continuityCount = count(continuity.rows);
+    if (continuityCount > 0) {
+      impacts.push({
+        area: 'continuity',
+        severity: 'blocking',
+        summary: `${continuityCount} kontinuitetsfil${continuityCount === 1 ? ' er' : 'er er'} skutt på scener som fjernes.`,
+        action: 'Flytt bevisene til dagen scenen faktisk skytes.',
+        count: continuityCount,
+      });
+    }
+
+    // 3. Skuespillere er kalt inn for scenene som forsvinner.
+    const cast = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_roles
+        WHERE project_id = $1
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(COALESCE(scene_ids, '[]'::jsonb)) AS scene(id)
+             WHERE scene.id = ANY($2::text[])
+          )`,
+      [projectId, removed],
+    );
+    const castCount = count(cast.rows);
+    if (castCount > 0) {
+      impacts.push({
+        area: 'scene_cast',
+        severity: 'warning',
+        summary: `${castCount} rolle${castCount === 1 ? '' : 'r'} er knyttet til scenene som fjernes.`,
+        action: 'Gi beskjed hvis noen ikke lenger skal møte.',
+        count: castCount,
+      });
+    }
+  }
+
+  if (added.length > 0) {
+    // 4. Er scenene som legges til forberedt i det hele tatt?
+    const prepared = await pool.query(
+      `SELECT count(DISTINCT scene_id)::int AS count
+         FROM (
+           SELECT scene_id FROM casting_shot_lists
+            WHERE project_id = $1 AND scene_id = ANY($2::text[])
+           UNION
+           SELECT scene_id FROM casting_storyboards
+            WHERE project_id = $1 AND scene_id = ANY($2::text[])
+         ) AS forarbeid`,
+      [projectId, added],
+    );
+    const preparedCount = count(prepared.rows);
+    const unprepared = added.length - preparedCount;
+    if (unprepared > 0) {
+      impacts.push({
+        area: 'scene_prep',
+        severity: 'warning',
+        summary: `${unprepared} av ${added.length} nye scene${added.length === 1 ? '' : 'r'} har verken shotliste eller storyboard.`,
+        action: 'Avklar forarbeidet før dagen låses.',
+        count: unprepared,
+      });
+    }
+
+    // 5. Materiale som allerede ligger på de nye scenene. Verdt å vite.
+    const material = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM role_room_user_files
+        WHERE project_id = $1 AND scene_id = ANY($2::text[])`,
+      [projectId, added],
+    );
+    const materialCount = count(material.rows);
+    if (materialCount > 0) {
+      impacts.push({
+        area: 'scene_material',
+        severity: 'info',
+        summary: `${materialCount} fil${materialCount === 1 ? '' : 'er'} ligger allerede på de nye scenene.`,
+        count: materialCount,
+      });
+    }
   }
 
   return impacts;

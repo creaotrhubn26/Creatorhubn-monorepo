@@ -28,7 +28,7 @@ export default function ClientMarketingPlanView({ projectId }: { projectId: stri
           <Chip size="small" label="Delt arbeidsflate"
                 sx={{
                   height: 18, fontSize: '0.66rem', fontWeight: 700,
-                  bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9',
+                  bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc',
                 }} />
         </Stack>
         <Typography sx={{ fontSize: '0.82rem', color: 'rgba(226,232,240,0.66)' }}>

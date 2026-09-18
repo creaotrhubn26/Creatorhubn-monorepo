@@ -109,7 +109,7 @@ function CopyButton({ value, testid }: { value: string; testid?: string }) {
     <Tooltip title={copied ? 'Kopiert!' : 'Kopier'}>
       <IconButton size="small" onClick={handleCopy} data-testid={testid}>
         {copied ? <CheckCircleIcon sx={{ fontSize: 16, color: '#22c55e' }} />
-          : <ContentCopyIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />}
+          : <ContentCopyIcon sx={{ fontSize: 16, color: '#93a4dc' }} />}
       </IconButton>
     </Tooltip>
   );
@@ -176,7 +176,7 @@ function PlatformPanel({
             <Stack direction="row" flexWrap="wrap" gap={0.5}>
               {safeHashtags.map((h) => (
                 <Chip key={h} label={h} size="small"
-                  sx={{ background: 'rgba(136, 117, 235,0.15)', color: '#c4b5fd', fontSize: '0.7rem', height: 18 }} />
+                  sx={{ background: 'rgba(93, 118, 203,0.15)', color: '#c4b5fd', fontSize: '0.7rem', height: 18 }} />
               ))}
               <CopyButton value={safeHashtags.join(' ')} testid={`${platform}-hashtags-copy`} />
             </Stack>
@@ -319,7 +319,7 @@ export default function RoleRoomAgentTab() {
           Var tidligere mountet globalt i App.tsx og lekket inn på alle
           CreatorHub-sider (bl.a. UniversalDashboard). */}
       <WelcomeWizard />
-      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8875eb" />
+      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#5d76cb" />
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>🤖 Role Room Agent — Bio + Profil-pakke</Typography>
         <Button
@@ -327,7 +327,7 @@ export default function RoleRoomAgentTab() {
           onClick={() => void generate(false)}
           disabled={loading}
           data-testid="agent-generate"
-          sx={{ background: 'rgba(136, 117, 235,0.25)', color: '#c4b5fd', '&:hover': { background: 'rgba(136, 117, 235,0.4)' } }}
+          sx={{ background: 'rgba(93, 118, 203,0.25)', color: '#c4b5fd', '&:hover': { background: 'rgba(93, 118, 203,0.4)' } }}
         >
           {loading ? 'Genererer…' : 'Generer ny pakke'}
         </Button>
@@ -336,7 +336,7 @@ export default function RoleRoomAgentTab() {
           onClick={() => void generate(true)}
           disabled={loading}
           data-testid="agent-load-cached"
-          sx={{ color: '#7dd3fc' }}
+          sx={{ color: '#93a4dc' }}
         >
           Last cache
         </Button>
@@ -344,7 +344,7 @@ export default function RoleRoomAgentTab() {
           size="small" variant="outlined" startIcon={<InstagramIcon />}
           onClick={() => setShowIgInbox(true)}
           data-testid="agent-ig-inbox"
-          sx={{ borderColor: 'rgba(136, 117, 235,0.4)', color: '#c4b5fd' }}
+          sx={{ borderColor: 'rgba(93, 118, 203,0.4)', color: '#c4b5fd' }}
         >
           Instagram-innboks
         </Button>
@@ -381,7 +381,7 @@ export default function RoleRoomAgentTab() {
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Brand identity</Typography>
                 <Box sx={{
                   width: 24, height: 24, borderRadius: '50%',
-                  background: recs.brand.primaryColorHex || '#0ea5e9',
+                  background: recs.brand.primaryColorHex || '#3f51b5',
                   border: '2px solid rgba(255,255,255,0.2)',
                 }} data-testid="brand-color" />
                 <Typography variant="caption" sx={{ color: '#cbd5e1', fontFamily: 'monospace' }}>
@@ -410,7 +410,7 @@ export default function RoleRoomAgentTab() {
           {/* PLATFORMS — 2 cols on md+ */}
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
             <PlatformPanel
-              icon={<FacebookIcon sx={{ color: '#60a5fa', fontSize: 20 }} />}
+              icon={<FacebookIcon sx={{ color: '#93a4dc', fontSize: 20 }} />}
               name="Facebook Page" platform="facebook"
               bio={recs.platforms.facebook.bio}
               charCount={recs.platforms.facebook.charCount}
@@ -466,7 +466,7 @@ export default function RoleRoomAgentTab() {
                   <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.6)' }}>Link-in-bio</Typography>
                   <Stack spacing={0.3} sx={{ mt: 0.3 }}>
                     {(Array.isArray(recs.platforms.instagram.linkInBio) ? recs.platforms.instagram.linkInBio : []).map((l) => (
-                      <Typography key={l.url} variant="caption" sx={{ color: '#7dd3fc', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography key={l.url} variant="caption" sx={{ color: '#93a4dc', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <strong style={{ color: '#cbd5e1' }}>{l.label}</strong> → {l.url}
                         <CopyButton value={l.url} />
                       </Typography>
@@ -553,7 +553,7 @@ export default function RoleRoomAgentTab() {
       )}
 
       {/* Ads & conversion-tracking (B0-B6 multi-tenant) — for klient-oppsett */}
-      <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.18)', my: 1.4 }} />
+      <Divider sx={{ borderColor: 'rgba(93, 118, 203,0.18)', my: 1.4 }} />
       <AgentAdsPanel
         clientProjectId={undefined}
         defaultClientName=""

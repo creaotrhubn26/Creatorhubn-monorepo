@@ -102,8 +102,8 @@ export const BriefCommentThread: React.FC<BriefCommentThreadProps> = ({
     <Box
       sx={{
         mt: dense ? 0.5 : 1,
-        bgcolor: 'rgba(136, 117, 235, 0.04)',
-        border: '1px solid rgba(136, 117, 235, 0.16)',
+        bgcolor: 'rgba(93, 118, 203, 0.04)',
+        border: '1px solid rgba(93, 118, 203, 0.16)',
         borderRadius: 1.5,
         overflow: 'hidden',
       }}
@@ -119,7 +119,7 @@ export const BriefCommentThread: React.FC<BriefCommentThreadProps> = ({
         }}
         onClick={() => setExpanded((prev) => !prev)}
       >
-        <ChatIcon fontSize="small" sx={{ color: 'rgba(136, 117, 235, 0.9)' }} />
+        <ChatIcon fontSize="small" sx={{ color: 'rgba(93, 118, 203, 0.9)' }} />
         <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>
           Diskusjon{fieldLabel ? ` om ${fieldLabel.toLowerCase()}` : ''}
           {unresolvedCount > 0 && (
@@ -136,7 +136,7 @@ export const BriefCommentThread: React.FC<BriefCommentThreadProps> = ({
       </Stack>
 
       <Collapse in={expanded} timeout="auto" unmountOnExit>
-        <Divider sx={{ borderColor: 'rgba(136, 117, 235, 0.16)' }} />
+        <Divider sx={{ borderColor: 'rgba(93, 118, 203, 0.16)' }} />
         <Box sx={{ p: dense ? 1 : 1.5 }}>
           {loading && comments.length === 0 ? (
             <Stack direction="row" spacing={1} alignItems="center">
@@ -169,7 +169,7 @@ export const BriefCommentThread: React.FC<BriefCommentThreadProps> = ({
           )}
 
           <Stack direction="row" spacing={1} alignItems="flex-end" sx={{ mt: 1.5 }}>
-            <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(136, 117, 235, 0.6)', fontSize: 13 }}>
+            <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(93, 118, 203, 0.6)', fontSize: 13 }}>
               {initials(currentUserName ?? null)}
             </Avatar>
             <TextField
@@ -229,7 +229,7 @@ const CommentRow: React.FC<CommentRowProps> = ({ comment, onResolve, onDelete })
         sx={{
           width: 28,
           height: 28,
-          bgcolor: comment.author_role === 'client' ? 'rgba(245, 184, 46, 0.7)' : 'rgba(136, 117, 235, 0.7)',
+          bgcolor: comment.author_role === 'client' ? 'rgba(245, 184, 46, 0.7)' : 'rgba(93, 118, 203, 0.7)',
           fontSize: 13,
         }}
       >

@@ -164,7 +164,7 @@ export default function AnnotateCommonLabelsPanel({
                   display: 'flex', alignItems: 'center',
                   px: 1.25, py: 0.75, borderRadius: 1,
                   bgcolor: isActive
-                    ? (cat ? `${cat.color}26` : 'rgba(158, 140, 248,0.18)')
+                    ? (cat ? `${cat.color}26` : 'rgba(147, 164, 220,0.18)')
                     : 'transparent',
                   color: isActive
                     ? (cat?.color ?? danceFlowColors.lavender)
@@ -231,7 +231,7 @@ export default function AnnotateCommonLabelsPanel({
               '&:hover': {
                 color: danceFlowColors.lavender,
                 borderColor: danceFlowColors.lavender,
-                bgcolor: 'rgba(158, 140, 248,0.06)',
+                bgcolor: 'rgba(147, 164, 220,0.06)',
               },
             }}
           >

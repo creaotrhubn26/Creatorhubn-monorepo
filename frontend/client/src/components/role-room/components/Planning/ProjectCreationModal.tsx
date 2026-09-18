@@ -487,13 +487,13 @@ const PROJECT_PHASES: Record<string, { name: string; description: string; color:
   post_production: {
     name: 'Post-production',
     description: 'Redigering, fargekorrigering, levering',
-    color: '#6249df',
+    color: '#4b3d8f',
     categories: ['editing','color_grading','sound_design','delivery','client_review']
   },
   business: {
     name: 'Business',
     description: 'Fakturering, markedsføring, oppfølging',
-    color: '#3c27a5',
+    color: '#32127a',
     categories: ['invoicing','marketing','client_follow_up','portfolio_update','social_media']
   }
 };
@@ -2550,7 +2550,7 @@ useEffect(() => {
                             gap: 1
                           }}
                         >
-                          <AutoAwesome sx={{ fontSize: 18, color: '#8875eb' }} />
+                          <AutoAwesome sx={{ fontSize: 18, color: '#5d76cb' }} />
                           Demo Prosjekt
                         </Typography>
                         <Button
@@ -2560,12 +2560,12 @@ useEffect(() => {
                           disabled={loadingTrollDemo}
                           startIcon={loadingTrollDemo ? <CircularProgress size={18} /> : <Movie />}
                           sx={{
-                            borderColor: '#8875eb',
-                            color: '#8875eb',
+                            borderColor: '#5d76cb',
+                            color: '#5d76cb',
                             fontWeight: 600,
                             '&:hover': {
-                              borderColor: '#6249df',
-                              bgcolor: 'rgba(136, 117, 235, 0.08)'
+                              borderColor: '#4b3d8f',
+                              bgcolor: 'rgba(93, 118, 203, 0.08)'
                             }
                           }}
                         >
@@ -2684,7 +2684,7 @@ useEffect(() => {
                           color: 'text.primary'
                         }}
                       >
-                        <AccountBalance sx={{ color:'#8875eb' }} />
+                        <AccountBalance sx={{ color:'#5d76cb' }} />
                         Split Sheet
                       </Typography>
                       <Divider sx={{ mb: 2, mt: 1 }} />
@@ -2728,8 +2728,8 @@ useEffect(() => {
                             severity="info" 
                             sx={{ 
                               mb: 3,
-                              bgcolor: 'rgba(60, 39, 165, 0.08)',
-                              border: '1px solid rgba(60, 39, 165, 0.2)'
+                              bgcolor: 'rgba(50, 18, 122, 0.08)',
+                              border: '1px solid rgba(50, 18, 122, 0.2)'
                             }}
                           >
                             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.938rem', color: 'text.primary', mb: 0.5 }}>
@@ -2936,7 +2936,7 @@ useEffect(() => {
           borderColor: 'divider',
           pb: 2
         }}>
-          <Movie sx={{ fontSize: '2rem', color: '#3c27a5' }} />
+          <Movie sx={{ fontSize: '2rem', color: '#32127a' }} />
           TROLL Demo Initialisering
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
@@ -3020,8 +3020,8 @@ useEffect(() => {
                     px: 4, 
                     py: 1.5,
                     fontWeight: 600,
-                    bgcolor: '#8875eb',
-                    '&:hover': { bgcolor: '#6249df' }
+                    bgcolor: '#5d76cb',
+                    '&:hover': { bgcolor: '#4b3d8f' }
                   }}
                 >
                   Start Initialisering
@@ -3044,7 +3044,7 @@ useEffect(() => {
                     borderRadius: 5,
                     bgcolor: 'action.hover',
                     '& .MuiLinearProgress-bar': {
-                      bgcolor: '#8875eb'
+                      bgcolor: '#5d76cb'
                     }
                   }} 
                 />
@@ -3315,8 +3315,8 @@ useEffect(() => {
               onClick={handleTrollDialogComplete}
               sx={{ 
                 fontWeight: 600,
-                bgcolor: '#8875eb',
-                '&:hover': { bgcolor: '#6249df' }
+                bgcolor: '#5d76cb',
+                '&:hover': { bgcolor: '#4b3d8f' }
               }}
             >
               Fortsett til prosjekt
@@ -3895,7 +3895,7 @@ useEffect(() => {
         fullWidth
       >
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CameraAlt sx={{ color: '#8875eb' }} />
+          <CameraAlt sx={{ color: '#5d76cb' }} />
           DaVinci Resolve Script Manager
         </DialogTitle>
         <DialogContent>

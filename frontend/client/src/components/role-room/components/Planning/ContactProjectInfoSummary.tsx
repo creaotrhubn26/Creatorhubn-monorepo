@@ -123,8 +123,8 @@ export const ContactProjectInfoSummary: React.FC<ContactProjectInfoSummaryProps>
                   gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 },
                   p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 },
                   borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-                  bgcolor: 'rgba(0, 212, 255, 0.1)',
-                  border: '2px solid rgba(0, 212, 255, 0.3)',
+                  bgcolor: 'rgba(93, 118, 203, 0.1)',
+                  border: '2px solid rgba(93, 118, 203, 0.3)',
                 }}>
                   <Label sx={{ fontSize: { xs: 18, sm: 19, md: 20, lg: 21, xl: 22 }, color: 'primary.main' }} />
                   <Box sx={{ flex: 1 }}>
@@ -307,8 +307,8 @@ export const ContactProjectInfoSummary: React.FC<ContactProjectInfoSummaryProps>
               flex: 1,
               p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
               borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-              bgcolor: 'rgba(60, 39, 165, 0.04)',
-              border: '1px solid rgba(60, 39, 165, 0.1)'
+              bgcolor: 'rgba(50, 18, 122, 0.04)',
+              border: '1px solid rgba(50, 18, 122, 0.1)'
             }}
           >
             <Typography 

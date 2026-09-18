@@ -40,7 +40,7 @@ function publicOrigin(): string {
   ).replace(/\/$/, "");
 }
 
-const BRIEF_BRAND_HEX = "#8875eb";
+const BRIEF_BRAND_HEX = "#5d76cb";
 const BRIEF_BG_HEX = "#0a0a0f";
 
 function wrapBrandedHtml(opts: { previewText: string; bodyHtml: string; unsubscribeUrl: string | null; footerNote?: string }): string {
@@ -62,12 +62,12 @@ function wrapBrandedHtml(opts: { previewText: string; bodyHtml: string; unsubscr
   .content h2 { font-size: 20px; margin: 28px 0 12px; }
   .content h3 { font-size: 16px; margin: 24px 0 8px; }
   .content p { margin: 0 0 16px; }
-  .content a { color: #9e8cf8; }
+  .content a { color: #93a4dc; }
   .content blockquote { border-left: 3px solid ${BRIEF_BRAND_HEX}; padding-left: 16px; color: rgba(229,231,235,0.78); margin: 16px 0; }
   .content ul, .content ol { padding-left: 24px; margin: 12px 0; }
   .content li { margin: 4px 0; }
   .footer { margin-top: 40px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.08); color: rgba(229,231,235,0.5); font-size: 12px; line-height: 1.6; }
-  .footer a { color: rgba(158, 140, 248,0.85); }
+  .footer a { color: rgba(147, 164, 220,0.85); }
 </style>
 </head>
 <body>
@@ -243,7 +243,7 @@ export function renderBlocksToHtml(blocks: NewsletterBlock[]): string {
       case "cta": {
         const align = block.align ?? "center";
         parts.push(
-          `<p style="text-align:${align};margin:28px 0;"><a href="${safeHref(block.url)}" style="display:inline-block;background:#8875eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(block.label)}</a></p>`,
+          `<p style="text-align:${align};margin:28px 0;"><a href="${safeHref(block.url)}" style="display:inline-block;background:#5d76cb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(block.label)}</a></p>`,
         );
         break;
       }

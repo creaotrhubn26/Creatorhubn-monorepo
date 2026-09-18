@@ -17,13 +17,15 @@ import {
 } from '@mui/material';
 import {
   Google,
+  LinkedIn,
   AccountCircle,
   Security,
   ErrorOutline,
   Close,
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
-import { startCreatorHubGoogleLogin, consumeCreatorHubGoogleLoginError, dismissCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
+import { startCreatorHubGoogleLogin, dismissCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
+import { fetchCreatorHubLinkedInLoginEnabled, isLeadgridLoginSurface, startCreatorHubLinkedInLogin } from '@/lib/creatorhubLinkedInAuth';
 import { useAuth } from '@/hooks/useAuth';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 
@@ -74,6 +76,11 @@ export function LoginModal({
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // «Fortsett med LinkedIn» hører til Leadgrid. Samme modal brukes av CreatorHub,
+  // admin-hosten og Role Room; der skal knappen ikke vises. På Leadgrid vises den
+  // først når backend bekrefter at flyten er tilgjengelig (LinkedIn-app
+  // konfigurert og LINKEDIN_LOGIN_ENABLED ikke «off»).
+  const [linkedInEnabled, setLinkedInEnabled] = useState(false);
 
   // Get contextual title
   const contextTitle = getContextTitle(context);
@@ -122,6 +129,23 @@ export function LoginModal({
     setLoginType(initialLoginType);
   }, [initialError, initialLoginType, open]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (!isLeadgridLoginSurface()) {
+      setLinkedInEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    void fetchCreatorHubLinkedInLoginEnabled().then((enabled) => {
+      if (!cancelled) setLinkedInEnabled(enabled);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const handleGoogleLogin = async () => {
     if (!loginType) {
       setError('Please select a login type');
@@ -145,6 +169,27 @@ export function LoginModal({
       console.error('❌ Login error:', error);
       setIsLoading(false);
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+    }
+  };
+
+  const handleLinkedInLogin = async () => {
+    if (!loginType) {
+      setError('Please select a login type');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    dismissCreatorHubGoogleLoginError();
+
+    try {
+      await startCreatorHubLinkedInLogin({
+        returnPath: safeRedirectTo || undefined,
+      });
+    } catch (error) {
+      console.error('❌ LinkedIn login error:', error);
+      setIsLoading(false);
+      setError(error instanceof Error ? error.message : 'LinkedIn-innloggingen feilet');
     }
   };
 
@@ -549,6 +594,43 @@ export function LoginModal({
               >
                 {isLoading ? 'Logger inn...' : 'Fortsett med Google'}
               </Button>
+              {linkedInEnabled && (
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={<LinkedIn />}
+                  onClick={() => handleLinkedInLogin()}
+                  disabled={isLoading}
+                  data-testid="login-linkedin"
+                  sx={{
+                    mt: 1.5,
+                    background: '#0a66c2',
+                    color: 'white',
+                    py: 1.5,
+                    px: 4,
+                    borderRadius: '12px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    textTransform: 'none',
+                    minWidth: '220px',
+                    boxShadow: '0 4px 16px rgba(10, 102, 194, 0.35)',
+                    '&:hover': {
+                      background: '#004182',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 6px 20px rgba(10, 102, 194, 0.45)',
+                    },
+                    '&:active': {
+                      transform: 'translateY(0)',
+                    },
+                    '&:disabled': {
+                      background: '#5c9ad6',
+                      color: 'rgba(255, 255, 255, 0.7)',
+                    },
+                  }}
+                >
+                  Fortsett med LinkedIn
+                </Button>
+              )}
             </Box>
 
             {loginType === 'general' && (

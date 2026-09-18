@@ -204,7 +204,7 @@ export function MetaPagePublicMetadataInspector() {
             sx={{
               p: 3,
               borderRadius: 3,
-              border: '1.5px solid rgba(59,130,246,0.45)',
+              border: '1.5px solid rgba(63, 81, 181,0.45)',
               background: 'linear-gradient(180deg, rgba(30,58,138,0.15), rgba(8,15,30,0.45))',
             }}
           >
@@ -218,7 +218,7 @@ export function MetaPagePublicMetadataInspector() {
                     icon={<VerifiedIcon sx={{ fontSize: 14 }} />}
                     size="small"
                     label={result.page.verificationStatus.replace('_', ' ')}
-                    sx={{ bgcolor: 'rgba(29,161,242,0.22)', color: '#bfdbfe', fontSize: '0.7rem' }}
+                    sx={{ bgcolor: 'rgba(29,161,242,0.22)', color: '#c3cbe6', fontSize: '0.7rem' }}
                   />
                 ) : null}
               </Stack>
@@ -228,10 +228,10 @@ export function MetaPagePublicMetadataInspector() {
 
               <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
                 {typeof result.page.followersCount === 'number' ? (
-                  <Chip label={`${result.page.followersCount.toLocaleString('en-US')} followers`} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
+                  <Chip label={`${result.page.followersCount.toLocaleString('en-US')} followers`} sx={{ bgcolor: 'rgba(63, 81, 181,0.18)', color: '#c3cbe6' }} />
                 ) : null}
                 {typeof result.page.fanCount === 'number' ? (
-                  <Chip label={`${result.page.fanCount.toLocaleString('en-US')} fans`} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
+                  <Chip label={`${result.page.fanCount.toLocaleString('en-US')} fans`} sx={{ bgcolor: 'rgba(63, 81, 181,0.18)', color: '#c3cbe6' }} />
                 ) : null}
                 {result.page.category ? (
                   <Chip label={`Category: ${result.page.category}`} variant="outlined" />

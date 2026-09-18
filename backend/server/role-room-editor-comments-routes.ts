@@ -34,6 +34,9 @@ const VALID_ANCHOR_TYPES = [
   // Screenplay/manus-anchors (Story Writer): la produksjonsteamet kommentere
   // på manuset, en scene, eller en konkret linje i Fountain-teksten.
   "manuscript", "manuscript_scene", "screenplay_line", "beat",
+  // Story Graph (spillstudio, Fase 6): review-tråd per scene og per
+  // storyboard-ramme. anchor_ref = scene-id (nsc_…) / ramme-id (nsf_…).
+  "narrative_scene", "narrative_scene_frame",
 ];
 const VALID_STATUSES = ["open", "in_progress", "resolved", "wontfix"];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
@@ -140,6 +143,29 @@ async function screenplayAnchorBelongsToProject(
   return rows[0]?.found === true;
 }
 
+const NARRATIVE_ANCHORS = new Set(["narrative_scene", "narrative_scene_frame"]);
+
+/**
+ * Story Graph-ankere må peke på en scene/ramme i SAMME prosjekt — ellers kan
+ * et medlem kommentere (og varsle) på et annet prosjekts scene-id.
+ */
+async function narrativeAnchorBelongsToProject(
+  pool: Pool,
+  projectId: string,
+  anchorType: string,
+  anchorRef: string | null,
+): Promise<boolean> {
+  if (!NARRATIVE_ANCHORS.has(anchorType)) return true;
+  const ref = anchorRef?.trim();
+  if (!ref) return false;
+  const table = anchorType === "narrative_scene" ? "narrative_scenes" : "narrative_scene_frames";
+  const { rows } = await pool.query<{ found: boolean }>(
+    `SELECT EXISTS(SELECT 1 FROM ${table} WHERE id = $1 AND project_id = $2) AS found`,
+    [ref, projectId],
+  );
+  return rows[0]?.found === true;
+}
+
 async function viewerCanCommentOnScreenplay(
   pool: Pool,
   projectId: string,
@@ -234,10 +260,10 @@ async function persistMentions(
     projectId,
     userIds: targets,
     subject: `${author} nevnte deg i en kommentar`,
-    html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#18122b">
-        <h2 style="color:#472bd4;margin:0 0 16px">Du ble nevnt</h2>
+    html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#2a3d56">
+        <h2 style="color:#3e3180;margin:0 0 16px">Du ble nevnt</h2>
         <p><strong>${escapeHtmlComment(author)}</strong> nevnte deg i en kommentar:</p>
-        <blockquote style="border-left:3px solid #472bd4;margin:12px 0;padding:8px 12px;background:#ebe7fd;color:#261763">${escapeHtmlComment(snippet) || "(åpne for å se kommentaren)"}</blockquote>
+        <blockquote style="border-left:3px solid #3e3180;margin:12px 0;padding:8px 12px;background:#eef1fb;color:#2b2553">${escapeHtmlComment(snippet) || "(åpne for å se kommentaren)"}</blockquote>
         <p style="color:#6b7280;font-size:13px;margin-top:24px">Åpne Creative Sync Workspace for å svare.</p>
       </div>`,
     text: `${author} nevnte deg i en kommentar:\n\n${snippet}\n\nÅpne Creative Sync Workspace for å svare.`,
@@ -448,6 +474,9 @@ export function registerRoleRoomEditorCommentsRoutes(
           pool, projectId, anchorType, anchorRef,
         )) {
           res.status(400).json({ error: "manus_anker_ikke_i_prosjekt" }); return;
+        }
+        if (!await narrativeAnchorBelongsToProject(pool, projectId, anchorType, anchorRef)) {
+          res.status(400).json({ error: "scene_anker_ikke_i_prosjekt" }); return;
         }
         if (!actor.isClient && SCREENPLAY_ANCHORS.has(anchorType)
             && !await viewerCanCommentOnScreenplay(pool, projectId, actor.userId)) {

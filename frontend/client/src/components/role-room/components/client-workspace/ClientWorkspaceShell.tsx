@@ -160,7 +160,7 @@ export default function ClientWorkspaceShell({
         minHeight: '100vh',
         bgcolor: 'var(--role-chrome-bg, rgba(7,13,26,0.96))',
         background:
-          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(136, 117, 235,0.10) 0%, transparent 35%), var(--role-chrome-bg, #07101e)',
+          'radial-gradient(circle at top left, rgba(93, 118, 203,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(93, 118, 203,0.10) 0%, transparent 35%), var(--role-chrome-bg, #07101e)',
         color: 'var(--role-chrome-text, #e2e8f0)',
       }}
     >
@@ -197,7 +197,7 @@ export default function ClientWorkspaceShell({
               Godta invitasjon
             </Typography>
           ) : undefined}
-          sx={{ borderRadius: 0, bgcolor: 'rgba(98, 73, 223,0.16)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}
+          sx={{ borderRadius: 0, bgcolor: 'rgba(75, 61, 143,0.16)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}
         >
           <Typography component="span" sx={{ fontWeight: 700 }}>
             {myAccess?.status === 'invited' ? 'Du er invitert som assistent. Tilgang: ' : 'Din tilgang som assistent: '}
@@ -224,7 +224,7 @@ export default function ClientWorkspaceShell({
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box
               component="img"
-              src="/theroleroom-app-icon-1024.png"
+              src="/theroleroom-mark-1024.png"
               alt="The Role Room"
               sx={{ width: 36, height: 36, borderRadius: 1.5 }}
             />
@@ -274,8 +274,8 @@ export default function ClientWorkspaceShell({
                 minHeight: 56,
                 textTransform: 'none',
               },
-              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
-              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)', height: 3 },
+              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #5d76cb)' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #5d76cb)', height: 3 },
             }}
           >
             {effectiveTabs
@@ -312,7 +312,7 @@ export default function ClientWorkspaceShell({
         <Suspense
           fallback={
             <Stack direction="row" alignItems="center" justifyContent="center" sx={{ py: 6 }}>
-              <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+              <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             </Stack>
           }
         >

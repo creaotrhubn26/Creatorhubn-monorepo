@@ -70,7 +70,7 @@ export interface ClientRequestsThreadProps {
 
 const STATUS_META: Record<ClientRequestSummary['status'], { label: string; color: string; bg: string }> = {
   pending:     { label: 'Sendt — venter på klient',         color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-  in_progress: { label: 'Du purret — venter fortsatt',      color: '#c6bdf4', bg: 'rgba(158, 140, 248,0.12)' },
+  in_progress: { label: 'Du purret — venter fortsatt',      color: '#c3cbe6', bg: 'rgba(147, 164, 220,0.12)' },
   answered:    { label: 'Klient har svart',                 color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
   closed:      { label: 'Lukket',                           color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
 };
@@ -154,7 +154,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
   if (loading && requests.length === 0) {
     return (
       <Stack alignItems="center" sx={{ py: 2 }}>
-        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
       </Stack>
     );
   }
@@ -251,13 +251,13 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                             sx={{
                               p: 1,
                               borderRadius: 1,
-                              bgcolor: isClient ? 'rgba(52,211,153,0.06)' : 'rgba(96,165,250,0.06)',
+                              bgcolor: isClient ? 'rgba(52,211,153,0.06)' : 'rgba(147, 164, 220,0.06)',
                             }}
                           >
                             <Box sx={{ pt: 0.2 }}>
                               {isClient
                                 ? <PersonIcon fontSize="small" sx={{ color: '#34d399' }} />
-                                : <MarketerIcon fontSize="small" sx={{ color: '#60a5fa' }} />
+                                : <MarketerIcon fontSize="small" sx={{ color: '#93a4dc' }} />
                               }
                             </Box>
                             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -318,10 +318,10 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                           onClick={() => void handleReply(req.id)}
                           sx={{
                             textTransform: 'none',
-                            bgcolor: 'var(--role-cyan, #22d3ee)',
+                            bgcolor: 'var(--role-cyan, #5d76cb)',
                             color: '#0b1226',
                             fontWeight: 700,
-                            '&:hover': { bgcolor: '#06b6d4' },
+                            '&:hover': { bgcolor: '#3f51b5' },
                           }}
                         >
                           {replying === req.id ? 'Sender…' : 'Send melding'}

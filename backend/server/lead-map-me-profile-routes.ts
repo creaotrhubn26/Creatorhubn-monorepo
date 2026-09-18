@@ -181,7 +181,7 @@ const imageUpload = multer({
   },
 });
 
-function detectedImageType(buffer: Buffer): { mime: string; extension: string } | null {
+export function detectedImageType(buffer: Buffer): { mime: string; extension: string } | null {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return { mime: "image/jpeg", extension: "jpg" };
   }

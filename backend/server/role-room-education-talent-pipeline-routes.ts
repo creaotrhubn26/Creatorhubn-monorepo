@@ -181,7 +181,7 @@ async function notifyStudentPromoted(pool: Pool, email: string, name: string, cr
       <p>${ROLE_ROOM_TALENTS_INFO.summary}</p>
       <p style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;color:#166534;font-size:13px">${ROLE_ROOM_TALENTS_INFO.visibility}</p>
       <p style="margin:24px 0">
-        <a href="${signupUrl}" style="background:#8875eb;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Les mer og velg selv</a>
+        <a href="${signupUrl}" style="background:#5d76cb;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;border-radius:6px;display:inline-block">Les mer og velg selv</a>
       </p>
       <p style="font-size:12px;color:#666">Bruk denne e-postadressen når du oppretter konto (eller logger inn) for å overta profilen eller avslå (da slettes utkastet). Gjør du ingenting, forblir profilen et usynlig utkast.</p>
       <p>Mvh,<br>The Role Room</p>

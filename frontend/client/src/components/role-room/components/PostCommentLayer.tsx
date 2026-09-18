@@ -16,13 +16,15 @@
  * for klient (magic-link). Backend (resolveActor) skiller mellom dem.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type CommentAnchorType =
   | 'content_post' | 'marketing_plan_post' | 'feed_plan_post'
   | 'gallery_image' | 'storyboard_frame' | 'timestamp'
   // Screenplay/manus-anker (matcher VALID_ANCHOR_TYPES i backend):
-  | 'manuscript' | 'manuscript_scene' | 'screenplay_line' | 'beat';
+  | 'manuscript' | 'manuscript_scene' | 'screenplay_line' | 'beat'
+  // Story Graph (spillstudio): review-tråd per scene / storyboard-ramme.
+  | 'narrative_scene' | 'narrative_scene_frame';
 
 export type CommentStatus = 'open' | 'in_progress' | 'resolved' | 'wontfix';
 export type CommentPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -51,7 +53,9 @@ export interface PostCommentItem {
  */
 export type PostCommentAuth =
   | { kind: 'bearer'; token: string }
-  | { kind: 'client-portal'; sessionToken: string };
+  | { kind: 'client-portal'; sessionToken: string }
+  /** Gjeste-reviewer i Story Graph (Fase 7e-2): sesjonstoken i x-narrative-reviewer; brukes med apiBase = /api/role-room/narrative/review/<token>. */
+  | { kind: 'narrative-reviewer'; token: string };
 
 interface Props {
   /** casting_projects.id som posten tilhører. */
@@ -88,11 +92,37 @@ interface Props {
   /** Focus the composer when a newly selected annotation opens. */
   autoFocusComposer?: boolean;
   composerPlaceholder?: string;
+  /** Valgfritt fargetema (Story Graph bruker grønn aksent i stedet for Post Agent-lilla). */
+  theme?: PostCommentTheme;
+}
+
+export interface PostCommentTheme {
+  accent: string;        // knapper, forfatternavn
+  accentSoft: string;    // badge-bakgrunn (rgba)
+  accentText: string;    // badge-/lenketekst
+  surface: string;       // bakgrunn
+  border: string;        // ramme
+  title?: string;
+}
+
+function themedStyles(theme?: PostCommentTheme) {
+  if (!theme) return { base: baseSx, title: titleSx, badge: badgeSx, primaryBtn: primaryBtnSx, author: authorSx, replyBtn: replyBtnSx };
+  return {
+    base: { ...baseSx, background: theme.surface, border: `1px solid ${theme.border}` },
+    title: { ...titleSx, color: theme.title ?? theme.accentText },
+    badge: { ...badgeSx, background: theme.accentSoft, color: theme.accentText },
+    primaryBtn: { ...primaryBtnSx, background: theme.accent },
+    author: { ...authorSx, color: theme.accent },
+    replyBtn: { ...replyBtnSx, color: theme.accentText },
+  };
 }
 
 function buildAuthHeaders(auth: PostCommentAuth): Record<string, string> {
   if (auth.kind === 'bearer') {
     return { Authorization: `Bearer ${auth.token}` };
+  }
+  if (auth.kind === 'narrative-reviewer') {
+    return { 'x-narrative-reviewer': auth.token };
   }
   return { 'X-Client-Portal-Token': auth.sessionToken };
 }
@@ -104,7 +134,9 @@ export function PostCommentLayer({
   apiBase = '/api/role-room',
   currentTimeSec, onSeek, onTimestampCommentsChanged,
   onChanged, autoFocusComposer = false, composerPlaceholder,
+  theme,
 }: Props) {
+  const T = useMemo(() => themedStyles(theme), [theme]);
   const [attachToTimestamp, setAttachToTimestamp] = useState(false);
   const [comments, setComments] = useState<PostCommentItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -267,15 +299,15 @@ export function PostCommentLayer({
     c => c.status === 'open' || c.status === 'in_progress').length;
 
   return (
-    <div className={className} style={baseSx}>
+    <div className={className} style={T.base}>
       <div style={headerSx}>
-        <span style={titleSx}>
+        <span style={T.title}>
           {topLevelComments.length === 0
             ? 'Ingen kommentarer enda'
             : `${topLevelComments.length} ${topLevelComments.length === 1 ? 'tråd' : 'tråder'}`}
         </span>
         {unresolvedCount > 0 && (
-          <span style={badgeSx}>{unresolvedCount} uløst</span>
+          <span style={T.badge}>{unresolvedCount} uløst</span>
         )}
       </div>
 
@@ -290,6 +322,7 @@ export function PostCommentLayer({
             return (
               <div key={c.id} style={threadSx}>
                 <CommentRow
+                  styles={T}
                   comment={c}
                   onStatus={(status) => void handleStatus(c.id, status)}
                   onReply={() => {
@@ -299,7 +332,7 @@ export function PostCommentLayer({
                   onSeek={onSeek}
                 />
                 {replies.map((reply) => (
-                  <CommentRow key={reply.id} comment={reply} reply />
+                  <CommentRow key={reply.id} comment={reply} reply styles={T} />
                 ))}
                 {replyingTo === c.id && !readOnly && (
                   <div style={replyComposerSx}>
@@ -327,7 +360,7 @@ export function PostCommentLayer({
                       <button
                         onClick={() => void handlePost(c.id)}
                         disabled={posting || !replyDraft.trim()}
-                        style={{ ...primaryBtnSx, opacity: posting || !replyDraft.trim() ? 0.4 : 1 }}
+                        style={{ ...T.primaryBtn, opacity: posting || !replyDraft.trim() ? 0.4 : 1 }}
                       >Svar</button>
                     </div>
                   </div>
@@ -372,7 +405,7 @@ export function PostCommentLayer({
           {typeof currentTimeSec === 'number' && currentTimeSec > 0 && (
             <label style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 10.5, color: 'rgba(158, 140, 248,0.85)',
+              fontSize: 10.5, color: 'rgba(147, 164, 220,0.85)',
               cursor: 'pointer', marginTop: 2, marginBottom: 4,
             }}>
               <input type="checkbox" checked={attachToTimestamp}
@@ -387,7 +420,7 @@ export function PostCommentLayer({
             <button onClick={() => void handlePost()}
                     disabled={posting || !draft.trim()}
                     style={{
-                      ...primaryBtnSx,
+                      ...T.primaryBtn,
                       opacity: posting || !draft.trim() ? 0.4 : 1,
                       cursor: posting || !draft.trim() ? 'not-allowed' : 'pointer',
                     }}>
@@ -400,7 +433,8 @@ export function PostCommentLayer({
   );
 }
 
-function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
+function CommentRow({ comment, onStatus, onReply, onSeek, reply = false, styles }: {
+  styles?: { author: React.CSSProperties; replyBtn: React.CSSProperties };
   comment: PostCommentItem;
   onStatus?: (status: 'open' | 'resolved') => void;
   onReply?: () => void;
@@ -415,18 +449,18 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
       ...rowSx,
       ...(reply ? replyRowSx : {}),
       background: isResolved ? 'rgba(74,212,138,0.05)' : 'rgba(255,255,255,0.03)',
-      borderColor: isResolved ? 'rgba(74,212,138,0.15)' : 'rgba(71, 43, 212,0.15)',
+      borderColor: isResolved ? 'rgba(74,212,138,0.15)' : 'rgba(62, 49, 128,0.15)',
     }}>
       <div style={rowHeaderSx}>
-        <span style={authorSx}>{comment.authorDisplayName}</span>
+        <span style={styles?.author ?? authorSx}>{comment.authorDisplayName}</span>
         {isTimestamp && (
           <button onClick={() => onSeek?.(comment.timestampSec as number)}
                   disabled={!onSeek}
                   title={onSeek ? `Hopp til ${formatTime(comment.timestampSec as number)}` : undefined}
                   style={{
-                    background: 'rgba(71, 43, 212,0.22)',
-                    border: '1px solid rgba(71, 43, 212,0.42)',
-                    color: '#9e8cf8',
+                    background: 'rgba(62, 49, 128,0.22)',
+                    border: '1px solid rgba(62, 49, 128,0.42)',
+                    color: '#93a4dc',
                     padding: '1px 6px', borderRadius: 3,
                     fontSize: 10, fontWeight: 700,
                     cursor: onSeek ? 'pointer' : 'default',
@@ -468,7 +502,7 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
       </div>
       <div style={textSx}>{comment.commentText}</div>
       {!reply && onReply && (
-        <button onClick={onReply} style={replyBtnSx}>
+        <button onClick={onReply} style={styles?.replyBtn ?? replyBtnSx}>
           Svar{comment.replyCount > 0 ? ` (${comment.replyCount})` : ''}
         </button>
       )}
@@ -480,8 +514,8 @@ function CommentRow({ comment, onStatus, onReply, onSeek, reply = false }: {
 
 const baseSx: React.CSSProperties = {
   marginTop: 12, padding: 10,
-  background: 'rgba(24, 18, 43,0.55)',
-  border: '1px solid rgba(71, 43, 212,0.20)',
+  background: 'rgba(42, 61, 86,0.55)',
+  border: '1px solid rgba(62, 49, 128,0.20)',
   borderRadius: 6,
   color: 'rgba(224, 219, 250,0.95)',
   fontFamily: "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
@@ -494,13 +528,13 @@ const headerSx: React.CSSProperties = {
 };
 
 const titleSx: React.CSSProperties = {
-  fontWeight: 600, color: 'rgba(158, 140, 248,0.9)',
+  fontWeight: 600, color: 'rgba(147, 164, 220,0.9)',
 };
 
 const badgeSx: React.CSSProperties = {
   padding: '2px 8px', borderRadius: 999,
-  background: 'rgba(71, 43, 212,0.25)',
-  color: '#9e8cf8', fontSize: 10, fontWeight: 600,
+  background: 'rgba(62, 49, 128,0.25)',
+  color: '#93a4dc', fontSize: 10, fontWeight: 600,
 };
 
 const listSx: React.CSSProperties = {
@@ -526,7 +560,7 @@ const replyRowSx: React.CSSProperties = {
 const replyComposerSx: React.CSSProperties = {
   marginLeft: 18,
   padding: 8,
-  borderLeft: '2px solid rgba(71, 43, 212,0.25)',
+  borderLeft: '2px solid rgba(62, 49, 128,0.25)',
 };
 
 const rowHeaderSx: React.CSSProperties = {
@@ -535,7 +569,7 @@ const rowHeaderSx: React.CSSProperties = {
 };
 
 const authorSx: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: '#472bd4',
+  fontSize: 11, fontWeight: 600, color: '#3e3180',
 };
 
 const timeSx: React.CSSProperties = {
@@ -564,18 +598,18 @@ const resolveBtnSx: React.CSSProperties = {
 const replyBtnSx: React.CSSProperties = {
   marginTop: 6, padding: 0,
   border: 0, background: 'transparent',
-  color: '#9e8cf8', fontSize: 10.5, fontWeight: 600,
+  color: '#93a4dc', fontSize: 10.5, fontWeight: 600,
   cursor: 'pointer',
 };
 
 const secondaryBtnSx: React.CSSProperties = {
-  border: 0, background: 'transparent', color: 'rgba(158, 140, 248,0.8)',
+  border: 0, background: 'transparent', color: 'rgba(147, 164, 220,0.8)',
   fontSize: 10.5, cursor: 'pointer',
 };
 
 const composerSx: React.CSSProperties = {
   marginTop: 6, paddingTop: 8,
-  borderTop: '1px solid rgba(71, 43, 212,0.12)',
+  borderTop: '1px solid rgba(62, 49, 128,0.12)',
 };
 
 const composerActionsSx: React.CSSProperties = {
@@ -590,14 +624,14 @@ const hintSx: React.CSSProperties = {
 const inputSx: React.CSSProperties = {
   width: '100%',
   background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(71, 43, 212,0.18)',
+  border: '1px solid rgba(62, 49, 128,0.18)',
   borderRadius: 3, padding: '6px 8px',
   color: 'rgba(224, 219, 250,0.95)', fontSize: 11.5,
   fontFamily: 'inherit', marginBottom: 4,
 };
 
 const primaryBtnSx: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #472bd4, #3c27a5)',
+  background: 'linear-gradient(135deg, #3e3180, #32127a)',
   border: 0, color: '#fff',
   padding: '5px 12px', fontSize: 11, fontWeight: 600,
   borderRadius: 3,
@@ -605,8 +639,8 @@ const primaryBtnSx: React.CSSProperties = {
 
 const expandBtnSx: React.CSSProperties = {
   background: 'transparent',
-  border: '1px dashed rgba(71, 43, 212,0.30)',
-  color: 'rgba(158, 140, 248,0.9)',
+  border: '1px dashed rgba(62, 49, 128,0.30)',
+  color: 'rgba(147, 164, 220,0.9)',
   padding: '4px 10px', fontSize: 10.5, fontWeight: 600,
   borderRadius: 3, cursor: 'pointer',
   alignSelf: 'flex-start',
@@ -634,7 +668,7 @@ function priorityBg(p: CommentPriority): string {
   switch (p) {
     case 'urgent': return 'rgba(239,79,111,0.20)';
     case 'high': return 'rgba(240,165,0,0.20)';
-    default: return 'rgba(71, 43, 212,0.20)';
+    default: return 'rgba(62, 49, 128,0.20)';
   }
 }
 
@@ -642,7 +676,7 @@ function priorityColor(p: CommentPriority): string {
   switch (p) {
     case 'urgent': return '#ef4f6f';
     case 'high': return '#f0a500';
-    default: return '#472bd4';
+    default: return '#3e3180';
   }
 }
 
@@ -651,7 +685,7 @@ function statusBg(s: CommentStatus): string {
     case 'resolved': return 'rgba(74,212,138,0.18)';
     case 'in_progress': return 'rgba(240,165,0,0.18)';
     case 'wontfix': return 'rgba(159, 156, 184,0.15)';
-    default: return 'rgba(71, 43, 212,0.18)';
+    default: return 'rgba(62, 49, 128,0.18)';
   }
 }
 
@@ -660,7 +694,7 @@ function statusColor(s: CommentStatus): string {
     case 'resolved': return '#4ad48a';
     case 'in_progress': return '#f0a500';
     case 'wontfix': return '#9f9cb8';
-    default: return '#472bd4';
+    default: return '#3e3180';
   }
 }
 

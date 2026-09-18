@@ -332,9 +332,9 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                             height: 20,
                             fontSize: 10,
                             cursor: 'pointer',
-                            bgcolor: active ? 'rgba(34,211,238,0.2)' : danceFlowColors.borderStrong,
-                            color: active ? '#67e8f9' : danceFlowColors.textMuted,
-                            border: `1px solid ${active ? 'rgba(34,211,238,0.5)' : danceFlowColors.borderSoft}`,
+                            bgcolor: active ? 'rgba(93, 118, 203,0.2)' : danceFlowColors.borderStrong,
+                            color: active ? '#93a4dc' : danceFlowColors.textMuted,
+                            border: `1px solid ${active ? 'rgba(93, 118, 203,0.5)' : danceFlowColors.borderSoft}`,
                             fontWeight: active ? 700 : 500,
                           }}
                         />
@@ -710,7 +710,7 @@ const addBtnSx = {
   textTransform: 'none' as const,
   fontSize: 11,
   color: danceFlowColors.lavenderLight,
-  borderColor: 'rgba(136, 117, 235,0.4)',
+  borderColor: 'rgba(93, 118, 203,0.4)',
   alignSelf: 'flex-start' as const,
 };
 

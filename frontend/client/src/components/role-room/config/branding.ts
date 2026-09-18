@@ -1356,6 +1356,47 @@ export type BrandingTextTokenKey =
   | 'danceTabGrantsDescription'
   | 'danceTabUnionDescription'
 
+  // Spillstudio — Story Graph (narrativ design). Faner definert i
+  // professionTabs.ts GAME_STUDIO_TABS.
+  | 'gameTabHome'                 // 'Hjem'
+  | 'gameTabHomeDescription'
+  | 'gameTabStory'                // 'Historie'
+  | 'gameTabStoryDescription'
+  | 'gameTabCharacters'           // 'Karakterer'
+  | 'gameTabCharactersDescription'
+  | 'gameTabLocations'            // 'Lokasjoner'
+  | 'gameTabLocationsDescription'
+  | 'gameTabPlatform'             // 'Plattform'
+  | 'gameTabPlatformDescription'
+  | 'gameTabPlan'                 // 'Produksjonsplan'
+  | 'gameTabPlanDescription'
+  | 'gameTabTeam'                 // 'Team'
+  | 'gameTabTeamDescription'
+  | 'gameTabBoards'               // 'Brett'
+  | 'gameTabBoardsDescription'
+  | 'gameTabScenes'               // 'Scener & gameplay'
+  | 'gameTabScenesDescription'
+  | 'gameTabComponents'           // 'Komponenter'
+  | 'gameTabComponentsDescription'
+  | 'gameTabVariables'            // 'Variabler'
+  | 'gameTabVariablesDescription'
+  | 'gameTabAssets'               // 'Ressurser'
+  | 'gameTabAssetsDescription'
+  | 'gameTabPlay'                 // 'Spill'
+  | 'gameTabPlayDescription'
+  | 'gameTabTranslations'         // 'Oversettelser'
+  | 'gameTabTranslationsDescription'
+  | 'gameTabExports'              // 'Eksport'
+  | 'gameTabExportsDescription'
+  | 'gameTabHistory'              // 'Historikk'
+  | 'gameTabHistoryDescription'
+  | 'gameTabPricing'              // 'Pris'
+  | 'gameTabPricingDescription'
+  | 'gameTabBilling'              // 'Abonnement'
+  | 'gameTabBillingDescription'
+  | 'gameTabAdminPlans'           // 'Admin · Planer'
+  | 'gameTabAdminPlansDescription'
+
   // Read Through-modulen — for dans bytter den fra TTS-dialog til musikk-count-in
   | 'danceReadThroughHeader'      // 'Musikk-gjennomgang' (vs 'Read Through')
   | 'danceReadThroughStartButton' // 'Start gjennomgang'
@@ -1591,9 +1632,25 @@ export type BrandingSettings = {
 } & BrandingIdentity;
 
 export const ROLE_ROOM_BRAND_ASSETS = {
-  mark: '/role-room-assets/TheRoleRoom_Logo.webp',
-  appLogo: '/role-room-assets/TheRoleRoom_App_Logo.webp',
-  wordmark: '/role-room-assets/TheRoleRoom_Logo_Tagline.webp',
+  /** Merket alene, gjennomsiktig. Bruk dette i grensesnittet. */
+  mark: '/theroleroom-mark-1024-transparent.png',
+  /** Kvadratisk ikon på merkets mørke grunn: favicon, PWA, og:image. */
+  appLogo: '/theroleroom-mark-1024.png',
+  /**
+   * Lockup: merke + «THE ROLE ROOM» + taglinen, satt i Poppins — logoens
+   * egen skrift — og stavet riktig. Erstatter de slettede filene der
+   * taglinen sto feil malt inn i bildet.
+   *
+   * Velg etter bakgrunn: teksten er hvit i dark, mørk indigo i light.
+   * Feil variant gir usynlig tekst, ikke bare feil kontrast.
+   */
+  lockupDark: '/theroleroom-lockup-dark.png',
+  lockupLight: '/theroleroom-lockup-light.png',
+  lockupTransparent: '/theroleroom-lockup-transparent.png',
+  /** Vektor for web og trykk. Teksten er ekte tekst; merket er innebygd raster. */
+  lockupSvg: '/theroleroom-lockup.svg',
+  /** Appen er mørk, så ordmerket peker på den mørke lockupen. */
+  wordmark: '/theroleroom-lockup-dark.png',
 } as const;
 
 const DEFAULT_IDENTITY: BrandingIdentity = {
@@ -1611,20 +1668,20 @@ const DEFAULT_IDENTITY: BrandingIdentity = {
 };
 
 const DEFAULT_COLORS: BrandingColors = {
-  primary: '#8875eb',
-  secondary: '#8875eb',
-  accent: '#00d4ff',
-  info: '#3b82f6',
+  primary: '#5d76cb',
+  secondary: '#5d76cb',
+  accent: '#5d76cb',
+  info: '#3f51b5',
   success: '#10b981',
   warning: '#f59e0b',
   error: '#ef4444',
-  background: '#0a0515',
+  background: '#1b122c',
   surface: '#0d1117',
   textPrimary: '#ffffff',
   textSecondary: 'rgba(255,255,255,0.87)',
-  border: 'rgba(136, 117, 235,0.3)',
-  gradientStart: '#8875eb',
-  gradientEnd: '#8875eb',
+  border: 'rgba(93, 118, 203,0.3)',
+  gradientStart: '#5d76cb',
+  gradientEnd: '#5d76cb',
 };
 
 const DEFAULT_TYPOGRAPHY: BrandingTypography = {
@@ -2994,6 +3051,45 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabGrantsDescription: 'Søknadsmaler for Kulturrådet, Fond for lyd og bilde, og kommunale midler.',
     danceTabUnionDescription: 'Status i Skuda/NoDa, tariff-anvendelse og automatisk arbeidsdags-loggføring.',
 
+    gameTabHome: 'Hjem',
+    gameTabHomeDescription: 'Prosjektets puls: scener per status, gater bestått, oppgaver, åpne runder, neste milepæler og siste aktivitet.',
+    gameTabStory: 'Historie',
+    gameTabStoryDescription: 'Episoder og beats med «hva spillerne lærer», tidslinje med låste beslutninger, åpne spørsmål og kilderegister med sjekksummer.',
+    gameTabCharacters: 'Karakterer',
+    gameTabCharactersDescription: 'Karakterarkivet: drivkraft, forfatterfasit vs. det spillerne kan observere, stemmecast, minnespor, kraftprogresjon og replikker.',
+    gameTabLocations: 'Lokasjoner',
+    gameTabLocationsDescription: 'Steder med epoke, kontinuitetskrav, geometri-status og scenene de brukes i.',
+    gameTabPlatform: 'Plattform',
+    gameTabPlatformDescription: 'Målplattform (iPad, iPhone, PC …), ytelsesbudsjett, krav med status og bevis, og hvordan spillet skal se ut.',
+    gameTabPlan: 'Produksjonsplan',
+    gameTabPlanDescription: 'Milepæler per bane (manus, gråboks, karakterer, gjennomspilling, bilde/lyd, teknikk) i Gantt og liste, koblet til scener.',
+    gameTabTeam: 'Team',
+    gameTabTeamDescription: 'Roller, kapabiliteter, invitasjoner og seter for studioet.',
+    gameTabBoards: 'Brett',
+    gameTabBoardsDescription: 'Tegn historien som noder og koblinger: elementer, forgreninger, jumpere og notater på et fritt lerret.',
+    gameTabScenes: 'Scener & gameplay',
+    gameTabScenesDescription: 'Produksjonsenheter rundt historien: scenekort med lokasjon, utfordring, spillmekanikk, storyboard, oppgaver og review-runder med godkjenning.',
+    gameTabComponents: 'Komponenter',
+    gameTabComponentsDescription: 'Karakterer, steder og gjenstander med egne attributter som kan festes på elementer.',
+    gameTabVariables: 'Variabler',
+    gameTabVariablesDescription: 'Globale variabler (bool, heltall, desimal, tekst) som forgreninger og skript leser og skriver.',
+    gameTabAssets: 'Ressurser',
+    gameTabAssetsDescription: 'Bilder, lyd og video som kan brukes som cover eller festes på elementer.',
+    gameTabPlay: 'Spill',
+    gameTabPlayDescription: 'Spill gjennom historien som en spiller, med debugger som viser brett, element og variabler live.',
+    gameTabTranslations: 'Oversettelser',
+    gameTabTranslationsDescription: 'Oversett historien til flere språk med KI-forslag; skript beholdes fra kilden.',
+    gameTabExports: 'Eksport',
+    gameTabExportsDescription: 'JSON kompatibel med Arcweave-plugins for Unity, Unreal og Godot, samt import fra Arcweave, Twine og Ink.',
+    gameTabHistory: 'Historikk',
+    gameTabHistoryDescription: 'Versjoner av hele grafen med ikke-destruktiv gjenoppretting.',
+    gameTabPricing: 'Pris',
+    gameTabPricingDescription: 'Solo gratis; Pro og Studio åpner deling, KI, oversettelser, import og runtime-pakker.',
+    gameTabBilling: 'Abonnement',
+    gameTabBillingDescription: 'Din plan, prøveperiode og Stripe-kundeportal.',
+    gameTabAdminPlans: 'Admin · Planer',
+    gameTabAdminPlansDescription: 'Planer, priser, Stripe-IDer, tester-invites og innstillinger for spillstudio.',
+
     danceReadThroughHeader: 'Musikk-gjennomgang',
     danceReadThroughStartButton: 'Start gjennomgang',
     danceReadThroughStopButton: 'Avslutt gjennomgang',
@@ -3116,7 +3212,7 @@ const DEFAULT_EMAIL_THEME: RoleRoomEmailTheme = {
   cardBorder: '#e9e0d4',
   headerBackground: '#171410',
   headerText: '#f8f5ef',
-  brandLabelColor: '#472bd4',
+  brandLabelColor: '#3e3180',
   bodyText: '#4d473f',
   mutedText: '#7b7368',
   buttonBackground: '#f6c358',

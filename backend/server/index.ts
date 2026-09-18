@@ -196,11 +196,15 @@ import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
+import { createGameBillingRouter } from "./game-billing-routes.js";
+import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
+import { createNarrativeReviewPublicRouter } from "./role-room-narrative-review-public-routes.js";
 import {
   createDanceTeamRouter,
   createDanceInviteAcceptRouter,
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
+import { createRoleRoomNarrativeRouter } from "./role-room-narrative-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createStoryboardReviewRouter } from "./storyboard-review-routes.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
@@ -690,6 +694,8 @@ import { registerPartnerApplicationsRoutes } from "./partner-applications-routes
 import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
 import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js";
 import { registerLeadgridGoogleAuthRoutes } from "./leadgrid-google-auth-routes.js";
+import { registerLinkedInLoginRoutes } from "./linkedin-login-routes.js";
+import { isLinkedInLoginState } from "./linkedin-login.js";
 import { registerUserOrgRoutes } from "./user-org-routes.js";
 import { registerLeadgridDripsRoutes } from "./leadgrid-drips-routes.js";
 import { registerPartnerApiRoutes } from "./partner-api-routes.js";
@@ -851,6 +857,11 @@ import {
   storySynopsisApplier,
   storyBeatOutlineApplier,
 } from "./ai-story-development-agent.js";
+// Story Graph (game_studio): KI-forslag for narrative elementer (next/enhance/branches).
+import {
+  createNarrativeElementAgent,
+  narrativeElementApplier,
+} from "./ai-narrative-element-agent.js";
 import {
   createCoverageGapAgent,
   coverageGapApplier,
@@ -2768,6 +2779,9 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
   }
   registerLeadMapMeProfileRoutes({ app, pool, activeSessions, uploadImage, deleteImage });
   registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
+  // Logg inn med LinkedIn (web + Leadgrid iOS): finner/oppretter bruker og
+  // fyller tomme profilfelt (navn, bilde → R2) fra LinkedIn userinfo.
+  registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadImage });
 }
 registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
 registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
@@ -2896,6 +2910,20 @@ app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
 );
+// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0621_game_billing.sql.
+app.use(
+  "/api/game/billing",
+  createGameBillingRouter(pool, { activeSessions }),
+);
+// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0625_game_team.sql.
+app.use(
+  "/api/game/teams",
+  createGameTeamRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/game/invites",
+  createGameInviteAcceptRouter(pool, { activeSessions }),
+);
 app.use(
   "/api/dance/teams",
   createDanceTeamRouter(pool, { activeSessions }),
@@ -2907,6 +2935,17 @@ app.use(
 app.use(
   "/api/dance/addons",
   createDanceAddonRouter(pool, { activeSessions }),
+);
+// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0626). Montert før
+// narrative-routeren så /review/:token aldri treffer prosjekt-rutene.
+app.use(
+  "/api/role-room/narrative/review",
+  createNarrativeReviewPublicRouter(pool),
+);
+// Spillstudio (game_studio) — Story Graph: narrativ graf, prosjekt-skopet.
+app.use(
+  "/api/role-room/narrative",
+  createRoleRoomNarrativeRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room",
@@ -3091,9 +3130,12 @@ const forwardRoleRoomLinkedInCallback = (
   }
 
   const queryString = params.toString();
-  res.redirect(
-    `/api/role-room/linkedin/oauth/callback${queryString ? `?${queryString}` : ""}`,
-  );
+  // Logg inn med LinkedIn deler callback-URL med Role Room-tilkoblingen;
+  // state-prefikset lgn_ skiller dem (linkedin-login-routes.ts).
+  const targetPath = isLinkedInLoginState(params.get("state"))
+    ? "/api/auth/linkedin/login-callback"
+    : "/api/role-room/linkedin/oauth/callback";
+  res.redirect(`${targetPath}${queryString ? `?${queryString}` : ""}`);
 };
 
 app.get("/api/auth/linkedin/callback", forwardRoleRoomLinkedInCallback);
@@ -15563,6 +15605,7 @@ aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
+aiSuggestionService.registerAgent(createNarrativeElementAgent(pool));
 aiSuggestionService.registerAgent(createCoverageGapAgent(pool));
 aiSuggestionService.registerAgent(createCoverageBestTakeAgent(pool));
 aiSuggestionService.registerAgent(createRoughCutAgent(pool));
@@ -15587,6 +15630,7 @@ aiSuggestionService.registerApplier(auditionSidesApplier);
 aiSuggestionService.registerApplier(storyLoglineApplier);
 aiSuggestionService.registerApplier(storySynopsisApplier);
 aiSuggestionService.registerApplier(storyBeatOutlineApplier);
+aiSuggestionService.registerApplier(narrativeElementApplier);
 aiSuggestionService.registerApplier(coverageGapApplier);
 aiSuggestionService.registerApplier(coverageBestTakeApplier);
 aiSuggestionService.registerApplier(roughCutApplier);
@@ -16528,7 +16572,7 @@ const ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY: RoleRoomPlatformBrandingIden
   domain: "theroleroom.com",
   supportEmail: "support@theroleroom.com",
   docsUrl: "https://docs.theroleroom.com",
-  emailLogoUrl: "/role-room-assets/TheRoleRoom_Logo_Tagline.webp",
+  emailLogoUrl: "/theroleroom-mark-1024.png",
 };
 
 const ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME: RoleRoomPlatformEmailTheme = {

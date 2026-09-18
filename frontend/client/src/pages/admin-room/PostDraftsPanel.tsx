@@ -440,7 +440,7 @@ export default function PostDraftsPanel() {
         {drafts.length === 0 && !loading && (
           <Alert severity="info" data-testid="drafts-empty"
             sx={{
-              background: 'rgba(59,130,246,0.08)',
+              background: 'rgba(63, 81, 181,0.08)',
               border: `1px solid ${adminTokens.status.info.border}`,
               color: adminTokens.status.info.text,
               '& .MuiAlert-icon': { color: adminTokens.status.info.base },

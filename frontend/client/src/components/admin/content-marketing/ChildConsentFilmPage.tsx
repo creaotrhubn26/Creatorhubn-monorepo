@@ -76,14 +76,14 @@ export function ChildConsentFilmPage() {
       <Container maxWidth="md">
         <Stack spacing={2.5} sx={{ mb: 4 }}>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            <GavelIcon sx={{ color: '#8875eb' }} />
+            <GavelIcon sx={{ color: '#5d76cb' }} />
             <Typography
               sx={{
                 fontFamily: '"Courier New", Courier, monospace',
                 fontSize: { xs: '0.84rem', md: '0.92rem' },
                 letterSpacing: '0.25em',
                 textTransform: 'uppercase',
-                color: '#9e8cf8',
+                color: '#93a4dc',
                 fontWeight: 700,
               }}
             >
@@ -125,12 +125,12 @@ export function ChildConsentFilmPage() {
               sx={{
                 p: 1.75,
                 borderRadius: 2,
-                bgcolor: 'rgba(136, 117, 235,0.08)',
-                border: '1px solid rgba(136, 117, 235,0.25)',
+                bgcolor: 'rgba(93, 118, 203,0.08)',
+                border: '1px solid rgba(93, 118, 203,0.25)',
                 textAlign: 'center',
               }}
             >
-              <Typography sx={{ color: '#9e8cf8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, mb: 0.5 }}>
+              <Typography sx={{ color: '#93a4dc', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, mb: 0.5 }}>
                 {fact.label}
               </Typography>
               <Typography sx={{ color: '#fff', fontSize: { xs: '0.85rem', md: '0.95rem' }, fontWeight: 700, lineHeight: 1.3 }}>
@@ -159,8 +159,8 @@ export function ChildConsentFilmPage() {
                     minWidth: 36,
                     height: 36,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(136, 117, 235,0.15)',
-                    color: '#9e8cf8',
+                    bgcolor: 'rgba(93, 118, 203,0.15)',
+                    color: '#93a4dc',
                     fontWeight: 800,
                     display: 'flex',
                     alignItems: 'center',
@@ -186,8 +186,8 @@ export function ChildConsentFilmPage() {
           sx={{
             p: { xs: 2.5, md: 3.5 },
             borderRadius: 3,
-            bgcolor: 'rgba(136, 117, 235,0.08)',
-            border: '1px solid rgba(136, 117, 235,0.3)',
+            bgcolor: 'rgba(93, 118, 203,0.08)',
+            border: '1px solid rgba(93, 118, 203,0.3)',
             mb: 6,
           }}
         >

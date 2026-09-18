@@ -137,9 +137,9 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
                   label={opt.label}
                   onClick={() => setSentiment(opt.id)}
                   sx={{
-                    bgcolor: active ? `rgba(136, 117, 235,0.2)` : 'rgba(15,23,42,0.6)',
+                    bgcolor: active ? `rgba(93, 118, 203,0.2)` : 'rgba(15,23,42,0.6)',
                     color: active ? opt.color : 'text.primary',
-                    border: active ? '1px solid rgba(136, 117, 235,0.5)' : '1px solid rgba(148,163,184,0.2)',
+                    border: active ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid rgba(148,163,184,0.2)',
                   }}
                 />
               );

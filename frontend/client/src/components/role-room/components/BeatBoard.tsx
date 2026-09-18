@@ -178,14 +178,14 @@ interface BeatTypeConfig {
 const BEAT_TYPE_CONFIG: Record<BeatType, BeatTypeConfig> = {
   setup:             { label: 'Setup',            color: '#78909c', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   catalyst:          { label: 'Catalyst',          color: '#e91e63', glow: '0 0 12px rgba(233,30,99,0.7)',             icon: <BoltIcon sx={{ fontSize: 11 }} />,       weight: 'strong'  },
-  debate:            { label: 'Debate',            color: '#3c27a5', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
+  debate:            { label: 'Debate',            color: '#32127a', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   break_into_two:    { label: 'Break Into Two',    color: '#1976d2', glow: '0 0 8px rgba(25,118,210,0.5)',             icon: <BoltIcon sx={{ fontSize: 11 }} />,       weight: 'emphasis'},
-  b_story:           { label: 'B Story',           color: '#8875eb', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
+  b_story:           { label: 'B Story',           color: '#5d76cb', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   fun_and_games:     { label: 'Fun & Games',       color: '#0097a7', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
   midpoint:          { label: 'Midpoint',          color: '#f57c00', glow: '0 0 14px rgba(245,124,0,0.75)',            icon: <MidpointIcon sx={{ fontSize: 11 }} />,   weight: 'strong'  },
   bad_guys_close_in: { label: 'Bad Guys Close In', color: '#d32f2f', glow: '0 0 8px rgba(211,47,47,0.5)',             icon: <EscalationIcon sx={{ fontSize: 11 }} />, weight: 'emphasis'},
   all_is_lost:       { label: 'All Is Lost',       color: '#880e4f', glow: '0 0 16px rgba(136,14,79,0.8)',            icon: <LowPointIcon sx={{ fontSize: 11 }} />,   weight: 'strong'  },
-  dark_night_of_soul:{ label: 'Dark Night',        color: '#301f84', glow: '0 0 10px rgba(48, 31, 132,0.6)',            icon: <LowPointIcon sx={{ fontSize: 11 }} />,   weight: 'emphasis'},
+  dark_night_of_soul:{ label: 'Dark Night',        color: '#302a83', glow: '0 0 10px rgba(48, 31, 132,0.6)',            icon: <LowPointIcon sx={{ fontSize: 11 }} />,   weight: 'emphasis'},
   break_into_three:  { label: 'Break Into Three',  color: '#2e7d32', glow: '0 0 8px rgba(46,125,50,0.5)',             icon: <BoltIcon sx={{ fontSize: 11 }} />,       weight: 'emphasis'},
   finale:            { label: 'Finale / Climax',   color: '#ff6f00', glow: '0 0 20px rgba(255,111,0,0.9)',            icon: <ClimaxIcon sx={{ fontSize: 11 }} />,     weight: 'climax'  },
   closing_image:     { label: 'Closing Image',     color: '#1565c0', glow: 'none',                                     icon: <NotesIcon sx={{ fontSize: 11 }} />,      weight: 'normal'  },
@@ -199,13 +199,13 @@ const BEAT_TYPE_CONFIG: Record<BeatType, BeatTypeConfig> = {
 
 const BEAT_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#8875eb', '#ec4899', '#6b7280',
+  '#3f51b5', '#3f51b5', '#5d76cb', '#ec4899', '#6b7280',
 ];
 
 // Thread colours consistent with the screenshot sidebar
 const THREAD_COLOR: Record<StoryThread, string> = {
-  A: '#8875eb',
-  B: '#3b82f6',
+  A: '#5d76cb',
+  B: '#3f51b5',
   C: '#f59e0b',
 };
 
@@ -223,7 +223,7 @@ const STATUS_COLOR: Record<ScriptStatus, string> = {
 const EmotionIcon: FC<{ emotion: 'positive' | 'negative' | 'neutral' }> = ({ emotion }) => {
   if (emotion === 'positive') return <PositiveIcon sx={{ color: '#4ade80', fontSize: 14 }} />;
   if (emotion === 'negative') return <NegativeIcon sx={{ color: '#f87171', fontSize: 14 }} />;
-  return <NeutralIcon sx={{ color: '#9e8cf8', fontSize: 14 }} />;
+  return <NeutralIcon sx={{ color: '#93a4dc', fontSize: 14 }} />;
 };
 
 // ─── Mini tension sparkline (SVG) shown above each act column ────────────────
@@ -252,7 +252,7 @@ const MiniTensionArc: FC<{
         <polyline
           points={pts.join(' ')}
           fill="none"
-          stroke={highlightWarning ? '#f59e0b' : '#8875eb'}
+          stroke={highlightWarning ? '#f59e0b' : '#5d76cb'}
           strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -266,7 +266,7 @@ const MiniTensionArc: FC<{
               cx={x}
               cy={y}
               r={2.5}
-              fill={highlightWarning ? '#f59e0b' : '#8875eb'}
+              fill={highlightWarning ? '#f59e0b' : '#5d76cb'}
             />
           );
         })}
@@ -343,12 +343,12 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
 
   const accentColor  = beat.color ?? btConfig.color;
   const cardBorder   = isSelected
-    ? `2px solid #8875eb`
+    ? `2px solid #5d76cb`
     : isMultiSelected
       ? `2px solid #42a5f5`
       : `1px solid rgba(255,255,255,${isClimax ? 0.25 : 0.08})`;
 
-  const cardGlow  = isSelected ? '0 0 0 2px #8875eb55' : btConfig.glow;
+  const cardGlow  = isSelected ? '0 0 0 2px #5d76cb55' : btConfig.glow;
   const cardScale = isClimax ? 1.02 : 1;
 
   const handleSaveNotes = () => {
@@ -382,7 +382,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
           m: responsive.gap / 2,
           cursor: beat.locked ? 'not-allowed' : 'pointer',
           border: cardBorder,
-          bgcolor: 'rgba(16, 11, 30,0.92)',
+          bgcolor: 'rgba(42, 49, 82,0.92)',
           borderLeft: `4px solid ${accentColor}`,
           boxShadow: cardGlow,
           transform: `scale(${cardScale})`,
@@ -403,7 +403,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
             onClick={(e) => { e.stopPropagation(); onMultiSelect(); }}
           >
             {isMultiSelected
-              ? <CheckedIcon sx={{ color: '#42a5f5', fontSize: 18, bgcolor: 'rgba(16, 11, 30,0.9)', borderRadius: '50%' }} />
+              ? <CheckedIcon sx={{ color: '#42a5f5', fontSize: 18, bgcolor: 'rgba(42, 49, 82,0.9)', borderRadius: '50%' }} />
               : <UncheckedIcon sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 18, opacity: 0, '.MuiCard-root:hover &': { opacity: 1 } }} />
             }
           </Box>
@@ -572,7 +572,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
                     label={char}
                     size="small"
                     sx={{
-                      bgcolor: 'rgba(59,130,246,0.15)', color: 'rgba(59,130,246,0.9)',
+                      bgcolor: 'rgba(63, 81, 181,0.15)', color: 'rgba(63, 81, 181,0.9)',
                       fontSize: '0.58rem', height: 16,
                       '& .MuiChip-label': { px: 0.5 },
                       '& .MuiChip-icon': { fontSize: 10 },
@@ -631,7 +631,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
 
         {/* Beat-type selection menu */}
         <Menu anchorEl={typeMenuAnchor} open={Boolean(typeMenuAnchor)} onClose={() => setTypeMenuAnchor(null)}
-          PaperProps={{ sx: { bgcolor: '#18122b', maxHeight: 340, overflow: 'auto' } }}>
+          PaperProps={{ sx: { bgcolor: '#2a3d56', maxHeight: 340, overflow: 'auto' } }}>
           {(Object.keys(BEAT_TYPE_CONFIG) as BeatType[]).map((bt) => {
             const cfg = BEAT_TYPE_CONFIG[bt];
             return (
@@ -647,7 +647,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
 
         {/* Color picker menu */}
         <Menu anchorEl={colorMenuAnchor} open={Boolean(colorMenuAnchor)} onClose={() => setColorMenuAnchor(null)}
-          PaperProps={{ sx: { bgcolor: '#18122b' } }}>
+          PaperProps={{ sx: { bgcolor: '#2a3d56' } }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, p: 1 }}>
             {BEAT_COLORS.map((c) => (
               <Box key={c} onClick={() => handleColorSelect(c)}
@@ -873,7 +873,7 @@ const RoomModeOverlay: FC<{
             <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" gap={0.5}>
               {beat.characters.map((c, i) => (
                 <Chip key={i} label={c} size="small"
-                  sx={{ bgcolor: 'rgba(59,130,246,0.2)', color: '#93c5fd', fontSize: '0.75rem' }} />
+                  sx={{ bgcolor: 'rgba(63, 81, 181,0.2)', color: '#93c5fd', fontSize: '0.75rem' }} />
               ))}
             </Stack>
           )}
@@ -1130,7 +1130,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#0a0515',
+        bgcolor: '#1b122c',
         overflow: 'hidden',
         // WCAG 2.2 - 2.5.5 Target Size: 44×44 min for alle IconButtons.
         // Påvirker IKKE ikon-størrelse, kun klikk-area.
@@ -1151,12 +1151,12 @@ export const BeatBoard: FC<BeatBoardProps> = ({
           alignItems: 'center',
           gap: 0.75,
           borderBottom: '1px solid rgba(255,255,255,0.07)',
-          bgcolor: 'rgba(16, 11, 30,0.95)',
+          bgcolor: 'rgba(42, 49, 82,0.95)',
           flexWrap: isMobile ? 'wrap' : 'nowrap',
         }}
       >
         <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: responsive.headerFontSize, color: 'white', mr: 0.5, whiteSpace: 'nowrap' }}>
-          <SceneIcon sx={{ mr: 0.5, fontSize: responsive.iconSize, verticalAlign: 'middle', color: '#8875eb' }} />
+          <SceneIcon sx={{ mr: 0.5, fontSize: responsive.iconSize, verticalAlign: 'middle', color: '#5d76cb' }} />
           {!isMobile && 'BeatBoard'} <span style={{ opacity: 0.5 }}>({beats.length})</span>
         </Typography>
 
@@ -1165,7 +1165,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
         {/* Density toggle */}
         <Tooltip title={compact ? 'Expanded view' : 'Compact / Writers mode'}>
           <IconButton size="small" onClick={() => setCompact(c => !c)}
-            sx={{ color: compact ? '#8875eb' : 'rgba(255,255,255,0.5)' }}>
+            sx={{ color: compact ? '#5d76cb' : 'rgba(255,255,255,0.5)' }}>
             {compact ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
           </IconButton>
         </Tooltip>
@@ -1173,13 +1173,13 @@ export const BeatBoard: FC<BeatBoardProps> = ({
         {/* View mode */}
         <Tooltip title="Grid view">
           <IconButton size="small" onClick={() => setViewMode('grid')}
-            sx={{ color: viewMode === 'grid' ? '#8875eb' : 'rgba(255,255,255,0.5)' }}>
+            sx={{ color: viewMode === 'grid' ? '#5d76cb' : 'rgba(255,255,255,0.5)' }}>
             <GridViewIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="List view">
           <IconButton size="small" onClick={() => setViewMode('list')}
-            sx={{ color: viewMode === 'list' ? '#8875eb' : 'rgba(255,255,255,0.5)' }}>
+            sx={{ color: viewMode === 'list' ? '#5d76cb' : 'rgba(255,255,255,0.5)' }}>
             <ListViewIcon fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -1271,7 +1271,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
         {!readOnly && (
           <Tooltip title="Legg til beat (Enter)">
             <IconButton size="small" onClick={onAddBeat}
-              sx={{ color: '#8875eb', border: '1px solid rgba(136, 117, 235,0.4)', borderRadius: 1, '&:hover': { bgcolor: 'rgba(136, 117, 235,0.15)' } }}>
+              sx={{ color: '#5d76cb', border: '1px solid rgba(93, 118, 203,0.4)', borderRadius: 1, '&:hover': { bgcolor: 'rgba(93, 118, 203,0.15)' } }}>
               <AddIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -1360,7 +1360,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
                     <LinearProgress
                       variant="determinate"
                       value={100}
-                      sx={{ height: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)', '& .MuiLinearProgress-bar': { bgcolor: 'rgba(136, 117, 235,0.4)' } }}
+                      sx={{ height: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)', '& .MuiLinearProgress-bar': { bgcolor: 'rgba(93, 118, 203,0.4)' } }}
                     />
                   </Box>
                   <Typography variant="caption" sx={{ opacity: 0.5, fontSize: '0.65rem', whiteSpace: 'nowrap' }}>
@@ -1434,7 +1434,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
         anchorEl={charMenuAnchor}
         open={Boolean(charMenuAnchor)}
         onClose={() => setCharMenuAnchor(null)}
-        PaperProps={{ sx: { bgcolor: '#18122b', minWidth: 180 } }}
+        PaperProps={{ sx: { bgcolor: '#2a3d56', minWidth: 180 } }}
       >
         <MenuItem dense onClick={() => { setCharacterFilter(null); setCharMenuAnchor(null); }}
           selected={characterFilter === null}>

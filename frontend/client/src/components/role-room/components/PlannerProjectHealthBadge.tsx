@@ -27,7 +27,7 @@ const PHASE_SHORT: Record<ProducerPlanningPhase, string> = {
 const HEALTH_META: Record<Health, { label: string; color: string; Icon: typeof OnTrackIcon }> = {
   on_track: { label: 'På sporet', color: '#86efac', Icon: OnTrackIcon },
   needs_attention: { label: 'Oppmerksomhet', color: '#fde68a', Icon: AttentionIcon },
-  waiting: { label: 'Venter på klient', color: '#bfdbfe', Icon: WaitingIcon },
+  waiting: { label: 'Venter på klient', color: '#c3cbe6', Icon: WaitingIcon },
   at_risk: { label: 'I fare', color: '#fca5a5', Icon: AtRiskIcon },
 };
 const MS_PER_DAY = 86_400_000;

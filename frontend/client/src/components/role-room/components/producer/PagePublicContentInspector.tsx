@@ -219,7 +219,7 @@ export function PagePublicContentInspector() {
               )}
             </Box>
 
-            <Box sx={{ p: 2, borderRadius: 2.5, border: '1.5px solid rgba(59,130,246,0.4)', bgcolor: 'rgba(30,58,138,0.12)' }}>
+            <Box sx={{ p: 2, borderRadius: 2.5, border: '1.5px solid rgba(63, 81, 181,0.4)', bgcolor: 'rgba(30,58,138,0.12)' }}>
               <Typography variant="overline" sx={{ color: '#93c5fd', letterSpacing: '0.2em', fontWeight: 800 }}>
                 Recent videos ({result.videos.length})
               </Typography>

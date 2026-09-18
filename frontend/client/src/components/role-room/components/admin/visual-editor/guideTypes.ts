@@ -208,7 +208,7 @@ export const GUIDE_META: GuideMeta[] = [
     id: 'stripboard',
     title: 'Stripboard Panel',
     description: '10-step walkthrough of the Stripboard: strips, day groups, location view, drag & drop, assign, schedule optimisation, filters, export, and compact mode.',
-    accentColor: '#6249df',
+    accentColor: '#4b3d8f',
     steps: [
       { id: 'overview',      label: 'Overview',           sectionCount: 2 },
       { id: 'strips',        label: 'Reading Strips',     sectionCount: 2 },
@@ -226,7 +226,7 @@ export const GUIDE_META: GuideMeta[] = [
     id: 'screenplay',
     title: 'Screenplay Editor',
     description: '10-step walkthrough of the Screenplay Editor: Fountain elements, keyboard shortcuts, scene navigator, Beat Board (beat types, act balance, story threads, character arc filter, dramaturgical analysis, room mode), table read, locking, export, and storyboard link.',
-    accentColor: '#3b82f6',
+    accentColor: '#3f51b5',
     steps: [
       { id: 'overview',          label: 'Overview',             sectionCount: 2 },
       { id: 'fountain-elements', label: 'Fountain Elements',    sectionCount: 2 },
@@ -264,7 +264,7 @@ export const GUIDE_META: GuideMeta[] = [
     id: 'crew-management',
     title: 'Crew Management',
     description: '9-step walkthrough of the Crew Management panel: adding & inviting crew, department sidebar, crew cards (grid/table), search & filters, bulk actions, Days Out Of Days (DOOD), callsheet generator, and cost calculator.',
-    accentColor: '#00d4ff',
+    accentColor: '#5d76cb',
     steps: [
       { id: 'overview',      label: 'Overview',             sectionCount: 2 },
       { id: 'adding-crew',   label: 'Adding & Inviting',    sectionCount: 2 },
@@ -299,7 +299,7 @@ export const GUIDE_META: GuideMeta[] = [
     id: 'location-management',
     title: 'Location Management',
     description: '9-step walkthrough of Location Management: overview, stats/filters, view modes, map-card sync, pro operations, scene links, media/storyboard, consistency workflow, and analysis handoff.',
-    accentColor: '#8875eb',
+    accentColor: '#5d76cb',
     steps: [
       { id: 'overview',             label: 'Overview',              sectionCount: 2 },
       { id: 'stats-filters',        label: 'Stats & Filters',       sectionCount: 2 },
@@ -316,7 +316,7 @@ export const GUIDE_META: GuideMeta[] = [
     id: 'location-analysis',
     title: 'Location Analysis',
     description: '8-step walkthrough of Location Analysis: scoring, filters, manual overrides, permits/contacts, deadline timeline, risk fallback planning, technical sections, and save/sync workflow.',
-    accentColor: '#22d3ee',
+    accentColor: '#5d76cb',
     steps: [
       { id: 'overview',          label: 'Overview',          sectionCount: 2 },
       { id: 'score-filters',     label: 'Score & Filters',   sectionCount: 2 },

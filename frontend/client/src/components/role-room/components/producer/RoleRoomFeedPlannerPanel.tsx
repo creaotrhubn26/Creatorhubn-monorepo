@@ -450,7 +450,7 @@ export default function RoleRoomFeedPlannerPanel({
           textAlign: 'center',
         }}
       >
-        <AutoAwesomeIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 40 }} />
+        <AutoAwesomeIcon sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: 40 }} />
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1.05rem' }}>
           Analyser kunden først
         </Typography>
@@ -466,7 +466,7 @@ export default function RoleRoomFeedPlannerPanel({
               mt: 0.5,
               textTransform: 'none',
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
             }}
           >
             Gå til research
@@ -562,7 +562,7 @@ export default function RoleRoomFeedPlannerPanel({
                   cursor: 'pointer',
                   opacity: allowed ? 1 : 0.7,
                   color: active ? '#0b1220' : 'rgba(226,232,240,0.88)',
-                  bgcolor: active ? 'rgba(34,211,238,0.95)' : 'transparent',
+                  bgcolor: active ? 'rgba(93, 118, 203,0.95)' : 'transparent',
                   borderColor: active
                     ? 'transparent'
                     : allowed
@@ -572,9 +572,9 @@ export default function RoleRoomFeedPlannerPanel({
                   '& .MuiChip-icon': { ml: 0.2 },
                   '&:hover': {
                     bgcolor: active
-                      ? 'rgba(34,211,238,0.95)'
+                      ? 'rgba(93, 118, 203,0.95)'
                       : allowed
-                        ? 'rgba(34,211,238,0.08)'
+                        ? 'rgba(93, 118, 203,0.08)'
                         : `${requiredTier.accentHex}18`,
                   },
                 }}
@@ -653,8 +653,8 @@ export default function RoleRoomFeedPlannerPanel({
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              color: 'var(--role-cyan, #22d3ee)',
-              '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
+              color: 'var(--role-cyan, #5d76cb)',
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.08)' },
             }}
           >
             Regenerer alle forslag
@@ -701,10 +701,10 @@ export default function RoleRoomFeedPlannerPanel({
       <Alert
         severity="info"
         sx={{
-          bgcolor: 'rgba(34,211,238,0.06)',
+          bgcolor: 'rgba(93, 118, 203,0.06)',
           color: 'rgba(226,232,240,0.84)',
-          border: '1px solid rgba(34,211,238,0.18)',
-          '& .MuiAlert-icon': { color: 'var(--role-cyan, #22d3ee)' },
+          border: '1px solid rgba(93, 118, 203,0.18)',
+          '& .MuiAlert-icon': { color: 'var(--role-cyan, #5d76cb)' },
         }}
       >
         Klikk på en post for å redigere, hente bilde fra Google Drive eller be AI om caption og publiseringstidspunkt. Dra for å endre rekkefølge.
@@ -866,7 +866,7 @@ function SaveStatusBadge({
   }
   if (saving) {
     return (
-      <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '0.74rem', fontWeight: 700 }}>
+      <Typography sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: '0.74rem', fontWeight: 700 }}>
         Lagrer…
       </Typography>
     );
@@ -958,12 +958,12 @@ function BrandSummaryStrip({
               width: 44,
               height: 44,
               borderRadius: '50%',
-              bgcolor: 'rgba(34,211,238,0.2)',
-              border: '1px solid rgba(34,211,238,0.4)',
+              bgcolor: 'rgba(93, 118, 203,0.2)',
+              border: '1px solid rgba(93, 118, 203,0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--role-cyan, #22d3ee)',
+              color: 'var(--role-cyan, #5d76cb)',
               fontWeight: 800,
             }}
           >

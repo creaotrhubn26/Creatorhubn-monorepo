@@ -69,13 +69,13 @@ const PLATFORM_META: Record<Platform, {
 };
 
 const palette = {
-  bg: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bg: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
 };
 
 interface ExistingAudience {
@@ -248,7 +248,7 @@ export default function ClientAdsAudiencesPanel({
                 background: `linear-gradient(135deg, ${meta.color} 0%, ${palette.accent} 100%)`,
                 color: '#fff', textTransform: 'none', fontWeight: 700, fontSize: '1rem',
                 px: 4, py: 1.4, borderRadius: 1.6,
-                '&.Mui-disabled': { background: 'rgba(136, 117, 235,0.18)', color: 'rgba(246, 245, 255,0.4)' },
+                '&.Mui-disabled': { background: 'rgba(93, 118, 203,0.18)', color: 'rgba(246, 245, 255,0.4)' },
               }}
             >
               Last opp ny mottakerliste
@@ -269,7 +269,7 @@ export default function ClientAdsAudiencesPanel({
                 <Stack spacing={1}>
                   {audiences.map((a, i) => (
                     <Box key={a.audienceId ?? a.resourceName ?? a.id ?? i} sx={{
-                      bgcolor: 'rgba(136, 117, 235,0.04)',
+                      bgcolor: 'rgba(93, 118, 203,0.04)',
                       border: `1px solid ${palette.border}`,
                       borderRadius: 1.4,
                       p: 1.6,
@@ -287,8 +287,8 @@ export default function ClientAdsAudiencesPanel({
                           label={a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN' ? 'KLAR' : 'BEHANDLES'}
                           size="small"
                           sx={{
-                            bgcolor: (a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN') ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)',
-                            color: (a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN') ? '#34d399' : '#60a5fa',
+                            bgcolor: (a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN') ? 'rgba(52,211,153,0.18)' : 'rgba(147, 164, 220,0.18)',
+                            color: (a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN') ? '#34d399' : '#93a4dc',
                             fontWeight: 700,
                             fontSize: '0.68rem',
                           }}

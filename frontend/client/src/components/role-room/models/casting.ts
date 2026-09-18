@@ -2959,7 +2959,8 @@ export type AISuggestionSourceType =
   | 'scene'
   | 'role'
   | 'manuscript'
-  | 'project';
+  | 'project'
+  | 'narrative_element'; // Story Graph-element (game_studio)
 
 export interface AISuggestion<TPayload = unknown> {
   id: string;

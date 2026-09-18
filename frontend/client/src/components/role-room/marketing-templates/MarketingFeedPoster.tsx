@@ -27,7 +27,7 @@ import {
 import QRCode from 'qrcode';
 import { getTheme, type MarketingPosterTheme } from './themes';
 
-const BRAND_LOGO_URL = '/TheRoleRoom_App_Logo.png';
+const BRAND_LOGO_URL = '/theroleroom-mark-1024.png';
 
 export type PosterCardIcon =
   | 'chart'
@@ -513,7 +513,7 @@ function BriefCard({
         borderRadius: '2.4cqw',
         border: `1px solid rgba(${glowRgb},0.22)`,
         background: card.bgImageUrl
-          ? `linear-gradient(180deg, rgba(10, 5, 21,0.55), rgba(10, 5, 21,0.85)), url(${card.bgImageUrl})`
+          ? `linear-gradient(180deg, rgba(27, 18, 44,0.55), rgba(27, 18, 44,0.85)), url(${card.bgImageUrl})`
           : `linear-gradient(180deg, rgba(${glowRgb},0.10), rgba(${glowRgb},0.02))`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',

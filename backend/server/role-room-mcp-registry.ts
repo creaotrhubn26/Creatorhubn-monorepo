@@ -23,11 +23,23 @@ import { newEntityId } from "./_shared-ids.js";
 import {
   fetchAgencyForUser, parseFilters, buildSearchSql, maskByScopes,
 } from "./role-room-agency-search-routes.js";
+// Story Graph (game_studio): graf + delt validator (samme kode som frontend).
+import {
+  getGraph as getNarrativeGraph,
+  createBoard as createNarrativeBoard,
+  listScenes as listNarrativeScenes,
+  getSceneDetail as getNarrativeSceneDetail,
+  getProjectOverview as getNarrativeProjectOverview,
+  createElement as createNarrativeElement,
+} from "./role-room-narrative-service.js";
+import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
+// Fase 3: Arcweave-kompatibel eksport + Markdown fra det delte format-laget.
+import { plainTextToHtml, toArcweaveProject, toCsv, toMarkdown } from "../../frontend/shared/narrative-format/index.ts";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
   "production", "photographer", "content_producer", "content_creator",
-  "dance_studio", "dance_freelance", "education",
+  "dance_studio", "dance_freelance", "education", "game_studio",
 ] as const;
 export type RoleRoomMode = (typeof ROLE_ROOM_MODES)[number];
 
@@ -35,6 +47,8 @@ export type RoleRoomMode = (typeof ROLE_ROOM_MODES)[number];
 const PROD_MODES: RoleRoomMode[] = ["production", "photographer", "content_producer", "content_creator"];
 /** Dans-modusene (eget dans-domene: koreografi, klasser, forestillinger). */
 const DANCE_MODES: RoleRoomMode[] = ["dance_studio", "dance_freelance"];
+/** Spillstudio (Story Graph: narrativ graf — brett, elementer, komponenter, variabler). */
+const GAME_MODES: RoleRoomMode[] = ["game_studio"];
 
 export interface McpCallContext {
   userId: string;
@@ -522,8 +536,243 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  // ── Spillstudio (game_studio) — Story Graph, prosjekt-skopet ───────────
+  {
+    name: "rr_get_story_graph",
+    description: "Hent Story Graph-oversikt for et prosjekt: brett med antall elementer/koblinger, startelement og variabler. Dekker Brett-fanen (spillstudio). Bruk boardId for å få elementene (tittel, type, posisjon) og koblingene på ett brett.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID"), boardId: STR("Valgfritt: brett-ID for å hente elementer og koblinger") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const boardId = typeof args.boardId === "string" && args.boardId.trim() ? args.boardId.trim() : null;
+      const [settings, boards, variables] = await Promise.all([
+        pool.query(`SELECT title, starting_element_id FROM narrative_settings WHERE project_id = $1 LIMIT 1`, [projectId]),
+        pool.query(
+          `SELECT b.id, b.name, b.folder_path, b.custom_id,
+                  (SELECT count(*)::int FROM narrative_elements e WHERE e.board_id = b.id) AS element_count,
+                  (SELECT count(*)::int FROM narrative_connections c WHERE c.board_id = b.id) AS connection_count
+             FROM narrative_boards b WHERE b.project_id = $1 ORDER BY b.folder_path, b.sort_order LIMIT 300`, [projectId]),
+        pool.query(`SELECT id, name, type, default_value FROM narrative_variables WHERE project_id = $1 ORDER BY sort_order, name LIMIT 300`, [projectId]),
+      ]);
+      const out: Record<string, unknown> = {
+        title: settings.rows[0]?.title ?? null,
+        startingElementId: settings.rows[0]?.starting_element_id ?? null,
+        boards: boards.rows,
+        variables: variables.rows,
+      };
+      if (boardId) {
+        const [elements, connections] = await Promise.all([
+          pool.query(
+            `SELECT id, kind, title_html, content_html, x, y, custom_id, jumper_target_id, branch_conditions
+               FROM narrative_elements WHERE project_id = $1 AND board_id = $2 ORDER BY sort_order LIMIT 2000`, [projectId, boardId]),
+          pool.query(
+            `SELECT id, source_id, target_id, source_output_key, label_html
+               FROM narrative_connections WHERE project_id = $1 AND board_id = $2 ORDER BY sort_order LIMIT 5000`, [projectId, boardId]),
+        ]);
+        out.elements = elements.rows;
+        out.connections = connections.rows;
+      }
+      return out;
+    },
+  },
+  {
+    name: "rr_list_story_components",
+    description: "List komponenter (karakterer, steder, gjenstander) med attributter i et Story Graph-prosjekt. Dekker Komponenter-fanen (spillstudio).",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const [components, attributes] = await Promise.all([
+        pool.query(`SELECT id, name, folder_path, custom_id FROM narrative_components WHERE project_id = $1 ORDER BY folder_path, sort_order LIMIT 1000`, [projectId]),
+        pool.query(`SELECT owner_id, name, type, value FROM narrative_attributes WHERE project_id = $1 AND owner_kind = 'component' ORDER BY owner_id, sort_order LIMIT 5000`, [projectId]),
+      ]);
+      const byOwner = new Map<string, unknown[]>();
+      for (const a of attributes.rows as Array<{ owner_id: string }>) {
+        const list = byOwner.get(a.owner_id) ?? [];
+        list.push(a);
+        byOwner.set(a.owner_id, list);
+      }
+      return {
+        components: (components.rows as Array<{ id: string }>).map((c) => ({ ...c, attributes: byOwner.get(c.id) ?? [] })),
+      };
+    },
+  },
+  {
+    name: "rr_validate_story_graph",
+    description: "Valider Story Graph-prosjektet: struktur (startelement, uoppnåelige elementer, ukoblede forgreningsutganger, jumper uten mål) og skript (parse-feil, ukjente variabler, døde referanser). Returnerer merknader med nivå og element-ID. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const graph = await getNarrativeGraph(pool, projectId);
+      const issues = validateStoryGraph(graph);
+      return {
+        issues,
+        summary: {
+          errors: issues.filter((i) => i.level === "error").length,
+          warnings: issues.filter((i) => i.level === "warning").length,
+        },
+      };
+    },
+  },
+
+  {
+    name: "rr_export_story_graph",
+    description: "Eksporter Story Graph-prosjektet. format=arcweave (default) gir Arcweave-kompatibel project.json (brett, elementer, koblinger, forgreninger/betingelser, jumpere, komponenter, attributter, variabler, ressurser) som lastes rett inn i Arcweaves Unity/Godot/Unreal-plugins; format=markdown gir en lesbar gjennomgang per brett; format=csv gir én rad per element for regneark. (PDF finnes kun som nedlasting i UI.) Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      format: { type: "string", description: "arcweave (default) | markdown | csv" },
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const requested = typeof args.format === "string" ? args.format.trim().toLowerCase() : "";
+      const format = requested === "markdown" || requested === "csv" ? requested : "arcweave";
+      const graph = await getNarrativeGraph(pool, projectId);
+      if (format === "markdown") return { format, markdown: toMarkdown(graph) };
+      if (format === "csv") return { format, csv: toCsv(graph) };
+      return { format, project: toArcweaveProject(graph) };
+    },
+  },
+
+  {
+    name: "rr_list_game_scenes",
+    description: "List scenene i Story Graph-prosjektet (Scener & gameplay): kode, tittel, lokasjon, status, ansvarlig, frist, siste review-runde og oppgavetelling. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      status: { type: "string", description: "Valgfritt statusfilter: idea | in_progress | in_review | changes_requested | approved | implemented" },
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const status = typeof args.status === "string" ? args.status.trim() : "";
+      const scenes = (await listNarrativeScenes(pool, projectId)).filter((s) => !status || s.status === status);
+      return {
+        scenes: scenes.map((s) => ({
+          id: s.id, code: s.code, title: s.title, location: s.location, status: s.status,
+          assigneeUserId: s.assigneeUserId, dueAt: s.dueAt, latestReview: s.latestReview, taskCounts: s.taskCounts,
+        })),
+      };
+    },
+  },
+  {
+    name: "rr_game_scene_review_status",
+    description: "Review-status for én scene i Story Graph: alle runder (runde, status, hvem/når, notat) og om scenen er endret siden siste åpne runde (stale). Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID"), sceneId: STR("Scene-ID (nsc_…)") }, ["projectId", "sceneId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const sceneId = typeof args.sceneId === "string" ? args.sceneId.trim() : "";
+      if (!sceneId) throw new McpToolError(-32602, "sceneId er påkrevd.");
+      const detail = await getNarrativeSceneDetail(pool, projectId, sceneId);
+      if (!detail) throw new McpToolError(-32602, "Scenen finnes ikke i prosjektet.");
+      const open = detail.reviews.find((r) => r.status === "in_review") ?? null;
+      return {
+        scene: { id: detail.scene.id, code: detail.scene.code, title: detail.scene.title, status: detail.scene.status },
+        openRound: open ? { id: open.id, round: open.round, requestedAt: open.requestedAt, stale: open.snapshotHash !== detail.currentSnapshotHash } : null,
+        rounds: detail.reviews.map((r) => ({
+          id: r.id, round: r.round, status: r.status, requestedBy: r.requestedBy, requestedAt: r.requestedAt, requestNote: r.requestNote,
+          decidedByLabel: r.decidedByLabel, decidedAt: r.decidedAt, decisionNote: r.decisionNote,
+        })),
+      };
+    },
+  },
+
+  {
+    name: "rr_get_scene_card",
+    description: "Hele scenekortet for én scene i Story Graph (Fase 7): manusfelt (Før/Handling/Kontroll/Etter/Lyd/Endring/Bro), epoke, episode, kildemerker, replikker (cue-ID, taler, type, EN/NB, opptaksstatus), leveransegater med bevis, koblinger, rammer, oppgaver og review-runder. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID"), sceneId: STR("Scene-ID (nsc_…)") }, ["projectId", "sceneId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const sceneId = typeof args.sceneId === "string" ? args.sceneId.trim() : "";
+      if (!sceneId) throw new McpToolError(-32602, "sceneId er påkrevd.");
+      const detail = await getNarrativeSceneDetail(pool, projectId, sceneId);
+      if (!detail) throw new McpToolError(-32602, "Scenen finnes ikke i prosjektet.");
+      const s = detail.scene;
+      return {
+        scene: {
+          id: s.id, code: s.code, workingId: s.workingId, title: s.title, subtitle: s.subtitle, status: s.status, era: s.era, episodeId: s.episodeId,
+          location: s.location, challenge: s.challenge, gameplayMechanic: s.gameplayMechanic, environment: s.environment,
+          beforeState: s.beforeState, action: s.action, control: s.control, afterState: s.afterState, audio: s.audio,
+          changeNote: s.changeNote, bridge: s.bridge, timeNote: s.timeNote, knowledge: s.knowledge, sourceRefs: s.sourceRefs,
+          assigneeUserId: s.assigneeUserId, startAt: s.startAt, dueAt: s.dueAt,
+        },
+        lines: detail.lines.map((l) => ({ id: l.id, cueId: l.cueId, speakerLabel: l.speakerLabel, speakerComponentId: l.speakerComponentId, perspective: l.perspective, sourceType: l.sourceType, textEn: l.textEn, textNb: l.textNb, recordingStatus: l.recordingStatus, note: l.note })),
+        gates: detail.gates.map((g) => ({ gateKey: g.gateKey, status: g.status, evidence: g.evidence, evidenceRefs: g.evidenceRefs, checkedAt: g.checkedAt })),
+        links: detail.links, frames: detail.frames.map((f) => ({ id: f.id, assetId: f.assetId, externalUrl: f.externalUrl, caption: f.caption })),
+        tasks: detail.tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, assigneeUserId: t.assigneeUserId, dueAt: t.dueAt })),
+        reviews: detail.reviews.map((r) => ({ id: r.id, round: r.round, status: r.status, requestedAt: r.requestedAt, decidedAt: r.decidedAt, decidedByLabel: r.decidedByLabel, decisionNote: r.decisionNote })),
+        currentSnapshotHash: detail.currentSnapshotHash,
+      };
+    },
+  },
+  {
+    name: "rr_project_overview",
+    description: "Prosjektoversikt for Story Graph (Hjem, Fase 7): scener per status/epoke, gater bestått/feilet, oppgaver åpne/forfalt, åpne review-runder, replikker, åpne spørsmål, plattformkrav verifisert, episoder med fremdrift, milepæler og siste aktivitet. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const o = await getNarrativeProjectOverview(pool, projectId, ctx.userId);
+      return {
+        scenes: o.scenes, gates: o.gates, tasks: o.tasks, reviews: o.reviews, lines: o.lines, questions: o.questions, platform: o.platform,
+        episodes: o.episodes,
+        milestones: o.milestones.map((m) => ({ id: m.id, title: m.title, lane: m.lane, status: m.status, startAt: m.startAt, dueAt: m.dueAt, sceneIds: m.sceneIds })),
+        activity: o.activity,
+      };
+    },
+  },
+
   // ── Fase 2: UTKAST-verktøy (skriver, men KUN upubliserte utkast som en
   // produsent må godkjenne/publisere i UI). Aldri auto-utsendelse utad. ──────
+  {
+    name: "rr_draft_element",
+    description: "Opprett et UTKASTS-element i Story Graph. Elementet legges ukoblet på brettet «KI-utkast» (mappe «Utkast», opprettes ved behov) og påvirker ikke spillflyten før en designer kobler det inn i UI-et. Krever projects.write.",
+    scope: "projects.write", modes: GAME_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      title: STR("Elementets tittel (ren tekst)"),
+      content: STR("Innhold som ren tekst; avsnitt skilles med tom linje. Kodeblokker (arcscript) kan gis som linjer som starter med «> »"),
+      customId: STR("Valgfri custom-ID (stabil referanse for skript/eksport)"),
+    }, ["projectId", "title"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const content = typeof args.content === "string" ? args.content : "";
+      const customId = typeof args.customId === "string" && args.customId.trim() ? args.customId.trim().slice(0, 120) : null;
+
+      const existing = await pool.query(
+        `SELECT id FROM narrative_boards WHERE project_id = $1 AND name = 'KI-utkast' ORDER BY created_at ASC LIMIT 1`,
+        [projectId],
+      );
+      const boardId: string = existing.rows[0]?.id
+        ?? (await createNarrativeBoard(pool, projectId, ctx.userId, { name: "KI-utkast", folderPath: "Utkast" })).id;
+      const count = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM narrative_elements WHERE project_id = $1 AND board_id = $2`,
+        [projectId, boardId],
+      );
+      const n = Number(count.rows[0]?.n ?? 0);
+
+      // «> kode»-linjer blir kodeblokker; resten avsnitt.
+      const paragraphs = content.replace(/\r\n?/g, "\n").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+      const contentHtml = paragraphs.map((p) => (
+        p.split("\n").every((line) => line.startsWith("> "))
+          ? `<pre><code>${p.split("\n").map((l) => l.slice(2)).join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>`
+          : plainTextToHtml(p)
+      )).join("");
+
+      const element = await createNarrativeElement(pool, projectId, ctx.userId, {
+        boardId, kind: "element", titleHtml: plainTextToHtml(title), contentHtml, customId,
+        x: 40 + (n % 3) * 320, y: 40 + Math.floor(n / 3) * 180, theme: "amber",
+      });
+      return {
+        ok: true, id: element.id, boardId, status: "draft",
+        note: "Ukoblet utkast på brettet «KI-utkast» — kobles inn av en designer i Story Graph-UI-et.",
+      };
+    },
+  },
   {
     name: "rr_draft_task",
     description: "Opprett en UTKASTS-oppgave i prosjektets planlegger (tidslinje). Utkastet er upublisert (status=draft) og må godkjennes/publiseres av en produsent i UI-et — det sender ingenting utad. Krever projects.write.",

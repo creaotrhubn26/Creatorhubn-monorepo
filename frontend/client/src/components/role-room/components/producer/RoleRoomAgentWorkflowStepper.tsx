@@ -144,10 +144,10 @@ export default function RoleRoomAgentWorkflowStepper({
                   borderRadius: 1.4,
                   cursor: onJump ? 'pointer' : 'default',
                   border: isActive
-                    ? '1px solid rgba(34,211,238,0.55)'
+                    ? '1px solid rgba(93, 118, 203,0.55)'
                     : '1px solid transparent',
                   bgcolor: isActive
-                    ? 'rgba(34,211,238,0.10)'
+                    ? 'rgba(93, 118, 203,0.10)'
                     : isPast
                       ? 'rgba(134,239,172,0.05)'
                       : 'transparent',
@@ -155,7 +155,7 @@ export default function RoleRoomAgentWorkflowStepper({
                   '&:hover': onJump
                     ? {
                         bgcolor: isActive
-                          ? 'rgba(34,211,238,0.18)'
+                          ? 'rgba(93, 118, 203,0.18)'
                           : 'rgba(148,163,184,0.08)',
                       }
                     : undefined,
@@ -170,7 +170,7 @@ export default function RoleRoomAgentWorkflowStepper({
                     height: 26,
                     borderRadius: '50%',
                     bgcolor: isActive
-                      ? 'var(--role-cyan, #22d3ee)'
+                      ? 'var(--role-cyan, #5d76cb)'
                       : isPast
                         ? 'rgba(134,239,172,0.18)'
                         : 'rgba(148,163,184,0.18)',
@@ -190,7 +190,7 @@ export default function RoleRoomAgentWorkflowStepper({
                 <Stack spacing={0} sx={{ minWidth: 0 }}>
                   <Typography
                     sx={{
-                      color: isActive ? 'var(--role-cyan, #22d3ee)' : '#e2e8f0',
+                      color: isActive ? 'var(--role-cyan, #5d76cb)' : '#e2e8f0',
                       fontSize: { xs: '0.74rem', md: '0.82rem' },
                       fontWeight: 700,
                       lineHeight: 1.1,

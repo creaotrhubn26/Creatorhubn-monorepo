@@ -14,6 +14,7 @@
     "whisperx:start": "bash scripts/start-whisperx-service.sh",
     "ml:start": "concurrently -n \"pyannote,whisperx\" -c \"yellow,magenta\" \"npm run pyannote:start\" \"npm run whisperx:start\"",
     "ml:install": "python3 -m pip install -r python-services/requirements.txt",
+    "seed:story-graph": "tsx scripts/seed-what-follows-us.ts",
     "sfx:build": "tsx scripts/build-sfx-library.ts",
     "sfx:gen-synthetic": "tsx scripts/generate-synthetic-sfx.ts",
     "sfx:curate-freesound": "tsx scripts/curate-from-freesound.ts",

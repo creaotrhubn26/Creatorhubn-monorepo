@@ -67,7 +67,7 @@ export function LandingFAQSection() {
             textTransform: 'uppercase',
             mb: 1.5,
             textAlign: 'center',
-            background: 'linear-gradient(90deg, #fff 0%, #8875eb 55%, #6249df 100%)',
+            background: 'linear-gradient(90deg, #fff 0%, #5d76cb 55%, #4b3d8f 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',

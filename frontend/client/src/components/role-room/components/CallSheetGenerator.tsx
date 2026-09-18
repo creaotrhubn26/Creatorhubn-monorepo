@@ -466,7 +466,7 @@ const useResponsiveConfig = (): ResponsiveConfig => {
 const COLORS = {
   // Primary backgrounds
   headerBg: '#0a0a0a', // Pure dark for header
-  sectionHeaderBg: '#18122b', // Deep navy
+  sectionHeaderBg: '#2a3d56', // Deep navy
   cardBg: '#ffffff',
   pageBg: '#f8fafc',
   
@@ -475,20 +475,20 @@ const COLORS = {
   textSecondary: '#374151', // 7.5:1 on white - darker gray for secondary text
   textMuted: '#6b7280', // 5.0:1 on white - for truly optional info
   textOnDark: '#f8fafc', // 16.8:1 on #0a0a0a
-  textOnDarkSecondary: '#d1d5db', // 11.2:1 on #18122b
+  textOnDarkSecondary: '#d1d5db', // 11.2:1 on #2a3d56
   
   // Section colors - all WCAG AA compliant
-  location: { bg: '#0369a1', text: '#ffffff' }, // 5.3:1 - darkened from #0ea5e9
-  scenes: { bg: '#472bd4', text: '#ffffff' }, // 6.8:1 - darkened from #6249df
+  location: { bg: '#0369a1', text: '#ffffff' }, // 5.3:1 - darkened from #3f51b5
+  scenes: { bg: '#3e3180', text: '#ffffff' }, // 6.8:1 - darkened from #4b3d8f
   cast: { bg: '#047857', text: '#ffffff' }, // 5.5:1 - darkened from #059669
-  crew: { bg: '#6249df', text: '#ffffff' }, // 5.9:1 - darkened from #8875eb
+  crew: { bg: '#4b3d8f', text: '#ffffff' }, // 5.9:1 - darkened from #5d76cb
   instructions: { bg: '#b45309', text: '#ffffff' }, // 5.4:1 - darkened from #d97706
   emergency: { bg: '#b91c1c', text: '#ffffff' }, // 5.7:1 - darkened from #dc2626
   weather: { bg: '#0369a1', text: '#ffffff' }, // 5.3:1
   
   // Department colors (all WCAG compliant with white text - contrast >= 4.5:1)
   departments: {
-    'Regi': '#472bd4', // 6.8:1
+    'Regi': '#3e3180', // 6.8:1
     'Foto': '#0369a1', // 5.3:1
     'Lyd': '#b45309', // 5.4:1
     'Lys': '#4d7c0f', // 5.1:1
@@ -496,7 +496,7 @@ const COLORS = {
     'Produksjon': '#b91c1c', // 5.7:1
     'Kostyme': '#be185d', // 5.2:1
     'Sminke': '#9d174d', // 6.4:1
-    'VFX': '#472bd4', // 6.8:1
+    'VFX': '#3e3180', // 6.8:1
     'Art': '#0f766e', // 5.1:1
   } as Record<string, string>,
 };
@@ -1121,7 +1121,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               background: #fff;
             }
             .header { 
-              background: linear-gradient(135deg, #0a0a0a 0%, #18122b 100%);
+              background: linear-gradient(135deg, #0a0a0a 0%, #2a3d56 100%);
               color: #f8fafc;
               padding: 20px;
               border-radius: 8px;
@@ -1175,9 +1175,9 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               margin-bottom: 8px;
             }
             .section-location { background: #0369a1; color: #fff; }
-            .section-scenes { background: #472bd4; color: #fff; }
+            .section-scenes { background: #3e3180; color: #fff; }
             .section-cast { background: #047857; color: #fff; }
-            .section-crew { background: #6249df; color: #fff; }
+            .section-crew { background: #4b3d8f; color: #fff; }
             .section-instructions { background: #b45309; color: #fff; }
             .section-emergency { background: #b91c1c; color: #fff; }
             table { 
@@ -1637,7 +1637,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
             severity="info" 
             sx={{ 
               mb: 2, 
-              bgcolor: alpha('#3b82f6', 0.15),
+              bgcolor: alpha('#3f51b5', 0.15),
               '& .MuiAlert-message': { fontSize: responsive.fontSize.caption }
             }}
           >
@@ -1674,7 +1674,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                 }}
                 sx={{
                   '& .MuiInput-underline:before': { borderBottomColor: 'rgba(255,255,255,0.3)' },
-                  '& .MuiInput-underline:after': { borderBottomColor: '#3b82f6' },
+                  '& .MuiInput-underline:after': { borderBottomColor: '#3f51b5' },
                   '& .MuiInput-underline:hover:before': { borderBottomColor: 'rgba(255,255,255,0.5)' },
                   width: '100%',
                   maxWidth: 400,
@@ -1695,7 +1695,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                 }}
                 sx={{
                   '& .MuiInput-underline:before': { borderBottomColor: 'rgba(255,255,255,0.2)' },
-                  '& .MuiInput-underline:after': { borderBottomColor: '#3b82f6' },
+                  '& .MuiInput-underline:after': { borderBottomColor: '#3f51b5' },
                   '& .MuiInput-underline:hover:before': { borderBottomColor: 'rgba(255,255,255,0.4)' },
                   width: '100%',
                   maxWidth: 300,
@@ -1752,7 +1752,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
-                  borderColor: editMode ? '#3b82f6' : 'divider',
+                  borderColor: editMode ? '#3f51b5' : 'divider',
                   borderWidth: editMode ? 2 : 1,
                 }}
               >
@@ -1788,7 +1788,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                     }}
                     sx={{
                       '& .MuiInput-underline:before': { borderBottomColor: 'rgba(0,0,0,0.2)' },
-                      '& .MuiInput-underline:after': { borderBottomColor: '#3b82f6' },
+                      '& .MuiInput-underline:after': { borderBottomColor: '#3f51b5' },
                       width: '100%',
                     }}
                   />
@@ -2013,7 +2013,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         sx={{ 
                           height: 22, 
                           fontSize: responsive.fontSize.tiny,
-                          bgcolor: scene.dayNight === 'DAY' ? '#d97706' : '#6249df',
+                          bgcolor: scene.dayNight === 'DAY' ? '#d97706' : '#4b3d8f',
                           color: '#ffffff',
                           fontWeight: 700,
                         }} 

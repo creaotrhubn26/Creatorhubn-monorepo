@@ -43,7 +43,7 @@ const ROLE_ROOM_SITE: SiteDefinition = {
   themeColor: '#121218',
   defaultImageUrl:
     'https://theroleroom.com/role-room-assets/landing_backdrop_with_logo.webp',
-  logoUrl: 'https://theroleroom.com/TheRoleRoom_App_Logo.png',
+  logoUrl: 'https://theroleroom.com/theroleroom-mark-1024.png',
   contactEmail: 'support@theroleroom.com',
 };
 

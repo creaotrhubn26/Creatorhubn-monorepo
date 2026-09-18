@@ -168,7 +168,7 @@ export function setupOEmbedRoutes(deps: SetupOEmbedRoutesDeps): void {
   button{display:inline-flex;align-items:center;gap:8px;background:#22c55e;color:#0f1729;border:none;padding:14px 22px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;margin-top:18px;transition:transform .12s}
   button:hover{transform:translateY(-1px);background:#34d399}
   button:disabled{opacity:.5;cursor:wait}
-  pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#bfdbfe;margin-top:8px}
+  pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#c3cbe6;margin-top:8px}
   .status-ok{color:#22c55e} .status-err{color:#f87171}
   .badge{display:inline-block;background:rgba(34,197,94,.18);color:#86efac;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .preview{margin-top:8px;padding:14px;background:#0f1729;border:1px solid #334155;border-radius:8px;min-height:120px}

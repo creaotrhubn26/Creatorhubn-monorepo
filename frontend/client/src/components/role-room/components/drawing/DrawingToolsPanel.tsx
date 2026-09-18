@@ -236,7 +236,7 @@ const PanelContainer = styled(Paper, {
   [position]: 16,
   bottom: 16,
   width: collapsed ? collapsedWidth : panelWidth,
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -259,10 +259,10 @@ const ToolButton = styled(IconButton, {
   width: 40,
   height: 40,
   borderRadius: 8,
-  backgroundColor: active ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-  border: active ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid transparent',
+  backgroundColor: active ? 'rgba(63, 81, 181, 0.2)' : 'transparent',
+  border: active ? '2px solid rgba(63, 81, 181, 0.5)' : '2px solid transparent',
   '&:hover': {
-    backgroundColor: active ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.05)',
+    backgroundColor: active ? 'rgba(63, 81, 181, 0.25)' : 'rgba(255,255,255,0.05)',
   },
 }));
 
@@ -588,13 +588,13 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         <Box sx={{
           px: 1.5,
           py: 1,
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderBottom: '1px solid rgba(59, 130, 246, 0.2)',
+          backgroundColor: 'rgba(63, 81, 181, 0.1)',
+          borderBottom: '1px solid rgba(63, 81, 181, 0.2)',
         }}>
           <Stack spacing={0.5}>
             <Stack direction="row" alignItems="center" gap={1}>
-              <Movie sx={{ fontSize: 14, color: '#60a5fa' }} />
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#60a5fa' }}>
+              <Movie sx={{ fontSize: 14, color: '#93a4dc' }} />
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#93a4dc' }}>
                 {state.scriptContext.sceneHeading || `Scene ${state.scriptContext.sceneNumber}`}
               </Typography>
             </Stack>
@@ -603,10 +603,10 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
                 <Badge sx={{ 
                   px: 0.75, 
                   py: 0.25, 
-                  backgroundColor: 'rgba(136, 117, 235, 0.2)',
+                  backgroundColor: 'rgba(93, 118, 203, 0.2)',
                   borderRadius: 1,
                   fontSize: 10,
-                  color: '#9e8cf8',
+                  color: '#93a4dc',
                 }}>
                   {state.scriptContext.dialogueCharacter}
                 </Badge>

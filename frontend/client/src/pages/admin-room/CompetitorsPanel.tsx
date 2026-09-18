@@ -141,7 +141,7 @@ function CompetitorRow({
             color: '#e2e8f0',
           }}
         >
-          {competitor.latestSnapshot?.picture_url ? null : <GroupIcon sx={{ color: '#9e8cf8', fontSize: 18 }} />}
+          {competitor.latestSnapshot?.picture_url ? null : <GroupIcon sx={{ color: '#93a4dc', fontSize: 18 }} />}
         </Avatar>
         <Stack sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
@@ -150,13 +150,13 @@ function CompetitorRow({
             </Typography>
             {competitor.category && (
               <Chip label={competitor.category} size="small"
-                sx={{ background: 'rgba(136, 117, 235,0.15)', color: '#c4b5fd', height: 16, fontSize: '0.6rem' }} />
+                sx={{ background: 'rgba(93, 118, 203,0.15)', color: '#c4b5fd', height: 16, fontSize: '0.6rem' }} />
             )}
           </Stack>
           <Stack direction="row" alignItems="center" spacing={0.5}>
             {competitor.accountType === 'instagram'
               ? <InstagramIcon sx={{ fontSize: 12, color: '#ec4899' }} />
-              : <FacebookIcon sx={{ fontSize: 12, color: '#60a5fa' }} />}
+              : <FacebookIcon sx={{ fontSize: 12, color: '#93a4dc' }} />}
             <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
               {competitor.accountType === 'instagram'
                 ? `@${competitor.igUsername || '?'}`
@@ -183,8 +183,8 @@ function CompetitorRow({
           <Tooltip title={expanded ? 'Skjul trend' : 'Vis 30-d trend'}>
             <IconButton size="small" onClick={() => setExpanded((v) => !v)}
               data-testid={`competitor-expand-${competitor.id}`}>
-              {expanded ? <TrendingFlatIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />
-                : <TrendingUpIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />}
+              {expanded ? <TrendingFlatIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
+                : <TrendingUpIcon sx={{ fontSize: 16, color: '#93a4dc' }} />}
             </IconButton>
           </Tooltip>
           <Tooltip title={competitor.autoSnapshot ? 'Auto-snapshot ON (1×/døgn)' : 'Auto-snapshot OFF — kun manuell'}>
@@ -400,13 +400,13 @@ export default function CompetitorsPanel() {
     <Card sx={PANEL_SX} data-testid="panel-competitors">
       <CardContent sx={{ p: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-          <GroupIcon sx={{ color: '#9e8cf8', fontSize: 20 }} />
+          <GroupIcon sx={{ color: '#93a4dc', fontSize: 20 }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#e2e8f0' }}>Konkurrent-monitor</Typography>
           <Chip label={`${competitors.length} tracked`} size="small"
-            sx={{ background: 'rgba(136, 117, 235,0.15)', color: '#c4b5fd', fontSize: '0.65rem', height: 18 }} />
+            sx={{ background: 'rgba(93, 118, 203,0.15)', color: '#c4b5fd', fontSize: '0.65rem', height: 18 }} />
           <Button size="small" startIcon={<RefreshIcon />} onClick={() => void load()} disabled={loading}
             data-testid="competitors-refresh"
-            sx={{ ml: 'auto', color: '#7dd3fc' }}>
+            sx={{ ml: 'auto', color: '#93a4dc' }}>
             {loading ? 'Henter…' : 'Refresh'}
           </Button>
         </Stack>
@@ -428,14 +428,14 @@ export default function CompetitorsPanel() {
             data-testid="competitor-type-toggle"
             sx={{ '& .MuiToggleButton-root': {
               color: 'rgba(203,213,225,0.6)', textTransform: 'none',
-              '&.Mui-selected': { background: 'rgba(136, 117, 235,0.25)', color: '#c4b5fd' },
+              '&.Mui-selected': { background: 'rgba(93, 118, 203,0.25)', color: '#c4b5fd' },
             } }}
           >
             <ToggleButton value="instagram">
               <InstagramIcon sx={{ fontSize: 16, mr: 0.5, color: '#ec4899' }} /> Instagram-handle
             </ToggleButton>
             <ToggleButton value="facebook">
-              <FacebookIcon sx={{ fontSize: 16, mr: 0.5, color: '#60a5fa' }} /> Facebook Page-ID
+              <FacebookIcon sx={{ fontSize: 16, mr: 0.5, color: '#93a4dc' }} /> Facebook Page-ID
             </ToggleButton>
           </ToggleButtonGroup>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -449,8 +449,8 @@ export default function CompetitorsPanel() {
               sx={{ flex: 2, '& .MuiInputBase-root': { color: '#e2e8f0' } }} />
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => void handleAdd()}
               disabled={addBusy} data-testid="competitor-add-button"
-              sx={{ background: 'rgba(136, 117, 235,0.25)', color: '#c4b5fd',
-                '&:hover': { background: 'rgba(136, 117, 235,0.4)' } }}>
+              sx={{ background: 'rgba(93, 118, 203,0.25)', color: '#c4b5fd',
+                '&:hover': { background: 'rgba(93, 118, 203,0.4)' } }}>
               {addBusy ? '…' : 'Legg til'}
             </Button>
           </Stack>

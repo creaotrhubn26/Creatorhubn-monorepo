@@ -83,9 +83,9 @@ export function deriveClientNextPoints(
 
 const TONE_ICON: Record<ClientPointTone, React.ReactElement> = {
   action: <ActionIcon sx={{ color: '#fbbf24' }} />,
-  waiting: <WaitingIcon sx={{ color: '#60a5fa' }} />,
+  waiting: <WaitingIcon sx={{ color: '#93a4dc' }} />,
   done: <DoneIcon sx={{ color: '#34d399' }} />,
-  info: <ClientIcon sx={{ color: '#9e8cf8' }} />,
+  info: <ClientIcon sx={{ color: '#93a4dc' }} />,
 };
 
 interface NextClientPointsButtonProps {
@@ -118,7 +118,7 @@ export function NextClientPointsButton({ meta, status, clientInputBeforeHandoff 
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <ClientIcon sx={{ color: '#9e8cf8' }} />
+          <ClientIcon sx={{ color: '#93a4dc' }} />
           Neste klientpunkter
           <Chip size="small" label={STATUS_LABEL[resolvedStatus]} sx={{ ml: 'auto' }} />
         </DialogTitle>

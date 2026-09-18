@@ -97,9 +97,9 @@ import NoteEditor from '../notes/NoteEditor';
 import NotePreview from '../notes/NotePreview';
 import AIUtilitiesPanel from '../notes/AIUtilitiesPanel';
 import { useAutosave } from '../notes/hooks/useAutosave';
-import type { Node, Edge} from 'reactflow';
-import ReactFlow, { Connection, Background, Controls, MiniMap, MarkerType } from 'reactflow';
-import 'reactflow/dist/style.css';
+import type { Node, Edge, Connection } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, MarkerType } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import 'quill/dist/quill.snow.css';
 
 // 🆕 Enhanced Building Blocks System - Core Structure
@@ -3242,7 +3242,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
                         </IconButton>
                       </Stack>
                       <Divider sx={{ mb: 2 }} />
-                      {selectedNode.data?.step && (
+                      {selectedNode.data?.step ? (
                         <Box>
                           <Typography variant="body2" gutterBottom>
                             <strong>Title:</strong> {(selectedNode.data.step as JourneyStep).title}
@@ -3257,7 +3257,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
                             <strong>Order:</strong> {(selectedNode.data.step as JourneyStep).stepOrder}
                           </Typography>
                         </Box>
-                      )}
+                      ) : null}
                     </Paper>
                   )}
                 </Box>

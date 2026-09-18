@@ -74,9 +74,9 @@ const professionCategories = [
     description: 'Film og videoproduksjon',
     logo: '/role-video.png',
     icon: VideocamIcon,
-    color: 'var(--role-violet, #8875eb)',
-    gradient: 'linear-gradient(135deg, rgba(136, 117, 235, 0.15) 0%, rgba(136, 117, 235, 0.05) 100%)',
-    glowColor: 'rgba(136, 117, 235, 0.4)',
+    color: 'var(--role-violet, #5d76cb)',
+    gradient: 'linear-gradient(135deg, rgba(93, 118, 203, 0.15) 0%, rgba(93, 118, 203, 0.05) 100%)',
+    glowColor: 'rgba(93, 118, 203, 0.4)',
     roles: [
       { id: 'director', label: 'Regissør', description: 'Kreativ ledelse for video', icon: MovieIcon },
       { id: 'producer', label: 'Produsent', description: 'Prosjektledelse og budsjett', icon: SupervisorAccountIcon },
@@ -163,9 +163,9 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
       >
         <Box
           sx={{
-            background: 'linear-gradient(180deg, #18122b 0%, #100b1e 100%)',
+            background: 'linear-gradient(180deg, #2a3d56 0%, #2a3152 100%)',
             borderRadius: 4,
-            border: '1px solid rgba(136, 117, 235, 0.2)',
+            border: '1px solid rgba(93, 118, 203, 0.2)',
             overflow: 'hidden',
             position: 'relative',
             maxHeight: '85vh',
@@ -180,7 +180,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
               transform: 'translateX(-50%)',
               width: '60%',
               height: '1px',
-              background: 'linear-gradient(90deg, transparent 0%, rgba(136, 117, 235, 0.5) 50%, transparent 100%)',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(93, 118, 203, 0.5) 50%, transparent 100%)',
             }}
           />
           
@@ -191,13 +191,13 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
               transition={{ delay: 0.2 }}
             >
               <img
-                src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+                src="/theroleroom-mark-1024.png"
                 alt="The Role Room"
                 style={{
                   width: 120,
                   height: 120,
                   marginBottom: 16,
-                  filter: 'drop-shadow(0 0 25px rgba(136, 117, 235, 0.4))',
+                  filter: 'drop-shadow(0 0 25px rgba(93, 118, 203, 0.4))',
                 }}
                 onError={(e: SyntheticEvent<HTMLImageElement>) => {
                   e.currentTarget.style.display = 'none';
@@ -207,7 +207,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
                 variant="h4" 
                 sx={{ 
                   fontWeight: 700,
-                  background: 'linear-gradient(135deg, #ffffff 0%, #9e8cf8 100%)',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #93a4dc 100%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',

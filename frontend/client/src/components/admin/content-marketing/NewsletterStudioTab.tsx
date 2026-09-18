@@ -62,13 +62,13 @@ import ImageIcon from '@mui/icons-material/Image';
 const STATUS_COLORS: Record<NewsletterIssueStatus, string> = {
   draft: '#64748b',
   scheduled: '#fbbf24',
-  sending: '#a78bfa',
+  sending: '#93a4dc',
   sent: '#22c55e',
   failed: '#ef4444',
 };
 
 const PREVIEW_BG = '#0a0a0f';
-const BRAND = '#8b5cf6';
+const BRAND = '#4b3d8f';
 
 /** Minimal markdown→HTML — speiler backend-rendreren for preview. */
 function renderPreview(md: string): string {
@@ -287,7 +287,7 @@ export function NewsletterStudioTab() {
               <Chip label={`${subscriberStats.pending} avventer`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fde68a', fontWeight: 700 }} />
             </>
           ) : null}
-          <Button variant="outlined" startIcon={<InsightsIcon />} onClick={() => setInsightsOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}>
+          <Button variant="outlined" startIcon={<InsightsIcon />} onClick={() => setInsightsOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#93a4dc', borderColor: 'rgba(167,139,250,0.5)' }}>
             Ukens innsikt
           </Button>
           <Button variant="outlined" startIcon={<MicIcon />} onClick={() => setVoiceDraftOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#22d3ee', borderColor: 'rgba(34,211,238,0.5)' }}>
@@ -297,11 +297,11 @@ export function NewsletterStudioTab() {
             variant="outlined"
             startIcon={<ImageIcon />}
             onClick={() => setPosterOpen(true)}
-            sx={{ textTransform: 'none', fontWeight: 700, color: '#ddd6fe', borderColor: 'rgba(167,139,250,0.5)' }}
+            sx={{ textTransform: 'none', fontWeight: 700, color: '#c3cbe6', borderColor: 'rgba(167,139,250,0.5)' }}
           >
             Marketing-poster
           </Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#3e3180' }}>
             Ny utgave
           </Button>
         </Stack>
@@ -432,7 +432,7 @@ export function NewsletterStudioTab() {
                         startIcon={<SendIcon />}
                         disabled={issue.status === 'sending' || issue.status === 'sent' || (subscriberStats?.confirmed ?? 0) === 0}
                         onClick={() => handleSendToAll(issue)}
-                        sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}
+                        sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#3e3180' }}
                       >
                         Send nå
                       </Button>
@@ -635,7 +635,7 @@ function IssueEditor({ open, initial, seed, onClose, onSaved, onError }: IssueEd
           Lagre som mal
         </Button>
         <Button onClick={onClose} sx={{ textTransform: 'none' }}>Lukk</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#3e3180' }}>
           {saving ? 'Lagrer…' : 'Lagre utkast'}
         </Button>
       </DialogActions>
@@ -668,7 +668,7 @@ function TemplatePicker({ open, onClose, onPick, onError }: { open: boolean; onC
           <Stack spacing={1.5}>
             <Box
               onClick={() => onPick(null)}
-              sx={{ p: 2, borderRadius: 1.5, border: '1px dashed rgba(148,163,184,0.3)', cursor: 'pointer', '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.06)' } }}
+              sx={{ p: 2, borderRadius: 1.5, border: '1px dashed rgba(148,163,184,0.3)', cursor: 'pointer', '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(75, 61, 143,0.06)' } }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>Tom utgave</Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.8rem', mt: 0.5 }}>Start fra blanke ark — bygg fra bunnen med block-builder.</Typography>
@@ -677,7 +677,7 @@ function TemplatePicker({ open, onClose, onPick, onError }: { open: boolean; onC
               <Box
                 key={t.id}
                 onClick={() => onPick(t)}
-                sx={{ p: 2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.18)', cursor: 'pointer', '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' } }}
+                sx={{ p: 2, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.18)', cursor: 'pointer', '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(75, 61, 143,0.08)' } }}
               >
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, flexWrap: 'wrap', rowGap: 0.5 }}>
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>{t.name}</Typography>
@@ -727,7 +727,7 @@ function ClickReportDialog({ issue, onClose, onError }: { issue: NewsletterIssue
               const ctr = sentCount > 0 ? (link.unique_clicks / sentCount) * 100 : 0;
               return (
                 <Box key={link.destination_url} sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(15,23,42,0.4)' }}>
-                  <Typography sx={{ color: '#a78bfa', fontSize: '0.85rem', fontWeight: 600, wordBreak: 'break-all', mb: 0.5 }}>
+                  <Typography sx={{ color: '#93a4dc', fontSize: '0.85rem', fontWeight: 600, wordBreak: 'break-all', mb: 0.5 }}>
                     {link.destination_url}
                   </Typography>
                   <Stack direction="row" spacing={1.5}>
@@ -764,7 +764,7 @@ function WeeklyInsightsDialog({ open, onClose, onError }: { open: boolean; onClo
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <InsightsIcon sx={{ color: '#a78bfa' }} />
+          <InsightsIcon sx={{ color: '#93a4dc' }} />
           <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Ukens innsikt — Claude-forslag</Typography>
         </Stack>
         <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} /></IconButton>
@@ -773,7 +773,7 @@ function WeeklyInsightsDialog({ open, onClose, onError }: { open: boolean; onClo
         {loading ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <Stack alignItems="center" spacing={1}>
-              <AutoAwesomeIcon sx={{ color: '#a78bfa', fontSize: '2rem' }} />
+              <AutoAwesomeIcon sx={{ color: '#93a4dc', fontSize: '2rem' }} />
               <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.88rem' }}>Aggregér data + Claude analyserer …</Typography>
             </Stack>
           </Box>
@@ -781,8 +781,8 @@ function WeeklyInsightsDialog({ open, onClose, onError }: { open: boolean; onClo
           <Stack spacing={2.5}>
             {/* Forslag */}
             {data.suggestion ? (
-              <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(167,139,250,0.4)' }}>
-                <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.5 }}>
+              <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: 'rgba(75, 61, 143,0.08)', border: '1px solid rgba(167,139,250,0.4)' }}>
+                <Typography sx={{ color: '#93a4dc', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.5 }}>
                   Forslag fra Claude
                 </Typography>
                 <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.3, mb: 1.5 }}>
@@ -950,7 +950,7 @@ function RepurposeDialog({ issue, onClose, onError, onCopied }: { issue: Newslet
             <Box>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>LinkedIn-essay</Typography>
-                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(content.linkedinEssay, 'LinkedIn-essay')} sx={{ textTransform: 'none', color: '#a78bfa', fontWeight: 700 }}>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(content.linkedinEssay, 'LinkedIn-essay')} sx={{ textTransform: 'none', color: '#93a4dc', fontWeight: 700 }}>
                   Kopier
                 </Button>
               </Stack>
@@ -973,7 +973,7 @@ function RepurposeDialog({ issue, onClose, onError, onCopied }: { issue: Newslet
                     content.instagramCarousel.map((s) => `Slide ${s.slideNumber}: ${s.headline}\n${s.body}`).join('\n\n---\n\n'),
                     'Hele carousel-teksten',
                   )}
-                  sx={{ textTransform: 'none', color: '#a78bfa', fontWeight: 700 }}
+                  sx={{ textTransform: 'none', color: '#93a4dc', fontWeight: 700 }}
                 >
                   Kopier alle
                 </Button>
@@ -1001,7 +1001,7 @@ function RepurposeDialog({ issue, onClose, onError, onCopied }: { issue: Newslet
               </Stack>
               <Stack spacing={1}>
                 {content.quoteCards.map((qc, idx) => (
-                  <Box key={idx} sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'rgba(139,92,246,0.08)', borderLeft: '3px solid #8b5cf6', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Box key={idx} sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'rgba(75, 61, 143,0.08)', borderLeft: '3px solid #4b3d8f', display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ color: '#e2e8f0', fontSize: '0.92rem', lineHeight: 1.6, fontStyle: 'italic' }}>
                         "{qc.quote}"
@@ -1176,7 +1176,7 @@ function VoiceDraftDialog({ open, onClose, onError, onCopied }: { open: boolean;
                 variant="outlined"
                 component="label"
                 startIcon={<UploadFileIcon />}
-                sx={{ textTransform: 'none', color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}
+                sx={{ textTransform: 'none', color: '#93a4dc', borderColor: 'rgba(167,139,250,0.5)' }}
               >
                 Last opp lyd-fil
                 <input
@@ -1253,7 +1253,7 @@ function VoiceDraftDialog({ open, onClose, onError, onCopied }: { open: boolean;
             <Box>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>LinkedIn-essay</Typography>
-                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(result.linkedinEssay, 'LinkedIn-essay')} sx={{ textTransform: 'none', color: '#a78bfa', fontWeight: 700 }}>
+                <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => copyToClipboard(result.linkedinEssay, 'LinkedIn-essay')} sx={{ textTransform: 'none', color: '#93a4dc', fontWeight: 700 }}>
                   Kopier
                 </Button>
               </Stack>

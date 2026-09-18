@@ -129,7 +129,7 @@ function TimestampMarkers({ markers, durationSec, onSeek }: {
                     transform: 'translateX(-50%)',
                     width: 10, height: 10,
                     borderRadius: 5,
-                    background: '#472bd4',
+                    background: '#3e3180',
                     border: '2px solid #fff',
                     cursor: 'pointer',
                     pointerEvents: 'auto',
@@ -219,7 +219,7 @@ const wrapperSx: React.CSSProperties = {
   borderRadius: 6,
   overflow: 'hidden',
   background: '#000',
-  border: '1px solid rgba(71, 43, 212,0.20)',
+  border: '1px solid rgba(62, 49, 128,0.20)',
 };
 
 const videoSx: React.CSSProperties = {
@@ -242,12 +242,12 @@ const posterSx: React.CSSProperties = {
 };
 
 const badgeOverlaySx: React.CSSProperties = {
-  background: 'rgba(24, 18, 43,0.78)',
+  background: 'rgba(42, 61, 86,0.78)',
   padding: '6px 12px',
   borderRadius: 4,
   fontSize: 12,
   fontWeight: 600,
-  border: '1px solid rgba(71, 43, 212,0.35)',
+  border: '1px solid rgba(62, 49, 128,0.35)',
 };
 
 const metaSx: React.CSSProperties = {

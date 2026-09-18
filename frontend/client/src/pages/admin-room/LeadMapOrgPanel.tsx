@@ -52,7 +52,7 @@ const ROLE_META: Record<string, {
 }> = {
   admin: {
     label: 'Administrator',
-    color: '#9e8cf8',
+    color: '#93a4dc',
     Icon: BusinessOutlinedIcon,
     description: 'Full kontroll over organisasjon og prosjekter.',
   },
@@ -76,13 +76,13 @@ const ROLE_META: Record<string, {
   },
   promotor: {
     label: 'Promotør',
-    color: '#60a5fa',
+    color: '#93a4dc',
     Icon: CampaignOutlinedIcon,
     description: 'Promoterer på event eller feltarbeid.',
   },
   member: {
     label: 'Medlem',
-    color: '#9e8cf8',
+    color: '#93a4dc',
     Icon: BadgeOutlinedIcon,
     description: 'Standard skrive-tilgang.',
   },
@@ -785,7 +785,7 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
 
           {/* Posisjons-deling-toggle */}
           {activeOrgId && (
-            <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(158, 140, 248,0.05)', borderRadius: 1 }}>
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(147, 164, 220,0.05)', borderRadius: 1 }}>
               <FormControlLabel
                 control={
                   <MuiSwitch

@@ -160,6 +160,7 @@ app/Talent Registry er den nyeste vertikalen og tjener byrå- og talent-siden av
 | **Innholdsprodusent-løsning** (uten Agent) | Innholdsprodusent (495 kr/sete, min. 1) | ✅ Live |
 | **Dansestudio-vertikal** | Profesjonelle dansere / dansestudio | ✅ Live |
 | **Talents-app + Talent Registry** | Skuespillere + casting-byrå + produsenter | ✅ Live (ny — BankID + per-org B2 i pipeline) |
+| **Spillstudio / Story Graph** | Spillstudioer, narrative designere | 🟡 Beta — landingskort + login-persona, Solo gratis / Pro 149 / Studio 490 kr (plassholderpriser) |
 | **The Role Room Agent** (AI-lag) | Begge — særlig innholdsprodusent | 🟡 Beta — ikke skipet, testes internt |
 
 ### 2.2 Kjernemoduler — Produksjons-OS (LIVE)
@@ -259,7 +260,38 @@ Bygget rundt fire prinsipper:
 **BankID** for full identitets-tillit og **per-org B2-bucket** for skalerbar lagring.
 Tre under-tasker (L3a/b/c) sporet for storage-arkitekturen.
 
-### 2.7 AI-lag — The Role Room Agent (BETA — ikke skipet)
+### 2.7 Kjernevertikal — Spillstudio / Story Graph (BETA — bak `?mode=game_studio`)
+
+Narrativ design for spillstudioer og narrative designere. Målet er å komme nærmere eller
+bedre enn **Arcweave**: samme objektmodell (tapsfri import/eksport, virker med Arcweaves
+MIT-lisensierte Unity/Unreal/Godot-plugins) pluss det Arcweave mangler eller gater bak
+Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
+
+| Funksjon | Hva den gjør | Status |
+|---|---|---|
+| Brett + elementer + koblinger | Fritt lerret med elementer, forgreninger, jumpere og notater; brett i mapper; søk | ✅ Fase 1 |
+| Komponenter + attributter | Karakterer, steder, gjenstander med typede attributter, festes på elementer | ✅ Fase 1 |
+| Variabler | Globale variabler (bool/int/float/string) | ✅ Fase 1 |
+| Prosjekthistorikk | Snapshot av hele grafen + ikke-destruktiv gjenoppretting (Arcweave: kun Team) | ✅ Fase 1 |
+| Grafvalidator | Startelement, uoppnåelige elementer, ukoblede utganger, jumper uten mål | ✅ Fase 1 |
+| Skript + Play Mode | arcscript-kompatibel tolk (delt frontend/backend), forgreninger, Play Mode med debugger, TTS per karakter, skriptvalidering, referanser i editoren | ✅ Fase 2 |
+| Eksport/import + deling | Arcweave-JSON (virker i Arcweaves Unity/Godot/Unreal-plugins), Arcweave-import, Markdown, spillbar HTML, delbare spill-lenker (`/story/:token`), KI-forslag per element (neste/forbedre/forgrening), MCP `rr_export_story_graph` + `rr_draft_element` | ✅ Fase 3 |
+| Twine/Ink-import | Twee 3 (SugarCube fullt, Harlowe best-effort) og Ink-delsett → samme graf; lossy deler listes som merknader | ✅ Fase 4 |
+| Lokalisering | Translation Mode med KI-forslag, `nb` kanonisk, skript beholdes; locale i Play Mode, `/story`, alle eksporter | ✅ Fase 4 |
+| Sanntid | Avatarer, markører og valg-ring per kollega; grafendringer pushes og lastes på nytt | ✅ Fase 4 |
+| Billing | Solo (gratis) / Pro / Studio via Stripe; gating av deling, HTML, KI, oversettelser, import, elementgrense; tester-invites; admin-redigerbare planer | ✅ Fase 4 |
+| Runtime-pakker | `packages/story-graph-runtime`: JS (full motor), Unity C# og Godot 4 GDScript (dokumentert delsett) | ✅ Fase 4 (C#/GD manuelt verifisert) |
+| CSV + PDF + embed | CSV (én rad per element, norsk Excel-profil) alle planer; PDF «lesbart manus» (Pro/Studio); embed-kode (iframe mot `/story/:token?embed=1`) | ✅ Fase 5 |
+| Scener & review | Scenekort (kode, lokasjon, utfordring, spillmekanikk, miljø, status, ansvarlig, frist) koblet til Story Graph-elementer; storyboard-rammer, oppgaver, review-runder med frosset snapshot, godkjenning og stale-vern, kommentartråd og varsler; MCP `rr_list_game_scenes` | ✅ Fase 6 (review Pro/Studio) |
+| Skall & hjem | Sidebar-skall (Prosjekt/Produksjon/Ressurser/Studio), ⌘K, innboks-bjelle; Hjem med KPI-er (scener, gater, oppgaver, runder, replikker, plattformkrav), neste opp, milepæler, episoder, aktivitet; MCP `rr_project_overview` | ✅ Fase 7 (alle planer) |
+| Historie, karakterer, lokasjoner, plattform | Episoder med «hva spillerne lærer», tidslinje med låste beslutninger, åpne spørsmål/sjekklister, kilderegister med SHA-256; scenekort v2 (Før/Handling/Kontroll/Etter/Lyd, epoke, kildemerker, replikker med cue-ID og opptaksstatus, seks leveransegater med bevis-krav); karakter-/lokasjonsgalleri med typet profil; målplattform med budsjett, krav m/ bevis og visuell retning; MCP `rr_get_scene_card`; seed av det ekte prosjektet «What Follows Us» | ✅ Fase 7 (alle planer) |
+| Produksjonsplan | Milepæler per bane i Gantt (i-dag, zoom, popover) og liste, scener med datoer, «uten dato» | ✅ Fase 7 (Pro/Studio) |
+| Team & gjester | Roller med spill-kapabiliteter, seter fra plan, PIN-invitasjon (`/game/invite/:token`), kapabilitetssjekk på sletting/beslutning/plan; gjeste-reviewere uten konto via `/story-review/:token` (se/kommentere/beslutte, stale-vern, varsel) | ✅ Fase 7 (Studio) |
+
+**Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
+login-persona. Priser er plassholdere satt i migrasjon 0621 og redigeres i «Admin · Planer».
+
+### 2.8 AI-lag — The Role Room Agent (BETA — ikke skipet)
 
 Drevet av Claude. Testes internt og er under utvikling — **ikke et live kundeprodukt
 ennå**. Når den skipes, er den ment særlig for **innholdsprodusenter**, og skal levere:
@@ -273,7 +305,7 @@ ennå**. Når den skipes, er den ment særlig for **innholdsprodusenter**, og sk
 Merk: flere av disse motorene finnes allerede internt (se 2.9). Det nye i Agenten er at
 de pekes mot **kundens** virksomhet, ikke selskapets egen.
 
-### 2.8 Tverrgående: kommunikasjon (LIVE)
+### 2.9 Tverrgående: kommunikasjon (LIVE)
 
 Brukt på tvers av alle vertikaler.
 
@@ -283,7 +315,7 @@ Brukt på tvers av alle vertikaler.
 | **SMS (Twilio)** | Kandidat-/team-påminnelser | Fakturert per melding (2,00 kr eks. mva) |
 | **E-post / nyhetsbrev** | Bekreftelser, «Norwegian Casting Brief» | Double-opt-in |
 
-### 2.9 Integrasjoner
+### 2.10 Integrasjoner
 
 | Integrasjon | Rolle | Status |
 |---|---|---|
@@ -302,7 +334,7 @@ Brukt på tvers av alle vertikaler.
 | **A-melding / Altinn** | Lønnsrapportering | ✖️ Irrelevant — TheRoleRoom er ikke et lønnssystem |
 | **Arbeidstilsynet** | Trivsel og trygghet i bransjen | 🤝 Ønsket *samarbeid* (ikke teknisk integrasjon) |
 
-### 2.10 Interne vekst-/ops-verktøy (IKKE kundeprodukt)
+### 2.11 Interne vekst-/ops-verktøy (IKKE kundeprodukt)
 
 Disse `role-room-*`-modulene finnes i koden, men er verktøy selskapet bruker for å vokse
 og drive forretning — ikke kundefunksjoner: merch-partner-discovery, investor-deck-
@@ -310,7 +342,7 @@ generering, education-outreach/inquiries, website-analyzer, creator-discovery og
 nyhetsbrevet «Norwegian Casting Brief». Noen deler motor med planlagte Agent-funksjoner
 (2.6), men i kundeproduktet pekes motoren mot kundens egen virksomhet.
 
-### 2.11 Oppsummering: kjerne vs. støttende
+### 2.12 Oppsummering: kjerne vs. støttende
 
 - **Kjerne (live):** Produksjons-OS (casting + produksjon + manus + klient/økonomi),
   innholdsprodusent-løsning, dansestudio-vertikal, **Talents-app + Talent Registry**.
@@ -318,6 +350,7 @@ nyhetsbrevet «Norwegian Casting Brief». Noen deler motor med planlagte Agent-f
 - **Støttende infrastruktur (live):** kommunikasjon (WhatsApp/SMS/e-post), integrasjoner,
   åpen plattform-API.
 - **Fremtidig kjerne-differensiator (beta):** The Role Room Agent.
+- **Ny vertikal (beta):** Spillstudio / Story Graph — narrativ design, mål: nærmere/bedre enn Arcweave.
 - **Ikke kundeprodukt:** interne vekst-/ops-verktøy.
 
 ---

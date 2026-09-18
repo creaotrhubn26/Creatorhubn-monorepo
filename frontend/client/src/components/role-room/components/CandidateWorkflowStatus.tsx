@@ -39,9 +39,9 @@ const WORKFLOW_STEPS: { status: WorkflowStatus; label: string; icon: ReactNode; 
   { status: 'pending', label: 'Venter', icon: <PersonSearchIcon />, color: '#9ca3af' },
   { status: 'auditioned', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
   { status: 'selected', label: 'Valgt', icon: <CheckCircleIcon />, color: '#10b981' },
-  { status: 'offer_sent', label: 'Tilbud sendt', icon: <LocalOfferIcon />, color: '#3b82f6' },
-  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: 'var(--role-violet, #8875eb)' },
-  { status: 'contracted', label: 'Kontrakt', icon: <DescriptionIcon />, color: '#06b6d4' },
+  { status: 'offer_sent', label: 'Tilbud sendt', icon: <LocalOfferIcon />, color: '#3f51b5' },
+  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: 'var(--role-violet, #5d76cb)' },
+  { status: 'contracted', label: 'Kontrakt', icon: <DescriptionIcon />, color: '#3f51b5' },
   { status: 'production', label: 'Produksjon', icon: <MovieIcon />, color: '#ec4899' },
 ];
 
@@ -51,12 +51,12 @@ const ColorlibConnector = styled(StepConnector)(({ theme }) => ({
   },
   [`&.${stepConnectorClasses.active}`]: {
     [`& .${stepConnectorClasses.line}`]: {
-      backgroundImage: 'linear-gradient(90deg, #8875eb, #06b6d4)',
+      backgroundImage: 'linear-gradient(90deg, #5d76cb, #3f51b5)',
     },
   },
   [`&.${stepConnectorClasses.completed}`]: {
     [`& .${stepConnectorClasses.line}`]: {
-      backgroundImage: 'linear-gradient(90deg, #10b981, #8875eb)',
+      backgroundImage: 'linear-gradient(90deg, #10b981, #5d76cb)',
     },
   },
   [`& .${stepConnectorClasses.line}`]: {
@@ -81,8 +81,8 @@ const ColorlibStepIconRoot = styled('div')<{
   alignItems: 'center',
   transition: 'all 0.3s',
   ...(ownerState.active && {
-    backgroundImage: 'linear-gradient(135deg, #8875eb, #06b6d4)',
-    boxShadow: '0 4px 10px 0 rgba(136, 117, 235,0.4)',
+    backgroundImage: 'linear-gradient(135deg, #5d76cb, #3f51b5)',
+    boxShadow: '0 4px 10px 0 rgba(93, 118, 203,0.4)',
   }),
   ...(ownerState.completed && {
     backgroundImage: 'linear-gradient(135deg, #10b981, #059669)',

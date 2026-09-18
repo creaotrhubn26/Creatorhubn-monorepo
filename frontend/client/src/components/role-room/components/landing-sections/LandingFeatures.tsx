@@ -99,7 +99,7 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
               textTransform: 'uppercase',
               mb: 1,
               minHeight: '1.4em',
-              background: 'linear-gradient(90deg, #fff 0%, #8875eb 55%, #6249df 100%)',
+              background: 'linear-gradient(90deg, #fff 0%, #5d76cb 55%, #4b3d8f 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -113,7 +113,7 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
                   display: 'inline-block',
                   width: '2px',
                   height: '0.85em',
-                  bgcolor: 'var(--role-violet, #8875eb)',
+                  bgcolor: 'var(--role-violet, #5d76cb)',
                   ml: '2px',
                   verticalAlign: 'middle',
                   opacity: cursorVisible ? 1 : 0,
@@ -153,13 +153,13 @@ function LandingFeaturesImpl({ introShowing }: LandingFeaturesProps) {
                 transition: 'all 0.3s ease',
                 backdropFilter: 'blur(12px)',
                 '&:hover': {
-                  bgcolor: 'rgba(136, 117, 235,0.09)',
-                  borderColor: 'rgba(136, 117, 235,0.28)',
+                  bgcolor: 'rgba(93, 118, 203,0.09)',
+                  borderColor: 'rgba(93, 118, 203,0.28)',
                   transform: 'translateY(-4px)',
                 },
               }}
             >
-              <Box sx={{ color: 'var(--role-violet, #8875eb)', mb: 2 }}>{f.icon}</Box>
+              <Box sx={{ color: 'var(--role-violet, #5d76cb)', mb: 2 }}>{f.icon}</Box>
               <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '1.05rem', mb: 1 }}>
                 {f.title}
               </Typography>

@@ -32,7 +32,7 @@ interface Seat {
   grantedAt?: string;
 }
 
-const ACCENT = '#472bd4';
+const ACCENT = '#3e3180';
 const DISMISS_KEY_PREFIX = 'trrpa_crew_welcome_seen_';
 
 function useMySeats() {
@@ -94,7 +94,7 @@ export const PostAgentCrewWelcomeBanner: React.FC = () => {
       severity="info"
       sx={{
         mb: 2,
-        background: `linear-gradient(135deg, rgba(71, 43, 212, 0.10) 0%, rgba(71, 43, 212, 0.05) 100%)`,
+        background: `linear-gradient(135deg, rgba(62, 49, 128, 0.10) 0%, rgba(62, 49, 128, 0.05) 100%)`,
         border: `1px solid ${ACCENT}40`,
         color: 'text.primary',
         '& .MuiAlert-message': { width: '100%', p: 0 },
@@ -130,7 +130,7 @@ export const PostAgentCrewWelcomeBanner: React.FC = () => {
               startIcon={<OpenInNewIcon fontSize="small" />}
               href="/link"
               target="_blank"
-              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' } }}
+              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' } }}
             >
               Last ned Post Agent
             </Button>

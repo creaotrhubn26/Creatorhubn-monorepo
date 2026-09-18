@@ -595,9 +595,9 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                     p: 0.95,
                     borderRadius: 1.25,
                     border: selectedDriveFileId === file.id
-                      ? '1px solid rgba(96,165,250,0.48)'
+                      ? '1px solid rgba(147, 164, 220,0.48)'
                       : '1px solid rgba(148,163,184,0.12)',
-                    bgcolor: selectedDriveFileId === file.id ? 'rgba(30,41,59,0.92)' : 'rgba(10, 5, 21,0.48)',
+                    bgcolor: selectedDriveFileId === file.id ? 'rgba(30,41,59,0.92)' : 'rgba(27, 18, 44,0.48)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.8} justifyContent="space-between">
@@ -610,7 +610,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                         <Chip
                           size="small"
                           label={file.isFolder ? 'Mappe' : formatFileSize(file.size)}
-                          sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                          sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                         />
                       </Stack>
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
@@ -731,7 +731,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                         p: 0.85,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.12)',
-                        bgcolor: 'rgba(10, 5, 21,0.44)',
+                        bgcolor: 'rgba(27, 18, 44,0.44)',
                       }}
                     >
                       <Stack direction="row" spacing={0.75} justifyContent="space-between" alignItems="center">
@@ -770,7 +770,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                             p: 0.85,
                             borderRadius: 1.25,
                             border: '1px solid rgba(148,163,184,0.12)',
-                            bgcolor: 'rgba(10, 5, 21,0.44)',
+                            bgcolor: 'rgba(27, 18, 44,0.44)',
                           }}
                         >
                           <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.84rem' }}>
@@ -824,13 +824,13 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                     size="small"
                     label={calendar.summary}
                     sx={{
-                      bgcolor: calendar.id === calendarId ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.12)',
-                      color: calendar.id === calendarId ? '#bfdbfe' : '#e2e8f0',
+                      bgcolor: calendar.id === calendarId ? 'rgba(63, 81, 181,0.18)' : 'rgba(148,163,184,0.12)',
+                      color: calendar.id === calendarId ? '#c3cbe6' : '#e2e8f0',
                     }}
                   />
                 ))}
               </Stack>
-              <Box sx={{ p: 0.95, borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.12)', bgcolor: 'rgba(10, 5, 21,0.48)' }}>
+              <Box sx={{ p: 0.95, borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.12)', bgcolor: 'rgba(27, 18, 44,0.48)' }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75} justifyContent="space-between">
                   <Box>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
@@ -893,7 +893,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                       p: 0.85,
                       borderRadius: 1.25,
                       border: '1px solid rgba(148,163,184,0.12)',
-                      bgcolor: 'rgba(10, 5, 21,0.44)',
+                      bgcolor: 'rgba(27, 18, 44,0.44)',
                     }}
                   >
                     <Stack direction="row" spacing={0.75} justifyContent="space-between" alignItems="center">
@@ -936,7 +936,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                           p: 0.85,
                           borderRadius: 1.25,
                           border: '1px solid rgba(148,163,184,0.12)',
-                          bgcolor: 'rgba(10, 5, 21,0.44)',
+                          bgcolor: 'rgba(27, 18, 44,0.44)',
                         }}
                       >
                         <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.84rem' }}>
@@ -1023,7 +1023,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                       p: 0.85,
                       borderRadius: 1.25,
                       border: '1px solid rgba(148,163,184,0.12)',
-                      bgcolor: 'rgba(10, 5, 21,0.44)',
+                      bgcolor: 'rgba(27, 18, 44,0.44)',
                     }}
                   >
                     <Stack direction="row" spacing={0.75} justifyContent="space-between" alignItems="flex-start">

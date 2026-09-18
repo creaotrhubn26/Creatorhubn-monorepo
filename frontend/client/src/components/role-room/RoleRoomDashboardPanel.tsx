@@ -119,13 +119,15 @@ import {
   Paid as PaidIcon,
   Instagram as InstagramIcon,
 } from '@mui/icons-material';
-import { getActiveProfessionMode, isDanceMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
+import { getActiveProfessionMode, isDanceMode, isGameMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
 import { PostAgentErrorBoundary } from './components/PostAgentErrorBoundary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { DanceWorkspace } from './dance';
+// Spillstudio (Story Graph) — lazy så film/foto-bundelen ikke drar inn reactflow/tiptap.
+const NarrativeWorkspace = React.lazy(() => import('./narrative/NarrativeWorkspace').then((m) => ({ default: m.NarrativeWorkspace })));
 
 import {
   useRoleRoomProjects,
@@ -485,7 +487,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     const candidateCount = candidates?.length ?? 0;
     const crewCount = crew?.length ?? 0;
     return [
-      { label: 'Prosjekter', value: projectCount, icon: <FolderIcon />, color: '#8875eb' },
+      { label: 'Prosjekter', value: projectCount, icon: <FolderIcon />, color: '#5d76cb' },
       { label: 'Roller', value: roleCount, icon: <TheaterIcon />, color: '#f59e0b' },
       { label: 'Kandidater', value: candidateCount, icon: <PersonIcon />, color: '#10b981' },
       { label: 'Crew', value: crewCount, icon: <GroupIcon />, color: '#ec4899' },
@@ -780,6 +782,16 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     );
   }
 
+  if (isGameMode(activeProfessionMode)) {
+    return (
+      <Box className="role-room-route role-room-route--game" sx={{ position: 'relative', minHeight: '100vh' }}>
+        <React.Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster spillstudio…</Box>}>
+          <NarrativeWorkspace projectId={selectedProjectId ?? undefined} />
+        </React.Suspense>
+      </Box>
+    );
+  }
+
   if (isDanceMode(activeProfessionMode)) {
     return (
       <Box className="role-room-route role-room-route--dance" sx={{ position: 'relative', minHeight: '100vh' }}>
@@ -790,10 +802,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               onClick={(event) => handleOpenProfile(event.currentTarget)}
               aria-label="Åpne profil"
               sx={{
-                bgcolor: 'rgba(136, 117, 235,0.95)',
+                bgcolor: 'rgba(93, 118, 203,0.95)',
                 color: '#fff',
                 boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
-                '&:hover': { bgcolor: 'rgba(98, 73, 223,1)' },
+                '&:hover': { bgcolor: 'rgba(75, 61, 143,1)' },
               }}
             >
               {memberProfileImageUrl ? (
@@ -910,8 +922,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   size="small"
                   label={workspaceSummary.statusLabel}
                   sx={{
-                    bgcolor: 'rgba(98, 73, 223,0.12)',
-                    color: '#472bd4',
+                    bgcolor: 'rgba(75, 61, 143,0.12)',
+                    color: '#3e3180',
                     fontWeight: 700,
                   }}
                 />
@@ -922,7 +934,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   label={workspaceSummary.planName}
                   variant="outlined"
                   sx={{
-                    borderColor: 'rgba(98, 73, 223,0.25)',
+                    borderColor: 'rgba(75, 61, 143,0.25)',
                     color: 'rgba(17,24,39,0.82)',
                     fontWeight: 600,
                   }}
@@ -934,7 +946,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                   label={workspaceSummary.companyName}
                   variant="outlined"
                   sx={{
-                    borderColor: 'rgba(14,165,233,0.25)',
+                    borderColor: 'rgba(63, 81, 181,0.25)',
                     color: 'rgba(17,24,39,0.72)',
                   }}
                 />
@@ -993,7 +1005,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }}
                         imgProps={{ style: { objectPosition: memberAvatarObjectPosition } }} />
               ) : profileInitials ? (
-                <Avatar sx={{ width: 32, height: 32, bgcolor: '#8875eb', fontSize: '0.85rem', fontWeight: 700 }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: '#5d76cb', fontSize: '0.85rem', fontWeight: 700 }}>
                   {profileInitials}
                 </Avatar>
               ) : (
@@ -1046,7 +1058,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             <CardHeader
               title="Prosjekter"
               titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
-              avatar={<MovieIcon fontSize="small" sx={{ color: '#8875eb' }} />}
+              avatar={<MovieIcon fontSize="small" sx={{ color: '#5d76cb' }} />}
             />
             <Divider />
             {!projects?.length ? (
@@ -1241,7 +1253,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     px: { xs: 1.5, sm: 2 },
                     WebkitTapHighlightColor: 'transparent',
                     touchAction: 'manipulation',
-                    '&:active': { bgcolor: 'rgba(136, 117, 235,0.08)' },
+                    '&:active': { bgcolor: 'rgba(93, 118, 203,0.08)' },
                   },
                   '& .MuiTabs-scrollButtons.Mui-disabled': {
                     opacity: 0.3,
@@ -1270,7 +1282,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                         label={tabLabel(v)}
                         icon={<TabIconComp fontSize="small" />}
                         iconPosition="start"
-                        sx={def.highlight ? { minHeight: 48, color: '#9e8cf8' } : { minHeight: 48 }}
+                        sx={def.highlight ? { minHeight: 48, color: '#93a4dc' } : { minHeight: 48 }}
                       />
                     );
                   })}
@@ -1322,7 +1334,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                         Instagram-innboks
                       </Button>
                     </Box>
-                    <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8875eb" />
+                    <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#5d76cb" />
                     {!publishingProjectId && (
                       <Alert severity="info" variant="outlined">
                         YouTube-publisering virker nå i The Role Room, men dette prosjektet er ikke koblet til et CreatorHub-prosjekt ennå.
@@ -1992,13 +2004,13 @@ function CrewSubPanel({
         <Stack direction="row" spacing={1}>
           {isProjectLeader && (
             <Button size="small" startIcon={<GroupIcon />} onClick={() => setMembersOpen(true)}
-                    sx={{ color: '#472bd4' }}>
+                    sx={{ color: '#3e3180' }}>
               Medlemmer
             </Button>
           )}
           {isProjectLeader && (
             <Button size="small" startIcon={<TuneIcon />} onClick={() => setTabAccessOpen(true)}
-                    sx={{ color: '#472bd4' }}>
+                    sx={{ color: '#3e3180' }}>
               Tab-tilganger
             </Button>
           )}
@@ -2138,8 +2150,8 @@ function CrewSubPanel({
           icon={false}
           sx={{
             mb: 2,
-            background: 'linear-gradient(135deg, rgba(71, 43, 212, 0.10) 0%, rgba(71, 43, 212, 0.05) 100%)',
-            border: '1px solid rgba(71, 43, 212, 0.30)',
+            background: 'linear-gradient(135deg, rgba(62, 49, 128, 0.10) 0%, rgba(62, 49, 128, 0.05) 100%)',
+            border: '1px solid rgba(62, 49, 128, 0.30)',
             color: 'text.primary',
           }}
           action={
@@ -2147,7 +2159,7 @@ function CrewSubPanel({
               size="small"
               variant="contained"
               href={`/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}`}
-              sx={{ bgcolor: '#472bd4', '&:hover': { bgcolor: '#6249df' } }}
+              sx={{ bgcolor: '#3e3180', '&:hover': { bgcolor: '#4b3d8f' } }}
             >
               Aktiver i marketplace
             </Button>
@@ -2179,9 +2191,9 @@ function CrewSubPanel({
               disabled={!!bulkProgress}
               onClick={handleBulkGrant}
               sx={{
-                borderColor: '#472bd4',
-                color: '#472bd4',
-                '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(71, 43, 212,0.05)' },
+                borderColor: '#3e3180',
+                color: '#3e3180',
+                '&:hover': { borderColor: '#4b3d8f', bgcolor: 'rgba(62, 49, 128,0.05)' },
               }}
             >
               {bulkProgress
@@ -2241,9 +2253,9 @@ function CrewSubPanel({
                       disabled={isBusy}
                       onClick={() => handleToggle(c, undefined)}
                       sx={{
-                        borderColor: '#472bd4',
-                        color: '#472bd4',
-                        '&:hover': { borderColor: '#6249df', bgcolor: 'rgba(71, 43, 212,0.05)' },
+                        borderColor: '#3e3180',
+                        color: '#3e3180',
+                        '&:hover': { borderColor: '#4b3d8f', bgcolor: 'rgba(62, 49, 128,0.05)' },
                       }}
                     >
                       {isBusy ? '...' : 'Tildel seat'}
@@ -2319,7 +2331,7 @@ function ScheduleSubPanel({
     <List dense>
       {schedules.map((s, i) => (
         <ListItem key={String(s.id ?? i)}>
-          <Avatar sx={{ mr: 1.5, bgcolor: '#8875eb', width: 32, height: 32 }}>
+          <Avatar sx={{ mr: 1.5, bgcolor: '#5d76cb', width: 32, height: 32 }}>
             <ScheduleIcon fontSize="small" />
           </Avatar>
           <ListItemText

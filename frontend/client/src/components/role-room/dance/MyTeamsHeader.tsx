@@ -54,7 +54,7 @@ export const MyTeamsHeader: React.FC<Props> = ({ memberships, activeTeamOrgId, o
         <Chip
           label={active.role?.label ?? 'medlem'}
           size="small"
-          sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT, fontWeight: 600, height: 20, fontSize: 11 }}
+          sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: PURPLE_LIGHT, fontWeight: 600, height: 20, fontSize: 11 }}
         />
       </Stack>
     );
@@ -70,11 +70,11 @@ export const MyTeamsHeader: React.FC<Props> = ({ memberships, activeTeamOrgId, o
         sx={{
           textTransform: 'none',
           color: 'rgba(235, 231, 253,0.92)',
-          bgcolor: 'rgba(136, 117, 235,0.08)',
-          border: '1px solid rgba(158, 140, 248,0.18)',
+          bgcolor: 'rgba(93, 118, 203,0.08)',
+          border: '1px solid rgba(147, 164, 220,0.18)',
           borderRadius: 2,
           px: 1.5, py: 0.5,
-          '&:hover': { bgcolor: 'rgba(136, 117, 235,0.14)' },
+          '&:hover': { bgcolor: 'rgba(93, 118, 203,0.14)' },
         }}
       >
         <Stack direction="row" spacing={1} alignItems="center">
@@ -84,7 +84,7 @@ export const MyTeamsHeader: React.FC<Props> = ({ memberships, activeTeamOrgId, o
           <Chip
             label={`${memberships.length} team`}
             size="small"
-            sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: PURPLE_LIGHT, fontWeight: 700, height: 18, fontSize: 10 }}
+            sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: PURPLE_LIGHT, fontWeight: 700, height: 18, fontSize: 10 }}
           />
         </Stack>
       </Button>
@@ -92,9 +92,9 @@ export const MyTeamsHeader: React.FC<Props> = ({ memberships, activeTeamOrgId, o
         open={Boolean(anchor)}
         anchorEl={anchor}
         onClose={() => setAnchor(null)}
-        PaperProps={{ sx: { bgcolor: '#100b1e', border: '1px solid rgba(158, 140, 248,0.18)', minWidth: 240 } }}
+        PaperProps={{ sx: { bgcolor: '#2a3152', border: '1px solid rgba(147, 164, 220,0.18)', minWidth: 240 } }}
       >
-        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(158, 140, 248,0.10)' }}>
+        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(147, 164, 220,0.10)' }}>
           <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700 }}>
             DINE TEAM
           </Typography>

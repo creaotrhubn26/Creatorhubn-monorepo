@@ -348,7 +348,7 @@ export function IgHashtagInspector() {
                             right: 0,
                             bottom: 0,
                             p: 0.8,
-                            background: 'linear-gradient(180deg, transparent, rgba(10, 5, 21,0.85))',
+                            background: 'linear-gradient(180deg, transparent, rgba(27, 18, 44,0.85))',
                             color: '#f8fafc',
                           }}
                         >

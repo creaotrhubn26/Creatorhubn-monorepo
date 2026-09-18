@@ -176,9 +176,9 @@ const SceneCard: FC<SceneCardProps> = ({
                 <IconButton
                   size="small"
                   onClick={() => onAssignRequest(item)}
-                  sx={{ p: 0.375, bgcolor: alpha('#6249df', 0.1), '&:hover': { bgcolor: alpha('#6249df', 0.2) } }}
+                  sx={{ p: 0.375, bgcolor: alpha('#4b3d8f', 0.1), '&:hover': { bgcolor: alpha('#4b3d8f', 0.2) } }}
                 >
-                  <AssignIcon sx={{ fontSize: 14, color: '#6249df' }} />
+                  <AssignIcon sx={{ fontSize: 14, color: '#4b3d8f' }} />
                 </IconButton>
               </Tooltip>
             )}
@@ -243,8 +243,8 @@ const SceneCard: FC<SceneCardProps> = ({
 const StatsBar: FC<{ stats: ScenePoolStats; isMobile: boolean }> = ({ stats, isMobile }) => (
   <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2 }, flexWrap: 'wrap', alignItems: 'center' }}>
     {[
-      { value: stats.totalScenes, label: 'Scener', color: '#6249df' },
-      { value: `${stats.totalPages.toFixed(1)}s`, label: 'Sider', color: '#3B82F6' },
+      { value: stats.totalScenes, label: 'Scener', color: '#4b3d8f' },
+      { value: `${stats.totalPages.toFixed(1)}s`, label: 'Sider', color: '#3f51b5' },
       { value: formatMinutes(stats.totalMinutes), label: 'Total tid', color: '#10B981' },
       { value: stats.uniqueLocations, label: 'Lok.', color: '#F59E0B' },
       { value: stats.uniqueCastMembers, label: 'Cast', color: '#EF4444' },
@@ -298,10 +298,10 @@ export const ScenePoolPanel: FC<ScenePoolPanelProps> = ({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
 
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <Box sx={{ p: { xs: 1.25, sm: 1.75 }, borderBottom: 1, borderColor: 'divider', bgcolor: alpha('#6249df', 0.04) }}>
+      <Box sx={{ p: { xs: 1.25, sm: 1.75 }, borderBottom: 1, borderColor: 'divider', bgcolor: alpha('#4b3d8f', 0.04) }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="subtitle1" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: responsive.fontSize.subtitle }}>
-            <StarIcon sx={{ fontSize: 18, color: '#6249df' }} />
+            <StarIcon sx={{ fontSize: 18, color: '#4b3d8f' }} />
             Scene Pool
             <Badge badgeContent={pool.allItems.length} color="secondary" sx={{ ml: 0.5 }}>
               <Box />
@@ -436,8 +436,8 @@ export const ScenePoolPanel: FC<ScenePoolPanelProps> = ({
           <LinearProgress
             variant="determinate"
             value={0}  // 0% when showing full pool; parent can pass a "scheduled %" prop
-            sx={{ height: 4, borderRadius: 2, mt: 0.25, bgcolor: alpha('#6249df', 0.15),
-                  '& .MuiLinearProgress-bar': { bgcolor: '#6249df' } }}
+            sx={{ height: 4, borderRadius: 2, mt: 0.25, bgcolor: alpha('#4b3d8f', 0.15),
+                  '& .MuiLinearProgress-bar': { bgcolor: '#4b3d8f' } }}
           />
         </Box>
       )}

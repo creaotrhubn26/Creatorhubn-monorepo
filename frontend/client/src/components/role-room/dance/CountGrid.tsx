@@ -143,7 +143,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
           <Chip
             size="small"
             label={`${bpm ?? '–'} BPM · ${totalCounts} beats`}
-            sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(136, 117, 235,0.12)', color: danceFlowColors.lavenderLight, border: '1px solid rgba(136, 117, 235,0.3)' }}
+            sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(93, 118, 203,0.12)', color: danceFlowColors.lavenderLight, border: '1px solid rgba(93, 118, 203,0.3)' }}
           />
         </Stack>
         <Stack direction="row" spacing={0.5} alignItems="center">
@@ -208,7 +208,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   bgcolor: row.isLeadup ? 'rgba(156,163,175,0.05)' : 'transparent',
                   cursor: onSeekToCount ? 'pointer' : 'default',
-                  '&:hover': onSeekToCount ? { bgcolor: 'rgba(158, 140, 248,0.1)' } : undefined,
+                  '&:hover': onSeekToCount ? { bgcolor: 'rgba(147, 164, 220,0.1)' } : undefined,
                 }}
               >
                 <Box

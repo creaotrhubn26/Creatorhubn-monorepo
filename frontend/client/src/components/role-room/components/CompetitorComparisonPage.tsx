@@ -197,7 +197,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
           <Chip
             label={config.tagline}
             size="small"
-            sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(158, 140, 248,0.16)', color: '#e0dbfa', fontWeight: 600 }}
+            sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(147, 164, 220,0.16)', color: '#dfe4f3', fontWeight: 600 }}
           />
           <Typography
             component="h1"
@@ -214,11 +214,11 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9e8cf8',
+                bgcolor: '#93a4dc',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
-                '&:hover': { bgcolor: '#c6bdf4' },
+                '&:hover': { bgcolor: '#c3cbe6' },
               }}
             >
               Prøv The Role Room
@@ -254,10 +254,10 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
             { Icon: ShieldIcon, title: 'GDPR i EU/EØS', text: 'Data lagres i Europa. Klart definert databehandler-avtale.' },
             { Icon: AutoAwesomeIcon, title: 'Integrert AI', text: 'Casting-agent foreslår kandidater, sender invitasjoner og oppsummerer pipelinen.' },
           ].map((v) => (
-            <Card key={v.title} sx={{ bgcolor: 'rgba(10, 5, 21,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
+            <Card key={v.title} sx={{ bgcolor: 'rgba(27, 18, 44,0.42)', border: '1px solid rgba(148,163,184,0.16)' }}>
               <CardContent>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                  <v.Icon sx={{ color: '#9e8cf8' }} />
+                  <v.Icon sx={{ color: '#93a4dc' }} />
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{v.title}</Typography>
                 </Stack>
                 <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.92rem' }}>{v.text}</Typography>
@@ -280,10 +280,10 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
             severity="info"
             sx={{
               mb: 2,
-              bgcolor: 'rgba(59,130,246,0.08)',
+              bgcolor: 'rgba(63, 81, 181,0.08)',
               color: 'rgba(203,213,225,0.92)',
-              border: '1px solid rgba(59,130,246,0.24)',
-              '& .MuiAlert-icon': { color: '#60a5fa' },
+              border: '1px solid rgba(63, 81, 181,0.24)',
+              '& .MuiAlert-icon': { color: '#93a4dc' },
             }}
           >
             Vi gjør vårt beste for å holde sammenligningen oppdatert. {config.name}-statuser baseres på offentlig
@@ -292,7 +292,7 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
           <TableContainer
             component={Box}
             sx={{
-              bgcolor: 'rgba(10, 5, 21,0.42)',
+              bgcolor: 'rgba(27, 18, 44,0.42)',
               borderRadius: 1.5,
               border: '1px solid rgba(148,163,184,0.16)',
             }}
@@ -321,8 +321,8 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
         {/* CTA */}
         <Card
           sx={{
-            bgcolor: 'rgba(158, 140, 248,0.10)',
-            border: '1px solid rgba(158, 140, 248,0.32)',
+            bgcolor: 'rgba(147, 164, 220,0.10)',
+            border: '1px solid rgba(147, 164, 220,0.32)',
             mt: 2,
           }}
         >
@@ -341,12 +341,12 @@ function ComparisonView({ config }: { config: CompetitorConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9e8cf8',
+                bgcolor: '#93a4dc',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
                 px: 4,
-                '&:hover': { bgcolor: '#c6bdf4' },
+                '&:hover': { bgcolor: '#c3cbe6' },
               }}
             >
               Kom i gang gratis
@@ -383,10 +383,10 @@ function AlternativesIndexView() {
             <Card
               key={c.key}
               sx={{
-                bgcolor: 'rgba(10, 5, 21,0.42)',
+                bgcolor: 'rgba(27, 18, 44,0.42)',
                 border: '1px solid rgba(148,163,184,0.16)',
                 transition: 'border-color 0.2s',
-                '&:hover': { borderColor: 'rgba(158, 140, 248,0.48)' },
+                '&:hover': { borderColor: 'rgba(147, 164, 220,0.48)' },
               }}
             >
               <CardContent>
@@ -405,11 +405,11 @@ function AlternativesIndexView() {
                   size="small"
                   endIcon={<OpenInNewIcon />}
                   sx={{
-                    color: '#9e8cf8',
-                    borderColor: 'rgba(158, 140, 248,0.32)',
+                    color: '#93a4dc',
+                    borderColor: 'rgba(147, 164, 220,0.32)',
                     textTransform: 'none',
                     fontWeight: 600,
-                    '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(158, 140, 248,0.08)' },
+                    '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(147, 164, 220,0.08)' },
                   }}
                 >
                   Les sammenligningen

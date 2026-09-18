@@ -114,7 +114,7 @@ export function setupPagesShowListRoutes(deps: SetupPagesShowListRoutesDeps): vo
   *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
   body{margin:0;background:#0f1729;color:#f1f5f9;padding:32px;min-height:100vh}
   .card{max-width:920px;margin:32px auto;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:32px;box-shadow:0 22px 80px rgba(0,0,0,.4)}
-  h1{margin:0 0 8px;font-size:26px;font-weight:800;color:#dbeafe}
+  h1{margin:0 0 8px;font-size:26px;font-weight:800;color:#dfe4f3}
   h2{margin:0 0 24px;font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
   h3{margin:24px 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.18em}
   label{display:block;font-size:13px;font-weight:600;color:#cbd5e1;margin:12px 0 6px}
@@ -123,7 +123,7 @@ export function setupPagesShowListRoutes(deps: SetupPagesShowListRoutesDeps): vo
   button:hover{transform:translateY(-1px);filter:brightness(1.1)}
   button:disabled{opacity:.5;cursor:wait}
   button.connect{background:linear-gradient(135deg,#1877F2,#3b5998)}
-  pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#bfdbfe;margin-top:8px;max-height:340px}
+  pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#c3cbe6;margin-top:8px;max-height:340px}
   .status-ok{color:#22c55e} .status-err{color:#f87171}
   .badge{display:inline-block;background:linear-gradient(135deg,rgba(37,99,235,.2),rgba(14,165,233,.2));color:#93c5fd;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -134,7 +134,7 @@ export function setupPagesShowListRoutes(deps: SetupPagesShowListRoutesDeps): vo
   .page-card.selected{border-color:#0ea5e9;box-shadow:0 0 0 2px rgba(14,165,233,.35)}
   .page-card img{width:52px;height:52px;border-radius:10px;object-fit:cover;border:1px solid #334155;background:#1e293b}
   .page-info{flex:1;min-width:0}
-  .page-name{color:#dbeafe;font-weight:700;font-size:15px}
+  .page-name{color:#dfe4f3;font-weight:700;font-size:15px}
   .page-meta{display:flex;gap:12px;font-size:11px;color:#94a3b8;flex-wrap:wrap;margin-top:4px}
   .radio{width:20px;height:20px;border-radius:50%;border:2px solid #475569;flex:0 0 auto}
   .page-card.selected .radio{border-color:#0ea5e9;background:radial-gradient(circle,#0ea5e9 40%,transparent 45%)}
