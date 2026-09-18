@@ -17,7 +17,7 @@ const fieldSx = {
   '& .MuiOutlinedInput-notchedOutline': { borderColor: narrativeColors.borderStrong },
 };
 
-const KIND_LABELS: Record<NarrativeAssetKind, string> = { image: 'Bilde', audio: 'Lyd', video: 'Video' };
+const KIND_LABELS: Record<NarrativeAssetKind, string> = { image: 'Bilde', audio: 'Lyd', video: 'Video', file: 'Fil' };
 
 export function AssetsPanel({ graph, store }: { graph: NarrativeGraph; store: UseNarrativeGraphResult }) {
   const [name, setName] = useState('');

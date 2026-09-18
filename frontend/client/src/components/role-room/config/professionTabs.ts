@@ -104,6 +104,8 @@ export const GAME_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'characters', labelToken: 'gameTabCharacters', descriptionToken: 'gameTabCharactersDescription', requiresProject: true, feature: 'core' },
   { id: 'locations',  labelToken: 'gameTabLocations',  descriptionToken: 'gameTabLocationsDescription',  requiresProject: true, feature: 'core' },
   { id: 'platform',   labelToken: 'gameTabPlatform',   descriptionToken: 'gameTabPlatformDescription',   requiresProject: true, feature: 'core' },
+  // Fase 8c — Integrasjoner: CI-bevis-hooks og leveringslogg (core; gating kommer med 8g).
+  { id: 'integrations', labelToken: 'gameTabIntegrations', descriptionToken: 'gameTabIntegrationsDescription', requiresProject: true, feature: 'production' },
   { id: 'boards',     labelToken: 'gameTabBoards',     descriptionToken: 'gameTabBoardsDescription',     requiresProject: true, feature: 'core' },
   { id: 'components', labelToken: 'gameTabComponents', descriptionToken: 'gameTabComponentsDescription', requiresProject: true, feature: 'core' },
   { id: 'variables',  labelToken: 'gameTabVariables',  descriptionToken: 'gameTabVariablesDescription',  requiresProject: true, feature: 'core' },

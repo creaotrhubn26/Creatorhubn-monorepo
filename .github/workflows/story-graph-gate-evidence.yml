@@ -1,0 +1,99 @@
+# Story Graph — gjenbrukbar workflow for spill-repoet (Fase 8c).
+#
+# Kalles fra WFU-spillets eget repo etter en Xcode-test/bygg-jobb, og setter en
+# leveransegate i Story Graph med bevis (og valgfri xcresult-artefakt). Denne fila
+# ligger i monorepoet som mal; kopier den til spill-repoet eller kall den med
+#   uses: creaotrhubn26/Creatorhubn-monorepo/.github/workflows/story-graph-gate-evidence.yml@main
+#
+# Secrets i spill-repoet: STORYGRAPH_HOOK_URL (hook-URL fra Integrasjoner-fanen) og
+# STORYGRAPH_HOOK_SECRET (vises én gang ved opprettelse).
+#
+# Eksempel-kall:
+#   jobs:
+#     gate:
+#       needs: xcode-tests
+#       uses: creaotrhubn26/Creatorhubn-monorepo/.github/workflows/story-graph-gate-evidence.yml@main
+#       with:
+#         scene: P01
+#         gate: greybox
+#         status: ${{ needs.xcode-tests.result == 'success' && 'passed' || 'failed' }}
+#         evidence: "xcodebuild test: ${{ needs.xcode-tests.outputs.summary }}"
+#         artifact_name: prologue-xcresult      # valgfri: artefakt lastet opp med actions/upload-artifact
+#         artifact_path: Prologue-P01-Final.xcresult.zip
+#       secrets: inherit
+name: Story Graph gate evidence
+
+on:
+  workflow_call:
+    inputs:
+      scene:
+        description: "Scene (arbeids-ID eller kode), f.eks. P01 eller G03A"
+        required: true
+        type: string
+      gate:
+        description: "script_coverage | greybox | characters_animation | playthrough | picture | audio"
+        required: true
+        type: string
+      status:
+        description: "passed | failed | in_progress"
+        required: true
+        type: string
+      evidence:
+        description: "Bevis-tekst (påkrevd for passed)"
+        required: false
+        type: string
+        default: ""
+      build:
+        description: "Build-nummer/versjon (valgfri)"
+        required: false
+        type: string
+        default: ""
+      artifact_name:
+        description: "Navn på artefakt lastet opp med actions/upload-artifact i en tidligere jobb (valgfri)"
+        required: false
+        type: string
+        default: ""
+      artifact_path:
+        description: "Filnavn inne i artefakten som skal lastes opp som bevis (valgfri)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      STORYGRAPH_HOOK_URL:
+        required: true
+      STORYGRAPH_HOOK_SECRET:
+        required: true
+
+jobs:
+  post_gate_evidence:
+    name: Post gate evidence to Story Graph
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout monorepo (for skriptet)
+        uses: actions/checkout@v4
+        with:
+          repository: creaotrhubn26/Creatorhubn-monorepo
+          sparse-checkout: packages/story-graph-runtime/ci
+          sparse-checkout-cone-mode: false
+
+      - name: Download evidence artifact
+        if: inputs.artifact_name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: evidence
+
+      - name: Post gate evidence
+        env:
+          STORYGRAPH_HOOK_URL: ${{ secrets.STORYGRAPH_HOOK_URL }}
+          STORYGRAPH_HOOK_SECRET: ${{ secrets.STORYGRAPH_HOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          args=(--scene "${{ inputs.scene }}" --gate "${{ inputs.gate }}" --status "${{ inputs.status }}" \
+                --commit "$GITHUB_SHA" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
+          [ -n "${{ inputs.evidence }}" ] && args+=(--evidence "${{ inputs.evidence }}")
+          [ -n "${{ inputs.build }}" ] && args+=(--build "${{ inputs.build }}")
+          if [ -n "${{ inputs.artifact_name }}" ] && [ -n "${{ inputs.artifact_path }}" ]; then
+            args+=(--artifact "evidence/${{ inputs.artifact_path }}")
+          fi
+          bash packages/story-graph-runtime/ci/post-gate-evidence.sh "${args[@]}"

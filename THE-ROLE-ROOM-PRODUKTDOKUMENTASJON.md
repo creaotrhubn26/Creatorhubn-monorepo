@@ -288,6 +288,8 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Produksjonsplan | Milepæler per bane i Gantt (i-dag, zoom, popover) og liste, scener med datoer, «uten dato» | ✅ Fase 7 (Pro/Studio) |
 | Team & gjester | Roller med spill-kapabiliteter, seter fra plan, PIN-invitasjon (`/game/invite/:token`), kapabilitetssjekk på sletting/beslutning/plan; gjeste-reviewere uten konto via `/story-review/:token` (se/kommentere/beslutte, stale-vern, varsel) | ✅ Fase 7 (Studio) |
 | Drift & robusthet | Server-side av-bryter (`ROLE_ROOM_GAME_STUDIO_ENABLED`, 503 + helsidebanner), Sentry-fangst i narrative-rutene, per-token rate-limit på delingslenker, Neon-branch-tørrkjøring av migrasjoner før prod, perf-vakt for store grafer | ✅ Fase 8a (alle planer) |
+| Manusimport | Word/PDF/Markdown → scener og replikker som diff (ny/endret/uendret/mangler) før noe skrives; aldri sletting — manglende blir åpne spørsmål; kilderegister med SHA-256; taler-matching mot karakterer | ✅ Fase 8b (alle planer) |
+| CI-bevis | Spillbygget setter leveransegater med bevis via HMAC-signert webhook; artefakter (xcresult) lagres og lastes ned fra gate-fanen; Integrasjoner-fane med hooks og leveringslogg; «bestått» uten bevis avvises også fra CI | ✅ Fase 8c (alle planer; gating kommer i 8g) |
 
 **Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
 login-persona. Priser er plassholdere satt i migrasjon 0621 og redigeres i «Admin · Planer».

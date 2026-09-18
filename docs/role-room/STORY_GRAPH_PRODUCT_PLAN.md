@@ -248,7 +248,21 @@ vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis �
   evidens `docs/evidence/2026-09-neon-branch-migration-dry-run.yaml`); perf-vakt
   `shared/narrative-runtime/perf.test.ts` (2 000 elementer / ~3 000 koblinger: validering og 300 valg
   under 1,5 s).
-- **8b–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
+- **8b Manusimport (LEVERT):** Word/PDF/Markdown/tekst → scener og replikker med dry-run-diff
+  (ny / endret / uendret / mangler i dokumentet); ingenting slettes — det som mangler blir åpne
+  spørsmål (`kind = check`); kilderegisteret får SHA-256 og verifisert-stempel; taler matches mot
+  karakterer. Parser + diff er ren TS (`narrative-document-import.ts`), skriving i én transaksjon
+  gjennom service-funksjonene. Formatkrav i `docs/role-room/STORY_GRAPH_MANUSCRIPT_IMPORT.md`.
+  UI: «Importer» i Scener-fanen (`ImportDocumentDialog.tsx`). e2e: `game-scene-import.spec.ts`.
+- **8c CI-bevis-webhook (LEVERT):** spillbygget setter leveransegater med bevis via HMAC-signert
+  webhook (`X-StoryGraph-Signature-256`) + bevis-artefakter (xcresult-zip) til S3 via
+  `narrative_assets.storage_key` (ny kind `file`); «bestått» uten bevis avvises også fra CI
+  (`setSceneGate`, `checked_by = 'ci:<hookId>'`); Integrasjoner-fane (hooks, hemmelighet vist én gang,
+  leveringslogg); «Satt av CI» + «Last ned bevis» på gate-fanen; `post-gate-evidence.sh` og
+  gjenbrukbar workflow `story-graph-gate-evidence.yml` for spill-repoet. Handlere montert i `index.ts`
+  FØR `express.json()` (rå body). Migrasjon `0643_narrative_ci_hooks.sql`. Docs
+  `docs/role-room/STORY_GRAPH_CI_EVIDENCE.md`, evidens `2026-09-story-graph-ci-evidence-webhook.yaml`.
+- **8d–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
 
 
 ## Researchprogram

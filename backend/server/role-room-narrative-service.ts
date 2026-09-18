@@ -26,7 +26,7 @@ export type NarrativeAttributeOwnerKind = 'element' | 'component' | 'board';
 export type NarrativeAttributeType =
   | 'rich_text' | 'string' | 'bool' | 'int' | 'float' | 'component_list' | 'asset_list';
 export type NarrativeVariableType = 'bool' | 'int' | 'float' | 'string';
-export type NarrativeAssetKind = 'image' | 'audio' | 'video';
+export type NarrativeAssetKind = 'image' | 'audio' | 'video' | 'file';
 
 export const NARRATIVE_ELEMENT_KINDS: readonly NarrativeElementKind[] = ['element', 'branch', 'jumper', 'note'];
 export const NARRATIVE_ATTRIBUTE_OWNER_KINDS: readonly NarrativeAttributeOwnerKind[] = ['element', 'component', 'board'];

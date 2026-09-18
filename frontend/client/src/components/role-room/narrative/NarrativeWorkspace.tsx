@@ -72,6 +72,7 @@ import { ComponentGalleryPanel } from './characters/ComponentGalleryPanel';
 import { PlatformPanel } from './platform/PlatformPanel';
 import { PlanPanel } from './plan/PlanPanel';
 import { TeamPanel } from '../game/TeamPanel';
+import { IntegrationsPanel } from './integrations/IntegrationsPanel';
 import { PlanGateBanner } from '../game/GameBillingPanels';
 import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
@@ -476,6 +477,12 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
             onImported={(next) => store.replaceGraph(next)}
             onNotice={(message, severity) => setNotice({ message, severity })}
           />
+        );
+      case 'integrations':
+        return (
+          <Box sx={{ p: 0 }} data-testid="narrative-integrations">
+            {projectId ? <IntegrationsPanel projectId={projectId} refreshKey={scenesTick} onNotice={(message, severity) => setNotice({ message, severity })} /> : null}
+          </Box>
         );
       case 'team':
         return (
