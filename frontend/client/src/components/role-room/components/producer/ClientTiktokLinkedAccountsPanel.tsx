@@ -15,13 +15,13 @@ import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 
 const palette = {
-  bg: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bg: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
   tiktok: '#ff0050',
 };
 
@@ -44,7 +44,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, { txt: string; bg: string; color: string }> = {
   active: { txt: 'AKTIV', bg: 'rgba(52,211,153,0.18)', color: '#34d399' },
-  delegated: { txt: 'DELEGERT', bg: 'rgba(96,165,250,0.18)', color: '#60a5fa' },
+  delegated: { txt: 'DELEGERT', bg: 'rgba(147, 164, 220,0.18)', color: '#93a4dc' },
   pending: { txt: 'AVVENTER', bg: 'rgba(251,191,36,0.18)', color: '#fbbf24' },
   revoked: { txt: 'AVSLUTTET', bg: 'rgba(148,163,184,0.18)', color: '#94a3b8' },
   expired: { txt: 'UTLØPT', bg: 'rgba(248,113,113,0.18)', color: '#f87171' },
@@ -147,7 +147,7 @@ export default function ClientTiktokLinkedAccountsPanel({
               const status = STATUS_LABEL[a.accountStatus] ?? STATUS_LABEL.active;
               return (
                 <Box key={a.tiktokAccountId} sx={{
-                  bgcolor: 'rgba(136, 117, 235,0.04)',
+                  bgcolor: 'rgba(93, 118, 203,0.04)',
                   border: `1px solid ${palette.border}`,
                   borderRadius: 1.4,
                   p: 1.6,

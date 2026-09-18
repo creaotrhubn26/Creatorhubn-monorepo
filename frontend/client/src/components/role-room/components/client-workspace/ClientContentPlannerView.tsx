@@ -116,12 +116,12 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
       </Box>
 
       {!adding ? (
-        <Button onClick={() => setAdding(true)} startIcon={<AddIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}>
+        <Button onClick={() => setAdding(true)} startIcon={<AddIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}>
           Legg til post
         </Button>
       ) : (
-        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(136, 117, 235,0.3)', background: 'rgba(98, 73, 223,0.06)' }}>
-          <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Ny post</Typography>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(93, 118, 203,0.3)', background: 'rgba(75, 61, 143,0.06)' }}>
+          <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Ny post</Typography>
           <Stack spacing={1.25}>
             <TextField label="Tittel / idé" value={title} onChange={(e) => setTitle(e.target.value)} size="small" fullWidth sx={fieldSx} />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -135,7 +135,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
             </Stack>
             <TextField label="Caption (valgfritt)" value={caption} onChange={(e) => setCaption(e.target.value)} size="small" fullWidth multiline maxRows={4} sx={fieldSx} />
             <Stack direction="row" spacing={1}>
-              <Button onClick={() => void add()} disabled={busyId === 'add'} startIcon={busyId === 'add' ? <CircularProgress size={15} color="inherit" /> : <AddIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)' }}>Legg til</Button>
+              <Button onClick={() => void add()} disabled={busyId === 'add'} startIcon={busyId === 'add' ? <CircularProgress size={15} color="inherit" /> : <AddIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)' }}>Legg til</Button>
               <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
             </Stack>
           </Stack>
@@ -143,7 +143,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
       )}
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#8875eb' }} /></Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#5d76cb' }} /></Box>
       ) : items.length === 0 ? (
         <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
           <CalendarIcon sx={{ fontSize: 32, color: 'rgba(226,232,240,0.8)' }} />
@@ -154,7 +154,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
           {groups.map(([month, monthItems]) => (
             <Box key={month}>
               <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.75 }}>
-                <CalendarIcon sx={{ fontSize: 16, color: '#c6bdf4' }} />
+                <CalendarIcon sx={{ fontSize: 16, color: '#c3cbe6' }} />
                 <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 800, textTransform: 'capitalize' }}>{month}</Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.74rem' }}>· {monthItems.length}</Typography>
               </Stack>
@@ -163,17 +163,17 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
                   const sm = STATUS_META[it.status] ?? STATUS_META.draft;
                   const SIcon = sm.Icon;
                   return (
-                    <Box key={it.id} sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(10, 5, 21,0.4)', p: 1.1, opacity: busyId === it.id ? 0.6 : 1 }}>
+                    <Box key={it.id} sx={{ borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(27, 18, 44,0.4)', p: 1.1, opacity: busyId === it.id ? 0.6 : 1 }}>
                       <Stack direction="row" alignItems="flex-start" spacing={1}>
                         <Box sx={{ minWidth: 64, textAlign: 'center', flexShrink: 0 }}>
-                          <Typography sx={{ color: it.scheduledAt ? '#c6bdf4' : 'rgba(226,232,240,0.8)', fontSize: '0.72rem', fontWeight: 700 }}>
+                          <Typography sx={{ color: it.scheduledAt ? '#c3cbe6' : 'rgba(226,232,240,0.8)', fontSize: '0.72rem', fontWeight: 700 }}>
                             {it.scheduledAt ? dayLabel(it.scheduledAt) : 'Uplanlagt'}
                           </Typography>
                         </Box>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Typography sx={{ color: '#f1f5f9', fontSize: '0.88rem', fontWeight: 700 }}>{it.title}</Typography>
                           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.3, flexWrap: 'wrap', rowGap: 0.3 }}>
-                            {it.platform ? <Chip label={PLATFORM_LABEL[it.platform] ?? it.platform} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: '#c6bdf4', bgcolor: 'rgba(136, 117, 235,0.14)' }} /> : null}
+                            {it.platform ? <Chip label={PLATFORM_LABEL[it.platform] ?? it.platform} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: '#c3cbe6', bgcolor: 'rgba(93, 118, 203,0.14)' }} /> : null}
                             <Chip icon={<SIcon sx={{ fontSize: 12, color: `${sm.color} !important` }} />} label={sm.label} size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, color: sm.color, bgcolor: 'rgba(255,255,255,0.04)' }} />
                             {it.source === 'chat' ? <Chip label="fra chat" size="small" sx={{ height: 18, fontSize: '0.6rem', color: 'rgba(226,232,240,0.8)', bgcolor: 'rgba(148,163,184,0.14)' }} /> : null}
                             {it.feedPlanPushed ? <Chip label="i feed-planner" size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#6ee7b7', bgcolor: 'rgba(16,185,129,0.12)' }} /> : null}
@@ -182,7 +182,7 @@ export default function ClientContentPlannerView({ projectId }: { projectId: str
                         </Box>
                         <Stack direction="row" spacing={0.2} sx={{ flexShrink: 0 }}>
                           {!it.feedPlanPushed ? (
-                            <IconButton aria-label="Push til feed-planner" onClick={() => void pushToFeed(it)} sx={{ width: 40, height: 40, color: '#c6bdf4' }}>
+                            <IconButton aria-label="Push til feed-planner" onClick={() => void pushToFeed(it)} sx={{ width: 40, height: 40, color: '#c3cbe6' }}>
                               <PushIcon sx={{ fontSize: 18 }} />
                             </IconButton>
                           ) : null}

@@ -33,7 +33,7 @@ function buildGradient(
   accentColor: string | null | undefined,
 ): string {
   const base = backgroundColor || '#0f172a';
-  const accent = accentColor || 'var(--role-cyan, #22d3ee)';
+  const accent = accentColor || 'var(--role-cyan, #5d76cb)';
   return `linear-gradient(135deg, ${base} 0%, ${mixHex(base, accent, 0.3)} 55%, ${accent} 100%)`;
 }
 
@@ -122,7 +122,7 @@ export default function FeedPostTile({
         cursor: onSelect ? "pointer" : "default",
         background: hasCustomMedia ? "#000" : gradient,
         overflow: "hidden",
-        outline: selected ? "2px solid #22d3ee" : "2px solid transparent",
+        outline: selected ? "2px solid #5d76cb" : "2px solid transparent",
         outlineOffset: -2,
         transition: "transform 0.18s ease, outline-color 0.18s ease",
         "&:hover": onSelect
@@ -304,8 +304,8 @@ export default function FeedPostTile({
               width: 6,
               height: 6,
               borderRadius: "50%",
-              bgcolor: post.accentColor || "var(--role-cyan, #22d3ee)",
-              boxShadow: `0 0 8px ${post.accentColor || 'var(--role-cyan, #22d3ee)'}`,
+              bgcolor: post.accentColor || "var(--role-cyan, #5d76cb)",
+              boxShadow: `0 0 8px ${post.accentColor || 'var(--role-cyan, #5d76cb)'}`,
             }}
           />
           <Typography

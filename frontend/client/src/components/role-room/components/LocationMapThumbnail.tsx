@@ -88,7 +88,7 @@ export const LocationMapThumbnail: React.FC<LocationMapThumbnailProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'rgba(136, 117, 235,0.6)',
+            color: 'rgba(93, 118, 203,0.6)',
           }}
         >
           <MapPinIcon sx={{ fontSize: Math.min(width, height) * 0.55 }} />
@@ -122,10 +122,10 @@ export const LocationMapThumbnail: React.FC<LocationMapThumbnailProps> = ({
               width: 10,
               height: 10,
               borderRadius: '50%',
-              bgcolor: '#8875eb',
+              bgcolor: '#5d76cb',
               border: '2px solid #fff',
               transform: 'translate(-50%, -50%)',
-              boxShadow: '0 0 0 4px rgba(136, 117, 235,0.25)',
+              boxShadow: '0 0 0 4px rgba(93, 118, 203,0.25)',
               pointerEvents: 'none',
             }}
           />

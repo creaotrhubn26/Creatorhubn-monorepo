@@ -186,7 +186,7 @@ export function CastingScamSignsPage() {
                 border: '1px solid rgba(255,255,255,0.07)',
               }}
             >
-              <Typography component="a" href={auth.url} target="_blank" rel="noreferrer noopener" sx={{ color: '#9e8cf8', fontWeight: 700, textDecoration: 'none', fontSize: '1rem' }}>
+              <Typography component="a" href={auth.url} target="_blank" rel="noreferrer noopener" sx={{ color: '#93a4dc', fontWeight: 700, textDecoration: 'none', fontSize: '1rem' }}>
                 {auth.name} →
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', mt: 0.5, lineHeight: 1.55 }}>

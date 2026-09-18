@@ -17,19 +17,19 @@
 
 // ── Design-tokens (matcher Talents-appens palett) ────────────────
 export const emailPalette = {
-  bgOuter: '#0a0515',
-  bgCard: '#18122b',
-  bgElevated: '#211c3b',
-  border: 'rgba(98, 73, 223, 0.18)',
-  borderStrong: 'rgba(98, 73, 223, 0.32)',
-  borderSubtle: 'rgba(98, 73, 223, 0.10)',
-  textPrimary: '#f1effb',
-  textSecondary: '#c0b8ea',
-  textMuted: '#a19bbf',
-  accent: '#6249df',
-  accentBright: '#9e8cf8',
-  accentDeep: '#3c27a5',
-  accentMagenta: '#8875eb',
+  bgOuter: '#1b122c',
+  bgCard: '#2a3d56',
+  bgElevated: '#3c4e6d',
+  border: 'rgba(75, 61, 143, 0.18)',
+  borderStrong: 'rgba(75, 61, 143, 0.32)',
+  borderSubtle: 'rgba(75, 61, 143, 0.10)',
+  textPrimary: '#eef1fb',
+  textSecondary: '#c3cbe6',
+  textMuted: '#95a3b2',
+  accent: '#4b3d8f',
+  accentBright: '#93a4dc',
+  accentDeep: '#32127a',
+  accentMagenta: '#5d76cb',
   success: '#34d399',
   warning: '#fbbf24',
   danger: '#f87171',
@@ -93,14 +93,14 @@ export type EmailCategory =
   | 'general';
 
 const CATEGORY_BADGE: Record<EmailCategory, { label: string; bg: string; fg: string; icon: IconName }> = {
-  viewed:        { label: 'Sett',          bg: 'rgba(96,165,250,0.22)',  fg: '#60a5fa', icon: 'visibility' },
+  viewed:        { label: 'Sett',          bg: 'rgba(147, 164, 220,0.22)',  fg: '#93a4dc', icon: 'visibility' },
   shortlisted:   { label: 'Shortlistet',   bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'star' },
   reminder:      { label: 'Påminnelse',    bg: 'rgba(251,191,36,0.22)',  fg: '#fbbf24', icon: 'notification' },
-  comment:       { label: 'Kommentar',     bg: 'rgba(98,73,223,0.22)',   fg: '#9e8cf8', icon: 'chat' },
+  comment:       { label: 'Kommentar',     bg: 'rgba(75, 61, 143,0.22)',   fg: '#93a4dc', icon: 'chat' },
   welcome:       { label: 'Velkommen',     bg: 'rgba(52,211,153,0.22)',  fg: '#34d399', icon: 'checkCircle' },
-  lead_internal: { label: 'Ny lead',       bg: 'rgba(136,117,235,0.22)', fg: '#8875eb', icon: 'trackChanges' },
+  lead_internal: { label: 'Ny lead',       bg: 'rgba(93, 118, 203,0.22)', fg: '#5d76cb', icon: 'trackChanges' },
   lead_ack:      { label: 'Mottatt',       bg: 'rgba(52,211,153,0.22)',  fg: '#34d399', icon: 'checkCircle' },
-  general:       { label: 'The Role Room', bg: 'rgba(98,73,223,0.22)',   fg: '#9e8cf8', icon: 'playCircle' },
+  general:       { label: 'The Role Room', bg: 'rgba(75, 61, 143,0.22)',   fg: '#93a4dc', icon: 'playCircle' },
 };
 
 // ── Utility: HTML-escape ─────────────────────────────────────────
@@ -514,22 +514,22 @@ export interface ComposeArgs {
 function applyCreatorhubPalette(html: string): string {
   return html
     // aksent-indigo → Creatorhub-oransje (hex)
-    .replace(/#6249df/gi, '#ff8c00')
-    .replace(/#9e8cf8/gi, '#ffa733')
-    .replace(/#3c27a5/gi, '#cc7000')
-    .replace(/#8875eb/gi, '#ff8c00')
-    .replace(/#472bd4/gi, '#cc7000')
+    .replace(/#4b3d8f/gi, '#ff8c00')
+    .replace(/#93a4dc/gi, '#ffa733')
+    .replace(/#32127a/gi, '#cc7000')
+    .replace(/#5d76cb/gi, '#ff8c00')
+    .replace(/#3e3180/gi, '#cc7000')
     // indigo rgba-trippel (alle alfa, med/uten mellomrom) → oransje
     .replace(/rgba\(\s*98\s*,\s*73\s*,\s*223\s*,/gi, 'rgba(255, 140, 0,')
     .replace(/rgba\(\s*136\s*,\s*117\s*,\s*235\s*,/gi, 'rgba(255, 140, 0,')
     // mørke indigo bakgrunner → varm mørk
-    .replace(/#0a0515/gi, '#0c0a08')
-    .replace(/#18122b/gi, '#17120c')
-    .replace(/#211c3b/gi, '#211a10')
+    .replace(/#1b122c/gi, '#0c0a08')
+    .replace(/#2a3d56/gi, '#17120c')
+    .replace(/#3c4e6d/gi, '#211a10')
     // indigo-tonet tekst → varm
-    .replace(/#f1effb/gi, '#fdf6ee')
-    .replace(/#c0b8ea/gi, '#f0d9b8')
-    .replace(/#a19bbf/gi, '#b3a081');
+    .replace(/#eef1fb/gi, '#fdf6ee')
+    .replace(/#c3cbe6/gi, '#f0d9b8')
+    .replace(/#95a3b2/gi, '#b3a081');
 }
 
 export function composeEmail(args: ComposeArgs): { html: string; text: string } {

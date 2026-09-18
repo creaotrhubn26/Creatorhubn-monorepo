@@ -954,7 +954,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
         sx={{
           p: compact ? 1 : 1.5,
           borderRadius: 1.5,
-          bgcolor: 'rgba(16, 11, 30,0.92)',
+          bgcolor: 'rgba(42, 49, 82,0.92)',
           border: '1px solid rgba(255,255,255,0.06)',
         }}
       >
@@ -978,15 +978,15 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       sx={{
         p: compact ? 1 : 1.5,
         borderRadius: 1.5,
-        bgcolor: 'rgba(16, 11, 30,0.92)',
+        bgcolor: 'rgba(42, 49, 82,0.92)',
         border: '1px solid rgba(255,255,255,0.06)',
         outline: 'none',
-        '&:focus-visible': { boxShadow: '0 0 0 2px rgba(198, 189, 244,0.4)' },
+        '&:focus-visible': { boxShadow: '0 0 0 2px rgba(195, 203, 230,0.4)' },
       }}
     >
       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.75 }}>
-        <Movie sx={{ fontSize: 14, color: '#c6bdf4' }} />
-        <Typography variant="overline" sx={{ fontSize: 10, letterSpacing: '0.08em', color: '#c6bdf4', fontWeight: 800 }}>
+        <Movie sx={{ fontSize: 14, color: '#c3cbe6' }} />
+        <Typography variant="overline" sx={{ fontSize: 10, letterSpacing: '0.08em', color: '#c3cbe6', fontWeight: 800 }}>
           Animatic-avspilling
         </Typography>
         {recorder.state === 'recording' && (
@@ -1064,7 +1064,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             py: 0.5,
             borderRadius: 1,
             bgcolor: 'rgba(0,0,0,0.5)',
-            border: '1px solid rgba(198, 189, 244,0.2)',
+            border: '1px solid rgba(195, 203, 230,0.2)',
             textAlign: 'center',
           }}
         >
@@ -1159,14 +1159,14 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
             player.timeline.segments.slice(1).map((s) => ({ value: s.start }))
           }
           sx={{
-            color: '#c6bdf4',
+            color: '#c3cbe6',
             '& .MuiSlider-mark': {
               height: 8,
               width: 1.5,
               bgcolor: 'rgba(255,255,255,0.35)',
             },
             '& .MuiSlider-markActive': {
-              bgcolor: 'rgba(198, 189, 244,0.7)',
+              bgcolor: 'rgba(195, 203, 230,0.7)',
             },
           }}
           data-testid="animatic-scrubber"

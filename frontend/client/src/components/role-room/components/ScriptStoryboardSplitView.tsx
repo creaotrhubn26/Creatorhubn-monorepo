@@ -161,10 +161,10 @@ const ResizeHandle = styled(Box)({
   transition: 'background-color 0.2s ease',
   position: 'relative',
   '&:hover': {
-    backgroundColor: 'rgba(59, 130, 246, 0.3)',
+    backgroundColor: 'rgba(63, 81, 181, 0.3)',
   },
   '&:active': {
-    backgroundColor: 'rgba(59, 130, 246, 0.5)',
+    backgroundColor: 'rgba(63, 81, 181, 0.5)',
   },
   '&::after': {
     content: '""',
@@ -216,9 +216,9 @@ const FrameCounter = styled(Chip)({
   height: 24,
   fontSize: 11,
   fontWeight: 600,
-  backgroundColor: 'rgba(59, 130, 246, 0.15)',
-  border: '1px solid rgba(59, 130, 246, 0.3)',
-  color: '#60a5fa',
+  backgroundColor: 'rgba(63, 81, 181, 0.15)',
+  border: '1px solid rgba(63, 81, 181, 0.3)',
+  color: '#93a4dc',
 });
 
 // =============================================================================
@@ -567,8 +567,8 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
               sx={{ 
                 borderRadius: 0, 
                 py: 0.5,
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                borderBottom: '1px solid rgba(59, 130, 246, 0.2)',
+                backgroundColor: 'rgba(63, 81, 181, 0.1)',
+                borderBottom: '1px solid rgba(63, 81, 181, 0.2)',
               }}
             >
               <Stack direction="row" alignItems="center" gap={1}>

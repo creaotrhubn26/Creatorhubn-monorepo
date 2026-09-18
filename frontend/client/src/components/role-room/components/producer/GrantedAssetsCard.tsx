@@ -32,11 +32,11 @@ const SUBTLE = { color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem' } as const;
 
 function platformIcon(platform: 'meta' | 'linkedin', assetType: string) {
   if (platform === 'linkedin') {
-    return assetType === 'organization' ? <LinkedInIcon sx={{ fontSize: 18, color: '#38bdf8' }} /> : <CampaignIcon sx={{ fontSize: 18, color: '#38bdf8' }} />;
+    return assetType === 'organization' ? <LinkedInIcon sx={{ fontSize: 18, color: '#5d76cb' }} /> : <CampaignIcon sx={{ fontSize: 18, color: '#5d76cb' }} />;
   }
   return assetType.includes('instagram')
-    ? <InstagramIcon sx={{ fontSize: 18, color: '#9e8cf8' }} />
-    : <FacebookIcon sx={{ fontSize: 18, color: '#60a5fa' }} />;
+    ? <InstagramIcon sx={{ fontSize: 18, color: '#93a4dc' }} />
+    : <FacebookIcon sx={{ fontSize: 18, color: '#93a4dc' }} />;
 }
 
 /**

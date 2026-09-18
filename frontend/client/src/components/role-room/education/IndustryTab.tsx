@@ -150,10 +150,10 @@ export function IndustryTab() {
   }, [pipeline, cohortFilter, query]);
 
   const kpis = [
-    { id: 'promotert', label: 'Promoterte', value: pipeline.filter((r) => r.status !== 'none').length, hint: 'På Talents-registeret', icon: <TalentIcon />, bg: 'rgba(136, 117, 235,0.16)', c: '#c6bdf4' },
+    { id: 'promotert', label: 'Promoterte', value: pipeline.filter((r) => r.status !== 'none').length, hint: 'På Talents-registeret', icon: <TalentIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
     { id: 'claimet', label: 'Overtatt av student', value: pipeline.filter((r) => r.status === 'claimed').length, hint: 'Studenten styrer selv', icon: <ClaimedIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     { id: 'showreel', label: 'Med showreel', value: pipeline.filter((r) => r.hasShowreel).length, hint: 'Klar for visning', icon: <ShowreelIcon />, bg: 'rgba(236,72,153,0.16)', c: '#ec4899' },
-    { id: 'sokbar', label: 'Søkbare', value: pipeline.filter((r) => r.searchable).length, hint: 'Dukker opp i casting-søk', icon: <SearchIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8' },
+    { id: 'sokbar', label: 'Søkbare', value: pipeline.filter((r) => r.searchable).length, hint: 'Dukker opp i casting-søk', icon: <SearchIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb' },
     { id: 'nsf', label: 'NSF-medlemmer', value: pipeline.filter((r) => r.nsfMember).length, hint: 'Fagforening (manuelt merket)', icon: <NsfIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
   ];
 
@@ -170,7 +170,7 @@ export function IndustryTab() {
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><IndustryIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', display: 'grid', placeItems: 'center', flexShrink: 0 }}><IndustryIcon /></Box>
           <Box>
             <T eid="edu-br-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Bransje</T>
             <T eid="edu-br-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Avgangs-pipeline: fra klasserom til rollebesetning. Promoter studenter til Talents-registeret, gjør profilene søkbare for byråer/casting, og styr avgangs-showcase.</T>
@@ -184,7 +184,7 @@ export function IndustryTab() {
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
       <Alert severity="info" icon={<TalentIcon fontSize="inherit" />}
-        sx={{ bgcolor: 'rgba(136, 117, 235,0.08)', border: '1px solid rgba(136, 117, 235,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
+        sx={{ bgcolor: 'rgba(93, 118, 203,0.08)', border: '1px solid rgba(93, 118, 203,0.2)', color: 'rgba(255,255,255,0.82)', '& .MuiAlert-icon': { color: ACCENT } }}>
         <T eid="edu-br-consent" component="span">Samtykke først: en promotert profil er <b>ikke</b> synlig for byråer/casting før studenten selv har overtatt den og gitt consent. Skolen verifiserer utdanningen; studenten eier profilen.</T>
       </Alert>
 
@@ -233,20 +233,20 @@ export function IndustryTab() {
           return (
             <Box key={r.studentId} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', minWidth: 560, alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }}>{initials(r.name)}</Avatar>
+                <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(93, 118, 203,0.3)', color: '#dfe4f3' }}>{initials(r.name)}</Avatar>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Typography>
               </Stack>
               <Typography sx={{ fontSize: 12.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pr: 1 }}>{cohortName(r.cohortId)}</Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                 <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 10.5, fontWeight: 600, bgcolor: sc.bg, color: sc.color }} />
                 {r.hasShowreel && <Chip icon={<ShowreelIcon sx={{ fontSize: '12px !important' }} />} label="Showreel" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(236,72,153,0.12)', color: '#ec4899', '& .MuiChip-icon': { color: '#ec4899' } }} />}
-                {r.searchable && <Chip icon={<SearchIcon sx={{ fontSize: '12px !important' }} />} label="Søkbar" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(56,189,248,0.12)', color: '#38bdf8', '& .MuiChip-icon': { color: '#38bdf8' } }} />}
+                {r.searchable && <Chip icon={<SearchIcon sx={{ fontSize: '12px !important' }} />} label="Søkbar" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(93, 118, 203,0.12)', color: '#5d76cb', '& .MuiChip-icon': { color: '#5d76cb' } }} />}
                 {r.nsfMember && <Chip icon={<NsfIcon sx={{ fontSize: '12px !important' }} />} label="NSF" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(245,158,11,0.12)', color: '#f59e0b', '& .MuiChip-icon': { color: '#f59e0b' } }} />}
               </Stack>
               <Stack direction="row" spacing={0.25} sx={{ justifySelf: 'end' }} alignItems="center">
                 <Button size="small" variant={r.status === 'none' ? 'contained' : 'outlined'} startIcon={r.status === 'none' ? <TalentIcon sx={{ fontSize: '15px !important' }} /> : <EditIcon sx={{ fontSize: '15px !important' }} />} onClick={() => openEdit(r)}
                   sx={r.status === 'none'
-                    ? { bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }
+                    ? { bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }
                     : { borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>
                   {r.status === 'none' ? 'Promoter' : 'Rediger'}
                 </Button>
@@ -259,12 +259,12 @@ export function IndustryTab() {
 
       {/* Rediger/promoter-dialog */}
       <Dialog open={!!edit} onClose={() => setEdit(null)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: '#fff', border: '1px solid rgba(93, 118, 203,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>{edit?.status === 'none' ? `Promoter ${edit?.name} til Talents` : `Talent-attributter — ${edit?.name}`}</DialogTitle>
         <DialogContent>
           {edit?.status === 'none' && (
             <>
-              <T eid="edu-br-dlg-cred" sx={{ fontSize: 11.5, fontWeight: 700, color: '#c6bdf4', textTransform: 'uppercase', letterSpacing: 0.5, mt: 0.5, mb: 1 }}>Skole-verifisert credential</T>
+              <T eid="edu-br-dlg-cred" sx={{ fontSize: 11.5, fontWeight: 700, color: '#c3cbe6', textTransform: 'uppercase', letterSpacing: 0.5, mt: 0.5, mb: 1 }}>Skole-verifisert credential</T>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
                 <TextField size="small" label="Institusjon" value={institution} onChange={(e) => setInstitution(e.target.value)} fullWidth />
                 <TextField size="small" label="Program" value={program} onChange={(e) => setProgram(e.target.value)} fullWidth />
@@ -272,7 +272,7 @@ export function IndustryTab() {
               </Stack>
             </>
           )}
-          <T eid="edu-br-dlg-attrs" sx={{ fontSize: 11.5, fontWeight: 700, color: '#c6bdf4', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>Casting-attributter (gjør profilen søkbar)</T>
+          <T eid="edu-br-dlg-attrs" sx={{ fontSize: 11.5, fontWeight: 700, color: '#c3cbe6', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>Casting-attributter (gjør profilen søkbar)</T>
           <Stack spacing={1.5}>
             <Stack direction="row" spacing={1.5}>
               <TextField size="small" type="number" label="Spillealder fra" value={ageMin} onChange={(e) => setAgeMin(e.target.value)} fullWidth />
@@ -306,13 +306,13 @@ export function IndustryTab() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEdit(null)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={save} disabled={busy || (edit?.status === 'none' && !attested)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700 }}>{busy ? 'Lagrer…' : edit?.status === 'none' ? 'Promoter' : 'Lagre attributter'}</Button>
+          <Button variant="contained" onClick={save} disabled={busy || (edit?.status === 'none' && !attested)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700 }}>{busy ? 'Lagrer…' : edit?.status === 'none' ? 'Promoter' : 'Lagre attributter'}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Avgangs-showcase-dialog */}
       <Dialog open={showcaseOpen} onClose={() => setShowcaseOpen(false)} maxWidth="sm" fullWidth
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: '#fff', border: '1px solid rgba(93, 118, 203,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Avgangs-showcase</DialogTitle>
         <DialogContent>
           <T eid="edu-br-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>Promoterte talenter i kullet. Byråer/casting ser kun de studentene selv har gitt samtykke til.</T>
@@ -322,7 +322,7 @@ export function IndustryTab() {
             <Typography sx={{ fontSize: 13, color: 'text.secondary', py: 2 }}>Ingen promoterte talenter i dette kullet ennå.</Typography>
           ) : showcase.map((s) => (
             <Stack key={s.talentId} direction="row" alignItems="center" spacing={1.5} sx={{ py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }}>{initials(s.name)}</Avatar>
+              <Avatar sx={{ width: 36, height: 36, fontSize: 12, bgcolor: 'rgba(93, 118, 203,0.3)', color: '#dfe4f3' }}>{initials(s.name)}</Avatar>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</Typography>
@@ -330,7 +330,7 @@ export function IndustryTab() {
                 </Stack>
                 <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>{[s.credential?.program, s.credential?.institution, s.credential?.year].filter(Boolean).join(' · ') || 'Skuespiller'}</Typography>
               </Box>
-              {s.showreelUrl && <Button size="small" href={s.showreelUrl} target="_blank" rel="noopener" startIcon={<ShowreelIcon sx={{ fontSize: '15px !important' }} />} sx={{ color: '#c6bdf4', textTransform: 'none', fontSize: 12 }}>Showreel</Button>}
+              {s.showreelUrl && <Button size="small" href={s.showreelUrl} target="_blank" rel="noopener" startIcon={<ShowreelIcon sx={{ fontSize: '15px !important' }} />} sx={{ color: '#c3cbe6', textTransform: 'none', fontSize: 12 }}>Showreel</Button>}
             </Stack>
           ))}
         </DialogContent>

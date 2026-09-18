@@ -2660,7 +2660,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       : manuscriptSaveStatus === 'local-only' || manuscriptSaveStatus === 'unsaved'
         ? '#fbbf24'
         : manuscriptSaveStatus === 'saving'
-          ? '#60a5fa'
+          ? '#93a4dc'
           : branding.colors.textSecondary;
   const showSingleHeaderRow = tier === 'xl' || tier === 'xxl' || tier === '4k';
 

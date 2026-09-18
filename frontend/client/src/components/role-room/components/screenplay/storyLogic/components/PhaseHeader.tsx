@@ -140,9 +140,9 @@ export const PhaseHeader: React.FC<PhaseHeaderProps> = ({
               icon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
               label={nextBestAction}
               sx={{
-                bgcolor: '#3b82f620',
-                color: '#60a5fa',
-                '& .MuiChip-icon': { color: '#3b82f6' },
+                bgcolor: '#3f51b520',
+                color: '#93a4dc',
+                '& .MuiChip-icon': { color: '#3f51b5' },
                 cursor: 'default',
               }}
             />
@@ -207,7 +207,7 @@ export const PhaseHeader: React.FC<PhaseHeaderProps> = ({
             flexShrink: 0,
             cursor: 'pointer',
             '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
-            '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: 2 },
+            '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: 2 },
           }}
         >
           {locked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}

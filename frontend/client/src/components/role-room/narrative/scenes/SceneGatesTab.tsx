@@ -10,7 +10,7 @@ import { setSceneGate } from '../narrativeService';
 import type { UseNarrativeScenesResult } from './useNarrativeScenes';
 import { sceneFieldSx } from './sceneUi';
 
-export const GATE_STATUS_COLOR: Record<NarrativeGateStatus, string> = { not_started: narrativeColors.textDim, in_progress: '#60a5fa', passed: narrativeColors.accent, failed: narrativeColors.error };
+export const GATE_STATUS_COLOR: Record<NarrativeGateStatus, string> = { not_started: narrativeColors.textDim, in_progress: '#93a4dc', passed: narrativeColors.accent, failed: narrativeColors.error };
 const STATUSES: NarrativeGateStatus[] = ['not_started', 'in_progress', 'passed', 'failed'];
 
 function GateRow({ projectId, gate, onSaved, onNotice }: { projectId: string; gate: NarrativeSceneGate; onSaved: () => Promise<void>; onNotice: (m: string, s: 'error' | 'warning' | 'success') => void }) {

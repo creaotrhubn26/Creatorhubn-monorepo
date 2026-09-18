@@ -241,7 +241,7 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
                 <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
                   Phone Number ID
                 </Typography>
-                <Typography sx={{ fontFamily: 'monospace', color: '#bfdbfe' }}>
+                <Typography sx={{ fontFamily: 'monospace', color: '#c3cbe6' }}>
                   {config?.phoneNumberMasked ?? '—'}
                 </Typography>
               </Stack>
@@ -308,7 +308,7 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
             {/* ── Produksjonsteam-gruppe-strategi ───────────────────────── */}
             <Box sx={{ pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 1.5, mb: 1.2 }}>
-                <GroupsIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
+                <GroupsIcon sx={{ color: 'var(--role-cyan, #93a4dc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>Produksjonsteam-chat</Typography>
               </Stack>
               <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', mb: 1.5, lineHeight: 1.55 }}>
@@ -374,7 +374,7 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
                   />
                 </Stack>
               ) : (
-                <Alert severity="info" sx={{ bgcolor: 'rgba(125,211,252,0.08)', color: '#bfdbfe' }}>
+                <Alert severity="info" sx={{ bgcolor: 'rgba(147, 164, 220,0.08)', color: '#c3cbe6' }}>
                   Per-prosjekt-modus aktiv. Sett invite-lenke individuelt i hvert prosjekts innstillinger.
                 </Alert>
               )}

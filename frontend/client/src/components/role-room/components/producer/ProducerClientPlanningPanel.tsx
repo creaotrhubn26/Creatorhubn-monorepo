@@ -349,7 +349,7 @@ function ProducerClientMaterialsSection({
       summary={materials.length > 0 ? `${materials.length} element` : 'Ingen sendt ennå'}
       badge={
         materials.length > 0 ? (
-          <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa', fontWeight: 700, fontSize: '0.68rem' }} />
+          <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(147, 164, 220,0.18)', color: '#dfe4f3', fontWeight: 700, fontSize: '0.68rem' }} />
         ) : null
       }
     >
@@ -368,7 +368,7 @@ function ProducerClientMaterialsSection({
         <Stack spacing={1.4}>
           {groups.map((group) => (
             <Box key={group.type}>
-              <Typography sx={{ color: '#e0dbfa', fontWeight: 700, fontSize: '0.82rem', mb: 0.6 }}>
+              <Typography sx={{ color: '#dfe4f3', fontWeight: 700, fontSize: '0.82rem', mb: 0.6 }}>
                 {group.label} · {group.items.length}
               </Typography>
               <Stack spacing={0.7}>
@@ -400,9 +400,9 @@ function ProducerClientMaterialsSection({
                           {fromClient ? (
                             <Chip
                               size="small"
-                              icon={<PersonIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />}
+                              icon={<PersonIcon sx={{ fontSize: '0.8rem !important', color: '#93a4dc !important' }} />}
                               label="Fra klient"
-                              sx={{ height: 18, bgcolor: 'rgba(56,189,248,0.16)', color: '#bae6fd', fontWeight: 700, fontSize: '0.64rem' }}
+                              sx={{ height: 18, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', fontWeight: 700, fontSize: '0.64rem' }}
                             />
                           ) : null}
                         </Stack>
@@ -805,7 +805,7 @@ export default function ProducerClientPlanningPanel({
       sx={{
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(27, 18, 44,0.82) 100%)',
         overflow: 'hidden',
       }}
     >
@@ -823,7 +823,7 @@ export default function ProducerClientPlanningPanel({
             <Chip
               size="small"
               label={`${productionEstimate.formatEstimates.length} formater`}
-              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+              sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
             />
             <Chip
               size="small"
@@ -902,7 +902,7 @@ export default function ProducerClientPlanningPanel({
                 key={item.label}
                 size="small"
                 label={`${item.label}: ${item.value}`}
-                sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa', maxWidth: '100%' }}
+                sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3', maxWidth: '100%' }}
               />
             ))}
           </Stack>
@@ -924,7 +924,7 @@ export default function ProducerClientPlanningPanel({
             p: 1.2,
             borderRadius: 1.6,
             border: '1px solid rgba(148,163,184,0.16)',
-            background: 'rgba(10, 5, 21,0.42)',
+            background: 'rgba(27, 18, 44,0.42)',
           }}
         >
           <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.25} justifyContent="space-between">
@@ -940,7 +940,7 @@ export default function ProducerClientPlanningPanel({
               <Chip
                 size="small"
                 label={`Brief ${clientGroundingSummary.briefReadyCount}/${clientGroundingSummary.totalBriefFields}`}
-                sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
               />
               <Chip
                 size="small"
@@ -950,7 +950,7 @@ export default function ProducerClientPlanningPanel({
               <Chip
                 size="small"
                 label={storyLogicSnapshot.length > 0 ? `Den røde tråden ${storyLogicSnapshot.length} signaler` : 'Den røde tråden ikke fylt ut'}
-                sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }}
+                sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
               />
               {onOpenMedia ? (
                 <Button
@@ -1066,8 +1066,8 @@ export default function ProducerClientPlanningPanel({
                       {PRODUCER_PLANNING_PHASE_LABELS[item.phase]}
                     </Typography>
                     <Stack direction="row" spacing={0.75} flexWrap="wrap">
-                      <Chip size="small" label={loadSummary.headline} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
-                      <Chip size="small" label={`${contentCalendarCountByPhase[item.phase]} kalenderpunkt`} sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }} />
+                      <Chip size="small" label={loadSummary.headline} sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }} />
+                      <Chip size="small" label={`${contentCalendarCountByPhase[item.phase]} kalenderpunkt`} sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }} />
                     </Stack>
                   </Stack>
                   <Box
@@ -1098,7 +1098,7 @@ export default function ProducerClientPlanningPanel({
                           bottom: 2,
                           borderRadius: 999,
                           background: item.phase === 'preproduction'
-                            ? 'linear-gradient(90deg, rgba(59,130,246,0.92) 0%, rgba(37,99,235,0.84) 100%)'
+                            ? 'linear-gradient(90deg, rgba(63, 81, 181,0.92) 0%, rgba(37,99,235,0.84) 100%)'
                             : item.phase === 'production'
                               ? 'linear-gradient(90deg, rgba(16,185,129,0.92) 0%, rgba(5,150,105,0.84) 100%)'
                               : 'linear-gradient(90deg, rgba(251,191,36,0.92) 0%, rgba(217,119,6,0.84) 100%)',
@@ -1139,7 +1139,7 @@ export default function ProducerClientPlanningPanel({
                       p: 1,
                       borderRadius: 1.25,
                       border: isContentLogicMoment
-                        ? '1px solid rgba(158, 140, 248,0.26)'
+                        ? '1px solid rgba(147, 164, 220,0.26)'
                         : '1px solid rgba(148,163,184,0.14)',
                       background: isContentLogicMoment
                         ? 'rgba(48, 31, 132,0.14)'
@@ -1153,16 +1153,16 @@ export default function ProducerClientPlanningPanel({
                             size="small"
                             label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                             sx={{
-                              bgcolor: isContentLogicMoment ? 'rgba(158, 140, 248,0.18)' : 'rgba(59,130,246,0.14)',
-                              color: isContentLogicMoment ? '#ebe7fd' : '#bfdbfe',
+                              bgcolor: isContentLogicMoment ? 'rgba(147, 164, 220,0.18)' : 'rgba(63, 81, 181,0.14)',
+                              color: isContentLogicMoment ? '#eef1fb' : '#c3cbe6',
                             }}
                           />
                           <Chip
                             size="small"
                             label={isContentLogicMoment ? contentLogicMomentLabel : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
                             sx={{
-                              bgcolor: isContentLogicMoment ? 'rgba(34,211,238,0.14)' : 'rgba(158, 140, 248,0.14)',
-                              color: isContentLogicMoment ? '#cffafe' : '#e0dbfa',
+                              bgcolor: isContentLogicMoment ? 'rgba(93, 118, 203,0.14)' : 'rgba(147, 164, 220,0.14)',
+                              color: isContentLogicMoment ? '#dfe4f3' : '#dfe4f3',
                             }}
                           />
                           <Chip
@@ -1189,7 +1189,7 @@ export default function ProducerClientPlanningPanel({
                           {moment.detail || 'Ingen detaljer lagt inn ennå.'}
                         </Typography>
                         {isContentLogicMoment ? (
-                          <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.3 }}>
+                          <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.78rem', mt: 0.3 }}>
                             Innholdsplan-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
                           </Typography>
                         ) : null}
@@ -1285,9 +1285,9 @@ export default function ProducerClientPlanningPanel({
                   color: 'rgba(226,232,240,0.82)',
                 },
                 '& .Mui-selected': {
-                  bgcolor: 'rgba(56,189,248,0.16) !important',
-                  borderColor: 'rgba(56,189,248,0.34) !important',
-                  color: '#e0f2fe !important',
+                  bgcolor: 'rgba(93, 118, 203,0.16) !important',
+                  borderColor: 'rgba(93, 118, 203,0.34) !important',
+                  color: '#dfe4f3 !important',
                 },
               }}
             >
@@ -1301,8 +1301,8 @@ export default function ProducerClientPlanningPanel({
                   sx={{
                     p: 1.2,
                     borderRadius: 1.5,
-                    border: '1px solid rgba(56,189,248,0.2)',
-                    background: 'rgba(8,47,73,0.18)',
+                    border: '1px solid rgba(93, 118, 203,0.2)',
+                    background: 'rgba(42, 61, 86,0.18)',
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
@@ -1873,7 +1873,7 @@ export default function ProducerClientPlanningPanel({
                         p: 0.95,
                         borderRadius: 1.2,
                         border: '1px solid rgba(148,163,184,0.14)',
-                        background: 'rgba(10, 5, 21,0.46)',
+                        background: 'rgba(27, 18, 44,0.46)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1882,7 +1882,7 @@ export default function ProducerClientPlanningPanel({
                             <Chip
                               size="small"
                               label={PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]}
-                              sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                              sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                             />
                             <Chip
                               size="small"
@@ -1971,7 +1971,7 @@ export default function ProducerClientPlanningPanel({
                       p: 0.85,
                       borderRadius: 1.35,
                       border: '1px solid rgba(148,163,184,0.16)',
-                      background: 'rgba(10, 5, 21,0.42)',
+                      background: 'rgba(27, 18, 44,0.42)',
                     }}
                   >
                     <Stack
@@ -2013,8 +2013,8 @@ export default function ProducerClientPlanningPanel({
                                 width: previewWidth,
                                 height: previewHeight,
                                 borderRadius: 0.9,
-                                border: '1px solid rgba(191,219,254,0.36)',
-                                bgcolor: 'rgba(59,130,246,0.16)',
+                                border: '1px solid rgba(195, 203, 230,0.36)',
+                                bgcolor: 'rgba(63, 81, 181,0.16)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
                               }}
                             />
@@ -2044,9 +2044,9 @@ export default function ProducerClientPlanningPanel({
                           fontWeight: 700,
                         },
                         '& .Mui-selected': {
-                          bgcolor: 'rgba(56,189,248,0.16) !important',
-                          borderColor: 'rgba(56,189,248,0.36) !important',
-                          color: '#e0f2fe !important',
+                          bgcolor: 'rgba(93, 118, 203,0.16) !important',
+                          borderColor: 'rgba(93, 118, 203,0.36) !important',
+                          color: '#dfe4f3 !important',
                         },
                       }}
                     >
@@ -2098,7 +2098,7 @@ export default function ProducerClientPlanningPanel({
                   </TextField>
                 </Stack>
                 {(item.channel || item.format) ? (
-                  <Typography sx={{ color: 'rgba(191,219,254,0.76)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.85 }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.76)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.85 }}>
                     {[
                       getProducerContentChannelOption(item.channel)?.helper,
                       item.format ? `Vises som ${item.format} i plan og leveranse.` : null,
@@ -2187,7 +2187,7 @@ export default function ProducerClientPlanningPanel({
                       p: 0.9,
                       borderRadius: 1.2,
                       border: '1px solid rgba(148,163,184,0.14)',
-                      background: 'rgba(10, 5, 21,0.46)',
+                      background: 'rgba(27, 18, 44,0.46)',
                     }}
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.84rem', mb: 0.55 }}>
@@ -2212,7 +2212,7 @@ export default function ProducerClientPlanningPanel({
                               <Chip
                                 size="small"
                                 label={task.sourceLabel}
-                                sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                                sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                               />
                             </Stack>
                             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.8rem' }}>

@@ -56,7 +56,7 @@ interface Props {
   onClose: () => void;
 }
 
-const ACCENT = '#472bd4';
+const ACCENT = '#3e3180';
 
 export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
   const [data, setData] = useState<BillingOverview | null>(null);
@@ -137,7 +137,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
         {!loading && !error && subs.length > 0 && (
           <Box>
             {/* Summary header */}
-            <Box sx={{ p: 2.5, background: `linear-gradient(135deg, rgba(71, 43, 212,0.10), rgba(71, 43, 212,0.04))`, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ p: 2.5, background: `linear-gradient(135deg, rgba(62, 49, 128,0.10), rgba(62, 49, 128,0.04))`, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: 1, color: 'text.secondary' }}>
                 Total per måned
               </Typography>
@@ -193,7 +193,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
           startIcon={<OpenInNewIcon />}
           disabled={portalBusy || (subs.length === 0 && !loading)}
           onClick={openPortal}
-          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' } }}
+          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' } }}
         >
           {portalBusy ? 'Åpner…' : 'Administrer i Stripe'}
         </Button>

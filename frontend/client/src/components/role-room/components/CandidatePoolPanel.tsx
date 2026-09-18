@@ -85,7 +85,7 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
     transition: 'all 0.2s ease',
     '&:hover': {
       bgcolor: 'rgba(255,255,255,0.08)',
-      borderColor: 'rgba(0,212,255,0.3)',
+      borderColor: 'rgba(93, 118, 203,0.3)',
     },
   };
 
@@ -106,14 +106,14 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
           alignItems: 'center',
           gap: 1,
         }}>
-          <PersonIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
+          <PersonIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
           Kandidatpool
           <Chip 
             label={poolCandidates.length} 
             size="small" 
             sx={{ 
-              bgcolor: 'rgba(0,212,255,0.2)', 
-              color: 'var(--role-cyan, #00d4ff)',
+              bgcolor: 'rgba(93, 118, 203,0.2)', 
+              color: 'var(--role-cyan, #5d76cb)',
               ml: 1,
             }} 
           />
@@ -138,7 +138,7 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
               color: '#fff',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-              '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)' },
+              '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #5d76cb)' },
             },
             '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.87)' },
           }}
@@ -190,8 +190,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                     sx={{ 
                       width: 56, 
                       height: 56, 
-                      bgcolor: 'rgba(0,212,255,0.2)',
-                      color: 'var(--role-cyan, #00d4ff)',
+                      bgcolor: 'rgba(93, 118, 203,0.2)',
+                      color: 'var(--role-cyan, #5d76cb)',
                       '& .MuiAvatar-img': {
                         objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
                       },
@@ -251,8 +251,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                         sx={{
                           height: 20,
                           fontSize: '0.7rem',
-                          bgcolor: 'rgba(136, 117, 235,0.2)',
-                          color: '#9e8cf8',
+                          bgcolor: 'rgba(93, 118, 203,0.2)',
+                          color: '#93a4dc',
                         }}
                       />
                     ))}
@@ -284,10 +284,10 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                     startIcon={<DownloadIcon sx={{ fontSize: 16 }} />}
                     onClick={() => handleImportClick(candidate)}
                     sx={{
-                      color: 'var(--role-cyan, #00d4ff)',
+                      color: 'var(--role-cyan, #5d76cb)',
                       fontSize: '0.75rem',
                       minHeight: TOUCH_TARGET,
-                      '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                      '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
                     }}
                   >
                     Importer
@@ -321,7 +321,7 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
         onClose={() => setImportDialogOpen(false)}
         PaperProps={{
           sx: {
-            bgcolor: '#18122b',
+            bgcolor: '#2a3d56',
             border: '1px solid rgba(255,255,255,0.1)',
             minWidth: { xs: '90vw', sm: 400 },
           },
@@ -339,8 +339,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                   sx={{
                     width: 48,
                     height: 48,
-                    bgcolor: 'rgba(0,212,255,0.2)',
-                    color: 'var(--role-cyan, #00d4ff)',
+                    bgcolor: 'rgba(93, 118, 203,0.2)',
+                    color: 'var(--role-cyan, #5d76cb)',
                     '& .MuiAvatar-img': {
                       objectPosition: getCandidatePhotoObjectPosition(selectedCandidate, 0),
                     },
@@ -365,7 +365,7 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                 '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #5d76cb)' },
               }}
             >
               {projects.map((project) => (
@@ -389,10 +389,10 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
             disabled={!targetProjectId}
             startIcon={<DownloadIcon />}
             sx={{
-              bgcolor: 'var(--role-cyan, #00d4ff)',
+              bgcolor: 'var(--role-cyan, #5d76cb)',
               color: '#000',
               '&:hover': { bgcolor: '#00b8e6' },
-              '&.Mui-disabled': { bgcolor: 'rgba(0,212,255,0.3)', color: 'rgba(0,0,0,0.5)' },
+              '&.Mui-disabled': { bgcolor: 'rgba(93, 118, 203,0.3)', color: 'rgba(0,0,0,0.5)' },
             }}
           >
             Importer

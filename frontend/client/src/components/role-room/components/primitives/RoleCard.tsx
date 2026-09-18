@@ -54,7 +54,7 @@ export const RoleCard: React.FC<RoleCardProps> = ({
         bgcolor: 'rgba(28, 33, 40, 0.8)',
         backdropFilter: 'blur(10px)',
         border: selected
-          ? '2px solid #6249df'
+          ? '2px solid #4b3d8f'
           : '1px solid rgba(255,255,255,0.08)',
         borderRadius: 3,
         height: '100%',
@@ -66,13 +66,13 @@ export const RoleCard: React.FC<RoleCardProps> = ({
         cursor: interactive ? 'pointer' : 'default',
         '&:hover': interactive
           ? {
-              borderColor: selected ? '#9e8cf8' : 'rgba(98, 73, 223,0.5)',
+              borderColor: selected ? '#93a4dc' : 'rgba(75, 61, 143,0.5)',
               transform: 'translateY(-4px)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(98, 73, 223,0.2)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(75, 61, 143,0.2)',
             }
           : undefined,
         '&:focus-visible': interactive
-          ? { outline: '2px solid #60a5fa', outlineOffset: 2 }
+          ? { outline: '2px solid #93a4dc', outlineOffset: 2 }
           : undefined,
         ...sx,
       }}

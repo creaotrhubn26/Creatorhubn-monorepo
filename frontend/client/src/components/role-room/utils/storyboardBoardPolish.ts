@@ -144,19 +144,19 @@ export const STUDIO_BOARD_POLISH_TONE_CONFIG: Record<StoryboardDocumentBoardPoli
     label: 'Neutral',
     shellBackground: 'radial-gradient(circle at top, rgba(255,255,255,0.03), transparent 42%), linear-gradient(180deg, rgba(3,7,18,0.98), rgba(2,4,9,0.98))',
     canvasFilter: 'contrast(1.06) brightness(1.02)',
-    vignetteColor: 'rgba(10, 5, 21,0.68)',
+    vignetteColor: 'rgba(27, 18, 44,0.68)',
     grainOpacity: 0.12,
   },
   noir: {
     label: 'Noir',
     shellBackground: 'radial-gradient(circle at top, rgba(245,158,11,0.04), transparent 38%), linear-gradient(180deg, rgba(3,6,16,0.99), rgba(1,3,8,1))',
     canvasFilter: 'contrast(1.16) brightness(1.03) saturate(0.88) drop-shadow(0 0 1px rgba(248,250,252,0.36))',
-    vignetteColor: 'rgba(10, 5, 21,0.82)',
+    vignetteColor: 'rgba(27, 18, 44,0.82)',
     grainOpacity: 0.16,
   },
   amber: {
     label: 'Amber',
-    shellBackground: 'radial-gradient(circle at top, rgba(251,191,36,0.06), transparent 40%), linear-gradient(180deg, rgba(12,10,7,0.98), rgba(10, 5, 21,1))',
+    shellBackground: 'radial-gradient(circle at top, rgba(251,191,36,0.06), transparent 40%), linear-gradient(180deg, rgba(12,10,7,0.98), rgba(27, 18, 44,1))',
     canvasFilter: 'contrast(1.12) brightness(1.04) saturate(1.06) sepia(0.08) drop-shadow(0 0 1px rgba(251,191,36,0.22))',
     vignetteColor: 'rgba(22,16,7,0.76)',
     grainOpacity: 0.18,
@@ -349,7 +349,7 @@ export function getBoardPolishEffectLayers(
     summary: `${Math.round(state.atmosphere * 100)}% haze and bloom depth.`,
     background: [
       `radial-gradient(circle at 50% 28%, rgba(255,255,255,${atmosphereOpacity.toFixed(3)}) 0%, rgba(255,255,255,${(atmosphereOpacity * 0.42).toFixed(3)}) 20%, transparent 56%)`,
-      `linear-gradient(180deg, rgba(255,255,255,${(atmosphereOpacity * 0.34).toFixed(3)}) 0%, transparent 46%, rgba(10, 5, 21,${(0.08 + (state.atmosphere * 0.08)).toFixed(3)}) 100%)`,
+      `linear-gradient(180deg, rgba(255,255,255,${(atmosphereOpacity * 0.34).toFixed(3)}) 0%, transparent 46%, rgba(27, 18, 44,${(0.08 + (state.atmosphere * 0.08)).toFixed(3)}) 100%)`,
     ].join(','),
     mixBlendMode: 'screen',
     opacity: atmosphereOpacity * effectLayerStateMap.atmosphere.opacity,
@@ -605,7 +605,7 @@ function drawAtmosphereLayer(
   const atmosphereGradient = context.createLinearGradient(0, 0, 0, height);
   atmosphereGradient.addColorStop(0, `rgba(255,255,255,${(atmosphereOpacity * 0.34).toFixed(3)})`);
   atmosphereGradient.addColorStop(0.46, 'rgba(255,255,255,0)');
-  atmosphereGradient.addColorStop(1, `rgba(10, 5, 21,${((0.08 + (state.atmosphere * 0.08)) * opacityScale).toFixed(3)})`);
+  atmosphereGradient.addColorStop(1, `rgba(27, 18, 44,${((0.08 + (state.atmosphere * 0.08)) * opacityScale).toFixed(3)})`);
   context.fillStyle = atmosphereGradient;
   context.fillRect(0, 0, width, height);
 }

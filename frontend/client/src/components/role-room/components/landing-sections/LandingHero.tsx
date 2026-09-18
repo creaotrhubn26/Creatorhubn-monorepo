@@ -78,7 +78,7 @@ function LandingHeroImpl({ introShowing }: LandingHeroProps) {
     textTransform: 'uppercase' as const,
     mb: 2,
     minHeight: '1.4em',
-    background: 'linear-gradient(90deg, #fff 0%, #8875eb 55%, #6249df 100%)',
+    background: 'linear-gradient(90deg, #fff 0%, #5d76cb 55%, #4b3d8f 100%)',
     backgroundClip: 'text',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
@@ -87,7 +87,7 @@ function LandingHeroImpl({ introShowing }: LandingHeroProps) {
     display: 'inline-block',
     width: '2px',
     height: '0.85em',
-    bgcolor: 'var(--role-violet, #8875eb)',
+    bgcolor: 'var(--role-violet, #5d76cb)',
     ml: '2px',
     verticalAlign: 'middle',
     transition: 'opacity 0.15s',
@@ -116,7 +116,7 @@ function LandingHeroImpl({ introShowing }: LandingHeroProps) {
               maxWidth: 640,
               height: 'auto',
               display: 'block',
-              filter: 'drop-shadow(0 0 32px rgba(136, 117, 235,0.55))',
+              filter: 'drop-shadow(0 0 32px rgba(93, 118, 203,0.55))',
             }}
           />
         </motion.div>

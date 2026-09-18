@@ -179,7 +179,7 @@ export default function ClientAdsPerformancePanel({
   if (loading) {
     return (
       <Stack sx={CARD_SX} alignItems="center" spacing={1}>
-        <CircularProgress size={24} sx={{ color: '#c6bdf4' }} />
+        <CircularProgress size={24} sx={{ color: '#c3cbe6' }} />
         <Typography sx={SUBTLE}>Laster kampanje-resultater…</Typography>
       </Stack>
     );
@@ -197,7 +197,7 @@ export default function ClientAdsPerformancePanel({
     return (
       <Stack sx={CARD_SX} spacing={1}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <CampaignIcon sx={{ fontSize: 20, color: '#c6bdf4' }} />
+          <CampaignIcon sx={{ fontSize: 20, color: '#c3cbe6' }} />
           <Typography sx={LABEL}>Aktive kampanjer</Typography>
         </Stack>
         <Typography sx={SUBTLE}>
@@ -210,7 +210,7 @@ export default function ClientAdsPerformancePanel({
   return (
     <Stack sx={CARD_SX} spacing={1.2}>
       <Stack direction="row" alignItems="center" spacing={1}>
-        <CampaignIcon sx={{ fontSize: 20, color: '#c6bdf4' }} />
+        <CampaignIcon sx={{ fontSize: 20, color: '#c3cbe6' }} />
         <Typography sx={LABEL}>Per kampanje</Typography>
       </Stack>
       <Typography sx={SUBTLE}>
@@ -278,8 +278,8 @@ function CampaignCard({
           label={PLATFORM_LABEL[campaign.platform] ?? campaign.platform}
           size="small"
           sx={{
-            bgcolor: 'rgba(198, 189, 244,0.12)',
-            color: '#e0dbfa',
+            bgcolor: 'rgba(195, 203, 230,0.12)',
+            color: '#dfe4f3',
             fontWeight: 600,
             fontSize: '0.7rem',
             height: 22,
@@ -310,7 +310,7 @@ function CampaignCard({
           onClick={onToggle}
           sx={{
             textTransform: 'none',
-            color: '#c6bdf4',
+            color: '#c3cbe6',
             fontWeight: 600,
             fontSize: '0.76rem',
           }}
@@ -430,7 +430,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
   if (loading) {
     return (
       <Stack alignItems="center" sx={{ py: 1 }}>
-        <CircularProgress size={18} sx={{ color: '#c6bdf4' }} />
+        <CircularProgress size={18} sx={{ color: '#c3cbe6' }} />
       </Stack>
     );
   }
@@ -459,7 +459,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
             opacity: c.resolvedAt ? 0.55 : 1,
             p: 0.8,
             borderRadius: 1,
-            bgcolor: c.authorRole === 'client' ? 'rgba(198, 189, 244,0.07)' : 'rgba(252,211,77,0.07)',
+            bgcolor: c.authorRole === 'client' ? 'rgba(195, 203, 230,0.07)' : 'rgba(252,211,77,0.07)',
           }}
         >
           <Box sx={{ flex: 1 }}>
@@ -553,7 +553,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
               color: '#e2e8f0',
               fontSize: '0.82rem',
               '& fieldset': { borderColor: 'rgba(148,163,184,0.2)' },
-              '&:hover fieldset': { borderColor: 'rgba(198, 189, 244,0.4)' },
+              '&:hover fieldset': { borderColor: 'rgba(195, 203, 230,0.4)' },
             },
           }}
         />
@@ -569,10 +569,10 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
             onClick={submit}
             sx={{
               textTransform: 'none',
-              bgcolor: '#8875eb',
+              bgcolor: '#5d76cb',
               fontWeight: 700,
               fontSize: '0.74rem',
-              '&:hover': { bgcolor: '#6249df' },
+              '&:hover': { bgcolor: '#4b3d8f' },
             }}
           >
             {submitting ? 'Sender…' : 'Send'}
@@ -591,7 +591,7 @@ function Metric({ label, value, highlight }: { label: string; value: string; hig
       <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.66rem' }}>{label}</Typography>
       <Typography
         sx={{
-          color: highlight ? '#c6bdf4' : '#e2e8f0',
+          color: highlight ? '#c3cbe6' : '#e2e8f0',
           fontSize: '0.84rem',
           fontWeight: highlight ? 800 : 700,
         }}

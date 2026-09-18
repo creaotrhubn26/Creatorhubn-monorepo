@@ -76,7 +76,7 @@ export const PlannerBreadcrumb = ({ segments, hidden }: PlannerBreadcrumbProps) 
                 transition: 'color 120ms',
                 '&:hover': interactive ? { color: '#fff' } : undefined,
                 '&:focus-visible': interactive
-                  ? { outline: '2px solid rgba(136, 117, 235,0.55)', outlineOffset: 2, borderRadius: 1 }
+                  ? { outline: '2px solid rgba(93, 118, 203,0.55)', outlineOffset: 2, borderRadius: 1 }
                   : undefined,
               }}
             >

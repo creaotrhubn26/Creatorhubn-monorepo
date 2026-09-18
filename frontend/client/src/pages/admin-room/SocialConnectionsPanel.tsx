@@ -208,7 +208,7 @@ export default function SocialConnectionsPanel() {
 
         <Stack spacing={1}>
           <PlatformRow
-            icon={<FacebookIcon sx={{ color: '#60a5fa', fontSize: 18 }} />}
+            icon={<FacebookIcon sx={{ color: '#93a4dc', fontSize: 18 }} />}
             name="Facebook Page"
             status={status.facebook.configured ? 'configured' : 'disconnected'}
             helper={status.facebook.configured ? (
@@ -238,7 +238,7 @@ export default function SocialConnectionsPanel() {
           />
 
           <PlatformRow
-            icon={<LinkedInIcon sx={{ color: '#0ea5e9', fontSize: 18 }} />}
+            icon={<LinkedInIcon sx={{ color: '#3f51b5', fontSize: 18 }} />}
             name="LinkedIn"
             status={status.linkedin.connected ? 'connected' : 'disconnected'}
             helper={

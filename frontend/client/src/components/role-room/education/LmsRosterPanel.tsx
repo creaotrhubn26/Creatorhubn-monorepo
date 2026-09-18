@@ -18,14 +18,14 @@ import {
 } from '@mui/icons-material';
 import educationLtiService, { type LtiRosterMember } from './educationLtiService';
 
-const ACCENT = '#8875eb';
+const ACCENT = '#5d76cb';
 
 function roleLabel(roles: string[]): { label: string; color: string } {
   const joined = roles.join(' ');
   if (/Instructor|TeachingAssistant|ContentDeveloper|Mentor|Administrator/i.test(joined)) {
-    return { label: 'Faglærer', color: '#38bdf8' };
+    return { label: 'Faglærer', color: '#5d76cb' };
   }
-  if (/Learner|Student/i.test(joined)) return { label: 'Student', color: '#9e8cf8' };
+  if (/Learner|Student/i.test(joined)) return { label: 'Student', color: '#93a4dc' };
   return { label: 'Medlem', color: 'rgba(255,255,255,0.72)' };
 }
 
@@ -74,12 +74,12 @@ export function LmsRosterPanel({ launchId }: { launchId: string }) {
   };
 
   return (
-    <Card sx={{ bgcolor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.25)' }}>
+    <Card sx={{ bgcolor: 'rgba(93, 118, 203,0.06)', border: '1px solid rgba(93, 118, 203,0.25)' }}>
       <CardContent sx={{ pb: open ? 2 : '16px !important' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}
           sx={{ cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
           <Stack direction="row" alignItems="center" spacing={1}>
-            <RosterIcon sx={{ color: '#38bdf8' }} />
+            <RosterIcon sx={{ color: '#5d76cb' }} />
             <Box>
               <Typography sx={{ fontWeight: 700 }}>LMS-klasseliste (LTI)</Typography>
               <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
@@ -92,12 +92,12 @@ export function LmsRosterPanel({ launchId }: { launchId: string }) {
               <Tooltip title="Oppdater klasseliste">
                 <span>
                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); void load(); }} disabled={loading}>
-                    <RefreshIcon fontSize="small" sx={{ color: '#38bdf8' }} />
+                    <RefreshIcon fontSize="small" sx={{ color: '#5d76cb' }} />
                   </IconButton>
                 </span>
               </Tooltip>
             )}
-            <ExpandIcon sx={{ color: '#38bdf8', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
+            <ExpandIcon sx={{ color: '#5d76cb', transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
           </Stack>
         </Stack>
 
@@ -105,7 +105,7 @@ export function LmsRosterPanel({ launchId }: { launchId: string }) {
           <Box sx={{ mt: 2, display: 'grid', gap: 1 }}>
             {error && <Alert severity="warning" onClose={() => setError(null)} sx={{ fontSize: 13 }}>{error}</Alert>}
             {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}><CircularProgress size={22} sx={{ color: '#38bdf8' }} /></Box>
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}><CircularProgress size={22} sx={{ color: '#5d76cb' }} /></Box>
             ) : members && members.length === 0 ? (
               <Typography sx={{ color: 'text.secondary', fontSize: 13, p: 1 }}>Ingen medlemmer i rosteret.</Typography>
             ) : (
@@ -128,7 +128,7 @@ export function LmsRosterPanel({ launchId }: { launchId: string }) {
                     <Button size="small" variant="outlined"
                       startIcon={pushed ? <DoneIcon /> : <LmsPushIcon />}
                       onClick={() => pushGrade(m)} disabled={pushingSub === m.sub}
-                      sx={{ whiteSpace: 'nowrap', borderColor: 'rgba(56,189,248,0.5)', color: pushed ? '#10b981' : '#7dd3fc', textTransform: 'none', '&:hover': { borderColor: '#38bdf8', bgcolor: 'rgba(56,189,248,0.08)' } }}>
+                      sx={{ whiteSpace: 'nowrap', borderColor: 'rgba(93, 118, 203,0.5)', color: pushed ? '#10b981' : '#93a4dc', textTransform: 'none', '&:hover': { borderColor: '#5d76cb', bgcolor: 'rgba(93, 118, 203,0.08)' } }}>
                       {pushingSub === m.sub ? 'Sender…' : pushed ? 'Sendt' : 'Send til LMS'}
                     </Button>
                   </Stack>

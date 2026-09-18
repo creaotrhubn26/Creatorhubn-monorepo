@@ -70,7 +70,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       label: 'Call Sheet',
       icon: <CallSheetIcon />,
       description: 'Generer call sheets med crew, cast og scener',
-      color: 'var(--role-violet, #8875eb)',
+      color: 'var(--role-violet, #5d76cb)',
     },
     {
       id: 'shots',
@@ -78,7 +78,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       icon: <ShotIcon />,
       description: 'Spor fremgang på shots med timer',
       badge: pendingShots,
-      color: '#3b82f6',
+      color: '#3f51b5',
     },
     {
       id: 'continuity',
@@ -126,13 +126,13 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
         sx={{ 
           p: 2, 
           mb: 2,
-          background: 'linear-gradient(135deg, #211c3b 0%, #301f84 100%)',
+          background: 'linear-gradient(135deg, #3c4e6d 0%, #302a83 100%)',
           color: '#fff',
         }}
       >
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
           <Stack direction="row" spacing={1.5} alignItems="center">
-            <MovieIcon sx={{ color: '#9e8cf8' }} />
+            <MovieIcon sx={{ color: '#93a4dc' }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 Produksjonsverktøy
@@ -172,7 +172,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
                   },
                 },
                 '& .MuiTabs-indicator': {
-                  backgroundColor: activeTabConfig?.color || '#8875eb',
+                  backgroundColor: activeTabConfig?.color || '#5d76cb',
                   height: 3,
                 },
               }}

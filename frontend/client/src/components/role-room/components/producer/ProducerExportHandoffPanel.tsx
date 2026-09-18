@@ -996,7 +996,7 @@ export default function ProducerExportHandoffPanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(27, 18, 44,0.82) 100%)',
       }}
     >
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.25} justifyContent="space-between">
@@ -1025,9 +1025,9 @@ export default function ProducerExportHandoffPanel({
               sx={{
                 textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
                 px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
-                background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
-                color: '#fff', boxShadow: '0 8px 24px rgba(136, 117, 235,0.35)',
-                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
+                color: '#fff', boxShadow: '0 8px 24px rgba(93, 118, 203,0.35)',
+                '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
                 '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
               }}
             >
@@ -1110,7 +1110,7 @@ export default function ProducerExportHandoffPanel({
               key={item.label}
               size="small"
               label={`${item.label}: ${item.value}`}
-              sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+              sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
             />
           ))}
           <Chip
@@ -1269,7 +1269,7 @@ export default function ProducerExportHandoffPanel({
                       p: 1,
                       borderRadius: 1.25,
                       border: isContentLogicMoment
-                        ? '1px solid rgba(158, 140, 248,0.26)'
+                        ? '1px solid rgba(147, 164, 220,0.26)'
                         : isAccountAccessMoment
                           ? '1px solid rgba(45,212,191,0.24)'
                         : '1px solid rgba(148,163,184,0.14)',
@@ -1277,7 +1277,7 @@ export default function ProducerExportHandoffPanel({
                         ? 'rgba(48, 31, 132,0.16)'
                         : isAccountAccessMoment
                           ? 'rgba(15,118,110,0.14)'
-                        : 'rgba(10, 5, 21,0.56)',
+                        : 'rgba(27, 18, 44,0.56)',
                     }}
                   >
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1288,12 +1288,12 @@ export default function ProducerExportHandoffPanel({
                               <Chip
                                 size="small"
                                 label="Innholdsplan"
-                                sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#ebe7fd' }}
+                                sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: '#eef1fb' }}
                               />
                               <Chip
                                 size="small"
                                 label={contentLogicMomentLabel}
-                                sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#cffafe' }}
+                                sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
                               />
                             </>
                           ) : null}
@@ -1307,7 +1307,7 @@ export default function ProducerExportHandoffPanel({
                               <Chip
                                 size="small"
                                 label={PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[accountAccessPlatform]}
-                                sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                                sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                               />
                             </>
                           ) : null}
@@ -1342,12 +1342,12 @@ export default function ProducerExportHandoffPanel({
                           {moment.detail || 'Ingen detaljer lagt inn ennå.'}
                         </Typography>
                         {isContentLogicMoment ? (
-                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
+                          <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
                             Dette er en innholdsbeslutning som låser hook, CTA eller proof points før videre produksjon.
                           </Typography>
                         ) : null}
                         {isAccountAccessMoment ? (
-                          <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
+                          <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
                             Dette klientpunktet låser invite, OAuth eller publiseringstilgang før eksport og levering er helt trygg.
                           </Typography>
                         ) : null}
@@ -1366,8 +1366,8 @@ export default function ProducerExportHandoffPanel({
                           size="small"
                           label={isContentLogicMoment ? 'Innholdsvalg' : isAccountAccessMoment ? 'Plattformtilgang' : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
                           sx={{
-                            bgcolor: isContentLogicMoment ? 'rgba(125,211,252,0.14)' : isAccountAccessMoment ? 'rgba(45,212,191,0.16)' : 'rgba(59,130,246,0.14)',
-                            color: isContentLogicMoment ? '#cffafe' : isAccountAccessMoment ? '#ccfbf1' : '#bfdbfe',
+                            bgcolor: isContentLogicMoment ? 'rgba(147, 164, 220,0.14)' : isAccountAccessMoment ? 'rgba(45,212,191,0.16)' : 'rgba(63, 81, 181,0.14)',
+                            color: isContentLogicMoment ? '#dfe4f3' : isAccountAccessMoment ? '#ccfbf1' : '#c3cbe6',
                           }}
                         />
                         <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
@@ -1406,7 +1406,7 @@ export default function ProducerExportHandoffPanel({
                     p: 0.85,
                     borderRadius: 1.15,
                     border: '1px solid rgba(45,212,191,0.16)',
-                    bgcolor: entry.requiredForProject ? 'rgba(15,118,110,0.12)' : 'rgba(10, 5, 21,0.36)',
+                    bgcolor: entry.requiredForProject ? 'rgba(15,118,110,0.12)' : 'rgba(27, 18, 44,0.36)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1434,7 +1434,7 @@ export default function ProducerExportHandoffPanel({
                           }}
                         />
                         {entry.requiredForProject ? (
-                          <Chip size="small" label="Kreves" sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                          <Chip size="small" label="Kreves" sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }} />
                         ) : null}
                       </Stack>
                       <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>
@@ -1443,7 +1443,7 @@ export default function ProducerExportHandoffPanel({
                       <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.78rem', mt: 0.2 }}>
                         {`Konto / side: ${entry.accountLabel || 'Ikke satt'} · Invite: ${entry.inviteTarget || 'Ikke satt'}`}
                       </Typography>
-                      <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.76rem', mt: 0.2 }}>
+                      <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.76rem', mt: 0.2 }}>
                         {`Kontoeier: ${entry.clientOwnerLabel || 'Ikke satt'} · 2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`}
                       </Typography>
                       {hasText(entry.notes) ? (
@@ -1462,7 +1462,7 @@ export default function ProducerExportHandoffPanel({
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.2 }}>
                   {manifest.accountAccessSummary.securityNotes || 'Ikke satt'}
                 </Typography>
-                <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.25 }}>
+                <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.78rem', mt: 0.25 }}>
                   {`Revoke-plan: ${manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`}
                 </Typography>
               </Box>
@@ -1472,7 +1472,7 @@ export default function ProducerExportHandoffPanel({
           <CollapsibleSection
             title="Filer klare til levering"
             summary={`${deliveryWorkspaceFiles.length} prosjektfiler`}
-            badge={<Chip size="small" label={String(deliveryWorkspaceFiles.length)} sx={{ height: 18, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontSize: '0.68rem' }} />}
+            badge={<Chip size="small" label={String(deliveryWorkspaceFiles.length)} sx={{ height: 18, bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6', fontSize: '0.68rem' }} />}
           >
             <Stack spacing={0.85}>
               {deliveryWorkspaceFiles.length > 0 ? deliveryWorkspaceFiles.slice(0, 8).map((file) => (
@@ -1483,7 +1483,7 @@ export default function ProducerExportHandoffPanel({
                     p: 1,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(10, 5, 21,0.56)',
+                    background: 'rgba(27, 18, 44,0.56)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1523,7 +1523,7 @@ export default function ProducerExportHandoffPanel({
           <CollapsibleSection
             title="Juridiske dokumenter"
             summary={`${legalAgreements.agreements.length} avtaler`}
-            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa', fontSize: '0.68rem' }} />}
+            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3', fontSize: '0.68rem' }} />}
           >
             {legalAgreements.agreements.length > 0 ? (
               <Stack spacing={0.85}>
@@ -1545,7 +1545,7 @@ export default function ProducerExportHandoffPanel({
                         p: 1,
                         borderRadius: 1.25,
                         border: '1px solid rgba(148,163,184,0.14)',
-                        background: 'rgba(10, 5, 21,0.56)',
+                        background: 'rgba(27, 18, 44,0.56)',
                       }}
                     >
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1554,7 +1554,7 @@ export default function ProducerExportHandoffPanel({
                             <Chip
                               size="small"
                               label={PROJECT_AGREEMENT_STATUS_LABELS[agreement.status]}
-                              sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                              sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                             />
                             <Chip
                               size="small"
@@ -1640,7 +1640,7 @@ export default function ProducerExportHandoffPanel({
                     p: 1,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(10, 5, 21,0.56)',
+                    background: 'rgba(27, 18, 44,0.56)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1649,7 +1649,7 @@ export default function ProducerExportHandoffPanel({
                         <Chip
                           size="small"
                           label={PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]}
-                          sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                          sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                         />
                         <Chip
                           size="small"
@@ -1708,7 +1708,7 @@ export default function ProducerExportHandoffPanel({
                     p: 1,
                     borderRadius: 1.25,
                     border: '1px solid rgba(148,163,184,0.14)',
-                    background: 'rgba(10, 5, 21,0.56)',
+                    background: 'rgba(27, 18, 44,0.56)',
                   }}
                 >
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
@@ -1729,7 +1729,7 @@ export default function ProducerExportHandoffPanel({
                         {`Versjon ${item.versionLabel} · ${item.deliveryStageLabel}`}
                         {item.backupRuleLabel ? ` · Backup: ${item.backupRuleLabel}` : ''}
                       </Typography>
-                      <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.8rem', mt: 0.25 }}>
+                      <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.8rem', mt: 0.25 }}>
                         {`Logovariant: ${item.logoVariantResolvedLabel} · ${item.logoVariantSelectionLabel}`}
                       </Typography>
                       {item.notes ? (
@@ -1742,7 +1742,7 @@ export default function ProducerExportHandoffPanel({
                       <Chip
                         size="small"
                         label={item.statusLabel}
-                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
+                        sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                       />
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
                         {item.publishDateLabel ?? 'Publiseringsdato ikke satt'}
@@ -1798,7 +1798,7 @@ export default function ProducerExportHandoffPanel({
                       key={entryType}
                       size="small"
                       label={`${MATERIAL_TYPE_LABELS[entryType as ProducerClientMaterialType] ?? entryType}: ${count}`}
-                      sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                      sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                     />
                   ))}
                 </Stack>
@@ -1827,7 +1827,7 @@ export default function ProducerExportHandoffPanel({
                             <Chip
                               size="small"
                               label={MATERIAL_TYPE_LABELS[material.entry_type] ?? material.entry_type}
-                              sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
+                              sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6' }}
                             />
                             {material.phase ? (
                               <Chip
@@ -1968,7 +1968,7 @@ export default function ProducerExportHandoffPanel({
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
                     {`Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`}
                   </Typography>
-                  <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem' }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.84)', fontSize: '0.78rem' }}>
                     {manifest.overlayEditorGuidance.note}
                   </Typography>
                 </Stack>
@@ -1980,14 +1980,14 @@ export default function ProducerExportHandoffPanel({
                   </Typography>
                   <Stack spacing={0.35} sx={{ mt: 0.25 }}>
                     {manifest.overlayFormatProfiles.map((profile) => (
-                      <Box key={profile.format} sx={{ p: 0.7, borderRadius: 1, bgcolor: 'rgba(10, 5, 21,0.36)' }}>
+                      <Box key={profile.format} sx={{ p: 0.7, borderRadius: 1, bgcolor: 'rgba(27, 18, 44,0.36)' }}>
                         <Typography sx={{ color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700 }}>
                           {profile.formatLabel}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', mt: 0.2 }}>
                           {`${profile.recommendedVariantLabel} · ${profile.safeZone.label} · ${profile.opacity.label} · ${profile.recommendedMargin.label}`}
                         </Typography>
-                        <Typography sx={{ color: 'rgba(191,219,254,0.8)', fontSize: '0.76rem', mt: 0.2 }}>
+                        <Typography sx={{ color: 'rgba(195, 203, 230,0.8)', fontSize: '0.76rem', mt: 0.2 }}>
                           {profile.note}
                         </Typography>
                       </Box>
@@ -2015,7 +2015,7 @@ export default function ProducerExportHandoffPanel({
                         gap: { xs: 0.35, md: 0 },
                         px: 0.85,
                         py: 0.7,
-                        bgcolor: 'rgba(59,130,246,0.12)',
+                        bgcolor: 'rgba(63, 81, 181,0.12)',
                         borderBottom: '1px solid rgba(148,163,184,0.14)',
                       }}
                     >
@@ -2034,7 +2034,7 @@ export default function ProducerExportHandoffPanel({
                           gap: { xs: 0.4, md: 0.75 },
                           px: 0.85,
                           py: 0.8,
-                          bgcolor: index % 2 === 0 ? 'rgba(10, 5, 21,0.36)' : 'rgba(15,23,42,0.24)',
+                          bgcolor: index % 2 === 0 ? 'rgba(27, 18, 44,0.36)' : 'rgba(15,23,42,0.24)',
                           borderTop: index === 0 ? 'none' : '1px solid rgba(148,163,184,0.12)',
                         }}
                       >
@@ -2052,10 +2052,10 @@ export default function ProducerExportHandoffPanel({
                         <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.76rem' }}>
                           {item.selectionLabel}
                         </Typography>
-                        <Typography sx={{ color: '#bfdbfe', fontSize: '0.76rem', fontWeight: 700 }}>
+                        <Typography sx={{ color: '#c3cbe6', fontSize: '0.76rem', fontWeight: 700 }}>
                           {item.resolvedLabel}
                         </Typography>
-                        <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.76rem' }}>
+                        <Typography sx={{ color: 'rgba(195, 203, 230,0.82)', fontSize: '0.76rem' }}>
                           {`${item.recommendedLabel}${item.autoApplied ? ' · auto aktiv' : ''}`}
                         </Typography>
                       </Box>
@@ -2107,7 +2107,7 @@ export default function ProducerExportHandoffPanel({
             data-testid="producer-export-download-pdf"
             onClick={() => { void handleDownloadPdf(); }}
             disabled={downloadingPdf}
-            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#5d76cb', color: '#2a3d56', '&:hover': { bgcolor: '#3f51b5' } }}
           >
             {downloadingPdf ? 'Genererer PDF…' : 'Last ned PDF'}
           </Button>

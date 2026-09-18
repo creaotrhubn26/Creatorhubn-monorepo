@@ -21,9 +21,9 @@ const STATUS_CONFIG: Record<KlientStatus, { label: string; bg: string; color: st
   },
   awaiting_client: {
     label: 'Venter klient',
-    bg: 'rgba(59,130,246,0.2)',
-    color: '#bfdbfe',
-    border: '1px solid rgba(96,165,250,0.4)',
+    bg: 'rgba(63, 81, 181,0.2)',
+    color: '#c3cbe6',
+    border: '1px solid rgba(147, 164, 220,0.4)',
   },
   changes_requested: {
     label: 'Endringer',

@@ -189,7 +189,7 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             py: 1,
-            bgcolor: day.isToday ? 'rgba(136, 117, 235,0.16)' : 'rgba(255,255,255,0.03)',
+            bgcolor: day.isToday ? 'rgba(93, 118, 203,0.16)' : 'rgba(255,255,255,0.03)',
             borderBottom: '1px solid rgba(255,255,255,0.04)',
             borderRight: '1px solid rgba(255,255,255,0.04)',
           }}
@@ -207,7 +207,7 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
             </Typography>
             <Typography
               sx={{
-                color: day.isToday ? '#c6bdf4' : day.isWeekend ? '#fca5a5' : '#fff',
+                color: day.isToday ? '#c3cbe6' : day.isWeekend ? '#fca5a5' : '#fff',
                 fontSize: '1.1rem',
                 fontWeight: 700,
                 lineHeight: 1,
@@ -223,8 +223,8 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                 px: 0.75,
                 py: 0.15,
                 borderRadius: 999,
-                bgcolor: day.isToday ? 'rgba(136, 117, 235,0.3)' : 'rgba(255,255,255,0.06)',
-                color: day.isToday ? '#c6bdf4' : 'rgba(255,255,255,0.62)',
+                bgcolor: day.isToday ? 'rgba(93, 118, 203,0.3)' : 'rgba(255,255,255,0.06)',
+                color: day.isToday ? '#c3cbe6' : 'rgba(255,255,255,0.62)',
                 fontSize: '0.62rem',
                 fontWeight: 600,
                 minWidth: 18,
@@ -325,15 +325,15 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                   minHeight: 76,
                   px: 0.5,
                   py: 0.5,
-                  bgcolor: tint ? tint.bg : day.isToday ? 'rgba(136, 117, 235,0.04)' : 'transparent',
+                  bgcolor: tint ? tint.bg : day.isToday ? 'rgba(93, 118, 203,0.04)' : 'transparent',
                   borderRight: '1px solid rgba(255,255,255,0.04)',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   cursor: cellEvents.length === 0 ? 'pointer' : 'default',
                   transition: 'background-color 160ms ease-out',
                   '&:hover': cellEvents.length === 0
-                    ? { bgcolor: tint ? tint.hover : 'rgba(96,165,250,0.06)' }
+                    ? { bgcolor: tint ? tint.hover : 'rgba(147, 164, 220,0.06)' }
                     : undefined,
-                  '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: -2 },
+                  '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: -2 },
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 0.4,

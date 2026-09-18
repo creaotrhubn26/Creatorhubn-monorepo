@@ -32,11 +32,11 @@ export interface CalendarStatsBarProps {
 }
 
 const PILL_PALETTE = {
-  total: { color: 'var(--role-violet, #8875eb)', bg: 'rgba(136, 117, 235,0.14)' },
+  total: { color: 'var(--role-violet, #5d76cb)', bg: 'rgba(93, 118, 203,0.14)' },
   shooting: { color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
-  rehearsal: { color: '#9e8cf8', bg: 'rgba(158, 140, 248,0.14)' },
+  rehearsal: { color: '#93a4dc', bg: 'rgba(147, 164, 220,0.14)' },
   audition: { color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
-  next: { color: 'var(--role-cyan, #22d3ee)', bg: 'rgba(34,211,238,0.14)' },
+  next: { color: 'var(--role-cyan, #5d76cb)', bg: 'rgba(93, 118, 203,0.14)' },
 };
 
 function uniqueDayCount(events: CalendarEvent[]): number {
@@ -159,7 +159,7 @@ export const CalendarStatsBar: React.FC<CalendarStatsBarProps> = ({ events, prog
           <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
             Fremdrift
           </Typography>
-          <Typography sx={{ color: '#9e8cf8', fontSize: '0.72rem', fontWeight: 700 }}>
+          <Typography sx={{ color: '#93a4dc', fontSize: '0.72rem', fontWeight: 700 }}>
             {computedProgress}%
           </Typography>
         </Box>
@@ -171,7 +171,7 @@ export const CalendarStatsBar: React.FC<CalendarStatsBarProps> = ({ events, prog
             borderRadius: 3,
             bgcolor: 'rgba(255,255,255,0.08)',
             '& .MuiLinearProgress-bar': {
-              bgcolor: computedProgress >= 70 ? '#10b981' : computedProgress >= 40 ? '#9e8cf8' : '#f59e0b',
+              bgcolor: computedProgress >= 70 ? '#10b981' : computedProgress >= 40 ? '#93a4dc' : '#f59e0b',
               borderRadius: 3,
             },
           }}

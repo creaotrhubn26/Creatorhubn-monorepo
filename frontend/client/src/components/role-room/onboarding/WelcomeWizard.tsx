@@ -70,7 +70,7 @@ const STEPS: StepDef[] = [
     description:
       'The Role Room er bygget for digitale markedsførere som jobber med flere klienter samtidig. På 7 raske steg viser vi deg hvordan du kommer i gang — fra trygg passord-håndtering til invitering av din første klient. Trykk "Gå videre" for å starte.',
     Icon: RocketIcon,
-    iconColor: 'var(--role-cyan, #22d3ee)',
+    iconColor: 'var(--role-cyan, #5d76cb)',
     cta: null, // auto-fullføres når bruker går videre
     whyMatters: 'En guidet start hjelper deg å oppdage alle verktøyene som er bygget for deg.',
   },
@@ -81,7 +81,7 @@ const STEPS: StepDef[] = [
     description:
       'Du kommer til å håndtere klienters passord og API-nøkler. 2FA stopper kontotyveri selv om noen får tak i passordet ditt. Tar 2 min å sette opp med Google Authenticator eller 1Password.',
     Icon: ShieldIcon,
-    iconColor: '#9e8cf8',
+    iconColor: '#93a4dc',
     cta: { label: 'Sett opp 2FA nå', href: '/innstillinger/sikkerhet' },
     whyMatters:
       'Uten 2FA: én lekket passord = full tilgang til alle klient-kontoer du administrerer. Med 2FA: angriperen må også ha telefonen din.',
@@ -116,7 +116,7 @@ const STEPS: StepDef[] = [
     description:
       'Når research er ferdig genereres en 30-dagers markedsplan med pillars, tone-of-voice, KPI-mål og konkrete poster per kanal. Du kan tilpasse alt før du aksepterer.',
     Icon: PlanIcon,
-    iconColor: '#60a5fa',
+    iconColor: '#93a4dc',
     cta: null,
     whyMatters:
       'Planen blir grunnlaget for hele Creative Sync Workspace — feed-planneren, KPI-tracking, godkjenningsflyt — alt bygger på pillarene.',
@@ -128,7 +128,7 @@ const STEPS: StepDef[] = [
     description:
       'Koble GA4, Search Console, Meta Business Manager, LinkedIn, YouTube. KPI-tracker henter automatisk reach, engagement og conversion-data så du ikke trenger å lime CSV-er.',
     Icon: ConnectIcon,
-    iconColor: '#8875eb',
+    iconColor: '#5d76cb',
     cta: null,
     whyMatters:
       'Manuell datainnsamling koster typisk 2-4 timer per måned per klient. Automatisk = du kan administrere 3x flere klienter.',
@@ -261,13 +261,13 @@ const WelcomeWizard: React.FC = () => {
       <Box sx={{ p: 2.4, borderBottom: '1px solid rgba(148,163,184,0.18)' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
           <Stack direction="row" alignItems="center" spacing={1.2}>
-            <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(34,211,238,0.8)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(93, 118, 203,0.8)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Velkomst-guide
             </Typography>
             <Chip
               label={`${completedSteps.length} / ${STEPS.length} fullført`}
               size="small"
-              sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #22d3ee)', fontWeight: 700, height: 22 }}
+              sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: 'var(--role-cyan, #5d76cb)', fontWeight: 700, height: 22 }}
             />
           </Stack>
           <IconButton
@@ -287,7 +287,7 @@ const WelcomeWizard: React.FC = () => {
             height: 4,
             borderRadius: 999,
             bgcolor: 'rgba(148,163,184,0.18)',
-            '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+            '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-cyan, #5d76cb)' },
           }}
         />
 
@@ -309,10 +309,10 @@ const WelcomeWizard: React.FC = () => {
                   px: 1.2,
                   py: 0.3,
                   minHeight: 24,
-                  border: `1px solid ${isActive ? 'var(--role-cyan, #22d3ee)' : stepDone ? 'rgba(52,211,153,0.4)' : 'rgba(148,163,184,0.2)'}`,
-                  bgcolor: isActive ? 'rgba(34,211,238,0.12)' : stepDone ? 'rgba(52,211,153,0.08)' : 'transparent',
-                  color: isActive ? 'var(--role-cyan, #22d3ee)' : stepDone ? '#34d399' : 'rgba(226,232,240,0.65)',
-                  '&:hover': { bgcolor: isActive ? 'rgba(34,211,238,0.18)' : 'rgba(148,163,184,0.08)' },
+                  border: `1px solid ${isActive ? 'var(--role-cyan, #5d76cb)' : stepDone ? 'rgba(52,211,153,0.4)' : 'rgba(148,163,184,0.2)'}`,
+                  bgcolor: isActive ? 'rgba(93, 118, 203,0.12)' : stepDone ? 'rgba(52,211,153,0.08)' : 'transparent',
+                  color: isActive ? 'var(--role-cyan, #5d76cb)' : stepDone ? '#34d399' : 'rgba(226,232,240,0.65)',
+                  '&:hover': { bgcolor: isActive ? 'rgba(93, 118, 203,0.18)' : 'rgba(148,163,184,0.08)' },
                 }}
                 startIcon={stepDone ? <CheckIcon sx={{ fontSize: 12 }} /> : undefined}
               >
@@ -338,7 +338,7 @@ const WelcomeWizard: React.FC = () => {
             <Button
               onClick={handleDismiss}
               variant="contained"
-              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-cyan, #22d3ee)', color: '#0b1226', px: 3, '&:hover': { bgcolor: '#06b6d4' } }}
+              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-cyan, #5d76cb)', color: '#0b1226', px: 3, '&:hover': { bgcolor: '#3f51b5' } }}
             >
               Lukk
             </Button>
@@ -383,9 +383,9 @@ const WelcomeWizard: React.FC = () => {
 
             <Alert
               severity="info"
-              sx={{ mb: 2.4, bgcolor: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', '& .MuiAlert-message': { color: 'rgba(226,232,240,0.85)' } }}
+              sx={{ mb: 2.4, bgcolor: 'rgba(147, 164, 220,0.06)', border: '1px solid rgba(147, 164, 220,0.2)', '& .MuiAlert-message': { color: 'rgba(226,232,240,0.85)' } }}
             >
-              <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: '#60a5fa', mb: 0.3 }}>
+              <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: '#93a4dc', mb: 0.3 }}>
                 Hvorfor er dette viktig?
               </Typography>
               <Typography sx={{ fontSize: '0.82rem' }}>
@@ -436,9 +436,9 @@ const WelcomeWizard: React.FC = () => {
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
-                    bgcolor: 'var(--role-cyan, #22d3ee)',
+                    bgcolor: 'var(--role-cyan, #5d76cb)',
                     color: '#0b1226',
-                    '&:hover': { bgcolor: '#06b6d4' },
+                    '&:hover': { bgcolor: '#3f51b5' },
                   }}
                 >
                   {submitting

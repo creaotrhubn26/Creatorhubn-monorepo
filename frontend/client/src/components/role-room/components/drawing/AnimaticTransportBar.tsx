@@ -87,7 +87,7 @@ export const AnimaticTransportBar: React.FC<AnimaticTransportBarProps> = ({
         <IconButton
           size="small"
           onClick={onTogglePlay}
-          sx={{ color: '#c6bdf4' }}
+          sx={{ color: '#c3cbe6' }}
           data-testid="animatic-toggle"
         >
           {isPlaying ? <Pause fontSize="small" /> : <PlayArrow fontSize="small" />}
@@ -110,10 +110,10 @@ export const AnimaticTransportBar: React.FC<AnimaticTransportBarProps> = ({
           selected={loop}
           onChange={onToggleLoop}
           sx={{
-            color: loop ? '#c6bdf4' : 'rgba(255,255,255,0.5)',
+            color: loop ? '#c3cbe6' : 'rgba(255,255,255,0.5)',
             border: 'none',
             p: 0.5,
-            '&.Mui-selected': { bgcolor: 'rgba(198, 189, 244,0.15)' },
+            '&.Mui-selected': { bgcolor: 'rgba(195, 203, 230,0.15)' },
           }}
         >
           <Loop fontSize="small" />

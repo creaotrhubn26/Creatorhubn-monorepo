@@ -64,7 +64,7 @@ const SURFACES: ReadonlyArray<{
 
 const TONE_STYLES: Record<DirectorBriefTone, { color: string; background: string; border: string }> = {
   attention: { color: '#fcd34d', background: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.26)' },
-  upcoming: { color: '#7dd3fc', background: 'rgba(14, 165, 233, 0.08)', border: 'rgba(56, 189, 248, 0.24)' },
+  upcoming: { color: '#93a4dc', background: 'rgba(63, 81, 181, 0.08)', border: 'rgba(93, 118, 203, 0.24)' },
   ready: { color: '#6ee7b7', background: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.24)' },
   neutral: { color: roleTokens.textMuted, background: 'rgba(148, 163, 184, 0.06)', border: 'rgba(148, 163, 184, 0.18)' },
 };
@@ -136,9 +136,9 @@ export function DirectorWorkspace({
                 size="small"
                 sx={{
                   height: 24,
-                  color: '#c6bdf4',
-                  bgcolor: 'rgba(136, 117, 235, 0.13)',
-                  border: '1px solid rgba(136, 117, 235, 0.28)',
+                  color: '#c3cbe6',
+                  bgcolor: 'rgba(93, 118, 203, 0.13)',
+                  border: '1px solid rgba(93, 118, 203, 0.28)',
                   fontWeight: 800,
                   letterSpacing: 0.7,
                 }}
@@ -198,9 +198,9 @@ export function DirectorWorkspace({
                   justifyContent: 'flex-start',
                   px: 1.5,
                   color: selected ? '#fff' : roleTokens.textMuted,
-                  bgcolor: selected ? 'rgba(136, 117, 235, 0.18)' : 'transparent',
-                  border: selected ? '1px solid rgba(136, 117, 235, 0.36)' : '1px solid transparent',
-                  '&:hover': { bgcolor: selected ? 'rgba(136, 117, 235, 0.24)' : 'rgba(255,255,255,0.05)' },
+                  bgcolor: selected ? 'rgba(93, 118, 203, 0.18)' : 'transparent',
+                  border: selected ? '1px solid rgba(93, 118, 203, 0.36)' : '1px solid transparent',
+                  '&:hover': { bgcolor: selected ? 'rgba(93, 118, 203, 0.24)' : 'rgba(255,255,255,0.05)' },
                   ...focusVisibleStyles,
                 }}
               >
@@ -319,7 +319,7 @@ export function DirectorWorkspace({
                 </Box>
                 <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
                   <Stack direction="row" spacing={1} alignItems="center">
-                    {brief.productionDay?.kind === 'today' ? <CalendarIcon sx={{ color: '#fcd34d', fontSize: 19 }} /> : <ReadyIcon sx={{ color: '#7dd3fc', fontSize: 19 }} />}
+                    {brief.productionDay?.kind === 'today' ? <CalendarIcon sx={{ color: '#fcd34d', fontSize: 19 }} /> : <ReadyIcon sx={{ color: '#93a4dc', fontSize: 19 }} />}
                     <Typography sx={{ color: roleTokens.textMuted, fontSize: '0.78rem' }}>
                       {brief.productionDay
                         ? brief.productionDay.kind === 'today'

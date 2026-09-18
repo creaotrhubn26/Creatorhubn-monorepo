@@ -217,7 +217,7 @@ export function FacebookPageMentionPublisher() {
           {preview ? (
             <Box
               data-testid="fb-mention-preview"
-              sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px dashed rgba(59,130,246,0.35)' }}
+              sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px dashed rgba(63, 81, 181,0.35)' }}
             >
               <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.14em', fontWeight: 700 }}>
                 WILL PUBLISH AS

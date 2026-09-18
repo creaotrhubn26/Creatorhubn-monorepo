@@ -96,7 +96,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
   {
     id: 'watercolor-wash',
     name: 'Watercolor Wash',
-    config: { ...DEFAULT_BRUSH_CONFIG, type: 'watercolor', size: 30, color: '#3b82f6', wetness: 0.9, opacity: 0.4 },
+    config: { ...DEFAULT_BRUSH_CONFIG, type: 'watercolor', size: 30, color: '#3f51b5', wetness: 0.9, opacity: 0.4 },
     favorite: false,
     category: 'Painting',
     icon: '💧',
@@ -132,7 +132,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
   {
     id: 'calligraphy',
     name: 'Calligraphy',
-    config: { ...DEFAULT_BRUSH_CONFIG, type: 'pen', size: 6, color: '#18122b', tiltSensitivity: 1, pressureSensitivity: 1 },
+    config: { ...DEFAULT_BRUSH_CONFIG, type: 'pen', size: 6, color: '#2a3d56', tiltSensitivity: 1, pressureSensitivity: 1 },
     favorite: true,
     category: 'Drawing',
     icon: '✒️',
@@ -141,7 +141,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
   {
     id: 'airbrush',
     name: 'Airbrush',
-    config: { ...DEFAULT_BRUSH_CONFIG, type: 'brush', size: 40, color: 'var(--role-violet, #8875eb)', hardness: 0.1, flow: 0.3, opacity: 0.2 },
+    config: { ...DEFAULT_BRUSH_CONFIG, type: 'brush', size: 40, color: 'var(--role-violet, #5d76cb)', hardness: 0.1, flow: 0.3, opacity: 0.2 },
     favorite: false,
     category: 'Painting',
     icon: '🌫️',
@@ -412,7 +412,7 @@ function mergeWithDefaultPresets(existingPresets: BrushPreset[]): BrushPreset[] 
 // =============================================================================
 
 const LibraryContainer = styled(Paper)(() => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -428,11 +428,11 @@ const PresetCard = styled(Box, {
   padding: '8px 12px',
   gap: 10,
   cursor: 'pointer',
-  backgroundColor: selected ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-  borderLeft: selected ? '3px solid #3b82f6' : '3px solid transparent',
+  backgroundColor: selected ? 'rgba(63, 81, 181, 0.2)' : 'transparent',
+  borderLeft: selected ? '3px solid #3f51b5' : '3px solid transparent',
   transition: 'all 0.15s',
   '&:hover': {
-    backgroundColor: selected ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.05)',
+    backgroundColor: selected ? 'rgba(63, 81, 181, 0.25)' : 'rgba(255,255,255,0.05)',
   },
 }));
 
@@ -844,8 +844,8 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
               size="small"
               onClick={() => setSelectedCategory(cat)}
               sx={{
-                bgcolor: selectedCategory === cat ? 'rgba(59,130,246,0.3)' : 'transparent',
-                border: selectedCategory === cat ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                bgcolor: selectedCategory === cat ? 'rgba(63, 81, 181,0.3)' : 'transparent',
+                border: selectedCategory === cat ? '1px solid rgba(63, 81, 181,0.5)' : '1px solid rgba(255,255,255,0.1)',
                 fontSize: 11,
                 height: 24,
               }}
@@ -904,7 +904,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
                     fontSize: 16,
                     bgcolor: 'rgba(255,255,255,0.1)',
                     cursor: 'pointer',
-                    border: selectedPresetId === preset.id ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.2)',
+                    border: selectedPresetId === preset.id ? '2px solid #3f51b5' : '1px solid rgba(255,255,255,0.2)',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
                   }}
                 >

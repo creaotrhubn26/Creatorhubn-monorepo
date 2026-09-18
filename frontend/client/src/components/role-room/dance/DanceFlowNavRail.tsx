@@ -143,14 +143,14 @@ export default function DanceFlowNavRail({
               justifyContent: 'center',
               position: 'relative',
               bgcolor: isActive
-                ? 'rgba(158, 140, 248,0.16)'
+                ? 'rgba(147, 164, 220,0.16)'
                 : 'transparent',
               color: isActive
                 ? danceFlowColors.lavender
                 : danceFlowColors.textMuted,
               transition: 'background-color 120ms, color 120ms',
               '&:hover': {
-                bgcolor: 'rgba(158, 140, 248,0.08)',
+                bgcolor: 'rgba(147, 164, 220,0.08)',
                 color: danceFlowColors.lavender,
               },
               '&:focus-visible': {

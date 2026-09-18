@@ -64,7 +64,7 @@ function ann(
   width: number,
   height: number,
   label: string,
-  color = 'var(--role-cyan, #22d3ee)',
+  color = 'var(--role-cyan, #5d76cb)',
   labelPosition: GuideAnnotationLabelPosition = 'top-left',
 ): GuideStepAnnotation {
   return {
@@ -154,7 +154,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 }
 
 function Callout({
-  color = '#8875eb',
+  color = '#5d76cb',
   children,
 }: {
   color?: string;
@@ -342,7 +342,7 @@ const STEPS: Step[] = [
               Pro-visning kan vise kart og kort samtidig slik at du ser geografi og operativ status i samme layout.
               Lokasjoner med koordinater blir synlige som pins.
             </Typography>
-            <Callout color="#22d3ee">
+            <Callout color="#5d76cb">
               Når du filtrerer listen, oppdateres kartpins automatisk slik at kart og kort alltid er synkronisert.
             </Callout>
           </>
@@ -498,65 +498,65 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'overview.0': {
     screenshotUrl: '/guide/location/management-standard.png',
     annotations: [
-      ann('ov-panel', 4.6, 18.1, 12.2, 3.5, 'Panel', '#8875eb'),
-      ann('ov-kpi', 1.4, 23.5, 97.2, 12.1, 'KPI-oversikt', 'var(--role-cyan, #22d3ee)'),
+      ann('ov-panel', 4.6, 18.1, 12.2, 3.5, 'Panel', '#5d76cb'),
+      ann('ov-kpi', 1.4, 23.5, 97.2, 12.1, 'KPI-oversikt', 'var(--role-cyan, #5d76cb)'),
       ann('ov-cards', 1.4, 44.6, 97.2, 53.8, 'Lokasjonskort', '#34d399'),
     ],
   },
   'overview.1': {
     screenshotUrl: '/guide/location/management-standard.png',
     annotations: [
-      ann('ov-export', 74.7, 18.6, 7.5, 4.2, 'Eksporter', 'var(--role-cyan, #22d3ee)'),
+      ann('ov-export', 74.7, 18.6, 7.5, 4.2, 'Eksporter', 'var(--role-cyan, #5d76cb)'),
       ann('ov-stats-toggle', 82.2, 18.6, 2.9, 4.2, 'Statistikk', '#f59e0b'),
-      ann('ov-guide', 85.2, 18.6, 5.2, 4.2, 'Guide', '#8875eb', 'top-right'),
+      ann('ov-guide', 85.2, 18.6, 5.2, 4.2, 'Guide', '#5d76cb', 'top-right'),
       ann('ov-new-location', 90.4, 18.6, 8, 4.2, 'Ny lokasjon', '#34d399', 'top-right'),
     ],
   },
   'stats-filters.0': {
     screenshotUrl: '/guide/location/management-standard.png',
     annotations: [
-      ann('sf-kpi-row', 1.4, 23.5, 97.2, 12.1, 'Statistikkrad', 'var(--role-cyan, #22d3ee)'),
-      ann('sf-kpi-total', 6.8, 26.6, 3.5, 7.2, 'Total', '#8875eb'),
-      ann('sf-kpi-cap', 19.8, 26.6, 6.2, 7.2, 'Kapasitet', 'var(--role-cyan, #22d3ee)'),
+      ann('sf-kpi-row', 1.4, 23.5, 97.2, 12.1, 'Statistikkrad', 'var(--role-cyan, #5d76cb)'),
+      ann('sf-kpi-total', 6.8, 26.6, 3.5, 7.2, 'Total', '#5d76cb'),
+      ann('sf-kpi-cap', 19.8, 26.6, 6.2, 7.2, 'Kapasitet', 'var(--role-cyan, #5d76cb)'),
       ann('sf-kpi-fav', 48, 26.6, 4.6, 7.2, 'Favoritter', '#f59e0b'),
     ],
   },
   'stats-filters.1': {
     screenshotUrl: '/guide/location/management-standard.png',
     annotations: [
-      ann('sf-search', 3.2, 38.5, 85.2, 3.5, 'Søk', 'var(--role-cyan, #22d3ee)'),
-      ann('sf-filter-toggle', 88.5, 38.4, 2.6, 3.6, 'Filter', '#8875eb'),
+      ann('sf-search', 3.2, 38.5, 85.2, 3.5, 'Søk', 'var(--role-cyan, #5d76cb)'),
+      ann('sf-filter-toggle', 88.5, 38.4, 2.6, 3.6, 'Filter', '#5d76cb'),
       ann('sf-sort-views', 91.1, 38.4, 7.3, 3.6, 'Visningsbytte', '#34d399', 'top-right'),
     ],
   },
   'view-modes.0': {
     screenshotUrl: '/guide/location/management-standard.png',
     annotations: [
-      ann('vm-mode-group', 91.1, 38.4, 7.3, 3.6, 'Kort / Tabell / Pro', 'var(--role-cyan, #22d3ee)', 'top-right'),
-      ann('vm-card', 91.2, 38.6, 2.2, 3.2, '', 'var(--role-cyan, #22d3ee)'),
-      ann('vm-table', 93.7, 38.6, 2.2, 3.2, '', '#8875eb'),
+      ann('vm-mode-group', 91.1, 38.4, 7.3, 3.6, 'Kort / Tabell / Pro', 'var(--role-cyan, #5d76cb)', 'top-right'),
+      ann('vm-card', 91.2, 38.6, 2.2, 3.2, '', 'var(--role-cyan, #5d76cb)'),
+      ann('vm-table', 93.7, 38.6, 2.2, 3.2, '', '#5d76cb'),
       ann('vm-pro', 96.2, 38.6, 2.2, 3.2, '', '#34d399'),
     ],
   },
   'view-modes.1': {
     screenshotUrl: '/guide/location/management-pro.png',
     annotations: [
-      ann('vm-presets', 4.2, 49.1, 16.8, 2.7, 'Presets', '#8875eb'),
-      ann('vm-save-view', 86.8, 52.1, 6.2, 3.5, 'Lagre view', 'var(--role-cyan, #22d3ee)', 'top-right'),
+      ann('vm-presets', 4.2, 49.1, 16.8, 2.7, 'Presets', '#5d76cb'),
+      ann('vm-save-view', 86.8, 52.1, 6.2, 3.5, 'Lagre view', 'var(--role-cyan, #5d76cb)', 'top-right'),
     ],
   },
   'map-cards.0': {
     screenshotUrl: '/guide/location/management-pro.png',
     annotations: [
-      ann('mc-map-title', 2.1, 59.5, 58.1, 2.2, 'Kart + kort', 'var(--role-cyan, #22d3ee)'),
-      ann('mc-map', 2.1, 62, 35.5, 18.5, 'Kart', 'var(--role-cyan, #22d3ee)'),
-      ann('mc-right-panel', 62, 59.5, 36, 18.7, 'Operativt panel', '#8875eb'),
+      ann('mc-map-title', 2.1, 59.5, 58.1, 2.2, 'Kart + kort', 'var(--role-cyan, #5d76cb)'),
+      ann('mc-map', 2.1, 62, 35.5, 18.5, 'Kart', 'var(--role-cyan, #5d76cb)'),
+      ann('mc-right-panel', 62, 59.5, 36, 18.7, 'Operativt panel', '#5d76cb'),
     ],
   },
   'map-cards.1': {
     screenshotUrl: '/guide/location/management-pro.png',
     annotations: [
-      ann('mc-map-focus', 2.1, 62, 35.5, 18.5, 'Pin-område', 'var(--role-cyan, #22d3ee)'),
+      ann('mc-map-focus', 2.1, 62, 35.5, 18.5, 'Pin-område', 'var(--role-cyan, #5d76cb)'),
       ann('mc-list-sync', 20.2, 62.4, 17.1, 17.7, 'Synket lokasjonsliste', '#34d399'),
       ann('mc-map-controls', 2.6, 63.1, 1.6, 4.4, 'Kartkontroll', '#f59e0b'),
     ],
@@ -564,68 +564,68 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'pro-operations.0': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('po-worklist', 2.1, 59, 58.3, 40.2, 'Pro-arbeidsliste', 'var(--role-cyan, #22d3ee)'),
-      ann('po-basecamp-row', 2.1, 74.7, 58.3, 4.2, 'Basecamp + load-flow', '#8875eb'),
+      ann('po-worklist', 2.1, 59, 58.3, 40.2, 'Pro-arbeidsliste', 'var(--role-cyan, #5d76cb)'),
+      ann('po-basecamp-row', 2.1, 74.7, 58.3, 4.2, 'Basecamp + load-flow', '#5d76cb'),
       ann('po-set-basecamp', 48.5, 75.8, 4.4, 2.5, 'Sett basecamp', '#34d399'),
     ],
   },
   'pro-operations.1': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('po-kpi-row', 1.5, 17.6, 97, 6.6, 'Klarhet / risiko KPI', 'var(--role-cyan, #22d3ee)'),
+      ann('po-kpi-row', 1.5, 17.6, 97, 6.6, 'Klarhet / risiko KPI', 'var(--role-cyan, #5d76cb)'),
       ann('po-missing-permit', 18.1, 19.1, 4.3, 2.2, 'Mangler tillatelse', '#f59e0b'),
-      ann('po-budget-panel', 62, 55.1, 36, 12.8, 'Budsjett-intelligens', '#8875eb'),
+      ann('po-budget-panel', 62, 55.1, 36, 12.8, 'Budsjett-intelligens', '#5d76cb'),
     ],
   },
   'scene-links.0': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('sl-scene-row', 2.1, 78.6, 58.3, 4.2, 'Scene-kobling', 'var(--role-cyan, #22d3ee)'),
+      ann('sl-scene-row', 2.1, 78.6, 58.3, 4.2, 'Scene-kobling', 'var(--role-cyan, #5d76cb)'),
       ann('sl-connect-scenes', 52.7, 79.9, 4, 2.5, 'Koble scener', '#34d399'),
-      ann('sl-crew-shotlist', 62, 34.6, 36, 18.8, 'Crew + ShotList', '#8875eb'),
+      ann('sl-crew-shotlist', 62, 34.6, 36, 18.8, 'Crew + ShotList', '#5d76cb'),
     ],
   },
   'scene-links.1': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('sl-shotlist-metric', 66.7, 19.1, 3.1, 2.1, 'Har shotlist', 'var(--role-cyan, #22d3ee)'),
-      ann('sl-crew-panel', 62, 34.6, 36, 18.8, 'Teknisk hull / shotlist-kobling', '#8875eb'),
+      ann('sl-shotlist-metric', 66.7, 19.1, 3.1, 2.1, 'Har shotlist', 'var(--role-cyan, #5d76cb)'),
+      ann('sl-crew-panel', 62, 34.6, 36, 18.8, 'Teknisk hull / shotlist-kobling', '#5d76cb'),
       ann('sl-worklist-context', 2.1, 59, 58.3, 14.7, 'Scenekontekst i arbeidsliste', '#34d399'),
     ],
   },
   'media-storyboard.0': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('ms-media-row', 2.1, 82.8, 58.3, 4.2, 'Lokasjonsbilder + storyboard', 'var(--role-cyan, #22d3ee)'),
+      ann('ms-media-row', 2.1, 82.8, 58.3, 4.2, 'Lokasjonsbilder + storyboard', 'var(--role-cyan, #5d76cb)'),
       ann('ms-edit-media', 52.3, 83.9, 4.5, 2.5, 'Rediger media', '#34d399'),
     ],
   },
   'media-storyboard.1': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('ms-contact-row', 2.1, 86.7, 58.3, 4.2, 'Kontaktinfo', 'var(--role-cyan, #22d3ee)'),
+      ann('ms-contact-row', 2.1, 86.7, 58.3, 4.2, 'Kontaktinfo', 'var(--role-cyan, #5d76cb)'),
       ann('ms-edit-contact', 52.1, 87.9, 4.8, 2.5, 'Rediger kontakt', '#34d399'),
-      ann('ms-inline-flow', 2.1, 74.7, 58.3, 16.2, 'Inline redigeringsflyt', '#8875eb'),
+      ann('ms-inline-flow', 2.1, 74.7, 58.3, 16.2, 'Inline redigeringsflyt', '#5d76cb'),
     ],
   },
   'consistency-workflow.0': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('cw-panel', 62, 66, 36, 31.8, 'Konsistenssjekk', 'var(--role-cyan, #22d3ee)'),
-      ann('cw-findings', 62.3, 71, 35.3, 23.2, 'Mangler per lokasjon', '#8875eb'),
+      ann('cw-panel', 62, 66, 36, 31.8, 'Konsistenssjekk', 'var(--role-cyan, #5d76cb)'),
+      ann('cw-findings', 62.3, 71, 35.3, 23.2, 'Mangler per lokasjon', '#5d76cb'),
     ],
   },
   'consistency-workflow.1': {
     screenshotUrl: '/guide/location/management-pro-detail.png',
     annotations: [
-      ann('cw-panel-cta', 62, 66, 36, 31.8, 'Feilfunn + CTA', 'var(--role-cyan, #22d3ee)'),
+      ann('cw-panel-cta', 62, 66, 36, 31.8, 'Feilfunn + CTA', 'var(--role-cyan, #5d76cb)'),
       ann('cw-cta-load-flow', 92, 71.1, 5.5, 2.5, 'Gå til load-flow', '#34d399', 'top-right'),
     ],
   },
   'analysis-handoff.0': {
     screenshotUrl: '/guide/location/management-standard.png',
     annotations: [
-      ann('ah-card-row', 3, 80.3, 21, 5.4, 'Korthandlinger', 'var(--role-cyan, #22d3ee)'),
+      ann('ah-card-row', 3, 80.3, 21, 5.4, 'Korthandlinger', 'var(--role-cyan, #5d76cb)'),
       ann('ah-analyze', 14.6, 81.2, 2.2, 3.8, 'Åpne analyse', '#34d399'),
     ],
   },
@@ -701,7 +701,7 @@ export function LocationManagementGuide({ open, onClose, initialStepId }: Locati
     contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const accent = guideConfig.accentColorOverride ?? '#8875eb';
+  const accent = guideConfig.accentColorOverride ?? '#5d76cb';
 
   return (
     <Dialog
@@ -712,7 +712,7 @@ export function LocationManagementGuide({ open, onClose, initialStepId }: Locati
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#100b1e',
+          bgcolor: '#2a3152',
           backgroundImage: 'none',
           border: '1px solid rgba(255,255,255,0.1)',
           borderRadius: isNarrow ? 0 : 2,

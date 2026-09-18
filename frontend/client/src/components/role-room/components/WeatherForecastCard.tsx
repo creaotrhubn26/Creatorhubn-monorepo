@@ -74,11 +74,11 @@ export function WeatherForecastCard({ forecast, alerts, date }: WeatherForecastC
     } else if (symbol.includes('cloud')) {
       return <CloudIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 32 }} />;
     } else if (symbol.includes('rain')) {
-      return <UmbrellaIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: 32 }} />;
+      return <UmbrellaIcon sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: 32 }} />;
     } else if (symbol.includes('snow')) {
       return <SnowIcon sx={{ color: '#fff', fontSize: 32 }} />;
     } else if (symbol.includes('thunder')) {
-      return <ThunderIcon sx={{ color: 'var(--role-violet, #8875eb)', fontSize: 32 }} />;
+      return <ThunderIcon sx={{ color: 'var(--role-violet, #5d76cb)', fontSize: 32 }} />;
     }
     return <SunIcon sx={{ color: '#ffb800', fontSize: 32 }} />;
   };
@@ -87,11 +87,11 @@ export function WeatherForecastCard({ forecast, alerts, date }: WeatherForecastC
     if (symbol.includes('sun') || symbol.includes('clear')) {
       return '#ffb800';
     } else if (symbol.includes('rain')) {
-      return 'var(--role-cyan, #00d4ff)';
+      return 'var(--role-cyan, #5d76cb)';
     } else if (symbol.includes('snow')) {
       return '#fff';
     } else if (symbol.includes('thunder')) {
-      return '#8875eb';
+      return '#5d76cb';
     }
     return 'rgba(255,255,255,0.7)';
   };
@@ -108,8 +108,8 @@ export function WeatherForecastCard({ forecast, alerts, date }: WeatherForecastC
               label={dayForecast.date ? new Date(dayForecast.date).toLocaleDateString('no-NO', { weekday: 'short', day: 'numeric', month: 'short' }) : 'I dag'}
               size="small"
               sx={{
-                bgcolor: 'rgba(0,212,255,0.2)',
-                color: 'var(--role-cyan, #00d4ff)',
+                bgcolor: 'rgba(93, 118, 203,0.2)',
+                color: 'var(--role-cyan, #5d76cb)',
                 fontWeight: 600,
               }}
             />

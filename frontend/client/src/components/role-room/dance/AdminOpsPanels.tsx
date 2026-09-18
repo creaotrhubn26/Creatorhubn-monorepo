@@ -85,7 +85,7 @@ const PerformanceStripboard: React.FC<PerformanceStripboardProps> = ({ performan
               <Chip
                 size="small"
                 label={p.performanceDate ? new Date(p.performanceDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—'}
-                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight }}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }}
               />
               <Chip
                 size="small"
@@ -182,7 +182,7 @@ export const PerformancesPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
             sx={{
               cursor: 'pointer', px: 1.5, py: 0.5, fontSize: 11, fontWeight: 700, letterSpacing: 1,
               color: mode === m ? '#fff' : 'rgba(229,231,235,0.5)',
-              bgcolor: mode === m ? 'rgba(158, 140, 248,0.22)' : 'transparent',
+              bgcolor: mode === m ? 'rgba(147, 164, 220,0.22)' : 'transparent',
               border: `1px solid ${mode === m ? danceFlowColors.lavender : 'rgba(255,255,255,0.12)'}`,
               borderRadius: 0.5,
               textTransform: 'uppercase',
@@ -266,10 +266,10 @@ const MusicRowExpansion: React.FC<MusicRowExpansionProps> = ({ item }) => {
             sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55` }}
           />
           {item.bpm ? (
-            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight }} />
+            <Chip size="small" label={`${item.bpm} BPM`} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }} />
           ) : null}
           {item.musicalKey ? (
-            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoSoft }} />
+            <Chip size="small" label={item.musicalKey} sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoSoft }} />
           ) : null}
           {item.durationSec ? (
             <Chip
@@ -491,14 +491,14 @@ const GrantsStatStrip: React.FC<GrantsStatProps> = ({ list }) => {
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="grants-stat-strip">
       <Chip size="small" label={`Utkast: ${stats.drafts}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
-      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoLight }} />
+      <Chip size="small" label={`Sendt: ${stats.submitted}`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoLight }} />
       <Chip size="small" label={`Innvilget: ${stats.awarded}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       <Chip size="small" label={`Avslått: ${stats.rejected}`} sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: danceFlowColors.errorPrimary }} />
       {stats.totalAwardedKr > 0 ? (
         <Chip
           size="small"
           label={`Tildelt totalt: ${formatNok(stats.totalAwardedKr)}`}
-          sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight, fontWeight: 700 }}
         />
       ) : null}
     </Stack>
@@ -583,10 +583,10 @@ export const GrantsPanel: React.FC<AdminPanelProps> = ({ projectId }) => {
             data-testid={`grants-template-${t.id}`}
             sx={{
               height: 22, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
-              bgcolor: 'rgba(158, 140, 248,0.12)',
+              bgcolor: 'rgba(147, 164, 220,0.12)',
               color: danceFlowColors.lavenderLight,
-              border: '1px solid rgba(158, 140, 248,0.35)',
-              '&:hover': { bgcolor: 'rgba(158, 140, 248,0.22)' },
+              border: '1px solid rgba(147, 164, 220,0.35)',
+              '&:hover': { bgcolor: 'rgba(147, 164, 220,0.22)' },
             }}
           />
         ))}
@@ -630,7 +630,7 @@ const InvoicesStatStrip: React.FC<{ list: ops.DanceInvoice[] }> = ({ list }) => 
   return (
     <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ p: 1.5, pb: 0 }} data-testid="invoices-stat-strip">
       <Chip size="small" label={`Utkast: ${stats.draft}`} sx={{ bgcolor: 'rgba(156,163,175,0.18)', color: danceFlowColors.textMuted }} />
-      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(96,165,250,0.18)', color: danceFlowColors.infoLight }} />
+      <Chip size="small" label={`Sendt: ${stats.sent}`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.infoLight }} />
       <Chip size="small" label={`Betalt: ${stats.paid}`} sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: danceFlowColors.successPrimary }} />
       {stats.overdue > 0 ? (
         <Chip
@@ -749,7 +749,7 @@ const UnionWorkDaysStrip: React.FC<{ memberships: ops.DanceUnionMembership[] }> 
         <Chip
           size="small"
           label={`${stats.totalThisYear} dager`}
-          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight }}
+          sx={{ height: 20, fontSize: 10.5, fontWeight: 700, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
       <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>

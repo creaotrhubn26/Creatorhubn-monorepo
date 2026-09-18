@@ -1318,7 +1318,7 @@ function drawingStateValueEqual<Key extends keyof DrawingState>(
 
 const CanvasContainer = styled(Box)({
   position: 'relative',
-  backgroundColor: '#18122b',
+  backgroundColor: '#2a3d56',
   borderRadius: 12,
   overflow: 'hidden',
   boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
@@ -1358,7 +1358,7 @@ const ProToolbar = styled(Paper, {
   maxWidth: 'calc(100% - 16px)',
   padding: '6px 14px',
   borderRadius: 28,
-  backgroundColor: drawing ? 'rgba(14, 18, 30, 0.995)' : 'rgba(16, 11, 30, 0.97)',
+  backgroundColor: drawing ? 'rgba(14, 18, 30, 0.995)' : 'rgba(42, 49, 82, 0.97)',
   backdropFilter: drawing ? 'none' : 'blur(8px)',
   WebkitBackdropFilter: drawing ? 'none' : 'blur(8px)',
   display: 'flex',
@@ -2814,7 +2814,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       dx: dxNorm * velScale,
       dy: dyNorm * velScale,
       pressure: clamp(current.pressure || 0.5, 0, 1),
-      color: brush.color || '#3b82f6',
+      color: brush.color || '#3f51b5',
       wetness: clamp((brush.wetness ?? 0.5), 0, 1),
       radius: radiusFrac,
     };
@@ -3007,17 +3007,17 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       ctx.save();
 
       if (frameY > 0) {
-        ctx.fillStyle = 'rgba(10, 5, 21, 0.42)';
+        ctx.fillStyle = 'rgba(27, 18, 44, 0.42)';
         ctx.fillRect(0, 0, width, frameY);
         ctx.fillRect(0, bottomEdge, width, Math.max(0, height - bottomEdge));
       }
       if (frameX > 0) {
-        ctx.fillStyle = 'rgba(10, 5, 21, 0.42)';
+        ctx.fillStyle = 'rgba(27, 18, 44, 0.42)';
         ctx.fillRect(0, frameY, frameX, frameSize.height);
         ctx.fillRect(rightEdge, frameY, Math.max(0, width - rightEdge), frameSize.height);
       }
 
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+      ctx.strokeStyle = 'rgba(93, 118, 203, 0.55)';
       ctx.lineWidth = 1;
       ctx.strokeRect(frameX + 0.5, frameY + 0.5, Math.max(0, frameSize.width - 1), Math.max(0, frameSize.height - 1));
 
@@ -3939,7 +3939,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   // Color presets
   const COLOR_PRESETS = [
     '#000000', '#FFFFFF', '#FF5252', '#FF9800', '#FFEB3B',
-    '#4CAF50', '#2196F3', '#3c27a5', '#795548', '#607D8B',
+    '#4CAF50', '#2196F3', '#32127a', '#795548', '#607D8B',
   ];
   const QUICK_BRUSH_TYPES: ProBrushType[] = ['pen', 'marker', 'highlighter', 'eraser'];
   const EXTRA_BRUSH_TYPES: ProBrushType[] = PRO_BRUSH_TYPES.filter(
@@ -4081,9 +4081,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                   top: selectionPreviewRect.y1,
                   width: Math.max(1, selectionPreviewRect.x2 - selectionPreviewRect.x1),
                   height: Math.max(1, selectionPreviewRect.y2 - selectionPreviewRect.y1),
-                  border: '1px dashed rgba(56, 189, 248, 0.95)',
-                  bgcolor: 'rgba(14, 165, 233, 0.12)',
-                  boxShadow: 'inset 0 0 0 1px rgba(103,232,249,0.25)',
+                  border: '1px dashed rgba(93, 118, 203, 0.95)',
+                  bgcolor: 'rgba(63, 81, 181, 0.12)',
+                  boxShadow: 'inset 0 0 0 1px rgba(147, 164, 220,0.25)',
                   borderRadius: selectionDragState?.mode === 'ellipse' ? '50%' : 0,
                   pointerEvents: 'none',
                 }}
@@ -4097,8 +4097,8 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
               >
                 <path
                   d={selectionLassoPath}
-                  fill="rgba(14, 165, 233, 0.12)"
-                  stroke="rgba(56, 189, 248, 0.95)"
+                  fill="rgba(63, 81, 181, 0.12)"
+                  stroke="rgba(93, 118, 203, 0.95)"
                   strokeWidth={1.5}
                   strokeDasharray="6 4"
                 />
@@ -4155,9 +4155,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                 pointerEvents: 'auto',
                 cursor: 'grab',
                 borderRadius: 999,
-                border: '1px solid rgba(56, 189, 248, 0.95)',
-                background: 'linear-gradient(90deg, rgba(8, 145, 178, 0.35), rgba(56, 189, 248, 0.5))',
-                boxShadow: '0 0 14px rgba(56,189,248,0.35)',
+                border: '1px solid rgba(93, 118, 203, 0.95)',
+                background: 'linear-gradient(90deg, rgba(63, 81, 181, 0.35), rgba(93, 118, 203, 0.5))',
+                boxShadow: '0 0 14px rgba(93, 118, 203,0.35)',
                 '&:active': {
                   cursor: 'grabbing',
                 },
@@ -4176,9 +4176,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                 borderRadius: '50%',
                 pointerEvents: 'auto',
                 cursor: 'grab',
-                bgcolor: 'rgba(56, 189, 248, 0.95)',
+                bgcolor: 'rgba(93, 118, 203, 0.95)',
                 border: '2px solid rgba(12, 18, 36, 0.95)',
-                boxShadow: '0 0 10px rgba(56,189,248,0.45)',
+                boxShadow: '0 0 10px rgba(93, 118, 203,0.45)',
                 '&:active': {
                   cursor: 'grabbing',
                 },
@@ -4197,9 +4197,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                 borderRadius: '50%',
                 pointerEvents: 'auto',
                 cursor: 'grab',
-                bgcolor: 'rgba(56, 189, 248, 0.95)',
+                bgcolor: 'rgba(93, 118, 203, 0.95)',
                 border: '2px solid rgba(12, 18, 36, 0.95)',
-                boxShadow: '0 0 10px rgba(56,189,248,0.45)',
+                boxShadow: '0 0 10px rgba(93, 118, 203,0.45)',
                 '&:active': {
                   cursor: 'grabbing',
                 },
@@ -4238,7 +4238,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           py: 0.5,
           borderRadius: 999,
           bgcolor: 'rgba(4, 12, 30, 0.7)',
-          border: '1px solid rgba(34, 211, 238, 0.35)',
+          border: '1px solid rgba(93, 118, 203, 0.35)',
           display: 'flex',
           alignItems: 'center',
           flexWrap: 'wrap',
@@ -4248,19 +4248,19 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           maxWidth: 'calc(100% - 20px)',
         }}
       >
-        <Typography variant="caption" sx={{ color: '#67e8f9', fontWeight: 700 }}>
+        <Typography variant="caption" sx={{ color: '#93a4dc', fontWeight: 700 }}>
           {activeTool.toUpperCase()}
         </Typography>
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
           Flow {(activeBrushConfig.flow * 100).toFixed(0)}%
         </Typography>
         {symmetrySettings.type !== 'none' && (
-          <Typography variant="caption" sx={{ color: '#9e8cf8' }}>
+          <Typography variant="caption" sx={{ color: '#93a4dc' }}>
             Symmetry
           </Typography>
         )}
         {rulerEnabled && (
-          <Typography variant="caption" sx={{ color: '#7dd3fc' }}>
+          <Typography variant="caption" sx={{ color: '#93a4dc' }}>
             Ruler
           </Typography>
         )}
@@ -4286,7 +4286,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             height: cursorDisplaySize * 2,
             border: `2px solid ${cursorBorderColor}`,
             backgroundColor: cursorFillColor,
-            boxShadow: sizePreview.active && !hoverPosition ? '0 0 0 2px rgba(34, 211, 238, 0.25)' : 'none',
+            boxShadow: sizePreview.active && !hoverPosition ? '0 0 0 2px rgba(93, 118, 203, 0.25)' : 'none',
           }}
         />
       )}
@@ -4565,7 +4565,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                     },
                     '& .Mui-selected': {
                       color: '#f8fafc',
-                      backgroundColor: 'rgba(96,165,250,0.18)',
+                      backgroundColor: 'rgba(147, 164, 220,0.18)',
                     },
                   }}
                 >
@@ -4974,15 +4974,15 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
                       fontSize: 11,
                       lineHeight: 1,
                       border: Math.abs(brushSettings.size - preset) <= BRUSH_SIZE_SNAP_TOLERANCE
-                        ? '1px solid rgba(34, 211, 238, 0.65)'
+                        ? '1px solid rgba(93, 118, 203, 0.65)'
                         : '1px solid rgba(255,255,255,0.15)',
                       color: Math.abs(brushSettings.size - preset) <= BRUSH_SIZE_SNAP_TOLERANCE
-                        ? '#67e8f9'
+                        ? '#93a4dc'
                         : 'rgba(255,255,255,0.68)',
                       cursor: 'pointer',
                       '&:hover': {
-                        borderColor: 'rgba(34, 211, 238, 0.65)',
-                        color: '#67e8f9',
+                        borderColor: 'rgba(93, 118, 203, 0.65)',
+                        color: '#93a4dc',
                       },
                     }}
                   >

@@ -217,10 +217,10 @@ export function FacebookVideoPublisher() {
               display: 'flex',
               alignItems: 'center',
               gap: 1.5,
-              '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)' },
+              '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)' },
             }}
           >
-            <CloudUploadIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+            <CloudUploadIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
             <Box sx={{ flex: 1 }}>
               <Typography sx={{ fontWeight: 700 }}>
                 {videoFileName ?? 'Select video file…'}
@@ -288,7 +288,7 @@ export function FacebookVideoPublisher() {
             sx={{
               p: 3,
               borderRadius: 3,
-              border: '1.5px solid rgba(59,130,246,0.45)',
+              border: '1.5px solid rgba(63, 81, 181,0.45)',
               background: 'linear-gradient(180deg, rgba(30,58,138,0.15), rgba(8,15,30,0.45))',
             }}
           >

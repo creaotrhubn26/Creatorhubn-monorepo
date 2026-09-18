@@ -198,8 +198,8 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
             }}
             sx={{
               color: '#6b7280',
-              bgcolor: readThroughMode ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)',
-              '&:hover': { bgcolor: readThroughMode ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)' },
+              bgcolor: readThroughMode ? 'rgba(16,185,129,0.1)' : 'rgba(63, 81, 181,0.1)',
+              '&:hover': { bgcolor: readThroughMode ? 'rgba(16,185,129,0.2)' : 'rgba(63, 81, 181,0.2)' },
             }}
           >
             <AddIcon sx={{ fontSize: 16 }} />
@@ -328,11 +328,11 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
       <Dialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
-        PaperProps={{ 'data-testid': 'pmv-production-notes-dialog', sx: { bgcolor: '#1a1f2e', border: '1px solid #3b82f6', minWidth: 400 } }}
+        PaperProps={{ 'data-testid': 'pmv-production-notes-dialog', sx: { bgcolor: '#1a1f2e', border: '1px solid #3f51b5', minWidth: 400 } }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142' }}>
           <Stack direction="row" spacing={1} alignItems="center">
-            <AddIcon sx={{ color: '#3b82f6' }} />
+            <AddIcon sx={{ color: '#3f51b5' }} />
             <span>Legg til produksjonsnotis</span>
           </Stack>
         </DialogTitle>
@@ -383,8 +383,8 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
                 '& .MuiOutlinedInput-root': {
                   bgcolor: '#0d1117', color: '#fff',
                   '& fieldset': { borderColor: '#374151' },
-                  '&:hover fieldset': { borderColor: '#3b82f6' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                  '&:hover fieldset': { borderColor: '#3f51b5' },
+                  '&.Mui-focused fieldset': { borderColor: '#3f51b5' },
                 },
               }}
             />
@@ -407,7 +407,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
             variant="contained"
             disabled={!addNoteValue.trim()}
             data-testid="pmv-production-notes-confirm"
-            sx={{ bgcolor: '#3b82f6', '&:hover': { bgcolor: '#2563eb' }, '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' } }}
+            sx={{ bgcolor: '#3f51b5', '&:hover': { bgcolor: '#2563eb' }, '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' } }}
           >
             Legg til
           </Button>

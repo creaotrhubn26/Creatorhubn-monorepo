@@ -74,7 +74,7 @@ interface DraftPost {
 }
 
 const PLATFORM_META: Record<DraftPost['platform'], { icon: React.ReactElement; color: string; bg: string }> = {
-  facebook:  { icon: <FacebookIcon sx={{ fontSize: 12 }} />, color: adminTokens.platforms.facebook,  bg: 'rgba(96,165,250,0.18)' },
+  facebook:  { icon: <FacebookIcon sx={{ fontSize: 12 }} />, color: adminTokens.platforms.facebook,  bg: 'rgba(147, 164, 220,0.18)' },
   instagram: { icon: <InstagramIcon sx={{ fontSize: 12 }} />, color: adminTokens.platforms.instagram, bg: 'rgba(236,72,153,0.18)' },
   linkedin:  { icon: <LinkedInIcon sx={{ fontSize: 12 }} />, color: adminTokens.platforms.linkedin,  bg: 'rgba(10,102,194,0.18)' },
   tiktok:    { icon: <MusicNoteIcon sx={{ fontSize: 12 }} />, color: adminTokens.platforms.tiktok,    bg: 'rgba(249,115,22,0.18)' },
@@ -82,7 +82,7 @@ const PLATFORM_META: Record<DraftPost['platform'], { icon: React.ReactElement; c
 
 const STATUS_META: Record<DraftPost['status'], { color: string; bg: string; label: string }> = {
   draft:       { color: '#94a3b8', bg: 'rgba(148,163,184,0.18)', label: 'Draft' },
-  edited:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.18)',  label: 'Edited' },
+  edited:      { color: '#93a4dc', bg: 'rgba(147, 164, 220,0.18)',  label: 'Edited' },
   published:   { color: '#22c55e', bg: 'rgba(34,197,94,0.18)',   label: 'Publisert' },
   failed:      { color: '#ef4444', bg: 'rgba(239,68,68,0.18)',   label: 'Failed' },
   manual_copy: { color: '#fbbf24', bg: 'rgba(251,191,36,0.18)',  label: 'Manuell' },
@@ -336,7 +336,7 @@ function PostDrawer({
         {post.suggestedPublishTime && post.status !== 'published' && (
           <Box sx={{
             p: 1.5, mt: 1.5, mb: 1.5,
-            background: post.autoPublishEnabled ? 'rgba(136, 117, 235,0.10)' : adminTokens.bg.panel,
+            background: post.autoPublishEnabled ? 'rgba(93, 118, 203,0.10)' : adminTokens.bg.panel,
             border: `1px solid ${post.autoPublishEnabled ? adminTokens.border.accent : adminTokens.border.subtle}`,
             borderRadius: 1,
           }}>
@@ -600,7 +600,7 @@ export default function ContentCalendarTab() {
               '&.Mui-selected': { background: adminTokens.primary.soft, color: adminTokens.primary.text },
             } }}>
             <ToggleButton value="all">Alle</ToggleButton>
-            <ToggleButton value="facebook"><FacebookIcon sx={{ fontSize: 14, color: '#60a5fa' }} /></ToggleButton>
+            <ToggleButton value="facebook"><FacebookIcon sx={{ fontSize: 14, color: '#93a4dc' }} /></ToggleButton>
             <ToggleButton value="instagram"><InstagramIcon sx={{ fontSize: 14, color: '#ec4899' }} /></ToggleButton>
             <ToggleButton value="linkedin"><LinkedInIcon sx={{ fontSize: 14, color: '#0a66c2' }} /></ToggleButton>
             <ToggleButton value="tiktok"><MusicNoteIcon sx={{ fontSize: 14, color: '#f97316' }} /></ToggleButton>

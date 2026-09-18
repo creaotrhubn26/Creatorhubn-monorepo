@@ -140,7 +140,7 @@ export function StoryPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }:
           {questions.filter((q) => questionFilter === 'all' || q.status === 'open').length === 0 ? <EmptyHint title="Ingen åpne spørsmål" body="Alt er avgjort — eller ingenting er registrert ennå." testId="narrative-story-questions-empty" /> : null}
           {questions.filter((q) => questionFilter === 'all' || q.status === 'open').map((q) => (
             <Stack key={q.id} direction="row" spacing={1} alignItems="flex-start" sx={{ p: 1.25, borderRadius: 2, bgcolor: narrativeColors.bgPanel, border: `1px solid ${narrativeColors.borderStrong}` }} data-testid={`narrative-question-${q.code}`} data-status={q.status}>
-              <Chip size="small" label={q.code} sx={{ fontFamily: 'monospace', fontWeight: 800, bgcolor: q.kind === 'check' ? 'rgba(96,165,250,0.15)' : narrativeColors.accentSoft, color: q.kind === 'check' ? '#60a5fa' : narrativeColors.accent }} title={q.kind === 'check' ? 'Sjekkpunkt' : 'Spørsmål'} />
+              <Chip size="small" label={q.code} sx={{ fontFamily: 'monospace', fontWeight: 800, bgcolor: q.kind === 'check' ? 'rgba(147, 164, 220,0.15)' : narrativeColors.accentSoft, color: q.kind === 'check' ? '#93a4dc' : narrativeColors.accent }} title={q.kind === 'check' ? 'Sjekkpunkt' : 'Spørsmål'} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography sx={{ fontSize: 13, textDecoration: q.status === 'dropped' ? 'line-through' : 'none' }}>{q.question}</Typography>
                 {q.context ? <Typography sx={{ fontSize: 11, color: narrativeColors.textDim }}>{q.context}</Typography> : null}

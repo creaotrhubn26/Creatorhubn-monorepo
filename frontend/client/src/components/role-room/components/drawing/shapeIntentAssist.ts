@@ -457,7 +457,7 @@ const ellipseSuggestions: ShapeIntentSuggestion[] = [
     category: 'Vehicle',
     description: 'Use the ellipse as a wheel silhouette with tire mass, hub, and spoke cadence.',
     learningFocus: 'Builds comfort with concentric ellipses, radial spacing, and mechanical read.',
-    accentColor: '#60a5fa',
+    accentColor: '#93a4dc',
     parameters: [
       {
         id: 'vehicle',
@@ -543,7 +543,7 @@ const ellipseSuggestions: ShapeIntentSuggestion[] = [
     category: 'Prop',
     description: 'Build a clean prop read with rim control and optional dish content.',
     learningFocus: 'Good for practicing nested ellipses and prop readability in close-up shots.',
-    accentColor: '#9e8cf8',
+    accentColor: '#93a4dc',
     parameters: [
       {
         id: 'rim',
@@ -804,7 +804,7 @@ const rectangleSuggestions: ShapeIntentSuggestion[] = [
     category: 'Environment',
     description: 'Build a readable window frame with pane divisions and frame depth.',
     learningFocus: 'Good for perspective boxes, frame thickness, and negative space.',
-    accentColor: '#38bdf8',
+    accentColor: '#5d76cb',
     parameters: [
       {
         id: 'frame',
@@ -1104,7 +1104,7 @@ const rectangleSuggestions: ShapeIntentSuggestion[] = [
     category: 'Environment',
     description: 'Turn the box into a layered skyline mass with stepped rooftops, lit windows, and hero towers.',
     learningFocus: 'Useful for noir city staging, value grouping, and building a readable background without over-drawing.',
-    accentColor: '#dbeafe',
+    accentColor: '#dfe4f3',
     parameters: [
       {
         id: 'density',
@@ -1448,7 +1448,7 @@ const rectangleSuggestions: ShapeIntentSuggestion[] = [
     category: 'Prop',
     description: 'Turn the rectangle into a screen with bezel and stand choices.',
     learningFocus: 'Useful for modern prop design and clean tech silhouettes.',
-    accentColor: '#9e8cf8',
+    accentColor: '#93a4dc',
     parameters: [
       {
         id: 'bezel',
@@ -1620,7 +1620,7 @@ const rectangleSuggestions: ShapeIntentSuggestion[] = [
     category: 'Vehicle',
     description: 'Turn the rectangle into a simple chassis/body block for vehicle staging.',
     learningFocus: 'Good for vehicle proportion, mass distribution, and wheel-to-body spacing.',
-    accentColor: '#60a5fa',
+    accentColor: '#93a4dc',
     parameters: [
       {
         id: 'vehicle-body',
@@ -2095,7 +2095,7 @@ const lineSuggestions: ShapeIntentSuggestion[] = [
     category: 'Environment',
     description: 'Use the line as a storm-rain pass that gives the frame atmosphere and motion.',
     learningFocus: 'Good for weather texture, directional flow, and selling air between camera and subject.',
-    accentColor: '#bfdbfe',
+    accentColor: '#c3cbe6',
     parameters: [
       {
         id: 'density',
@@ -2225,7 +2225,7 @@ const blobSuggestions: ShapeIntentSuggestion[] = [
     category: 'Environment',
     description: 'Turn the organic shape into a smoke curl with directional flow.',
     learningFocus: 'Good for gesture-to-form transitions and rhythmic tapering.',
-    accentColor: '#c6bdf4',
+    accentColor: '#c3cbe6',
     parameters: [
       {
         id: 'direction',
@@ -2896,7 +2896,7 @@ const buildWheelStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIntentSug
     bounds.centerY,
     (bounds.width / 2) * (1 - tireRatio),
     (bounds.height / 2) * (1 - tireRatio),
-    '#60a5fa',
+    '#93a4dc',
     3,
     0.9,
     timestampSeed + 110,
@@ -2911,7 +2911,7 @@ const buildWheelStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIntentSug
       bounds.centerY,
       bounds.centerX + (Math.cos(angle) * spokeRadiusX),
       bounds.centerY + (Math.sin(angle) * spokeRadiusY),
-      '#bfdbfe',
+      '#c3cbe6',
       spokes === 'dense' ? 1.5 : 2.2,
       0.8,
       timestampSeed + 320 + (index * 24),
@@ -3200,12 +3200,12 @@ const buildWindowStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIntentSu
   const inner = createRectangleStroke(innerBounds, '#94a3b8', 2.2, 0.8, timestampSeed + 110);
   const paneStrokes: PencilStroke[] = [];
   if (panes !== 'single') {
-    paneStrokes.push(createLineStroke(bounds.centerX, innerBounds.minY, bounds.centerX, innerBounds.maxY, '#bfdbfe', 2, 0.78, timestampSeed + 200, 3));
-    paneStrokes.push(createLineStroke(innerBounds.minX, bounds.centerY, innerBounds.maxX, bounds.centerY, '#bfdbfe', 2, 0.78, timestampSeed + 232, 3));
+    paneStrokes.push(createLineStroke(bounds.centerX, innerBounds.minY, bounds.centerX, innerBounds.maxY, '#c3cbe6', 2, 0.78, timestampSeed + 200, 3));
+    paneStrokes.push(createLineStroke(innerBounds.minX, bounds.centerY, innerBounds.maxX, bounds.centerY, '#c3cbe6', 2, 0.78, timestampSeed + 232, 3));
   }
   if (panes === 'grid') {
-    paneStrokes.push(createLineStroke(innerBounds.minX + (innerBounds.width * 0.25), innerBounds.minY, innerBounds.minX + (innerBounds.width * 0.25), innerBounds.maxY, '#bfdbfe', 1.6, 0.72, timestampSeed + 264, 3));
-    paneStrokes.push(createLineStroke(innerBounds.maxX - (innerBounds.width * 0.25), innerBounds.minY, innerBounds.maxX - (innerBounds.width * 0.25), innerBounds.maxY, '#bfdbfe', 1.6, 0.72, timestampSeed + 296, 3));
+    paneStrokes.push(createLineStroke(innerBounds.minX + (innerBounds.width * 0.25), innerBounds.minY, innerBounds.minX + (innerBounds.width * 0.25), innerBounds.maxY, '#c3cbe6', 1.6, 0.72, timestampSeed + 264, 3));
+    paneStrokes.push(createLineStroke(innerBounds.maxX - (innerBounds.width * 0.25), innerBounds.minY, innerBounds.maxX - (innerBounds.width * 0.25), innerBounds.maxY, '#c3cbe6', 1.6, 0.72, timestampSeed + 296, 3));
   }
   const sillStroke = sill === 'with-sill'
     ? [createLineStroke(bounds.minX - (bounds.width * 0.08), bounds.maxY + 10, bounds.maxX + (bounds.width * 0.08), bounds.maxY + 10, '#f8fafc', 2.4, 0.78, timestampSeed + 340, 3)]
@@ -3440,7 +3440,7 @@ const buildChassisBlockStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIn
       bodyTop + (bodyHeight * 0.18),
       baseBounds.centerX + (baseBounds.width * (seat === 'double' ? 0.22 : 0.1)),
       bodyTop + (bodyHeight * 0.18),
-      '#bfdbfe',
+      '#c3cbe6',
       2.5,
       0.68,
       timestampSeed + 120,
@@ -3454,7 +3454,7 @@ const buildChassisBlockStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIn
     bodyTop + (bodyHeight * 0.5),
     baseBounds.maxX - (baseBounds.width * 0.06),
     bodyTop + (bodyHeight * 0.5) - tailHeight,
-    '#dbeafe',
+    '#dfe4f3',
     2.6,
     0.7,
     timestampSeed + 160,
@@ -3465,7 +3465,7 @@ const buildChassisBlockStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIn
     bodyTop + (bodyHeight * 0.64),
     baseBounds.maxX - (baseBounds.width * 0.08),
     bodyTop + (bodyHeight * 0.64),
-    '#dbeafe',
+    '#dfe4f3',
     2.2,
     0.54,
     timestampSeed + 200,
@@ -3655,7 +3655,7 @@ const buildSmokeStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIntentSug
     { x: bounds.centerX + (driftX * 0.55), y: bounds.centerY - (bounds.height * 0.12) },
     { x: bounds.centerX + driftX, y: bounds.minY },
   ], '#e2e8f0', density === 'dense' ? 4 : 2.8, density === 'dense' ? 0.86 : 0.66, timestampSeed);
-  const curl = createEllipseStroke(bounds.centerX + driftX, bounds.centerY - (bounds.height * 0.12), bounds.width * 0.14, bounds.height * 0.16, '#c6bdf4', 2.2, 0.66, timestampSeed + 120, 18);
+  const curl = createEllipseStroke(bounds.centerX + driftX, bounds.centerY - (bounds.height * 0.12), bounds.width * 0.14, bounds.height * 0.16, '#c3cbe6', 2.2, 0.66, timestampSeed + 120, 18);
   const originStroke = origin === 'ground'
     ? [createLobeStroke(bounds.centerX, bounds.maxY + 12, bounds.width * 0.12, bounds.height * 0.06, 0.14, '#94a3b8', 2, 0.56, timestampSeed + 210)]
     : [createLineStroke(bounds.centerX, bounds.maxY + 18, bounds.centerX, bounds.maxY - 4, '#94a3b8', 2, 0.56, timestampSeed + 210, 3)];
@@ -3707,7 +3707,7 @@ const buildIslandStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIntentSu
       ? [createLineStroke(bounds.minX + 18, bounds.centerY - 18, bounds.maxX - 18, bounds.centerY - 8, '#cbd5e1', 2, 0.7, timestampSeed + 120, 4)]
       : [createLineStroke(bounds.minX + 14, bounds.centerY - 18, bounds.maxX - 14, bounds.centerY - 18, '#4ade80', 2, 0.7, timestampSeed + 120, 4)];
   const waterStroke = water === 'yes'
-    ? [createLineStroke(bounds.minX - 18, bounds.maxY + 14, bounds.maxX + 18, bounds.maxY + 14, '#60a5fa', 2, 0.62, timestampSeed + 180, 3)]
+    ? [createLineStroke(bounds.minX - 18, bounds.maxY + 14, bounds.maxX + 18, bounds.maxY + 14, '#93a4dc', 2, 0.62, timestampSeed + 180, 3)]
     : [];
   return [top, ...surfaceStrokes, ...waterStroke];
 };

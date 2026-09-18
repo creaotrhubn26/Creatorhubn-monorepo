@@ -255,13 +255,13 @@ export function DirectorSceneWorkspace({
                   py: 1,
                   mb: 0.5,
                   color: roleTokens.text,
-                  bgcolor: selected ? 'rgba(136, 117, 235,0.16)' : 'transparent',
-                  border: selected ? '1px solid rgba(158, 140, 248,0.34)' : '1px solid transparent',
-                  '&:hover': { bgcolor: selected ? 'rgba(136, 117, 235,0.22)' : 'rgba(255,255,255,0.045)' },
+                  bgcolor: selected ? 'rgba(93, 118, 203,0.16)' : 'transparent',
+                  border: selected ? '1px solid rgba(147, 164, 220,0.34)' : '1px solid transparent',
+                  '&:hover': { bgcolor: selected ? 'rgba(93, 118, 203,0.22)' : 'rgba(255,255,255,0.045)' },
                   ...focusVisibleStyles,
                 }}
               >
-                <Typography component="span" sx={{ display: 'block', color: selected ? '#c6bdf4' : roleTokens.textMuted, fontSize: '0.68rem', fontWeight: 780 }}>
+                <Typography component="span" sx={{ display: 'block', color: selected ? '#c3cbe6' : roleTokens.textMuted, fontSize: '0.68rem', fontWeight: 780 }}>
                   {itemContext.label}
                 </Typography>
                 <Typography component="span" sx={{ display: 'block', mt: 0.15, fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.35 }}>
@@ -282,7 +282,7 @@ export function DirectorSceneWorkspace({
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} gap={1.5}>
               <Box sx={{ minWidth: 0 }}>
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.6, flexWrap: 'wrap' }}>
-                  <Chip size="small" label={context.label.toUpperCase()} sx={{ color: '#c6bdf4', bgcolor: 'rgba(136, 117, 235,0.14)' }} />
+                  <Chip size="small" label={context.label.toUpperCase()} sx={{ color: '#c3cbe6', bgcolor: 'rgba(93, 118, 203,0.14)' }} />
                   {sceneMeta.map((value) => <Chip key={value} size="small" label={value} variant="outlined" />)}
                   <Chip
                     size="small"
@@ -417,11 +417,11 @@ export function DirectorSceneWorkspace({
             <Card variant="outlined" sx={{ bgcolor: roleTokens.surface, borderColor: roleTokens.border, color: roleTokens.text }}>
               <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <CalendarIcon sx={{ color: '#7dd3fc' }} />
+                  <CalendarIcon sx={{ color: '#93a4dc' }} />
                   <Typography component="h3" sx={{ fontWeight: 760 }}>Opptaksplan</Typography>
                 </Stack>
                 {context.productionDays.length > 0 ? context.productionDays.map((day) => (
-                  <Box key={day.id} sx={{ mb: 0.75, p: 1, borderRadius: 1, bgcolor: 'rgba(56,189,248,0.07)' }}>
+                  <Box key={day.id} sx={{ mb: 0.75, p: 1, borderRadius: 1, bgcolor: 'rgba(93, 118, 203,0.07)' }}>
                     <Typography sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{formatProductionDate(day.date)}</Typography>
                     <Typography sx={{ color: roleTokens.textMuted, fontSize: '0.72rem' }}>
                       {day.callTime ? `Oppmøte ${day.callTime}` : 'Oppmøte ikke satt'} · {day.status ?? 'planlagt'}
@@ -436,7 +436,7 @@ export function DirectorSceneWorkspace({
             <Card variant="outlined" sx={{ bgcolor: roleTokens.surface, borderColor: roleTokens.border, color: roleTokens.text }}>
               <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <CommentIcon sx={{ color: '#c6bdf4' }} />
+                  <CommentIcon sx={{ color: '#c3cbe6' }} />
                   <Box>
                     <Typography component="h3" sx={{ fontWeight: 760 }}>Blocking og regi</Typography>
                     <Typography sx={{ color: roleTokens.textMuted, fontSize: '0.72rem' }}>Delte scenetråder. Kommentarer endrer aldri manuset.</Typography>

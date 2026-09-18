@@ -31,15 +31,15 @@ import { trackEvent } from '@/utils/ga4-client-tracking';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 
 const palette = {
-  bgCard: '#18122b',
-  bgElevated: '#18122b',
-  border: 'rgba(136, 117, 235, 0.22)',
-  borderStrong: 'rgba(136, 117, 235, 0.4)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
-  textMuted: '#6249df',
-  accentBright: '#9e8cf8',
-  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+  bgCard: '#2a3d56',
+  bgElevated: '#2a3d56',
+  border: 'rgba(93, 118, 203, 0.22)',
+  borderStrong: 'rgba(93, 118, 203, 0.4)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
+  textMuted: '#4b3d8f',
+  accentBright: '#93a4dc',
+  accentGradient: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
 };
 
 // "Hva beskriver dere best?" — mapper til agency_leads.segment (CHECK-begrenset).
@@ -242,7 +242,7 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
           border: `1px solid ${palette.borderStrong}`,
           borderRadius: 3,
           color: palette.textPrimary,
-          boxShadow: '0 24px 80px rgba(136, 117, 235,0.28)',
+          boxShadow: '0 24px 80px rgba(93, 118, 203,0.28)',
         },
       }}
     >
@@ -446,7 +446,7 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
               <Box sx={{
                 mt: 0.5, p: 2, borderRadius: 2,
                 border: `1px solid ${consentResearch ? palette.accentBright : 'rgba(246, 245, 255,0.15)'}`,
-                bgcolor: consentResearch ? 'rgba(136, 117, 235,0.06)' : 'rgba(255,255,255,0.02)',
+                bgcolor: consentResearch ? 'rgba(93, 118, 203,0.06)' : 'rgba(255,255,255,0.02)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
               }} onClick={() => setConsentResearch((v) => !v)}>
@@ -494,8 +494,8 @@ export default function BookDemoModal({ open, onClose, trigger, initialBusinessT
                   py: 1.3,
                   borderRadius: 2,
                   fontSize: '1rem',
-                  '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
-                  '&.Mui-disabled': { background: 'rgba(136, 117, 235,0.25)', color: 'rgba(246, 245, 255,0.5)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
+                  '&.Mui-disabled': { background: 'rgba(93, 118, 203,0.25)', color: 'rgba(246, 245, 255,0.5)' },
                 }}
               >
                 {submitting ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Send forespørsel'}

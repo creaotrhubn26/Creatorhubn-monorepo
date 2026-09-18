@@ -160,7 +160,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
           width: 224,
           flexShrink: 0,
           overflowY: 'auto',
-          borderRight: '1px solid rgba(136, 117, 235,0.18)',
+          borderRight: '1px solid rgba(93, 118, 203,0.18)',
           pr: 1.25,
         }}
       >
@@ -189,9 +189,9 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
                 mb: 0.75,
                 borderRadius: 1.5,
                 cursor: 'pointer',
-                border: isSelected ? '2px solid #8875eb' : '1px solid rgba(148,163,184,0.18)',
-                bgcolor: isSelected ? 'rgba(136, 117, 235,0.1)' : 'rgba(13,17,23,0.7)',
-                '&:hover': { borderColor: 'rgba(136, 117, 235,0.6)' },
+                border: isSelected ? '2px solid #5d76cb' : '1px solid rgba(148,163,184,0.18)',
+                bgcolor: isSelected ? 'rgba(93, 118, 203,0.1)' : 'rgba(13,17,23,0.7)',
+                '&:hover': { borderColor: 'rgba(93, 118, 203,0.6)' },
               }}
             >
               <Box

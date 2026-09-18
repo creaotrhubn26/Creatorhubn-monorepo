@@ -169,7 +169,7 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
   if (loading && requests.length === 0) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
-        <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <CircularProgress size={28} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
       </Box>
     );
   }
@@ -225,8 +225,8 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
               sx={{
                 p: 1.6,
                 borderRadius: 1.5,
-                bgcolor: isHighlight ? 'rgba(34,211,238,0.06)' : 'rgba(15,23,42,0.45)',
-                border: `1px solid ${isHighlight ? '#22d3ee55' : 'rgba(148,163,184,0.2)'}`,
+                bgcolor: isHighlight ? 'rgba(93, 118, 203,0.06)' : 'rgba(15,23,42,0.45)',
+                border: `1px solid ${isHighlight ? '#5d76cb55' : 'rgba(148,163,184,0.2)'}`,
                 borderLeft: `4px solid ${meta.color}`,
               }}
             >
@@ -258,14 +258,14 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
                     sx={{
                       p: 1.6,
                       borderRadius: 1,
-                      bgcolor: 'rgba(96,165,250,0.06)',
-                      border: '1px solid rgba(96,165,250,0.15)',
+                      bgcolor: 'rgba(147, 164, 220,0.06)',
+                      border: '1px solid rgba(147, 164, 220,0.15)',
                       mb: 1.2,
                     }}
                   >
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.6 }}>
-                      <MarketerIcon fontSize="small" sx={{ color: '#60a5fa' }} />
-                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: '#60a5fa' }}>
+                      <MarketerIcon fontSize="small" sx={{ color: '#93a4dc' }} />
+                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: '#93a4dc' }}>
                         Markedsføreren skriver:
                       </Typography>
                     </Stack>
@@ -301,13 +301,13 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
                             sx={{
                               p: 1.2,
                               borderRadius: 1,
-                              bgcolor: isClient ? 'rgba(52,211,153,0.06)' : 'rgba(96,165,250,0.06)',
+                              bgcolor: isClient ? 'rgba(52,211,153,0.06)' : 'rgba(147, 164, 220,0.06)',
                             }}
                           >
                             <Box sx={{ pt: 0.2 }}>
                               {isClient
                                 ? <PersonIcon fontSize="small" sx={{ color: '#34d399' }} />
-                                : <MarketerIcon fontSize="small" sx={{ color: '#60a5fa' }} />
+                                : <MarketerIcon fontSize="small" sx={{ color: '#93a4dc' }} />
                               }
                             </Box>
                             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -359,7 +359,7 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
                             href={req.bookingUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            sx={{ textTransform: 'none', color: '#9e8cf8' }}
+                            sx={{ textTransform: 'none', color: '#93a4dc' }}
                           >
                             Heller booke et møte?
                           </Button>
@@ -371,9 +371,9 @@ const ClientPortalRequestsSection: React.FC<ClientPortalRequestsSectionProps> = 
                           sx={{
                             textTransform: 'none',
                             fontWeight: 700,
-                            bgcolor: 'var(--role-cyan, #22d3ee)',
+                            bgcolor: 'var(--role-cyan, #5d76cb)',
                             color: '#0b1226',
-                            '&:hover': { bgcolor: '#06b6d4' },
+                            '&:hover': { bgcolor: '#3f51b5' },
                           }}
                         >
                           {submitting === req.id ? 'Sender…' : 'Send svar'}

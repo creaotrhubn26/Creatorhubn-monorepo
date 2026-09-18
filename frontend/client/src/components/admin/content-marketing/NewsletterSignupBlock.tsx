@@ -76,7 +76,7 @@ export function NewsletterSignupBlock({
         p: compact ? 2 : { xs: 2.5, md: 3.5 },
         borderRadius: 3,
         bgcolor: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(136, 117, 235,0.28)',
+        border: '1px solid rgba(93, 118, 203,0.28)',
         backdropFilter: 'blur(12px)',
         maxWidth: 620,
         mx: 'auto',
@@ -85,7 +85,7 @@ export function NewsletterSignupBlock({
       {!compact ? (
         <>
           <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 1.25 }}>
-            <MailOutlineIcon sx={{ color: '#9e8cf8' }} fontSize="small" />
+            <MailOutlineIcon sx={{ color: '#93a4dc' }} fontSize="small" />
             <Typography
               component="h3"
               sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', md: '1.1rem' } }}
@@ -138,7 +138,7 @@ export function NewsletterSignupBlock({
                   bgcolor: 'rgba(2,6,23,0.6)',
                   color: '#fff',
                   '& fieldset': { borderColor: 'rgba(148,163,184,0.3)' },
-                  '&:hover fieldset': { borderColor: 'rgba(158, 140, 248,0.6)' },
+                  '&:hover fieldset': { borderColor: 'rgba(147, 164, 220,0.6)' },
                 },
                 '& label': { color: 'rgba(226,232,240,0.7)' },
                 '& .MuiFormHelperText-root': { color: 'rgba(248,113,113,0.85)' },
@@ -155,7 +155,7 @@ export function NewsletterSignupBlock({
                 minHeight: 44,
                 fontWeight: 700,
                 textTransform: 'none',
-                background: 'linear-gradient(135deg, #8875eb 0%, #6366f1 100%)',
+                background: 'linear-gradient(135deg, #5d76cb 0%, #6366f1 100%)',
                 whiteSpace: 'nowrap',
               }}
             >

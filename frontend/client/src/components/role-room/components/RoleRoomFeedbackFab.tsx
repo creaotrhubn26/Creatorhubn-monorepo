@@ -70,13 +70,13 @@ interface RoleRoomFeedbackFabProps {
 const CATEGORY_CONFIG: Record<FeedbackCategory, { label: string; icon: typeof BugIcon; color: string }> = {
   bug: { label: 'Bug', icon: BugIcon, color: '#ef4444' },
   feature: { label: 'Idé / forslag', icon: IdeaIcon, color: '#facc15' },
-  question: { label: 'Spørsmål', icon: QuestionIcon, color: '#60a5fa' },
-  other: { label: 'Annet', icon: FeedbackIcon, color: '#9e8cf8' },
+  question: { label: 'Spørsmål', icon: QuestionIcon, color: '#93a4dc' },
+  other: { label: 'Annet', icon: FeedbackIcon, color: '#93a4dc' },
 };
 
 const PRIORITY_OPTIONS: Array<{ value: FeedbackPriority; label: string; color: string }> = [
   { value: 'low', label: 'Lav', color: '#94a3b8' },
-  { value: 'medium', label: 'Medium', color: '#60a5fa' },
+  { value: 'medium', label: 'Medium', color: '#93a4dc' },
   { value: 'high', label: 'Høy', color: '#fb923c' },
   { value: 'critical', label: 'Kritisk', color: '#ef4444' },
 ];
@@ -223,10 +223,10 @@ export const RoleRoomFeedbackFab = ({
             bottom: { xs: 16, sm: 24 },
             right: { xs: 16, sm: 24 },
             zIndex: 1400,
-            bgcolor: '#9e8cf8',
+            bgcolor: '#93a4dc',
             color: '#0b1120',
-            '&:hover': { bgcolor: 'var(--role-violet, #8875eb)' },
-            boxShadow: '0 4px 14px rgba(158, 140, 248,0.45)',
+            '&:hover': { bgcolor: 'var(--role-violet, #5d76cb)' },
+            boxShadow: '0 4px 14px rgba(147, 164, 220,0.45)',
           }}
         >
           <FeedbackIcon />
@@ -242,7 +242,7 @@ export const RoleRoomFeedbackFab = ({
           sx: {
             bgcolor: '#0f172a',
             color: '#fff',
-            border: '1px solid rgba(158, 140, 248,0.32)',
+            border: '1px solid rgba(147, 164, 220,0.32)',
           },
         }}
       >
@@ -400,11 +400,11 @@ export const RoleRoomFeedbackFab = ({
                 disabled={!canSubmit}
                 startIcon={submitting ? <CircularProgress size={16} /> : <SendIcon />}
                 sx={{
-                  bgcolor: '#9e8cf8',
+                  bgcolor: '#93a4dc',
                   color: '#0b1120',
                   fontWeight: 700,
-                  '&:hover': { bgcolor: 'var(--role-violet, #8875eb)' },
-                  '&:disabled': { bgcolor: 'rgba(158, 140, 248,0.3)' },
+                  '&:hover': { bgcolor: 'var(--role-violet, #5d76cb)' },
+                  '&:disabled': { bgcolor: 'rgba(147, 164, 220,0.3)' },
                 }}
               >
                 {submitting ? 'Sender…' : 'Send ticket'}

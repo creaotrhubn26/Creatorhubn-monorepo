@@ -48,7 +48,7 @@ export function SceneStoryboardDialog({
           width: 'min(1500px, 96vw)',
           height: 'min(92vh, 980px)',
           bgcolor: '#060b16',
-          border: '1px solid rgba(59,130,246,0.35)',
+          border: '1px solid rgba(63, 81, 181,0.35)',
           overflow: 'hidden',
         },
       }}
@@ -60,11 +60,11 @@ export function SceneStoryboardDialog({
           alignItems: 'center',
           gap: 2,
           borderBottom: '1px solid rgba(255,255,255,0.08)',
-          bgcolor: 'rgba(10, 5, 21,0.9)',
+          bgcolor: 'rgba(27, 18, 44,0.9)',
         }}
       >
         <Stack direction="row" spacing={1.25} alignItems="center">
-          <StoryboardIcon sx={{ color: '#60a5fa' }} />
+          <StoryboardIcon sx={{ color: '#93a4dc' }} />
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 700 }}>
               Scene Storyboard
@@ -77,7 +77,7 @@ export function SceneStoryboardDialog({
             <Chip
               size="small"
               label={`Scene ${scene.sceneNumber ?? scene.id}`}
-              sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd' }}
+              sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#93c5fd' }}
             />
           )}
         </Stack>

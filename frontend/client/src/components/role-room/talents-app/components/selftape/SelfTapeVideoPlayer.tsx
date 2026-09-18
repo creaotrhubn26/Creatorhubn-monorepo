@@ -132,7 +132,7 @@ export default function SelfTapeVideoPlayer({
           {isExternal ? (
             <Box
               sx={{
-                bgcolor: 'rgba(98, 73, 223,0.18)',
+                bgcolor: 'rgba(75, 61, 143,0.18)',
                 color: palette.accentBright,
                 fontWeight: 700,
                 fontSize: '0.7rem',
@@ -195,7 +195,7 @@ export default function SelfTapeVideoPlayer({
                 width: 72,
                 height: 72,
                 borderRadius: '50%',
-                bgcolor: take?.thumbnail_url ? undefined : 'rgba(98, 73, 223,0.18)',
+                bgcolor: take?.thumbnail_url ? undefined : 'rgba(75, 61, 143,0.18)',
                 backgroundImage: take?.thumbnail_url ? `url(${take.thumbnail_url})` : undefined,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
@@ -220,7 +220,7 @@ export default function SelfTapeVideoPlayer({
           sx={{
             position: 'relative',
             height: 6,
-            bgcolor: 'rgba(98, 73, 223,0.10)',
+            bgcolor: 'rgba(75, 61, 143,0.10)',
             cursor: playable ? 'pointer' : 'default',
           }}
         >
@@ -229,8 +229,8 @@ export default function SelfTapeVideoPlayer({
               position: 'absolute',
               inset: 0,
               width: `${progressPct}%`,
-              background: 'linear-gradient(90deg, #6249df, #8875eb)',
-              boxShadow: '0 0 8px rgba(98, 73, 223,0.4)',
+              background: 'linear-gradient(90deg, #4b3d8f, #5d76cb)',
+              boxShadow: '0 0 8px rgba(75, 61, 143,0.4)',
               pointerEvents: 'none',
             }}
           />
@@ -321,8 +321,8 @@ export default function SelfTapeVideoPlayer({
             fontWeight: 700,
             fontSize: '0.92rem',
             fontFamily: 'inherit',
-            boxShadow: '0 4px 14px rgba(98, 73, 223,0.38)',
-            '&:hover': { background: 'linear-gradient(135deg, #472bd4 0%, #3c27a5 100%)' },
+            boxShadow: '0 4px 14px rgba(75, 61, 143,0.38)',
+            '&:hover': { background: 'linear-gradient(135deg, #3e3180 0%, #32127a 100%)' },
           }}
         >
           <VideocamOutlinedIcon fontSize="small" />
@@ -347,7 +347,7 @@ export default function SelfTapeVideoPlayer({
             borderRadius: radius.sm,
             fontWeight: 600,
             fontFamily: 'inherit',
-            '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
+            '&:hover': { bgcolor: 'rgba(75, 61, 143,0.08)' },
           }}
         >
           <FileUploadOutlinedIcon fontSize="small" />
@@ -371,7 +371,7 @@ export default function SelfTapeVideoPlayer({
             borderRadius: radius.sm,
             fontWeight: 600,
             fontFamily: 'inherit',
-            '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
+            '&:hover': { bgcolor: 'rgba(75, 61, 143,0.08)' },
           }}
         >
           <LinkOutlinedIcon fontSize="small" />
@@ -394,7 +394,7 @@ export default function SelfTapeVideoPlayer({
             borderRadius: radius.sm,
             fontWeight: 600,
             fontFamily: 'inherit',
-            '&:hover': { bgcolor: 'rgba(98, 73, 223,0.08)' },
+            '&:hover': { bgcolor: 'rgba(75, 61, 143,0.08)' },
           }}
         >
           <MenuBookOutlinedIcon fontSize="small" />

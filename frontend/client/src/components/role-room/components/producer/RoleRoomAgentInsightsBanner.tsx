@@ -50,8 +50,8 @@ export default function RoleRoomAgentInsightsBanner(): React.ReactElement | null
         mb: 1.5,
         p: 1.4,
         borderRadius: 2,
-        bgcolor: flags.length > 0 ? 'rgba(251,191,36,0.06)' : 'rgba(34,211,238,0.06)',
-        border: `1px solid ${flags.length > 0 ? 'rgba(251,191,36,0.3)' : 'rgba(34,211,238,0.25)'}`,
+        bgcolor: flags.length > 0 ? 'rgba(251,191,36,0.06)' : 'rgba(93, 118, 203,0.06)',
+        border: `1px solid ${flags.length > 0 ? 'rgba(251,191,36,0.3)' : 'rgba(93, 118, 203,0.25)'}`,
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1}>
@@ -62,7 +62,7 @@ export default function RoleRoomAgentInsightsBanner(): React.ReactElement | null
         ) : reachDelta != null && reachDelta < 0 ? (
           <TrendingDownIcon sx={{ color: '#fca5a5', fontSize: '1.2rem' }} />
         ) : (
-          <TrendingUpIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '1.2rem' }} />
+          <TrendingUpIcon sx={{ color: 'var(--role-cyan, #5d76cb)', fontSize: '1.2rem' }} />
         )}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>

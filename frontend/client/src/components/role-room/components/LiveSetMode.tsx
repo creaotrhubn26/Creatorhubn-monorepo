@@ -168,8 +168,8 @@ const TAKE_STATUS_META: Record<string, { label: string; color: string; bg: strin
 };
 
 const NOTE_TAG_META: Record<NoteTag, { label: string; color: string }> = {
-  focus:      { label: 'Focus',      color: '#3b82f6' },
-  continuity: { label: 'Continuity', color: '#8875eb' },
+  focus:      { label: 'Focus',      color: '#3f51b5' },
+  continuity: { label: 'Continuity', color: '#5d76cb' },
   sound:      { label: 'Sound',      color: '#10b981' },
   action:     { label: 'Action',     color: '#f59e0b' },
   general:    { label: 'General',    color: 'rgba(255,255,255,0.5)' },
@@ -177,9 +177,9 @@ const NOTE_TAG_META: Record<NoteTag, { label: string; color: string }> = {
 
 const QUICK_ACTIONS: { type: QuickActionType; label: string; emoji: string; Icon: ElementType; color: string }[] = [
   { type: 'good_take',      label: 'Good Take',       emoji: '👍', Icon: GoodTakeIcon,      color: '#10b981' },
-  { type: 'pickup_shot',    label: 'Pickup Shot',      emoji: '🎯', Icon: PickupIcon,        color: '#3b82f6' },
+  { type: 'pickup_shot',    label: 'Pickup Shot',      emoji: '🎯', Icon: PickupIcon,        color: '#3f51b5' },
   { type: 'action_safe',    label: 'Action Safe',      emoji: '⚠️', Icon: ActionSafeIcon,    color: '#f59e0b' },
-  { type: 'check_focus',    label: 'Check Focus',      emoji: '🎥', Icon: CheckFocusIcon,    color: '#8875eb' },
+  { type: 'check_focus',    label: 'Check Focus',      emoji: '🎥', Icon: CheckFocusIcon,    color: '#5d76cb' },
   { type: 'setup_complete', label: 'Setup Complete',   emoji: '✔',  Icon: SetupCompleteIcon, color: '#10b981' },
 ];
 
@@ -336,8 +336,8 @@ const deriveWeatherVisual = (
       iconColor: '#c4f1ff',
       iconGlow: 'rgba(147,197,253,0.55)',
       iconAnimation: `${weatherFloat} 2.1s ease-in-out infinite`,
-      headerGradient: 'linear-gradient(135deg, rgba(59,130,246,0.28) 0%, rgba(30,41,59,0.95) 78%)',
-      cardGradient: 'linear-gradient(145deg, rgba(59,130,246,0.2) 0%, rgba(15,23,42,0.78) 65%)',
+      headerGradient: 'linear-gradient(135deg, rgba(63, 81, 181,0.28) 0%, rgba(30,41,59,0.95) 78%)',
+      cardGradient: 'linear-gradient(145deg, rgba(63, 81, 181,0.2) 0%, rgba(15,23,42,0.78) 65%)',
       moodLabel: 'Snø/sludd',
     };
   }
@@ -345,11 +345,11 @@ const deriveWeatherVisual = (
   if (rain) {
     return {
       Icon: RainIcon,
-      iconColor: '#38bdf8',
-      iconGlow: 'rgba(56,189,248,0.45)',
+      iconColor: '#5d76cb',
+      iconGlow: 'rgba(93, 118, 203,0.45)',
       iconAnimation: `${weatherRainPulse} 1.9s ease-in-out infinite`,
-      headerGradient: 'linear-gradient(135deg, rgba(14,116,144,0.34) 0%, rgba(15,23,42,0.95) 78%)',
-      cardGradient: 'linear-gradient(145deg, rgba(14,116,144,0.24) 0%, rgba(15,23,42,0.78) 65%)',
+      headerGradient: 'linear-gradient(135deg, rgba(63, 81, 181,0.34) 0%, rgba(15,23,42,0.95) 78%)',
+      cardGradient: 'linear-gradient(145deg, rgba(63, 81, 181,0.24) 0%, rgba(15,23,42,0.78) 65%)',
       moodLabel: 'Regn',
     };
   }
@@ -357,8 +357,8 @@ const deriveWeatherVisual = (
   if (windy) {
     return {
       Icon: WindIcon,
-      iconColor: '#7dd3fc',
-      iconGlow: 'rgba(125,211,252,0.45)',
+      iconColor: '#93a4dc',
+      iconGlow: 'rgba(147, 164, 220,0.45)',
       iconAnimation: `${weatherFloat} 1.7s ease-in-out infinite`,
       headerGradient: 'linear-gradient(135deg, rgba(30,64,175,0.3) 0%, rgba(15,23,42,0.95) 78%)',
       cardGradient: 'linear-gradient(145deg, rgba(30,64,175,0.18) 0%, rgba(15,23,42,0.78) 65%)',
@@ -384,8 +384,8 @@ const deriveWeatherVisual = (
       iconColor: '#fbbf24',
       iconGlow: 'rgba(251,191,36,0.45)',
       iconAnimation: `${weatherGlowPulse} 3s ease-in-out infinite`,
-      headerGradient: 'linear-gradient(135deg, rgba(56,189,248,0.26) 0%, rgba(30,41,59,0.95) 78%)',
-      cardGradient: 'linear-gradient(145deg, rgba(56,189,248,0.16) 0%, rgba(15,23,42,0.78) 65%)',
+      headerGradient: 'linear-gradient(135deg, rgba(93, 118, 203,0.26) 0%, rgba(30,41,59,0.95) 78%)',
+      cardGradient: 'linear-gradient(145deg, rgba(93, 118, 203,0.16) 0%, rgba(15,23,42,0.78) 65%)',
       moodLabel: 'Delvis skyet',
     };
   }
@@ -503,8 +503,8 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
     weatherLive.status === 'loading'
       ? {
           label: 'Yr oppdaterer…',
-          color: '#bae6fd',
-          iconColor: '#38bdf8',
+          color: '#c3cbe6',
+          iconColor: '#5d76cb',
           Icon: SyncIcon,
           spinning: true,
         }
@@ -555,7 +555,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
     >
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: touchUi ? 1 : 0.75, alignItems: 'center' }}>
         <FormControl size={controlSize} sx={{ minWidth: touchUi ? 300 : 250 }}>
-          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#00d4ff' } }}>
+          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#5d76cb' } }}>
             Aktiv scene
           </InputLabel>
           <Select
@@ -565,15 +565,15 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             displayEmpty
             disabled={normalizedSceneOptions.length === 0}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
+              PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
               MenuListProps: { sx: { py: touchUi ? 0.5 : 0 } },
             }}
             sx={{
               height: controlHeight,
               color: '#fff',
-              bgcolor: 'rgba(0,212,255,0.12)',
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.35)' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.55)' },
+              bgcolor: 'rgba(93, 118, 203,0.12)',
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.35)' },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.55)' },
               '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.55)' },
               '& .MuiSelect-select': { py: touchUi ? 1.25 : 0.6, fontSize: touchUi ? 15 : 13 },
             }}
@@ -599,7 +599,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
           </Select>
         </FormControl>
         <FormControl size={controlSize} sx={{ minWidth: touchUi ? 200 : 170 }}>
-          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#8875eb' } }}>Fase</InputLabel>
+          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#5d76cb' } }}>Fase</InputLabel>
           <Select
             label="Fase"
             value={status.phase}
@@ -607,14 +607,14 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             sx={{
               height: controlHeight,
               color: '#fff',
-              bgcolor: 'rgba(136, 117, 235,0.12)',
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.35)' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.55)' },
+              bgcolor: 'rgba(93, 118, 203,0.12)',
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.35)' },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.55)' },
               '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.55)' },
               '& .MuiSelect-select': { py: touchUi ? 1.25 : 0.6, fontSize: touchUi ? 14 : 13 },
             }}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
+              PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
               MenuListProps: { sx: { py: touchUi ? 0.5 : 0 } },
             }}
           >
@@ -638,7 +638,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
           disabled={!nextSceneId}
           sx={{
             borderRadius: 999,
-            '&:focus-visible': { outline: '2px solid rgba(96,165,250,0.45)', outlineOffset: 1 },
+            '&:focus-visible': { outline: '2px solid rgba(147, 164, 220,0.45)', outlineOffset: 1 },
           }}
         >
           <Chip
@@ -647,8 +647,8 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             size="small"
             sx={{
               color: nextSceneId ? '#93c5fd' : 'rgba(148,163,184,0.9)',
-              border: `1px solid ${nextSceneId ? 'rgba(96,165,250,0.45)' : 'rgba(148,163,184,0.3)'}`,
-              bgcolor: nextSceneId ? 'rgba(59,130,246,0.18)' : 'rgba(71,85,105,0.25)',
+              border: `1px solid ${nextSceneId ? 'rgba(147, 164, 220,0.45)' : 'rgba(148,163,184,0.3)'}`,
+              bgcolor: nextSceneId ? 'rgba(63, 81, 181,0.18)' : 'rgba(71,85,105,0.25)',
               fontWeight: 700,
               cursor: nextSceneId ? 'pointer' : 'default',
               '& .MuiChip-icon': { color: nextSceneId ? '#93c5fd' : 'rgba(148,163,184,0.9)' },
@@ -658,26 +658,26 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
       </Box>
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
-        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 0.75, py: 0.25, borderRadius: 1, border: '1px solid rgba(59,130,246,0.35)', bgcolor: 'rgba(59,130,246,0.12)' }}>
-          <CrewIcon sx={{ fontSize: 14, color: '#60a5fa' }} />
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ px: 0.75, py: 0.25, borderRadius: 1, border: '1px solid rgba(63, 81, 181,0.35)', bgcolor: 'rgba(63, 81, 181,0.12)' }}>
+          <CrewIcon sx={{ fontSize: 14, color: '#93a4dc' }} />
           <ButtonBase
             onClick={onOpenCrewDialog}
             sx={{
               borderRadius: 0.75,
               px: 0.45,
               py: 0.2,
-              '&:hover': { bgcolor: 'rgba(96,165,250,0.18)' },
-              '&:focus-visible': { outline: '2px solid rgba(96,165,250,0.45)', outlineOffset: 1 },
+              '&:hover': { bgcolor: 'rgba(147, 164, 220,0.18)' },
+              '&:focus-visible': { outline: '2px solid rgba(147, 164, 220,0.45)', outlineOffset: 1 },
             }}
           >
-            <Typography variant="caption" sx={{ color: '#bfdbfe', fontWeight: 700 }}>
+            <Typography variant="caption" sx={{ color: '#c3cbe6', fontWeight: 700 }}>
               Crew til stede {status.crewPresent}/{status.crewTotal || 0}
             </Typography>
           </ButtonBase>
-          <IconButton size="small" onClick={() => onAdjustCrew(-1)} sx={{ p: 0.2, color: 'rgba(191,219,254,0.9)' }}>
+          <IconButton size="small" onClick={() => onAdjustCrew(-1)} sx={{ p: 0.2, color: 'rgba(195, 203, 230,0.9)' }}>
             <MinusIcon sx={{ fontSize: 13 }} />
           </IconButton>
-          <IconButton size="small" onClick={() => onAdjustCrew(1)} sx={{ p: 0.2, color: 'rgba(191,219,254,0.9)' }}>
+          <IconButton size="small" onClick={() => onAdjustCrew(1)} sx={{ p: 0.2, color: 'rgba(195, 203, 230,0.9)' }}>
             <PlusIcon sx={{ fontSize: 13 }} />
           </IconButton>
         </Stack>
@@ -748,7 +748,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
               }}
             />
             <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', pr: 0.15 }}>
-              <Typography variant="caption" sx={{ color: '#e0f2fe', fontWeight: 800, letterSpacing: '0.01em', lineHeight: 1.05 }}>
+              <Typography variant="caption" sx={{ color: '#dfe4f3', fontWeight: 800, letterSpacing: '0.01em', lineHeight: 1.05 }}>
                 Værvarsling
               </Typography>
               <Typography
@@ -771,7 +771,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
                 animation: weatherStatusMeta.spinning ? `${weatherSyncSpin} 1.15s linear infinite` : undefined,
               }}
             />
-            <ExternalLinkIcon sx={{ fontSize: 12, color: 'rgba(186,230,253,0.85)' }} />
+            <ExternalLinkIcon sx={{ fontSize: 12, color: 'rgba(195, 203, 230,0.85)' }} />
           </ButtonBase>
         </Stack>
         {weatherLive.alerts.length > 0 ? (
@@ -825,7 +825,7 @@ const LiveSetControlPanel: FC<LiveSetControlPanelProps> = ({
     <Box
       sx={{
         display: 'flex', flexDirection: 'column', gap: 2, p: 2,
-        bgcolor: 'rgba(10, 5, 21,0.95)',
+        bgcolor: 'rgba(27, 18, 44,0.95)',
         borderRight: dockSide === 'left' ? '1px solid rgba(255,255,255,0.06)' : 'none',
         borderLeft: dockSide === 'right' ? '1px solid rgba(255,255,255,0.06)' : 'none',
         minHeight: 0,
@@ -848,7 +848,7 @@ const LiveSetControlPanel: FC<LiveSetControlPanelProps> = ({
           <Chip
             label={activeCam}
             size="small"
-            sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)', fontSize: 11 }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.1)', color: '#5d76cb', border: '1px solid rgba(93, 118, 203,0.2)', fontSize: 11 }}
           />
         </Box>
       </Box>
@@ -895,10 +895,10 @@ const LiveSetControlPanel: FC<LiveSetControlPanelProps> = ({
               py: touchUi ? 0.6 : 0.25,
               fontSize: touchUi ? 13 : 11,
               fontWeight: 700,
-              bgcolor: activeCam === c ? 'rgba(0,212,255,0.2)' : 'transparent',
-              color: activeCam === c ? '#00d4ff' : 'rgba(255,255,255,0.4)',
-              borderColor: activeCam === c ? 'rgba(0,212,255,0.5)' : 'rgba(255,255,255,0.12)',
-              '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+              bgcolor: activeCam === c ? 'rgba(93, 118, 203,0.2)' : 'transparent',
+              color: activeCam === c ? '#5d76cb' : 'rgba(255,255,255,0.4)',
+              borderColor: activeCam === c ? 'rgba(93, 118, 203,0.5)' : 'rgba(255,255,255,0.12)',
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
             }}
           >
             {c}
@@ -1323,7 +1323,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                 </>
               )}
               {scene.pageCount != null && (
-                <Typography variant="caption" sx={{ color: '#3b82f6', mt: 1, display: 'block' }}>
+                <Typography variant="caption" sx={{ color: '#3f51b5', mt: 1, display: 'block' }}>
                   {scene.pageCount} sider
                 </Typography>
               )}
@@ -1363,7 +1363,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
       <Paper sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 2 }}>
         <Box sx={{ px: 2, py: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Stack direction="row" spacing={0.75} alignItems="center">
-            <CaptureIcon sx={{ fontSize: 16, color: '#00d4ff' }} />
+            <CaptureIcon sx={{ fontSize: 16, color: '#5d76cb' }} />
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, fontWeight: 700 }}>
               Shot + Take Capture
             </Typography>
@@ -1395,17 +1395,17 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
         </Box>
         <Box sx={{ px: 2, pb: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 160px' }, gap: touchUi ? 1.25 : 1 }}>
           <FormControl size={touchUi ? 'medium' : 'small'}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#00d4ff' } }}>Shot</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#5d76cb' } }}>Shot</InputLabel>
             <Select
               label="Shot"
               value={normalizedShotId}
               onChange={(event) => onCaptureChange({ shotId: event.target.value })}
-              MenuProps={{ PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
+              MenuProps={{ PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
               sx={{
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
                 '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#5d76cb' },
                 '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.4)' },
                 '& .MuiSelect-select': { py: touchUi ? 1.1 : 0.6, fontSize: touchUi ? 14 : 13 },
               }}
@@ -1427,7 +1427,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               label="Kvalitet"
               value={takeCapture.quality}
               onChange={(event) => onCaptureChange({ quality: event.target.value as TakeStatus })}
-              MenuProps={{ PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
+              MenuProps={{ PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
               sx={{
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
@@ -1456,7 +1456,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               '& .MuiOutlinedInput-root': {
                 color: '#fff',
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
-                '&.Mui-focused fieldset': { borderColor: '#8875eb' },
+                '&.Mui-focused fieldset': { borderColor: '#5d76cb' },
               },
               '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.45)' },
             }}
@@ -1482,9 +1482,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                   sx={{
                     fontSize: touchUi ? 12 : 10,
                     cursor: 'pointer',
-                    color: selected ? '#8875eb' : 'rgba(255,255,255,0.55)',
-                    bgcolor: selected ? 'rgba(136, 117, 235,0.18)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${selected ? 'rgba(136, 117, 235,0.45)' : 'rgba(255,255,255,0.15)'}`,
+                    color: selected ? '#5d76cb' : 'rgba(255,255,255,0.55)',
+                    bgcolor: selected ? 'rgba(93, 118, 203,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${selected ? 'rgba(93, 118, 203,0.45)' : 'rgba(255,255,255,0.15)'}`,
                     minHeight: touchUi ? 34 : undefined,
                   }}
                 />
@@ -1502,11 +1502,11 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               startIcon={<CaptureIcon sx={{ fontSize: 16 }} />}
               sx={{
                 ml: { sm: 'auto' },
-                bgcolor: '#00d4ff',
+                bgcolor: '#5d76cb',
                 color: '#041420',
                 fontWeight: 700,
                 minHeight: touchUi ? 44 : undefined,
-                '&:hover': { bgcolor: '#22d3ee' },
+                '&:hover': { bgcolor: '#5d76cb' },
                 '&:disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)' },
               }}
             >
@@ -1519,7 +1519,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
       {/* ── Script + Storyboard ── */}
       <Paper sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 2 }}>
         <Box sx={{ px: 2, py: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <ScriptIcon sx={{ fontSize: 16, color: '#9e8cf8' }} />
+          <ScriptIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, fontWeight: 700 }}>
             Script og tilknyttede storyboards
           </Typography>
@@ -1531,7 +1531,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
         </Box>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.07)' }} />
         <Box sx={{ px: 2, py: 1.25, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-          <StoryboardIcon sx={{ fontSize: 16, color: '#22d3ee' }} />
+          <StoryboardIcon sx={{ fontSize: 16, color: '#5d76cb' }} />
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10 }}>
             Storyboards ({visibleStoryboards.length})
           </Typography>
@@ -1542,9 +1542,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               height: 19,
               fontSize: 10,
               fontWeight: 700,
-              color: '#67e8f9',
-              border: '1px solid rgba(34,211,238,0.4)',
-              bgcolor: 'rgba(8,47,73,0.35)',
+              color: '#93a4dc',
+              border: '1px solid rgba(93, 118, 203,0.4)',
+              bgcolor: 'rgba(42, 61, 86,0.35)',
               '& .MuiChip-label': { px: 0.8 },
             }}
           />
@@ -1563,10 +1563,10 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               minWidth: 120,
               fontSize: 11,
               fontWeight: 700,
-              bgcolor: storyboardScope === 'scene' ? 'rgba(14,116,144,0.34)' : undefined,
-              borderColor: 'rgba(56,189,248,0.45)',
-              color: storyboardScope === 'scene' ? '#bae6fd' : 'rgba(186,230,253,0.82)',
-              '&:hover': { borderColor: '#38bdf8', bgcolor: 'rgba(14,116,144,0.25)' },
+              bgcolor: storyboardScope === 'scene' ? 'rgba(63, 81, 181,0.34)' : undefined,
+              borderColor: 'rgba(93, 118, 203,0.45)',
+              color: storyboardScope === 'scene' ? '#c3cbe6' : 'rgba(195, 203, 230,0.82)',
+              '&:hover': { borderColor: '#5d76cb', bgcolor: 'rgba(63, 81, 181,0.25)' },
             }}
           >
             Aktiv scene
@@ -1579,10 +1579,10 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               minWidth: 128,
               fontSize: 11,
               fontWeight: 700,
-              bgcolor: storyboardScope === 'project' ? 'rgba(14,116,144,0.34)' : undefined,
-              borderColor: 'rgba(56,189,248,0.45)',
-              color: storyboardScope === 'project' ? '#bae6fd' : 'rgba(186,230,253,0.82)',
-              '&:hover': { borderColor: '#38bdf8', bgcolor: 'rgba(14,116,144,0.25)' },
+              bgcolor: storyboardScope === 'project' ? 'rgba(63, 81, 181,0.34)' : undefined,
+              borderColor: 'rgba(93, 118, 203,0.45)',
+              color: storyboardScope === 'project' ? '#c3cbe6' : 'rgba(195, 203, 230,0.82)',
+              '&:hover': { borderColor: '#5d76cb', bgcolor: 'rgba(63, 81, 181,0.25)' },
             }}
           >
             Hele prosjektet
@@ -1599,12 +1599,12 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                   sx={{
                     p: 1,
                     bgcolor: 'rgba(15,23,42,0.55)',
-                    border: '1px solid rgba(56,189,248,0.36)',
+                    border: '1px solid rgba(93, 118, 203,0.36)',
                     borderRadius: 1.5,
                   }}
                 >
                   <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.75 }}>
-                    <Typography variant="caption" sx={{ color: '#bae6fd', fontWeight: 700, letterSpacing: '0.06em' }}>
+                    <Typography variant="caption" sx={{ color: '#c3cbe6', fontWeight: 700, letterSpacing: '0.06em' }}>
                       Aktiv storyboard-referanse
                     </Typography>
                     <Stack direction="row" spacing={0.5}>
@@ -1612,7 +1612,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         size="small"
                         onClick={() => moveActiveStoryboard(-1)}
                         disabled={activeStoryboardIndex <= 0}
-                        sx={{ color: 'rgba(186,230,253,0.86)', p: 0.35 }}
+                        sx={{ color: 'rgba(195, 203, 230,0.86)', p: 0.35 }}
                       >
                         <PrevIcon sx={{ fontSize: 16 }} />
                       </IconButton>
@@ -1620,7 +1620,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         size="small"
                         onClick={() => moveActiveStoryboard(1)}
                         disabled={activeStoryboardIndex >= visibleStoryboards.length - 1}
-                        sx={{ color: 'rgba(186,230,253,0.86)', p: 0.35 }}
+                        sx={{ color: 'rgba(195, 203, 230,0.86)', p: 0.35 }}
                       >
                         <NextIcon sx={{ fontSize: 16 }} />
                       </IconButton>
@@ -1632,9 +1632,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         sx={{
                           fontSize: 11,
                           minHeight: 28,
-                          borderColor: 'rgba(56,189,248,0.45)',
-                          color: '#bae6fd',
-                          '&:hover': { borderColor: '#38bdf8', bgcolor: 'rgba(14,116,144,0.2)' },
+                          borderColor: 'rgba(93, 118, 203,0.45)',
+                          color: '#c3cbe6',
+                          '&:hover': { borderColor: '#5d76cb', bgcolor: 'rgba(63, 81, 181,0.2)' },
                         }}
                       >
                         Forstørr
@@ -1665,8 +1665,8 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         sx={{
                           height: 18,
                           fontSize: 10,
-                          color: '#c6bdf4',
-                          border: '1px solid rgba(158, 140, 248,0.42)',
+                          color: '#c3cbe6',
+                          border: '1px solid rgba(147, 164, 220,0.42)',
                           bgcolor: 'rgba(48, 31, 132,0.3)',
                         }}
                       />
@@ -1678,8 +1678,8 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         sx={{
                           height: 18,
                           fontSize: 10,
-                          color: '#bfdbfe',
-                          border: '1px solid rgba(96,165,250,0.42)',
+                          color: '#c3cbe6',
+                          border: '1px solid rgba(147, 164, 220,0.42)',
                           bgcolor: 'rgba(30,58,138,0.3)',
                           textTransform: 'uppercase',
                         }}
@@ -1702,9 +1702,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                   minWidth: 168,
                   bgcolor: 'rgba(255,255,255,0.03)',
                   border: frameIndex === activeStoryboardIndex
-                    ? '1px solid rgba(56,189,248,0.65)'
+                    ? '1px solid rgba(93, 118, 203,0.65)'
                     : '1px solid rgba(255,255,255,0.1)',
-                  boxShadow: frameIndex === activeStoryboardIndex ? '0 0 0 1px rgba(56,189,248,0.24) inset' : 'none',
+                  boxShadow: frameIndex === activeStoryboardIndex ? '0 0 0 1px rgba(93, 118, 203,0.24) inset' : 'none',
                   borderRadius: 1.5,
                   overflow: 'hidden',
                   cursor: 'pointer',
@@ -1717,7 +1717,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     {frame.title}
                   </Typography>
                   {storyboardScope === 'project' && frame.sourceSceneId ? (
-                    <Typography variant="caption" sx={{ color: 'rgba(198, 189, 244,0.88)', display: 'block', mt: 0.1 }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.88)', display: 'block', mt: 0.1 }}>
                       {sceneLabelById[frame.sourceSceneId] || frame.sourceSceneId}
                     </Typography>
                   ) : null}
@@ -1746,24 +1746,24 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
           PaperProps={{
             sx: {
               bgcolor: 'rgba(4,10,21,0.98)',
-              border: previewHiDpi ? '1px solid rgba(56,189,248,0.5)' : '1px solid rgba(56,189,248,0.35)',
-              boxShadow: '0 28px 72px rgba(10, 5, 21,0.72)',
+              border: previewHiDpi ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid rgba(93, 118, 203,0.35)',
+              boxShadow: '0 28px 72px rgba(27, 18, 44,0.72)',
               borderRadius: 2,
               width: previewDialogWidth,
               maxWidth: 'none',
               backgroundImage: `
-                radial-gradient(circle at 88% 10%, rgba(56,189,248,0.16), transparent 52%),
-                linear-gradient(160deg, rgba(8,47,73,0.16) 0%, rgba(10, 5, 21,0.85) 58%)
+                radial-gradient(circle at 88% 10%, rgba(93, 118, 203,0.16), transparent 52%),
+                linear-gradient(160deg, rgba(42, 61, 86,0.16) 0%, rgba(27, 18, 44,0.85) 58%)
               `,
             },
           }}
         >
           <DialogTitle
             sx={{
-              borderBottom: '1px solid rgba(56,189,248,0.2)',
-              color: '#bae6fd',
+              borderBottom: '1px solid rgba(93, 118, 203,0.2)',
+              color: '#c3cbe6',
               fontWeight: 800,
-              background: 'linear-gradient(135deg, rgba(8,47,73,0.45), rgba(10, 5, 21,0.72) 72%)',
+              background: 'linear-gradient(135deg, rgba(42, 61, 86,0.45), rgba(27, 18, 44,0.72) 72%)',
             }}
           >
             <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
@@ -1771,7 +1771,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                 <Typography
                   variant="subtitle1"
                   sx={{
-                    color: '#bae6fd',
+                    color: '#c3cbe6',
                     fontWeight: 800,
                     lineHeight: 1.1,
                     fontSize: previewIs5K ? 36 : previewIs4K ? 30 : previewIs2K ? 24 : previewIsTablet ? 21 : 18,
@@ -1783,7 +1783,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                   <Typography
                     variant="caption"
                     sx={{
-                      color: 'rgba(186,230,253,0.68)',
+                      color: 'rgba(195, 203, 230,0.68)',
                       letterSpacing: '0.04em',
                       fontSize: previewIs5K ? 16 : previewIs4K ? 14 : previewIs2K ? 13 : previewIsTablet ? 12 : 11,
                     }}
@@ -1798,7 +1798,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     size="small"
                     onClick={() => moveActiveStoryboard(-1)}
                     disabled={activeStoryboardIndex <= 0}
-                    sx={{ color: 'rgba(186,230,253,0.86)', p: 0.35 }}
+                    sx={{ color: 'rgba(195, 203, 230,0.86)', p: 0.35 }}
                   >
                     <PrevIcon sx={{ fontSize: 17 }} />
                   </IconButton>
@@ -1806,7 +1806,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     size="small"
                     onClick={() => moveActiveStoryboard(1)}
                     disabled={activeStoryboardIndex >= visibleStoryboards.length - 1}
-                    sx={{ color: 'rgba(186,230,253,0.86)', p: 0.35 }}
+                    sx={{ color: 'rgba(195, 203, 230,0.86)', p: 0.35 }}
                   >
                     <NextIcon sx={{ fontSize: 17 }} />
                   </IconButton>
@@ -1835,7 +1835,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     borderRadius: 1.25,
                     border: previewHiDpi ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.12)',
                     display: 'block',
-                    bgcolor: 'rgba(10, 5, 21,0.65)',
+                    bgcolor: 'rgba(27, 18, 44,0.65)',
                   }}
                 />
                 {activeStoryboard.description ? (
@@ -1856,16 +1856,16 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                       mt: 1.35,
                       p: 1,
                       borderRadius: 1.5,
-                      border: '1px solid rgba(56,189,248,0.28)',
+                      border: '1px solid rgba(93, 118, 203,0.28)',
                       bgcolor: 'rgba(7,13,26,0.88)',
                       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
                     }}
                   >
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75, px: 0.2 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.9)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.9)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
                         Filmstripe
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.62)', fontWeight: 600 }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.62)', fontWeight: 600 }}>
                         {activeStoryboardIndex + 1}/{visibleStoryboards.length}
                       </Typography>
                     </Stack>
@@ -1878,7 +1878,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         scrollSnapType: 'x mandatory',
                         '&::-webkit-scrollbar': { height: 8 },
                         '&::-webkit-scrollbar-thumb': {
-                          backgroundColor: 'rgba(56,189,248,0.42)',
+                          backgroundColor: 'rgba(93, 118, 203,0.42)',
                           borderRadius: 8,
                         },
                         '&::-webkit-scrollbar-track': {
@@ -1896,10 +1896,10 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                             borderRadius: 1.15,
                             overflow: 'hidden',
                             border: frameIndex === activeStoryboardIndex
-                              ? '2px solid rgba(56,189,248,0.95)'
+                              ? '2px solid rgba(93, 118, 203,0.95)'
                               : '1px solid rgba(255,255,255,0.28)',
                             boxShadow: frameIndex === activeStoryboardIndex
-                              ? '0 0 0 1px rgba(56,189,248,0.3), 0 6px 18px rgba(14,116,144,0.24)'
+                              ? '0 0 0 1px rgba(93, 118, 203,0.3), 0 6px 18px rgba(63, 81, 181,0.24)'
                               : 'none',
                             flexShrink: 0,
                             width: previewThumbWidth,
@@ -1907,7 +1907,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                             opacity: frameIndex === activeStoryboardIndex ? 1 : 0.9,
                             transition: 'opacity 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease',
                             scrollSnapAlign: 'start',
-                            '&:hover': { opacity: 1, borderColor: 'rgba(56,189,248,0.74)' },
+                            '&:hover': { opacity: 1, borderColor: 'rgba(93, 118, 203,0.74)' },
                           }}
                         >
                           <Box
@@ -1926,7 +1926,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                               borderRadius: 0.6,
                               bgcolor: frameIndex === activeStoryboardIndex
                                 ? 'rgba(2,132,199,0.88)'
-                                : 'rgba(10, 5, 21,0.72)',
+                                : 'rgba(27, 18, 44,0.72)',
                               border: '1px solid rgba(255,255,255,0.25)',
                             }}
                           >
@@ -1949,11 +1949,11 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               </>
             ) : null}
           </DialogContent>
-          <DialogActions sx={{ borderTop: '1px solid rgba(56,189,248,0.2)', justifyContent: 'space-between', px: previewDialogPadding }}>
+          <DialogActions sx={{ borderTop: '1px solid rgba(93, 118, 203,0.2)', justifyContent: 'space-between', px: previewDialogPadding }}>
             <Typography
               variant="caption"
               sx={{
-                color: 'rgba(186,230,253,0.62)',
+                color: 'rgba(195, 203, 230,0.62)',
                 px: 1,
                 fontSize: previewIs5K ? 16 : previewIs4K ? 14 : previewIs2K ? 13 : previewIsTablet ? 12 : 11,
               }}
@@ -1963,7 +1963,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
             <Button
               onClick={() => setStoryboardPreviewOpen(false)}
               sx={{
-                color: '#bae6fd',
+                color: '#c3cbe6',
                 fontSize: previewIs5K ? 21 : previewIs4K ? 18 : previewIs2K ? 16 : previewIsTablet ? 14 : 13,
                 px: previewIs5K ? 2.5 : 1.75,
                 py: previewIs5K ? 1.05 : 0.65,
@@ -2063,7 +2063,7 @@ const TakeRow: FC<TakeRowProps> = ({ take, touchUi, isFocused, onFocus, onStatus
 
       {/* Row 2: Cam + flags + loggedBy avatar + sync */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-        <Chip label={take.camera} size="small" sx={{ fontSize: 9, height: 16, bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)' }} />
+        <Chip label={take.camera} size="small" sx={{ fontSize: 9, height: 16, bgcolor: 'rgba(93, 118, 203,0.1)', color: '#5d76cb', border: '1px solid rgba(93, 118, 203,0.2)' }} />
         {take.lens && <Chip label={take.lens} size="small" sx={{ fontSize: 9, height: 16, bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }} />}
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>
           {fmtTime(take.loggedAt)}
@@ -2176,7 +2176,7 @@ const LiveSetActivityPanel: FC<LiveSetActivityPanelProps> = ({
     <Box
       sx={{
         display: 'flex', flexDirection: 'column',
-        bgcolor: 'rgba(10, 5, 21,0.92)', borderLeft: '1px solid rgba(255,255,255,0.06)',
+        bgcolor: 'rgba(27, 18, 44,0.92)', borderLeft: '1px solid rgba(255,255,255,0.06)',
         minHeight: 0,
       }}
     >
@@ -2514,7 +2514,7 @@ const LiveSetFooterBar: FC<LiveSetFooterBarProps> = ({
           borderRadius: 1,
           mx: -0.5,
           px: 0.5,
-          '&:hover': onOpenDitDrawer ? { bgcolor: 'rgba(34,211,238,0.06)' } : {},
+          '&:hover': onOpenDitDrawer ? { bgcolor: 'rgba(93, 118, 203,0.06)' } : {},
         }}
         onClick={onOpenDitDrawer}
         title={onOpenDitDrawer ? 'Klikk for å åpne DIT-backup-panel' : undefined}
@@ -3191,7 +3191,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
       sx={{
         display: 'flex', flexDirection: 'column',
         width: '100%', height: '100%', minHeight: '100%',
-        bgcolor: '#0a0515', position: 'relative', overflow: 'hidden',
+        bgcolor: '#1b122c', position: 'relative', overflow: 'hidden',
       }}
     >
       {/* ── CUT flash overlay ── */}
@@ -3269,7 +3269,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           >
             {(['live', 'edit', 'review'] as const).map((m) => {
               const isActive = liveSetMode === m;
-              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#9e8cf8' : '#22d3ee';
+              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#93a4dc' : '#5d76cb';
               return (
                 <Box
                   key={m}
@@ -3401,9 +3401,9 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             mx: 'auto',
             px: { xs: 1.5, sm: 2.5 },
             py: 1.2,
-            bgcolor: liveSetMode === 'edit' ? 'rgba(158, 140, 248,0.08)' : 'rgba(34,211,238,0.08)',
+            bgcolor: liveSetMode === 'edit' ? 'rgba(147, 164, 220,0.08)' : 'rgba(93, 118, 203,0.08)',
             borderBottom: '1px solid',
-            borderColor: liveSetMode === 'edit' ? 'rgba(158, 140, 248,0.24)' : 'rgba(34,211,238,0.24)',
+            borderColor: liveSetMode === 'edit' ? 'rgba(147, 164, 220,0.24)' : 'rgba(93, 118, 203,0.24)',
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
@@ -3412,7 +3412,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           <Box
             sx={{
               fontSize: 18,
-              color: liveSetMode === 'edit' ? '#9e8cf8' : '#22d3ee',
+              color: liveSetMode === 'edit' ? '#93a4dc' : '#5d76cb',
             }}
           >
             {liveSetMode === 'edit' ? '✎' : '👁'}
@@ -3679,15 +3679,15 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
         PaperProps={{
           sx: {
             bgcolor: 'rgba(4,10,21,0.98)',
-            border: '1px solid rgba(56,189,248,0.42)',
-            boxShadow: '0 28px 72px rgba(10, 5, 21,0.72)',
+            border: '1px solid rgba(93, 118, 203,0.42)',
+            boxShadow: '0 28px 72px rgba(27, 18, 44,0.72)',
             borderRadius: 2,
           },
         }}
       >
         <DialogTitle
           sx={{
-            borderBottom: '1px solid rgba(56,189,248,0.2)',
+            borderBottom: '1px solid rgba(93, 118, 203,0.2)',
             background: weatherVisual.headerGradient,
           }}
         >
@@ -3716,11 +3716,11 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               />
             </Box>
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h6" sx={{ color: '#bae6fd', fontWeight: 800, lineHeight: 1.2 }}>
+              <Typography variant="h6" sx={{ color: '#c3cbe6', fontWeight: 800, lineHeight: 1.2 }}>
                 Yr værvarsling
               </Typography>
               <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.15 }}>
-                <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.75)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.75)' }}>
                   {weatherLive.locationLabel || activeSceneLocation}
                 </Typography>
                 <Chip
@@ -3738,7 +3738,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             </Box>
           </Stack>
         </DialogTitle>
-        <DialogContent dividers sx={{ borderColor: 'rgba(56,189,248,0.2)', p: 2 }}>
+        <DialogContent dividers sx={{ borderColor: 'rgba(93, 118, 203,0.2)', p: 2 }}>
           <Stack sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
             <Paper
               sx={{
@@ -3749,10 +3749,10 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             >
               <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1.25}>
                 <Box>
-                  <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.75)', letterSpacing: '0.06em' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.75)', letterSpacing: '0.06em' }}>
                     NÅVÆRENDE FORHOLD
                   </Typography>
-                  <Typography variant="h4" sx={{ color: '#e0f2fe', fontWeight: 900, lineHeight: 1.15 }}>
+                  <Typography variant="h4" sx={{ color: '#dfe4f3', fontWeight: 900, lineHeight: 1.15 }}>
                     {weatherLive.temperature ?? '—'}°C
                   </Typography>
                 </Box>
@@ -3778,30 +3778,30 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             </Paper>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.9}>
-              <Paper sx={{ flex: 1, p: 1, border: '1px solid rgba(56,189,248,0.24)', bgcolor: 'rgba(2,132,199,0.14)' }}>
+              <Paper sx={{ flex: 1, p: 1, border: '1px solid rgba(93, 118, 203,0.24)', bgcolor: 'rgba(2,132,199,0.14)' }}>
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <RainIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  <RainIcon sx={{ fontSize: 18, color: '#93a4dc' }} />
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.7)' }}>Nedbør</Typography>
-                    <Typography variant="body2" sx={{ color: '#e0f2fe', fontWeight: 700 }}>{weatherLive.precipitation ?? 0} mm</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.7)' }}>Nedbør</Typography>
+                    <Typography variant="body2" sx={{ color: '#dfe4f3', fontWeight: 700 }}>{weatherLive.precipitation ?? 0} mm</Typography>
                   </Box>
                 </Stack>
               </Paper>
-              <Paper sx={{ flex: 1, p: 1, border: '1px solid rgba(56,189,248,0.24)', bgcolor: 'rgba(2,132,199,0.14)' }}>
+              <Paper sx={{ flex: 1, p: 1, border: '1px solid rgba(93, 118, 203,0.24)', bgcolor: 'rgba(2,132,199,0.14)' }}>
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <WindIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  <WindIcon sx={{ fontSize: 18, color: '#93a4dc' }} />
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.7)' }}>Vind</Typography>
-                    <Typography variant="body2" sx={{ color: '#e0f2fe', fontWeight: 700 }}>{weatherLive.windSpeed ?? 0} m/s</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.7)' }}>Vind</Typography>
+                    <Typography variant="body2" sx={{ color: '#dfe4f3', fontWeight: 700 }}>{weatherLive.windSpeed ?? 0} m/s</Typography>
                   </Box>
                 </Stack>
               </Paper>
-              <Paper sx={{ flex: 1, p: 1, border: '1px solid rgba(56,189,248,0.24)', bgcolor: 'rgba(2,132,199,0.14)' }}>
+              <Paper sx={{ flex: 1, p: 1, border: '1px solid rgba(93, 118, 203,0.24)', bgcolor: 'rgba(2,132,199,0.14)' }}>
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <TempIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  <TempIcon sx={{ fontSize: 18, color: '#93a4dc' }} />
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.7)' }}>Status</Typography>
-                    <Typography variant="body2" sx={{ color: '#e0f2fe', fontWeight: 700 }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.7)' }}>Status</Typography>
+                    <Typography variant="body2" sx={{ color: '#dfe4f3', fontWeight: 700 }}>
                       {weatherLive.status === 'error' ? 'Feil' : weatherLive.status === 'loading' ? 'Oppdaterer' : 'Live'}
                     </Typography>
                   </Box>
@@ -3810,8 +3810,8 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             </Stack>
 
             <Stack direction="row" spacing={0.65} alignItems="center">
-              <TimeIcon sx={{ fontSize: 15, color: 'rgba(186,230,253,0.72)' }} />
-              <Typography variant="caption" sx={{ color: 'rgba(186,230,253,0.72)' }}>
+              <TimeIcon sx={{ fontSize: 15, color: 'rgba(195, 203, 230,0.72)' }} />
+              <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.72)' }}>
                 Sist oppdatert: {weatherLive.updatedAt ? new Date(weatherLive.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }) : '—'}
               </Typography>
             </Stack>
@@ -3824,8 +3824,8 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               </Paper>
             ) : null}
 
-            <Divider sx={{ borderColor: 'rgba(56,189,248,0.18)' }} />
-            <Typography variant="subtitle2" sx={{ color: '#bae6fd', fontWeight: 800, letterSpacing: '0.04em' }}>
+            <Divider sx={{ borderColor: 'rgba(93, 118, 203,0.18)' }} />
+            <Typography variant="subtitle2" sx={{ color: '#c3cbe6', fontWeight: 800, letterSpacing: '0.04em' }}>
               Varsler fra Yr
             </Typography>
             {weatherLive.alerts.length === 0 ? (
@@ -3857,8 +3857,8 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(56,189,248,0.2)' }}>
-          <Button size="small" onClick={handleManualWeatherRefresh} sx={{ color: '#7dd3fc' }}>
+        <DialogActions sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(93, 118, 203,0.2)' }}>
+          <Button size="small" onClick={handleManualWeatherRefresh} sx={{ color: '#93a4dc' }}>
             Oppdater nå
           </Button>
           <Button
@@ -3868,7 +3868,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             target="_blank"
             rel="noreferrer"
             endIcon={<ExternalLinkIcon sx={{ fontSize: 14 }} />}
-            sx={{ color: '#bae6fd' }}
+            sx={{ color: '#c3cbe6' }}
           >
             Åpne Yr.no
           </Button>
@@ -3886,17 +3886,17 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
         PaperProps={{
           sx: {
             bgcolor: 'rgba(8,12,24,0.98)',
-            border: '1px solid rgba(59,130,246,0.35)',
-            boxShadow: '0 24px 56px rgba(10, 5, 21,0.6)',
+            border: '1px solid rgba(63, 81, 181,0.35)',
+            boxShadow: '0 24px 56px rgba(27, 18, 44,0.6)',
           },
         }}
       >
-        <DialogTitle sx={{ color: '#bfdbfe', borderBottom: '1px solid rgba(59,130,246,0.25)' }}>
+        <DialogTitle sx={{ color: '#c3cbe6', borderBottom: '1px solid rgba(63, 81, 181,0.25)' }}>
           Crew til stede ({setStatus.crewPresent}/{setStatus.crewTotal || crewRoster.length || 0})
         </DialogTitle>
-        <DialogContent dividers sx={{ borderColor: 'rgba(59,130,246,0.25)', p: 2 }}>
+        <DialogContent dividers sx={{ borderColor: 'rgba(63, 81, 181,0.25)', p: 2 }}>
           {crewRoster.length === 0 ? (
-            <Typography variant="body2" sx={{ color: 'rgba(191,219,254,0.72)' }}>
+            <Typography variant="body2" sx={{ color: 'rgba(195, 203, 230,0.72)' }}>
               Ingen crew registrert i prosjektet ennå.
             </Typography>
           ) : (
@@ -3910,7 +3910,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
                     sx={{
                       width: '100%',
                       borderRadius: 1.5,
-                      border: `1px solid ${checked ? 'rgba(96,165,250,0.45)' : 'rgba(59,130,246,0.2)'}`,
+                      border: `1px solid ${checked ? 'rgba(147, 164, 220,0.45)' : 'rgba(63, 81, 181,0.2)'}`,
                       bgcolor: checked ? 'rgba(30,64,175,0.24)' : 'rgba(15,23,42,0.45)',
                       px: 1.25,
                       py: 0.9,
@@ -3923,14 +3923,14 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
                         checked={checked}
                         tabIndex={-1}
                         disableRipple
-                        sx={{ p: 0.25, color: 'rgba(191,219,254,0.75)', '&.Mui-checked': { color: '#60a5fa' } }}
+                        sx={{ p: 0.25, color: 'rgba(195, 203, 230,0.75)', '&.Mui-checked': { color: '#93a4dc' } }}
                       />
                       <Box sx={{ minWidth: 0, textAlign: 'left' }}>
                         <Typography variant="body2" sx={{ color: '#fff', fontWeight: 700 }} noWrap>
                           {member.name}
                         </Typography>
                         {member.subtitle ? (
-                          <Typography variant="caption" sx={{ color: 'rgba(191,219,254,0.74)' }} noWrap>
+                          <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.74)' }} noWrap>
                             {member.subtitle}
                           </Typography>
                         ) : null}
@@ -3942,9 +3942,9 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
                       sx={{
                         ml: 1,
                         fontSize: 10,
-                        color: checked ? '#bfdbfe' : 'rgba(191,219,254,0.62)',
+                        color: checked ? '#c3cbe6' : 'rgba(195, 203, 230,0.62)',
                         bgcolor: checked ? 'rgba(37,99,235,0.35)' : 'rgba(30,41,59,0.55)',
-                        border: `1px solid ${checked ? 'rgba(96,165,250,0.5)' : 'rgba(148,163,184,0.28)'}`,
+                        border: `1px solid ${checked ? 'rgba(147, 164, 220,0.5)' : 'rgba(148,163,184,0.28)'}`,
                       }}
                     />
                   </ButtonBase>
@@ -3953,7 +3953,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             </Stack>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(59,130,246,0.2)' }}>
+        <DialogActions sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(63, 81, 181,0.2)' }}>
           <Button size="small" onClick={handleClearCrewPresence} sx={{ color: '#fca5a5' }}>
             Tøm
           </Button>
@@ -3975,7 +3975,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           sx: {
             bgcolor: 'rgba(6,18,20,0.98)',
             border: '1px solid rgba(16,185,129,0.35)',
-            boxShadow: '0 24px 56px rgba(10, 5, 21,0.62)',
+            boxShadow: '0 24px 56px rgba(27, 18, 44,0.62)',
           },
         }}
       >
