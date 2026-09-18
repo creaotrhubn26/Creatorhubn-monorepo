@@ -1,9 +1,10 @@
 // POIDetailView.swift
 //
 // Detaljside (UI-spesifikasjon 6.3): hero-bilde med scrim og ikonknapper,
-// innholdspanel med tittel, sted, mock-vurdering, segmentfaner
+// innholdspanel med tittel, sted, stjernevurdering fra backend, segmentfaner
 // Om / Opplevelse / Praktisk, og fast bunnfelt med «Start opplevelsen» og
-// «Legg til i mine steder». Låst POI åpner mock-paywall.
+// «Legg til i mine steder». Låst POI åpner mock-paywall. Er stedet besøkt,
+// vises dato og en knapp til etter-besøket (quiz, vurdering, tips, deling).
 
 import SwiftUI
 
@@ -18,6 +19,7 @@ struct POIDetailView: View {
 
     @State private var tab: DetailTab = .about
     @State private var showPaywall = false
+    @State private var afterVisitEntry: VisitEntry?
 
     enum DetailTab: Int, CaseIterable, Identifiable {
         case about, experience, practical
@@ -65,6 +67,16 @@ struct POIDetailView: View {
         .sheet(isPresented: $showPaywall) {
             MockPaywallSheet(areaId: poi.areaId)
         }
+        .sheet(item: $afterVisitEntry) { entry in
+            AfterVisitView(entryId: entry.id, poi: poi) { related in
+                afterVisitEntry = nil
+                if path.isEmpty {
+                    env.open(poi: related)
+                } else {
+                    path.append(Route.poi(related.id))
+                }
+            }
+        }
     }
 
     /// Heltebilde med scrim og knappene tilbake / favoritt / del.
@@ -88,14 +100,13 @@ struct POIDetailView: View {
                 ) {
                     env.settings.toggleFavorite(poiId: poi.id)
                 }
-                ShareLink(item: shareText(poi)) {
+                ShareLinkButton(url: poi.shareURL, fallbackText: shareText(poi), subject: poi.title, message: shareText(poi)) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(AppColor.textPrimary)
                         .frame(width: 44, height: 44)
                         .background(AppColor.bgOverlay, in: Circle())
                 }
-                .accessibilityLabel(Text("action.share"))
             }
             .padding(.horizontal, AppSpacing.screenMargin)
             .padding(.top, proxy.safeAreaInsets.top + AppSpacing.s)
@@ -115,9 +126,13 @@ struct POIDetailView: View {
                     .foregroundStyle(contrast.textSecondary)
                     .padding(.top, AppSpacing.xs)
             }
-            if let rating = DemoData.rating(forSlug: poi.slug) {
+            if let rating = poi.rating {
                 ratingRow(rating)
                     .padding(.top, AppSpacing.s)
+            }
+            if let entry = env.visits.latestEntry(poiId: poi.id) {
+                visitedRow(entry)
+                    .padding(.top, AppSpacing.m)
             }
             if poi.lang.fallbackUsed || poi.lang.autoTranslated {
                 languageNotice(poi)
@@ -164,21 +179,38 @@ struct POIDetailView: View {
         .overlay(alignment: .top) { Rectangle().fill(contrast.border).frame(height: 0.5) }
     }
 
-    private func ratingRow(_ rating: DemoData.Rating) -> some View {
+    private func ratingRow(_ rating: RatingSummary) -> some View {
         HStack(spacing: AppSpacing.xs) {
             Image(systemName: "star.fill").foregroundStyle(AppColor.rating)
-            Text(rating.value, format: .number.precision(.fractionLength(1)))
+            Text(rating.average, format: .number.precision(.fractionLength(1)))
                 .foregroundStyle(AppColor.textPrimary)
             Text("(\(rating.count.formatted(.number.notation(.compactName).locale(locale))))")
                 .foregroundStyle(contrast.textSecondary)
         }
         .font(AppFont.subtitle)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(
-            L10n.string("rating.spoken", lang: env.settings.uiLanguage)
-                .replacingOccurrences(of: "%1$@", with: rating.value.formatted(.number.precision(.fractionLength(1)).locale(locale)))
-                .replacingOccurrences(of: "%2$@", with: rating.count.formatted(.number.locale(locale)))
-        ))
+        .accessibilityLabel(Text(AfterVisitView.summaryText(rating, uiLang: env.settings.uiLanguage, locale: locale)))
+    }
+
+    /// «Besøkt 18. september 2026 kl. 11.20» + knapp til etter-besøket.
+    private func visitedRow(_ entry: VisitEntry) -> some View {
+        HStack(spacing: AppSpacing.m) {
+            Label {
+                Text(L10n.string("detail.visited", lang: env.settings.uiLanguage)
+                    .replacingOccurrences(of: "%@", with: AfterVisitView.visitDate(entry.displayDate, locale: locale)))
+                    .font(.caption)
+                    .foregroundStyle(contrast.textSecondary)
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(AppColor.accent)
+            }
+            Spacer(minLength: 0)
+            Button("detail.afterVisit") {
+                afterVisitEntry = entry
+            }
+            .font(AppFont.chip)
+            .foregroundStyle(AppColor.accent)
+            .minTapTarget()
+        }
     }
 
     private func languageNotice(_ poi: GuidePOI) -> some View {

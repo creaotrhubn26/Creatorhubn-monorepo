@@ -1,6 +1,7 @@
 // Buttons.swift
 //
-// Primærknapp (5.3), sekundærknapp (5.4) og runde ikonknapper over bilde (5.10).
+// Primærknapp (5.3), sekundærknapp (5.4), runde ikonknapper over bilde (5.10)
+// og delingsknapp som deler URL når backend har gitt en, ellers tekst.
 
 import SwiftUI
 
@@ -78,6 +79,28 @@ struct IconCircleButton: View {
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(Text(label))
+    }
+}
+
+/// ShareLink som deler delingslenken (URL) når den finnes, ellers en tekst.
+/// Meldingen følger med i iMessage/Mail; emnet brukes av Mail.
+struct ShareLinkButton<Label: View>: View {
+    let url: URL?
+    let fallbackText: String
+    let subject: String
+    let message: String
+    @ViewBuilder let label: () -> Label
+
+    var body: some View {
+        Group {
+            if let url {
+                ShareLink(item: url, subject: Text(subject), message: Text(message), label: label)
+            } else {
+                ShareLink(item: fallbackText, subject: Text(subject), message: Text(message), label: label)
+            }
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text("action.share"))
     }
 }
 

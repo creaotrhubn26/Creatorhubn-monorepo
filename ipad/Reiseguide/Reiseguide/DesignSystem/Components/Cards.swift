@@ -60,6 +60,8 @@ struct NearbyCard: View {
     let distanceM: Double?
     let isLocked: Bool
     let locale: Locale
+    /// Liten etikett under tittelen, f.eks. «Samme kategori» i tipsene.
+    var badge: String?
     let action: () -> Void
 
     @Environment(\.contrastColors) private var contrast
@@ -90,13 +92,20 @@ struct NearbyCard: View {
                             .font(AppFont.subtitle)
                             .foregroundStyle(contrast.textSecondary)
                     }
-                    if let rating = DemoData.rating(forSlug: poi.slug) {
+                    if let rating = poi.rating {
                         HStack(spacing: AppSpacing.xs) {
                             Image(systemName: "star.fill").foregroundStyle(AppColor.rating)
-                            Text(rating.value, format: .number.precision(.fractionLength(1)))
+                            Text(rating.average, format: .number.precision(.fractionLength(1)))
                                 .foregroundStyle(AppColor.textPrimary)
+                            Text("(\(rating.count.formatted(.number.locale(locale))))")
+                                .foregroundStyle(contrast.textSecondary)
                         }
                         .font(AppFont.subtitle)
+                    }
+                    if let badge {
+                        Text(badge)
+                            .font(AppFont.iconLabel)
+                            .foregroundStyle(AppColor.accentMuted)
                     }
                 }
                 Spacer(minLength: 0)
@@ -122,11 +131,12 @@ struct NearbyCard: View {
             parts.append(L10n.string("distance.away", lang: locale.identifier)
                 .replacingOccurrences(of: "%@", with: L10n.distance(meters: distanceM, locale: locale)))
         }
-        if let rating = DemoData.rating(forSlug: poi.slug) {
+        if let rating = poi.rating {
             parts.append(L10n.string("rating.spoken", lang: locale.identifier)
-                .replacingOccurrences(of: "%1$@", with: rating.value.formatted(.number.precision(.fractionLength(1)).locale(locale)))
+                .replacingOccurrences(of: "%1$@", with: rating.average.formatted(.number.precision(.fractionLength(1)).locale(locale)))
                 .replacingOccurrences(of: "%2$@", with: rating.count.formatted(.number.locale(locale))))
         }
+        if let badge { parts.append(badge) }
         return parts.joined(separator: ", ")
     }
 }

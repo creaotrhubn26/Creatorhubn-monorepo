@@ -1,7 +1,8 @@
 // GuideAPIClient.swift
 //
-// Tynn klient mot de offentlige leserutene i backend/server/reiseguide-routes.ts.
-// Ingen innlogging: appen har kun anonym enhets-ID (POC-skisse 17.09.2026).
+// Tynn klient mot de offentlige rutene i backend/server/reiseguide-routes.ts.
+// Ingen innlogging: appen har kun anonym enhets-ID (POC-skisse 17.09.2026),
+// som også brukes når en stjernerangering sendes inn.
 // Base-URL: Info.plist (GuideAPIBaseURL fra project.yml), overstyrbar i DEBUG
 // med miljøvariabelen REISEGUIDE_API_BASE_URL (samme mønster som Lead Map).
 
@@ -77,7 +78,28 @@ actor GuideAPIClient {
         ).poi
     }
 
+    /// Sender (eller oppdaterer) stjernerangeringen fra denne enheten.
+    func submitRating(poiIdOrSlug: String, deviceId: String, stars: Int, lang: String) async throws -> RatingResponse {
+        struct Body: Encodable {
+            let deviceId: String
+            let stars: Int
+            let lang: String
+        }
+        let body = try JSONEncoder().encode(Body(deviceId: deviceId, stars: stars, lang: lang))
+        return try await send(
+            RatingResponse.self,
+            method: "POST",
+            path: "/api/guide/pois/\(poiIdOrSlug)/rating",
+            query: [],
+            body: body
+        )
+    }
+
     private func get<T: Decodable>(_ type: T.Type, path: String, query: [URLQueryItem]) async throws -> T {
+        try await send(type, method: "GET", path: path, query: query, body: nil)
+    }
+
+    private func send<T: Decodable>(_ type: T.Type, method: String, path: String, query: [URLQueryItem], body: Data?) async throws -> T {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw GuideAPIError.invalidURL
         }
@@ -87,7 +109,12 @@ actor GuideAPIClient {
         guard let url = components.url else { throw GuideAPIError.invalidURL }
 
         var request = URLRequest(url: url)
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200 ..< 300).contains(http.statusCode) {
             throw GuideAPIError.httpStatus(http.statusCode)

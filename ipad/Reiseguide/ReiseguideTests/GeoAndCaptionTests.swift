@@ -61,7 +61,8 @@ final class GeoAndCaptionTests: XCTestCase {
             triggerRadiusM: 40, priority: 0, sortOrder: 0, freePreview: false, heroImageUrl: nil, heroImageAlt: nil,
             title: slug, subtitle: nil, summary: nil, locationLabel: nil, practicalInfo: [],
             lang: LanguageInfo(requested: "nb", resolved: "nb", fallbackUsed: false, autoTranslated: false, editorialStatus: "draft", available: ["nb"]),
-            variants: GuideVariants(narration: nil, audioDescription: nil)
+            variants: GuideVariants(narration: nil, audioDescription: nil),
+            quiz: nil, rating: nil, shareUrl: nil
         )
     }
 }

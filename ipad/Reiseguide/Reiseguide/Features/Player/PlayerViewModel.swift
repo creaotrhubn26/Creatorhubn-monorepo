@@ -8,6 +8,11 @@
 // Teksting: cues fra backend (Soniox-ordtider) når de finnes. Uten cues (steg 2
 // ikke kjørt) deles manuset i setninger fordelt jevnt over varigheten, så
 // tekstingsvisningen kan prøves før lyden finnes. Merket `isEstimated`.
+//
+// Besøk («etter besøket», 18.09.2026): start(poi:) logger besøket i
+// VisitLogStore; når siste kapittel er ferdig, eller brukeren trykker
+// «Avslutt besøket», merkes det fullført og `finishedVisit` settes så
+// avspilleren kan vise quiz, vurdering, tips og deling.
 
 import Foundation
 import Observation
@@ -80,12 +85,25 @@ final class PlayerViewModel {
     var isPresented = false
     var audioDescriptionExpanded = false
 
+    /// Besøket som nettopp ble fullført; avspilleren viser etter-besøket-arket.
+    var finishedVisit: FinishedVisit?
+    /// Loggoppføringen for det som spilles nå.
+    private(set) var currentVisitId: String?
+
+    struct FinishedVisit: Identifiable, Equatable {
+        let entryId: String
+        let poi: GuidePOI
+        var id: String { entryId }
+    }
+
     @ObservationIgnored private let engine = AudioEngine()
     @ObservationIgnored private let settings: AppSettings
+    @ObservationIgnored private let visits: VisitLogStore
     @ObservationIgnored private var ticker: Task<Void, Never>?
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, visits: VisitLogStore) {
         self.settings = settings
+        self.visits = visits
         engine.onRemotePlay = { [weak self] in self?.play() }
         engine.onRemotePause = { [weak self] in self?.pause() }
         engine.onRemoteSkip = { [weak self] delta in self?.skip(by: delta) }
@@ -136,9 +154,21 @@ final class PlayerViewModel {
         variantKind = kind
         chapterIndex = 0
         audioDescriptionExpanded = false
+        finishedVisit = nil
+        currentVisitId = visits.recordStart(poi: poi).id
         isPresented = true
         loadChapter(announce: false)
         play()
+    }
+
+    /// «Avslutt besøket»: stopper, merker besøket fullført og åpner etter-besøket.
+    func finishVisit() {
+        guard let poi else { return }
+        pause()
+        let entryId = currentVisitId ?? visits.recordStart(poi: poi).id
+        currentVisitId = entryId
+        visits.markCompleted(entryId: entryId)
+        finishedVisit = FinishedVisit(entryId: entryId, poi: poi)
     }
 
     func selectVariant(_ kind: VariantKind) {
@@ -197,6 +227,11 @@ final class PlayerViewModel {
         guard let variant, chapterIndex + 1 < variant.chapters.count else {
             pause()
             positionS = durationS
+            // Siste kapittel i fortellingen er slutten på besøket; synstolking
+            // alene avslutter ikke, den kan høres midt i.
+            if variantKind == .narration || poi?.variants.narration == nil {
+                finishVisit()
+            }
             return
         }
         chapterIndex += 1
@@ -222,6 +257,8 @@ final class PlayerViewModel {
         pause()
         engine.stop()
         poi = nil
+        finishedVisit = nil
+        currentVisitId = nil
         isPresented = false
     }
 

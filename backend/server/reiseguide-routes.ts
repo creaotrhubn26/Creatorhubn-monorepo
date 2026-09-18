@@ -11,6 +11,15 @@
  *                                             med varianter (fortelling, synstolking),
  *                                             kapitler, lyd-URL-er og teksting
  *   GET /api/guide/pois/:idOrSlug?lang=nb     én severdighet i samme form
+ *   POST /api/guide/pois/:idOrSlug/rating     stjernerangering 1–5 fra anonym enhet
+ *                                             (0630_reiseguide_after_visit.sql)
+ *   GET /api/guide/share/:idOrSlug?lang=nb    delingsside (HTML med Open Graph) som
+ *                                             åpner appen via senseaidexplore://poi/{slug}
+ *
+ * «Etter besøket» (Daniel 18.09.2026): hver POI får quiz (per språk, samme
+ * fallback som manusene), rating {average, count} og shareUrl. Liknende steder
+ * i nærheten regner appen ut selv fra området (kategori + avstand), og den
+ * personlige loggen ligger kun på telefonen.
  *
  * Språk (POC-skisse 17.09.2026): ønsket språk → primærtag (nb-NO → nb) → en →
  * områdets default_lang, avgjort per POI. Svaret sier hvilket språk som ble
@@ -23,9 +32,24 @@
  * netlify.toml). Nøkler som allerede er http(s)-URL-er sendes uendret.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import express from "express";
 import { presignCreatorHubObjectDownload } from "./creatorhub-object-storage.js";
+import {
+  appDeepLink,
+  buildQuizView,
+  createRateLimiter,
+  parseRatingInput,
+  quizLanguages,
+  ratingSummary,
+  renderSharePage,
+  type QuizQuestionView,
+  type QuizRow,
+  type RatingAggregateRow,
+  type RatingSummary,
+} from "./reiseguide-after-visit.js";
 import { isSenseAidStorageKey, senseAidMediaUrl } from "./reiseguide-storage.js";
 
 interface Deps {
@@ -40,6 +64,8 @@ interface Deps {
 
 /** Signerte lyd-URL-er lever kort; appen henter en ny via omdirigeringen ved hver avspilling. */
 const MEDIA_SIGNED_URL_TTL_S = 15 * 60;
+/** Vurderinger: 30 per IP per minutt holder for en enhet som retter seg, og stopper løkker. */
+const RATING_LIMIT_PER_MINUTE = 30;
 
 const DEFAULT_MEDIA_URL_BASE = "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev";
 const LANG_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/;
@@ -178,6 +204,16 @@ export interface PoiView {
     narration: VariantView | null;
     audioDescription: VariantView | null;
   };
+  /** Quiz på samme språk som manuset; tom liste når stedet ikke har quiz ennå. */
+  quiz: QuizQuestionView[];
+  /** Snitt og antall stjernerangeringer; null uten vurderinger. */
+  rating: RatingSummary | null;
+  /** Delingsside for stedet; null når API-basen er ukjent (kun i rene tester). */
+  shareUrl: string | null;
+}
+
+export function shareUrlFor(slug: string, lang: string, publicApiBase: string): string {
+  return `${publicApiBase.replace(/\/+$/, "")}/api/guide/share/${encodeURIComponent(slug)}?lang=${encodeURIComponent(lang)}`;
 }
 
 /** Normaliserer et BCP 47-tag til små bokstaver; null hvis ugyldig. */
@@ -311,6 +347,8 @@ export function buildPoiView(args: {
   poi: PoiRow;
   translations: TranslationRow[];
   scripts: ScriptRow[];
+  quiz?: QuizRow[];
+  ratings?: RatingAggregateRow[];
   requestedLang: string;
   defaultLang: string;
   mediaBase: string;
@@ -319,6 +357,8 @@ export function buildPoiView(args: {
   const { poi, requestedLang, defaultLang, mediaBase, publicApiBase } = args;
   const translations = args.translations.filter((t) => t.poi_id === poi.id);
   const scripts = args.scripts.filter((s) => s.poi_id === poi.id);
+  const quizRows = args.quiz ?? [];
+  const ratingRow = (args.ratings ?? []).find((r) => r.poi_id === poi.id);
   const available = Array.from(new Set(translations.map((t) => t.lang.toLowerCase()))).sort();
   const resolved = resolveLang(available, requestedLang, defaultLang);
   const translation = resolved
@@ -333,6 +373,11 @@ export function buildPoiView(args: {
     resolved && scriptLangs.has(resolved)
       ? resolved
       : resolveLang(scriptLangs, requestedLang, defaultLang);
+
+  // Quizen følger manusspråket når den finnes der, ellers samme fallback-kjede.
+  const quizLangs = quizLanguages(quizRows, poi.id);
+  const quizLang =
+    scriptLang && quizLangs.includes(scriptLang) ? scriptLang : resolveLang(quizLangs, requestedLang, defaultLang);
 
   return {
     id: poi.id,
@@ -366,6 +411,9 @@ export function buildPoiView(args: {
         ? buildVariant("audio_description", scriptLang, scripts, mediaBase, publicApiBase)
         : null,
     },
+    quiz: quizLang ? buildQuizView(quizRows, poi.id, quizLang) : [],
+    rating: ratingSummary(ratingRow),
+    shareUrl: publicApiBase ? shareUrlFor(poi.slug, resolved ?? requestedLang, publicApiBase) : null,
   };
 }
 
@@ -433,6 +481,28 @@ const SCRIPT_SELECT = `
    WHERE s.poi_id = ANY($1::text[])
    ORDER BY s.poi_id, s.lang, s.kind, s.chapter_no`;
 
+const QUIZ_SELECT = `
+  SELECT id, poi_id, lang, sort_order, question, options, correct_index, explanation
+    FROM guide_poi_quiz_questions
+   WHERE poi_id = ANY($1::text[])
+   ORDER BY poi_id, lang, sort_order`;
+
+const RATING_AGGREGATE_SELECT = `
+  SELECT poi_id, avg(stars)::float8 AS average, count(*)::int AS count
+    FROM guide_poi_ratings
+   WHERE poi_id = ANY($1::text[])
+   GROUP BY poi_id`;
+
+const POI_LOOKUP_SELECT = `
+  SELECT p.id, p.area_id, p.slug, p.category_id, p.lat, p.lng, p.trigger_radius_m,
+         p.priority, p.sort_order, p.free_preview, p.hero_image_key, p.status,
+         a.default_lang
+    FROM guide_pois p
+    JOIN guide_areas a ON a.id = p.area_id
+   WHERE (p.id = $1 OR p.slug = $1)
+     AND p.status = 'published' AND a.status = 'published'
+   LIMIT 1`;
+
 export function registerReiseguideRoutes(app: Express, deps: Deps): void {
   const { pool } = deps;
   const mediaBase = (deps.mediaUrlBase ?? process.env.REISEGUIDE_MEDIA_URL_BASE ?? DEFAULT_MEDIA_URL_BASE).trim();
@@ -440,6 +510,9 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
     deps.presignMedia ?? ((key: string) => presignCreatorHubObjectDownload(key, undefined, MEDIA_SIGNED_URL_TTL_S));
   const apiBase = (req: Request): string =>
     (deps.publicApiBase ?? (process.env.REISEGUIDE_PUBLIC_API_BASE?.trim() || requestApiBase(req))).replace(/\/+$/, "");
+  const ratingLimited = createRateLimiter(RATING_LIMIT_PER_MINUTE, 60_000);
+  const clientIp = (req: Request): string =>
+    req.get("x-forwarded-for")?.split(",")[0]?.trim() || req.ip || "unknown";
 
   const publicCache = (res: Response) => {
     res.setHeader("Cache-Control", "public, max-age=60");
@@ -485,15 +558,19 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
   ): Promise<PoiView[]> {
     if (poiRows.length === 0) return [];
     const ids = poiRows.map((p) => p.id);
-    const [translations, scripts] = await Promise.all([
+    const [translations, scripts, quiz, ratings] = await Promise.all([
       pool.query<TranslationRow>(TRANSLATION_SELECT, [ids]),
       pool.query<ScriptRow>(SCRIPT_SELECT, [ids]),
+      pool.query<QuizRow>(QUIZ_SELECT, [ids]),
+      pool.query<RatingAggregateRow>(RATING_AGGREGATE_SELECT, [ids]),
     ]);
     return poiRows.map((poi) =>
       buildPoiView({
         poi,
         translations: translations.rows,
         scripts: scripts.rows,
+        quiz: quiz.rows,
+        ratings: ratings.rows,
         requestedLang,
         defaultLang,
         mediaBase,
@@ -578,18 +655,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
     wrap(async (req, res) => {
       const idOrSlug = readIdOrSlug(req, res);
       if (!idOrSlug) return;
-      const { rows: poiRows } = await pool.query<PoiRow & { default_lang: string }>(
-        `SELECT p.id, p.area_id, p.slug, p.category_id, p.lat, p.lng, p.trigger_radius_m,
-                p.priority, p.sort_order, p.free_preview, p.hero_image_key, p.status,
-                a.default_lang
-           FROM guide_pois p
-           JOIN guide_areas a ON a.id = p.area_id
-          WHERE (p.id = $1 OR p.slug = $1)
-            AND p.status = 'published' AND a.status = 'published'
-          LIMIT 1`,
-        [idOrSlug],
-      );
-      const poi = poiRows[0];
+      const poi = await lookupPoi(idOrSlug);
       if (!poi) {
         res.status(404).json({ error: "poi_not_found" });
         return;
@@ -601,4 +667,76 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
       res.json({ requestedLang: lang, poi: view });
     }),
   );
+
+  app.post(
+    "/api/guide/pois/:idOrSlug/rating",
+    express.json({ limit: "8kb" }),
+    wrap(async (req, res) => {
+      const idOrSlug = readIdOrSlug(req, res);
+      if (!idOrSlug) return;
+      const parsed = parseRatingInput(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, message: parsed.message });
+        return;
+      }
+      if (ratingLimited(`guide-rating:${clientIp(req)}`)) {
+        res.status(429).json({ error: "rate_limited" });
+        return;
+      }
+      const poi = await lookupPoi(idOrSlug);
+      if (!poi) {
+        res.status(404).json({ error: "poi_not_found" });
+        return;
+      }
+      const { deviceId, stars, lang, comment } = parsed.value;
+      await pool.query(
+        `INSERT INTO guide_poi_ratings (id, poi_id, device_id, stars, lang, comment)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (poi_id, device_id) DO UPDATE SET
+           stars = EXCLUDED.stars, lang = EXCLUDED.lang, comment = EXCLUDED.comment, updated_at = now()`,
+        [`rat_${randomUUID()}`, poi.id, deviceId, stars, lang, comment],
+      );
+      const { rows } = await pool.query<RatingAggregateRow>(RATING_AGGREGATE_SELECT, [[poi.id]]);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ poiId: poi.id, yourStars: stars, rating: ratingSummary(rows[0]) });
+    }),
+  );
+
+  app.get(
+    "/api/guide/share/:idOrSlug",
+    wrap(async (req, res) => {
+      const idOrSlug = readIdOrSlug(req, res);
+      if (!idOrSlug) return;
+      const poi = await lookupPoi(idOrSlug);
+      if (!poi) {
+        res.status(404).json({ error: "poi_not_found" });
+        return;
+      }
+      const lang = readLang(req, res, poi.default_lang);
+      if (!lang) return;
+      const base = apiBase(req);
+      const [view] = await loadPoiViews([poi], lang, poi.default_lang, base);
+      const pageLang = view.lang.resolved ?? lang;
+      publicCache(res);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(
+        renderSharePage({
+          title: view.title,
+          subtitle: view.subtitle,
+          summary: view.summary,
+          locationLabel: view.locationLabel,
+          imageUrl: view.heroImageUrl,
+          imageAlt: view.heroImageAlt,
+          lang: pageLang,
+          shareUrl: shareUrlFor(view.slug, pageLang, base),
+          appUrl: appDeepLink(view.slug, pageLang),
+        }),
+      );
+    }),
+  );
+
+  async function lookupPoi(idOrSlug: string): Promise<(PoiRow & { default_lang: string }) | undefined> {
+    const { rows } = await pool.query<PoiRow & { default_lang: string }>(POI_LOOKUP_SELECT, [idOrSlug]);
+    return rows[0];
+  }
 }

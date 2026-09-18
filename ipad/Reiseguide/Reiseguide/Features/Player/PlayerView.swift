@@ -31,6 +31,13 @@ struct PlayerView: View {
         }
         .background(AppColor.bgBase)
         .preferredColorScheme(.dark)
+        .sheet(item: Bindable(env.player).finishedVisit) { visit in
+            AfterVisitView(entryId: visit.entryId, poi: visit.poi) { related in
+                env.player.finishedVisit = nil
+                env.player.stopAndClear()
+                env.open(poi: related)
+            }
+        }
         .onChange(of: player.pendingChapterAnnouncement) { _, title in
             guard let title else { return }
             let message = L10n.string("player.newChapter", lang: uiLang).replacingOccurrences(of: "%@", with: title)
@@ -83,14 +90,13 @@ struct PlayerView: View {
             .accessibilityValue(Text(player.captionsEnabled ? "state.on" : "state.off"))
             .accessibilityAddTraits(.isToggle)
             if let poi = player.poi {
-                ShareLink(item: poi.title) {
+                ShareLinkButton(url: poi.shareURL, fallbackText: poi.title, subject: poi.title, message: poi.title) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(AppColor.textPrimary)
                         .frame(width: 44, height: 44)
                         .background(AppColor.bgOverlay, in: Circle())
                 }
-                .accessibilityLabel(Text("action.share"))
             }
         }
     }
@@ -121,6 +127,10 @@ struct PlayerView: View {
                 }
             }
             variantPicker
+            SecondaryButton(title: "player.finish", systemImage: "checkmark.circle") {
+                player.finishVisit()
+            }
+            .accessibilityHint(Text("player.finishHint"))
             if let text = player.audioDescriptionText {
                 AudioDescriptionCard(
                     statusText: "audioDescription.now",

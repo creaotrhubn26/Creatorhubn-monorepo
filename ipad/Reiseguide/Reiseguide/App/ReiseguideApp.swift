@@ -21,13 +21,21 @@ struct ReiseguideApp: App {
                 .task(id: environment.settings.guideLanguage) {
                     await environment.store.loadIfNeeded(lang: environment.settings.guideLanguage)
                 }
+                .onOpenURL { url in
+                    environment.handle(url: url)
+                }
         }
     }
+}
+
+enum AppTab: Hashable {
+    case explore, myPlaces, settings
 }
 
 struct RootTabView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var explorePath = NavigationPath()
+    @State private var selectedTab: AppTab = .explore
 
     init() {
         // Tab bar: bgBase med 0,5 pt topplinje i border (5.9).
@@ -40,7 +48,7 @@ struct RootTabView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationStack(path: $explorePath) {
                 ExploreView(path: $explorePath)
                     .navigationDestination(for: Route.self) { route in
@@ -53,17 +61,22 @@ struct RootTabView: View {
                     }
             }
             .tabItem { Label("tab.explore", systemImage: "house") }
+            .tag(AppTab.explore)
 
             NavigationStack {
                 MyPlacesView()
             }
             .tabItem { Label("tab.myPlaces", systemImage: "heart") }
+            .tag(AppTab.myPlaces)
 
             NavigationStack {
                 SettingsView()
             }
             .tabItem { Label("tab.settings", systemImage: "gearshape") }
+            .tag(AppTab.settings)
         }
+        .onChange(of: env.pendingPoi) { _, _ in openPendingPoi() }
+        .onChange(of: env.store.pois.count) { _, _ in openPendingPoi() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if env.player.hasContent && !env.player.isPresented {
                 MiniPlayerBar()
@@ -72,5 +85,13 @@ struct RootTabView: View {
         .fullScreenCover(isPresented: Bindable(env.player).isPresented) {
             PlayerView()
         }
+    }
+
+    /// Deep link eller «liknende i nærheten»: hopp til Utforsk og vis stedet.
+    private func openPendingPoi() {
+        guard let poi = env.resolvePendingPoi() else { return }
+        env.pendingPoi = nil
+        selectedTab = .explore
+        explorePath = NavigationPath([Route.poi(poi.id)])
     }
 }

@@ -54,6 +54,12 @@ targets:
         # (UI-spesifikasjon 8.4, punkt 9).
         UIBackgroundModes:
           - audio
+        # Deep link fra delingssiden (backend /api/guide/share/{slug}):
+        # senseaidexplore://poi/{slug}?lang=nb, se Core/DeepLink.swift.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.creatorhubn.reiseguide.share
+            CFBundleURLSchemes:
+              - senseaidexplore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.reiseguide

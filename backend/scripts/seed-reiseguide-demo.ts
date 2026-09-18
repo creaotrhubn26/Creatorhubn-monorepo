@@ -6,7 +6,9 @@
  *
  * Idempotent: kjøres i én transaksjon med upsert på id, så en ny kjøring
  * oppdaterer tekst og geodata uten å lage duplikater. Lydfiler og teksting
- * røres ikke (de hører til steg 2 og genereres fra godkjente manus).
+ * røres ikke (de hører til steg 2 og genereres fra godkjente manus), og
+ * vurderinger fra brukere (guide_poi_ratings) røres aldri. Quiz-spørsmålene
+ * (0630_reiseguide_after_visit.sql) skrives på nytt per sted og språk.
  * Innholdet ligger i server/reiseguide-demo-data.ts.
  */
 import pg from "pg";
@@ -23,6 +25,7 @@ async function main(): Promise<void> {
   const client = await pool.connect();
   let translations = 0;
   let scripts = 0;
+  let quizQuestions = 0;
   try {
     await client.query("BEGIN");
 
@@ -101,13 +104,35 @@ async function main(): Promise<void> {
           );
           scripts += 1;
         }
+
+        const questions = poi.quiz[lang];
+        for (const [index, q] of questions.entries()) {
+          await client.query(
+            `INSERT INTO guide_poi_quiz_questions (id, poi_id, lang, sort_order, question, options,
+                                                   correct_index, explanation, editorial_status)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, 'draft')
+             ON CONFLICT (poi_id, lang, sort_order) DO UPDATE SET
+               question = EXCLUDED.question, options = EXCLUDED.options,
+               correct_index = EXCLUDED.correct_index, explanation = EXCLUDED.explanation,
+               updated_at = now()`,
+            [
+              `${poi.id}_${lang}_quiz_${index + 1}`, poi.id, lang, index + 1, q.question,
+              JSON.stringify(q.options), q.correctIndex, q.explanation,
+            ],
+          );
+          quizQuestions += 1;
+        }
+        await client.query(
+          `DELETE FROM guide_poi_quiz_questions WHERE poi_id = $1 AND lang = $2 AND sort_order > $3`,
+          [poi.id, lang, questions.length],
+        );
       }
     }
 
     await client.query("COMMIT");
     console.log(
       `Seed «${DEMO_AREA.name}»: ${DEMO_CATEGORIES.length} kategorier, ${DEMO_POIS.length} severdigheter, ` +
-        `${translations} oversettelser, ${scripts} manus (alle som utkast).`,
+        `${translations} oversettelser, ${scripts} manus, ${quizQuestions} quiz-spørsmål (alle som utkast).`,
     );
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);

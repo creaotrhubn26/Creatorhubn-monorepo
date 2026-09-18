@@ -17,6 +17,10 @@
  *
  * Varighet er anslått fra ordtall (ca. 145 ord/min nb, 150 ord/min en) og
  * erstattes av faktisk lydlengde når TTS er kjørt.
+ *
+ * Quiz (18.09.2026, «etter besøket»): tre spørsmål per sted og språk, alle
+ * med svar som står i fortellingen, så quizen aldri spør om noe man ikke har
+ * hørt. Samme utkast-status som manusene.
  */
 
 export type DemoLang = "nb" | "en";
@@ -27,6 +31,13 @@ export interface DemoScript {
   title: string | null;
   text: string;
   estimatedDurationS: number | null;
+}
+
+export interface DemoQuizQuestion {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string | null;
 }
 
 export interface DemoPoi {
@@ -52,6 +63,8 @@ export interface DemoPoi {
     }
   >;
   scripts: Record<DemoLang, DemoScript[]>;
+  /** Kort quiz etter besøket (0630): tre spørsmål per språk, fakta fra manuset. */
+  quiz: Record<DemoLang, DemoQuizQuestion[]>;
 }
 
 export const DEMO_AREA = {
@@ -170,6 +183,48 @@ export const DEMO_POIS: DemoPoi[] = [
         },
       ],
     },
+    quiz: {
+      nb: [
+        {
+          question: "Hvor mange ganger er Akershus festning blitt beleiret uten å bli inntatt?",
+          options: ["Tre ganger", "Ni ganger", "Fjorten ganger"],
+          correctIndex: 1,
+          explanation: "Ni beleiringer, den siste i 1716 da Karl den tolvte selv ledet svenskene.",
+        },
+        {
+          question: "Hvilken konge bygde middelalderborgen om til et renessanseslott?",
+          options: ["Håkon den femte", "Christian den fjerde", "Karl den tolvte"],
+          correctIndex: 1,
+          explanation: "Christian den fjerde ga borgen lyse murer og tårnene Blåtårnet og Romerikstårnet tidlig på 1600-tallet.",
+        },
+        {
+          question: "Hva ble festningen brukt til fra 1739 til 1950?",
+          options: ["Kongelig bolig", "Fengsel", "Universitet"],
+          correctIndex: 1,
+          explanation: "På «Slaveriet» hugget fangene stein i lenker; mye av granitten i byen er hugget her.",
+        },
+      ],
+      en: [
+        {
+          question: "How many times has Akershus Fortress been besieged without being taken?",
+          options: ["Three times", "Nine times", "Fourteen times"],
+          correctIndex: 1,
+          explanation: "Nine sieges, the last in 1716 when Charles the Twelfth led the Swedes in person.",
+        },
+        {
+          question: "Which king rebuilt the medieval castle as a renaissance palace?",
+          options: ["Haakon the Fifth", "Christian the Fourth", "Charles the Twelfth"],
+          correctIndex: 1,
+          explanation: "Christian the Fourth gave the castle its bright walls and the Blue Tower and Romerike Tower in the early 1600s.",
+        },
+        {
+          question: "What was the fortress used for from 1739 to 1950?",
+          options: ["A royal residence", "A prison", "A university"],
+          correctIndex: 1,
+          explanation: "At the 'Slavery' prisoners cut stone in chains; much of the city's granite was cut here.",
+        },
+      ],
+    },
   },
   {
     id: "poi_christiania_torv",
@@ -246,6 +301,48 @@ export const DEMO_POIS: DemoPoi[] = [
           text:
             "You are standing on a small, stone-paved square surrounded by low buildings of two and three storeys. In the middle of the square, on a small raised island, stands a large hand in dark bronze, shaped like a glove, its index finger pointing down at the ground. Around the hand is a low granite basin. On one side is a wide building of reddish brick with white window frames; there is a café with tables outside. On the corner diagonally opposite stands a pale, rendered building with a steep roof of dark, glossy tiles. That is the Old Town Hall. The streets run straight out from the square in all four directions.",
           estimatedDurationS: 45,
+        },
+      ],
+    },
+    quiz: {
+      nb: [
+        {
+          question: "Hva skjedde i 1624 som gjorde at byen ble flyttet hit?",
+          options: ["En stor flom", "En bybrann", "Et svensk angrep"],
+          correctIndex: 1,
+          explanation: "Brannen natt til 17. august 1624 tok nesten hele byen på tre dager.",
+        },
+        {
+          question: "Hva peker hansken i bronse midt på torget på?",
+          options: ["Mot festningen", "Ned mot bakken der byen skulle ligge", "Mot fjorden"],
+          correctIndex: 1,
+          explanation: "Sagnet sier kongen pekte ned og sa: «Her skal byen ligge.» Hansken er laget av Wenche Gulbrandsen i 1997.",
+        },
+        {
+          question: "Hvorfor heter bydelen Kvadraturen?",
+          options: ["Gatene krysser hverandre i rette vinkler", "Bymuren hadde fire porter", "Torget er helt kvadratisk"],
+          correctIndex: 0,
+          explanation: "Byen ble tegnet med linjal, med brede gater så ild ikke kunne hoppe fra hus til hus.",
+        },
+      ],
+      en: [
+        {
+          question: "What happened in 1624 that made the city move here?",
+          options: ["A great flood", "A city fire", "A Swedish attack"],
+          correctIndex: 1,
+          explanation: "The fire on the night of 17 August 1624 destroyed almost the whole city in three days.",
+        },
+        {
+          question: "What does the bronze glove in the middle of the square point at?",
+          options: ["The fortress", "The ground where the city was to lie", "The fjord"],
+          correctIndex: 1,
+          explanation: "Legend says the king pointed down and said 'Here shall the city lie.' The glove is by Wenche Gulbrandsen, 1997.",
+        },
+        {
+          question: "Why is the district called Kvadraturen?",
+          options: ["The streets cross at right angles", "The city wall had four gates", "The square is perfectly square"],
+          correctIndex: 0,
+          explanation: "The city was drawn with a ruler, with streets wide enough that fire could not jump between houses.",
         },
       ],
     },
@@ -328,6 +425,48 @@ export const DEMO_POIS: DemoPoi[] = [
         },
       ],
     },
+    quiz: {
+      nb: [
+        {
+          question: "Hvilket år ble Gamle rådhus bygd?",
+          options: ["1624", "1641", "1733"],
+          correctIndex: 1,
+          explanation: "Visestattholder Lauritz Hansen lot det bygge i 1641, bare sytten år etter at byen ble grunnlagt.",
+        },
+        {
+          question: "Hvilken institusjon holdt til i huset fra 1815 til 1846?",
+          options: ["Stortinget", "Høyesterett", "Norges Bank"],
+          correctIndex: 1,
+          explanation: "Norges Høyesterett satt her i det unge landets første tiår med egen grunnlov.",
+        },
+        {
+          question: "Hva er restauranten Gamle Raadhus mest kjent for?",
+          options: ["Lutefisk", "Pinnekjøtt", "Fårikål"],
+          correctIndex: 0,
+          explanation: "Lutefisken lages av håndskåret tørrfisk fra Værøy i Lofoten, og de gamle cellene er blitt vinkjeller.",
+        },
+      ],
+      en: [
+        {
+          question: "In which year was the Old Town Hall built?",
+          options: ["1624", "1641", "1733"],
+          correctIndex: 1,
+          explanation: "Deputy governor Lauritz Hansen had it built in 1641, only seventeen years after the city was founded.",
+        },
+        {
+          question: "Which institution sat in the house from 1815 to 1846?",
+          options: ["The Parliament", "The Supreme Court", "Norges Bank"],
+          correctIndex: 1,
+          explanation: "Norway's Supreme Court sat here in the young country's first decades with its own constitution.",
+        },
+        {
+          question: "What is the restaurant Gamle Raadhus best known for?",
+          options: ["Lutefisk", "Pinnekjøtt", "Fårikål"],
+          correctIndex: 0,
+          explanation: "The lutefisk is made from hand-cut stockfish from Værøy in Lofoten, and the old cells are now a wine cellar.",
+        },
+      ],
+    },
   },
   {
     id: "poi_oslo_bors",
@@ -402,6 +541,48 @@ export const DEMO_POIS: DemoPoi[] = [
           text:
             "You are standing in Børshagen, a small park with gravel paths, tall deciduous trees and benches. Straight ahead, beyond the fountain with the figure of Mercury, lies the exchange building: a low, wide building of two storeys above a high base, in a pale, warm yellow with white details. In the middle of the facade, sturdy smooth columns carry a triangular pediment. The windows are tall and set in even rows. On either side the wings reach out and frame the park. Behind you is Tollbugata, and to your right you can glimpse the houses of Kvadraturen.",
           estimatedDurationS: 39,
+        },
+      ],
+    },
+    quiz: {
+      nb: [
+        {
+          question: "Hvem tegnet børsbygningen?",
+          options: ["Christian Heinrich Grosch", "Sverre Fehn", "Ingvar Hjorth"],
+          correctIndex: 0,
+          explanation: "Grosch fikk oppdraget i 1827 da Stortinget nektet å bevilge penger til Slottet han egentlig jobbet med.",
+        },
+        {
+          question: "Hva ble omsatt på børsen den første handelsdagen i 1819?",
+          options: ["Aksjer", "Varer", "Obligasjoner"],
+          correctIndex: 1,
+          explanation: "Verdipapirbørs ble den først i 1881, med 16 obligasjonslån og 23 aksjer på listen.",
+        },
+        {
+          question: "Hvilken gud står i bronse på fontenen foran inngangen?",
+          options: ["Tor", "Merkur", "Neptun"],
+          correctIndex: 1,
+          explanation: "Merkur, handelens gud, ble gitt av grossereren Conrad Langaard i 1911.",
+        },
+      ],
+      en: [
+        {
+          question: "Who designed the exchange building?",
+          options: ["Christian Heinrich Grosch", "Sverre Fehn", "Ingvar Hjorth"],
+          correctIndex: 0,
+          explanation: "Grosch got the commission in 1827 when Parliament refused to fund the Royal Palace he was working on.",
+        },
+        {
+          question: "What was traded on the exchange's first trading day in 1819?",
+          options: ["Shares", "Goods", "Bonds"],
+          correctIndex: 1,
+          explanation: "It only became a securities exchange in 1881, with 16 bond series and 23 stocks on the list.",
+        },
+        {
+          question: "Which god stands in bronze on the fountain by the entrance?",
+          options: ["Thor", "Mercury", "Neptune"],
+          correctIndex: 1,
+          explanation: "Mercury, the god of commerce, was a gift from the wholesaler Conrad Langaard in 1911.",
         },
       ],
     },
@@ -481,6 +662,48 @@ export const DEMO_POIS: DemoPoi[] = [
           text:
             "You are standing on an open, cobbled square surrounded by large stone buildings. In the middle of the square is a round fountain with benches around it. On one side rises the former Norges Bank headquarters from 1906: three tall storeys of pale grey, rough-hewn granite, with heavy arches over the entrance and small turrets on the roof. Directly opposite is the low, pale building from 1828 with calm classical forms, and next to it a pavilion of glass and concrete. On the corner, in an older building with a light facade, hangs the sign of Engebret Café. The trees along the edges of the square are young and slender.",
           estimatedDurationS: 44,
+        },
+      ],
+    },
+    quiz: {
+      nb: [
+        {
+          question: "Hvor mange hus har Norges Bank hatt rundt Bankplassen?",
+          options: ["Ett", "To", "Tre"],
+          correctIndex: 2,
+          explanation: "Grosch-bygget fra 1828, jugendpalasset fra 1906 og dagens hovedsete fra 1986.",
+        },
+        {
+          question: "Hvem tegnet paviljongen i glass og betong ved Arkitekturmuseet?",
+          options: ["Snøhetta", "Sverre Fehn", "Ingvar Hjorth"],
+          correctIndex: 1,
+          explanation: "Sverre Fehn, den eneste norske arkitekten som har vunnet Pritzker-prisen, tegnet paviljongen fra 2008.",
+        },
+        {
+          question: "Hvilket år åpnet Engebret Café?",
+          options: ["1857", "1906", "1986"],
+          correctIndex: 0,
+          explanation: "Byens eldste restaurant; Ibsen, Bjørnson, Grieg og Munch var faste gjester.",
+        },
+      ],
+      en: [
+        {
+          question: "How many buildings has Norges Bank had around Bankplassen?",
+          options: ["One", "Two", "Three"],
+          correctIndex: 2,
+          explanation: "The Grosch building from 1828, the Art Nouveau palace from 1906 and today's headquarters from 1986.",
+        },
+        {
+          question: "Who designed the glass and concrete pavilion by the Museum of Architecture?",
+          options: ["Snøhetta", "Sverre Fehn", "Ingvar Hjorth"],
+          correctIndex: 1,
+          explanation: "Sverre Fehn, the only Norwegian architect to win the Pritzker Prize, designed the 2008 pavilion.",
+        },
+        {
+          question: "In which year did Engebret Café open?",
+          options: ["1857", "1906", "1986"],
+          correctIndex: 0,
+          explanation: "The city's oldest restaurant; Ibsen, Bjørnson, Grieg and Munch were regulars.",
         },
       ],
     },
@@ -578,6 +801,48 @@ export const DEMO_POIS: DemoPoi[] = [
           text:
             "You are standing on the square in front of the Opera House. Ahead of you, large planes of white marble slope up from the ground like a wide ramp without steps. The surface is smooth and pale, with long, thin joints. To the left of the ramp, at ground level, the whole facade is glass, so you can see the warm, golden oak wall curving inside. Above it all looms the stage tower, a tall, square block of pale, patterned aluminium. To your right the fjord glitters, and out in the water stands an angular shape of glass and steel that catches the sun.",
           estimatedDurationS: 42,
+        },
+      ],
+    },
+    quiz: {
+      nb: [
+        {
+          question: "Hvilket år åpnet Operaen?",
+          options: ["2000", "2008", "2012"],
+          correctIndex: 1,
+          explanation: "Operaen åpnet 12. april 2008 og fikk Mies van der Rohe-prisen året etter.",
+        },
+        {
+          question: "Hva er taket kledd med?",
+          options: ["Hvit italiensk marmor", "Norsk granitt", "Glass"],
+          correctIndex: 0,
+          explanation: "Marmoren La Facciata holder på lyset og fargen også når den er våt; rundt 20 000 kvadratmeter.",
+        },
+        {
+          question: "Hva heter skulpturen som flyter i vannet foran Operaen?",
+          options: ["«Ishavet»", "«She Lies»", "«Den andre veggen»"],
+          correctIndex: 1,
+          explanation: "«She Lies» av Monica Bonvicini dreier med tidevannet og tolker Caspar David Friedrichs «Ishavet».",
+        },
+      ],
+      en: [
+        {
+          question: "In which year did the Opera House open?",
+          options: ["2000", "2008", "2012"],
+          correctIndex: 1,
+          explanation: "It opened on 12 April 2008 and won the Mies van der Rohe Award the following year.",
+        },
+        {
+          question: "What is the roof clad in?",
+          options: ["White Italian marble", "Norwegian granite", "Glass"],
+          correctIndex: 0,
+          explanation: "The La Facciata marble keeps its light and colour even when wet; around 20,000 square metres.",
+        },
+        {
+          question: "What is the sculpture floating in the water in front of the Opera House called?",
+          options: ["'The Sea of Ice'", "'She Lies'", "'The Other Wall'"],
+          correctIndex: 1,
+          explanation: "'She Lies' by Monica Bonvicini turns with the tide and interprets Caspar David Friedrich's 'The Sea of Ice'.",
         },
       ],
     },

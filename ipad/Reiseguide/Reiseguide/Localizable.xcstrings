@@ -52,6 +52,23 @@
         }
       }
     },
+    "action.done": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ferdig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
     "action.removeFavorite": {
       "extractionState": "manual",
       "localizations": {
@@ -99,6 +116,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Share"
+          }
+        }
+      }
+    },
+    "afterVisit.heading": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takk for turen til %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thanks for visiting %@"
+          }
+        }
+      }
+    },
+    "afterVisit.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etter besøket"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After your visit"
+          }
+        }
+      }
+    },
+    "afterVisit.visitedOn": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøkt %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visited %@"
           }
         }
       }
@@ -269,6 +337,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Added to my places"
+          }
+        }
+      }
+    },
+    "detail.afterVisit": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiz og vurdering"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiz and rating"
           }
         }
       }
@@ -456,6 +541,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unlock to start"
+          }
+        }
+      }
+    },
+    "detail.visited": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøkt %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visited %@"
           }
         }
       }
@@ -715,6 +817,91 @@
         }
       }
     },
+    "log.completed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fullført"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed"
+          }
+        }
+      }
+    },
+    "log.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har ikke besøkt noen steder ennå. Start en opplevelse, så havner den her med dato og klokkeslett."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You haven't visited any places yet. Start an experience and it will appear here with date and time."
+          }
+        }
+      }
+    },
+    "log.quizScore": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ av %2$@ riktige"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@ correct"
+          }
+        }
+      }
+    },
+    "log.rowHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner quiz, vurdering og tips for dette besøket"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the quiz, rating and tips for this visit"
+          }
+        }
+      }
+    },
+    "log.started": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Påbegynt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started"
+          }
+        }
+      }
+    },
     "map.listLabel": {
       "extractionState": "manual",
       "localizations": {
@@ -902,6 +1089,57 @@
         }
       }
     },
+    "myPlaces.favorites": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favoritter"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favourites"
+          }
+        }
+      }
+    },
+    "myPlaces.log": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logg"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log"
+          }
+        }
+      }
+    },
+    "myPlaces.sections": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visning"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View"
+          }
+        }
+      }
+    },
     "paywall.body": {
       "extractionState": "manual",
       "localizations": {
@@ -983,6 +1221,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skip back 15 seconds"
+          }
+        }
+      }
+    },
+    "player.finish": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avslutt besøket"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finish the visit"
+          }
+        }
+      }
+    },
+    "player.finishHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merker stedet som besøkt og åpner quiz, vurdering og tips"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marks the place as visited and opens the quiz, rating and tips"
           }
         }
       }
@@ -1242,6 +1514,346 @@
         }
       }
     },
+    "quiz.again": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prøv igjen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try again"
+          }
+        }
+      }
+    },
+    "quiz.correct": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riktig!"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correct!"
+          }
+        }
+      }
+    },
+    "quiz.finish": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se resultatet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See the result"
+          }
+        }
+      }
+    },
+    "quiz.good": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bra! Du fikk med deg det meste."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nice! You caught most of it."
+          }
+        }
+      }
+    },
+    "quiz.intro": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tre raske spørsmål om det du nettopp hørte. Ingen poeng, bare moro."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Three quick questions about what you just heard. No points, just fun."
+          }
+        }
+      }
+    },
+    "quiz.next": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste spørsmål"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next question"
+          }
+        }
+      }
+    },
+    "quiz.none": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quizen for dette stedet er ikke laget ennå."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The quiz for this place isn't ready yet."
+          }
+        }
+      }
+    },
+    "quiz.ok": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste gang går det bedre. Hør fortellingen en gang til."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Better luck next time. Listen to the story once more."
+          }
+        }
+      }
+    },
+    "quiz.option.correct": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riktig svar"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correct answer"
+          }
+        }
+      }
+    },
+    "quiz.option.wrong": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feil svar"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wrong answer"
+          }
+        }
+      }
+    },
+    "quiz.perfect": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full pott! Du hørte godt etter."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full marks! You were listening closely."
+          }
+        }
+      }
+    },
+    "quiz.progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørsmål %1$@ av %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Question %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "quiz.result": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du fikk %1$@ av %2$@ riktige"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You got %1$@ of %2$@ right"
+          }
+        }
+      }
+    },
+    "quiz.start": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start quizen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start the quiz"
+          }
+        }
+      }
+    },
+    "quiz.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liten quiz"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quick quiz"
+          }
+        }
+      }
+    },
+    "quiz.wrong": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke helt. Riktig svar: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not quite. The right answer: %@"
+          }
+        }
+      }
+    },
+    "rating.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vurderingen er lagret på telefonen, men kunne ikke sendes nå. Prøv igjen senere."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your rating is saved on this phone but could not be sent now. Try again later."
+          }
+        }
+      }
+    },
+    "rating.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stjernevurdering"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Star rating"
+          }
+        }
+      }
+    },
+    "rating.sending": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender vurderingen …"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending your rating…"
+          }
+        }
+      }
+    },
+    "rating.sent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takk! Vurderingen er sendt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thanks! Your rating was sent."
+          }
+        }
+      }
+    },
     "rating.spoken": {
       "extractionState": "manual",
       "localizations": {
@@ -1255,6 +1867,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ out of 5 stars, %2$@ ratings"
+          }
+        }
+      }
+    },
+    "rating.star": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ av 5 stjerner"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ out of 5 stars"
+          }
+        }
+      }
+    },
+    "rating.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hva synes du om stedet?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How was it?"
+          }
+        }
+      }
+    },
+    "related.none": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen flere steder i nærheten ennå."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No more places nearby yet."
+          }
+        }
+      }
+    },
+    "related.sameCategory": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samme kategori"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same category"
+          }
+        }
+      }
+    },
+    "related.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liknende i nærheten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Similar places nearby"
           }
         }
       }
@@ -1425,6 +2122,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unlocked"
+          }
+        }
+      }
+    },
+    "share.lead": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send lenken til noen som bør høre denne fortellingen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send the link to someone who should hear this story."
+          }
+        }
+      }
+    },
+    "share.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeg besøkte %@ med SenseAid Explore. Hør fortellingen her:"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I visited %@ with SenseAid Explore. Listen to the story here:"
+          }
+        }
+      }
+    },
+    "share.recommend": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anbefal til en venn"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommend to a friend"
           }
         }
       }

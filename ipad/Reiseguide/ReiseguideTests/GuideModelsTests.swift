@@ -1,8 +1,8 @@
 // GuideModelsTests.swift
 //
 // Dekoder et ekte svar fra GET /api/guide/areas/:slug?lang=nb (fixture tatt
-// 18.09.2026 fra backend/server/reiseguide-routes.ts mot demo-seed) og sjekker
-// at modellene matcher kontrakten.
+// 18.09.2026 fra backend/server/reiseguide-routes.ts mot demo-seed med manus
+// v1 og quiz, migrasjon 0629 + 0630) og sjekker at modellene matcher kontrakten.
 
 import XCTest
 @testable import Reiseguide
@@ -32,24 +32,47 @@ final class GuideModelsTests: XCTestCase {
         XCTAssertTrue(akershus.freePreview)
         XCTAssertEqual(akershus.triggerRadiusM, 120)
         XCTAssertEqual(akershus.title, "Akershus festning")
-        XCTAssertEqual(akershus.practicalInfo.count, 4)
+        XCTAssertEqual(akershus.practicalInfo.count, 5)
         let narration = try XCTUnwrap(akershus.variants.narration)
         XCTAssertEqual(narration.kind, .narration)
-        XCTAssertEqual(narration.chapters.count, 1)
+        XCTAssertEqual(narration.chapters.count, 2)
         XCTAssertFalse(narration.hasAudio)
-        XCTAssertEqual(narration.chapters[0].playbackDurationS, 35)
+        XCTAssertEqual(narration.chapters[0].playbackDurationS, 73)
         XCTAssertNotNil(akershus.variants.audioDescription)
         XCTAssertTrue(akershus.hasAudioDescription)
         XCTAssertFalse(akershus.hasCaptions)
     }
 
-    func testPoiWithoutAudioDescriptionDecodesToNil() throws {
+    func testEveryPoiHasQuizShareUrlAndNoRatingsYet() throws {
         let response = try loadFixture()
+        for poi in response.pois {
+            XCTAssertEqual(poi.quizQuestions.count, 3, poi.slug)
+            for question in poi.quizQuestions {
+                XCTAssertTrue(question.options.indices.contains(question.correctIndex), question.id)
+                XCTAssertGreaterThanOrEqual(question.options.count, 2)
+            }
+            XCTAssertNil(poi.rating, "ingen vurderinger i demo-seeden")
+            XCTAssertEqual(poi.shareURL?.path(), "/api/guide/share/\(poi.slug)")
+            XCTAssertEqual(poi.lang.resolved, "nb")
+            XCTAssertFalse(poi.lang.fallbackUsed)
+        }
         let bors = try XCTUnwrap(response.pois.first { $0.slug == "oslo-bors" })
-        XCTAssertNil(bors.variants.audioDescription)
-        XCTAssertNotNil(bors.variants.narration)
-        XCTAssertEqual(bors.lang.resolved, "nb")
-        XCTAssertFalse(bors.lang.fallbackUsed)
+        XCTAssertEqual(bors.quizQuestions[0].correctIndex, 0)
+        XCTAssertEqual(bors.quizQuestions[0].options, ["Christian Heinrich Grosch", "Sverre Fehn", "Ingvar Hjorth"])
+    }
+
+    func testOlderCachedResponseWithoutAfterVisitFieldsStillDecodes() throws {
+        let json = """
+        {"id":"p","slug":"s","areaId":"a","categoryId":null,"lat":59.9,"lng":10.7,"triggerRadiusM":40,"priority":0,
+         "sortOrder":0,"freePreview":true,"heroImageUrl":null,"heroImageAlt":null,"title":"T","subtitle":null,
+         "summary":null,"locationLabel":null,"practicalInfo":[],
+         "lang":{"requested":"nb","resolved":"nb","fallbackUsed":false,"autoTranslated":false,"editorialStatus":"draft","available":["nb"]},
+         "variants":{"narration":null,"audioDescription":null}}
+        """
+        let poi = try JSONDecoder().decode(GuidePOI.self, from: Data(json.utf8))
+        XCTAssertTrue(poi.quizQuestions.isEmpty)
+        XCTAssertNil(poi.rating)
+        XCTAssertNil(poi.shareURL)
     }
 
     func testRoundTripsThroughCacheEncoding() throws {

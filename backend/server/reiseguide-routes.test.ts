@@ -439,3 +439,99 @@ describe("GET /api/guide/pois/:idOrSlug", () => {
     expect(res.body).toEqual({ error: "poi_not_found" });
   });
 });
+
+describe("etter besøket: quiz, vurdering og deling", () => {
+  const quizRows = [
+    { id: "q_ak_nb_1", poi_id: "poi_akershus", lang: "nb", sort_order: 1, question: "Hvor mange beleiringer?", options: ["Tre", "Ni"], correct_index: 1, explanation: "Ni." },
+    { id: "q_ak_nb_2", poi_id: "poi_akershus", lang: "nb", sort_order: 2, question: "Hvem bygde om?", options: ["Håkon", "Christian"], correct_index: 1, explanation: null },
+    { id: "q_ak_en_1", poi_id: "poi_akershus", lang: "en", sort_order: 1, question: "How many sieges?", options: ["Three", "Nine"], correct_index: 1, explanation: "Nine." },
+  ];
+  const ratingRows = [{ poi_id: "poi_akershus", average: 4.6667, count: 3 }];
+  const inserted: unknown[][] = [];
+  const handlers: Handler[] = [
+    {
+      match: /FROM guide_areas a WHERE \(a\.id = \$1 OR a\.slug = \$1\)/,
+      rows: (p) => (p[0] === "area_oslo" ? [areaRow] : []),
+    },
+    { match: /FROM guide_categories/, rows: [] },
+    { match: /FROM guide_pois WHERE area_id = \$1/, rows: poiRows },
+    {
+      match: /FROM guide_pois p\s+JOIN guide_areas a/,
+      rows: (p) => {
+        const hit = poiRows.find((r) => r.id === p[0] || r.slug === p[0]);
+        return hit ? [{ ...hit, default_lang: "nb" }] : [];
+      },
+    },
+    { match: /FROM guide_poi_translations/, rows: translationRows },
+    { match: /FROM guide_poi_scripts s/, rows: scriptRows },
+    { match: /FROM guide_poi_quiz_questions/, rows: quizRows },
+    { match: /FROM guide_poi_ratings/, rows: ratingRows },
+    {
+      match: /INSERT INTO guide_poi_ratings/,
+      rows: (p) => {
+        inserted.push(p);
+        return [];
+      },
+    },
+  ];
+
+  it("legger quiz, vurdering og delingslenke på hver severdighet i området", async () => {
+    const res = await request(makeApp(makePool(handlers))).get("/api/guide/areas/area_oslo?lang=en");
+    expect(res.status).toBe(200);
+    const [akershus, opera] = res.body.pois;
+    // Engelsk manus finnes: quizen følger manusspråket.
+    expect(akershus.quiz).toEqual([
+      { id: "q_ak_en_1", no: 1, question: "How many sieges?", options: ["Three", "Nine"], correctIndex: 1, explanation: "Nine." },
+    ]);
+    expect(akershus.rating).toEqual({ average: 4.7, count: 3 });
+    expect(akershus.shareUrl).toBe("https://api.test/api/guide/share/akershus-festning?lang=en");
+    expect(opera.quiz).toEqual([]);
+    expect(opera.rating).toBeNull();
+    expect(opera.shareUrl).toBe("https://api.test/api/guide/share/operaen?lang=nb");
+
+    const nb = await request(makeApp(makePool(handlers))).get("/api/guide/pois/akershus-festning?lang=nb");
+    expect(nb.body.poi.quiz.map((q: { no: number }) => q.no)).toEqual([1, 2]);
+  });
+
+  it("POST rating validerer, lagrer med upsert og svarer med nytt snitt", async () => {
+    inserted.length = 0;
+    const app = makeApp(makePool(handlers));
+    const bad = await request(app).post("/api/guide/pois/akershus-festning/rating").send({ deviceId: "x", stars: 5 });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe("invalid_device_id");
+
+    const missing = await request(app).post("/api/guide/pois/ukjent/rating").send({ deviceId: "device-1234", stars: 5 });
+    expect(missing.status).toBe(404);
+
+    const ok = await request(app)
+      .post("/api/guide/pois/akershus-festning/rating")
+      .send({ deviceId: "device-1234", stars: 5, lang: "nb", comment: " Flott " });
+    expect(ok.status).toBe(200);
+    expect(ok.headers["cache-control"]).toBe("private, no-store");
+    expect(ok.body).toEqual({ poiId: "poi_akershus", yourStars: 5, rating: { average: 4.7, count: 3 } });
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].slice(1)).toEqual(["poi_akershus", "device-1234", 5, "nb", "Flott"]);
+    expect(String(inserted[0][0])).toMatch(/^rat_/);
+  });
+
+  it("POST rating stopper løkker med 429 etter 30 forsøk per IP i minuttet", async () => {
+    const app = makeApp(makePool(handlers));
+    let last = 0;
+    for (let i = 0; i < 31; i += 1) {
+      last = (await request(app).post("/api/guide/pois/akershus-festning/rating").send({ deviceId: "device-1234", stars: 3 })).status;
+    }
+    expect(last).toBe(429);
+  });
+
+  it("GET share gir HTML med Open Graph og app-lenke, 404 for ukjent sted", async () => {
+    const app = makeApp(makePool(handlers));
+    const res = await request(app).get("/api/guide/share/akershus-festning?lang=en");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    expect(res.text).toContain('<meta property="og:title" content="Akershus Fortress">');
+    expect(res.text).toContain('<meta property="og:image" content="https://media.test/reiseguide/akershus/hero.jpg">');
+    expect(res.text).toContain('href="senseaidexplore://poi/akershus-festning?lang=en"');
+    expect(res.text).toContain('content="https://api.test/api/guide/share/akershus-festning?lang=en"');
+    expect((await request(app).get("/api/guide/share/ukjent")).status).toBe(404);
+  });
+});

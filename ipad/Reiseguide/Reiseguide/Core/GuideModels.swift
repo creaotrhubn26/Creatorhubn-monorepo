@@ -4,6 +4,9 @@
 // (GET /api/guide/areas, /api/guide/areas/:idOrSlug, /api/guide/pois/:idOrSlug).
 // Feltnavnene er identiske med JSON-en, så JSONDecoder brukes uten keyStrategy.
 // Testfixture: ReiseguideTests/Fixtures/area-nb.json (ekte svar fra backend).
+//
+// «Etter besøket» (migrasjon 0630): quiz, rating og shareUrl per POI. De er
+// valgfrie i dekodingen så et eldre cachet svar fortsatt kan leses.
 
 import Foundation
 
@@ -117,6 +120,29 @@ struct GuideVariants: Codable, Sendable, Equatable {
     let audioDescription: GuideVariant?
 }
 
+/// Ett quiz-spørsmål; `correctIndex` peker inn i `options`.
+struct QuizQuestion: Codable, Sendable, Identifiable, Equatable {
+    let id: String
+    let no: Int
+    let question: String
+    let options: [String]
+    let correctIndex: Int
+    let explanation: String?
+}
+
+/// Snitt (én desimal) og antall stjernerangeringer fra backend.
+struct RatingSummary: Codable, Sendable, Equatable {
+    let average: Double
+    let count: Int
+}
+
+/// Svar fra POST /api/guide/pois/:idOrSlug/rating.
+struct RatingResponse: Codable, Sendable, Equatable {
+    let poiId: String
+    let yourStars: Int
+    let rating: RatingSummary?
+}
+
 struct GuidePOI: Codable, Sendable, Identifiable, Equatable {
     let id: String
     let slug: String
@@ -137,8 +163,16 @@ struct GuidePOI: Codable, Sendable, Identifiable, Equatable {
     let practicalInfo: [PracticalInfoItem]
     let lang: LanguageInfo
     let variants: GuideVariants
+    let quiz: [QuizQuestion]?
+    let rating: RatingSummary?
+    let shareUrl: String?
 
     var coordinate: Coordinate { Coordinate(lat: lat, lng: lng) }
+
+    var quizQuestions: [QuizQuestion] { quiz ?? [] }
+
+    /// Delingslenke som URL; nil hvis backend ikke ga noen.
+    var shareURL: URL? { shareUrl.flatMap { URL(string: $0) } }
 
     /// Fortellingen, eller synstolkingen hvis fortellingen mangler. Brukes der
     /// UI-et bare trenger «det som kan spilles».

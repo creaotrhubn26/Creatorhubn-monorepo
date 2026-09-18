@@ -7,6 +7,8 @@
 //   - unlockedAreaIds: mock-paywall, låst/ulåst per område lagret lokalt.
 //   - favoritePoiIds: «Mine steder».
 //   - playbackRate: 0,8 / 1 / 1,25 / 1,5.
+//   - deviceId: anonym, tilfeldig ID laget første gang appen kjører; brukes
+//     bare til å knytte én stjernerangering til én enhet (ingen konto).
 
 import Foundation
 import Observation
@@ -23,6 +25,7 @@ final class AppSettings {
         static let unlockedAreaIds = "reiseguide.unlockedAreaIds"
         static let favoritePoiIds = "reiseguide.favoritePoiIds"
         static let playbackRate = "reiseguide.playbackRate"
+        static let deviceId = "reiseguide.deviceId"
     }
 
     private let defaults: UserDefaults
@@ -47,6 +50,9 @@ final class AppSettings {
         didSet { defaults.set(playbackRate, forKey: Key.playbackRate) }
     }
 
+    /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
+    let deviceId: String
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         guideLanguage = defaults.string(forKey: Key.guideLanguage) ?? Self.preferredInitialLanguage()
@@ -55,6 +61,13 @@ final class AppSettings {
         favoritePoiIds = Set(defaults.stringArray(forKey: Key.favoritePoiIds) ?? [])
         let storedRate = defaults.double(forKey: Key.playbackRate)
         playbackRate = storedRate > 0 ? storedRate : 1
+        if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
+            deviceId = stored
+        } else {
+            let fresh = UUID().uuidString.lowercased()
+            defaults.set(fresh, forKey: Key.deviceId)
+            deviceId = fresh
+        }
     }
 
     /// UI-språket appen faktisk kan vise: valgt språk hvis vi har strenger for
