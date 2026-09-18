@@ -32,6 +32,8 @@ struct PairExchangeError: Error, LocalizedError {
             return "Koden utløp. Generer en ny i web."
         case "network_error":
             return "Nettverksfeil. Sjekk forbindelsen og prøv igjen."
+        case "linkedin_transfer_expired":
+            return "LinkedIn-innloggingen utløp. Prøv igjen."
         default:
             return "Uventet feil (\(code))."
         }
@@ -83,6 +85,33 @@ actor PairExchangeService {
             return try JSONDecoder().decode(PairExchangeResponse.self, from: data)
         }
         throw PairExchangeError(code: "google_auth_failed")
+    }
+
+    /// Bytter LinkedIn-transfer-id (fra leadgrid://oauth?linkedin_transfer=…)
+    /// mot et Leadgrid bearer-token. Backend har allerede verifisert LinkedIn-
+    /// innloggingen, opprettet Solo Free-org hvis ny bruker, og fylt profilen.
+    func exchangeLinkedInTransfer(_ transfer: String) async throws -> PairExchangeResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/auth/linkedin/exchange"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let info = await MainActor.run { Self.deviceInfo() }
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "transfer": transfer,
+            "deviceInfo": info,
+            "platform": "ios_native_app",
+        ])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw PairExchangeError(code: "network_error")
+        }
+        if (200..<300).contains(http.statusCode) {
+            return try JSONDecoder().decode(PairExchangeResponse.self, from: data)
+        }
+        if let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let code = body["error"] as? String {
+            throw PairExchangeError(code: code)
+        }
+        throw PairExchangeError(code: "linkedin_auth_failed")
     }
 
     func exchange(qrPayload: String) async throws -> PairExchangeResponse {

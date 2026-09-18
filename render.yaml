@@ -274,6 +274,10 @@ services:
       # i LinkedIn-tilkoblingen uten deploy. Default på.
       - key: ROLE_ROOM_LINKEDIN_ORG_SCOPES
         sync: false
+      # Valgfri: sett til "off" for å skjule «Fortsett med LinkedIn»
+      # (web + Leadgrid iOS) uten deploy. Default på.
+      - key: LINKEDIN_LOGIN_ENABLED
+        sync: false
       # ── Meta / Instagram Graph API ─────────────────────────────────
       # App id + secret from developers.facebook.com → your app → Settings.
       - key: META_APP_ID
