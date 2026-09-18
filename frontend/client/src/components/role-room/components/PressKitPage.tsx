@@ -47,9 +47,27 @@ const BOILERPLATE_LONG =
 
 const LOGOS: Array<{ name: string; src: string; alt: string; download: string }> = [
   {
-    name: 'The Role Room — App-logo (PNG)',
+    name: 'Logo med ordmerke — lys bakgrunn (PNG)',
+    src: '/theroleroom-lockup-light.png',
+    alt: 'The Role Room logo med ordmerke, for lys bakgrunn',
+    download: '/theroleroom-lockup-light.png',
+  },
+  {
+    name: 'Logo med ordmerke — mørk bakgrunn (PNG)',
+    src: '/theroleroom-lockup-dark.png',
+    alt: 'The Role Room logo med ordmerke, for mørk bakgrunn',
+    download: '/theroleroom-lockup-dark.png',
+  },
+  {
+    name: 'Logo med ordmerke (SVG)',
+    src: '/theroleroom-lockup-light.png',
+    alt: 'The Role Room logo med ordmerke som vektor',
+    download: '/theroleroom-lockup.svg',
+  },
+  {
+    name: 'Merket alene — app-ikon (PNG)',
     src: '/theroleroom-mark-1024.png',
-    alt: 'The Role Room app-logo',
+    alt: 'The Role Room app-ikon',
     download: '/theroleroom-mark-1024.png',
   },
   {
