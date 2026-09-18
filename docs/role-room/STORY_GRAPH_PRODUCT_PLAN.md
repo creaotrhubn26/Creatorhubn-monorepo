@@ -272,7 +272,18 @@ vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis �
   aldri automatisk. UI: Historie → «Manusvakt» (kjør regler / regler + KI), hjem-KPI «Manusvakt»
   (ventende/høye). MCP: `rr_script_guardian_check` (kun regler, lesetilgang). e2e
   `game-script-guardian.spec.ts`. Ingen migrasjon. Akseptanse: ren WFU-seed gir null funn.
-- **8e–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
+- **8e Swift-runtime + spilltest-telemetri (LEVERT):** `packages/story-graph-runtime/swift/` (Swift Package,
+  iOS 17/macOS 14; `StoryGraphProject`/`StoryGraphSession`/`MiniScript` — samme arcscript-delsett som
+  C#/GDScript, paritetstest mot `fixtures/sample-project.json`; kompileres IKKE i vår CI — se
+  `CHECKLIST.md`). Motoren fikk `createPlaySession(graph, { onEvent })` (enter/choose/branch/jumper/
+  restart/set/back med koblings- og mål-id) — JS-pakken er bygget om. Telemetri: migrasjon
+  `0644_narrative_playtest.sql` (tokens som sha256-hash + hendelser uten PII), inntak
+  `POST /api/role-room/narrative/playtest/events` (bearer-token, alltid 204, ≤ 500 per batch,
+  600/min per token), aggregat `GET …/playtest/summary` (økter, drop-off, median tid, dødsfall,
+  valgfordeling per scene, SQL). UI: Spilltest-fane på scenekortet, tokens i Integrasjoner-fanen
+  (råtoken vist én gang), hjem-KPI «Spilltest». Docs `docs/role-room/STORY_GRAPH_PLAYTEST_TELEMETRY.md`
+  (Swift-snutt), eksempel `js/examples/playtest-telemetry.mjs`. e2e `game-playtest.spec.ts`.
+- **8f–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
 
 
 ## Researchprogram

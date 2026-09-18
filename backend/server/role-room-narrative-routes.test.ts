@@ -944,6 +944,30 @@ describe('narrative routes — Fase 7: produksjons-OS (gater, replikker, episode
     expect(res.body.data.platform).toEqual({ requirements: 2, verified: 1, primaryName: 'iPad Pro M1' });
   });
 
+  it('Fase 8e: playtest-tokens (POST 201 med råtoken én gang, GET liste, revoke 404/200) og summary 200', async () => {
+    const pool = makePool([
+      { match: /INSERT INTO narrative_playtest_tokens/, rows: (p) => [{ id: p[0], project_id: p[1], label: p[2], token_hash: p[3], created_by: p[4], created_at: new Date(), expires_at: p[5], revoked_at: null, last_used_at: null, event_count: 0 }] },
+      { match: /SELECT \* FROM narrative_playtest_tokens WHERE project_id/, rows: [{ id: 'npk_1', project_id: 'proj', label: 'x', created_at: new Date(), event_count: 3 }] },
+      { match: /UPDATE narrative_playtest_tokens SET revoked_at/, rows: (p) => (p[0] === 'npk_1' ? [{ id: 'npk_1', project_id: 'proj', label: 'x', created_at: new Date(), revoked_at: new Date(), event_count: 3 }] : []) },
+      { match: /array_agg\(DISTINCT build\)/, rows: [{ sessions: 2, events: 9, builds: ['b1'] }] },
+    ]);
+    const created = await auth(request(createApp(pool)).post(`${base}/playtest-tokens`)).send({ label: 'iPad', ttlDays: 30 });
+    expect(created.status).toBe(201);
+    expect(created.body.data.rawToken).toMatch(/^sgp_/);
+    expect(created.body.data.ingestPath).toBe('/api/role-room/narrative/playtest/events');
+    expect(JSON.stringify(created.body.data.token)).not.toContain(created.body.data.rawToken);
+    const list = await auth(request(createApp(pool)).get(`${base}/playtest-tokens`));
+    expect(list.status).toBe(200); expect(list.body.data).toHaveLength(1);
+    expect((await auth(request(createApp(pool)).post(`${base}/playtest-tokens/npk_nope/revoke`))).status).toBe(404);
+    expect((await auth(request(createApp(pool)).post(`${base}/playtest-tokens/npk_1/revoke`))).status).toBe(200);
+    const summary = await auth(request(createApp(pool)).get(`${base}/playtest/summary?build=b1&days=7`));
+    expect(summary.status).toBe(200);
+    expect(summary.body.data).toMatchObject({ days: 7, build: 'b1', sessions: 2, events: 9, scenes: [], worstDropOff: null });
+    // Offentlig inntak uten token → 204 (aldri 401).
+    const ingest = await request(createApp(pool)).post('/api/role-room/narrative/playtest/events').send({ events: [{ sessionId: 's', sceneCode: 'P01', event: 'enter' }] });
+    expect(ingest.status).toBe(204);
+  });
+
   it('innboks: GET filtrerer narrative-varsler; POST :id/read → 404 for fremmed varsel, 200 ellers; read-all teller', async () => {
     const pool = makePool([
       { match: /SELECT n\.\*, rd\.read_at FROM role_room_project_notifications/, rows: [{ id: 'n1', event_type: 'narrative_scene_review_requested', title: 'Review: P01', message: null, linked_entity_type: 'narrative_scene', linked_entity_id: 'nsc_1', created_by_user_id: 'u2', created_at: new Date(), updated_at: new Date(), read_at: null }] },

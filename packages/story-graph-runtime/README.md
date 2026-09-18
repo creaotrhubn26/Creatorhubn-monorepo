@@ -14,8 +14,9 @@ har to veier inn i spillmotoren:
 | `js/` | `@creatorhub/story-graph-runtime` — den delte TypeScript-motoren (samme kode som Play Mode). Full arcscript. `dist/` er committet. |
 | `unity/StoryGraphRuntime.cs` | C# (Unity 2020.3+/.NET Standard 2.1, Newtonsoft.Json). Delsett. |
 | `godot/story_graph_runtime.gd` | GDScript for Godot 4. Delsett. |
+| `swift/` | `StoryGraphRuntime` — Swift Package (iOS 17+/macOS 14+, swift-tools-version 5.9). Delsett, ingen avhengigheter. Se `swift/README.md`. |
 | `fixtures/` | `sample-project.json` + `sample-project.expected.txt` — referanse for paritet mellom motorene. |
-| `CHECKLIST.md` | Manuell verifisering av C#/GDScript (kan ikke kompileres i vår CI). |
+| `CHECKLIST.md` | Manuell verifisering av C#/GDScript/Swift (kan ikke kompileres i vår CI). |
 
 ## API (likt i alle tre)
 

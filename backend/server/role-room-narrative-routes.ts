@@ -40,6 +40,7 @@ import {
 } from './narrative-document-import.js';
 import { applyDocumentImport, listExistingScenesForImport } from './narrative-document-import-service.js';
 import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook } from './role-room-narrative-ci-hooks.js';
+import { createPlaytestIngestHandler, createPlaytestToken, getPlaytestSummary, listPlaytestTokens, revokePlaytestToken } from './role-room-narrative-playtest.js';
 import { presignCreatorHubObjectDownload } from './creatorhub-object-storage.js';
 import {
   PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
@@ -1417,6 +1418,29 @@ export function createRoleRoomNarrativeRouter(
   router.get('/projects/:projectId/ci-deliveries', ...guard, wrap(async (req, res) => {
     res.json({ success: true, data: await listCiDeliveries(pool, req.projectId, { limit: 200 }) });
   }));
+  // ─── Fase 8e: spilltest-telemetri (tokens + aggregat; inntaket er offentlig nederst) ──
+  router.get('/projects/:projectId/playtest-tokens', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await listPlaytestTokens(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/playtest-tokens', ...guard, wrap(async (req, res) => {
+    const parsed = z.object({ label: z.string().trim().max(200).optional(), ttlDays: z.number().int().min(1).max(365).nullable().optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const { token, rawToken } = await createPlaytestToken(pool, req.projectId, req.userId, parsed.data);
+    // Råtokenet vises ÉN gang; kun sha256-hashen lagres.
+    res.status(201).json({ success: true, data: { token, rawToken, ingestPath: '/api/role-room/narrative/playtest/events' } });
+  }));
+  router.post('/projects/:projectId/playtest-tokens/:tokenId/revoke', ...guard, wrap(async (req, res) => {
+    const token = await revokePlaytestToken(pool, req.projectId, param(req, 'tokenId'));
+    if (!token) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: token });
+  }));
+  router.get('/projects/:projectId/playtest/summary', ...guard, wrap(async (req, res) => {
+    const build = typeof req.query.build === 'string' ? req.query.build.slice(0, 100) : null;
+    const days = typeof req.query.days === 'string' ? Number(req.query.days) : undefined;
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: await getPlaytestSummary(pool, req.projectId, { build, days: Number.isFinite(days) ? days : undefined }) });
+  }));
+
   // Bevis-artefakt (narrative_assets.storage_key) → kortlevd signert nedlastings-URL.
   router.get('/projects/:projectId/assets/:assetId/download', ...guard, wrap(async (req, res) => {
     const { rows } = await pool.query(`SELECT id, name, storage_key, external_url FROM narrative_assets WHERE id = $1 AND project_id = $2 LIMIT 1`, [param(req, 'assetId'), req.projectId]);
@@ -1434,6 +1458,9 @@ export function createRoleRoomNarrativeRouter(
 
   // Offentlig (uten innlogging): spill-grafen bak et delingstoken. Ugyldig,
   // utløpt og tilbakekalt gir samme 404 (ingen lekkasje av hvilken).
+  // Fase 8e: telemetri-inntak fra spillet — bearer-token (hashet), alltid 204, aldri blokkerende.
+  router.post('/playtest/events', createPlaytestIngestHandler(pool));
+
   router.get('/public/:token', async (req: Request, res: Response) => {
     try {
       const token = param(req, 'token');

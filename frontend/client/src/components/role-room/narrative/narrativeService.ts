@@ -744,3 +744,33 @@ export function listCiDeliveries(projectId: string, hookId?: string): Promise<Na
 export function getAssetDownloadUrl(projectId: string, assetId: string): Promise<{ url: string; expiresInSeconds: number | null }> {
   return request(p(projectId, `/assets/${id(assetId)}/download`));
 }
+
+// ─── Fase 8e: spilltest-telemetri ───────────────────────────────────
+export interface NarrativePlaytestToken {
+  id: string; projectId: string; label: string; createdBy: string | null; createdAt: string;
+  expiresAt: string | null; revokedAt: string | null; lastUsedAt: string | null; eventCount: number;
+}
+export interface PlaytestSceneStats {
+  sceneCode: string; sessions: number; enters: number; exits: number; deaths: number; completes: number;
+  medianTimeMs: number | null; dropOff: number; choices: Record<string, number>;
+}
+export interface PlaytestSummary {
+  days: number; build: string | null; builds: string[]; sessions: number; events: number;
+  scenes: PlaytestSceneStats[]; worstDropOff: { sceneCode: string; sessions: number } | null;
+}
+export function listPlaytestTokens(projectId: string): Promise<NarrativePlaytestToken[]> {
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest-tokens`);
+}
+export function createPlaytestToken(projectId: string, input: { label?: string; ttlDays?: number | null }): Promise<{ token: NarrativePlaytestToken; rawToken: string; ingestPath: string }> {
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest-tokens`, { method: 'POST', body: JSON.stringify(input) });
+}
+export function revokePlaytestToken(projectId: string, tokenId: string): Promise<NarrativePlaytestToken> {
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest-tokens/${encodeURIComponent(tokenId)}/revoke`, { method: 'POST' });
+}
+export function getPlaytestSummary(projectId: string, opts: { build?: string | null; days?: number } = {}): Promise<PlaytestSummary> {
+  const q = new URLSearchParams();
+  if (opts.build) q.set('build', opts.build);
+  if (opts.days) q.set('days', String(opts.days));
+  const qs = q.toString();
+  return request(`/projects/${encodeURIComponent(projectId)}/playtest/summary${qs ? `?${qs}` : ''}`);
+}

@@ -268,6 +268,28 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   // Fase 8c: CI-hooks + leveringslogg (seedes med én anvendt og én avvist levering ved what-follows-us).
   const ciHooks: Rec[] = [];
   const ciDeliveries: Rec[] = [];
+  // Fase 8e: spilltest-tokens + hendelser (in-memory); aggregatet speiler getPlaytestSummary.
+  const playtestTokens: Rec[] = [];
+  const playtestEvents: Rec[] = [];
+  const playtestSummary = (build: string | null) => {
+    const evs = playtestEvents.filter((e) => !build || e.build === build);
+    const byScene = new Map<string, Rec[]>();
+    for (const e of evs) { const l = byScene.get(String(e.sceneCode)) ?? []; l.push(e); byScene.set(String(e.sceneCode), l); }
+    const lastBySession = new Map<string, Rec>();
+    for (const e of evs) lastBySession.set(String(e.sessionId), e);
+    const dropBy = new Map<string, number>();
+    for (const e of lastBySession.values()) if (e.event !== 'complete') dropBy.set(String(e.sceneCode), (dropBy.get(String(e.sceneCode)) ?? 0) + 1);
+    const scenes = [...byScene.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sceneCode, l]) => {
+      const exits = l.filter((e) => e.event === 'exit' && typeof e.tMs === 'number').map((e) => Number(e.tMs)).sort((a, b) => a - b);
+      const median = exits.length ? (exits.length % 2 ? exits[(exits.length - 1) / 2] : Math.round((exits[exits.length / 2 - 1] + exits[exits.length / 2]) / 2)) : null;
+      const choices: Record<string, number> = {};
+      for (const e of l) if (e.event === 'choice' && e.connectionId) choices[String(e.connectionId)] = (choices[String(e.connectionId)] ?? 0) + 1;
+      return { sceneCode, sessions: new Set(l.map((e) => e.sessionId)).size, enters: l.filter((e) => e.event === 'enter').length, exits: l.filter((e) => e.event === 'exit').length, deaths: l.filter((e) => e.event === 'death').length, completes: l.filter((e) => e.event === 'complete').length, medianTimeMs: median, dropOff: dropBy.get(sceneCode) ?? 0, choices };
+    });
+    let worst: { sceneCode: string; sessions: number } | null = null;
+    for (const [sceneCode, n] of dropBy) if (!worst || n > worst.sessions) worst = { sceneCode, sessions: n };
+    return { days: 30, build, builds: [...new Set(playtestEvents.map((e) => String(e.build)).filter(Boolean))].sort(), sessions: new Set(evs.map((e) => e.sessionId)).size, events: evs.length, scenes, worstDropOff: worst };
+  };
   const sources: Rec[] = [];
   const milestones: Rec[] = [];
   const platformTargets: Rec[] = [];
@@ -280,6 +302,12 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   const GATE_KEYS = ['script_coverage', 'greybox', 'characters_animation', 'playthrough', 'picture', 'audio'];
   const gatesFor = (sceneId: string) => GATE_KEYS.map((k) => gates.find((x) => x.sceneId === sceneId && x.gateKey === k) ?? { sceneId, projectId, gateKey: k, status: 'not_started', evidence: '', evidenceRefs: [], checkedBy: null, checkedAt: null, updatedAt: null });
   if (opts.seed === 'what-follows-us') {
+    // Spilltest-seed: 3 økter i P01 (én dør, én går videre til P02 og fullfører, én slutter i P01).
+    playtestTokens.push({ id: 'npk_seed0000-0000-4000-8000-000000000001', projectId, label: 'iPad testrunde', createdBy: 'u-e2e', createdAt: now(), expiresAt: null, revokedAt: null, lastUsedAt: now(), eventCount: 9 });
+    const seedEv = (sessionId: string, sceneCode: string, event: string, extra: Rec = {}) => playtestEvents.push({ sessionId, sceneCode, event, build: '1.0 (42)', deviceClass: 'iPad Pro M1', ...extra });
+    seedEv('s1', 'P01', 'enter'); seedEv('s1', 'P01', 'choice', { connectionId: 'ncn_seed_bok' }); seedEv('s1', 'P01', 'death', { tMs: 30000 });
+    seedEv('s2', 'P01', 'enter'); seedEv('s2', 'P01', 'choice', { connectionId: 'ncn_seed_bok' }); seedEv('s2', 'P01', 'exit', { tMs: 42000 }); seedEv('s2', 'P02', 'enter'); seedEv('s2', 'P02', 'complete', { tMs: 60000 });
+    seedEv('s3', 'P01', 'enter'); seedEv('s3', 'P01', 'choice', { connectionId: 'ncn_seed_lisse' }); seedEv('s3', 'P01', 'exit', { tMs: 38000 });
     const fx = loadWhatFollowsUsFixture();
     for (const src of fx.sources) sources.push({ id: nextId('nso'), projectId, code: src.code, label: src.label, kind: src.kind, sha256: src.sha256 ?? null, pathHint: src.pathHint ?? '', notes: src.notes ?? '', verifiedAt: null, verifiedBy: null, sortOrder: sources.length, createdAt: now(), updatedAt: now() });
     const episodeIdByCode = new Map<string, string>();
@@ -660,6 +688,16 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
 
     // ── Fase 8c: CI-bevis-hooks ────────────────────────────────────────
+    // Fase 8e: spilltest-tokens + aggregat.
+    if (m(/\/projects\/[^/]+\/playtest-tokens$/) && method === 'GET') return route.fulfill(ok(playtestTokens));
+    if (m(/\/projects\/[^/]+\/playtest-tokens$/) && method === 'POST') {
+      const token = { id: nextId('npk'), projectId, label: String(body.label ?? ''), createdBy: 'u-e2e', createdAt: now(), expiresAt: body.ttlDays ? new Date(Date.now() + Number(body.ttlDays) * 86400000).toISOString() : null, revokedAt: null, lastUsedAt: null, eventCount: 0 };
+      playtestTokens.unshift(token);
+      return route.fulfill(ok({ token, rawToken: `sgp_${token.id.replace(/\W/g, '')}mockmockmockmockmockmockmock`, ingestPath: '/api/role-room/narrative/playtest/events' }, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/playtest-tokens\/([^/]+)\/revoke$/);
+    if (mm && method === 'POST') { const t = playtestTokens.find((x) => x.id === mm![1]); if (!t) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' }); t.revokedAt = now(); return route.fulfill(ok(t)); }
+    if (m(/\/projects\/[^/]+\/playtest\/summary$/) && method === 'GET') return route.fulfill(ok(playtestSummary(url.searchParams.get('build'))));
     if (m(/\/projects\/[^/]+\/ci-hooks$/) && method === 'GET') return route.fulfill(ok(ciHooks));
     if (m(/\/projects\/[^/]+\/ci-hooks$/) && method === 'POST') {
       const hook = { id: `nch_${String(ciHooks.length + 1).padStart(8, '0')}-e2e0-4000-8000-000000000000`, projectId, label: body.label ?? 'CI', createdBy: 'u-e2e', createdAt: now(), revokedAt: null, lastDeliveryAt: null, deliveryCount: 0 };
@@ -981,6 +1019,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
         activity,
         unreadInbox: inbox.filter((n) => !n.readAt).length,
+        playtest: (() => { const ps = playtestSummary(null); return { sessions7d: ps.sessions, worstDropOff: ps.worstDropOff }; })(),
         guardian: { pending: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending').length, high: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending' && (x.payload as Rec).severity === 'high').length },
       }));
     }

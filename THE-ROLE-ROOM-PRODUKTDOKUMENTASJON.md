@@ -291,6 +291,7 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Manusimport | Word/PDF/Markdown → scener og replikker som diff (ny/endret/uendret/mangler) før noe skrives; aldri sletting — manglende blir åpne spørsmål; kilderegister med SHA-256; taler-matching mot karakterer | ✅ Fase 8b (alle planer) |
 | CI-bevis | Spillbygget setter leveransegater med bevis via HMAC-signert webhook; artefakter (xcresult) lagres og lastes ned fra gate-fanen; Integrasjoner-fane med hooks og leveringslogg; «bestått» uten bevis avvises også fra CI | ✅ Fase 8c (alle planer; gating kommer i 8g) |
 | Manusvakt | KI-manusvakt: deterministiske regler (epoke, episode, taler, kilde, kunnskap, gate-bevis, gamle spørsmål) + Claude-pass på scener endret siden sist; funn = forslag, «Godta» = åpent spørsmål til neste manusgjennomgang — manuset endres aldri automatisk; hjem-KPI og MCP-verktøy | ✅ Fase 8d (Pro/Studio via `ai_assist` for KI-passet; regler alle planer) |
+| Spilltest & Swift-runtime | Swift Package for iPad/RealityKit (samme delsett som Unity/Godot, paritetstest); spillet sender scene-hendelser (enter/exit/choice/death/complete) med hashet prosjekt-token til et alltid-204-inntak uten PII; Spilltest-fane på scenekortet med økter, drop-off, median tid og valgfordeling per build; hjem-KPI «Spilltest» | ✅ Fase 8e (alle planer; gating kommer i 8g) |
 
 **Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
 login-persona. Priser er plassholdere satt i migrasjon 0621 og redigeres i «Admin · Planer».
