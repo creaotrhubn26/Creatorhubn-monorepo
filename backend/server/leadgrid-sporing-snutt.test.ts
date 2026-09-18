@@ -1,5 +1,5 @@
 /**
- * Snutten finnes fordi klikk-ID-kolonnene fra mig 0637 ellers står tomme:
+ * Snutten finnes fordi klikk-ID-kolonnene fra mig 0652 ellers står tomme:
  * endepunktet TAR imot gclid/fbclid/ttclid, men ingenting i nettleseren
  * sender dem.
  *

@@ -76,10 +76,10 @@ interpretation: >
   besvares for noen plattform, og at ingen plattform kunne få vite hvilke
   leads som ble til penger.
 project_impact: >
-  Lukket 2026-09-18 (mig 0637): innkommende skjema lagrer nå gclid, fbclid og
+  Lukket 2026-09-18 (mig 0652): innkommende skjema lagrer nå gclid, fbclid og
   ttclid på crm_customers, med indeks på hver. fbclid dekker Facebook og
   Instagram. Attribusjonen står på bedriften, avtalebeløpet på salget
-  (mig 0635) — de henger sammen via customer_id, så spørsmålet er svarbart
+  (mig 0650) — de henger sammen via customer_id, så spørsmålet er svarbart
   med én join.
 
   Gjenstår, i rekkefølgen som gir mest per time:
@@ -100,10 +100,10 @@ decision: >
   ene GET-parameteret på landingssiden. Alt annet i lista over kan bygges når
   som helst mot data vi allerede har; dette ene kan bare bygges FRAMOVER.
 
-  Derfor ble mig 0637 utvidet med fbclid og ttclid før noe av
+  Derfor ble mig 0652 utvidet med fbclid og ttclid før noe av
   tilbakerapporteringen er påbegynt, selv om ingenting leser dem ennå.
 affected:
-  - backend/migrations/0637_leadgrid_inbound_forms.sql
+  - backend/migrations/0652_leadgrid_inbound_forms.sql
   - backend/server/leadgrid-inbound-forms.ts
   - backend/server/client-meta-suite.ts
   - backend/server/client-tiktok-suite.ts

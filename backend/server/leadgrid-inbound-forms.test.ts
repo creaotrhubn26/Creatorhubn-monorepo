@@ -75,9 +75,9 @@ describe("innsendingsruta", () => {
   });
 });
 
-describe("migrasjon 0637", () => {
+describe("migrasjon 0652", () => {
   const sql = readFileSync(
-    join(__dirname, "../migrations/0637_leadgrid_inbound_forms.sql"),
+    join(__dirname, "../migrations/0652_leadgrid_inbound_forms.sql"),
     "utf8",
   );
 

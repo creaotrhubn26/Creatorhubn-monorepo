@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 const routes = readFileSync(join(__dirname, "leadgrid-sporbarhet-routes.ts"), "utf8");
 const migration = readFileSync(
-  join(__dirname, "../migrations/0638_leadgrid_sporbarhet.sql"),
+  join(__dirname, "../migrations/0653_leadgrid_sporbarhet.sql"),
   "utf8",
 );
 /** Uten kommentarer. Migrasjonen NEVNER Role Rooms tabeller i en kommentar
@@ -58,7 +58,7 @@ describe("bekreftelse av sporing", () => {
   });
 });
 
-describe("migrasjon 0638", () => {
+describe("migrasjon 0653", () => {
   it("er Leadgrids egne tabeller, ikke Role Rooms", () => {
     // ads_campaigns og ads_attribution_daily (mig 128) er nøklet på byråets
     // prosjektbegrep og user_id, uten organization_id.

@@ -70,7 +70,7 @@ project_impact: >
   kostbare delen, men ikke fordi modellen mangler: vi HAR pipeline_stage,
   deal_amount, expected_close_date og crm_deal_stage_history. Formen er en
   annen — vår stage er en fast CHECK. At dealen lå PÅ kunde-raden var det
-  dyreste avviket; migrasjon 0635 ga salget sin egen tabell, så et selskap
+  dyreste avviket; migrasjon 0650 ga salget sin egen tabell, så et selskap
   med flere åpne deals ikke lenger mister alt annet enn den største.
   Se model_gap.
 model_gap:
@@ -85,9 +85,9 @@ model_gap:
     - "crm_customers.project_id er påkrevd. HubSpot har ikke prosjektbegrep, så migreringen må velge målprosjekt."
     - "HubSpots beregnede og skrivebeskyttede properties bør ikke migreres; de er avledet av HubSpot-logikk vi ikke har."
   closed:
-    - "LUKKET 18.09.2026 (migrasjon 0635): deal-feltene lå PÅ crm_customers-raden (migrasjon 0349), så et selskap med flere åpne deals fikk plass til én. leadgrid_deals gir null eller flere salg per bedrift; crm_customers speiler primærsalget så eksisterende lesere virker uendret. planHubSpotMigration returnerer nå deals[], og issue-kodene extra_deals_dropped og line_items_on_dropped_deal er fjernet fordi tapet ikke lenger finnes."
-    - "LUKKET 18.09.2026 (migrasjon 0635): leadgrid_customer_contacts manglet e-post og telefon. Kolonnene email, phone, title, is_primary og hubspot_contact_id er lagt til, og planleggeren bærer dem som ekte felter (PlannedContact.email/.phone), ikke som emailWithoutColumn."
-    - "LUKKET 18.09.2026 (migrasjon 0636): oppgaver fra HubSpot har nå en plass — leadgrid_oppgaver fikk due_at, assigned_user_id, deal_id, priority, task_type og hubspot_task_id."
+    - "LUKKET 18.09.2026 (migrasjon 0650): deal-feltene lå PÅ crm_customers-raden (migrasjon 0349), så et selskap med flere åpne deals fikk plass til én. leadgrid_deals gir null eller flere salg per bedrift; crm_customers speiler primærsalget så eksisterende lesere virker uendret. planHubSpotMigration returnerer nå deals[], og issue-kodene extra_deals_dropped og line_items_on_dropped_deal er fjernet fordi tapet ikke lenger finnes."
+    - "LUKKET 18.09.2026 (migrasjon 0650): leadgrid_customer_contacts manglet e-post og telefon. Kolonnene email, phone, title, is_primary og hubspot_contact_id er lagt til, og planleggeren bærer dem som ekte felter (PlannedContact.email/.phone), ikke som emailWithoutColumn."
+    - "LUKKET 18.09.2026 (migrasjon 0651): oppgaver fra HubSpot har nå en plass — leadgrid_oppgaver fikk due_at, assigned_user_id, deal_id, priority, task_type og hubspot_task_id."
   not_a_problem:
     - "Custom properties: lead_custom_field_definitions har tolv felttyper (text, long_text, number, dropdown, multi_select, boolean, date, datetime, url, email, phone, currency) og lead_custom_field_values lagrer per lead. HubSpot enumeration mapper til dropdown/multi_select."
 
@@ -101,7 +101,7 @@ decision: >
   Ingen toveis sync i denne fasen.
   Retningsvalg: gapene over skal IKKE lukkes ved å kaste data som ikke
   passer. Der HubSpot var rikere enn oss er paritet minimumskravet: flere
-  deals per kunde og e-post på kontakt er lukket i migrasjon 0635, mens
+  deals per kunde og e-post på kontakt er lukket i migrasjon 0650, mens
   mange-til-mange med labels og e-post/samtale som aktivitet gjenstår. Det er
   paritet minimumskravet, ikke et strekkmål — ellers blir en migrering et
   tap for kunden. Det vi har som de ikke har (prosjekt-avgrensning,

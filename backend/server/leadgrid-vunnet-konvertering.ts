@@ -5,7 +5,7 @@
  *
  * Alt annet var på plass — sendServerSideConversion sender med
  * action_source "system_generated", pixelen for leadgrid.no finnes, og
- * klikk-ID-en lagres på leadet (mig 0637). Det som manglet var at INGEN
+ * klikk-ID-en lagres på leadet (mig 0652). Det som manglet var at INGEN
  * kalte den. Uten dette lærer Meta bare hvilke skjemaer som ble fylt ut, og
  * fortsetter å optimalisere mot billige utfyllinger i stedet for mot
  * avtaler som faktisk lukkes.
@@ -29,7 +29,7 @@ interface LeadRad {
   name: string | null;
   fbclid: string | null;
   landing_page_url: string | null;
-  /** Beløpet fra primærsalget (mig 0635), med kunde-raden som reserve. */
+  /** Beløpet fra primærsalget (mig 0650), med kunde-raden som reserve. */
   belop: string | null;
   valuta: string | null;
 }

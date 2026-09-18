@@ -34,7 +34,7 @@ export type WorkflowTriggerType =
   | "contract.signed"
   // mig 0353 — schedule.cron for continuous discovery
   | "schedule.cron"
-  // mig 0634 — post-salg: fornyelse forfaller
+  // mig 0649 — post-salg: fornyelse forfaller
   | "deal.renewal_due";
 
 export interface TriggerLeadCreated {

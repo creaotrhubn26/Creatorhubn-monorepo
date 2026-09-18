@@ -1,7 +1,7 @@
 /**
  * leadgrid-sporing-snutt.ts
  *
- * Klient-halvdelen av skjema-endepunktet (mig 0637).
+ * Klient-halvdelen av skjema-endepunktet (mig 0652).
  *
  * Uten denne blir klikk-ID-kolonnene stående tomme. Endepunktet TAR imot
  * utm_*, gclid, fbclid og ttclid — men ingenting i nettleseren sender dem.

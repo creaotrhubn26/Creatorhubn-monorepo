@@ -1013,7 +1013,7 @@ ${tekst}`;
    */
   /**
    * Oppgaver ligger her fordi møte-etterarbeidet var det som opprettet dem
-   * først. Etter mig 0636 er de like mye lead- og salgs-oppgaver: filtrene
+   * først. Etter mig 0651 er de like mye lead- og salgs-oppgaver: filtrene
    * lead_id og deal_id gir «hva skylder vi denne kunden» og «hva gjenstår på
    * dette salget», ikke bare «hva skrev jeg ned etter møtet».
    *

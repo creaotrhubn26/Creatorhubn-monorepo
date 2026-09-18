@@ -2,7 +2,7 @@
 --
 -- To hull vi hadde etter at en avtale ble vunnet:
 --
---   1. lifecycle_stage (mig 0632) ble aldri satt til 'customer'. Den som
+--   1. lifecycle_stage (mig 0647) ble aldri satt til 'customer'. Den som
 --      vinner en avtale rører pipeline_stage eller lead_status, ikke
 --      livssyklusen, så feltet forble 'lead' på betalende kunder.
 --      Det finnes flere skriveveier (leadgrid-deals-service,
@@ -12,7 +12,7 @@
 --   2. Det fantes ingen fornyelsesdato. expected_close_date (mig 0349)
 --      handler om NÅR SALGET LUKKES, ikke når kunden skal fornye. Uten en
 --      fornyelsesdato er det ingenting å følge opp på etter salget, og
---      abonnementslinjene fra mig 0633 blir bare tall på en avtale.
+--      abonnementslinjene fra mig 0648 blir bare tall på en avtale.
 
 ALTER TABLE crm_customers
   -- Når avtalen skal fornyes. Utledes fra gjentakende produktlinjer når

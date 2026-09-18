@@ -109,7 +109,7 @@ export function registerLeadgridSporbarhetRoutes(deps: Deps): void {
         // 2) Kampanje for kampanje: leads, avtaler, vunnet verdi, kostnad.
         //
         // Leads telles på crm_customers, avtaler på leadgrid_deals. En bedrift
-        // kan ha flere salg (mig 0635), så avtaler må telles for seg — ikke
+        // kan ha flere salg (mig 0650), så avtaler må telles for seg — ikke
         // som «leads med status vunnet».
         const kampanjer = await pool.query(
           `WITH leads AS (

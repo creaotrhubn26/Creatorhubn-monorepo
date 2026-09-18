@@ -131,7 +131,7 @@ export interface PlannedCustomer {
 }
 
 /**
- * Ett salg. Før mig 0635 lagret Leadgrid én avtale per kunde, så alt annet
+ * Ett salg. Før mig 0650 lagret Leadgrid én avtale per kunde, så alt annet
  * enn den største ble forkastet — en bedrift med en løpende avtale OG en
  * kampanje under forhandling mistet den ene. Nå blir alle med.
  */
@@ -144,7 +144,7 @@ export interface PlannedDeal {
   dealProbability: number | null;
   expectedCloseDate: string | null;
   ownerUserId: string | null;
-  /** Salget crm_customers sine flate deal-felt speiler (mig 0635). */
+  /** Salget crm_customers sine flate deal-felt speiler (mig 0650). */
   isPrimary: boolean;
   raw: Record<string, unknown>;
 }
@@ -154,7 +154,7 @@ export interface PlannedContact {
   customerHubspotId: string;
   name: string;
   role: string | null;
-  /** Kolonnene kom i mig 0635; før det hadde kontakten bare navn og rolle. */
+  /** Kolonnene kom i mig 0650; før det hadde kontakten bare navn og rolle. */
   email: string | null;
   phone: string | null;
   /** Eieren er resolvet for å fange ukjent/deaktivert eier, men lagres ikke:
@@ -162,7 +162,7 @@ export interface PlannedContact {
   ownerWithoutColumn: string | null;
 }
 
-/** Faktureringsfrekvensene leadgrid_products/-line_items tillater (mig 0633). */
+/** Faktureringsfrekvensene leadgrid_products/-line_items tillater (mig 0648). */
 export const LEADGRID_BILLING_FREQUENCIES = [
   "one_time", "weekly", "biweekly", "monthly", "quarterly",
   "per_six_months", "annually", "per_two_years", "per_three_years",
@@ -192,7 +192,7 @@ export interface PlannedProduct {
 
 export interface PlannedLineItem {
   hubspotId: string;
-  /** HubSpot-id-en til avtalen linjen hører til (mig 0635). */
+  /** HubSpot-id-en til avtalen linjen hører til (mig 0650). */
   dealHubspotId: string;
   /** Bedriften avtalen ligger på. Brukes til scoping ved import. */
   customerHubspotId: string;
@@ -382,7 +382,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
 
   const lineItemsById = new Map((input.lineItems ?? []).map((l) => [l.id, l]));
 
-  /** Samme formel som net_total i migrasjon 0632, avrundet likt. */
+  /** Samme formel som net_total i migrasjon 0647, avrundet likt. */
   const netTotalOf = (quantity: number, unitPrice: number, pct: number, amount: number) =>
     Math.round(Math.max(quantity * unitPrice * (1 - pct / 100) - amount, 0) * 100) / 100;
 
@@ -426,7 +426,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
     const dealIds = input.companyToDeals[company.id] ?? [];
     const companyDeals = dealIds.map((id) => dealsById.get(id)).filter((d): d is HubSpotObject => Boolean(d));
 
-    // Alle avtalene blir med (mig 0635). Den største blir primærsalget,
+    // Alle avtalene blir med (mig 0650). Den største blir primærsalget,
     // fordi det er den crm_customers sine flate deal-felt speiler — og det
     // er de feltene pipeline, forecast og scoring fortsatt leser.
     const sorted = [...companyDeals].sort(

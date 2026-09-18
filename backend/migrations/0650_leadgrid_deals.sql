@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS leadgrid_deals (
   currency          VARCHAR(3) NOT NULL DEFAULT 'NOK',
   expected_close_date DATE,
 
-  -- Post-salg (mig 0634) hører til det enkelte salget, ikke til bedriften.
+  -- Post-salg (mig 0649) hører til det enkelte salget, ikke til bedriften.
   renewal_date      DATE,
   renewal_reminded_at TIMESTAMPTZ,
 
@@ -276,7 +276,7 @@ DROP INDEX IF EXISTS idx_leadgrid_deal_line_items_customer;
 CREATE INDEX IF NOT EXISTS idx_leadgrid_deal_line_items_deal
   ON leadgrid_deal_line_items (deal_id, sort_order);
 
--- Fornyelsestriggeren fra mig 0634 leste linjene via customer_id. Den
+-- Fornyelsestriggeren fra mig 0649 leste linjene via customer_id. Den
 -- kolonnen finnes ikke lenger, så funksjonen må gå veien om primærsalget.
 CREATE OR REPLACE FUNCTION crm_customers_apply_won()
 RETURNS TRIGGER

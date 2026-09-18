@@ -4,11 +4,11 @@
 -- Spørsmålene en markedssjef stiller, og hvor svaret ligger ETTER denne
 -- migrasjonen:
 --   «Hvordan spores leads?»        leadgrid_tracking_setup
---   «Hvor kom kunden fra?»         crm_customers.utm_* + klikk-ID (mig 0637)
+--   «Hvor kom kunden fra?»         crm_customers.utm_* + klikk-ID (mig 0652)
 --   «Hva kostet det?»              leadgrid_campaign_spend via
 --                                  leadgrid_campaign_links
---   «Hva kjøpte de?»               leadgrid_deal_line_items (mig 0633) via
---                                  leadgrid_deals (mig 0635)
+--   «Hva kjøpte de?»               leadgrid_deal_line_items (mig 0648) via
+--                                  leadgrid_deals (mig 0650)
 --
 -- Alt her er Leadgrids egne tabeller. Role Room har tilsvarende data i
 -- ads_campaigns og ads_attribution_daily (mig 128), men de er nøklet på

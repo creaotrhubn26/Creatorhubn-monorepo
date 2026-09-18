@@ -3,7 +3,7 @@
  *
  * Kontrollpunktet: en bedrift som både har kjøpt før, forhandler om én
  * avtale og har et tilbud ute på en annen, skal registreres ÉN gang.
- * Før mig 0635 bar crm_customers-raden selve salget, så det krevde tre
+ * Før mig 0650 bar crm_customers-raden selve salget, så det krevde tre
  * rader for samme bedrift.
  *
  * Testene her holder på de fire egenskapene som gjør at overgangen kan
@@ -15,11 +15,11 @@ import { join } from "path";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync(
-  join(__dirname, "../migrations/0635_leadgrid_deals.sql"),
+  join(__dirname, "../migrations/0650_leadgrid_deals.sql"),
   "utf8",
 );
 
-describe("migrasjon 0635 — salg som egen enhet", () => {
+describe("migrasjon 0650 — salg som egen enhet", () => {
   it("lar én bedrift ha flere salg", () => {
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS leadgrid_deals");
     expect(sql).toContain("REFERENCES crm_customers (id, organization_id, project_id)");

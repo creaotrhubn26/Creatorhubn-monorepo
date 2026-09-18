@@ -110,7 +110,7 @@ describe("kontakt hos flere bedrifter", () => {
 
 describe("flere avtaler på samme selskap", () => {
   it("tar med alle avtalene, ikke bare den største", () => {
-    // Før mig 0635 lagret Leadgrid én avtale per kunde, så to av disse tre
+    // Før mig 0650 lagret Leadgrid én avtale per kunde, så to av disse tre
     // ble forkastet. Det er nettopp det scenariet en bedrift med en løpende
     // avtale OG en kampanje under forhandling havner i.
     const p = plan();

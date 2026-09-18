@@ -1786,7 +1786,7 @@ app.post(
 // transfer.*/payout.* events for instructor payouts.
 setupAcademyStripeWebhookRoutes({ app, pool });
 
-// Innkommende skjema fra kundens egen nettside (mig 0637). Monteres her,
+// Innkommende skjema fra kundens egen nettside (mig 0652). Monteres her,
 // før den globale cors()-en og før express.json({limit:"50mb"}): ruta svarer
 // med sine egne CORS-headere per skjema, og en offentlig, uautentisert
 // endepunkt skal ikke ta imot 50 MB.
@@ -26052,7 +26052,7 @@ registerLeadgridDealsRoutes({ app, pool, activeSessions });
 // ratebegrensning. Selve innsendingen er montert lenger opp.
 registerLeadgridFormAdminRoutes({ app, pool, activeSessions });
 // Sporbarhet for markedssjefen: hva som er satt opp, hvor kunden kom fra,
-// hva kampanjen kostet, og hva de kjøpte. Leadgrids egne tabeller (mig 0638).
+// hva kampanjen kostet, og hva de kjøpte. Leadgrids egne tabeller (mig 0653).
 registerLeadgridSporbarhetRoutes({ app, pool, activeSessions });
 // Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers
 // (lead.created, pipeline.stage_changed, deal.probability_changed, ...) +

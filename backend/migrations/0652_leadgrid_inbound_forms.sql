@@ -102,7 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_leadgrid_form_submissions_project
 -- ── Kampanjesporing på leadet ────────────────────────────────────────────
 -- Dette er det som gjør spørsmålet «hvilken kampanje gir de største
 -- avtalene» svarbart: attribusjonen står på bedriften, avtalebeløpet på
--- salget (mig 0635), og de henger sammen via customer_id.
+-- salget (mig 0650), og de henger sammen via customer_id.
 ALTER TABLE crm_customers
   ADD COLUMN IF NOT EXISTS utm_source       VARCHAR(160),
   ADD COLUMN IF NOT EXISTS utm_medium       VARCHAR(160),

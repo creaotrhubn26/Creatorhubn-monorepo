@@ -6,7 +6,7 @@
  * En bruker kunne slå på en mal som «lager oppgaver» og aldri se én.
  *
  * Testene her holder på at oppgaven havner i lista brukeren faktisk ser,
- * og at mig 0636 gir tabellen det den manglet for å være en oppgaveliste:
+ * og at mig 0651 gir tabellen det den manglet for å være en oppgaveliste:
  * en ekte frist, en ansvarlig, og en kobling til salget.
  */
 import { readFileSync } from "fs";
@@ -14,7 +14,7 @@ import { join } from "path";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  join(__dirname, "../migrations/0636_leadgrid_oppgaver_paa_lead.sql"),
+  join(__dirname, "../migrations/0651_leadgrid_oppgaver_paa_lead.sql"),
   "utf8",
 );
 const engine = readFileSync(
@@ -26,7 +26,7 @@ const routes = readFileSync(
   "utf8",
 );
 
-describe("migrasjon 0636", () => {
+describe("migrasjon 0651", () => {
   it("utvider tabellen som finnes i stedet for å lage en ny", () => {
     expect(migration).toContain("ALTER TABLE leadgrid_oppgaver");
     expect(migration).not.toContain("CREATE TABLE");

@@ -242,7 +242,7 @@ export function triggerMatches(
         return false;
       return true;
     }
-    // ─── Post-salg (mig 0634) ────────────────────────────────────
+    // ─── Post-salg (mig 0649) ────────────────────────────────────
     case "deal.renewal_due": {
       if (typeof trigger.within_days === "number") {
         const daysLeft = Number(event.data.days_until_renewal ?? NaN);

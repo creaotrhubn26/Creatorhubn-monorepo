@@ -8,7 +8,7 @@
  * også gir LESETILGANG til alle leads i organisasjonen. Legger du den i et
  * skjema på en offentlig nettside, har du gitt bort kundelista.
  *
- * Her er nøkkelen publiserbar med vilje (mig 0637). Den er en adresse, ikke
+ * Her er nøkkelen publiserbar med vilje (mig 0652). Den er en adresse, ikke
  * et passord, og gir bare én ting: retten til å sende inn ett skjema.
  * Sikkerheten ligger et annet sted:
  *   - allowed_origins: bare nettstedene kunden har oppgitt
@@ -140,7 +140,7 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
 
   // ── Sporings-snutten ───────────────────────────────────────────────────
   // Klient-halvdelen. Uten den kommer utm og klikk-ID aldri fram hit, og
-  // kolonnene fra mig 0637 blir stående tomme.
+  // kolonnene fra mig 0652 blir stående tomme.
   //
   // Serveres til ethvert domene: dette er en offentlig, statisk JS-fil uten
   // hemmeligheter. Nøkkelen i URL-en er den samme publiserbare nøkkelen som

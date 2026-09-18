@@ -13,7 +13,7 @@
 -- Denne migrasjonen utvider tabellen som allerede finnes i stedet for å lage
 -- en ny ved siden av. To oppgavetabeller ville betydd to lister å huske på.
 --
--- Salget, ikke bare bedriften: etter mig 0635 kan en bedrift ha flere
+-- Salget, ikke bare bedriften: etter mig 0650 kan en bedrift ha flere
 -- samtidige salg. «Ring daglig leder om kampanjen» hører til kampanjesalget,
 -- ikke til bedriften som helhet.
 

@@ -4,7 +4,7 @@
  * To hull testene her holder på:
  *   - deal.renewal_due måtte bli en ekte trigger, ikke bare en kolonne
  *     ingen ser på. within_days skal begrense, ikke bare pynte.
- *   - migrasjon 0634 skal flytte livssyklusen til 'customer' i databasen,
+ *   - migrasjon 0649 skal flytte livssyklusen til 'customer' i databasen,
  *     fordi flere skriveveier setter 'won' og ingen av dem husket det.
  */
 import { readFileSync } from "fs";
@@ -71,9 +71,9 @@ describe("deal.renewal_due som trigger", () => {
   });
 });
 
-describe("migrasjon 0634", () => {
+describe("migrasjon 0649", () => {
   const sql = readFileSync(
-    join(__dirname, "../migrations/0634_crm_customers_renewal.sql"),
+    join(__dirname, "../migrations/0649_crm_customers_renewal.sql"),
     "utf8",
   );
 
