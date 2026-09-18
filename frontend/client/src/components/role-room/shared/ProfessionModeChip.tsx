@@ -17,6 +17,7 @@ import {
   School as EducationIcon,
   Movie as ProductionIcon,
   Mic as ContentIcon,
+  SportsEsports as GameIcon,
   ExpandMore as ExpandIcon,
 } from '@mui/icons-material';
 import {
@@ -45,6 +46,7 @@ const MODE_STYLE: Record<ProfessionMode, { icon: React.ReactNode; color: string 
   dance_freelance: { icon: <FreelanceIcon />, color: '#10B981' },
   education: { icon: <EducationIcon />, color: '#8B5CF6' },
   student: { icon: <EducationIcon />, color: '#A78BFA' },
+  game_studio: { icon: <GameIcon />, color: '#22C55E' },
 };
 
 export const ProfessionModeChip: React.FC<ProfessionModeChipProps> = ({

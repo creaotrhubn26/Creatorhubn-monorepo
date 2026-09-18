@@ -1,0 +1,325 @@
+{
+  "name": "Pungen",
+  "cover": null,
+  "startingElement": "start",
+  "boards": {
+    "main": {
+      "name": "Landsbyen",
+      "customId": "village",
+      "notes": [],
+      "jumpers": [
+        "jump"
+      ],
+      "branches": [
+        "choice",
+        "giveup"
+      ],
+      "elements": [
+        "start",
+        "market",
+        "rich",
+        "poor",
+        "end"
+      ],
+      "connections": [
+        "k1",
+        "k2",
+        "k3",
+        "k4",
+        "k5",
+        "k6",
+        "k7",
+        "k8",
+        "k9",
+        "k10"
+      ]
+    },
+    "folder-boards-root": {
+      "name": "Root",
+      "children": [
+        "main"
+      ],
+      "root": true
+    }
+  },
+  "notes": {},
+  "elements": {
+    "start": {
+      "x": 40,
+      "y": 80,
+      "width": 260,
+      "height": 120,
+      "theme": "green",
+      "title": "<p>Torget</p>",
+      "content": "<p>Du finner en pung på torget.</p><pre><code>gold += 10</code></pre><pre><code>if visits() > 1</code></pre><p>Pungen er lettere denne gangen.</p><pre><code>gold -= 5</code></pre><pre><code>endif</code></pre>",
+      "outputs": [
+        "k1",
+        "k2"
+      ],
+      "components": [],
+      "attributes": [],
+      "assets": {},
+      "customId": "start"
+    },
+    "market": {
+      "x": 400,
+      "y": 80,
+      "width": 260,
+      "height": 120,
+      "theme": "amber",
+      "title": "<p>Markedet</p>",
+      "content": "<pre><code>if gold >= 10 and not visits(@[rich])</code></pre><p>Kjøpmannen smiler.</p><pre><code>elseif gold > 0</code></pre><p>Kjøpmannen nikker.</p><pre><code>else</code></pre><p>Kjøpmannen snur ryggen til.</p><pre><code>endif</code></pre>",
+      "outputs": [
+        "k3",
+        "k4"
+      ],
+      "components": [
+        "merchant"
+      ],
+      "attributes": [],
+      "assets": {},
+      "customId": "market"
+    },
+    "rich": {
+      "x": 1100,
+      "y": 20,
+      "width": 260,
+      "height": 120,
+      "theme": "blue",
+      "title": "<p>Rik</p>",
+      "content": "<p>Du kjøper et sverd.</p>",
+      "outputs": [
+        "k7"
+      ],
+      "components": [],
+      "attributes": [],
+      "assets": {},
+      "customId": "rich"
+    },
+    "poor": {
+      "x": 1100,
+      "y": 200,
+      "width": 260,
+      "height": 120,
+      "theme": "red",
+      "title": "<p>Fattig</p>",
+      "content": "<p>Tomme lommer.</p>",
+      "outputs": [
+        "k8"
+      ],
+      "components": [],
+      "attributes": [],
+      "assets": {},
+      "customId": "poor"
+    },
+    "end": {
+      "x": 1450,
+      "y": 20,
+      "width": 260,
+      "height": 120,
+      "theme": "gray",
+      "title": "<p>Slutt</p>",
+      "content": "<p>Historien er over.</p>",
+      "outputs": [],
+      "components": [],
+      "attributes": [],
+      "assets": {},
+      "customId": "end"
+    }
+  },
+  "jumpers": {
+    "jump": {
+      "x": 1800,
+      "y": 200,
+      "elementId": "start"
+    }
+  },
+  "connections": {
+    "k1": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "start",
+      "targetid": "market",
+      "sourceType": "elements",
+      "targetType": "elements",
+      "label": "<p>Gå til markedet</p>"
+    },
+    "k2": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "start",
+      "targetid": "end",
+      "sourceType": "elements",
+      "targetType": "elements",
+      "label": "<p>Gå hjem</p>"
+    },
+    "k3": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "market",
+      "targetid": "choice",
+      "sourceType": "elements",
+      "targetType": "branches",
+      "label": "<p>Handle</p><pre><code>gold -= 10</code></pre>"
+    },
+    "k4": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "market",
+      "targetid": "end",
+      "sourceType": "elements",
+      "targetType": "elements",
+      "label": "<p>Gå videre uten å handle</p>"
+    },
+    "k5": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "c_rich",
+      "targetid": "rich",
+      "sourceType": "conditions",
+      "targetType": "elements",
+      "label": null
+    },
+    "k6": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "c_poor",
+      "targetid": "poor",
+      "sourceType": "conditions",
+      "targetType": "elements",
+      "label": null
+    },
+    "k7": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "rich",
+      "targetid": "end",
+      "sourceType": "elements",
+      "targetType": "elements",
+      "label": "<p>Ferdig</p>"
+    },
+    "k8": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "poor",
+      "targetid": "giveup",
+      "sourceType": "elements",
+      "targetType": "branches",
+      "label": "<p>Tilbake til torget</p>"
+    },
+    "k9": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "c_giveup",
+      "targetid": "end",
+      "sourceType": "conditions",
+      "targetType": "elements",
+      "label": null
+    },
+    "k10": {
+      "type": "Straight",
+      "theme": "default",
+      "sourceid": "c_again",
+      "targetid": "jump",
+      "sourceType": "conditions",
+      "targetType": "jumpers",
+      "label": null
+    }
+  },
+  "branches": {
+    "choice": {
+      "x": 760,
+      "y": 80,
+      "theme": "default",
+      "conditions": {
+        "ifCondition": "c_rich",
+        "elseIfConditions": [],
+        "elseCondition": "c_poor"
+      }
+    },
+    "giveup": {
+      "x": 1450,
+      "y": 200,
+      "theme": "default",
+      "conditions": {
+        "ifCondition": "c_giveup",
+        "elseIfConditions": [],
+        "elseCondition": "c_again"
+      }
+    }
+  },
+  "components": {
+    "merchant": {
+      "name": "Kjøpmannen",
+      "customId": "merchant",
+      "attributes": [
+        "mood"
+      ],
+      "assets": {}
+    },
+    "folder-components-root": {
+      "name": "Root",
+      "children": [
+        "merchant"
+      ],
+      "root": true
+    }
+  },
+  "attributes": {
+    "mood": {
+      "cId": "merchant",
+      "cType": "components",
+      "name": "mood",
+      "value": {
+        "data": "grådig",
+        "type": "string",
+        "plain": true
+      }
+    }
+  },
+  "assets": {
+    "folder-assets-root": {
+      "name": "Root",
+      "children": [],
+      "root": true
+    }
+  },
+  "variables": {
+    "gold": {
+      "name": "gold",
+      "type": "integer",
+      "cType": "global",
+      "value": 0
+    },
+    "brave": {
+      "name": "brave",
+      "type": "boolean",
+      "cType": "global",
+      "value": true
+    },
+    "folder-variables-root": {
+      "name": "Root",
+      "children": [
+        "gold",
+        "brave"
+      ],
+      "root": true
+    }
+  },
+  "conditions": {
+    "c_rich": {
+      "script": "gold >= 10",
+      "output": "k5"
+    },
+    "c_poor": {
+      "output": "k6"
+    },
+    "c_giveup": {
+      "script": "gold < 0 or not brave",
+      "output": "k9"
+    },
+    "c_again": {
+      "output": "k10"
+    }
+  }
+}

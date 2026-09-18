@@ -89,6 +89,37 @@ export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
   { id: 'admin_settings',labelToken: 'danceTabAdminSettings',                                                            feature: 'finance' },
 ] as const;
 
+// ─── SPILLSTUDIO — STORY GRAPH ──────────────────────────────────────────────
+//
+// Narrativ design for spill: brett med elementer/koblinger (Fase 1),
+// komponenter + variabler + spillmodus (Fase 2), eksport/deling (Fase 3).
+// Fanene finnes fra dag én så URL-kontrakten (?tab=) er stabil; ubygde
+// faner rendrer et ærlig «kommer»-kort i NarrativeWorkspace.
+
+export const GAME_STUDIO_TABS: readonly TabConfig[] = [
+  // Fase 7b — «home» først = standard landing i skallet (sidebar-seksjoner via feature).
+  { id: 'home',       labelToken: 'gameTabHome',       descriptionToken: 'gameTabHomeDescription',       requiresProject: true, feature: 'core' },
+  { id: 'story',      labelToken: 'gameTabStory',      descriptionToken: 'gameTabStoryDescription',      requiresProject: true, feature: 'core' },
+  { id: 'scenes',     labelToken: 'gameTabScenes',     descriptionToken: 'gameTabScenesDescription',     requiresProject: true, feature: 'core' },
+  { id: 'characters', labelToken: 'gameTabCharacters', descriptionToken: 'gameTabCharactersDescription', requiresProject: true, feature: 'core' },
+  { id: 'locations',  labelToken: 'gameTabLocations',  descriptionToken: 'gameTabLocationsDescription',  requiresProject: true, feature: 'core' },
+  { id: 'platform',   labelToken: 'gameTabPlatform',   descriptionToken: 'gameTabPlatformDescription',   requiresProject: true, feature: 'core' },
+  { id: 'boards',     labelToken: 'gameTabBoards',     descriptionToken: 'gameTabBoardsDescription',     requiresProject: true, feature: 'core' },
+  { id: 'components', labelToken: 'gameTabComponents', descriptionToken: 'gameTabComponentsDescription', requiresProject: true, feature: 'core' },
+  { id: 'variables',  labelToken: 'gameTabVariables',  descriptionToken: 'gameTabVariablesDescription',  requiresProject: true, feature: 'core' },
+  { id: 'plan',       labelToken: 'gameTabPlan',       descriptionToken: 'gameTabPlanDescription',       requiresProject: true, feature: 'production' },
+  { id: 'play',       labelToken: 'gameTabPlay',       descriptionToken: 'gameTabPlayDescription',       requiresProject: true, feature: 'production' },
+  { id: 'translations', labelToken: 'gameTabTranslations', descriptionToken: 'gameTabTranslationsDescription', requiresProject: true, feature: 'production' },
+  { id: 'exports',    labelToken: 'gameTabExports',    descriptionToken: 'gameTabExportsDescription',    requiresProject: true, feature: 'production' },
+  { id: 'assets',     labelToken: 'gameTabAssets',     descriptionToken: 'gameTabAssetsDescription',     requiresProject: true, feature: 'resources' },
+  { id: 'history',    labelToken: 'gameTabHistory',    descriptionToken: 'gameTabHistoryDescription',    requiresProject: true, feature: 'resources' },
+  // Fase 4d/7e — team og billing (ikke prosjekt-avhengige; admin_plans skjules for ikke-admin i NarrativeWorkspace)
+  { id: 'team',        labelToken: 'gameTabTeam',        descriptionToken: 'gameTabTeamDescription',        feature: 'finance' },
+  { id: 'pricing',     labelToken: 'gameTabPricing',     descriptionToken: 'gameTabPricingDescription',     feature: 'finance' },
+  { id: 'billing',     labelToken: 'gameTabBilling',     descriptionToken: 'gameTabBillingDescription',     feature: 'finance' },
+  { id: 'admin_plans', labelToken: 'gameTabAdminPlans',  descriptionToken: 'gameTabAdminPlansDescription',  feature: 'finance' },
+] as const;
+
 /**
  * Hovedoppslag — gir den korrekte fane-listen for en gitt mode.
  * Returnerer en TOM liste for ikke-dans-moder. Kalleren er ansvarlig
@@ -102,6 +133,8 @@ export function getTabsForProfession(mode: ProfessionMode): readonly TabConfig[]
       return DANCE_STUDIO_TABS;
     case 'dance_freelance':
       return DANCE_FREELANCE_TABS;
+    case 'game_studio':
+      return GAME_STUDIO_TABS;
     case 'production':
     case 'photographer':
     case 'content_producer':

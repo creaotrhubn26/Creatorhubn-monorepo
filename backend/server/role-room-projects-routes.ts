@@ -97,7 +97,21 @@ export async function canAccessRoleRoomProject(
     // Utdannings-bro: student tildelt en studentproduksjon (via education-workspacet)
     // får tilgang med sin ekte konto — uten casting_user_roles (ingen sete-billing).
     const eduRole = await resolveEducationProductionRole(pool, userId, projectId);
-    return eduRole !== null;
+    if (eduRole !== null) return true;
+    // Spillstudio-bro (Fase 7e-1): aktivt teammedlem hos prosjekteieren
+    // (enterprise_team_members.org_kind='game_studio', organization_id = eier).
+    const gameTeam = await pool.query(
+      `SELECT 1
+         FROM casting_projects p
+         JOIN enterprise_team_members m
+           ON m.organization_id = p.created_by
+          AND m.org_kind = 'game_studio'
+          AND m.status = 'active'
+        WHERE p.id = $1 AND m.user_id = $2
+        LIMIT 1`,
+      [projectId, userId],
+    );
+    return (gameTeam.rowCount ?? 0) > 0;
   } catch (e) {
     console.error("[role-room] canAccessRoleRoomProject error:", e);
     return false; // fail closed

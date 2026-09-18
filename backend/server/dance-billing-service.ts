@@ -9,7 +9,8 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
+import { getStripe } from './vertical-billing-core.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -41,18 +42,9 @@ function generateInviteToken(): string {
   return randomBytes(24).toString('base64url');
 }
 
-// ─── Stripe singleton ───────────────────────────────────────────────────
-
-let stripeClient: Stripe | null = null;
-export function getStripe(): Stripe | null {
-  if (stripeClient) return stripeClient;
-  const key = process.env.STRIPE_SECRET_KEY
-    || process.env.CREATORHUB_STRIPE_SECRET_KEY
-    || process.env.STRIPE_API_KEY;
-  if (!key) return null;
-  stripeClient = new Stripe(key);
-  return stripeClient;
-}
+// Stripe-singleton er felles for vertikalene (vertical-billing-core.ts);
+// re-eksporteres her for bakoverkompatibilitet.
+export { getStripe };
 
 // ═══════════════════════════════════════════════════════════════════════
 //  PLANS

@@ -1,5 +1,6 @@
 import React from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor } from '@tiptap/react';
+import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
@@ -18,6 +19,7 @@ import {
   Undo as UndoIcon,
   Redo as RedoIcon,
   FormatStrikethrough as StrikeIcon,
+  Code as CodeIcon,
 } from '@mui/icons-material';
 
 interface RichTextEditorProps {
@@ -26,6 +28,12 @@ interface RichTextEditorProps {
   placeholder?: string;
   minHeight?: number | string | Record<string, number | string>;
   accentColor?: string;
+  /** Ekstra Tiptap-utvidelser (må være en modul-konstant — leses kun ved mount). */
+  extraExtensions?: AnyExtension[];
+  /** Ekstra verktøylinje-knapper, rendret før angre/gjør om. */
+  extraToolbar?: (editor: Editor) => React.ReactNode;
+  /** Vis kodeblokk-knapp (for skript). Default av — uendret for eksisterende brukere. */
+  showCodeBlock?: boolean;
 }
 
 export function RichTextEditor({
@@ -34,6 +42,9 @@ export function RichTextEditor({
   placeholder = 'Skriv notater her...',
   minHeight = 120,
   accentColor = '#ffc107',
+  extraExtensions,
+  extraToolbar,
+  showCodeBlock = false,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -41,6 +52,7 @@ export function RichTextEditor({
       Placeholder.configure({
         placeholder,
       }),
+      ...(extraExtensions ?? []),
     ],
     content: value,
     onUpdate: ({ editor }) => {
@@ -163,6 +175,19 @@ export function RichTextEditor({
             <DividerLineIcon sx={{ fontSize: iconSize }} />
           </IconButton>
         </Tooltip>
+        {showCodeBlock ? (
+          <Tooltip title="Skriptblokk (kode)" enterDelay={500}>
+            <IconButton
+              onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+              sx={{ ...buttonStyle, ...(editor.isActive('codeBlock') && buttonStyle['&.active']) }}
+              aria-label="Skriptblokk"
+              data-testid="rich-text-code-block"
+            >
+              <CodeIcon sx={{ fontSize: iconSize }} />
+            </IconButton>
+          </Tooltip>
+        ) : null}
+        {extraToolbar ? extraToolbar(editor) : null}
         <Divider
           orientation="vertical"
           flexItem
