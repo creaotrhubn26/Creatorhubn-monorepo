@@ -26,6 +26,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { createHash } from "crypto";
 import { byggSporingsSnutt } from "./leadgrid-sporing-snutt.js";
+import { leadgridPublicOrigin } from "./leadgrid-public-origin.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -165,9 +166,14 @@ export function registerLeadgridPublicFormSubmission(deps: PublicDeps): void {
           .send("/* leadgrid: ukjent eller tilbakekalt skjemanoekkel */");
         return;
       }
-      const base =
-        process.env.LEADGRID_PUBLIC_API_BASE?.replace(/\/+$/, "") ??
-        `${req.protocol}://${req.get("host")}`;
+      // leadgridPublicOrigin() er den etablerte veien (LEADGRID_PUBLIC_URL,
+      // satt i Render). Den tvinger HTTPS og avviser en origin med sti.
+      //
+      // Å utlede basen fra req.protocol/req.get("host") ville vært feil på to
+      // måter: bak Renders proxy kan protokollen bli http, og da blokkeres
+      // fetch som mixed content på kundens HTTPS-side — og verten kunne blitt
+      // en Role Room-origin, som leadgrid-public-origin.ts advarer mot.
+      const base = leadgridPublicOrigin();
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.type("application/javascript").send(

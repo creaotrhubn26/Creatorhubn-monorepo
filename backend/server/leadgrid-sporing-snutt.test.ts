@@ -8,6 +8,8 @@
  * senere. Testene under kjører den genererte snutten i en enkel stubbet
  * nettleser og holder på nettopp den overlevelsen.
  */
+import { readFileSync } from "fs";
+import { join } from "path";
 import { describe, expect, it } from "vitest";
 import { byggSporingsSnutt } from "./leadgrid-sporing-snutt";
 
@@ -105,5 +107,21 @@ describe("attribusjon overlever fra landingsside til skjema", () => {
   it("peker på riktig skjema-endepunkt", () => {
     const js = byggSporingsSnutt({ publicKey: "lgf_abc", apiBase: "https://api.test" });
     expect(js).toContain("https://api.test/api/leadgrid/public/forms/lgf_abc/submit");
+  });
+
+  it("serveres fra den validerte publikums-originen, ikke fra request-verten", () => {
+    // Utledet fra req.protocol bak Renders proxy kan basen bli http://, og da
+    // blokkeres fetch som mixed content på kundens HTTPS-side. Verten kunne
+    // dessuten blitt en Role Room-origin.
+    const rute = readFileSync(join(__dirname, "leadgrid-inbound-forms.ts"), "utf8");
+    // Uten kommentarlinjer: forklaringen av hvorfor vi IKKE gjør det, nevner
+    // nødvendigvis det vi ikke gjør.
+    const kode = rute
+      .split("\n")
+      .filter((l) => !l.trimStart().startsWith("//"))
+      .join("\n");
+    expect(kode).toContain("const base = leadgridPublicOrigin();");
+    expect(kode).not.toContain("req.get(\"host\")");
+    expect(kode).not.toContain("LEADGRID_PUBLIC_API_BASE");
   });
 });
