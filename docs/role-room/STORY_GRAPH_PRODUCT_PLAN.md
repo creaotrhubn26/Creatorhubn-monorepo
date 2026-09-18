@@ -283,7 +283,17 @@ vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis �
   valgfordeling per scene, SQL). UI: Spilltest-fane på scenekortet, tokens i Integrasjoner-fanen
   (råtoken vist én gang), hjem-KPI «Spilltest». Docs `docs/role-room/STORY_GRAPH_PLAYTEST_TELEMETRY.md`
   (Swift-snutt), eksempel `js/examples/playtest-telemetry.mjs`. e2e `game-playtest.spec.ts`.
-- **8f–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
+- **8f Lesning + referansebilde (LEVERT):** Replikker-fanen har «Les opp scenen»
+  (`scenes/SceneTableRead.tsx`): én stemme per taler, nettleser-TTS som standard, KI-stemmer
+  (`/api/ai/tts`) bak `ai_assist` i UI (endepunktet selv er ugatet — dokumentert hull), EN/NB fra
+  replikk-kolonnene, stemmecast fra karakterprofilen (barn/voksen etter epoke) som hint. Storyboard-fanen
+  har «Generer referansebilde»: prompt bygges deterministisk av `scenePrompt.ts` (scenekort, lokasjonsprofil,
+  plattformens visuelle retning — aldri forfatterfasit), bildet fra `POST /api/storyboards/generate-frame`
+  (DALL·E, persisterer ingenting) lagres av `POST …/scenes/:id/frames/from-base64`
+  (`role-room-narrative-frames-ai.ts`): objektlager → `narrative_assets.storage_key` → ramme «KI-referanse»;
+  `ai_assist`-gate + daglig tak 10 per prosjekt (generate-frame mangler kostnadskontroll). Rammer i objektlager
+  vises via kortlevd signert URL. Ingen migrasjon. e2e `game-scene-ai.spec.ts`.
+- **8g:** se planen i sesjonsloggen; oppdateres her når delen leveres.
 
 
 ## Researchprogram

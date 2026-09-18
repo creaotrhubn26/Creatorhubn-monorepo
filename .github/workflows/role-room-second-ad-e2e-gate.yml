@@ -27,6 +27,8 @@ on:
       - 'frontend/e2e/game-integrations.spec.ts'
       - 'frontend/e2e/game-script-guardian.spec.ts'
       - 'frontend/e2e/game-playtest.spec.ts'
+      - 'frontend/e2e/game-scene-ai.spec.ts'
+      - 'backend/server/role-room-narrative-frames-ai.ts'
       - 'backend/server/role-room-narrative-playtest.ts'
       - 'backend/migrations/0644_narrative_playtest.sql'
       - 'packages/story-graph-runtime/**'

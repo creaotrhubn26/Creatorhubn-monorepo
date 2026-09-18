@@ -408,6 +408,15 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
     return route.fulfill(suggestionJson(sug));
   });
+  // Fase 8f: storyboard-KI (DALL·E) — returnerer en 1×1 PNG uten å persistere noe; solo → 402 fra narrative-ruten, ikke her.
+  const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  let aiFramesToday = 0;
+  await page.route('**/api/storyboards/generate-frame', async (route: Route) => {
+    const b = (() => { try { return (route.request().postDataJSON() as Rec | null) ?? {}; } catch { return {}; } })();
+    if (!b.prompt) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'prompt_required' }) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, imageBase64: TINY_PNG, prompt: `[mock] ${String(b.prompt).slice(0, 80)}`, template: b.template ?? 'cinematic', model: 'dall-e-3' }) });
+  });
+
   await page.route('**/api/role-room/editor-comments**', async (route: Route) => {
     const req = route.request();
     const method = req.method();
@@ -688,6 +697,20 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
 
     // ── Fase 8c: CI-bevis-hooks ────────────────────────────────────────
+    // Fase 8f: KI-referansebilde → asset (storage_key, ingen external_url) + ramme.
+    mm = m(/\/projects\/[^/]+\/scenes\/([^/]+)\/frames\/from-base64$/);
+    if (mm && method === 'POST') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'ai_assist', planSlug: 'solo' }) });
+      if (aiFramesToday >= 10) return route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'daily_limit', message: 'Daglig tak nådd.' }) });
+      const sc = scenes.find((x) => x.id === mm![1]);
+      if (!sc) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      aiFramesToday += 1;
+      const assetId = nextId('nas');
+      g.assets.push({ id: assetId, projectId, kind: 'image', name: `${String(body.caption ?? 'KI-referanse')}.png`, storageKey: `narrative/${projectId}/frames/${sc.id}/${assetId}.png`, externalUrl: null, mime: 'image/png', sizeBytes: 68, folderPath: 'ki-referanse', createdBy: 'u-e2e', createdAt: now(), updatedAt: now() } as never);
+      const frame = { id: nextId('nsf'), sceneId: sc.id, projectId, assetId, externalUrl: null, caption: [String(body.caption ?? 'KI-referanse'), body.model ? `(${body.model})` : ''].filter(Boolean).join(' '), sortOrder: frames.filter((f) => f.sceneId === sc.id).length, createdAt: now(), updatedAt: now() };
+      frames.push(frame);
+      return route.fulfill(ok({ assetId, storageKey: `narrative/${projectId}/frames/${sc.id}/${assetId}.png`, frame, usedToday: aiFramesToday, dailyLimit: 10 }, 201));
+    }
     // Fase 8e: spilltest-tokens + aggregat.
     if (m(/\/projects\/[^/]+\/playtest-tokens$/) && method === 'GET') return route.fulfill(ok(playtestTokens));
     if (m(/\/projects\/[^/]+\/playtest-tokens$/) && method === 'POST') {

@@ -774,3 +774,26 @@ export function getPlaytestSummary(projectId: string, opts: { build?: string | n
   const qs = q.toString();
   return request(`/projects/${encodeURIComponent(projectId)}/playtest/summary${qs ? `?${qs}` : ''}`);
 }
+
+// ─── Fase 8f: KI-referansebilde på scenekortet ──────────────────────
+export interface AiReferenceFrameResult {
+  assetId: string; storageKey: string; frame: NarrativeSceneFrame; usedToday: number; dailyLimit: number;
+}
+/** Genererer bildet via storyboard-KI (DALL·E). Persisterer ingenting — se `createAiReferenceFrame`. */
+export async function generateStoryboardImage(projectId: string, prompt: string, opts: { template?: string; cameraAngle?: string } = {}): Promise<{ imageBase64: string; prompt: string; model: string }> {
+  const res = await fetch('/api/storyboards/generate-frame', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...narrativeAuthHeaders() },
+    body: JSON.stringify({ prompt, project_id: projectId, template: opts.template ?? 'cinematic', camera_angle: opts.cameraAngle, size: '1792x1024' }),
+  });
+  const body = await res.json().catch(() => ({})) as { imageBase64?: string; prompt?: string; model?: string; error?: string; detail?: string };
+  if (!res.ok || !body.imageBase64) {
+    const code = body.error ?? `http_${res.status}`;
+    const msg = code === 'image_gen_disabled' ? 'Bildegenerering er ikke slått på på serveren (OPENAI_API_KEY).' : res.status === 402 ? 'Kredittgrensen for bildegenerering er nådd.' : (body.detail || 'Kunne ikke generere bilde.');
+    throw new NarrativeApiError(msg, res.status, code);
+  }
+  return { imageBase64: body.imageBase64, prompt: body.prompt ?? prompt, model: body.model ?? 'dall-e-3' };
+}
+export function createAiReferenceFrame(projectId: string, sceneId: string, input: { imageBase64: string; caption?: string; prompt?: string; model?: string }): Promise<AiReferenceFrameResult> {
+  return request(`/projects/${encodeURIComponent(projectId)}/scenes/${encodeURIComponent(sceneId)}/frames/from-base64`, { method: 'POST', body: JSON.stringify(input) });
+}

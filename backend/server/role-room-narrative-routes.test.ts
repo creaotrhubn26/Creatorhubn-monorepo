@@ -944,6 +944,20 @@ describe('narrative routes — Fase 7: produksjons-OS (gater, replikker, episode
     expect(res.body.data.platform).toEqual({ requirements: 2, verified: 1, primaryName: 'iPad Pro M1' });
   });
 
+  it('Fase 8f: frames/from-base64 → 402 uten ai_assist, 400 ugyldig bilde, 429 daglig tak, 201 med ramme', async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 1)]).toString('base64');
+    const mk = (usedToday: number) => makePool([
+      { match: /COUNT\(\*\)::int AS n FROM narrative_assets/, rows: [{ n: usedToday }] },
+      { match: /SELECT id FROM narrative_assets WHERE id = \$1 AND project_id = \$2/, rows: (p) => [{ id: p[0] }] },
+      { match: /SELECT \* FROM narrative_scenes WHERE id = \$1 AND project_id = \$2/, rows: [{ id: 'nsc_1', project_id: 'proj', code: 'P01', title: 'Skoleveien', status: 'idea', sort_order: 0, created_at: new Date(), updated_at: new Date(), source_refs: [], knowledge: {} }] },
+      { match: /INSERT INTO narrative_scene_frames/, rows: (p) => [{ id: p[0], scene_id: 'nsc_1', project_id: 'proj', asset_id: p[3], external_url: null, caption: p[5], sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const url = `${base}/scenes/nsc_1/frames/from-base64`;
+    expect((await auth(request(createApp(mk(0), { plan: 'solo' })).post(url)).send({ imageBase64: png })).status).toBe(402);
+    expect((await auth(request(createApp(mk(0))).post(url)).send({ imageBase64: Buffer.alloc(200, 7).toString('base64') })).status).toBe(400);
+    expect((await auth(request(createApp(mk(10))).post(url)).send({ imageBase64: png })).status).toBe(429);
+  });
+
   it('Fase 8e: playtest-tokens (POST 201 med råtoken én gang, GET liste, revoke 404/200) og summary 200', async () => {
     const pool = makePool([
       { match: /INSERT INTO narrative_playtest_tokens/, rows: (p) => [{ id: p[0], project_id: p[1], label: p[2], token_hash: p[3], created_by: p[4], created_at: new Date(), expires_at: p[5], revoked_at: null, last_used_at: null, event_count: 0 }] },

@@ -41,6 +41,7 @@ import {
 import { applyDocumentImport, listExistingScenesForImport } from './narrative-document-import-service.js';
 import { createCiHook, listCiDeliveries, listCiHooks, revokeCiHook } from './role-room-narrative-ci-hooks.js';
 import { createPlaytestIngestHandler, createPlaytestToken, getPlaytestSummary, listPlaytestTokens, revokePlaytestToken } from './role-room-narrative-playtest.js';
+import { AiFrameError, createAiReferenceFrame } from './role-room-narrative-frames-ai.js';
 import { presignCreatorHubObjectDownload } from './creatorhub-object-storage.js';
 import {
   PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
@@ -1418,6 +1419,30 @@ export function createRoleRoomNarrativeRouter(
   router.get('/projects/:projectId/ci-deliveries', ...guard, wrap(async (req, res) => {
     res.json({ success: true, data: await listCiDeliveries(pool, req.projectId, { limit: 200 }) });
   }));
+  // ─── Fase 8f: KI-referansebilde → objektlager → narrative_assets(storage_key) → scene-ramme ──
+  // Bildet genereres av /api/storyboards/generate-frame (persisterer ingenting); ai_assist-gate + daglig tak her.
+  router.post('/projects/:projectId/scenes/:sceneId/frames/from-base64', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'ai_assist');
+    const parsed = z.object({
+      imageBase64: z.string().min(64).max(12 * 1024 * 1024),
+      caption: z.string().trim().max(120).optional(),
+      prompt: z.string().max(2000).optional(),
+      model: z.string().max(60).optional(),
+    }).safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const result = await createAiReferenceFrame(pool, req.projectId, param(req, 'sceneId'), req.userId, parsed.data);
+      res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      if (err instanceof AiFrameError) {
+        const status = err.code === 'daily_limit' ? 429 : err.code === 'invalid_image' ? 400 : err.code === 'scene_not_found' ? 404 : 503;
+        res.status(status).json({ error: err.code, message: err.message });
+        return;
+      }
+      throw err;
+    }
+  }));
+
   // ─── Fase 8e: spilltest-telemetri (tokens + aggregat; inntaket er offentlig nederst) ──
   router.get('/projects/:projectId/playtest-tokens', ...guard, wrap(async (req, res) => {
     res.json({ success: true, data: await listPlaytestTokens(pool, req.projectId) });
