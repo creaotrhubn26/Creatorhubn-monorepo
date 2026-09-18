@@ -40,9 +40,14 @@ ALTER TABLE leadgrid_oppgaver
 
 -- Eksisterende oppgaver eies av den som lagde dem. Uten backfill ville
 -- «mine oppgaver» vært tom for alt som finnes fra før.
-UPDATE leadgrid_oppgaver
-   SET assigned_user_id = user_id
- WHERE assigned_user_id IS NULL;
+-- leadgrid_oppgaver.user_id er TEXT uten fremmednøkkel og kan peke på en
+-- bruker som er slettet. assigned_user_id har en fremmednøkkel. Bare verdier
+-- som faktisk finnes i users kopieres over; resten forblir NULL og dukker opp
+-- som en oppgave uten ansvarlig, som er sant.
+UPDATE leadgrid_oppgaver o
+   SET assigned_user_id = o.user_id
+ WHERE o.assigned_user_id IS NULL
+   AND EXISTS (SELECT 1 FROM users u WHERE u.id = o.user_id);
 
 -- Fritekst-frister som tilfeldigvis ER en dato, kan reddes. Resten forblir
 -- NULL heller enn å gjettes; en gjettet frist er verre enn ingen.

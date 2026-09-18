@@ -140,7 +140,13 @@ SELECT c.organization_id,
        c.expected_close_date,
        c.renewal_date,
        c.renewal_reminded_at,
-       c.owner_user_id,
+       -- Produksjon har crm_customers-rader som peker på brukere som ikke
+       -- finnes i users lenger. crm_customers.owner_user_id har ingen
+       -- fremmednøkkel og tåler det; leadgrid_deals.owner_user_id har en og
+       -- gjør ikke. Å importere en peker som ikke fører noe sted er verre
+       -- enn å la feltet stå tomt — eieren er uansett borte.
+       CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.id = c.owner_user_id)
+            THEN c.owner_user_id END,
        COALESCE(c.deal_stage_changed_at, c.updated_at, NOW()),
        TRUE,
        'backfill',
@@ -172,7 +178,7 @@ BEGIN
          expected_close_date = NEW.expected_close_date,
          renewal_date = NEW.renewal_date,
          renewal_reminded_at = NEW.renewal_reminded_at,
-         owner_user_id = NEW.owner_user_id,
+         owner_user_id = (SELECT u.id FROM users u WHERE u.id = NEW.owner_user_id),
          stage_changed_at = CASE
            WHEN NEW.pipeline_stage IS DISTINCT FROM OLD.pipeline_stage THEN NOW()
            ELSE d.stage_changed_at
@@ -226,7 +232,10 @@ BEGIN
     COALESCE(NULLIF(TRIM(NEW.name), ''), 'Salg'),
     COALESCE(NEW.pipeline_stage, 'new'),
     NEW.deal_probability, NEW.deal_amount, NEW.expected_close_date,
-    NEW.owner_user_id, TRUE, 'auto'
+    -- Samme vern som i backfill-en: en ny bedrift med en eier som ikke
+    -- finnes, skal opprette salget sitt uten eier, ikke feile.
+    (SELECT u.id FROM users u WHERE u.id = NEW.owner_user_id),
+    TRUE, 'auto'
   )
   ON CONFLICT DO NOTHING;
   RETURN NEW;
