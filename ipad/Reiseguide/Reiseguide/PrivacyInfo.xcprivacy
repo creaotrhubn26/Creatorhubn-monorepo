@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        SenseAid Explore, personvernmanifest (kreves av App Store Connect for
+        apper som bruker «required reason»-API-er, ellers avvises opplastingen
+        med ITMS-91053).
+
+        Appen har ingen konto og ingen analyse- eller annonse-SDK-er. Det som
+        forlater telefonen er: en tilfeldig enhets-ID sammen med stjerner
+        (anonym vurdering) og, bare når brukeren har slått det på, besøksloggen
+        (sted, tid, stjerner, quiz-resultat). Posisjon brukes bare lokalt for
+        «i nærheten» og sendes ikke. Se backend/server/reiseguide-visits.ts
+        og docs/evidence/2026-09-senseaid-visit-log-gdpr.yaml.
+    -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array>
+        <dict>
+            <!-- Tilfeldig enhets-ID (UserDefaults), ikke knyttet til noen
+                 identitet; byttes når brukeren sletter dataene sine. -->
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeDeviceID</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+            </array>
+        </dict>
+        <dict>
+            <!-- Stjernerangering og besøkslogg (sted, tid, quiz-resultat),
+                 loggen bare med samtykke. -->
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeProductInteraction</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+            </array>
+        </dict>
+    </array>
+
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <!-- UserDefaults: språk, teksting, hastighet, favoritter,
+                 mock-kjøp, enhets-ID og samtykke (Core/AppSettings.swift).
+                 CA92.1 = kun appens egne data. -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

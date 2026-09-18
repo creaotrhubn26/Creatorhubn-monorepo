@@ -1,0 +1,6 @@
+SenseAid Explore 0.1, første testversjon
+
+• Utforsk Kvadraturen, Akershus festning og Operaen: kart med liste, detaljside og avspiller med teksting og synstolking.
+• Etter besøket: stjerner, kort quiz, tips til liknende steder i nærheten og «Anbefal til en venn».
+• Personlig logg over besøk på telefonen; kan lagres på serveren under Innstillinger → Personvern.
+• Norsk og engelsk. Lydfiler og bilder kommer i neste testversjon.
