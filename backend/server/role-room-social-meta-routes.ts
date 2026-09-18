@@ -86,6 +86,7 @@ import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-up
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
 import { resolveClientPortalSession } from "./role-room-client-portal.js";
 import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 interface AdminSession {
   userId: string;
@@ -319,7 +320,7 @@ export function setupRoleRoomSocialMetaRoutes(
     }
     const connection = connections[0];
 
-    const url = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${encodeURIComponent(connection.accessToken)}`;
+    const url = `${META_GRAPH_BASE}/me/accounts?fields=id,name,access_token,category,tasks&access_token=${encodeURIComponent(connection.accessToken)}`;
     try {
       const response = await fetch(url);
       const text = await response.text();
@@ -395,7 +396,7 @@ export function setupRoleRoomSocialMetaRoutes(
     let pageAccessToken: string | null = null;
     try {
       const accountsRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+        `${META_GRAPH_BASE}/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
       );
       const accountsBody = await accountsRes.json() as { data?: Array<{ id?: string; access_token?: string }> };
       const match = (accountsBody.data ?? []).find((p) => String(p.id) === pageId);
@@ -447,7 +448,7 @@ export function setupRoleRoomSocialMetaRoutes(
     }
     form.append("access_token", pageAccessToken);
 
-    const uploadUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/videos`;
+    const uploadUrl = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/videos`;
     try {
       const response = await fetch(uploadUrl, { method: "POST", body: form });
       const text = await response.text();
@@ -470,7 +471,7 @@ export function setupRoleRoomSocialMetaRoutes(
           id: videoId,
           pageId,
           permalink: videoId ? `https://www.facebook.com/${videoId}` : null,
-          graphUrl: videoId ? `https://graph.facebook.com/v21.0/${videoId}` : null,
+          graphUrl: videoId ? `${META_GRAPH_BASE}/${videoId}` : null,
           sizeBytes: buffer.length,
           mimeType,
           scheduled: !!scheduledPublishUnix,
@@ -515,7 +516,7 @@ export function setupRoleRoomSocialMetaRoutes(
     let pageAccessToken: string | null = null;
     try {
       const accountsRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+        `${META_GRAPH_BASE}/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
       );
       const accountsBody = await accountsRes.json() as { data?: Array<{ id?: string; access_token?: string }> };
       const match = (accountsBody.data ?? []).find((p) => String(p.id) === pageId);
@@ -540,7 +541,7 @@ export function setupRoleRoomSocialMetaRoutes(
     form.append("message", finalMessage);
     form.append("access_token", pageAccessToken);
 
-    const feedUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/feed`;
+    const feedUrl = `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/feed`;
     try {
       const response = await fetch(feedUrl, { method: "POST", body: form });
       const text = await response.text();

@@ -17,6 +17,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupOEmbedRoutesDeps {
   app: Application;
@@ -83,7 +84,7 @@ export function setupOEmbedRoutes(deps: SetupOEmbedRoutesDeps): void {
     let graphResponse: { ok: boolean; status: number; body: unknown };
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${endpointPath}?${params.toString()}`,
+        `${META_GRAPH_BASE}/${endpointPath}?${params.toString()}`,
       );
       graphResponse = { ok: upstream.ok, status: upstream.status, body: await upstream.json().catch(() => ({})) };
     } catch (error) {

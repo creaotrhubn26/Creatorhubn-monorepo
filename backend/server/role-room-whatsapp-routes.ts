@@ -55,6 +55,7 @@ import {
   dispatchTeamWhatsAppInvite,
 } from "./casting-team-whatsapp-invite-service.js";
 import { verifyMetaWebhookSignature } from "./role-room-instagram-webhook.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 interface AdminSession {
   userId: string;
@@ -432,7 +433,7 @@ export function setupRoleRoomWhatsAppRoutes(
       });
     }
 
-    const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
+    const url = `${META_GRAPH_BASE}/${phoneNumberId}/messages`;
     const payload = {
       messaging_product: "whatsapp",
       to: to.replace(/^\+/, ""),
@@ -645,7 +646,7 @@ export function setupRoleRoomWhatsAppRoutes(
       const samples = Array.from({ length: varCount }, (_, i) => provided[i] || `Sample ${i + 1}`);
       bodyComponent.example = { body_text: [samples] };
     }
-    const url = `https://graph.facebook.com/v22.0/${wabaId}/message_templates`;
+    const url = `${META_GRAPH_BASE}/${wabaId}/message_templates`;
     const payload: Record<string, unknown> = {
       name,
       category,

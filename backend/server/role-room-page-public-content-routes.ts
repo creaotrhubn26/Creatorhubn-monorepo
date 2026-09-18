@@ -27,6 +27,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupPagePublicContentRoutesDeps {
   app: Application;
@@ -64,7 +65,7 @@ export function setupPagePublicContentRoutes(deps: SetupPagePublicContentRoutesD
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {
@@ -108,7 +109,7 @@ export function setupPagePublicContentRoutes(deps: SetupPagePublicContentRoutesD
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/posts?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/posts?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {

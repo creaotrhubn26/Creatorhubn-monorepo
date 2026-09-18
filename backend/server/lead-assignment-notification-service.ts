@@ -15,6 +15,7 @@
 import type { Pool } from "pg";
 import { sendAPNs } from "./lead-map-apns-client.js";
 import { leadgridLeadDeepLink } from "./lead-map-notification-service.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 type EventType =
   | "lead_assigned_as_team_leader"
@@ -221,7 +222,7 @@ async function sendInternalWhatsApp(
     // Bruker free-text utility-template hvis vi har den, ellers session-message
     // (24t-vinduet gjelder kun mot kunder som har sendt oss melding)
     const r = await fetch(
-      `https://graph.facebook.com/v22.0/${phoneId}/messages`,
+      `${META_GRAPH_BASE}/${phoneId}/messages`,
       {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },

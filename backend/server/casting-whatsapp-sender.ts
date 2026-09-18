@@ -7,9 +7,9 @@
 // for The Role Room sin egen demo-konto.
 
 import { parsePhoneNumberFromString } from "libphonenumber-js";
+import { META_GRAPH_API_VERSION } from "./meta-graph-version.js";
 
-const META_GRAPH_VERSION = "v22.0";
-
+const META_GRAPH_VERSION = META_GRAPH_API_VERSION;
 export type WhatsAppThreshold = "24h" | "1h";
 
 export interface WhatsAppSenderConfig {

@@ -1,0 +1,119 @@
+name: Render — sett LEADGRID_IP_PEPPER
+
+# Setter én env-var på Render-backenden: peppern som gjør IP-hashene i
+# leadgrid_form_submissions (mig 0637) umulige å slå opp. Uten den er en
+# sha256 av en IPv4-adresse trivielt å knekke ved uttømmende søk.
+#
+# Verdien GENERERES I RUNNEREN og vises aldri — ikke i logg, ikke i git,
+# ikke i en chat. Den eneste kopien er env-varen på Render.
+#
+# PER-KEY PUT, aldri collection-PUT. Collection-PUT-en erstatter HELE lista
+# og wipet 220 env-vars 2026-06-24. Se scripts/render-envs/README.md.
+#
+# Denne workflowen kan bare sette denne ene nøkkelen. En generisk
+# «sett hvilken som helst env-var»-workflow ville vært en vei til å sette
+# DATABASE_URL for alle som kan dispatche workflows.
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_id:
+        description: 'Render service ID (default: creatorhub-backend)'
+        required: false
+        default: 'srv-d76ob60ule4c73dv2p60'
+      overwrite:
+        description: 'Rotér peppern selv om den allerede er satt (gjør gamle ip_hash-verdier uleselige)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-set-ip-pepper
+  cancel-in-progress: false
+
+jobs:
+  set-pepper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Krev RENDER_API_KEY
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::Mangler GH secret: RENDER_API_KEY"
+            exit 1
+          fi
+
+      - name: Sett peppern (per-key PUT)
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: ${{ inputs.service_id }}
+          OVERWRITE: ${{ inputs.overwrite }}
+        run: |
+          set -euo pipefail
+          KEY=LEADGRID_IP_PEPPER
+          BASE="https://api.render.com/v1/services/${SERVICE_ID}/env-vars"
+
+          # Finnes den fra før? Da skal den IKKE røres uten at noen ber om
+          # det: en ny pepper gjør alle eksisterende ip_hash-verdier
+          # uleselige, og ratebegrensningen mister historikken sin.
+          #
+          # Listing, ikke oppslag per nøkkel — det er formen backup.py
+          # allerede kjører daglig, så den er bevist mot dette API-et.
+          # Paginering er unødvendig her: vi spør bare om nøkkelen finnes,
+          # og lista hentes i sider på 100 til vi ser den eller er tom.
+          found=no
+          cursor=""
+          for page in 1 2 3 4 5; do
+            url="${BASE}?limit=100"
+            [ -n "$cursor" ] && url="${url}&cursor=${cursor}"
+            curl -sS -m 20 -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H 'Accept: application/json' "$url" > /tmp/page.json
+            if ! jq -e 'type == "array"' /tmp/page.json > /dev/null 2>&1; then
+              echo "::error::Uventet svar fra Render ved listing"
+              jq -r '.message // .' /tmp/page.json 2>/dev/null || head -c 300 /tmp/page.json
+              exit 1
+            fi
+            [ "$(jq 'length' /tmp/page.json)" = "0" ] && break
+            if jq -e --arg k "$KEY" 'any(.[]; .envVar.key == $k)' /tmp/page.json > /dev/null; then
+              found=yes
+              break
+            fi
+            next=$(jq -r '.[-1].cursor // empty' /tmp/page.json)
+            [ -z "$next" ] || [ "$next" = "$cursor" ] && break
+            cursor="$next"
+          done
+
+          if [ "$found" = "yes" ] && [ "$OVERWRITE" != "true" ]; then
+            echo "$KEY er allerede satt. Kjør på nytt med overwrite=true for å rotere."
+            exit 0
+          fi
+
+          PEPPER=$(openssl rand -hex 32)
+          echo "::add-mask::$PEPPER"
+
+          # PER-KEY PUT. Ikke bytt denne mot PUT ${BASE} — den erstatter hele
+          # lista og sletter alt som ikke står i kroppen.
+          code=$(curl -s -o /tmp/put.json -w '%{http_code}' -X PUT \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            --data "$(jq -nc --arg v "$PEPPER" '{value:$v}')" \
+            "${BASE}/${KEY}")
+
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::PUT feilet: HTTP $code"
+            jq -r '.message // .' /tmp/put.json 2>/dev/null || cat /tmp/put.json
+            exit 1
+          fi
+          echo "$KEY satt på ${SERVICE_ID} (32 byte, tilfeldig)."
+          echo "Verdien er ikke logget noe sted. Trenger du den igjen, rotér i stedet."
+
+      - name: Påminnelse om deploy
+        run: |
+          echo "Env-varen er lagret, men en kjørende instans leser den først"
+          echo "ved neste deploy. Kjør «Deploy shared Render backend» fra main"
+          echo "når endringen skal tre i kraft."

@@ -83,6 +83,7 @@ import {
   finalizeResearchMockupDrafts,
   initializeResearchMockupDrafts,
 } from "./role-room-research-mockups.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 interface AdminSession {
   userId: string;
@@ -1587,7 +1588,7 @@ export function setupRoleRoomAgentCoreRoutes(
       if (token) {
         meta.connected = true;
         const verify = await fetch(
-          `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${encodeURIComponent(token)}`,
+          `${META_GRAPH_BASE}/me?fields=id,name&access_token=${encodeURIComponent(token)}`,
           { signal: AbortSignal.timeout(8000) },
         );
         if (verify.ok) {
@@ -1682,7 +1683,7 @@ export function setupRoleRoomAgentCoreRoutes(
         const token = conn.rows[0]?.access_token ?? null;
         if (token) {
           const pagesRes = await fetch(
-            `https://graph.facebook.com/v21.0/me/accounts?fields=name&limit=10&access_token=${encodeURIComponent(token)}`,
+            `${META_GRAPH_BASE}/me/accounts?fields=name&limit=10&access_token=${encodeURIComponent(token)}`,
             { signal: AbortSignal.timeout(8000) },
           );
           if (pagesRes.ok) {

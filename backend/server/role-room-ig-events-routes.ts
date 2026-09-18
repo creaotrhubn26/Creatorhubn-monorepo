@@ -30,6 +30,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupIgEventsRoutesDeps {
   app: Application;
@@ -70,7 +71,7 @@ export function setupIgEventsRoutes(deps: SetupIgEventsRoutesDeps): void {
     });
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/upcoming_events?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(igUserId)}/upcoming_events?${params.toString()}`,
       );
       const body = await upstream.json().catch(() => ({}));
       if (!upstream.ok) {
@@ -147,7 +148,7 @@ export function setupIgEventsRoutes(deps: SetupIgEventsRoutesDeps): void {
     }
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}/upcoming_events`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(igUserId)}/upcoming_events`,
         {
           method: "POST",
           body: form,
@@ -194,7 +195,7 @@ export function setupIgEventsRoutes(deps: SetupIgEventsRoutesDeps): void {
     }
     try {
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(eventId)}?access_token=${encodeURIComponent(accessToken)}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(eventId)}?access_token=${encodeURIComponent(accessToken)}`,
         { method: "DELETE" },
       );
       const responseBody = await upstream.json().catch(() => ({}));

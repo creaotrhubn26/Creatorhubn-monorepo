@@ -26,8 +26,7 @@ import {
   ensureFreshConnection,
 } from "./role-room-instagram-oauth.js";
 
-const META_GRAPH_VERSION = "v21.0";
-const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+const META_GRAPH_VERSION = META_GRAPH_API_VERSION;
 
 /** Hent producerens Meta access-token (long-lived user-token). */
 async function metaToken(pool: Pool, producerUserId: string): Promise<string | null> {
@@ -329,6 +328,7 @@ export async function fetchMetaAdsMetrics(
 // ─────────────────────────────────────────────────────────────────────
 
 import crypto from "node:crypto";
+import { META_GRAPH_BASE, META_GRAPH_API_VERSION } from "./meta-graph-version.js";
 
 export interface MetaCustomAudience {
   audienceId: string;

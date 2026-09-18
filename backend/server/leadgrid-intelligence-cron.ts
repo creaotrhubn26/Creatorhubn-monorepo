@@ -12,6 +12,7 @@
  * Tillegg-effekter:
  *   - Emitterer followup.due / followup.overdue events der relevant.
  *   - Markerer pending recommendations som 'expired' når expires_at < NOW().
+ *   - Emitterer deal.renewal_due for avtaler som skal fornyes snart.
  */
 
 import type { Express, Request, Response } from "express";
@@ -146,6 +147,86 @@ async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: n
   return { due, overdue };
 }
 
+/**
+ * Varslingsvindu for fornyelse. 30 dager er nok til å rekke en samtale og
+ * en ny signatur, og kort nok til at varselet fortsatt er relevant.
+ */
+export const RENEWAL_NOTICE_DAYS = 30;
+
+/**
+ * Fornyelser som forfaller innenfor vinduet, én gang per fornyelse.
+ *
+ * renewal_reminded_at settes FØR eventet emitteres, slik at en cron-kjøring
+ * som feiler halvveis ikke sender samme varsel igjen dagen etter. Filteret
+ * `renewal_reminded_at < renewal_date - vindu` gjør at en avtale som fornyes
+ * på nytt (ny renewal_date lenger fram) varsles på nytt neste gang.
+ */
+async function emitRenewalEvents(pool: Pool): Promise<number> {
+  try {
+    const rows = await pool.query<{
+      id: string;
+      organization_id: string;
+      project_id: string;
+      assigned_user_id: string | null;
+      name: string;
+      renewal_date: string;
+      days_until_renewal: number;
+    }>(
+      `UPDATE crm_customers c
+          SET renewal_reminded_at = NOW()
+         FROM leadgrid_projects project
+        WHERE project.id = c.project_id
+          AND project.organization_id = c.organization_id
+          AND c.archived_at IS NULL
+          AND c.organization_id IS NOT NULL
+          AND c.project_id IS NOT NULL
+          AND c.renewal_date IS NOT NULL
+          AND c.renewal_date <= CURRENT_DATE + make_interval(days => $1::int)
+          AND (
+            c.renewal_reminded_at IS NULL
+            OR c.renewal_reminded_at::date
+                 < c.renewal_date - make_interval(days => $1::int)
+          )
+          AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+        RETURNING c.id::text,
+                  c.organization_id::text AS organization_id,
+                  c.project_id::text AS project_id,
+                  c.assigned_user_id::text,
+                  c.name,
+                  c.renewal_date::text,
+                  (c.renewal_date - CURRENT_DATE) AS days_until_renewal`,
+      [RENEWAL_NOTICE_DAYS],
+    );
+
+    const engine = await import("./leadgrid-workflow-engine.js");
+    for (const row of rows.rows) {
+      const data = {
+        lead_id: row.id,
+        organization_id: row.organization_id,
+        project_id: row.project_id,
+        assigned_user_id: row.assigned_user_id,
+        name: row.name,
+        renewal_date: row.renewal_date,
+        days_until_renewal: row.days_until_renewal,
+      };
+      void emitWebhook(pool, "deal.renewal_due", data, row.organization_id, row.project_id);
+      void engine.publishEvent({
+        pool,
+        organizationId: row.organization_id,
+        projectId: row.project_id,
+        type: "deal.renewal_due",
+        leadId: row.id,
+        actorUserId: null,
+        data,
+      });
+    }
+    return rows.rowCount ?? 0;
+  } catch (err) {
+    console.warn("[intelligence-cron] emitRenewalEvents failed:", err);
+    return 0;
+  }
+}
+
 export function registerLeadgridIntelligenceCron(deps: Deps): void {
   const { app, pool } = deps;
 
@@ -230,6 +311,7 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
         }
 
         const followUp = await emitFollowUpEvents(pool);
+        const renewalsDue = await emitRenewalEvents(pool);
         const expired = await expireOldRecommendations(pool);
 
         const allProcessed = failed === 0 && skippedNoProjectScope === 0;
@@ -243,6 +325,7 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
           chunk_size: chunkSize,
           followup_due: followUp.due,
           followup_overdue: followUp.overdue,
+          renewals_due: renewalsDue,
           expired_recommendations: expired,
           duration_ms: Date.now() - startedAt,
         });

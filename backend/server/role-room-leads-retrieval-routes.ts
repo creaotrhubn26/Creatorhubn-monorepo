@@ -24,6 +24,7 @@
  */
 
 import type { Application, Request, Response } from "express";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupLeadsRetrievalRoutesDeps {
   app: Application;
@@ -58,7 +59,7 @@ export function setupLeadsRetrievalRoutes(deps: SetupLeadsRetrievalRoutesDeps): 
     try {
       // LM-4: 8s timeout
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/leadgen_forms?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/leadgen_forms?${params.toString()}`,
         { signal: AbortSignal.timeout(10_000) },
       );
       const body = await upstream.json().catch(() => ({}));
@@ -113,7 +114,7 @@ export function setupLeadsRetrievalRoutes(deps: SetupLeadsRetrievalRoutesDeps): 
     try {
       // LM-4: 8s timeout
       const upstream = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(formId)}/leads?${params.toString()}`,
+        `${META_GRAPH_BASE}/${encodeURIComponent(formId)}/leads?${params.toString()}`,
         { signal: AbortSignal.timeout(10_000) },
       );
       const body = await upstream.json().catch(() => ({}));

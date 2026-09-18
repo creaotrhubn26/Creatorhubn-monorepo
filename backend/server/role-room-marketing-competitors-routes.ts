@@ -25,8 +25,8 @@ import {
   type CompetitorReportInput,
 } from './role-room-competitor-report-claude.js';
 import { THEROLERROOM_BOOTSTRAP } from './role-room-agent-profile-recommendations.js';
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
 export interface SetupCompetitorsRoutesDeps {
   app: Application;

@@ -394,8 +394,7 @@ function StickyHeader() {
             {([
               { label: 'Produkt', href: '#produkt' },
               { label: 'Løsninger', href: '#løsninger' },
-              { label: 'Connectors', href: '/leadgrid/connectors' },
-              { label: 'Importér', href: '/leadgrid/import' },
+              { label: 'Integrasjoner', href: '/leadgrid/connectors' },
               { label: 'Priser', href: '#priser' },
               { label: 'Demo', href: '#demo' },
             ]).map((item) => (

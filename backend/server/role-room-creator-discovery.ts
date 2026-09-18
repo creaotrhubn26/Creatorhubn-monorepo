@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,7 +141,7 @@ export async function fetchInstagramDiscovery(
   if (!igUserId || !accessToken || !targetUsername) return null;
   // Strip @ hvis det er der
   const target = targetUsername.replace(/^@/, "");
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(igUserId)}` +
+  const url = `${META_GRAPH_BASE}/${encodeURIComponent(igUserId)}` +
     `?fields=business_discovery.username(${encodeURIComponent(target)})%7Busername,followers_count,media_count,biography,profile_picture_url%7D` +
     `&access_token=${encodeURIComponent(accessToken)}`;
   try {
