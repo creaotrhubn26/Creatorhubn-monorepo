@@ -200,6 +200,7 @@ import {
   resolveWorkspaceLens,
   type RoleWorkspaceLens,
 } from './production/workspaceLensRegistry';
+import { isSessionProjectRole, resolveSessionProjectRole } from '../config/sessionProjectRole';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
@@ -1441,8 +1442,8 @@ type RoleRoomProjectWorkspaceState = {
     const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
     const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
     if (
-      ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)
-      || ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)
+      isSessionProjectRole(normalizedRequestedRole, 'camera_team')
+      || isSessionProjectRole(normalizedRole, 'camera_team')
     ) {
       return 'cinematographer';
     }
@@ -1508,16 +1509,16 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
-      if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)) {
+      if (isSessionProjectRole(normalizedRequestedRole, 'camera_team')) {
         return 'camera_team';
       }
-      if (['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRequestedRole)) {
+      if (isSessionProjectRole(normalizedRequestedRole, 'content_producer')) {
         return 'content_producer';
       }
-      if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRequestedRole)) {
+      if (isSessionProjectRole(normalizedRequestedRole, 'first_ad')) {
         return 'first_ad';
       }
-      if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRequestedRole)) {
+      if (isSessionProjectRole(normalizedRequestedRole, 'second_ad')) {
         return 'second_ad';
       }
       if (
@@ -1544,9 +1545,11 @@ type RoleRoomProjectWorkspaceState = {
     if (normalizedRole === 'admin') return 'producer';
     if (normalizedRole === 'content_producer') return 'content_producer';
     if (normalizedRole === 'client_reviewer' || normalizedRole === 'client') return 'client_reviewer';
-    if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)) return 'camera_team';
-    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRole)) return 'first_ad';
-    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRole)) return 'second_ad';
+    // Katalogen eier skrivemåtene; her spør vi den i stedet for å gjenta dem.
+    const katalogRolle = resolveSessionProjectRole(normalizedRole);
+    if (katalogRolle === 'camera_team' || katalogRolle === 'first_ad' || katalogRolle === 'second_ad') {
+      return katalogRolle;
+    }
     if (
       [
         'director',
@@ -1564,7 +1567,7 @@ type RoleRoomProjectWorkspaceState = {
     ) {
       return normalizedRole as UserRoleType;
     }
-    if (['photographer', 'film_photographer', 'photo_director', 'photo_assistant'].includes(normalizedRole)) {
+    if (isSessionProjectRole(normalizedRole, 'content_producer')) {
       return 'content_producer';
     }
     return null;
@@ -3087,7 +3090,7 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
-      if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)) {
+      if (isSessionProjectRole(normalizedRequestedRole, 'camera_team')) {
         return 'camera_team';
       }
       return 'content_producer';
@@ -3096,7 +3099,7 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
-      if (['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRequestedRole)) {
+      if (isSessionProjectRole(normalizedRequestedRole, 'content_producer')) {
         return 'content_producer';
       }
       if ([
@@ -3131,7 +3134,7 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'producer') return 'producer';
     if (normalized === 'content_producer') return 'content_producer';
     if (normalized === 'client_reviewer') return 'client_reviewer';
-    if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalized)) return 'camera_team';
+    if (isSessionProjectRole(normalized, 'camera_team')) return 'camera_team';
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
     if (normalized === 'production_coordinator') return 'production_coordinator';
@@ -3139,8 +3142,8 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'location_scout') return 'location_scout';
     if (normalized === 'location_security') return 'location_security';
     if (normalized === 'script_supervisor') return 'script_supervisor';
-    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
-    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
+    if (isSessionProjectRole(normalized, 'first_ad')) return 'first_ad';
+    if (isSessionProjectRole(normalized, 'second_ad')) return 'second_ad';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
     if (normalized === 'writer') return 'writer';
     if (normalized === 'script_editor') return 'script_editor';
@@ -3148,7 +3151,7 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'agency') return 'agency';
 
     // Map photo/video account roles to the closest project-role permission set
-    if (['photographer', 'film_photographer', 'photo_director', 'photo_assistant'].includes(normalized)) {
+    if (isSessionProjectRole(normalized, 'content_producer')) {
       return 'content_producer';
     }
     if (normalized === 'client') {
@@ -5927,7 +5930,7 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     const normalizedRoleId = roleId.trim().toLowerCase();
-    const isPhotoRole = ['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRoleId);
+    const isPhotoRole = isSessionProjectRole(normalizedRoleId, 'content_producer');
     const internalProf =
       categoryId === 'foto'
         ? 'photographer'
@@ -5936,7 +5939,7 @@ type RoleRoomProjectWorkspaceState = {
           : null;
 
     const nextRole =
-      ['cinematographer', 'director_of_photography', 'dop', 'dp', 'camera_operator'].includes(normalizedRoleId)
+      isSessionProjectRole(normalizedRoleId, 'camera_team')
         ? 'camera_team'
         : normalizedRoleId === 'client'
           ? 'client_reviewer'
