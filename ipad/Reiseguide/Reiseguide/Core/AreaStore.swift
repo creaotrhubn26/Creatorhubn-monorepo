@@ -12,7 +12,7 @@ import Observation
 @Observable
 final class AreaStore {
     /// Demo-området (seed: backend/server/reiseguide-demo-data.ts).
-    static let demoAreaSlug = "oslo-kvadraturen-festningen-operaen"
+    nonisolated static let demoAreaSlug = "oslo-kvadraturen-festningen-operaen"
 
     enum State: Equatable {
         case idle
