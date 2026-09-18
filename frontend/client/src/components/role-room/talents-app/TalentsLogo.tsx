@@ -1,7 +1,7 @@
 /**
  * TalentsLogo.tsx — "The Role Room" logo + "TALENTS" under.
  *
- * Bruker MERKE-filen role-room-assets/TheRoleRoom_Logo.webp — masker,
+ * Bruker MERKE-filen theroleroom-mark-1024-transparent.png — masker,
  * klaffbrett og person-ikon, uten tekst.
  *
  * 🔑 Sto tidligere på app-ikonet, som er hele lockupen med tagline. I 24 px
@@ -39,7 +39,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
         >
           <Box
             component="img"
-            src="/role-room-assets/TheRoleRoom_Logo.webp"
+            src="/theroleroom-mark-1024-transparent.png"
             alt="The Role Room Talents"
             sx={{ height: 24, width: 'auto', objectFit: 'contain', display: 'block' }}
           />
@@ -79,7 +79,7 @@ export default function TalentsLogo({ variant = 'large' }: TalentsLogoProps) {
       >
         <Box
           component="img"
-          src="/role-room-assets/TheRoleRoom_Logo.webp"
+          src="/theroleroom-mark-1024-transparent.png"
           alt="The Role Room"
           sx={{
             width: '100%',

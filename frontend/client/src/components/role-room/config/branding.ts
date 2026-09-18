@@ -1632,7 +1632,7 @@ export type BrandingSettings = {
 } & BrandingIdentity;
 
 export const ROLE_ROOM_BRAND_ASSETS = {
-  mark: '/role-room-assets/TheRoleRoom_Logo.webp',
+  mark: '/theroleroom-mark-1024-transparent.png',
   appLogo: '/theroleroom-mark-1024.png',
   wordmark: '/theroleroom-mark-1024.png',
 } as const;

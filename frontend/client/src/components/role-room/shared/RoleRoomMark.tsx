@@ -9,11 +9,11 @@
  * Bruker MERKE-filen (masker + klaffbrett, ingen tekst) og setter ordmerket
  * som ekte tekst ved siden av.
  *
- * 🔑 Tidligere ble lockup-filen TheRoleRoom_Logo_v2.png beskåret med
- * background-crop for å late som den var et rent merke. Det er feil fil:
- * role-room-assets/TheRoleRoom_Logo.webp ER merket uten tekst. Beskjæringen
- * var dessuten skjør — den brakk hvis noen byttet filen — og den dro med seg
- * taglinen som står FEIL i selve bildet («Casting.. Roles. Together.»).
+ * 🔑 Tidligere ble lockup-filen beskåret med background-crop for å late som
+ * den var et rent merke. Beskjæringen var skjør — den brakk hvis noen byttet
+ * filen — og den dro med seg taglinen som står FEIL i selve bildet
+ * («Casting.. Roles. Together.»). Lockup-filene er nå slettet, og merket
+ * ligger som egen fil i full oppløsning.
  *
  * Ordmerket og taglinen settes derfor som tekst: da er de lesbare på mørk
  * bakgrunn, de skalerer, og de er stavet riktig.
@@ -38,7 +38,7 @@ export function RoleRoomMark({
         aria-label="The Role Room"
         sx={{
           width: markSize, height: markSize, flexShrink: 0,
-          backgroundImage: 'url(/role-room-assets/TheRoleRoom_Logo.webp)',
+          backgroundImage: 'url(/theroleroom-mark-1024-transparent.png)',
           backgroundSize: 'contain',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
