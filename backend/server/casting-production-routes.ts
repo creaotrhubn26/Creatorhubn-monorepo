@@ -40,6 +40,7 @@ import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
   collectProductionDayChangeImpact,
   collectProductionDayLocationImpact,
+  collectProductionDayPropImpact,
   collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
@@ -1354,10 +1355,18 @@ export function createCastingProductionRouter(
       const toSceneIds = sceneListGiven
         ? String(sceneParam).split(',').map((id) => id.trim()).filter(Boolean)
         : [];
+      const propParam = req.query.propIds;
+      const propListGiven = propParam !== undefined;
+      const toPropIds = propListGiven
+        ? String(propParam).split(',').map((id) => id.trim()).filter(Boolean)
+        : [];
       // Samme rute svarer for alle tre endringene. En forespørsel uten noen av
       // dem har ingen konsekvens å beregne.
-      if (!toDate && !toLocationId && !sceneListGiven) {
-        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato, ny lokasjon eller nye scener.' });
+      if (!toDate && !toLocationId && !sceneListGiven && !propListGiven) {
+        res.status(400).json({
+          error: 'invalid_payload',
+          message: 'Oppgi ny dato, ny lokasjon, nye scener eller nye rekvisitter.',
+        });
         return;
       }
       if (toDate && !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
@@ -1369,7 +1378,7 @@ export function createCastingProductionRouter(
       if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
 
       const dayResult = await pool.query(
-        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id, scene_ids
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id, scene_ids, prop_ids
            FROM casting_production_days
           WHERE id = $1 AND project_id = $2
           LIMIT 1`,
@@ -1379,6 +1388,7 @@ export function createCastingProductionRouter(
         date?: string;
         location_id?: string | null;
         scene_ids?: unknown;
+        prop_ids?: unknown;
       } | undefined;
       if (!day) {
         res.status(404).json({ error: 'not_found' });
@@ -1387,13 +1397,17 @@ export function createCastingProductionRouter(
       const fromDate = String(day.date ?? '');
       const fromLocationId = day.location_id ? String(day.location_id) : null;
       const fromSceneIds = asArray(day.scene_ids).map((sceneId) => String(sceneId));
+      const fromPropIds = asArray(day.prop_ids).map((propId) => String(propId));
 
       const dateChanged = Boolean(toDate) && toDate !== fromDate;
       const locationChanged = Boolean(toLocationId) && toLocationId !== fromLocationId;
       const scenesChanged = sceneListGiven
         && (fromSceneIds.length !== toSceneIds.length
           || [...new Set(fromSceneIds)].some((id) => !toSceneIds.includes(id)));
-      if (!dateChanged && !locationChanged && !scenesChanged) {
+      const propsChanged = propListGiven
+        && (fromPropIds.length !== toPropIds.length
+          || [...new Set(fromPropIds)].some((id) => !toPropIds.includes(id)));
+      if (!dateChanged && !locationChanged && !scenesChanged && !propsChanged) {
         res.json({
           from: fromDate,
           to: toDate || fromDate,
@@ -1401,6 +1415,8 @@ export function createCastingProductionRouter(
           toLocationId: toLocationId || fromLocationId,
           fromSceneIds,
           toSceneIds: sceneListGiven ? toSceneIds : fromSceneIds,
+          fromPropIds,
+          toPropIds: propListGiven ? toPropIds : fromPropIds,
           impacts: [],
           blocking: false,
           unchanged: true,
@@ -1422,6 +1438,11 @@ export function createCastingProductionRouter(
               projectId, dayId, fromSceneIds, toSceneIds,
             })
           : []),
+        ...(propsChanged
+          ? await collectProductionDayPropImpact(pool, {
+              projectId, dayId, fromPropIds, toPropIds,
+            })
+          : []),
       ];
       res.json({
         from: fromDate,
@@ -1430,6 +1451,8 @@ export function createCastingProductionRouter(
         toLocationId: toLocationId || fromLocationId,
         fromSceneIds,
         toSceneIds: sceneListGiven ? toSceneIds : fromSceneIds,
+        fromPropIds,
+        toPropIds: propListGiven ? toPropIds : fromPropIds,
         impacts,
         blocking: hasBlockingImpact(impacts),
         unchanged: false,

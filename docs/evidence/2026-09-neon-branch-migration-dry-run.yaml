@@ -1,0 +1,49 @@
+claim: >
+  Production migrations for the CreatorHub backend are dry-run on a fresh Neon branch of the
+  production database (copy-on-write) before they are applied to production, using the Neon
+  CLI (`neon`, npm package `neon`) from the auto-migrate-on-push workflow. The branch doubles
+  as a 7-day restore point when the dry run fails.
+source_type: vendor_docs
+source: "https://neon.com/docs/cli/branches.md (branches create --name/--parent/--expires-at/--no-secrets/--output json; branches delete), https://neon.com/docs/cli/connection-string.md (--role-name/--database-name/--endpoint-type/--psql), https://neon.com/docs/cli/install.md (NEON_API_KEY env auth, npx neon, latest pinned for CI), https://neon.com/docs/guides/branching-github-actions.md (NEON_API_KEY secret + NEON_PROJECT_ID variable convention)"
+authority_tier: 1
+vendor: Neon
+product: Neon CLI + branching
+version_scope: "neon CLI latest (Neon recommends pinning `latest` in CI; --no-secrets needs >= 4.9.0); Neon project restless-wind-41713954 (Creatorhub EU, pg18)"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "until Neon changes `branches create` / `connection-string` flags or the npm package name (watch neondatabase/neon-pkgs releases monthly)"
+evidence_summary: >
+  Verified 2026-09-18 from Neon docs (llms.txt index via the Neon MCP server): the CLI is the
+  npm package `neon` (`neonctl` is an alias), authenticates from the NEON_API_KEY env var,
+  `branches create --output json` returns `{ branch: { id }, endpoints, connection_uris }`,
+  `--expires-at` (RFC3339) auto-deletes the branch, `--no-secrets` keeps credentials out of
+  CI logs, and `connection-string <branch> --role-name --database-name --psql -- -c "..."`
+  runs SQL through a built-in psql when the binary is missing. Roles created with SQL (our
+  creatorhub_migration_login) are not Neon-managed, so Neon cannot reveal their passwords;
+  the script therefore sets a one-time password on the disposable branch through the
+  Neon-managed neondb_owner role and builds the URL itself with
+  sslmode=require&channel_binding=require, which backend/scripts/run-production-migrations.mjs
+  requires (it also rejects `-pooler.` hosts, so the direct endpoint host is used).
+interpretation: >
+  A branch dry run is the cheapest way to get a real-Postgres test of every migration before
+  production without adding Postgres to CI or a Neon-branch mock. Failure stops the deploy
+  job before production is touched and leaves the branch for debugging; success deletes it.
+  The step is optional (skipped when NEON_API_KEY is unset) so the workflow keeps working
+  until the secrets are configured.
+project_impact: >
+  backend/scripts/neon-branch-dry-run.sh (create branch → set one-time password →
+  preflight/apply/expect-zero against the branch → delete on success, keep on failure);
+  .github/workflows/auto-migrate-on-push.yml (job env NEON_API_KEY/NEON_PROJECT_ID, step
+  "Dry-run migrations on a Neon branch of production" before the production apply, and a
+  --self-test contract step in the validate job).
+prerequisites: >
+  Repository secret NEON_API_KEY (Neon API key with write access to the project) and
+  repository variable NEON_PROJECT_ID=restless-wind-41713954 must be added by an owner
+  (Settings → Secrets and variables → Actions). Until then the step is skipped and reported
+  as such in the job log.
+affected:
+  - backend/scripts/neon-branch-dry-run.sh
+  - .github/workflows/auto-migrate-on-push.yml
+  - backend/scripts/run-production-migrations.mjs
+confidence: verified
+decided_by: "Story Graph Fase 8a (2026-09-18)"

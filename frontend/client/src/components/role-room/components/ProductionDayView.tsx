@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useId, useCallback, type ReactNode } from 'react';
 import { ChangeImpactPreview } from './production/ChangeImpactPreview';
+import SceneRoleCardsDialog from './production/SceneRoleCardsDialog';
 import {
   Box,
   Typography,
@@ -109,6 +110,21 @@ import { RichTextEditor } from './RichTextEditor';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import calenderPng from './icons/Keep/roleroom_calender.png';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { manuscriptService } from '../services/manuscriptService';
+import { mergeSceneOptions, type SceneOption } from './production/sceneOptions';
+import type { SceneBreakdown } from '../models/casting';
+
+/**
+ * Tilstandene rekvisittregisteret fører, oversatt til noe en produksjons-
+ * designer leser i forbifarten. `in_storage` og `rented` er sikret og trenger
+ * ingen merknad; `in_production` er under bygging og er verdt å se.
+ */
+const PROP_AVAILABILITY_LABEL: Record<string, string> = {
+  in_production: 'under bygging',
+  rented: 'leid inn',
+  unavailable: 'utilgjengelig',
+  reserved: 'reservert',
+};
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -518,6 +534,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
   // Inform team dialog state
   const [showInformTeamDialog, setShowInformTeamDialog] = useState(false);
+  // Rollekort for en dag: kortene hører til SCENEN, så dialogen tar dagens
+  // scener og lar deg velge hvilken du bygger.
+  const [rollekortDag, setRollekortDag] = useState<ProductionDay | null>(null);
   const [pendingSaveData, setPendingSaveData] = useState<NormalizedProductionDay | null>(null);
   const [changedFields, setChangedFields] = useState<string[]>([]);
 
@@ -743,7 +762,55 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     });
   };
 
-  const availableScenes = castingService.getAvailableScenes(projectId);
+  // Manuset er fasiten på hvilke scener som finnes. Det lokale prosjektet
+  // kjenner bare dem som har fått en shotliste eller et breakdown, og en
+  // produsent som skulle planlegge dagen fant derfor ikke scenene sine.
+  const [manuscriptScenes, setManuscriptScenes] = useState<SceneBreakdown[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const manuscripts = await manuscriptService.getManuscripts(projectId);
+        const lists = await Promise.all(
+          manuscripts.map((manuscript) => manuscriptService.getScenes(manuscript.id)),
+        );
+        if (!cancelled) setManuscriptScenes(lists.flat());
+      } catch {
+        // Velgeren faller tilbake på prosjektets egne scener. Å svare med en
+        // tom liste hadde vært å skjule dem som faktisk finnes.
+        if (!cancelled) setManuscriptScenes([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const availableScenes: SceneOption[] = useMemo(
+    () => mergeSceneOptions(manuscriptScenes, castingService.getAvailableScenes(projectId)),
+    [manuscriptScenes, projectId],
+  );
+
+  // Rekvisittene prosjektet fører. Koblingen dag ↔ rekvisitt fantes i
+  // skjemaet, men ingen dag hadde den fylt ut — det var ingen vei til å sette
+  // den i grensesnittet.
+  const [availableProps, setAvailableProps] = useState<Array<{ id: string; name: string; availability?: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const props = await castingService.getProps(projectId);
+        if (!cancelled) {
+          setAvailableProps(props.map((prop) => ({
+            id: String(prop.id),
+            name: String(prop.name ?? prop.id),
+            availability: typeof prop.availability === 'string' ? prop.availability : undefined,
+          })));
+        }
+      } catch {
+        if (!cancelled) setAvailableProps([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const openLocationInMaps = useCallback((locationId?: string) => {
     const location = locations.find((entry) => entry.id === locationId);
@@ -4674,6 +4741,26 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               borderTop: '2px solid rgba(50, 18, 122,0.2)',
                             }}
                           >
+                            {/* Rollekort: det den enkelte på settet får. Ligger
+                                her fordi dagen er der man planlegger hvem som
+                                møter — kortet er neste spørsmål: hva de gjør. */}
+                            <Button
+                              size="medium"
+                              onClick={() => setRollekortDag(day)}
+                              sx={{
+                                color: '#9e93ed',
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                minHeight: TOUCH_TARGET_SIZE,
+                                px: { xs: 1.6, sm: 2 },
+                                border: '2px solid rgba(75, 61, 143, 0.35)',
+                                borderRadius: 2,
+                                mr: 1,
+                              }}
+                            >
+                              Rollekort
+                            </Button>
+
                             {/* Enhanced "Vis mer" button */}
                             <Button
                               variant="contained"
@@ -5113,6 +5200,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               targetLocationId={formData.locationId || null}
               currentSceneIds={editingDay?.scenes ?? null}
               targetSceneIds={editingDay ? (formData.scenes ?? []) : null}
+              currentPropIds={editingDay?.props ?? null}
+              targetPropIds={editingDay ? (formData.props ?? []) : null}
               onBlockingChange={setDateMoveBlocked}
             />
 
@@ -5275,6 +5364,76 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     {scene.name}
                   </MenuItem>
                 ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Rekvisitter</InputLabel>
+              <Select
+                multiple
+                value={formData.props ?? []}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFormData({
+                    ...formData,
+                    props: typeof value === 'string' ? value.split(',') : value,
+                  });
+                }}
+                label="Rekvisitter"
+                inputProps={{ 'aria-label': 'Rekvisitter' }}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((propId) => (
+                      <Chip
+                        key={propId}
+                        size="small"
+                        label={availableProps.find((prop) => prop.id === propId)?.name ?? propId}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                sx={{
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#32127a' },
+                }}
+                MenuProps={{
+                  container: document.body,
+                  sx: { zIndex: 100010 },
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#1c2128',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      mt: 0.5,
+                      maxHeight: 300,
+                    },
+                  },
+                }}
+              >
+                {availableProps.length === 0 ? (
+                  <MenuItem disabled sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    Ingen rekvisitter registrert ennå
+                  </MenuItem>
+                ) : availableProps.map((prop) => {
+                  const tilstand = PROP_AVAILABILITY_LABEL[prop.availability ?? ''] ?? null;
+                  return (
+                    <MenuItem key={prop.id} value={prop.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                      {prop.name}
+                      {tilstand ? (
+                        // Nedtonet, ikke forklart: rekvisitten kan velges, og
+                        // du ser tilstanden dens før du gjør det.
+                        <Typography component="span" sx={{ ml: 1, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem' }}>
+                          {tilstand}
+                        </Typography>
+                      ) : null}
+                    </MenuItem>
+                  );
+                })}
               </Select>
             </FormControl>
 
@@ -5720,6 +5879,22 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Rollekort for dagens scener. availableScenes gir navnene; dialogen
+          lar deg velge scene når dagen har flere. date er valgfri på
+          ProductionDay — uten dato står dagen uten navn, ikke «Invalid Date». */}
+      <SceneRoleCardsDialog
+        open={Boolean(rollekortDag)}
+        onClose={() => setRollekortDag(null)}
+        projectId={projectId}
+        dayLabel={rollekortDag?.date ? new Date(rollekortDag.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' }) : undefined}
+        dayId={rollekortDag?.id}
+        scenes={(rollekortDag?.scenes ?? []).map((sceneId) => ({
+          id: sceneId,
+          title: availableScenes.find((scene) => scene.id === sceneId)?.name ?? sceneId,
+        }))}
+      />
+
     </Box>
   );
 }

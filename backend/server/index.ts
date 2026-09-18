@@ -120,6 +120,7 @@ import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketi
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
 import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
 import { registerRoleRoomMarketingActivityFeedRoutes } from "./role-room-marketing-activity-feed-routes.js";
+import { registerReiseguideRoutes } from "./reiseguide-routes.js";
 import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
@@ -197,6 +198,9 @@ import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
 import { createGameBillingRouter } from "./game-billing-routes.js";
+import { createGameStudioDisabledRouter, isGameStudioEnabled } from "./game-studio-kill-switch.js";
+import { createNarrativeCiHookHandlers } from "./role-room-narrative-ci-hooks.js";
+import { createScriptGuardianAgent, scriptGuardianIssueApplier } from "./ai-script-guardian-agent.js";
 import { createGameTeamRouter, createGameInviteAcceptRouter } from "./game-team-routes.js";
 import { createNarrativeReviewPublicRouter } from "./role-room-narrative-review-public-routes.js";
 import {
@@ -2250,6 +2254,14 @@ app.use((req, _res, next) => {
   next();
 });
 setupWorkspaceParticipantDocumentBodyParserBoundary(app);
+// Story Graph — CI-bevis-webhook (Fase 8c). MÅ monteres før express.json(): body-parser
+// hopper over når req._body alt er satt, så rå body til HMAC finnes bare her (samme grunn
+// som Stripe-webhookene over). Autentiserte hook-ruter ligger i narrative-routeren.
+{
+  const ciHooks = createNarrativeCiHookHandlers(pool);
+  app.post("/api/role-room/narrative/hooks/ci/:hookId", ...ciHooks.webhook);
+  app.post("/api/role-room/narrative/hooks/ci/:hookId/evidence", ...ciHooks.evidenceUpload);
+}
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Propagate the selected Leadgrid workspace through legacy module helpers.
@@ -2848,6 +2860,11 @@ app.use(
 );
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomMarketingActivityFeedRoutes(app, { pool, activeSessions });
+// Lydguide-POC (Interaktiv reiseguide med tilgjengelighet): offentlige leseruter
+// under /api/guide/*. Datamodell i migrations/0640_reiseguide_poc.sql og
+// 0641_reiseguide_after_visit.sql (quiz, vurdering, delingsside) og
+// 0642_reiseguide_visits.sql (besøkslogg per anonym enhet, GDPR).
+registerReiseguideRoutes(app, { pool });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));
 app.use("/api/sfx", createSfxMatchRouter());
@@ -2911,6 +2928,13 @@ app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
 );
+// Spillstudio — av-bryter (Fase 8a). ROLE_ROOM_GAME_STUDIO_ENABLED=false gjør at alt under
+// /api/role-room/narrative og /api/game svarer 503 game_studio_disabled; routerne under nås
+// aldri, og resten av backend er upåvirket. Uten variabelen er vertikalen på.
+if (!isGameStudioEnabled()) {
+  console.warn("[game-studio] ROLE_ROOM_GAME_STUDIO_ENABLED er av — Story Graph svarer 503");
+  app.use(["/api/role-room/narrative", "/api/game"], createGameStudioDisabledRouter());
+}
 // Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0621_game_billing.sql.
 app.use(
   "/api/game/billing",
@@ -15607,6 +15631,7 @@ aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
 aiSuggestionService.registerAgent(createNarrativeElementAgent(pool));
+aiSuggestionService.registerAgent(createScriptGuardianAgent(pool));
 aiSuggestionService.registerAgent(createCoverageGapAgent(pool));
 aiSuggestionService.registerAgent(createCoverageBestTakeAgent(pool));
 aiSuggestionService.registerAgent(createRoughCutAgent(pool));
@@ -15626,6 +15651,7 @@ aiSuggestionService.registerApplier(breakdownCostumeApplier);
 aiSuggestionService.registerApplier(breakdownVfxFlagApplier);
 aiSuggestionService.registerApplier(castingRoleStubApplier);
 aiSuggestionService.registerApplier(storyContinuityIssueApplier);
+aiSuggestionService.registerApplier(scriptGuardianIssueApplier);
 aiSuggestionService.registerApplier(shotListDraftApplier);
 aiSuggestionService.registerApplier(auditionSidesApplier);
 aiSuggestionService.registerApplier(storyLoglineApplier);

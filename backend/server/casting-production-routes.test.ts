@@ -94,7 +94,7 @@ describe('production day change impact', () => {
       if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
         return {
           rows: dayDate
-            ? [{ id: 'day-6', date: dayDate, scene_ids: ['scene-1', 'scene-2'] }]
+            ? [{ id: 'day-6', date: dayDate, scene_ids: ['scene-1', 'scene-2'], prop_ids: ['prop-1'] }]
             : [],
           rowCount: dayDate ? 1 : 0,
         };
@@ -165,6 +165,42 @@ describe('production day change impact', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ unchanged: true, impacts: [], blocking: false });
+  });
+
+  it('previews what adding a prop to the day costs', async () => {
+    const app = createApp(impactQuery({ casting_props: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?propIds=prop-1,prop-2`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.fromPropIds).toEqual(['prop-1']);
+    expect(response.body.toPropIds).toEqual(['prop-1', 'prop-2']);
+    expect(response.body.impacts.map((i: { area: string }) => i.area)).toContain('prop_availability');
+  });
+
+  it('answers on scenes and props in the same request', async () => {
+    const app = createApp(impactQuery({ casting_roles: 2, casting_props: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?sceneIds=scene-1&propIds=prop-1,prop-2`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    const areas = response.body.impacts.map((i: { area: string }) => i.area);
+    expect(areas).toContain('scene_cast');
+    expect(areas).toContain('prop_availability');
+  });
+
+  it('refuses a request that changes nothing at all', async () => {
+    const app = createApp(impactQuery({}));
+
+    const response = await request(app)
+      .get(PATH)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(400);
   });
 
   it('rejects a date it cannot parse instead of guessing', async () => {

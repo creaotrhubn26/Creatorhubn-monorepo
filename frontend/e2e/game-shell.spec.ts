@@ -81,3 +81,18 @@ test.describe('Story Graph — skall og hjem', () => {
     await expect(page).toHaveURL(/tab=story/);
   });
 });
+
+test.describe('Story Graph — av-bryter (Fase 8a)', () => {
+  test('viser helsidebanner når backend svarer 503 game_studio_disabled', async ({ page }) => {
+    await installNarrativeMocks(page, { seed: 'what-follows-us' });
+    // Sist registrerte rute vinner i Playwright → overstyr alt under narrative med 503.
+    await page.route('**/api/role-room/narrative/**', (route) => route.fulfill({
+      status: 503, contentType: 'application/json',
+      body: JSON.stringify({ success: false, error: 'game_studio_disabled', message: 'Spillstudio (Story Graph) er midlertidig slått av.' }),
+    }));
+    await page.goto('/e2e-test.html?harness=game_studio&harness-project=proj-game-2026&tab=home');
+    await expect(page.getByTestId('narrative-workspace')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('narrative-disabled-banner')).toBeVisible();
+    await expect(page.getByTestId('narrative-disabled-banner')).toContainText('midlertidig slått av');
+  });
+});
