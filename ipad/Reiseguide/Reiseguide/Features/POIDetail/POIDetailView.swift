@@ -2,9 +2,10 @@
 //
 // Detaljside (UI-spesifikasjon 6.3): hero-bilde med scrim og ikonknapper,
 // innholdspanel med tittel, sted, stjernevurdering fra backend, segmentfaner
-// Om / Opplevelse / Praktisk, og fast bunnfelt med «Start opplevelsen» og
-// «Legg til i mine steder». Låst POI åpner mock-paywall. Er stedet besøkt,
-// vises dato og en knapp til etter-besøket (quiz, vurdering, tips, deling).
+// Om / Opplevelse / Praktisk (innholdet i POIDetailTabContent.swift), og fast
+// bunnfelt med «Start opplevelsen» og «Legg til i mine steder». Låst POI åpner
+// mock-paywall. Er stedet besøkt, vises dato og en knapp til etter-besøket
+// (quiz, vurdering, tips, deling).
 
 import SwiftUI
 
@@ -140,7 +141,7 @@ struct POIDetailView: View {
             }
             SegmentTabs(selection: $tab, reduceMotion: reduceMotion)
                 .padding(.top, AppSpacing.screenMargin)
-            tabContent(poi)
+            POIDetailTabContent(poi: poi, tab: tab)
                 .padding(.top, AppSpacing.l)
                 .padding(.bottom, AppSpacing.xl)
         }
@@ -220,74 +221,6 @@ struct POIDetailView: View {
                 .font(.caption)
                 .foregroundStyle(contrast.textSecondary)
         }
-    }
-
-    @ViewBuilder
-    private func tabContent(_ poi: GuidePOI) -> some View {
-        switch tab {
-        case .about:
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
-                Text(poi.summary ?? poi.subtitle ?? "")
-                    .font(AppFont.body)
-                    .foregroundStyle(contrast.textSecondary)
-                InfoIconRow(
-                    durationText: poi.totalDurationS.map { L10n.shortDuration(seconds: $0, locale: locale) },
-                    hasAudio: poi.primaryVariant?.hasAudio ?? false,
-                    hasCaptions: poi.hasCaptions,
-                    hasAudioDescription: poi.hasAudioDescription,
-                    spokenSummary: infoSummary(poi)
-                )
-            }
-        case .experience:
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
-                if let variant = poi.variants.narration {
-                    ForEach(variant.chapters) { chapter in
-                        ChapterRow(chapter: chapter, locale: locale)
-                    }
-                } else {
-                    Text("detail.noNarration")
-                        .font(AppFont.body)
-                        .foregroundStyle(contrast.textSecondary)
-                }
-            }
-        case .practical:
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
-                if poi.practicalInfo.isEmpty {
-                    Text("detail.noPractical")
-                        .font(AppFont.body)
-                        .foregroundStyle(contrast.textSecondary)
-                }
-                ForEach(poi.practicalInfo, id: \.self) { item in
-                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                        Text(item.label)
-                            .font(AppFont.cardTitle)
-                            .foregroundStyle(AppColor.textPrimary)
-                        Text(item.value)
-                            .font(AppFont.body)
-                            .foregroundStyle(contrast.textSecondary)
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
-        }
-    }
-
-    private func infoSummary(_ poi: GuidePOI) -> String {
-        let lang = env.settings.uiLanguage
-        var parts: [String] = []
-        if let duration = poi.totalDurationS {
-            parts.append(L10n.string("info.durationSpoken", lang: lang)
-                .replacingOccurrences(of: "%@", with: L10n.spokenDuration(seconds: duration, locale: locale)))
-        }
-        var features: [String] = []
-        if poi.primaryVariant?.hasAudio == true { features.append(L10n.string("info.audio", lang: lang)) }
-        if poi.hasCaptions { features.append(L10n.string("info.captions", lang: lang)) }
-        if poi.hasAudioDescription { features.append(L10n.string("info.audioDescription", lang: lang)) }
-        if !features.isEmpty {
-            parts.append(L10n.string("info.hasFeatures", lang: lang)
-                .replacingOccurrences(of: "%@", with: features.joined(separator: ", ")))
-        }
-        return parts.joined(separator: ". ")
     }
 
     private func shareText(_ poi: GuidePOI) -> String {
