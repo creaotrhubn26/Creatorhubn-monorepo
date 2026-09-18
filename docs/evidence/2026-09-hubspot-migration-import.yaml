@@ -69,35 +69,40 @@ project_impact: >
   i project_id/organization_id/owner_user_id. Deals og pipeline-stadier er den
   kostbare delen, men ikke fordi modellen mangler: vi HAR pipeline_stage,
   deal_amount, expected_close_date og crm_deal_stage_history. Formen er en
-  annen — vår stage er en fast CHECK og dealen ligger på kunde-raden, mens
-  HubSpot har egendefinerte pipelines og deals som egne objekter. Se model_gap.
+  annen — vår stage er en fast CHECK. At dealen lå PÅ kunde-raden var det
+  dyreste avviket; migrasjon 0635 ga salget sin egen tabell, så et selskap
+  med flere åpne deals ikke lenger mister alt annet enn den største.
+  Se model_gap.
 model_gap:
   hard_failures:
     - "pipeline_stage er CHECK IN (new, first_contact, qualified, meeting, proposal, negotiation, won, lost) (migrasjon 313:41). HubSpot-kunder definerer egne pipelines og stagenavn; ukjent verdi bryter constrainten."
     - "leadgrid_customer_contacts.customer_id er NOT NULL med FK til crm_customers (migrasjon 0564). En HubSpot-kontakt uten company-association har ingen lovlig plass."
     - "crm_customers.owner_user_id og crm_lead_activities.user_id peker på users(id). HubSpot-eieren er en HubSpot-bruker som ikke finnes hos oss; uten eier-mapping blir det FK-brudd eller tapt eierskap."
   silent_data_loss:
-    - "leadgrid_customer_contacts har name, role, organization_number — ingen e-post og ingen telefon. E-post er det definerende feltet på en HubSpot-kontakt."
-    - "Deal-felter (deal_amount, expected_close_date, deal_probability, deal_stage_changed_at) ligger PÅ crm_customers-raden (migrasjon 0349). HubSpot har deals som egne objekter; et selskap med flere åpne deals får plass til én."
     - "HubSpot-kontakt kan tilhøre flere selskaper (mange-til-mange), og koblingen kan bære flere association labels samtidig (HUBSPOT_DEFINED + USER_DEFINED, inntil 50 labels per objektpar). Vår role er én tekststreng mot ett selskap."
     - "crm_lead_activities.activity_type er CHECK med ti verdier (migrasjon 271); verken e-post eller telefonsamtale er blant dem. HubSpot-engasjementer kan ikke migreres uten å utvide listen."
   decisions_required:
     - "crm_customers.project_id er påkrevd. HubSpot har ikke prosjektbegrep, så migreringen må velge målprosjekt."
     - "HubSpots beregnede og skrivebeskyttede properties bør ikke migreres; de er avledet av HubSpot-logikk vi ikke har."
+  closed:
+    - "LUKKET 18.09.2026 (migrasjon 0635): deal-feltene lå PÅ crm_customers-raden (migrasjon 0349), så et selskap med flere åpne deals fikk plass til én. leadgrid_deals gir null eller flere salg per bedrift; crm_customers speiler primærsalget så eksisterende lesere virker uendret. planHubSpotMigration returnerer nå deals[], og issue-kodene extra_deals_dropped og line_items_on_dropped_deal er fjernet fordi tapet ikke lenger finnes."
+    - "LUKKET 18.09.2026 (migrasjon 0635): leadgrid_customer_contacts manglet e-post og telefon. Kolonnene email, phone, title, is_primary og hubspot_contact_id er lagt til, og planleggeren bærer dem som ekte felter (PlannedContact.email/.phone), ikke som emailWithoutColumn."
+    - "LUKKET 18.09.2026 (migrasjon 0636): oppgaver fra HubSpot har nå en plass — leadgrid_oppgaver fikk due_at, assigned_user_id, deal_id, priority, task_type og hubspot_task_id."
   not_a_problem:
     - "Custom properties: lead_custom_field_definitions har tolv felttyper (text, long_text, number, dropdown, multi_select, boolean, date, datetime, url, email, phone, currency) og lead_custom_field_values lagrer per lead. HubSpot enumeration mapper til dropdown/multi_select."
 
 confidence: strong_evidence
 decision: >
-  GO for engangs-migrering HubSpot -> Leadgrid på Private App-token. Første
+  GO for engangs-migrering HubSpot -> Leadgrid på Service Key. Første
   steg er en ren klassifiserings-funksjon (hubspot-migration-plan.ts) som
   avgjør hva som skjer med hver record mot våre constraints, testet mot
   fikstur uten HubSpot-tilgang. Validering mot et gratis HubSpot developer
   test account (hs test-account create) kommer før noen ekte kunde kobles på.
   Ingen toveis sync i denne fasen.
   Retningsvalg: gapene over skal IKKE lukkes ved å kaste data som ikke
-  passer. Der HubSpot er rikere enn oss (flere deals per kunde, e-post på
-  kontakt, mange-til-mange med labels, e-post/samtale som aktivitet) er
+  passer. Der HubSpot var rikere enn oss er paritet minimumskravet: flere
+  deals per kunde og e-post på kontakt er lukket i migrasjon 0635, mens
+  mange-til-mange med labels og e-post/samtale som aktivitet gjenstår. Det er
   paritet minimumskravet, ikke et strekkmål — ellers blir en migrering et
   tap for kunden. Det vi har som de ikke har (prosjekt-avgrensning,
   AI-score, import_raw_data-sporbarhet) er det som skal gjøre oss bedre,

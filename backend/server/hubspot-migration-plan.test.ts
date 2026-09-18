@@ -109,15 +109,35 @@ describe("kontakt hos flere bedrifter", () => {
 });
 
 describe("flere avtaler på samme selskap", () => {
-  it("legger den største på kunde-raden og sier hvilke som ikke blir med", () => {
+  it("tar med alle avtalene, ikke bare den største", () => {
+    // Før mig 0635 lagret Leadgrid én avtale per kunde, så to av disse tre
+    // ble forkastet. Det er nettopp det scenariet en bedrift med en løpende
+    // avtale OG en kampanje under forhandling havner i.
+    const p = plan();
+    const nordvikDeals = p.deals.filter((d) => d.customerHubspotId === "7001");
+    expect(nordvikDeals.map((d) => d.title).sort()).toEqual([
+      "Rammeavtale 2027",
+      "Serviceavtale maskinpark",
+      "Utvidelse Vestland",
+    ]);
+  });
+
+  it("speiler den største på kunde-raden, og merker den som primær", () => {
+    // crm_customers sine flate deal-felt er fortsatt det pipeline, forecast
+    // og scoring leser, så primærsalget må stemme med dem.
     const p = plan();
     const nordvik = p.customers.find((c) => c.hubspotId === "7001");
     expect(nordvik?.dealAmount).toBe(850000);
     expect(nordvik?.pipelineStage).toBe("negotiation");
-    const issue = issuesOf(p, "extra_deals_dropped")[0];
-    expect(issue.silentLoss).toBe(true);
-    expect(issue.message).toContain("Serviceavtale maskinpark");
-    expect(issue.message).toContain("Utvidelse Vestland");
+    const primary = p.deals.filter((d) => d.customerHubspotId === "7001" && d.isPrimary);
+    expect(primary).toHaveLength(1);
+    expect(primary[0].title).toBe("Rammeavtale 2027");
+    expect(primary[0].dealAmount).toBe(850000);
+  });
+
+  it("mister ingen avtaler i det stille", () => {
+    const p = plan();
+    expect(p.issues.some((i) => i.code === ("extra_deals_dropped" as never))).toBe(false);
   });
 
   it("melder fra om avtale uten beløp", () => {
@@ -217,7 +237,7 @@ describe("planen som helhet", () => {
       { companies: [], contacts: [], deals: [], owners: [], pipelines: [], contactToCompany: {}, companyToDeals: {}, engagements: [] },
       { fallbackOwnerUserId: "user-daniel" },
     );
-    expect(empty.counts).toEqual({ customers: 0, contacts: 0, merged: 0, products: 0, lineItems: 0, issues: 0, silentLossPrevented: 0 });
+    expect(empty.counts).toEqual({ customers: 0, deals: 0, contacts: 0, merged: 0, products: 0, lineItems: 0, issues: 0, silentLossPrevented: 0 });
   });
 });
 
@@ -279,10 +299,15 @@ describe("produktkatalog", () => {
 });
 
 describe("produktlinjer på avtale", () => {
-  it("henger linjene på kunden som eier den avtalen vi tar med", () => {
+  it("henger hver linje på sin egen avtale, ikke på bedriften", () => {
     const p = plan();
+    const byDeal = (dealId: string) =>
+      p.lineItems.filter((l) => l.dealHubspotId === dealId).map((l) => l.hubspotId).sort();
+    expect(byDeal("9001")).toEqual(["L1", "L2", "L3"]);
+    // L9 lå på avtalen som før ble forkastet. Nå følger den sin egen avtale.
+    expect(byDeal("9002")).toEqual(["L9"]);
     const paaNordvik = p.lineItems.filter((l) => l.customerHubspotId === "7001");
-    expect(paaNordvik.map((l) => l.hubspotId).sort()).toEqual(["L1", "L2", "L3"]);
+    expect(paaNordvik.map((l) => l.hubspotId).sort()).toEqual(["L1", "L2", "L3", "L9"]);
   });
 
   it("regner net_total likt som databasen, med både prosent- og kronerabatt", () => {
@@ -311,12 +336,11 @@ describe("produktlinjer på avtale", () => {
     expect(p.lineItems.find((l) => l.hubspotId === "L2")?.billingFrequency).toBe("one_time");
   });
 
-  it("sier høyt at linjene på en droppet avtale forsvinner med den", () => {
+  it("mister ikke linjene på avtalen som ikke er primær", () => {
+    // Dette var det dyreste tapet: linjene forsvant sammen med avtalen.
     const p = plan();
-    const issue = issuesOf(p, "line_items_on_dropped_deal")[0];
-    expect(issue.silentLoss).toBe(true);
-    expect(issue.message).toContain("Serviceavtale timer");
-    expect(p.lineItems.some((l) => l.hubspotId === "L9")).toBe(false);
+    expect(p.lineItems.some((l) => l.hubspotId === "L9")).toBe(true);
+    expect(p.issues.some((i) => i.code === ("line_items_on_dropped_deal" as never))).toBe(false);
   });
 });
 
