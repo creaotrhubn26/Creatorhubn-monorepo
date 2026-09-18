@@ -21,6 +21,13 @@ vi.mock("./casting-project-ownership.js", () => ({
   userCanAccessCastingProject: async (_pool: unknown, projectId: string) => projectId === PROSJEKT,
 }));
 
+vi.mock("./storyboard-service.js", () => ({
+  listStoryboards: async () => ([
+    { id: "ramme-1", frameId: "f1", title: "Bord 3, vidt", imageData: "data:image/png;base64,AAAA", updatedAt: "2026-09-18T10:00:00Z" },
+    { id: "ramme-2", frameId: "f2", title: "Nærbilde servitør", imageData: null, updatedAt: "2026-09-18T10:05:00Z" },
+  ]),
+}));
+
 interface Tilstand {
   spørringer: { sql: string; params: unknown[] }[];
   offentligRad: Record<string, unknown> | null;
@@ -39,6 +46,9 @@ function byggApp(t: Tilstand, innlogget = true) {
       }
       if (sql.includes("INSERT INTO scene_role_cards")) {
         return { rows: [{ id: KORT_ID, token: "hemmelig-token" }], rowCount: 1 };
+      }
+      if (sql.includes("image_data FROM casting_storyboards")) {
+        return { rows: [{ image_data: "data:image/png;base64,AAAA" }], rowCount: 1 };
       }
       if (sql.includes("UPDATE casting_scenes")) {
         return { rows: t.oppdaterteRader ? [{ id: 'scene-1', blocking: { planUrl: 'https://eksempel.test/plan.png' } }] : [], rowCount: t.oppdaterteRader };
@@ -214,6 +224,36 @@ describe("plantegning og kamera", () => {
     const res = await request(byggApp(t))
       .put("/api/role-room/projects/annet-prosjekt/scenes/scene-1/blocking")
       .send({ planUrl: "https://eksempel.test/plan.png" });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("storyboard-rammer", () => {
+  let t: Tilstand;
+  beforeEach(() => { t = { spørringer: [], offentligRad: null, oppdaterteRader: 1 }; });
+
+  it("lister rammene UTEN bildene", async () => {
+    const res = await request(byggApp(t)).get(`/api/role-room/projects/${PROSJEKT}/scenes/scene-1/frames`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.frames).toHaveLength(2);
+    expect(res.body.frames[0]).toEqual(expect.objectContaining({ id: "ramme-1", hasImage: true }));
+    // En scene med tjue rammer skal ikke sende tjue fullstørrelses bilder
+    // for å tegne en liste.
+    expect(JSON.stringify(res.body)).not.toContain("base64");
+  });
+
+  it("gir bildet først når én ramme velges", async () => {
+    const res = await request(byggApp(t)).get(`/api/role-room/projects/${PROSJEKT}/frames/ramme-1/image`);
+    expect(res.status).toBe(200);
+    expect(res.body.imageData).toContain("base64");
+    const q = t.spørringer.find((x) => x.sql.includes("image_data FROM casting_storyboards"));
+    // project_id i WHERE: en ramme-id fra et annet prosjekt skal ikke kunne hentes.
+    expect(q?.sql).toContain("project_id = $2");
+  });
+
+  it("krever prosjekt-tilgang for rammene", async () => {
+    const res = await request(byggApp(t)).get("/api/role-room/projects/annet-prosjekt/scenes/scene-1/frames");
     expect(res.status).toBe(404);
   });
 });

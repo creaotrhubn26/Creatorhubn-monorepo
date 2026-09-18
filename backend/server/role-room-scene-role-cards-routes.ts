@@ -23,6 +23,7 @@ import type express from "express";
 import type { Pool } from "pg";
 
 import { userCanAccessCastingProject } from "./casting-project-ownership.js";
+import { listStoryboards } from "./storyboard-service.js";
 
 interface SessionLike {
   userId: string;
@@ -275,6 +276,57 @@ export function setupRoleRoomSceneRoleCardsRoutes(
     } catch (err) {
       console.error("[scene blocking GET] failed", err);
       return res.status(500).json({ error: "Klarte ikke å hente plantegningen" });
+    }
+  });
+
+  // ── GET /projects/:projectId/scenes/:sceneId/frames ─────────────────
+  //
+  // Storyboard-rammene for scenen, til å velge hvilken ramme en person er
+  // med i. Gjenbruker listStoryboards — rammene finnes alt, de har bare
+  // aldri vært knyttet til en PERSON.
+  //
+  // Bildene ligger som data-URL i image_data og kan være store. Listen gir
+  // derfor bare id, tittel og om rammen har bilde; selve bildet hentes når
+  // én ramme velges. Ellers ville en scene med tjue rammer sendt tjue
+  // fullstørrelses bilder for å tegne en liste.
+  app.get("/api/role-room/projects/:projectId/scenes/:sceneId/frames", async (req, res) => {
+    const { projectId, sceneId } = req.params;
+    if (!(await requireProject(req, res, projectId))) return;
+    try {
+      const rammer = await listStoryboards(pool, projectId, sceneId);
+      return res.json({
+        frames: rammer.map((f) => ({
+          id: f.id,
+          frameId: f.frameId,
+          title: f.title,
+          hasImage: Boolean(f.imageData),
+          updatedAt: f.updatedAt,
+        })),
+      });
+    } catch (err) {
+      console.error("[scene frames GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente rammene" });
+    }
+  });
+
+  // ── GET /projects/:projectId/frames/:frameId/image ──────────────────
+  //
+  // Selve bildet, etter at rammen er valgt. Prosjekt-scopet som alt annet.
+  app.get("/api/role-room/projects/:projectId/frames/:frameId/image", async (req, res) => {
+    const { projectId, frameId } = req.params;
+    if (!(await requireProject(req, res, projectId))) return;
+    try {
+      const r = await pool.query(
+        `SELECT image_data FROM casting_storyboards WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [frameId, projectId],
+      );
+      if (!r.rowCount || !r.rows[0].image_data) {
+        return res.status(404).json({ error: "Rammen har ikke bilde" });
+      }
+      return res.json({ imageData: r.rows[0].image_data });
+    } catch (err) {
+      console.error("[frame image GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente bildet" });
     }
   });
 

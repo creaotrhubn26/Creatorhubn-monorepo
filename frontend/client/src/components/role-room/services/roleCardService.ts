@@ -32,6 +32,14 @@ export interface SceneBlocking {
   updatedAt?: string;
 }
 
+export interface StoryboardFrame {
+  id: string;
+  frameId: string | null;
+  title: string | null;
+  hasImage: boolean;
+  updatedAt: string;
+}
+
 export interface RoleCardDraft {
   person_name: string;
   action: string;
@@ -94,6 +102,20 @@ export const roleCardService = {
     const r = await authFetch(`${base(projectId)}/role-cards/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (!r.ok) return { ok: false, error: (await r.json().catch(() => null))?.error ?? 'Klarte ikke å slette' };
     return { ok: true };
+  },
+
+  /** Rammene i scenen — uten bildene, som kan være store data-URL-er. */
+  async listFrames(projectId: string, sceneId: string): Promise<StoryboardFrame[]> {
+    const r = await authFetch(`${base(projectId)}/scenes/${encodeURIComponent(sceneId)}/frames`);
+    if (!r.ok) return [];
+    return (await r.json().catch(() => null))?.frames ?? [];
+  },
+
+  /** Bildet, først når én ramme er valgt. */
+  async frameImage(projectId: string, frameId: string): Promise<string | null> {
+    const r = await authFetch(`${base(projectId)}/frames/${encodeURIComponent(frameId)}/image`);
+    if (!r.ok) return null;
+    return (await r.json().catch(() => null))?.imageData ?? null;
   },
 
   async getBlocking(projectId: string, sceneId: string): Promise<SceneBlocking | null> {

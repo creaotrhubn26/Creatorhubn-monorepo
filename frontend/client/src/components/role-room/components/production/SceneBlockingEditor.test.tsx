@@ -27,6 +27,7 @@ describe('uten plantegning', () => {
   beforeEach(() => {
     vi.spyOn(roleCardService, 'getBlocking').mockResolvedValue(null);
     vi.spyOn(roleCardService, 'list').mockResolvedValue([]);
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([]);
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -52,6 +53,7 @@ describe('med plantegning', () => {
   beforeEach(() => {
     vi.spyOn(roleCardService, 'getBlocking').mockResolvedValue({ planUrl: PLAN, camera: null });
     vi.spyOn(roleCardService, 'list').mockResolvedValue([]);
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([]);
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -114,5 +116,51 @@ describe('med plantegning', () => {
     vi.spyOn(roleCardService, 'list').mockResolvedValue([kort({ position: null }) as never]);
     render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
     expect(await screen.findByText('Ikke plassert i planen ennå.')).toBeInTheDocument();
+  });
+});
+
+describe('storyboard-ramme på et kort', () => {
+  beforeEach(() => {
+    vi.spyOn(roleCardService, 'getBlocking').mockResolvedValue({ planUrl: PLAN, camera: null });
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([kort() as never]);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sier fra når scenen ikke har rammer ennå', async () => {
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+
+    fireEvent.click(await screen.findByLabelText('Velg ramme for Statist 3'));
+    // En tom meny ser ut som en feil.
+    expect(await screen.findByText('Ingen storyboard-rammer i denne scenen ennå.')).toBeInTheDocument();
+  });
+
+  it('henter bildet FØRST når rammen velges', async () => {
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([
+      { id: 'ramme-1', frameId: 'f1', title: 'Bord 3, vidt', hasImage: true, updatedAt: '' },
+    ]);
+    const bilde = vi.spyOn(roleCardService, 'frameImage').mockResolvedValue('data:image/png;base64,AAAA');
+    const oppdater = vi.spyOn(roleCardService, 'update').mockResolvedValue(kort({ frame_image_url: 'data:image/png;base64,AAAA' }) as never);
+
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    fireEvent.click(await screen.findByLabelText('Velg ramme for Statist 3'));
+    // Listen er tegnet uten å hente noe bilde.
+    expect(bilde).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Bord 3, vidt/ }));
+    await waitFor(() => expect(bilde).toHaveBeenCalledWith('p1', 'ramme-1'));
+    await waitFor(() => expect(oppdater).toHaveBeenCalledWith('p1', 'kort-1', { frame_image_url: 'data:image/png;base64,AAAA' }));
+  });
+
+  it('lar deg ikke velge en ramme som ikke er tegnet', async () => {
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([
+      { id: 'ramme-2', frameId: 'f2', title: 'Nærbilde', hasImage: false, updatedAt: '' },
+    ]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    fireEvent.click(await screen.findByLabelText('Velg ramme for Statist 3'));
+
+    const knapp = await screen.findByRole('button', { name: /Nærbilde/ });
+    expect(knapp).toBeDisabled();
+    expect(knapp).toHaveTextContent('ikke tegnet ennå');
   });
 });

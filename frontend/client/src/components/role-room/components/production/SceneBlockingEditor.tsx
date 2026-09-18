@@ -24,12 +24,13 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
+import ImageIcon from '@mui/icons-material/ImageOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VideocamIcon from '@mui/icons-material/VideocamOutlined';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircleOutlined';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import roleCardService, { roleCardLink, type RoleCard, type SceneBlocking } from '../../services/roleCardService';
+import roleCardService, { roleCardLink, type RoleCard, type SceneBlocking, type StoryboardFrame } from '../../services/roleCardService';
 import { palette, radius } from '../../talents-app/theme';
 
 interface Props {
@@ -64,15 +65,20 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
   const [planFelt, setPlanFelt] = useState('');
   const [feil, setFeil] = useState<string | null>(null);
   const [kopiert, setKopiert] = useState<string | null>(null);
+  const [rammer, setRammer] = useState<StoryboardFrame[]>([]);
+  // Hvilket kort velger ramme akkurat nå. Null = ingen.
+  const [velgerRamme, setVelgerRamme] = useState<string | null>(null);
   const planRef = useRef<HTMLDivElement>(null);
 
   const last = useCallback(async () => {
-    const [b, c] = await Promise.all([
+    const [b, c, f] = await Promise.all([
       roleCardService.getBlocking(projectId, sceneId),
       roleCardService.list(projectId, sceneId),
+      roleCardService.listFrames(projectId, sceneId),
     ]);
     if (b) { setBlocking(b); setPlanFelt(b.planUrl ?? ''); }
     setKort(c);
+    setRammer(f);
   }, [projectId, sceneId]);
 
   useEffect(() => { void last(); }, [last]);
@@ -143,6 +149,22 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
       // feltet ved siden av, så dette er en beskjed, ikke en blindvei.
       setFeil('Kunne ikke kopiere automatisk — merk lenken og kopier den selv.');
     }
+  };
+
+  /**
+   * Knytt en storyboard-ramme til personen.
+   *
+   * Bildet hentes FØRST her, ikke når listen tegnes: rammene ligger som
+   * data-URL-er, og en scene med tjue rammer ville lastet tjue
+   * fullstørrelses bilder for å vise en meny.
+   */
+  const velgRamme = async (kortId: string, ramme: StoryboardFrame) => {
+    setVelgerRamme(null);
+    const bilde = await roleCardService.frameImage(projectId, ramme.id);
+    if (!bilde) { setFeil('Rammen har ikke bilde ennå.'); return; }
+    const r = await roleCardService.update(projectId, kortId, { frame_image_url: bilde });
+    if ('error' in r) { setFeil(r.error); return; }
+    setKort((prev) => prev.map((k) => (k.id === kortId ? r : k)));
   };
 
   const plassert = useMemo(() => kort.filter((k) => k.position), [kort]);
@@ -343,6 +365,16 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
                       )}
                     </Box>
                     <Stack direction="row" spacing={0.6} sx={{ flexShrink: 0 }}>
+                      <Tooltip title={k.frame_image_url ? 'Bytt ramme' : 'Velg ramme fra storyboard'}>
+                        <IconButton
+                          size="small"
+                          onClick={() => setVelgerRamme(velgerRamme === k.id ? null : k.id)}
+                          aria-label={`Velg ramme for ${k.person_name}`}
+                          sx={{ color: k.frame_image_url ? palette.accentBright : palette.textMuted }}
+                        >
+                          <ImageIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title={kopiert === k.token ? 'Kopiert' : 'Kopier lenken'}>
                         <IconButton size="small" onClick={() => void kopierLenke(k.token)} sx={{ color: kopiert === k.token ? palette.success : palette.textMuted }}>
                           <ContentCopyIcon fontSize="small" />
@@ -353,6 +385,46 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
                       </IconButton>
                     </Stack>
                   </Stack>
+                  {velgerRamme === k.id && (
+                    <Box sx={{ mt: 1.4, pt: 1.4, borderTop: `1px solid ${palette.borderSubtle}` }}>
+                      {rammer.length === 0 ? (
+                        // Scenen har ingen storyboard-rammer ennå. Si det —
+                        // en tom meny ser ut som en feil.
+                        <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem' }}>
+                          Ingen storyboard-rammer i denne scenen ennå.
+                        </Typography>
+                      ) : (
+                        <Stack spacing={0.6}>
+                          {rammer.map((ramme) => (
+                            <Button
+                              key={ramme.id}
+                              size="small"
+                              disabled={!ramme.hasImage}
+                              onClick={() => void velgRamme(k.id, ramme)}
+                              sx={{
+                                justifyContent: 'flex-start',
+                                textTransform: 'none',
+                                color: ramme.hasImage ? palette.textSecondary : palette.textMuted,
+                              }}
+                            >
+                              {ramme.title || 'Uten tittel'}
+                              {!ramme.hasImage && ' — ikke tegnet ennå'}
+                            </Button>
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
+
+                  {k.frame_image_url && (
+                    <Box
+                      component="img"
+                      src={k.frame_image_url}
+                      alt={`Rammen ${k.person_name} er med i`}
+                      sx={{ width: '100%', mt: 1.2, borderRadius: radius.md, border: `1px solid ${palette.border}`, display: 'block' }}
+                    />
+                  )}
+
                   {!k.position && (
                     // Et kort uten posisjon virker, men mangler halve poenget.
                     <Typography sx={{ color: palette.warning, fontSize: '0.78rem', mt: 0.8 }}>
