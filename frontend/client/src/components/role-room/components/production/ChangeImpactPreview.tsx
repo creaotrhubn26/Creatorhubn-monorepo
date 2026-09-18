@@ -59,6 +59,10 @@ export interface ChangeImpactPreviewProps {
   currentPropIds?: string[] | null;
   /** Rekvisittene brukeren har valgt. */
   targetPropIds?: string[] | null;
+  /** Utstyret dagen har i dag. `null` når det ikke redigeres her. */
+  currentEquipmentIds?: string[] | null;
+  /** Utstyret brukeren har valgt. */
+  targetEquipmentIds?: string[] | null;
   /** Sier fra når noe må ryddes før lagring er forsvarlig. */
   onBlockingChange?: (blocking: boolean) => void;
 }
@@ -81,6 +85,7 @@ export interface ChangeSummaryInput {
   readonly locationChanged: boolean;
   readonly scenesChanged: boolean;
   readonly propsChanged?: boolean;
+  readonly equipmentChanged?: boolean;
   readonly from: string;
   readonly to: string;
 }
@@ -92,16 +97,17 @@ export interface ChangeSummaryInput {
  * faktisk er endret.
  */
 export function changeHeadline(input: ChangeSummaryInput): string {
-  const { dateChanged, locationChanged, scenesChanged, propsChanged = false, from, to } = input;
+  const {
+    dateChanged, locationChanged, scenesChanged,
+    propsChanged = false, equipmentChanged = false, from, to,
+  } = input;
+  const annet = locationChanged || scenesChanged || propsChanged || equipmentChanged;
   const deler: string[] = [];
-  if (dateChanged) {
-    deler.push(locationChanged || scenesChanged || propsChanged
-      ? 'ny dato'
-      : `flytting fra ${from} til ${to}`);
-  }
+  if (dateChanged) deler.push(annet ? 'ny dato' : `flytting fra ${from} til ${to}`);
   if (locationChanged) deler.push('ny lokasjon');
   if (scenesChanged) deler.push('endrede scener');
   if (propsChanged) deler.push('endrede rekvisitter');
+  if (equipmentChanged) deler.push('endret utstyr');
   if (deler.length === 0) return 'Endringen påvirker:';
   const setning = deler.length === 1
     ? deler[0]
@@ -111,13 +117,17 @@ export function changeHeadline(input: ChangeSummaryInput): string {
 
 /** Samme spørsmål når svaret er «ingenting». */
 export function emptyImpactText(input: ChangeSummaryInput): string {
-  const { dateChanged, locationChanged, scenesChanged, propsChanged = false, from } = input;
+  const {
+    dateChanged, locationChanged, scenesChanged,
+    propsChanged = false, equipmentChanged = false, from,
+  } = input;
   const hva = dateChanged
     ? from
     : [
         locationChanged ? 'den gamle lokasjonen' : '',
         scenesChanged ? 'scenene som endres' : '',
         propsChanged ? 'rekvisittene som endres' : '',
+        equipmentChanged ? 'utstyret som endres' : '',
       ].filter(Boolean).join(' eller ') || 'endringen';
   return `Ingenting annet henger på ${hva}. Endringen berører bare dagen selv.`;
 }
@@ -133,6 +143,8 @@ export function ChangeImpactPreview({
   targetSceneIds = null,
   currentPropIds = null,
   targetPropIds = null,
+  currentEquipmentIds = null,
+  targetEquipmentIds = null,
   onBlockingChange,
 }: ChangeImpactPreviewProps): JSX.Element | null {
   const [data, setData] = useState<ImpactResponse | null>(null);
@@ -151,8 +163,11 @@ export function ChangeImpactPreview({
   const propKey = targetPropIds ? [...targetPropIds].sort().join(',') : null;
   const currentPropKey = currentPropIds ? [...currentPropIds].sort().join(',') : null;
   const propsChanged = propKey !== null && propKey !== (currentPropKey ?? '');
+  const gearKey = targetEquipmentIds ? [...targetEquipmentIds].sort().join(',') : null;
+  const currentGearKey = currentEquipmentIds ? [...currentEquipmentIds].sort().join(',') : null;
+  const equipmentChanged = gearKey !== null && gearKey !== (currentGearKey ?? '');
   const shouldAsk = Boolean(dayId)
-    && (dateChanged || locationChanged || scenesChanged || propsChanged);
+    && (dateChanged || locationChanged || scenesChanged || propsChanged || equipmentChanged);
 
   const load = useCallback(async () => {
     if (!dayId || !shouldAsk) return;
@@ -165,6 +180,7 @@ export function ChangeImpactPreview({
       // Tom liste er en ekte verdi her: «dagen har ingen scener igjen».
       if (scenesChanged) params.set('sceneIds', (targetSceneIds ?? []).join(','));
       if (propsChanged) params.set('propIds', (targetPropIds ?? []).join(','));
+      if (equipmentChanged) params.set('equipmentIds', (targetEquipmentIds ?? []).join(','));
       const response = await fetch(
         `/api/role-room/projects/${encodeURIComponent(projectId)}`
         + `/production-days/${encodeURIComponent(dayId)}/impact?${params.toString()}`,
@@ -180,7 +196,8 @@ export function ChangeImpactPreview({
     }
   }, [
     projectId, dayId, targetDate, targetLocationId, targetSceneIds, targetPropIds,
-    dateChanged, locationChanged, scenesChanged, propsChanged, shouldAsk,
+    targetEquipmentIds, dateChanged, locationChanged, scenesChanged, propsChanged,
+    equipmentChanged, shouldAsk,
   ]);
 
   useEffect(() => {
@@ -248,7 +265,10 @@ export function ChangeImpactPreview({
   if (data.impacts.length === 0) {
     return (
       <Alert severity="success" icon={<CheckCircleOutlineIcon fontSize="small" />} sx={{ mt: 1 }}>
-        {emptyImpactText({ dateChanged, locationChanged, scenesChanged, propsChanged, from: data.from, to: data.to })}
+        {emptyImpactText({
+          dateChanged, locationChanged, scenesChanged, propsChanged, equipmentChanged,
+          from: data.from, to: data.to,
+        })}
       </Alert>
     );
   }
@@ -256,7 +276,10 @@ export function ChangeImpactPreview({
   return (
     <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, border: '1px solid rgba(255,255,255,0.12)' }}>
       <Typography variant="subtitle2" sx={{ color: '#fff', mb: 1 }}>
-        {changeHeadline({ dateChanged, locationChanged, scenesChanged, propsChanged, from: data.from, to: data.to })}
+        {changeHeadline({
+          dateChanged, locationChanged, scenesChanged, propsChanged, equipmentChanged,
+          from: data.from, to: data.to,
+        })}
       </Typography>
       <Stack spacing={1}>
         {data.impacts.map((impact) => (
