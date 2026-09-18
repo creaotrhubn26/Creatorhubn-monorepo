@@ -16,6 +16,26 @@ import {
   writeCreatorHubLoginError,
   type CreatorHubAuthUser,
 } from './creatorhubGoogleAuth';
+import { isLeadgridDedicatedHost } from '@/components/role-room/utils/runtime';
+
+/**
+ * Logg inn med LinkedIn hører til Leadgrid-flaten. Den samme LoginModal brukes
+ * av CreatorHub (/login), admin-hosten og Role Room, og der skal knappen ikke
+ * vises. Sann på en Leadgrid-dedikert host (leadgrid.no) og på /leadgrid-stier
+ * når Leadgrid serveres fra en delt host (/leadgrid/login).
+ */
+export function isLeadgridLoginSurface(location?: { hostname?: string; pathname?: string }): boolean {
+  const host = location?.hostname
+    ?? (typeof window !== 'undefined' ? window.location.hostname : undefined);
+  const path = location?.pathname
+    ?? (typeof window !== 'undefined' ? window.location.pathname : undefined);
+
+  if (isLeadgridDedicatedHost(host)) {
+    return true;
+  }
+  const normalized = (path ?? '').trim().toLowerCase();
+  return normalized === '/leadgrid' || normalized.startsWith('/leadgrid/');
+}
 
 const LINKEDIN_CALLBACK_PARAMS = ['chLinkedInStatus', 'chLinkedInTransfer', 'chLinkedInMessage'] as const;
 
