@@ -381,111 +381,137 @@ struct NativeBoardView: View {
     /// Keep the large board view split into smaller opaque view types. Xcode
     /// 26.3 otherwise times out while type-checking the full modifier chain on
     /// CI, even though newer local toolchains compile the same expression.
-    private var boardLayout: some View {
-        VStack(spacing: 0) {
-            topbar
-            Divider().overlay(BoardBrand.border)
-            HStack(spacing: 0) {
-                scenesColumn
+    ///
+    /// Splitting into properties alone only helps the *compiler*: each stage
+    /// still nests its `some View` on top of every prior stage's full opaque
+    /// type, so the composed runtime type grows just as large as one giant
+    /// chain would. On-device that showed up as a real crash — EXC_BAD_ACCESS
+    /// "Could not determine thread index for stack guard region", a stack
+    /// overflow inside libswiftCore's generic-metadata resolution while
+    /// evaluating NativeBoardView.body (TestFlight crash 6921FB69, iPadOS
+    /// 27.0, build 20260913.2). `sheetArea` alone chains 16 presentation
+    /// modifiers (.sheet/.fullScreenCover/.alert), and that already-huge type
+    /// then gets nested 6 more times by this chain. AnyView at every stage
+    /// boundary caps the generic depth at O(1) per stage instead of O(n).
+    private var boardLayout: AnyView {
+        AnyView(
+            VStack(spacing: 0) {
+                topbar
                 Divider().overlay(BoardBrand.border)
-                sheetArea
-                if presentationRole != .client {
+                HStack(spacing: 0) {
+                    scenesColumn
                     Divider().overlay(BoardBrand.border)
-                    inspector
+                    sheetArea
+                    if presentationRole != .client {
+                        Divider().overlay(BoardBrand.border)
+                        inspector
+                    }
+                }
+                if presentationRole == .storyboardArtist {
+                    Divider().overlay(BoardBrand.border)
+                    brushBar
                 }
             }
-            if presentationRole == .storyboardArtist {
-                Divider().overlay(BoardBrand.border)
-                brushBar
+            .background(BoardBrand.chrome)
+            .navigationBarHidden(true)
+        )
+    }
+
+    private var boardPresentations: AnyView {
+        AnyView(
+            boardLayout
+            .fullScreenCover(isPresented: $showAnimatic) {
+                AnimaticView(sceneHeading: board.scene?.heading ?? "",
+                             frames: board.scene?.frames ?? [],
+                             onVoiceoverChanged: { frameId, dataURL in
+                                 board.patchFrame(frameId: frameId, fields: [
+                                     "voiceoverDataURL": dataURL ?? NSNull(),
+                                 ])
+                             })
             }
-        }
-        .background(BoardBrand.chrome)
-        .navigationBarHidden(true)
-    }
-
-    private var boardPresentations: some View {
-        boardLayout
-        .fullScreenCover(isPresented: $showAnimatic) {
-            AnimaticView(sceneHeading: board.scene?.heading ?? "",
-                         frames: board.scene?.frames ?? [],
-                         onVoiceoverChanged: { frameId, dataURL in
-                             board.patchFrame(frameId: frameId, fields: [
-                                 "voiceoverDataURL": dataURL ?? NSNull(),
-                             ])
-                         })
-        }
-        .fullScreenCover(isPresented: $showFullscreenDraw) {
-            if let frame = board.frame {
-                FullscreenDrawView(canvasState: canvasState, frame: frame,
-                                   background: composedCanvasBackground())
+            .fullScreenCover(isPresented: $showFullscreenDraw) {
+                if let frame = board.frame {
+                    FullscreenDrawView(canvasState: canvasState, frame: frame,
+                                       background: composedCanvasBackground())
+                }
             }
-        }
+        )
     }
 
-    private var boardDataTasks: some View {
-        boardPresentations
-        .task { await board.reload() }
-        .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
-        .task(id: shotPreviewTaskKey) { await rebuildShotPreviews() }
-        .task(id: activeRasterTaskKey) { await loadActiveRaster() }
+    private var boardDataTasks: AnyView {
+        AnyView(
+            boardPresentations
+            .task { await board.reload() }
+            .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
+            .task(id: shotPreviewTaskKey) { await rebuildShotPreviews() }
+            .task(id: activeRasterTaskKey) { await loadActiveRaster() }
+        )
     }
 
-    private var boardFrameObservers: some View {
-        boardDataTasks
-        .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
-        .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
-        .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
-        .onChange(of: canvasState.revision) { scheduleAutosync() }
-        .onChange(of: board.frame?.imageUrl) { loadActiveFrameIntoCanvas() }
+    private var boardFrameObservers: AnyView {
+        AnyView(
+            boardDataTasks
+            .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
+            .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
+            .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
+            .onChange(of: canvasState.revision) { scheduleAutosync() }
+            .onChange(of: board.frame?.imageUrl) { loadActiveFrameIntoCanvas() }
+        )
     }
 
-    private var boardBackgroundObservers: some View {
-        boardFrameObservers
-        .onChange(of: onionMode) { applyUnderlay(to: renderer) }
-        .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
-        .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
+    private var boardBackgroundObservers: AnyView {
+        AnyView(
+            boardFrameObservers
+            .onChange(of: onionMode) { applyUnderlay(to: renderer) }
+            .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
+            .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
+        )
     }
 
-    private var boardChangeObservers: some View {
-        boardBackgroundObservers
-        .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
-        .onChange(of: perspectiveSnap) { updateSnapState() }
+    private var boardChangeObservers: AnyView {
+        AnyView(
+            boardBackgroundObservers
+            .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
+            .onChange(of: perspectiveSnap) { updateSnapState() }
+        )
     }
 
-    private var boardLifecycle: some View {
-        boardChangeObservers
-        .task {
-            // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
-                if !pendingFrameIds.isEmpty { flushAllPending() }
+    private var boardLifecycle: AnyView {
+        AnyView(
+            boardChangeObservers
+            .task {
+                // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    if !pendingFrameIds.isEmpty { flushAllPending() }
+                }
             }
-        }
-        .task {
-            // Live-polling (30 s, 304-billig med ETag): web-endringer dukker
-            // opp uten app-restart. Aktiv frame reloades kun når vi ikke har
-            // lokale usynkede endringer.
-            presentOthers = await RoleRoomAPIClient.shared.reportPresence(
-                manuscriptId: board.manuscript.id)
-            while !Task.isCancelled {
-                // Andre til stede → tettere polling (10 s, 304-billig).
-                let interval: UInt64 = presentOthers.isEmpty ? 30 : 10
-                try? await Task.sleep(nanoseconds: interval * 1_000_000_000)
-                guard !Task.isCancelled else { break }
+            .task {
+                // Live-polling (30 s, 304-billig med ETag): web-endringer dukker
+                // opp uten app-restart. Aktiv frame reloades kun når vi ikke har
+                // lokale usynkede endringer.
                 presentOthers = await RoleRoomAPIClient.shared.reportPresence(
                     manuscriptId: board.manuscript.id)
-                let changed = await board.refreshFromServer()
-                if changed, let other = presentOthers.first {
-                    board.syncStatus = "Oppdatert fra \(other)"
-                }
-                if changed,
-                   canvasState.revision == loadedRevision,
-                   board.frame?.updatedAt != loadedFrameUpdatedAt {
-                    loadActiveFrameIntoCanvas()
+                while !Task.isCancelled {
+                    // Andre til stede → tettere polling (10 s, 304-billig).
+                    let interval: UInt64 = presentOthers.isEmpty ? 30 : 10
+                    try? await Task.sleep(nanoseconds: interval * 1_000_000_000)
+                    guard !Task.isCancelled else { break }
+                    presentOthers = await RoleRoomAPIClient.shared.reportPresence(
+                        manuscriptId: board.manuscript.id)
+                    let changed = await board.refreshFromServer()
+                    if changed, let other = presentOthers.first {
+                        board.syncStatus = "Oppdatert fra \(other)"
+                    }
+                    if changed,
+                       canvasState.revision == loadedRevision,
+                       board.frame?.updatedAt != loadedFrameUpdatedAt {
+                        loadActiveFrameIntoCanvas()
+                    }
                 }
             }
-        }
-        .onChange(of: boardTool) { selectedStrokeIds = [] }
+            .onChange(of: boardTool) { selectedStrokeIds = [] }
+        )
     }
 
     // Forrige lastede frame + strøkantall — usynkede strøk flushes automatisk
@@ -1387,7 +1413,13 @@ struct NativeBoardView: View {
         .buttonStyle(.plain)
     }
 
-    private var sheetArea: some View {
+    // AnyView: 16 kjedede .sheet/.fullScreenCover/.alert-modifiere under bygger
+    // en enorm generisk type som, nestet videre av boardLayout og kjeden over,
+    // overflow'et Swift-runtimens type-metadata-stack ved åpning av et board
+    // (TestFlight-krasj 6921FB69, EXC_BAD_ACCESS/SIGSEGV — se boardLayout sin
+    // kommentar). Erasure her er den enkeltendringen som monner mest.
+    private var sheetArea: AnyView {
+        AnyView(
         VStack(spacing: 0) {
             toolRow
             Divider().overlay(BoardBrand.border)
@@ -1711,6 +1743,7 @@ struct NativeBoardView: View {
                 pendingDeleteSceneId = nil
             }
         }
+        )
     }
 
     // Beat-timeline (web SceneTimelineStrip): SETUP/TENSION/ACTION/RESOLUTION,
