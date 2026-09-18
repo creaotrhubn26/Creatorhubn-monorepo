@@ -1586,6 +1586,12 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     const access = await projectAccess(pool, actor, String(req.params.id));
     if (!access) { res.status(404).json({ error: "finnes_ikke" }); return; }
     const versionId = cleanText(req.query.versionId, 40);
+    if (!versionId) { res.status(400).json({ error: "mangler_version_id" }); return; }
+    // IDOR-vakt: bekreft at versjonen tilhører DETTE prosjektet (samme sjekk
+    // som GET /comments) — ellers kan en angriper dumpe kommentarer fra en
+    // vilkårlig (enumererbar BIGINT) versjon i et annet prosjekt/tenant.
+    const belongs = await pool.query("SELECT 1 FROM mockup_studio_versions WHERE id=$1 AND project_id=$2 AND created_by=$3", [versionId, access.id, access.created_by]);
+    if (!belongs.rows.length) { res.status(404).json({ error: "versjon_finnes_ikke" }); return; }
     const comments = await listComments(pool, versionId);
     res.json({
       format: "figma-comment-import-v1",
@@ -2058,7 +2064,14 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
   });
 
   app.post("/api/role-room/mockup-shared/:token/approve", express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
+    if (rateLimited(`approve:${clientIp(req)}`, 15, 10 * 60_000)) { res.status(429).json({ error: "for_mange_forsok" }); return; }
     try {
+      // AuthZ-vakt: kun lenker som eksplisitt er delt med godkjennings-tilgang
+      // kan godkjenne. Uten dette kunne en «kun visning»/kommentar-lenke
+      // POSTe hit og tvinge status til ready (bypass av godkjenningsflyten).
+      const link = await loadPublicLink(pool, String(req.params.token));
+      if (!link || isExpired(link)) { res.status(404).json({ error: "finnes_ikke" }); return; }
+      if (link.access_mode !== "approve") { res.status(403).json({ error: "godkjenning_ikke_tillatt" }); return; }
       const { rows } = await pool.query(
         `UPDATE demo_studio_mockup_projects p SET
            status='ready',
