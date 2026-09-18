@@ -193,6 +193,7 @@ type WorkspaceItemId =
   // Sub-items mountet i Teamspaces / Overview
   | 'business-plan'
   | 'funding'
+  | 'funding-radar'
   | 'investors'
   | 'partners'
   | 'industry-crm'

@@ -2255,7 +2255,7 @@ export type WorkspaceFundingProductKey = 'role_room' | 'leadgrid' | 'internal';
 
 export interface WorkspaceFundingOpportunity {
   id: string;
-  product_key: string | null;
+  product_key: WorkspaceFundingProductKey | null;
   catalog_key: string | null;
   provider: string;
   scheme_name: string;
