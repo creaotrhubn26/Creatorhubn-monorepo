@@ -18,12 +18,17 @@ evidence_summary: >
   `branches create --output json` returns `{ branch: { id }, endpoints, connection_uris }`,
   `--expires-at` (RFC3339) auto-deletes the branch, `--no-secrets` keeps credentials out of
   CI logs, and `connection-string <branch> --role-name --database-name --psql -- -c "..."`
-  runs SQL through a built-in psql when the binary is missing. Roles created with SQL (our
-  creatorhub_migration_login) are not Neon-managed, so Neon cannot reveal their passwords;
-  the script therefore sets a one-time password on the disposable branch through the
-  Neon-managed neondb_owner role and builds the URL itself with
-  sslmode=require&channel_binding=require, which backend/scripts/run-production-migrations.mjs
-  requires (it also rejects `-pooler.` hosts, so the direct endpoint host is used).
+  runs SQL through a built-in psql when the binary is missing. CORRECTION 2026-09-18 (first real
+  run, run 934): the earlier assumption that creatorhub_migration_login is not Neon-managed was
+  wrong — Neon lists it (list_postgres_roles: authentication_method=password), and the
+  ALTER ROLE ... PASSWORD detour was denied ("permission denied to alter role") even though
+  neondb_owner has CREATEROLE and ADMIN OPTION on the role. The script now asks Neon for the
+  branch connection string of the migration role directly
+  (`neon connection-string <branch> --role-name creatorhub_migration_login --endpoint-type read_write`)
+  and appends sslmode=require&channel_binding=require, which
+  backend/scripts/run-production-migrations.mjs requires (it also rejects `-pooler.` hosts).
+  Harness failures (branch creation, connection string) now skip the dry run with a ::warning::
+  and delete the branch; only migration failures on the branch fail the deploy job.
 interpretation: >
   A branch dry run is the cheapest way to get a real-Postgres test of every migration before
   production without adding Postgres to CI or a Neon-branch mock. Failure stops the deploy
