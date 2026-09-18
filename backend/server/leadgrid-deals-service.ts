@@ -344,6 +344,35 @@ export async function applyStageChange(
       : historyParams,
   );
 
+  // Uten denne fyrte ingen workflow når en avtale ble vunnet herfra.
+  // Bare PATCH-endepunktet i leadgrid-intelligence-routes publiserte eventet,
+  // så «vunnet» via tilbud eller via en annen workflow gikk stille forbi.
+  // Krever scope for å vite hvilken organisasjon og hvilket prosjekt eventet
+  // hører til; uten scope er det ingen autoritativ mottaker å publisere til.
+  // Publiserer bare ved faktisk endring — det stopper en workflow som setter
+  // samme stage fra å vekke seg selv.
+  if (opts?.scope && oldStage !== toStage) {
+    try {
+      const engine = await import("./leadgrid-workflow-engine.js");
+      void engine.publishEvent({
+        pool,
+        organizationId: opts.scope.organizationId,
+        projectId: opts.scope.projectId,
+        type: "pipeline.stage_changed",
+        leadId,
+        actorUserId: changedBy,
+        data: {
+          project_id: opts.scope.projectId,
+          from: oldStage,
+          to: toStage,
+          source: opts.source ?? "service",
+        },
+      });
+    } catch (err) {
+      console.warn("[deals-service] workflow-engine publish skip:", err);
+    }
+  }
+
   return {
     oldStage,
     newStage: toStage,

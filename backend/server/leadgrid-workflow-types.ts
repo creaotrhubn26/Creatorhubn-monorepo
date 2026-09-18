@@ -33,7 +33,9 @@ export type WorkflowTriggerType =
   | "proposal.opened"
   | "contract.signed"
   // mig 0353 — schedule.cron for continuous discovery
-  | "schedule.cron";
+  | "schedule.cron"
+  // mig 0634 — post-salg: fornyelse forfaller
+  | "deal.renewal_due";
 
 export interface TriggerLeadCreated {
   type: "lead.created";
@@ -116,6 +118,17 @@ export interface TriggerScheduleCron {
   project_id?: string;
 }
 
+/**
+ * deal.renewal_due — fornyelsesdatoen på en vunnet avtale nærmer seg.
+ * Emitteres av den daglige cronen, ikke av en brukerhandling.
+ * within_days begrenser hvor tidlig workflowen skal reagere; cronen
+ * varsler innenfor sitt eget vindu og eventet bærer dager_igjen.
+ */
+export interface TriggerDealRenewalDue {
+  type: "deal.renewal_due";
+  within_days?: number;
+}
+
 export type WorkflowTrigger =
   | TriggerLeadCreated
   | TriggerLeadStatusChanged
@@ -132,7 +145,8 @@ export type WorkflowTrigger =
   | TriggerMeetingNoShow
   | TriggerProposalOpened
   | TriggerContractSigned
-  | TriggerScheduleCron;
+  | TriggerScheduleCron
+  | TriggerDealRenewalDue;
 
 // ─── Conditions ───────────────────────────────────────────────────────
 export type WorkflowConditionOp = ">" | "<" | "=" | ">=" | "<=" | "!=";
@@ -378,6 +392,7 @@ const VALID_TRIGGER_TYPES: WorkflowTriggerType[] = [
   "proposal.opened",
   "contract.signed",
   "schedule.cron",
+  "deal.renewal_due",
 ];
 
 const VALID_ACTION_TYPES: WorkflowActionType[] = [
@@ -520,6 +535,15 @@ export function validateTrigger(
     case "contract.signed":
       if (t.provider !== undefined && typeof t.provider !== "string")
         return { ok: false, error: "trigger_provider_must_be_string" };
+      break;
+    case "deal.renewal_due":
+      if (
+        t.within_days !== undefined &&
+        (typeof t.within_days !== "number" ||
+          !Number.isFinite(t.within_days) ||
+          t.within_days < 0)
+      )
+        return { ok: false, error: "trigger_within_days_must_be_positive_number" };
       break;
     case "schedule.cron":
       if (!isValidCronExpression(t.cron))
