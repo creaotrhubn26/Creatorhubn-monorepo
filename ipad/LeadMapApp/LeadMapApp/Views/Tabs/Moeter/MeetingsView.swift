@@ -429,6 +429,9 @@ struct MeetingsView: View {
     @State private var ukeOffset = 0
     /// Konflikt-vakt: flytting som overlapper et annet møte stoppes.
     @State private var konfliktMelding: String? = nil
+    /// Synlig feil for drag/anbefalt tidsendring. Ingen flytting omtales som
+    /// lagret før PATCH-en faktisk er bekreftet av backend.
+    @State private var flyttingFeil: String? = nil
     /// Etter vellykket flytting (drag i dag/uke): tilby å varsle kontakten
     /// med ferdig e-postutkast — samme tilbud som Endre tidspunkt-arket.
     struct FlyttetInfo: Identifiable {
@@ -580,7 +583,7 @@ struct MeetingsView: View {
 
     /// Lagre ny møtetid: demo → flytt blokka i minnet; ekte → PATCH
     /// next_follow_up_at (kalenderen er avledet av den) + full refresh.
-    private func lagreNyMotetid(_ m: Meeting, start: Date, varighetMin: Int) {
+    private func lagreNyMotetid(_ m: Meeting, start: Date, varighetMin: Int) async throws {
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
         let nyStart = df.string(from: start)
@@ -590,14 +593,14 @@ struct MeetingsView: View {
             demoTidOverstyringer[m.id] = (nyStart, nySlutt, dagKol)
             return
         }
-        Task { @MainActor in
-            do {
-                try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: start)
-                await appState.refreshAll()
-            } catch {
-                print("[Møter] flytting feilet: \(error)")
-            }
+        guard let api = appState.api else {
+            throw URLError(.userAuthenticationRequired)
         }
+        try await api.flyttMoteTid(
+            leadId: m.id.uuidString.lowercased(),
+            til: start
+        )
+        await appState.refreshAll()
     }
 
     /// Dra-og-slipp i ukekalenderen: flytt møtet deltaDager/deltaMinutter.
@@ -656,8 +659,11 @@ struct MeetingsView: View {
         else { return }
         Task { @MainActor in
             do {
-                try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: nyDato)
-                await appState.refreshAll()
+                try await lagreNyMotetid(
+                    m,
+                    start: nyDato,
+                    varighetMin: varighet
+                )
                 // Reisetids-sjekken kjenner bare dagens agenda — hopp over
                 // ved dag-bytte (måldagens agenda er ukjent her).
                 if deltaDager == 0 {
@@ -670,6 +676,7 @@ struct MeetingsView: View {
                 }
             } catch {
                 print("[Møter] dra-flytting feilet: \(error)")
+                flyttingFeil = "Møtet ble ikke flyttet. Kontroller nettet og prøv igjen."
             }
         }
     }
@@ -870,7 +877,11 @@ struct MeetingsView: View {
         .task { await loadBriefs() }
         .sheet(item: $reschedulingMeeting) { m in
             RescheduleSheet(meeting: m) { nyStart, varighet in
-                lagreNyMotetid(m, start: nyStart, varighetMin: varighet)
+                try await lagreNyMotetid(
+                    m,
+                    start: nyStart,
+                    varighetMin: varighet
+                )
             }
         }
         .sheet(item: $etterMoteFraVarsel) { m in
@@ -887,13 +898,31 @@ struct MeetingsView: View {
         } message: {
             Text(konfliktMelding ?? "")
         }
+        .alert("Kunne ikke flytte møtet", isPresented: Binding(
+            get: { flyttingFeil != nil },
+            set: { if !$0 { flyttingFeil = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(flyttingFeil ?? "Endringen ble ikke lagret.")
+        }
         .alert("Møtet er flyttet", isPresented: Binding(
             get: { flyttetInfo != nil },
             set: { if !$0 { flyttetInfo = nil } }), presenting: flyttetInfo) { info in
             if let anbefalt = info.anbefaltStart {
                 Button("Flytt til \(kortTid(anbefalt)) (anbefalt)") {
-                    lagreNyMotetid(info.meeting, start: anbefalt,
-                                   varighetMin: info.varighetMin)
+                    Task { @MainActor in
+                        do {
+                            try await lagreNyMotetid(
+                                info.meeting,
+                                start: anbefalt,
+                                varighetMin: info.varighetMin
+                            )
+                        } catch {
+                            print("[Møter] anbefalt flytting feilet: \(error)")
+                            flyttingFeil = "Møtet ble ikke flyttet. Kontroller nettet og prøv igjen."
+                        }
+                    }
                 }
             }
             Button("Varsle kontakten") { aapneFlytteUtkast(info) }

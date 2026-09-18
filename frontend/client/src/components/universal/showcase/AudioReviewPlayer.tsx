@@ -39,6 +39,8 @@ export interface TimecodedComment {
 
 interface Props {
   src: string;
+  peaks?: number[];
+  mediaDuration?: number;
   comments: TimecodedComment[];
   onAddComment: (timecode: number, comment: string, category: string) => void | Promise<void>;
   accentColor?: string;
@@ -58,6 +60,8 @@ const fmt = (s: number): string => {
 
 export default function AudioReviewPlayer({
   src,
+  peaks,
+  mediaDuration,
   comments,
   onAddComment,
   accentColor = '#FF6B35',
@@ -90,6 +94,7 @@ export default function AudioReviewPlayer({
       barGap: 1,
       barRadius: 2,
       normalize: true,
+      ...(Array.isArray(peaks) && peaks.length ? { peaks: [peaks], duration: mediaDuration } : {}),
     });
     wsRef.current = ws;
 
@@ -104,7 +109,7 @@ export default function AudioReviewPlayer({
       try { ws.destroy(); } catch { /* ignore */ }
       wsRef.current = null;
     };
-  }, [src, accentColor]);
+  }, [src, accentColor, peaks, mediaDuration]);
 
   const seekTo = React.useCallback((sec: number) => {
     const ws = wsRef.current;

@@ -28,12 +28,12 @@ import type {
   NormalizedDailyMetrics,
   InsightsFetchOptions,
 } from "./role-room-ads-sync.js";
+import {
+  LINKEDIN_API_VERSION,
+  LINKEDIN_REST_BASE,
+} from './linkedin-api-version.js';
 
-const LINKEDIN_BASE = "https://api.linkedin.com/rest";
-// LinkedIn sunsets Marketing API versions after ~12 months. Keep this current
-// (YYYYMM) — a stale value makes adAnalytics calls fail with a deprecated-version
-// error. Overridable per-env via LINKEDIN_API_VERSION. Latest as of 2026-06.
-const DEFAULT_LINKEDIN_VERSION = "202606";
+const LINKEDIN_BASE = LINKEDIN_REST_BASE;
 
 export interface LinkedInInsightsRow {
   date: string; // YYYY-MM-DD (from dateRange.start)
@@ -150,7 +150,7 @@ export async function getCampaignInsights(
     method: "GET",
     headers: {
       Authorization: `Bearer ${input.accessToken}`,
-      "LinkedIn-Version": input.apiVersion ?? DEFAULT_LINKEDIN_VERSION,
+      "LinkedIn-Version": input.apiVersion ?? LINKEDIN_API_VERSION,
       "X-Restli-Protocol-Version": "2.0.0",
     },
   });
@@ -276,7 +276,7 @@ async function linkedInGet(
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "LinkedIn-Version": apiVersion ?? DEFAULT_LINKEDIN_VERSION,
+      "LinkedIn-Version": apiVersion ?? LINKEDIN_API_VERSION,
       "X-Restli-Protocol-Version": "2.0.0",
     },
   });
@@ -432,7 +432,7 @@ export interface LinkedInAdsAuth {
 function linkedInWriteHeaders(auth: LinkedInAdsAuth, partialUpdate = false): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${auth.accessToken}`,
-    "LinkedIn-Version": auth.apiVersion ?? DEFAULT_LINKEDIN_VERSION,
+    "LinkedIn-Version": auth.apiVersion ?? LINKEDIN_API_VERSION,
     "X-Restli-Protocol-Version": "2.0.0",
     "content-type": "application/json",
   };

@@ -63,6 +63,7 @@ import {
   reconcilePaypalPayout,
   verifyPaypalWebhook,
 } from "./editing-payments-service";
+import { isWorkspaceParticipantCompensationMetadata } from "../../frontend/shared/workspace-participant-compensation.ts";
 
 export interface EditingJobsRoutesDeps {
   app: express.Application;
@@ -650,64 +651,117 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       const feeCents = platformFeeCents(amountCents, feeCfg);
       const vat = computeJobVat(amountCents, feeCents, vendorIsForeign);
 
-      const ins = await pool.query(
-        `INSERT INTO editing_jobs
-           (project_id, project_title, photographer_id, photographer_email, vendor_id, vendor_name,
-            status, requested_services, brief, amount_cents, currency, platform_fee_cents,
-            max_revisions, quality_spec, confidentiality_ack, staging_prefix, requested_at,
-            cost_model, revenue_share_pct, split_sheet_id,
-            vat_reverse_charge, vat_rate, service_vat_cents, commission_vat_cents)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'NOK',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
-         RETURNING id`,
-        [
-          b.projectId || null,
-          b.projectTitle || null,
-          session.userId,
-          session.email || null,
-          vendorId,
-          vendorName,
-          status,
-          JSON.stringify(Array.isArray(b.requestedServices) ? b.requestedServices : []),
-          b.brief || null,
-          amountCents,
-          feeCents,
-          Number.isFinite(Number(b.maxRevisions)) ? Number(b.maxRevisions) : 2,
-          b.qualitySpec ? JSON.stringify(b.qualitySpec) : null,
-          !!b.confidentialityAck,
-          null,
-          vendorId ? new Date() : null,
-          costModel,
-          revenueSharePct,
-          splitSheetId,
-          vat.reverseCharge,
-          vat.vatRate,
-          vat.serviceVatCents,
-          vat.commissionVatCents,
-        ],
-      );
-      const jobId = ins.rows[0].id;
-      // staging_prefix settes nå som vi har jobId
-      await pool.query(`UPDATE editing_jobs SET staging_prefix = $2 WHERE id = $1`, [
-        jobId,
-        stagingPrefix(jobId),
-      ]);
+      const client = await pool.connect();
+      let jobId = "";
+      try {
+        await client.query("BEGIN");
 
-      // Revenue-share -> legg vendor inn i split-sheet-kalkylen som bidragsyter
-      if (costModel === "revenue_share" && splitSheetId && revenueSharePct != null) {
-        try {
-          const contrib = await pool.query(
+        // A supplied split sheet must belong to the photographer. Locking its
+        // header first serializes contributor insertion with personal signing.
+        if (splitSheetId) {
+          const sheet = await client.query(
+            `SELECT metadata
+               FROM split_sheets
+              WHERE id = $1::uuid AND user_id = $2
+              FOR UPDATE`,
+            [splitSheetId, session.userId],
+          );
+          if (sheet.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "split_sheet_ikke_funnet" });
+          }
+          if (isWorkspaceParticipantCompensationMetadata(sheet.rows[0].metadata)) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "managed_compensation_uses_participant_contract",
+            });
+          }
+
+          if (costModel === "revenue_share" && revenueSharePct != null) {
+            const signed = await client.query(
+              `SELECT EXISTS (
+                 SELECT 1 FROM split_sheet_contributors
+                  WHERE split_sheet_id = $1::uuid AND signed_at IS NOT NULL
+               ) AS has_signed`,
+              [splitSheetId],
+            );
+            const metadata = sheet.rows[0]?.metadata;
+            const agreementVersion = Number(
+              metadata && typeof metadata === "object" && !Array.isArray(metadata)
+                ? metadata.agreementVersion
+                : undefined,
+            );
+            if (agreementVersion >= 1 && Boolean(signed.rows[0]?.has_signed)) {
+              await client.query("ROLLBACK");
+              return res.status(409).json({
+                error: "signed_agreement_locked",
+                message: "Signed agreement participants cannot be changed. Create a new agreement for amendments.",
+              });
+            }
+          }
+        }
+
+        const ins = await client.query(
+          `INSERT INTO editing_jobs
+             (project_id, project_title, photographer_id, photographer_email, vendor_id, vendor_name,
+              status, requested_services, brief, amount_cents, currency, platform_fee_cents,
+              max_revisions, quality_spec, confidentiality_ack, staging_prefix, requested_at,
+              cost_model, revenue_share_pct, split_sheet_id,
+              vat_reverse_charge, vat_rate, service_vat_cents, commission_vat_cents)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'NOK',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+           RETURNING id`,
+          [
+            b.projectId || null,
+            b.projectTitle || null,
+            session.userId,
+            session.email || null,
+            vendorId,
+            vendorName,
+            status,
+            JSON.stringify(Array.isArray(b.requestedServices) ? b.requestedServices : []),
+            b.brief || null,
+            amountCents,
+            feeCents,
+            Number.isFinite(Number(b.maxRevisions)) ? Number(b.maxRevisions) : 2,
+            b.qualitySpec ? JSON.stringify(b.qualitySpec) : null,
+            !!b.confidentialityAck,
+            null,
+            vendorId ? new Date() : null,
+            costModel,
+            revenueSharePct,
+            splitSheetId,
+            vat.reverseCharge,
+            vat.vatRate,
+            vat.serviceVatCents,
+            vat.commissionVatCents,
+          ],
+        );
+        jobId = ins.rows[0].id;
+        await client.query(`UPDATE editing_jobs SET staging_prefix = $2 WHERE id = $1`, [
+          jobId,
+          stagingPrefix(jobId),
+        ]);
+
+        // Revenue-share -> legg vendor inn i split-sheet-kalkylen som bidragsyter
+        // on the same locked transaction client.
+        if (costModel === "revenue_share" && splitSheetId && revenueSharePct != null) {
+          const contrib = await client.query(
             `INSERT INTO split_sheet_contributors (split_sheet_id, name, role, percentage, user_id, notes)
              VALUES ($1, $2, 'collaborator', $3, $4, 'Ekstern redigering (Creatorhub vendor)')
              RETURNING id`,
             [splitSheetId, vendorName || "Redigering", revenueSharePct, vendorId],
           );
-          await pool.query(`UPDATE editing_jobs SET split_sheet_contributor_id = $2 WHERE id = $1`, [
+          await client.query(`UPDATE editing_jobs SET split_sheet_contributor_id = $2 WHERE id = $1`, [
             jobId,
             contrib.rows[0].id,
           ]);
-        } catch (e) {
-          console.warn("[editing/jobs] split-sheet contributor-kobling feilet", (e as Error).message);
         }
+        await client.query("COMMIT");
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
       await logJobEvent(pool, jobId, vendorId ? "requested" : "created", session.userId, "photographer", {
         vendorId,

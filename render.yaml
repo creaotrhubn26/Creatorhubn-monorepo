@@ -23,6 +23,21 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # Leadgrid provider/internal workflow events. The JSON map holds a
+      # separate >=32-char provider secret for each organization + event.
+      - key: LEADGRID_WORKFLOW_EVENT_SIGNING_SECRETS_JSON
+        sync: false
+      - key: LEADGRID_WORKFLOW_EVENT_SERVICE_TOKEN
+        sync: false
+      # Public self-onboarding is fail-closed in production. Site key is
+      # public/build-time; secret stays server-side. Set proxy hops only after
+      # confirming the exact Render/custom-domain proxy topology.
+      - key: VITE_ROLE_ROOM_TURNSTILE_SITE_KEY
+        sync: false
+      - key: ROLE_ROOM_TURNSTILE_SECRET_KEY
+        sync: false
+      - key: LEADGRID_SELF_ONBOARD_TRUST_PROXY_HOPS
+        sync: false
       # Anthropic Claude for The Role Room Agent (generation tasks).
       # Sets feature flag to `false` so the agent falls back to Cohere/OpenAI
       # until the DPA is signed and the flag is flipped in Render UI.
@@ -151,6 +166,45 @@ services:
         sync: false
       - key: CLOUDFLARE_R2_MODELS_BUCKETS
         sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_STREAM_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_STREAM_CUSTOMER_SUBDOMAIN
+        sync: false
+      - key: CLOUDFLARE_STREAM_REQUIRE_SIGNED_URLS
+        value: "1"
+      # Runtime AWS access uses Render-managed OIDC and short-lived STS
+      # credentials. Render injects AWS_WEB_IDENTITY_TOKEN_FILE on deploy.
+      - key: AWS_ROLE_ARN
+        value: arn:aws:iam::745600963362:role/TheRoleRoomStorageRuntimeProd
+      - key: ROLE_ROOM_STORAGE_PROVIDER
+        value: aws_s3
+      - key: AWS_ROLE_ROOM_BUCKET_NAME
+        value: the-role-room-prod-745600963362-eu-north-1
+      - key: AWS_ROLE_ROOM_REGION
+        value: eu-north-1
+      # Temporary migration/rollback fallback; remove after final B2 audit.
+      - key: AWS_ROLE_ROOM_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_ROLE_ROOM_SECRET_ACCESS_KEY
+        sync: false
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_100_GIB_MONTHLY
+        value: price_1UE6FRApjenweKvPVb4iriwW
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_1_TIB_MONTHLY
+        value: price_1UE6FSApjenweKvPtozJY97b
+      - key: ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_STORAGE_BILLING_PORTAL_CONFIGURATION_ID
+        value: bpc_1UE6FSApjenweKvPbpPJLsLl
+      - key: ROLE_ROOM_STORAGE_PAYMENT_GRACE_DAYS
+        value: "7"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        sync: false
+      - key: ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -212,6 +266,12 @@ services:
       - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET
         sync: false
       - key: ROLE_ROOM_LINKEDIN_REDIRECT_URI
+        sync: false
+      - key: ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: LINKEDIN_API_VERSION
+        sync: false
+      - key: LINKEDIN_MATCHED_AUDIENCES_ENABLED
         sync: false
       # ── Meta / Instagram Graph API ─────────────────────────────────
       # App id + secret from developers.facebook.com → your app → Settings.
@@ -385,6 +445,13 @@ services:
           name: creatorhub-backend
           type: web
           envVarKey: ROLE_ROOM_RECONCILE_CRON_TOKEN
+      # Affiliate-payouts kjøres av samme daglige service, men shell-scriptet
+      # kaller endepunktet bare på første UTC-dag i måneden.
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
 
   - type: web
     name: creatorhub-gfpgan-runner

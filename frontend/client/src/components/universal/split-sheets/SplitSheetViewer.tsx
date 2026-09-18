@@ -330,7 +330,7 @@ export default function SplitSheetViewer({
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" sx={{ fontWeight: 600}}>
-                            {contributor.percentage.toFixed(2)}%
+                            {(Number(contributor.percentage) || 0).toFixed(2)}%
                           </Typography>
                         </TableCell>
                         <TableCell align="center">
@@ -364,8 +364,8 @@ export default function SplitSheetViewer({
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body1" sx={{ fontWeight: 700}}>
-                        {fullSplitSheet.total_percentage?.toFixed(2) || 
-                         contributors.reduce((sum, c) => sum + c.percentage, 0).toFixed(2)}%
+                        {(Number(fullSplitSheet.total_percentage)
+                          || contributors.reduce((sum, c) => sum + (Number(c.percentage) || 0), 0)).toFixed(2)}%
                       </Typography>
                     </TableCell>
                     <TableCell />

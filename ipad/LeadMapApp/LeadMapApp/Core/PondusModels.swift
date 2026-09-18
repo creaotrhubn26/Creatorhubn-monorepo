@@ -150,6 +150,26 @@ struct PondusAnalysisDTO: Codable, Hashable, Sendable {
     }
 }
 
+/// Forklarbar metadata fra serverens versjonerte Pondus-rubrikk.
+struct PondusAnalysisMetaDTO: Codable, Hashable, Sendable {
+    let rubricVersion: String
+    let confidence: Double
+    let evidence: [String: [String]]
+    let recommendations: [String]
+
+    init(
+        rubricVersion: String,
+        confidence: Double,
+        evidence: [String: [String]],
+        recommendations: [String]
+    ) {
+        self.rubricVersion = rubricVersion
+        self.confidence = confidence
+        self.evidence = evidence
+        self.recommendations = recommendations
+    }
+}
+
 /// Én innvending m/ forslag til svar. Matcher `pondus_templates.objections[]`.
 struct PondusObjectionDTO: Codable, Hashable, Identifiable, Sendable {
     let id: String
@@ -187,12 +207,14 @@ struct PondusTemplateDTO: Codable, Hashable, Identifiable, Sendable {
     /// Per-akse analyse (mig 0356). Nil hvis backend ikke har 0356 kjørt
     /// enda — views/Watch-sync har fallback til overall score.
     let analysis: PondusAnalysisDTO?
+    let analysisMeta: PondusAnalysisMetaDTO?
     let createdBy: String?
     let orgId: UUID?
     let isPublished: Bool
     let publishedAt: String?
     let publishedBy: String?
     let version: Int
+    let archivedAt: String?
     let createdAt: String?
     let updatedAt: String?
 
@@ -343,6 +365,24 @@ struct UpdatePondusTemplatePayload: Encodable, Sendable {
     var steps: [PondusStepDTO]?
     var objections: [PondusObjectionDTO]?
     var analysis: PondusAnalysisDTO?
+    var expectedVersion: Int?
+}
+
+struct PondusAnalysisResponse: Decodable, Sendable {
+    let score: Int
+    let analysis: PondusAnalysisDTO
+    let analysisMeta: PondusAnalysisMetaDTO
+}
+
+struct PondusUsageResponse: Decodable, Sendable {
+    struct Usage: Decodable, Sendable {
+        let id: String
+        let usageSessionId: UUID
+        let outcome: String
+        let usedAt: String?
+    }
+    let usage: Usage
+    let idempotent: Bool
 }
 
 /// Payload for POST /content-by-step.

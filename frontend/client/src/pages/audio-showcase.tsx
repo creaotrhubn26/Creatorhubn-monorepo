@@ -25,6 +25,7 @@ import {
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
+import { easeVerseBoothUrl } from '@/lib/easeverse';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
@@ -35,6 +36,7 @@ import { SpotifyIcon } from '@/components/universal/showcase/BrandIcons';
 import WarmupDialog from '@/components/universal/showcase/WarmupDialog';
 import SessionsDialog from '@/components/universal/showcase/SessionsDialog';
 import { audioShowcaseEvents } from '@/utils/creatorhub-events';
+import { uploadSoundRoomFile } from '@/lib/soundRoomUpload';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -200,26 +202,37 @@ export default function AudioShowcasePage() {
   const [loopOn, setLoopOn] = React.useState(false);
   const [abActive, setAbActive] = React.useState(false);
   const loopRef = React.useRef(loopOn); loopRef.current = loopOn;
-  const effectiveSrc = (abActive && prevVersion ? prevVersion.file_url : currentVersion?.file_url) || '';
+  const playableUrl = (version: any) => version?.preview_url && version?.storage_state === 'ready'
+    ? version.preview_url : version?.file_url;
+  const effectiveVersion = abActive && prevVersion ? prevVersion : currentVersion;
+  const effectiveSrc = playableUrl(effectiveVersion) || '';
   const fracRef = React.useRef(0);
 
   React.useEffect(() => {
     if (!waveRef.current || !effectiveSrc) return;
     let cancelled = false;
     setReady(false);
-    const ws = WaveSurfer.create({
-      container: waveRef.current, url: effectiveSrc, height: 96,
-      waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
-      cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+    let ws: WaveSurfer | null = null;
+    void getAuthHeader().then((headers) => {
+      if (cancelled || !waveRef.current) return;
+      ws = WaveSurfer.create({
+        container: waveRef.current, url: effectiveSrc, height: 96,
+        waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
+        cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
+        fetchParams: { headers },
+        ...(Array.isArray(effectiveVersion?.waveform_peaks) && effectiveVersion.waveform_peaks.length
+          ? { peaks: [effectiveVersion.waveform_peaks], duration: Number(effectiveVersion.duration) || undefined }
+          : {}),
+      });
+      wsRef.current = ws;
+      ws.on('ready', () => { if (cancelled || !ws) return; setReady(true); setDur(ws.getDuration()); ws.setVolume(vol); if (fracRef.current > 0) ws.setTime(fracRef.current * ws.getDuration()); });
+      ws.on('timeupdate', (t: number) => { if (!cancelled && ws) { setCur(t); if (ws.getDuration()) fracRef.current = t / ws.getDuration(); } });
+      ws.on('play', () => !cancelled && setPlaying(true));
+      ws.on('pause', () => !cancelled && setPlaying(false));
+      ws.on('finish', () => { if (cancelled || !ws) return; if (loopRef.current) { ws.setTime(0); void ws.play(); } else setPlaying(false); });
     });
-    wsRef.current = ws;
-    ws.on('ready', () => { if (cancelled) return; setReady(true); setDur(ws.getDuration()); ws.setVolume(vol); if (fracRef.current > 0) ws.setTime(fracRef.current * ws.getDuration()); });
-    ws.on('timeupdate', (t: number) => { if (!cancelled) { setCur(t); if (ws.getDuration()) fracRef.current = t / ws.getDuration(); } });
-    ws.on('play', () => !cancelled && setPlaying(true));
-    ws.on('pause', () => !cancelled && setPlaying(false));
-    ws.on('finish', () => { if (cancelled) return; if (loopRef.current) { ws.setTime(0); void ws.play(); } else setPlaying(false); });
-    return () => { cancelled = true; try { ws.destroy(); } catch { /* ignore */ } wsRef.current = null; };
-  }, [effectiveSrc]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; try { ws?.destroy(); } catch { /* ignore */ } wsRef.current = null; };
+  }, [effectiveSrc, effectiveVersion?.waveform_peaks, effectiveVersion?.duration]); // eslint-disable-line react-hooks/exhaustive-deps
   const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
 
   /* ── Mutasjoner (alle wired) ── */
@@ -255,19 +268,7 @@ export default function AudioShowcasePage() {
     if (!file) return;
     setBusy(true); setUploadPct(0);
     try {
-      // Ekte fil-opplasting → backend lagrer + serverer same-origin (waveform-vennlig).
-      const fd = new FormData(); fd.append('file', file);
-      const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
-      const url: string = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', buildApiUrl('/api/upload/audio'));
-        Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
-        xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); j?.url ? resolve(j.url) : reject(new Error('no url')); } catch { reject(new Error('bad response')); } };
-        xhr.onerror = () => reject(new Error('upload failed'));
-        xhr.send(fd);
-      });
-      const v = await apiRequest('/api/audio-versions', { method: 'POST', body: { projectId, fileUrl: url, fileName: file.name } });
+      const v = await uploadSoundRoomFile({ projectId, file, onProgress: setUploadPct });
       audioShowcaseEvents.versionUploaded({ sizeBytes: file.size });
       await loadProject(); setCurrentVid(v.id);
     } catch { /* ignore */ } finally { setBusy(false); setUploadPct(null); }
@@ -499,7 +500,7 @@ export default function AudioShowcasePage() {
               </Box>
               {easeverseTrack && <Button startIcon={<CloudUpload />} size="small" onClick={pullTakes} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent takes</Button>}
               {easeverseTrack && <Button startIcon={<GraphicEq />} size="small" onClick={pullSections} variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Hent seksjoner</Button>}
-              {currentVersion?.file_url && <Button startIcon={<FileDownloadOutlined />} size="small" href={currentVersion.file_url} target="_blank" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>}
+              {currentVersion?.file_url && <Button startIcon={<FileDownloadOutlined />} size="small" href={`/api/audio-versions/${currentVersion.id}/download`} target="_blank" variant="outlined" sx={{ color: TEXT, borderColor: BORDER, textTransform: 'none', borderRadius: '8px', mr: 1 }}>Last ned</Button>}
               <IconButton size="small" sx={{ color: MUTED }}><MoreHoriz fontSize="small" /></IconButton>
             </Stack>
 
@@ -739,7 +740,7 @@ const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onC
   const setLink = (k: string, v: string) => setF((p: any) => ({ ...p, links: { ...p.links, [k]: v } }));
   const link = member.invite_token ? `${window.location.origin}/audio-review/invite/${member.invite_token}` : '';
   const isVocalist = /vokal/i.test(f.role || '');
-  const boothUrl = externalTrackId ? `https://easeverse.vercel.app/booth/${externalTrackId}` : '';
+  const boothUrl = externalTrackId ? easeVerseBoothUrl(externalTrackId) : '';
   return (
     <Dialog open={Boolean(member)} onClose={onClose} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>Profil {member.is_owner && <WorkspacePremium sx={{ fontSize: 16, color: ACCENT }} />}

@@ -1,0 +1,155 @@
+# Avid Media Composer-integrasjon
+
+Oppdatert 13. september 2026. Målversjonen for valideringen er Media Composer
+2026.8. Integrasjonen er delt i en åpen filtransport som kan brukes nå, og en
+native transport som ikke skal implementeres mot udokumenterte Avid-API-er.
+
+## Støttet nå: robust marker-round-trip
+
+Video Room kan eksportere og importere Media Composer Marker Text (`.txt`).
+Avid dokumenterer formatet som fem obligatoriske, tab-separerte felt i denne
+rekkefølgen:
+
+```text
+Name<TAB>Frame<TAB>Track<TAB>Color<TAB>Comment
+```
+
+Avids dokumenterte spor er `V1`, `V2`, ...; `A1`, `A2`, ... og `TC1`.
+Dokumenterte farger er `red`, `green`, `blue`, `cyan`, `magenta`, `yellow`,
+`black` og `white`. Se kapittel 13, «Exporting and Importing Markers» og
+«Creating a Marker Text (.txt) File», side 422–423 i
+[Media Composer 2026.x Editing Guide](https://resources.avid.com/SupportFiles/attach/Media_Composer/2026/Media_Composer_v2026.x_Editing_Guide.pdf).
+
+CreatorHub lagrer fortsatt sekunder som kanonisk tidsverdi. Ved eksport blir
+sekunder konvertert til Avids heltallsfelt `Frame`; ved import konverteres det
+tilbake. Brukeren må derfor velge samme bildefrekvens som Avid-prosjektet.
+Både desimal (`25`, `23.976`) og eksakt rasjonal (`24000/1001`, `30000/1001`)
+aksepteres. Rasjonal verdi anbefales for fractional frame rates for å hindre
+langsiktig drift.
+
+### Feltmapping
+
+| CreatorHub | Avid Marker Text | Round-trip-regel |
+| --- | --- | --- |
+| `timecodeSec` | `Frame` | `round(seconds * frameRate)` ut, `frame / frameRate` inn |
+| kommentar | `Comment` | linjeskift og tabulator normaliseres til mellomrom |
+| must-fix | rød + `[MÅ FIKSES]` | prefikset styrer oppgave ved returimport |
+| ferdig/løst | grønn + `[FERDIG]` | prefikset styrer løst-status ved returimport |
+| markør-ID | `[[creatorhub:id=...]]` i `Comment` | bevarer identitet selv om tekst, frame eller farge endres |
+| spor | `V1` | kan utvides via API-parameteren `track` |
+
+Metadata-taggen er synlig med hensikt: Marker Text har ikke et eget felt for
+ekstern ID, prioritet eller ferdigstatus. En Avid-markør uten tagg får en
+deterministisk ID ved første import. Neste eksport inneholder CreatorHub-taggen,
+slik at senere endringer oppdaterer samme kommentar i stedet for å opprette en
+ny.
+
+### Arbeidsflyt
+
+1. Velg **Avid TXT ut** i Video Room og oppgi prosjektets bildefrekvens.
+2. Last sekvensen i Record-monitoren i Media Composer.
+3. Åpne Markers-vinduet, velg **Import Markers**, og velg `.txt`-filen.
+4. Gjør endringer i Avid. Behold `[[creatorhub:id=...]]` i kommentaren.
+5. Eksporter alle eller valgte markører som Text fra Markers-vinduet.
+6. Velg **Markører inn** i Video Room, last opp `.txt`, og bruk samme
+   bildefrekvens.
+
+Media Composer 2025.12 tilføyde også source-side marker import. Markører utenfor
+kildens grenser blir ignorert. Dette er dokumentert i
+[What's New for Media Composer 2025.12](https://resources.avid.com/SupportFiles/attach/Media_Composer/2025.12/Media_Composer_v2025.12_What's_New.pdf).
+For sekvensreview bruker vi fortsatt Record-monitoren, fordi kommentarer i
+Video Room gjelder den eksporterte cut-versjonen og ikke et tilfeldig
+masterklipp.
+
+## API-kontrakt
+
+Eksport:
+
+```http
+GET /api/projects/:projectId/video-marker-sync/avid
+    ?versionId=:versionId
+    &format=avid
+    &frameRate=24000/1001
+    &track=V1
+```
+
+Responsen er `text/plain; charset=utf-8` med `Content-Disposition: attachment`.
+`X-CreatorHub-Avid-Frame-Rate` og `X-CreatorHub-Avid-Track` gjør den valgte
+tidsbasen eksplisitt for andre klienter.
+
+Import:
+
+```json
+{
+  "versionId": "...",
+  "frameRate": "24000/1001",
+  "avidText": "CreatorHub\t240\tV1\tblue\tKommentar ..."
+}
+```
+
+Import krever Video Room-redigeringstilgang, er avgrenset til 5 000 markører
+og 2 MB tekst, validerer navn, frame, spor og farge, og returnerer avviste
+linjer med linjenummer. Importen er en idempotent upsert; sletting av en markør
+i Avid sletter ikke CreatorHub-kommentaren ved filimport. De kanoniske
+kommentarene, editoroppgavene og sync-revisjonen bruker de samme tabellene som
+Resolve, Premiere og Final Cut.
+
+## Native integrasjon: verifisert grense
+
+Avids **Panel SDK** ble omdøpt til **Media Composer Extensions** i 2025.12.
+Extensions kan vises som dockbare paneler og Avid beskriver SDK-en som veien til
+direkte prosjekt-, bin- og timeline-integrasjon. Samtidig sier Avids offentlige
+[Extensions-side](https://connect.avid.com/23-q4-global-mc-panel-sdk-lp.html) at
+de ikke aktivt onboarder nye partnere. Det finnes derfor ikke en tilstrekkelig,
+åpen og versjonsmatchet API-kontrakt i repoet for å kode native
+bakgrunnssynk forsvarlig ennå.
+
+Når CreatorHub har mottatt SDK, dokumentasjon, testlisens og distribusjonskrav
+fra Avid, skal en native adapter bygges over samme JSON-kontrakt som de andre
+NLE-ene:
+
+- device-code-innlogging og token i OS-sikker lagring;
+- pull av kanoniske markører med `sync_revision`;
+- idempotent add/update/delete med stabil CreatorHub-ID;
+- push av lokale endringer og tombstones;
+- eksplisitt konfliktstatus når både Avid og Video Room er endret;
+- capability detection per Media Composer-versjon;
+- offline-kø, backoff og revisjonsspor;
+- runtime-matrise for macOS/Windows og aktuelle Media Composer-versjoner.
+
+Ingen Avid SDK-symboler eller manifestfelt skal legges til før de er validert i
+den partnerleverte, versjonsmatchede dokumentasjonen.
+
+## Enterprise- og mediegrenser
+
+- MediaCentral Cloud UX/Production er en separat enterprise-transport. For en
+  broadcaster/facility med denne infrastrukturen er Avids
+  [CTMS Media Suite API](https://developer.avid.com/ctms/) riktig
+  serverintegrasjon: `aa:time-based`, `aa:update-time-based` og
+  `aa:delete-time-based` eksponeres som HAL-linkrelasjoner på støttede assets.
+  Avid krever at klienten oppdager URL-ene via CTMS Registry i stedet for å
+  hardkode service paths. Oppstart krever også Application ID/Secret via Avid
+  Marketplace, slik
+  [CTMS-guiden](https://developer.avid.com/cert/getting_started_with_ctms/guide.html)
+  beskriver. Dette skal bli en egen enterprise-adapter, ikke blandes med
+  standalone Extensions eller den enkle `.txt`-transporten.
+- AAF er egnet til komposisjon-/medieutveksling, men er ikke valgt som
+  kommentarprotokoll. Avids
+  [AAF-veiledning](https://kb.avid.com/pkb/articles/en_US/How_To/How-to-export-an-AAF)
+  beskriver blant annet link, copy, consolidate og mixdown; den gir ikke den
+  enkle, eksplisitte comment-ID-kontrakten som marker-round-trip trenger.
+- AWS S3 og Cloudflare Stream forblir review-/leveranselagring. De skal ikke
+  presenteres som Avid shared editorial storage. Media Composer 2026.8 har
+  tredjeparts NAS/SAN Shared Projects for Enterprise, med bin locking og egne
+  ytelseskrav, ifølge
+  [What's New for Media Composer 2026.8](https://resources.avid.com/SupportFiles/attach/Media_Composer/2026/2026.8/Media_Composer_v2026.8_What's_New.pdf).
+
+## Gjenstående verifikasjon
+
+- Importer en CreatorHub-fil i Media Composer 2026.8 på både macOS og Windows.
+- Verifiser nordiske tegn og encoding i faktisk Avid-runtime.
+- Verifiser Record- og Source-monitor mot 24, 25, `30000/1001` og 50 fps.
+- Rediger frame, tekst og farge, eksporter igjen, og bekreft at samme
+  CreatorHub-kommentar oppdateres.
+- Bekreft installasjon, signing, sandbox, nettverkstillatelser og markør-API-er
+  før arbeidet med en Media Composer Extension starter.

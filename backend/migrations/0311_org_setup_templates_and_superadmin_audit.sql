@@ -51,7 +51,7 @@ VALUES
    'Én bruker som kjører Leadgrid mot 3–10 egne kunder. Ingen team-hierarki.',
    '["admin"]'::jsonb,
    '["leads.view","leads.create","leads.edit","leads.delete","marketing.deliveries.execute","marketing.deliveries.view","reports.view","customers.create"]'::jsonb,
-   NULL, 'solo', TRUE, 10),
+   NULL, 'solo_free', TRUE, 10),
 
   ('agency_small',
    'Lite byrå',
@@ -72,7 +72,7 @@ VALUES
    'Solo-admin, preset for helsetech B2B SaaS (MedInnova/medside.no-type kunder).',
    '["admin","salgskonsulent"]'::jsonb,
    '["leads.view","leads.create","leads.edit","leads.delete","marketing.deliveries.execute","marketing.deliveries.view","reports.view","customers.create"]'::jsonb,
-   'healthtech_b2b', 'solo', FALSE, 40)
+   'healthtech_b2b', 'solo_free', FALSE, 40)
 ON CONFLICT (template_key) DO UPDATE
   SET label                = EXCLUDED.label,
       description          = EXCLUDED.description,

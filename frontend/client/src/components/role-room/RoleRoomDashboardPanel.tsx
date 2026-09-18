@@ -818,6 +818,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
           email={profileEmail}
           roleLabel={activeRoleLabel}
           workspaceSummary={workspaceSummary ?? null}
+          organizationId={(auth.user as any)?.activeOrgId ?? null}
           onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
           isAdmin={isAdminUser}
         />
@@ -1476,6 +1477,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         email={profileEmail}
         roleLabel={activeRoleLabel}
         workspaceSummary={workspaceSummary ?? null}
+        organizationId={(auth.user as any)?.activeOrgId ?? null}
         onLogout={auth.logout ? () => { void auth.logout(); } : undefined}
         isAdmin={isAdminUser}
       />

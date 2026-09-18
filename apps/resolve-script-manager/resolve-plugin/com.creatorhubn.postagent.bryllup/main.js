@@ -10,17 +10,41 @@ const WorkflowIntegration = require('./WorkflowIntegration.node');
 
 const PLUGIN_ID = 'com.creatorhubn.postagent.bryllup';
 
-// Prototype: peker på utviklings-checkouten. Produksjon bundler motoren.
-const PY_ROOT = '/Users/danielqazi/Creatorhubn-monorepo/apps/resolve-script-manager/python';
+function firstExisting(candidates) {
+    return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null;
+}
+
+// Installasjonen bundler python/ ved siden av main.js. Source-fallbacken gjør
+// lokal utvikling mulig uten maskinspesifikke checkout-stier.
+const BUNDLED_PY_ROOT = path.join(__dirname, 'python');
+const SOURCE_PY_ROOT = path.resolve(__dirname, '../../python');
+const PY_ROOT = process.env.POST_AGENT_PY_ROOT || firstExisting([
+    BUNDLED_PY_ROOT,
+    SOURCE_PY_ROOT,
+]);
+if (!PY_ROOT || !fs.existsSync(path.join(PY_ROOT, 'registry.json'))) {
+    throw new Error('Post Agent Python-motor mangler. Kjør resolve-plugin/install.sh på nytt.');
+}
+
+const SCRIPTING_ROOT = process.env.RESOLVE_SCRIPT_API ||
+    '/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting';
+const RESOLVE_SCRIPT_LIB = process.env.RESOLVE_SCRIPT_LIB || firstExisting([
+    '/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so',
+    '/Applications/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so',
+    '/Applications/DaVinci Resolve Studio.app/Contents/Libraries/Fusion/fusionscript.so',
+]);
+const PYTHON_BIN = process.env.POST_AGENT_PYTHON || firstExisting([
+    '/opt/homebrew/bin/python3',
+    '/usr/local/bin/python3',
+    '/Library/Frameworks/Python.framework/Versions/Current/bin/python3',
+    '/usr/bin/python3',
+]) || 'python3';
 const PY_ENV = {
     ...process.env,
-    RESOLVE_SCRIPT_API: '/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting',
-    RESOLVE_SCRIPT_LIB: '/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so',
-    PYTHONPATH: '/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules',
-    // Framework-python først: samme interpreter som appen/CLI-testene
-    // (har anthropic-SDK + certifi for vision-laget).
-    PATH: `/Library/Frameworks/Python.framework/Versions/3.14/bin:${process.env.PATH || ''}:/opt/homebrew/bin:/usr/local/bin`,
-    SSL_CERT_FILE: '/Users/danielqazi/Library/Python/3.14/lib/python/site-packages/certifi/cacert.pem',
+    RESOLVE_SCRIPT_API: SCRIPTING_ROOT,
+    ...(RESOLVE_SCRIPT_LIB ? { RESOLVE_SCRIPT_LIB } : {}),
+    PYTHONPATH: [path.join(SCRIPTING_ROOT, 'Modules'), process.env.PYTHONPATH]
+        .filter(Boolean).join(path.delimiter),
     PYTHONDONTWRITEBYTECODE: '1',
 };
 
@@ -48,7 +72,7 @@ function recordActionToIndex(entry) {
     try {
         const args = [path.join(PY_ROOT, 'scripts/project/record_action.py'),
             `--params=${JSON.stringify({ guid: lastProjectGuid, ...entry })}`];
-        spawn('python3', args, { env: PY_ENV, cwd: PY_ROOT, detached: true,
+        spawn(PYTHON_BIN, args, { env: PY_ENV, cwd: PY_ROOT, detached: true,
                                  stdio: 'ignore' }).unref();
     } catch { /* føring skal aldri velte handlingen */ }
 }
@@ -72,9 +96,11 @@ function loadRegistry() {
 
 async function getResolve() {
     if (resolveObj) return resolveObj;
-    const ok = await WorkflowIntegration.Initialize(PLUGIN_ID);
+    const initialize = WorkflowIntegration.InitializePromise || WorkflowIntegration.Initialize;
+    const getResolveObject = WorkflowIntegration.GetResolvePromise || WorkflowIntegration.GetResolve;
+    const ok = await initialize.call(WorkflowIntegration, PLUGIN_ID);
     if (!ok) return null;
-    resolveObj = await WorkflowIntegration.GetResolve();
+    resolveObj = await getResolveObject.call(WorkflowIntegration);
     return resolveObj;
 }
 
@@ -88,7 +114,7 @@ ipcMain.handle('run-script', async (_ev, scriptId, params, dryRun) => {
 
     return new Promise((resolvePromise, rejectPromise) => {
         const key = anthropicKey();
-        const child = spawn('python3', args, { env: key ? { ...PY_ENV, ANTHROPIC_API_KEY: key } : PY_ENV, cwd: PY_ROOT });
+        const child = spawn(PYTHON_BIN, args, { env: key ? { ...PY_ENV, ANTHROPIC_API_KEY: key } : PY_ENV, cwd: PY_ROOT });
         let result = null;
         let errMsg = '';
         let buf = '';
@@ -150,6 +176,7 @@ ipcMain.handle('project-info', async () => {
         return {
             connected: true,
             projectOpen: true,
+            resolveVersion: await resolve.GetVersionString(),
             projectName: await project.GetName(),
             timelineName: tl ? await tl.GetName() : null,
             fps: tl ? await tl.GetSetting('timelineFrameRate') : null,
@@ -189,6 +216,7 @@ ipcMain.handle('context-snapshot', async () => {
         if (!resolve) return { connected: false };
         snap.connected = true;
         snap.page = await resolve.GetCurrentPage();
+        try { snap.resolveVersion = await resolve.GetVersionString(); } catch { /* eldre API */ }
         if (project) {
             snap.projectName = await project.GetName();
             try { snap.projectGuid = await project.GetUniqueId(); lastProjectGuid = snap.projectGuid || lastProjectGuid; } catch { /* — */ }
@@ -226,11 +254,40 @@ ipcMain.handle('transcribe-selected', async (_ev, useSpeakers) => {
     const mp = await project.GetMediaPool();
     const sel = (await mp.GetSelectedClips()) || [];
     let ok = 0;
-    for (const c of sel) {
-        try { if (await c.TranscribeAudio(Boolean(useSpeakers))) ok++; } catch { /* per-klipp */ }
+    let segmentCount = 0;
+    let wordCount = 0;
+    const speakers = new Set();
+    const transcriptions = [];
+    for (const c of sel.slice(0, 25)) {
+        try {
+            if (await c.TranscribeAudio(Boolean(useSpeakers), false)) ok++;
+        } catch { /* per-klipp */ }
+        try {
+            if (typeof c.GetTranscription !== 'function') continue;
+            const data = await c.GetTranscription(false);
+            const segments = Array.isArray(data?.segments) ? data.segments.slice(0, 500) : [];
+            if (!segments.length) continue;
+            for (const segment of segments) {
+                segmentCount++;
+                wordCount += Array.isArray(segment.words) ? segment.words.length : 0;
+                if (segment.speaker) speakers.add(String(segment.speaker));
+            }
+            transcriptions.push({
+                clip: await c.GetName(),
+                clipId: await c.GetUniqueId(),
+                language: data.language || null,
+                segments,
+                capped: Array.isArray(data?.segments) && data.segments.length > segments.length,
+            });
+        } catch { /* 21.0/fri utgave eller transkripsjon fortsatt under arbeid */ }
     }
-    audit({ via: 'panel-api', action: 'transcribe', ok: ok > 0, result: { total: sel.length, ok } });
-    return { total: sel.length, ok };
+    const metrics = {
+        total: sel.length, processed: Math.min(sel.length, 25), ok,
+        clipsWithData: transcriptions.length, segmentCount, wordCount,
+        speakerCount: speakers.size, speakers: [...speakers].slice(0, 20),
+    };
+    audit({ via: 'panel-api', action: 'transcribe', ok: ok > 0 || transcriptions.length > 0, result: metrics });
+    return { ...metrics, transcriptions };
 });
 
 ipcMain.handle('intellisearch-selected', async (_ev, identifyFaces) => {
@@ -403,7 +460,7 @@ async function chatRunScript(scriptId, params) {
         const args = [path.join(PY_ROOT, entry.scriptPath), `--params=${JSON.stringify(p)}`];
         if (dry) args.push('--dry-run');
         const key = anthropicKey();
-        const child = spawn('python3', args, { env: key ? { ...PY_ENV, ANTHROPIC_API_KEY: key } : PY_ENV, cwd: PY_ROOT });
+        const child = spawn(PYTHON_BIN, args, { env: key ? { ...PY_ENV, ANTHROPIC_API_KEY: key } : PY_ENV, cwd: PY_ROOT });
         let result = null; let err = ''; let buf = '';
         child.stdout.on('data', (d) => {
             buf += d.toString(); let nl;

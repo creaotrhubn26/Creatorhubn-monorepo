@@ -483,9 +483,9 @@ const roleRoomTalentsService = {
     });
   },
 
-  /** Signerer en presigned PUT-URL for direkte R2-opplastning. */
+  /** Signerer en presigned PUT-URL for direkte opplastning til privat objektlager. */
   async signUpload(input: {
-    kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo';
+    kind: 'headshot' | 'resume' | 'alt_photo';
     contentType: string;
     size_bytes: number;
     filename: string;
@@ -501,13 +501,13 @@ const roleRoomTalentsService = {
   },
 
   /**
-   * Streamer en File direkte til R2 via presigned PUT-URL.
+   * Streamer en File direkte til privat objektlager via presigned PUT-URL.
    * Bruker XMLHttpRequest for progress-event (fetch har ingen upload-progress).
    * Returnerer finalUrl ved suksess.
    */
-  async uploadFileToR2(
+  async uploadFileToObjectStorage(
     file: File,
-    kind: 'headshot' | 'showreel' | 'resume' | 'alt_photo',
+    kind: 'headshot' | 'resume' | 'alt_photo',
     onProgress?: (pct: number) => void,
   ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
     const signed = await this.signUpload({

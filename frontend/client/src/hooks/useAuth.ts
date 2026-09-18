@@ -1,14 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useGoogleSSO } from './useGoogleSSO';
 import type { GoogleUser } from '../services/GoogleSSOService';
+import {
+  canUseLocalDevAdminSession,
+  DEV_ADMIN_SESSION_TOKEN,
+} from './devAdminSessionGuard';
 
 // Prefer same-origin /api on CreatorHub unless an explicit backend URL is configured.
 const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
-const isDev = typeof window !== 'undefined' && (import.meta.env.DEV || window.location.hostname === 'localhost');
+const browserHostname = typeof window !== 'undefined' ? window.location.hostname : null;
+const shouldUseSameOriginAuthApi =
+  typeof window !== 'undefined' &&
+  (import.meta.env.DEV || browserHostname === 'localhost');
+const isLocalDevAdminSessionRuntime = canUseLocalDevAdminSession(
+  import.meta.env.DEV,
+  browserHostname,
+  import.meta.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+);
 
 /** Build absolute URL for auth endpoints */
 function authUrl(path: string): string {
-  return isDev || !API_BASE_URL ? path : `${API_BASE_URL}${path}`;
+  return shouldUseSameOriginAuthApi || !API_BASE_URL ? path : `${API_BASE_URL}${path}`;
 }
 
 interface User extends Omit<GoogleUser, 'role'> {
@@ -70,7 +82,7 @@ function dispatchAuthChanged() {
 }
 
 function buildDevFallbackUser(storedUser?: User | null): User | null {
-  if (!isDev) {
+  if (!isLocalDevAdminSessionRuntime) {
     return null;
   }
 
@@ -98,6 +110,11 @@ function getStoredUser(): User | null {
 }
 
 function storeAuth(token: string, user: User) {
+  if (token === DEV_ADMIN_SESSION_TOKEN && !isLocalDevAdminSessionRuntime) {
+    clearStoredAuth();
+    throw new Error('Lokal utvikler-admin kan bare brukes fra en loopback-adresse i Vite-utviklingsmodus.');
+  }
+
   try {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
@@ -126,6 +143,16 @@ function clearStoredAuth() {
   } catch { /* ignore */ }
 }
 
+function readStoredAuth(): { storedToken: string | null; storedUser: User | null } {
+  const storedToken = getStoredToken();
+  if (storedToken === DEV_ADMIN_SESSION_TOKEN && !isLocalDevAdminSessionRuntime) {
+    clearStoredAuth();
+    return { storedToken: null, storedUser: null };
+  }
+
+  return { storedToken, storedUser: getStoredUser() };
+}
+
 async function readApiPayload(response: Response): Promise<unknown> {
   const raw = await response.text();
   if (!raw) {
@@ -152,7 +179,7 @@ function createDevAdminUser(email: string): User {
 }
 
 function canUseDevAdminFallback(email: string, password: string): boolean {
-  if (!isDev) {
+  if (!isLocalDevAdminSessionRuntime) {
     return false;
   }
 
@@ -169,17 +196,20 @@ function canUseDevAdminFallback(email: string, password: string): boolean {
 
 // Dev-only: auto-seed local-admin-sesjonen slik at autentiserte API-kall
 // (eier-paneler: Stripe, omtale-moderering, KV) virker i nettleseren uten
-// manuell innlogging. STRENGT gated til dev + localhost, og kun når ingen
+// manuell innlogging. STRENGT gated til Vite-dev + loopback, og kun når ingen
 // token finnes fra før — påvirker aldri prod eller en ekte innlogging.
 if (
-  isDev &&
+  isLocalDevAdminSessionRuntime &&
   typeof window !== 'undefined' &&
-  window.location.hostname === 'localhost' &&
-  !localStorage.getItem(AUTH_TOKEN_KEY)
+  !getStoredToken()
 ) {
   try {
-    storeAuth('dev-admin-local-session', createDevAdminUser(DEV_ADMIN_DEMO_EMAIL));
+    storeAuth(DEV_ADMIN_SESSION_TOKEN, createDevAdminUser(DEV_ADMIN_DEMO_EMAIL));
   } catch { /* ignore */ }
+} else {
+  // A preview host may still contain a token written before this guard existed.
+  // Treat the well-known dev token as invalid there and remove its paired identity.
+  readStoredAuth();
 }
 
 export function useAuth() {
@@ -188,12 +218,9 @@ export function useAuth() {
       return globalAuthCache.state;
     }
     // Check localStorage for existing session
-    const storedUser = getStoredUser();
-    const storedToken = getStoredToken();
-    if (storedUser && isDev) {
-      if (isDev) {
-        storeUserIdentity(storedUser);
-      }
+    const { storedUser, storedToken } = readStoredAuth();
+    if (storedUser && isLocalDevAdminSessionRuntime) {
+      storeUserIdentity(storedUser);
       return {
         user: storedUser,
         isAuthenticated: true,
@@ -238,10 +265,9 @@ export function useAuth() {
   }, []);
 
   const checkAuthStatus = useCallback(async (force = false) => {
-    const storedToken = getStoredToken();
-    const storedUser = getStoredUser();
+    const { storedToken, storedUser } = readStoredAuth();
 
-    if (isDev && storedUser && !force) {
+    if (isLocalDevAdminSessionRuntime && storedUser && !force) {
       storeUserIdentity(storedUser);
       const state: AuthState = {
         user: storedUser,
@@ -340,7 +366,7 @@ export function useAuth() {
     const normalizedEmail = email.trim().toLowerCase();
     const devFallbackLogin = () => {
       const user = createDevAdminUser(normalizedEmail);
-      const token = 'dev-admin-local-session';
+      const token = DEV_ADMIN_SESSION_TOKEN;
       storeAuth(token, user);
       broadcastState({
         user,
@@ -538,10 +564,9 @@ export function useAuth() {
 
   useEffect(() => {
     const syncFromStorage = () => {
-      const storedToken = getStoredToken();
-      const storedUser = getStoredUser();
+      const { storedToken, storedUser } = readStoredAuth();
 
-      if (storedUser && (storedToken || isDev)) {
+      if (storedUser && (storedToken || isLocalDevAdminSessionRuntime)) {
         broadcastState({
           user: storedUser,
           isAuthenticated: true,

@@ -8,10 +8,14 @@ import { test, expect, type Page } from '@playwright/test';
 
 const TEST_PAGE = '/e2e-casting-test.html?project=troll-1780071501773&tab=storyboard';
 const SHOT_DIR = 'test-results/storyboard-vision';
-// Sesjon lagt inn av scratchpad/lag-verify-sesjon.mjs (1 dag TTL) — autentiserer
-// som Daniel så TROLL (troll-1780071501773) er synlig. Harnessen hardkoder
-// dev-admin-token i localStorage; init-scriptet fryser vårt token i stedet.
-const VERIFY_TOKEN = 'e2e-verify-daniel-2026';
+// En kortlivet test-session må injiseres av test-runneren. Hemmeligheter skal
+// aldri ligge i kildekode, Playwright-rapport eller URL.
+const VERIFY_TOKEN = process.env.STORYBOARD_VERIFY_TOKEN?.trim() || '';
+
+test.skip(
+  !VERIFY_TOKEN,
+  'STORYBOARD_VERIFY_TOKEN mangler; prod-verifisering krever en kortlivet test-session.',
+);
 
 async function openRoleRoom(page: Page) {
   await page.context().addInitScript((token) => {

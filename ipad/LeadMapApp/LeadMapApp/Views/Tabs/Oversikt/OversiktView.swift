@@ -234,17 +234,6 @@ struct OversiktView: View {
     private var contentBody: some View {
         GeometryReader { geo in
             let isPortrait = geo.size.width < geo.size.height
-            // Dynamisk kart-høyde: fyll resten av vinduet under header + KPI-
-            // rad + padding. På Mac Catalyst med store vinduer gir dette
-            // kartet ~1000+px, mens iPad landscape holder ~640px minimum.
-            // Konstantene: header (~60) + KPI (~120) + spacing (~68) + padding
-            // (~42) = ~290pt. Vi bruker 320 som konservativ margin.
-            // iPhone: 640pt minimum tvinger unødig scrolling (portrett-
-            // vindu er ~844, landskap ~390) — bruk lavere gulv så kartet
-            // følger tilgjengelig høyde i stedet.
-            let minMapHeight: CGFloat = DeviceIdiom.isPhone ? 420 : Self.mapHeight
-            let dynamicMapHeight = max(minMapHeight, geo.size.height - 320)
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     LeadgridTabHeader(
@@ -1848,30 +1837,23 @@ private struct LeadsInAreaCard: View {
             )
         }
         .sheet(isPresented: $showMiniAddLead) {
-            AddLeadSheet { newLead in
-                // 2026-08-16: kallet manglet helt — se KartView.swift for samme fiks.
-                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
-                    miniShowToast(DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget")
-                    return
-                }
-                Task {
-                    do {
-                        let newId = try await api.createLeadAtPin(
-                            name: newLead.companyName, company: newLead.companyName,
-                            phone: newLead.phone, email: newLead.email,
-                            industryId: nil, leadTemperature: nil,
-                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                            address: newLead.address
-                        )
-                        miniShowToast("«\(newLead.companyName)» lagt til")
-                        // Bytt til Kart-fanen og vis hvor den havnet (2026-08-19).
+            AddLeadSheet { draft, result in
+                switch result {
+                case .sent(let response):
+                    miniShowToast("«\(draft.name)» lagt til")
+                    if let lat = draft.latitude, let lon = draft.longitude {
                         appState.pendingMapFocus = AppState.PendingMapFocus(
-                            id: newId, name: newLead.companyName, address: newLead.address,
-                            lat: newLead.coord.latitude, lon: newLead.coord.longitude
+                            id: response.id,
+                            name: draft.name,
+                            address: draft.address ?? "",
+                            lat: lat,
+                            lon: lon
                         )
-                    } catch {
-                        miniShowToast("Kunne ikke lagre lead — prøv igjen")
                     }
+                case .queued:
+                    miniShowToast("«\(draft.name)» lagret offline og sendes automatisk")
+                case .duplicate, .rejected:
+                    break
                 }
             }
         }
@@ -9587,6 +9569,7 @@ struct PrizePickerSheet: View {
 // Når katalogen ikke har riktig produkt — salgssjefen lager egen premie:
 // navn, kategori, pris, og bilde (PhotosPicker fra iPad-galleri eller URL).
 
+@MainActor
 struct CustomPrizeSheet: View {
     let onSave: (PrizeProduct) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -9677,15 +9660,16 @@ struct CustomPrizeSheet: View {
     }
 
     private var photoControls: some View {
-        VStack(spacing: 8) {
+        let hasPhoto = photoData != nil
+        return VStack(spacing: 8) {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 HStack {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.appScaled(size: 13, weight: .semibold))
-                    Text(photoData == nil ? "Velg bilde fra galleriet" : "Bytt bilde")
+                    Text(hasPhoto ? "Bytt bilde" : "Velg bilde fra galleriet")
                         .font(.appScaled(size: 13, weight: .semibold))
                     Spacer()
-                    if photoData != nil {
+                    if hasPhoto {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }

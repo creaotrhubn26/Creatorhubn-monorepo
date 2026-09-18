@@ -54,6 +54,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import CircleIcon from "@mui/icons-material/Circle";
 import type { SvgIconComponent } from "@mui/icons-material";
 import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
+import { ResolveMcpSkills } from "./ResolveMcpDoctor";
 import { executeScript } from "../api";
 import { loadProjectActivity, logActivity, ACTIVITY_ICONS } from "../lib/projectActivity";
 import type { ActivityKind } from "../lib/projectActivity";
@@ -312,6 +313,7 @@ export function HomeView({
                                background: resolveColor }} />
               <span>{resolveText}</span>
             </div>
+            <ResolveMcpSkills />
             {(() => {
               const authColor = authStatus === "ok" ? "var(--accent)"
                 : authStatus === "expired" ? "#f0a500"
@@ -374,17 +376,17 @@ export function HomeView({
           onClick={onOpenWeddingWizard}
           style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/wedding.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
-          title={signedIn ? "Material-scan, multicam, sanger, personer, stil — Claude lærer av valgene dine" : "Logg inn først"}
+          title={signedIn ? "Analyser, godkjenn planen, bygg timelines og kjør QC i Resolve" : "Logg inn først"}
         >
           <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef4f6f, #a030c0)" }}>
             <ChurchIcon sx={{ fontSize: 28, color: "white" }} />
           </div>
           <div className="home-action-body">
-            <div className="home-action-title">Bryllups-veiviser</div>
+            <div className="home-action-title">Wedding Editor</div>
             <div className="home-action-desc">
-              8 steg: kilder → multicam → lyd → sanger → personer → stil → live → LUT
+              Kilder → multicam → lyd → story-picks → godkjent Resolve-plan → QC
             </div>
-            <div className="home-action-tag">Anbefalt for nytt prosjekt</div>
+            <div className="home-action-tag">Analyse · plan · godkjenning · bygging</div>
           </div>
           <IconArrowRight />
         </button>

@@ -14,6 +14,7 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
     "dev:all": "concurrently -n \"frontend,backend\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:local-admin": "CREATORHUB_ENABLE_LOCAL_ADMIN_SESSION=true VITE_ENABLE_LOCAL_ADMIN_SESSION=true concurrently -n \"frontend,backend\" \"npm run dev:frontend\" \"npm run dev:backend\"",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
     "build:frontend": "npm --prefix frontend run build",
     "build:backend": "npm --prefix backend run build",

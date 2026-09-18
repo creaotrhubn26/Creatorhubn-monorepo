@@ -95,10 +95,7 @@ pub fn classify(fps: f64) -> &'static str {
         || (f - 60.0).abs() < 0.02
     {
         "NTSC"
-    } else if (f - 23.976).abs() < 0.05
-        || (f - 24.0).abs() < 0.02
-        || (f - 48.0).abs() < 0.02
-    {
+    } else if (f - 23.976).abs() < 0.05 || (f - 24.0).abs() < 0.02 || (f - 48.0).abs() < 0.02 {
         "Cinema"
     } else {
         "Other"
@@ -135,7 +132,9 @@ fn parse_frame_rate(rate_str: &str) -> Option<f64> {
     if parts.len() == 2 {
         let num: f64 = parts[0].parse().ok()?;
         let den: f64 = parts[1].parse().ok()?;
-        if den == 0.0 { return None; }
+        if den == 0.0 {
+            return None;
+        }
         return Some(num / den);
     }
     rate_str.parse().ok()
@@ -178,7 +177,11 @@ pub fn detect_log_curve(
 
     // Filename + camera-specific patterns. Wedding workflow is mostly Canon
     // R5/R6/C70/C300 (C-Log 2/3), Sony FX3/FX6 (S-Log 3), Panasonic GH/S (V-Log).
-    if name_lower.starts_with("mvi_") || name_lower.starts_with("mvi-") || name_lower.starts_with("clp") || name_lower.contains("canon") {
+    if name_lower.starts_with("mvi_")
+        || name_lower.starts_with("mvi-")
+        || name_lower.starts_with("clp")
+        || name_lower.contains("canon")
+    {
         // Canon. C-Log 2 is the most common log curve on R5/R6/C70 for cinema work.
         return Some(LogCurveGuess {
             label: "Canon C-Log 2 (guessed)".to_string(),
@@ -188,7 +191,12 @@ pub fn detect_log_curve(
             suggested_cst_input_gamut: Some("Canon Cinema Gamut".to_string()),
         });
     }
-    if name_lower.starts_with("c0") && (codec_lower.contains("xavc") || codec_lower.contains("h264") || codec_lower.contains("h265") || name_lower.ends_with(".mp4")) {
+    if name_lower.starts_with("c0")
+        && (codec_lower.contains("xavc")
+            || codec_lower.contains("h264")
+            || codec_lower.contains("h265")
+            || name_lower.ends_with(".mp4"))
+    {
         // Sony FX/A7 series — typically S-Log 3 on professional shoots.
         return Some(LogCurveGuess {
             label: "Sony S-Log 3 (guessed)".to_string(),
@@ -325,7 +333,10 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
         }
     };
 
-    let stream = parsed.get("streams").and_then(|s| s.as_array()).and_then(|a| a.first());
+    let stream = parsed
+        .get("streams")
+        .and_then(|s| s.as_array())
+        .and_then(|a| a.first());
     let mut profile_str: Option<String> = None;
     let mut codec_tag: Option<String> = None;
     let mut pix_fmt: Option<String> = None;
@@ -333,13 +344,34 @@ pub fn probe_file(ffprobe: &Path, path: &Path) -> MediaInfo {
     if let Some(s) = stream {
         info.width = s.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
         info.height = s.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
-        info.codec = s.get("codec_name").and_then(|v| v.as_str()).map(|s| s.to_string());
-        info.color_space = s.get("color_space").and_then(|v| v.as_str()).map(|s| s.to_string());
-        info.color_transfer = s.get("color_transfer").and_then(|v| v.as_str()).map(|s| s.to_string());
-        info.color_primaries = s.get("color_primaries").and_then(|v| v.as_str()).map(|s| s.to_string());
-        profile_str = s.get("profile").and_then(|v| v.as_str()).map(|s| s.to_string());
-        codec_tag = s.get("codec_tag_string").and_then(|v| v.as_str()).map(|s| s.to_string());
-        pix_fmt = s.get("pix_fmt").and_then(|v| v.as_str()).map(|s| s.to_string());
+        info.codec = s
+            .get("codec_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        info.color_space = s
+            .get("color_space")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        info.color_transfer = s
+            .get("color_transfer")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        info.color_primaries = s
+            .get("color_primaries")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        profile_str = s
+            .get("profile")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        codec_tag = s
+            .get("codec_tag_string")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        pix_fmt = s
+            .get("pix_fmt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         bits_per_raw = s
             .get("bits_per_raw_sample")
             .and_then(|v| v.as_str())
@@ -438,7 +470,11 @@ fn infer_bit_depth_from_pix_fmt(pix_fmt: Option<&str>) -> Option<u32> {
         Some(12)
     } else if f.contains("p10") {
         Some(10)
-    } else if f.contains("p8") || f.starts_with("yuv420p") || f.starts_with("yuv422p") || f.starts_with("yuv444p") {
+    } else if f.contains("p8")
+        || f.starts_with("yuv420p")
+        || f.starts_with("yuv422p")
+        || f.starts_with("yuv444p")
+    {
         Some(8)
     } else {
         None
@@ -492,10 +528,18 @@ pub fn probe_files(paths: &[String]) -> ProbeSummary {
             *std_counts.entry(r.video_standard.clone()).or_insert(0) += 1;
         }
     }
-    let dominant_frame_rate = fr_counts.iter().max_by_key(|e| e.1)
+    let dominant_frame_rate = fr_counts
+        .iter()
+        .max_by_key(|e| e.1)
         .and_then(|(k, _)| k.parse::<f64>().ok());
-    let dominant_resolution = res_counts.iter().max_by_key(|e| e.1).map(|(k, _)| k.clone());
-    let dominant_standard = std_counts.iter().max_by_key(|e| e.1).map(|(k, _)| k.clone());
+    let dominant_resolution = res_counts
+        .iter()
+        .max_by_key(|e| e.1)
+        .map(|(k, _)| k.clone());
+    let dominant_standard = std_counts
+        .iter()
+        .max_by_key(|e| e.1)
+        .map(|(k, _)| k.clone());
     let mixed_standards = std_counts.len() > 1;
 
     // Aggregate dominant log curve (mode by label)

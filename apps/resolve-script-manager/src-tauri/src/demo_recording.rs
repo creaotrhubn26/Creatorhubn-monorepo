@@ -54,7 +54,13 @@ fn recordings_dir(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> 
 /// Tillat kun trygge filnavn-tegn (unngå path traversal).
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -89,10 +95,22 @@ pub async fn save_demo_recording(
     let output = Command::new(&ffmpeg)
         .args([
             "-y",
-            "-i", &webm_path.to_string_lossy(),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
+            "-i",
+            &webm_path.to_string_lossy(),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
             &mp4_path.to_string_lossy(),
         ])
         .output()
@@ -130,7 +148,12 @@ pub async fn check_url_embeddable(url: String) -> Result<EmbedCheck, String> {
     };
     let res = match client.get(&url).send().await {
         Ok(r) => r,
-        Err(e) => return Ok(EmbedCheck { embeddable: true, reason: format!("kunne ikke sjekke siden: {}", e) }),
+        Err(e) => {
+            return Ok(EmbedCheck {
+                embeddable: true,
+                reason: format!("kunne ikke sjekke siden: {}", e),
+            });
+        }
     };
     let headers = res.headers();
     let xfo = headers
@@ -139,7 +162,10 @@ pub async fn check_url_embeddable(url: String) -> Result<EmbedCheck, String> {
         .unwrap_or("")
         .to_lowercase();
     if xfo.contains("deny") || xfo.contains("sameorigin") {
-        return Ok(EmbedCheck { embeddable: false, reason: format!("X-Frame-Options: {}", xfo.trim()) });
+        return Ok(EmbedCheck {
+            embeddable: false,
+            reason: format!("X-Frame-Options: {}", xfo.trim()),
+        });
     }
     let csp = headers
         .get("content-security-policy")
@@ -147,7 +173,10 @@ pub async fn check_url_embeddable(url: String) -> Result<EmbedCheck, String> {
         .unwrap_or("")
         .to_lowercase();
     if let Some(reason) = csp_frame_ancestors_blocks(&csp) {
-        return Ok(EmbedCheck { embeddable: false, reason });
+        return Ok(EmbedCheck {
+            embeddable: false,
+            reason,
+        });
     }
     // Meta-CSP: enkelte sider setter frame-ancestors via <meta http-equiv> i
     // stedet for header — les (begrenset) body og sjekk der også.
@@ -162,11 +191,17 @@ pub async fn check_url_embeddable(url: String) -> Result<EmbedCheck, String> {
             let end = head.len().min(idx + 1_000);
             let window = head.get(idx..end).unwrap_or(&head[idx..]);
             if let Some(reason) = csp_frame_ancestors_blocks(window) {
-                return Ok(EmbedCheck { embeddable: false, reason });
+                return Ok(EmbedCheck {
+                    embeddable: false,
+                    reason,
+                });
             }
         }
     }
-    Ok(EmbedCheck { embeddable: true, reason: "ok".to_string() })
+    Ok(EmbedCheck {
+        embeddable: true,
+        reason: "ok".to_string(),
+    })
 }
 
 /// Blokkerer en CSP-streng innbygging via frame-ancestors? (delt mellom

@@ -21,29 +21,33 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  alpha,
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Visibility as ViewIcon,
-  Share as ShareIcon,
-  PictureAsPdf as PdfIcon,
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Drafts as DraftIcon,
   AccountBalance as SplitSheetIcon,
+  Archive as ArchiveIcon,
 } from '@mui/icons-material';
-import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
-import getProfessionIcon from '@/utils/profession-icons';
-import type { SplitSheet, STATUS_DISPLAY_NAMES, STATUS_COLORS } from './types';
-import { STATUS_DISPLAY_NAMES as STATUS_NAMES, STATUS_COLORS as STATUS_COL } from './types';
+import type { SplitSheet } from './types';
+import {
+  STATUS_DISPLAY_NAMES as STATUS_NAMES,
+  STATUS_COLORS as STATUS_COL,
+  isVersionedSignedSplitSheet,
+  splitSheetSignedCount,
+  splitSheetTotalPercentage,
+  splitSheetUsesFeeCompensation,
+} from './types';
 
 interface SplitSheetListProps {
   splitSheets: SplitSheet[];
   onView: (splitSheet: SplitSheet) => void;
   onEdit: (splitSheet: SplitSheet) => void;
   onDelete: (splitSheet: SplitSheet) => void;
+  onArchive: (splitSheet: SplitSheet) => void;
   viewMode?: 'list' | 'grid';
   onViewModeChange?: (mode: 'list' | 'grid') => void;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
@@ -54,13 +58,9 @@ export default function SplitSheetList({
   onView,
   onEdit,
   onDelete,
+  onArchive,
   viewMode = 'list',
-  profession = 'music_producer'
 }: SplitSheetListProps) {
-  // Get profession-specific styling
-  const { getUserProfessionColor } = useDynamicProfessions();
-  const professionColor = getUserProfessionColor(profession);
-  const professionIcon = getProfessionIcon(profession);
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -72,6 +72,17 @@ export default function SplitSheetList({
       default:
         return <SplitSheetIcon sx={{ fontSize: 16 }} />;
     }
+  };
+  const editDisabled = (splitSheet: SplitSheet) =>
+    isVersionedSignedSplitSheet(splitSheet) || splitSheetUsesFeeCompensation(splitSheet);
+  const editTooltip = (splitSheet: SplitSheet) => {
+    if (isVersionedSignedSplitSheet(splitSheet)) {
+      return 'Første signatur har låst vilkårene. Opprett en ny avtale for endringer.';
+    }
+    if (splitSheetUsesFeeCompensation(splitSheet)) {
+      return 'Time- og kombinasjonsavtaler endres ved å slette utkastet og opprette en ny avtale i Workspace.';
+    }
+    return 'Rediger';
   };
 
   if (viewMode === 'grid') {
@@ -107,6 +118,13 @@ export default function SplitSheetList({
                   />
                 </Stack>
 
+                {(isVersionedSignedSplitSheet(splitSheet) || splitSheetUsesFeeCompensation(splitSheet)) && (
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 1.5 }}>
+                    {isVersionedSignedSplitSheet(splitSheet) && <Chip label="Signert og låst" size="small" color="success" variant="outlined" />}
+                    {splitSheetUsesFeeCompensation(splitSheet) && <Chip label="Time-/honoraravtale" size="small" color="info" variant="outlined" />}
+                  </Stack>
+                )}
+
                 {splitSheet.description && (
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {splitSheet.description.length > 100
@@ -129,7 +147,7 @@ export default function SplitSheetList({
                       Signert:
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600}}>
-                      {splitSheet.signed_count || 0} / {splitSheet.contributor_count || splitSheet.contributors?.length || 0}
+                      {splitSheetSignedCount(splitSheet)} / {splitSheet.contributor_count || splitSheet.contributors?.length || 0}
                     </Typography>
                   </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -137,7 +155,7 @@ export default function SplitSheetList({
                       Total prosent:
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600}}>
-                      {splitSheet.total_percentage?.toFixed(2) || '0.00'}%
+                      {splitSheetTotalPercentage(splitSheet).toFixed(2)}%
                     </Typography>
                   </Box>
                 </Stack>
@@ -150,16 +168,28 @@ export default function SplitSheetList({
                       <ViewIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Rediger">
-                    <IconButton size="small" onClick={() => onEdit(splitSheet)}>
-                      <EditIcon fontSize="small" />
-                    </IconButton>
+                  <Tooltip title={editTooltip(splitSheet)}>
+                    <span>
+                      <IconButton size="small" disabled={editDisabled(splitSheet)} onClick={() => onEdit(splitSheet)}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </span>
                   </Tooltip>
-                  <Tooltip title="Slett">
-                    <IconButton size="small" onClick={() => onDelete(splitSheet)} color="error">
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  {isVersionedSignedSplitSheet(splitSheet) ? (
+                    <Tooltip title={splitSheet.status === 'archived' ? 'Avtalen er allerede arkivert' : 'Arkiver signert avtale'}>
+                      <span>
+                        <IconButton size="small" disabled={splitSheet.status === 'archived'} onClick={() => onArchive(splitSheet)}>
+                          <ArchiveIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Slett">
+                      <IconButton size="small" onClick={() => onDelete(splitSheet)} color="error">
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                 </Stack>
               </CardContent>
             </Card>
@@ -202,6 +232,8 @@ export default function SplitSheetList({
                         height: 24
                       }}
                     />
+                    {isVersionedSignedSplitSheet(splitSheet) && <Chip label="Signert og låst" size="small" color="success" variant="outlined" />}
+                    {splitSheetUsesFeeCompensation(splitSheet) && <Chip label="Time-/honoraravtale" size="small" color="info" variant="outlined" />}
                   </Stack>
                 }
                 secondary={
@@ -218,10 +250,10 @@ export default function SplitSheetList({
                         {splitSheet.contributor_count || splitSheet.contributors?.length || 0} bidragsytere
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {splitSheet.signed_count || 0} signert
+                        {splitSheetSignedCount(splitSheet)} signert
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {splitSheet.total_percentage?.toFixed(2) ||'0.00'}% totalt
+                        {splitSheetTotalPercentage(splitSheet).toFixed(2)}% totalt
                       </Typography>
                     </Stack>
                   </Box>
@@ -234,16 +266,28 @@ export default function SplitSheetList({
                       <ViewIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Rediger">
-                    <IconButton size="small" onClick={() => onEdit(splitSheet)}>
-                      <EditIcon fontSize="small" />
-                    </IconButton>
+                  <Tooltip title={editTooltip(splitSheet)}>
+                    <span>
+                      <IconButton size="small" disabled={editDisabled(splitSheet)} onClick={() => onEdit(splitSheet)}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </span>
                   </Tooltip>
-                  <Tooltip title="Slett">
-                    <IconButton size="small" onClick={() => onDelete(splitSheet)} color="error">
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  {isVersionedSignedSplitSheet(splitSheet) ? (
+                    <Tooltip title={splitSheet.status === 'archived' ? 'Avtalen er allerede arkivert' : 'Arkiver signert avtale'}>
+                      <span>
+                        <IconButton size="small" disabled={splitSheet.status === 'archived'} onClick={() => onArchive(splitSheet)}>
+                          <ArchiveIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Slett">
+                      <IconButton size="small" onClick={() => onDelete(splitSheet)} color="error">
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                 </Stack>
               </ListItemSecondaryAction>
             </ListItem>
@@ -254,8 +298,5 @@ export default function SplitSheetList({
     </Card>
   );
 }
-
-
-
 
 

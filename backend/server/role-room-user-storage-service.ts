@@ -1,13 +1,13 @@
 /**
  * role-room-user-storage-service.ts
  *
- * L3a-implementasjon: Per-bruker storage på admin-B2 (`the-role-room-prod`).
+ * L3a-implementasjon: Per-bruker storage i The Role Room sitt objektlager.
  * Hver bruker får automatisk en logisk bucket i form av prefikset
  * `users/{userId}/` med 1 GB default-quota (tier='free').
  *
- * Bruker eksisterende S3-klient fra b2-archive-helper.ts — vi gjenbruker
- * samme B2-credentials og region (eu-central-003). Forskjellen fra
- * archive-helper-en er at vi:
+ * Bruker den felles S3-kompatible klienten fra role-room-object-storage.ts.
+ * Normal trafikk går til AWS S3; Backblaze-klienten finnes kun for eksplisitt
+ * migrering/rollback. Tjenesten:
  *   1. Sjekker quota FØR upload (returnerer 'quota_exceeded' istedenfor å feile)
  *   2. Registrerer hver fil i `role_room_user_files`
  *   3. Tracker consumption per bruker i `role_room_user_storage_consumption`
@@ -25,25 +25,16 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  getRoleRoomObjectStorage,
+  resolveRoleRoomObjectKey,
+} from "./role-room-object-storage.js";
 
-const B2_REGION = process.env.B2_REGION || "eu-central-003";
-const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 const DEFAULT_FREE_QUOTA_BYTES = 1_073_741_824; // 1 GiB
 
-function getAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+function getAdminObjectStorage(): { client: S3Client; bucket: string } | null {
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 export interface UserBucket {
@@ -160,7 +151,7 @@ export async function getUserStorageStats(pool: Pool, userId: string): Promise<U
 }
 
 /**
- * Upload en fil for brukeren. Sjekker quota før noe blir sendt til B2 —
+ * Upload en fil for brukeren. Sjekker quota før noe blir sendt til objektlageret —
  * hvis filen ville sprenge taket, returneres `'quota_exceeded'` UTEN at
  * data nådde nettverket. Returnerer file-row hvis ok.
  *
@@ -190,18 +181,15 @@ export async function uploadUserFile(
     return { ok: false, reason: 'quota_exceeded', stats };
   }
 
-  const config = getAdminB2Client();
+  const config = getAdminObjectStorage();
   if (!config) {
     return { ok: false, reason: 'b2_not_configured' };
   }
 
   const bucket = await ensureUserBucket(pool, opts.userId);
   const fileId = crypto.randomUUID();
-  const safeName = opts.displayName
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 200) || 'file';
-  const b2Key = `${bucket.bucketPrefix}${fileId}-${safeName}`;
+  const extension = opts.displayName.toLowerCase().match(/\.([a-z0-9]{1,8})$/)?.[1] || "bin";
+  const b2Key = `${bucket.bucketPrefix}files/${fileId}/original.${extension}`;
 
   try {
     await config.client.send(
@@ -413,18 +401,20 @@ export async function hardDeleteUserFile(
   if (!row) return { ok: false, freedBytes: 0, b2Deleted: false };
 
   let b2Deleted = false;
-  const config = getAdminB2Client();
-  if (config) {
-    try {
-      await config.client.send(
-        new DeleteObjectCommand({ Bucket: config.bucket, Key: row.b2_key }),
-      );
-      b2Deleted = true;
-    } catch (err) {
-      console.warn("[role-room-user-storage] B2 delete feilet", {
-        key: row.b2_key, err: (err as Error).message,
-      });
-    }
+  const config = getAdminObjectStorage();
+  if (!config) return { ok: false, freedBytes: 0, b2Deleted: false };
+  try {
+    await config.client.send(
+      new DeleteObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
+    );
+    b2Deleted = true;
+  } catch (err) {
+    console.warn("[role-room-user-storage] object delete feilet", {
+      key: row.b2_key, err: (err as Error).message,
+    });
+    // Behold DB-raden slik at slettingen kan prøves igjen og GDPR-sporet ikke
+    // feilaktig hevder at bytes er borte.
+    return { ok: false, freedBytes: 0, b2Deleted: false };
   }
 
   await pool.query(
@@ -455,7 +445,7 @@ export async function getUserFileDownloadUrl(
   const row = r.rows[0];
   if (!row) return { ok: false, reason: 'not_found' };
 
-  const config = getAdminB2Client();
+  const config = getAdminObjectStorage();
   if (!config) return { ok: false, reason: 'b2_not_configured' };
 
   // display_name is stored raw (the original upload filename); strip quotes and
@@ -471,12 +461,65 @@ export async function getUserFileDownloadUrl(
       config.client,
       new GetObjectCommand({
         Bucket: config.bucket,
-        Key: row.b2_key,
+        Key: resolveRoleRoomObjectKey(row.b2_key),
         ResponseContentDisposition: `attachment; filename="${safeDisposition}"`,
       }),
       { expiresIn: opts.expiresInSeconds ?? 300 },
     );
     return { ok: true, url, displayName: row.display_name };
+  } catch (err) {
+    return { ok: false, reason: `presign_failed: ${(err as Error).message}` };
+  }
+}
+
+/**
+ * Lag en tidsbegrenset URL for en prosjektfil etter at rutelaget har godkjent
+ * prosjekt- og fanetilgang. Entity-bindingen gjør at AI-ruter ikke kan bruke en
+ * annen prosjektfil (eller en vilkårlig URL) som kilde ved å gjette en UUID.
+ */
+export async function getProjectFileDownloadUrl(
+  pool: Pool,
+  opts: {
+    projectId: string;
+    fileId: string;
+    attachedToEntityType?: string;
+    attachedToEntityId?: string;
+    requireImage?: boolean;
+    expiresInSeconds?: number;
+  },
+): Promise<{ ok: true; url: string; contentType: string | null } | { ok: false; reason: string }> {
+  const values: unknown[] = [opts.fileId, opts.projectId];
+  const filters = [
+    `id = $1::uuid`,
+    `project_id::text = $2`,
+    `deleted_at IS NULL`,
+  ];
+  if (opts.attachedToEntityType) {
+    values.push(opts.attachedToEntityType);
+    filters.push(`attached_to_entity_type = $${values.length}`);
+  }
+  if (opts.attachedToEntityId) {
+    values.push(opts.attachedToEntityId);
+    filters.push(`attached_to_entity_id = $${values.length}`);
+  }
+  if (opts.requireImage !== false) filters.push(`LOWER(COALESCE(content_type, '')) LIKE 'image/%'`);
+
+  const result = await pool.query<{ b2_key: string; content_type: string | null }>(
+    `SELECT b2_key, content_type FROM role_room_user_files
+      WHERE ${filters.join(' AND ')} LIMIT 1`,
+    values,
+  );
+  const row = result.rows[0];
+  if (!row) return { ok: false, reason: 'not_found' };
+  const config = getAdminObjectStorage();
+  if (!config) return { ok: false, reason: 'b2_not_configured' };
+  try {
+    const url = await getSignedUrl(
+      config.client,
+      new GetObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
+      { expiresIn: opts.expiresInSeconds ?? 3600 },
+    );
+    return { ok: true, url, contentType: row.content_type };
   } catch (err) {
     return { ok: false, reason: `presign_failed: ${(err as Error).message}` };
   }

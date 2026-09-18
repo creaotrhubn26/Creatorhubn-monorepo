@@ -38,6 +38,7 @@ import {
   Link as LinkIcon,
 } from '@mui/icons-material';
 import type { RoleRoomAgentSocialProfileCandidate } from '../../services/roleRoomAgentService';
+import roleRoomAgentService from '../../services/roleRoomAgentService';
 
 /** Platforms with an OAuth-start endpoint we can dypelink to. Others
  *  show a disabled Connect-button with "Snart" hint. Keep in sync with
@@ -45,7 +46,6 @@ import type { RoleRoomAgentSocialProfileCandidate } from '../../services/roleRoo
 const CONNECT_OAUTH_URLS: Partial<Record<RoleRoomAgentSocialProfileCandidate['platform'], (projectId: string) => string>> = {
   instagram: (projectId) => `/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`,
   facebook: (projectId) => `/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`, // shares Meta OAuth
-  linkedin: () => '/api/role-room/linkedin/oauth/start',
 };
 
 interface PlatformStyle {
@@ -256,12 +256,26 @@ const SocialProfileCandidatesPreview: React.FC<SocialProfileCandidatesPreviewPro
                   >
                     <OpenInNewIcon sx={{ fontSize: 16 }} />
                   </IconButton>
-                  {projectId && CONNECT_OAUTH_URLS[candidate.platform] ? (
+                  {projectId && (candidate.platform === 'linkedin' || CONNECT_OAUTH_URLS[candidate.platform]) ? (
                     <Tooltip title={`Koble ${style.label}-konto til prosjektet via OAuth`}>
                       <IconButton
                         size="small"
                         onClick={() => {
                           try {
+                            if (candidate.platform === 'linkedin') {
+                              const popup = window.open('', '_blank', 'width=600,height=720');
+                              if (popup) popup.opener = null;
+                              void roleRoomAgentService.startLinkedInOauth({ projectId })
+                                .then((result) => {
+                                  if (popup && !popup.closed) popup.location.href = result.authorizationUrl;
+                                  else window.location.assign(result.authorizationUrl);
+                                })
+                                .catch((error: unknown) => {
+                                  popup?.close();
+                                  console.error('[RoleRoomAgent] LinkedIn OAuth-start feilet', error);
+                                });
+                              return;
+                            }
                             const urlBuilder = CONNECT_OAUTH_URLS[candidate.platform];
                             if (!urlBuilder) return;
                             window.open(urlBuilder(projectId), '_blank', 'width=600,height=720,noopener');

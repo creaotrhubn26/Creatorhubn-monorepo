@@ -1,0 +1,27 @@
+{
+  "CORSRules": [
+    {
+      "ID": "RoleRoomDirectUploads",
+      "AllowedOrigins": [
+        "https://creatorhub.no",
+        "https://www.creatorhub.no",
+        "https://theroleroom.com",
+        "https://www.theroleroom.com"
+      ],
+      "AllowedMethods": [
+        "GET",
+        "HEAD",
+        "PUT"
+      ],
+      "AllowedHeaders": [
+        "*"
+      ],
+      "ExposeHeaders": [
+        "ETag",
+        "x-amz-checksum-sha256",
+        "x-amz-request-id"
+      ],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}

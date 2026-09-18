@@ -5,7 +5,8 @@
 //
 // Møte-typer: fysisk møte, video (Google Meet/Teams auto), telefon.
 // Inviterte: lead-kontaktperson + meg selv + (valgfritt) andre teammedlemmer.
-// Sender automatisk: kalender-invitasjon (.ics) + e-post med agenda.
+// Kalender- og invitasjonsvalg kan forhåndsutfylles her. Selve server-
+// lagringen er sperret til en verifisert møte-write er koblet til.
 
 import SwiftUI
 import MapKit
@@ -40,6 +41,7 @@ struct ScheduleMeetingSheet: View {
     @State private var sendInvite: Bool = true
     @State private var addToCalendar: Bool = true
     @State private var reminderBefore: Int = 30  // min før
+    @State private var showPersistenceUnavailable = false
 
     // Inviterte
     @State private var inviteContact: Bool = true
@@ -74,14 +76,24 @@ struct ScheduleMeetingSheet: View {
             case .phone:      return "Du ringer kontaktpersonen"
             }
         }
+        var liveDescription: String {
+            switch self {
+            case .physical:   return "Møtested velges her; booking krever møte-write"
+            case .facetime:   return "Krever verifisert FaceTime-/kalenderintegrasjon"
+            case .googleMeet: return "Krever verifisert Google Meet-integrasjon"
+            case .phone:      return "Bruker kontaktens registrerte telefonnummer"
+            }
+        }
         /// True hvis dette er en video-konferanse som trenger lenke.
         var isVideo: Bool { self == .facetime || self == .googleMeet }
     }
 
-    /// Generér mock-lenke i preview. I prod kalles:
-    /// - FaceTime: `INStartCallIntent`/`facetime://` med dummy-UUID (alle iPhone+Mac kobler seg på)
-    /// - Google Meet: Google Calendar API POST → conferenceData.createRequest → returnerer hangoutLink
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    /// Syntetiske konferanselenker er kun tillatt i eksplisitt demo-modus.
+    /// Live skal få lenken fra en verifisert kalender-/møteintegrasjon.
     private func generatedLink(for type: MeetingType) -> String {
+        guard isDemo else { return "" }
         let short = String(UUID().uuidString.prefix(8)).lowercased()
         switch type {
         case .facetime:   return "https://facetime.apple.com/join#v=1&p=\(short)&k=abc123"
@@ -134,13 +146,21 @@ struct ScheduleMeetingSheet: View {
                 // Auto-generér lenke når brukeren bytter til video-type
                 switch newType {
                 case .physical:   location = lead.address
-                case .phone:      location = lead.phoneOrDemo ?? ""   // leadens faktiske nummer
+                case .phone:
+                    location = isDemo ? (lead.phoneOrDemo ?? "") : (lead.phone ?? "")
                 case .facetime, .googleMeet:
                     location = generatedLink(for: newType)
                 }
             }
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
+        .alert("Møteopprettelse er ikke koblet til ennå", isPresented: $showPersistenceUnavailable) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(isDemo
+                 ? "Dette er en forhåndsvisning. Møtet, kalenderoppføringen og invitasjonen ble ikke lagret eller sendt."
+                 : "Møtet, kalenderoppføringen og invitasjonen ble ikke lagret eller sendt. Valgene beholdes i arket.")
+        }
     }
 
     // MARK: Lead-header
@@ -216,7 +236,7 @@ struct ScheduleMeetingSheet: View {
                     Text(t.rawValue)
                         .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(t.description)
+                    Text(isDemo ? t.description : t.liveDescription)
                         .font(.appScaled(size: 11))
                         .foregroundStyle(SmBrand.textSecondary)
                 }
@@ -376,14 +396,18 @@ struct ScheduleMeetingSheet: View {
                 }
                 .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(location.isEmpty ? "Genererer lenke…" : location)
+                    Text(location.isEmpty
+                         ? (isDemo ? "Genererer lenke…" : "Ingen videolenke opprettet")
+                         : location)
                         .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text(meetingType == .facetime
-                         ? "Apple ID kreves ikke — fungerer på alle plattformer"
-                         : "Krever Google-konto eller anonym tilgang")
+                    Text(isDemo
+                         ? (meetingType == .facetime
+                            ? "Demo-lenke — ikke en ekte FaceTime-invitasjon"
+                            : "Demo-lenke — ikke et ekte Google Meet")
+                         : "Videolenken opprettes først av en koblet møteintegrasjon")
                         .font(.appScaled(size: 9))
                         .foregroundStyle(SmBrand.textSecondary)
                 }
@@ -398,6 +422,7 @@ struct ScheduleMeetingSheet: View {
                         .background(SmBrand.cardHi.opacity(0.6), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .disabled(location.isEmpty)
             }
             .padding(11)
             .background(SmBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
@@ -409,7 +434,11 @@ struct ScheduleMeetingSheet: View {
             // Action-rad
             HStack(spacing: 8) {
                 Button {
-                    location = generatedLink(for: meetingType)
+                    if isDemo {
+                        location = generatedLink(for: meetingType)
+                    } else {
+                        showPersistenceUnavailable = true
+                    }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.triangle.2.circlepath")
@@ -425,8 +454,10 @@ struct ScheduleMeetingSheet: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    if let url = URL(string: location) {
+                    if isDemo, let url = URL(string: location) {
                         UIApplication.shared.open(url)
+                    } else {
+                        showPersistenceUnavailable = true
                     }
                 } label: {
                     HStack(spacing: 5) {
@@ -455,9 +486,9 @@ struct ScheduleMeetingSheet: View {
                     .font(.appScaled(size: 11))
                     .foregroundStyle(meetingType.color)
                     .padding(.top, 1)
-                Text(meetingType == .facetime
-                     ? "Når møtet starter, åpnes FaceTime automatisk på din iPad. Inviterte får lenken på e-post + .ics-fil."
-                     : "Møtet legges i Google Calendar via koblet konto. Lenken sendes som del av invitasjonen.")
+                Text(isDemo
+                     ? "Demo: lenken er syntetisk og ingen invitasjon sendes."
+                     : "Koble en møteintegrasjon før videolenke, kalenderoppføring eller invitasjon kan opprettes.")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(SmBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -593,7 +624,9 @@ struct ScheduleMeetingSheet: View {
                             Text("Send invitasjon på e-post")
                                 .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
-                            Text("Med agenda + adresse + .ics")
+                            Text(isDemo
+                                 ? "Demo-valg: agenda + adresse + .ics"
+                                 : "Valget forhåndsvises; ingen e-post blir sendt")
                                 .font(.appScaled(size: 10))
                                 .foregroundStyle(SmBrand.textSecondary)
                         }
@@ -611,7 +644,9 @@ struct ScheduleMeetingSheet: View {
                             Text("Legg til i kalenderen min")
                                 .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
-                            Text("iCal + Google Cal-sync hvis aktivert")
+                            Text(isDemo
+                                 ? "Demo-valg for iCal + Google Kalender"
+                                 : "Valget lagres ikke før kalenderintegrasjonen er koblet")
                                 .font(.appScaled(size: 10))
                                 .foregroundStyle(SmBrand.textSecondary)
                         }
@@ -674,7 +709,7 @@ struct ScheduleMeetingSheet: View {
                     HStack(spacing: 4) {
                         Image(systemName: "envelope.badge.fill")
                             .font(.appScaled(size: 10))
-                        Text("Invitasjon sendes")
+                        Text("Invitasjon valgt")
                             .font(.appScaled(size: 10))
                     }
                     .foregroundStyle(SmBrand.green)
@@ -696,7 +731,7 @@ struct ScheduleMeetingSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                Button { dismiss() } label: {
+                Button { showPersistenceUnavailable = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "calendar.badge.checkmark")
                             .font(.appScaled(size: 13, weight: .bold))

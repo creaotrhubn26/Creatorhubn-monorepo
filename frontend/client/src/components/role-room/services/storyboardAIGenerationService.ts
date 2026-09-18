@@ -1,7 +1,7 @@
 /**
  * Storyboard AI Generation Service
  *
- * Service for generating storyboard frames using OpenAI gpt-image-1.
+ * Service for generating storyboard frames through The Role Room Prompt Engine.
  * Uses Replit AI Integrations - charges are billed to your Replit credits.
  */
 
@@ -80,10 +80,14 @@ export class StoryboardAIGenerationService {
     }
     
     return {
+      'extreme-wide': 'Ekstrem total',
       wide: 'Totalbilde',
       medium: 'Halvtotalt',
+      'medium-close': 'Halvnært',
       'close-up': 'Nærbilde',
+      'extreme-close-up': 'Ekstremt nærbilde',
       'over-shoulder': 'Over skulder',
+      pov: 'Point of view',
     };
   }
 
@@ -104,7 +108,16 @@ export class StoryboardAIGenerationService {
     
     return {
       static: 'Statisk',
+      dolly: 'Dolly',
+      push: 'Push',
+      pull: 'Pull',
       pan: 'Panorering',
+      tilt: 'Tilt',
+      truck: 'Truck',
+      crane: 'Crane',
+      handheld: 'Håndholdt',
+      steadicam: 'Steadicam',
+      orbit: 'Orbit',
       tracking: 'Tracking',
     };
   }
@@ -145,14 +158,14 @@ export class StoryboardAIGenerationService {
         imageKey: data.imageKey,
         prompt: data.prompt,
         template: data.template,
-        model: data.model || 'gpt-image-1',
+        model: data.model || 'gpt-image-2',
       };
     } catch (error) {
       console.error('Error generating frame:', error);
       return {
         success: false,
         prompt: request.prompt,
-        model: 'gpt-image-1',
+        model: 'gpt-image-2',
         error: error instanceof Error ? error.message : 'Ukjent feil',
       };
     }
@@ -220,4 +233,3 @@ export class StoryboardAIGenerationService {
 }
 
 export const storyboardAIGenerationService = new StoryboardAIGenerationService();
-

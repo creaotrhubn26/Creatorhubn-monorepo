@@ -20,34 +20,39 @@ enum TeamStubActions {
     }
 
     /// Pakke 10.1 (Daniel-feedback): all backend-actions går gjennom feature-matrix.
-    /// Sjekker EntitlementStore FØRST — hvis brukeren har tilgang, kjør block;
-    /// hvis låst, vis upsell-hint. SuperAdmin styrer state per organisasjon.
+    /// Sjekker EntitlementStore FØRST — hvis brukeren har tilgang og en ekte
+    /// implementasjon er koblet inn, kjør block. En manglende block er en
+    /// synlig «ikke koblet»-tilstand og skal aldri fremstilles som suksess.
     @MainActor
     static func performGated(
         _ feature: LeadgridFeature,
         actionName: String,
-        block: @escaping () -> Void = {}
+        block: (() -> Void)? = nil
     ) {
         let store = EntitlementStore.shared
         if store.canUse(feature) {
-            // Trigger backend-action (mock: bare toast)
-            let stateLabel: String
-            switch store.access(feature) {
-            case .included: stateLabel = "utført"
-            case .trial: stateLabel = "utført (trial)"
-            case .addOn: stateLabel = "utført (addon)"
-            case .locked: stateLabel = "låst"  // shouldn't reach
+            guard let block else {
+                NotificationCenter.default.post(
+                    name: .teamStubActionTriggered,
+                    object: nil,
+                    userInfo: [
+                        "action": "\(actionName) — ikke koblet til lagring ennå",
+                        "state": "info",
+                        "feature": feature.rawValue
+                    ]
+                )
+                return
             }
+            block()
             NotificationCenter.default.post(
                 name: .teamStubActionTriggered,
                 object: nil,
                 userInfo: [
-                    "action": "\(actionName) — \(stateLabel)",
-                    "state": "success",
+                    "action": "\(actionName) — startet",
+                    "state": "info",
                     "feature": feature.rawValue
                 ]
             )
-            block()
         } else {
             // Låst — vis upsell-hint
             NotificationCenter.default.post(

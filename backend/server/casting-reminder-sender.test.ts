@@ -1,10 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const nodemailerMocks = vi.hoisted(() => {
+  const sendMail = vi.fn(async () => ({ messageId: "message-1" }));
+  return {
+    sendMail,
+    createTransport: vi.fn(() => ({ sendMail })),
+  };
+});
+
+vi.mock("nodemailer", () => ({
+  default: { createTransport: nodemailerMocks.createTransport },
+  createTransport: nodemailerMocks.createTransport,
+}));
+
 import {
   buildAuditionReminderEmail,
   buildAuditionReminderSmsBody,
   isSmsBrandConfigured,
   normalizePhoneE164,
   parseReminderPrefs,
+  sendEmail,
   sendSms,
 } from "./casting-reminder-sender.js";
 
@@ -139,6 +154,108 @@ describe("buildAuditionReminderEmail", () => {
     });
     expect(built.html).toContain("https://example.com/portal");
     expect(built.html).toContain("Åpne talent-portalen");
+  });
+});
+
+describe("sendEmail SMTP timeout", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    nodemailerMocks.sendMail.mockResolvedValue({ messageId: "message-1" });
+    nodemailerMocks.createTransport.mockReturnValue({
+      sendMail: nodemailerMocks.sendMail,
+    });
+    process.env.GMAIL_USER = "sender@example.test";
+    process.env.GMAIL_APP_PASSWORD = "app-password";
+  });
+
+  afterEach(() => {
+    delete process.env.GMAIL_USER;
+    delete process.env.GMAIL_APP_PASSWORD;
+  });
+
+  it("applies the opt-in timeout to all SMTP wait phases", async () => {
+    const result = await sendEmail({
+      to: "waiting@example.test",
+      subject: "Leadgrid live",
+      html: "<p>Live</p>",
+      fromName: "Leadgrid",
+      smtpTimeoutMs: 120_000,
+      messageId: "<leadgrid-app-launch-row-1@creatorhubn.com>",
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      provider: "gmail",
+      messageId: "message-1",
+    });
+    expect(nodemailerMocks.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionTimeout: 30_000,
+        greetingTimeout: 30_000,
+        socketTimeout: 120_000,
+      }),
+    );
+    expect(nodemailerMocks.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "<leadgrid-app-launch-row-1@creatorhubn.com>",
+      }),
+    );
+  });
+
+  it("classifies timeout/disconnect after sendMail starts as uncertain", async () => {
+    nodemailerMocks.sendMail.mockRejectedValueOnce(
+      Object.assign(new Error("Timeout"), {
+        code: "ETIMEDOUT",
+        command: "CONN",
+      }),
+    );
+
+    await expect(
+      sendEmail({
+        to: "waiting@example.test",
+        subject: "Leadgrid live",
+        html: "<p>Live</p>",
+        fromName: "Leadgrid",
+      }),
+    ).resolves.toMatchObject({
+      success: false,
+      failureCertainty: "uncertain",
+    });
+  });
+
+  it("classifies authentication rejection as definite pre-delivery", async () => {
+    nodemailerMocks.sendMail.mockRejectedValueOnce(
+      Object.assign(new Error("Invalid login"), {
+        code: "EAUTH",
+        command: "AUTH LOGIN",
+      }),
+    );
+
+    await expect(
+      sendEmail({
+        to: "waiting@example.test",
+        subject: "Leadgrid live",
+        html: "<p>Live</p>",
+        fromName: "Leadgrid",
+      }),
+    ).resolves.toMatchObject({
+      success: false,
+      failureCertainty: "definite_pre_delivery",
+    });
+  });
+
+  it("keeps the existing transport defaults when no timeout is requested", async () => {
+    await sendEmail({
+      to: "reminder@example.test",
+      subject: "Påminnelse",
+      html: "<p>Hei</p>",
+      fromName: "The Role Room",
+    });
+
+    const options = nodemailerMocks.createTransport.mock.calls[0]?.[0];
+    expect(options).not.toHaveProperty("connectionTimeout");
+    expect(options).not.toHaveProperty("greetingTimeout");
+    expect(options).not.toHaveProperty("socketTimeout");
   });
 });
 

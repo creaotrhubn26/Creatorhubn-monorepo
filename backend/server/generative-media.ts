@@ -39,14 +39,29 @@ export const GEN_MODELS: Record<string, GenModel> = {
     imageField: "image_urls", outputField: "images",
     sendsPersonalData: true,
   },
+  // Rimelig standard for storyboard-prototyping. 720p-endepunktet er egnet
+  // for korte shot-bevegelser og prises per generert videosekund.
+  "longcat-video-i2v": {
+    key: "longcat-video-i2v",
+    label: "LongCat 720p — rimelig storyboard-video",
+    falPath: "fal-ai/longcat-video/image-to-video/720p",
+    kind: "image-to-video",
+    provider: "longcat",
+    estCostUsd: 0.16,
+    costPerSecondUsd: 0.04,
+    imageField: "image_url", outputField: "video",
+    sendsPersonalData: true,
+  },
   "seedance-2-i2v": {
     key: "seedance-2-i2v",
-    label: "Seedance 2.0 — bilde→video",
-    falPath: "bytedance/seedance-2.0/image-to-video",
+    // Fast har samme 720p-funksjonalitet som standard, men lavere pris og
+    // latency. Standard er bare nødvendig dersom vi senere tilbyr 1080p.
+    label: "Seedance 2.0 Fast — kvalitet",
+    falPath: "bytedance/seedance-2.0/fast/image-to-video",
     kind: "image-to-video",
     provider: "bytedance",
-    estCostUsd: 0.5,
-    costPerSecondUsd: 0.10,
+    estCostUsd: 0.9676,
+    costPerSecondUsd: 0.2419,
     imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
@@ -98,6 +113,19 @@ export const GEN_MODELS: Record<string, GenModel> = {
     estCostUsd: 0.8,            // ~240 frames @720p ≈ 8×$0.10
     costPerSecondUsd: 0.08,    // ~24fps/30×$0.10
     sendsPersonalData: true,
+  },
+  // Higgsfield Soul — tekst→bilde. Samme leverandør og samme nøkkel som DoP,
+  // så en konseptskisse og animasjonen av den kan kjøres uten å blande inn fal.
+  // Egen provider (ikke fal): bruker higgsfieldSoul-helperne.
+  "higgsfield-soul-t2i": {
+    key: "higgsfield-soul-t2i",
+    label: "Higgsfield Soul — konsept (tekst→bilde)",
+    falPath: "", // bruker higgsfieldSoul-helperne, ikke fal
+    kind: "text-to-image",
+    provider: "higgsfield",
+    estCostUsd: 0.05,
+    outputField: "images",
+    sendsPersonalData: false,
   },
   // Higgsfield DoP — bilde→video med kinematisk kamera-bevegelse. Egen provider
   // (ikke fal), samme async-jobb-mønster som Seedance/Beeble.
@@ -175,6 +203,52 @@ export async function higgsfieldSubmit(opts: { imageUrl: string; prompt: string;
   } catch (e: any) { return { error: `higgsfield_submit_threw:${e?.message || e}` }; }
 }
 
+/**
+ * Higgsfield Soul — tekst→bilde.
+ *
+ * Verifisert: stien /v1/text2image/soul står i den offisielle Node-SDK-en
+ * (github.com/higgsfield-ai/higgsfield-js), og auth-header, input-wrapper og
+ * jobs[0].results.raw.url-formen er den samme som DoP-klienten over allerede
+ * kjører mot samme nøkkel.
+ *
+ * IKKE fullt verifisert mot live-API: de eksakte strengverdiene for
+ * width_and_height og quality. SDK-en eksponerer dem som enums
+ * (SoulSize.SQUARE_1536x1536, SoulQuality.HD) uten å dokumentere wire-verdien;
+ * verdiene under er hentet fra Segmind sin proxy-dokumentasjon for samme modell
+ * og kan avvike. Første kall avgjør — feiler den på 4xx, er det her du ser.
+ *
+ * Resultatet hentes med higgsfieldPoll() under; den er allerede generisk.
+ */
+export async function higgsfieldSoulSubmit(opts: {
+  prompt: string;
+  size?: string;      // f.eks. "1536x1536", "1536x2048", "2048x1152"
+  quality?: string;   // "720p" | "1080p"
+  seed?: number;
+  enhancePrompt?: boolean;
+}): Promise<{ id?: string; statusUrl?: string; error?: string }> {
+  const key = process.env.HIGGSFIELD_API_KEY;
+  if (!key) return { error: "higgsfield_not_configured" };
+  try {
+    const input: Record<string, unknown> = {
+      prompt: opts.prompt,
+      width_and_height: opts.size || "1536x1536",
+      quality: opts.quality || "1080p",
+      enhance_prompt: opts.enhancePrompt ?? false,
+    };
+    if (opts.seed != null) input.seed = opts.seed;
+    const r = await fetch(`${HIGGSFIELD_BASE}/v1/text2image/soul`, {
+      method: "POST",
+      headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ input }),
+    });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { error: j?.error?.message || j?.detail || `higgsfield_soul_${r.status}` };
+    const id = j.request_id || j.requestId || j.id;
+    const statusUrl = j.status_url || j.statusUrl || (id ? `${HIGGSFIELD_BASE}/requests/${id}/status` : undefined);
+    return id ? { id, statusUrl } : { error: "higgsfield_soul_no_id" };
+  } catch (e: any) { return { error: `higgsfield_soul_submit_threw:${e?.message || e}` }; }
+}
+
 export async function higgsfieldPoll(statusUrlOrId: string): Promise<{ status: string; outputUrl?: string | null; error?: string }> {
   const key = process.env.HIGGSFIELD_API_KEY;
   if (!key) return { status: "ERROR", error: "higgsfield_not_configured" };
@@ -201,7 +275,22 @@ export function falOutputUrl(result: any): { url: string | null; isVideo: boolea
 }
 
 export function publicModelList() {
-  return Object.values(GEN_MODELS).map((m) => ({ key: m.key, label: m.label, kind: m.kind, provider: m.provider, estCostUsd: m.estCostUsd }));
+  return Object.values(GEN_MODELS).map((m) => ({
+    key: m.key,
+    label: m.label,
+    kind: m.kind,
+    provider: m.provider,
+    estCostUsd: m.estCostUsd,
+    costPerSecondUsd: m.costPerSecondUsd,
+  }));
+}
+
+/** Om modellen kan brukes med serverens nåværende provider-konfigurasjon. */
+export function genModelConfigured(model: GenModel): boolean {
+  if (model.provider === "higgsfield") return higgsfieldConfigured();
+  if (model.provider === "beeble") return beebleConfigured();
+  if (model.provider === "creatorhub") return true;
+  return falConfigured();
 }
 
 // ─── Styring (DB-basert, admin-redigerbar — env som fallback) ────────────────

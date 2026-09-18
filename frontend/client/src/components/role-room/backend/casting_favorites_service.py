@@ -11,21 +11,26 @@ from typing import Optional, List, Dict, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-DATABASE_URL_RAW = os.getenv(
-    'DATABASE_URL',
-    'postgresql://neondb_owner:npg_vgy4STuQ8Mja@ep-soft-pond-ag9vm5a4-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-)
-DATABASE_URL = DATABASE_URL_RAW.strip()
-if DATABASE_URL.startswith('psql '):
-    DATABASE_URL = DATABASE_URL[5:].strip()
-if DATABASE_URL.startswith("'") and DATABASE_URL.endswith("'"):
-    DATABASE_URL = DATABASE_URL[1:-1]
-elif DATABASE_URL.startswith('"') and DATABASE_URL.endswith('"'):
-    DATABASE_URL = DATABASE_URL[1:-1]
+def _require_database_url():
+    value = os.getenv('DATABASE_URL', '').strip()
+    if value.startswith('psql '):
+        value = value[5:].strip()
+    if value.startswith("'") and value.endswith("'"):
+        value = value[1:-1]
+    elif value.startswith('"') and value.endswith('"'):
+        value = value[1:-1]
+    if not value:
+        raise RuntimeError('DATABASE_URL must be provided via the environment')
+    if not value.startswith(('postgres://', 'postgresql://')):
+        raise RuntimeError(
+            'DATABASE_URL must use the postgres or postgresql protocol'
+        )
+    return value
+
+
+DATABASE_URL = _require_database_url()
 
 def get_db_connection():
-    if not DATABASE_URL:
-        raise Exception("DATABASE_URL not set")
     return psycopg2.connect(DATABASE_URL)
 
 def init_casting_favorites_tables():

@@ -1,11 +1,11 @@
 /**
- * MediaUploader.tsx — drag-and-drop / klikk-for-å-velge med direct R2-streaming.
+ * MediaUploader.tsx — direkte opplasting til S3 eller Cloudflare Stream.
  *
- * Bytter URL-input mot ekte file-picker. Streamer direkte til Cloudflare R2 via
+ * Bytter URL-input mot ekte file-picker. Streamer direkte til privat AWS S3 via
  * presigned PUT-URL (backend ser aldri bytes — ren stream-tilkobling).
  *
  * Faller tilbake til URL-input hvis backend rapporterer at upload ikke er
- * konfigurert (R2-env-vars mangler).
+ * konfigurert.
  */
 
 import {
@@ -96,7 +96,9 @@ export default function MediaUploader({
   const allowedTypes = config?.allowedTypes?.[kind] ?? [];
   const maxBytes = config?.maxBytes?.[kind] ?? 0;
   const acceptAttr = allowedTypes.join(',');
-  const directUploadAvailable = (config?.enabled ?? false) && !forceUrlInput;
+  const directUploadAvailable = (
+    kind === 'showreel' ? (config?.streamEnabled ?? false) : (config?.enabled ?? false)
+  ) && !forceUrlInput;
 
   const handleFile = useCallback(async (file: File) => {
     setError(null);
@@ -114,8 +116,13 @@ export default function MediaUploader({
     setProgress(0);
 
     // Showreel går via Cloudflare Stream hvis aktivert (auto-transcoding + adaptive bitrate).
-    // Andre kinds (headshot/CV/alt_photo) går via R2 direct upload.
-    if (kind === 'showreel' && config?.streamEnabled) {
+    // Andre kinds (headshot/CV/alt_photo) går via privat S3 direct upload.
+    if (kind === 'showreel') {
+      if (!config?.streamEnabled) {
+        setUploading(false);
+        setError('Cloudflare Stream er ikke tilgjengelig. Video lagres ikke i dokumentbøtten.');
+        return;
+      }
       const result = await roleRoomTalentsService.uploadShowreelToStream(file, (pct) => setProgress(pct));
       setUploading(false);
       if (!result.ok) {
@@ -126,7 +133,7 @@ export default function MediaUploader({
       return;
     }
 
-    const result = await roleRoomTalentsService.uploadFileToR2(file, kind, (pct) => setProgress(pct));
+    const result = await roleRoomTalentsService.uploadFileToObjectStorage(file, kind, (pct) => setProgress(pct));
     setUploading(false);
     if (!result.ok) {
       setError(result.error);
@@ -279,7 +286,7 @@ export default function MediaUploader({
           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
             {kind === 'showreel' && config?.streamEnabled
               ? 'Streamer direkte til Cloudflare Stream. Videoen blir auto-transkodet for adaptive bitrate når den er ferdig.'
-              : 'Streamer direkte til Cloudflare R2. Ikke lukk siden før opplastningen er ferdig.'}
+              : 'Streamer direkte til privat AWS S3. Ikke lukk siden før opplastningen er ferdig.'}
           </Typography>
         </Stack>
       </Box>

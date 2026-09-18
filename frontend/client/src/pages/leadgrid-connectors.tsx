@@ -18,7 +18,6 @@
  */
 
 import React, { useState } from "react";
-import { Link } from "wouter";
 import {
   ArrowRight,
   Code,
@@ -327,11 +326,12 @@ export default function LeadgridConnectorsPage() {
             <Code className="w-4 h-4" /> Swagger UI{" "}
             <ExternalLink className="w-3 h-3" />
           </a>
-          <Link href="/leadgrid/api-keys">
-            <button className="inline-flex items-center gap-2 bg-transparent border-2 border-purple-400 text-purple-300 px-6 py-3 rounded-full font-medium hover:bg-purple-500/10 transition">
-              <Key className="w-4 h-4" /> Lag API-key
-            </button>
-          </Link>
+          <a
+            href="/leadgrid/api-keys"
+            className="inline-flex items-center gap-2 bg-transparent border-2 border-purple-400 text-purple-300 px-6 py-3 rounded-full font-medium hover:bg-purple-500/10 transition"
+          >
+            <Key className="w-4 h-4" /> Søk om API-tilgang
+          </a>
         </div>
       </section>
 
@@ -433,11 +433,12 @@ export default function LeadgridConnectorsPage() {
                 >
                   <Code className="w-4 h-4" /> OpenAPI JSON
                 </a>
-                <Link href="/leadgrid/api-keys">
-                  <button className="bg-purple-500/20 text-white px-5 py-2 rounded-lg font-medium hover:bg-purple-500/30 transition inline-flex items-center gap-2">
-                    <Key className="w-4 h-4" /> Lag API-key
-                  </button>
-                </Link>
+                <a
+                  href="/leadgrid/api-keys"
+                  className="bg-purple-500/20 text-white px-5 py-2 rounded-lg font-medium hover:bg-purple-500/30 transition inline-flex items-center gap-2"
+                >
+                  <Key className="w-4 h-4" /> Søk om API-tilgang
+                </a>
               </div>
             </div>
           </div>
@@ -473,12 +474,13 @@ export default function LeadgridConnectorsPage() {
           <p className="text-xl opacity-90 mb-8">
             Bli en del av Partner Programmet: co-marketing, revenue share og prioritert support.
           </p>
-          <Link href="/leadgrid/partners">
-            <button className="bg-white text-purple-700 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:scale-105 transition">
-              Søk Partner Status{" "}
-              <ArrowRight className="inline w-5 h-5 ml-2" />
-            </button>
-          </Link>
+          <a
+            href="/leadgrid/partners"
+            className="inline-flex items-center bg-white text-purple-700 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:scale-105 transition"
+          >
+            Start partnersøknad
+            <ArrowRight className="inline w-5 h-5 ml-2" />
+          </a>
         </div>
       </section>
     </div>
@@ -487,6 +489,7 @@ export default function LeadgridConnectorsPage() {
 
 function ConnectorCard({ connector }: { connector: Connector }) {
   const { Icon } = connector;
+  const connectorGuidePending = connector.docUrl?.startsWith('/leadgrid/docs/') ?? false;
   return (
     <div className="bg-white/[0.04] border border-white/10 rounded-2xl hover:border-purple-400/40 hover:shadow-[0_0_30px_rgba(167,139,250,0.15)] transition p-6 flex flex-col h-full">
       <div className="flex items-start justify-between mb-4">
@@ -516,7 +519,10 @@ function ConnectorCard({ connector }: { connector: Connector }) {
           href={connector.docUrl}
           className="text-sm font-medium text-purple-300 hover:text-purple-200 inline-flex items-center gap-1 mt-auto"
         >
-          Se docs <ExternalLink className="w-3 h-3" />
+          {connectorGuidePending ? 'Guide under arbeid' : 'Se docs'}
+          {connectorGuidePending
+            ? <Clock className="w-3 h-3" />
+            : <ExternalLink className="w-3 h-3" />}
         </a>
       )}
     </div>

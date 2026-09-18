@@ -29,7 +29,7 @@ interface Draft {
   id: number;
   brandKey: string;
   platform: 'facebook' | 'instagram' | 'linkedin' | 'tiktok';
-  status: 'draft' | 'edited' | 'published' | 'failed' | 'manual_copy';
+  status: 'draft' | 'edited' | 'publishing' | 'uncertain' | 'published' | 'failed' | 'manual_copy';
   sourceInsight: string | null;
   sourceAction: string | null;
   sourceReportId: number | null;
@@ -65,6 +65,8 @@ const PLATFORM_META: Record<Draft['platform'], { icon: React.ReactElement; color
 const STATUS_META: Record<Draft['status'], { status: keyof typeof adminTokens.status; label: string }> = {
   draft:       { status: 'neutral', label: 'Draft' },
   edited:      { status: 'info',    label: 'Edited' },
+  publishing:  { status: 'info',    label: 'Publiserer…' },
+  uncertain:   { status: 'warning', label: 'Uavklart — kontroller LinkedIn' },
   published:   { status: 'success', label: 'Publisert' },
   failed:      { status: 'error',   label: 'Failed' },
   manual_copy: { status: 'warning', label: 'Manuell copy-paste' },
@@ -157,7 +159,7 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, pu
   draft: Draft;
   onEdit: (d: Draft) => void;
   onDelete: (id: number) => Promise<void>;
-  onPublish: (id: number) => Promise<void>;
+  onPublish: (draft: Draft) => Promise<void>;
   onToggleAutoPublish: (id: number, value: boolean) => Promise<void>;
   publishBusy: boolean;
 }) {
@@ -192,9 +194,9 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, pu
               <EditIcon sx={{ fontSize: 16, color: adminTokens.primary.textBright }} />
             </IconButton>
           </Tooltip>
-          {draft.status !== 'published' && (
-            <Tooltip title={draft.platform === 'facebook' ? 'Publiser til FB Page nå' : 'Marker som klar for manuell copy-paste'}>
-              <IconButton size="small" onClick={() => void onPublish(draft.id)} disabled={publishBusy}
+          {draft.status !== 'published' && draft.status !== 'publishing' && draft.status !== 'uncertain' && (
+            <Tooltip title={`Publiser til ${pmeta.name} nå`}>
+              <IconButton size="small" onClick={() => void onPublish(draft)} disabled={publishBusy}
                 data-testid={`draft-publish-${draft.id}`}>
                 {publishBusy ? <CircularProgress size={14} /> : <RocketLaunchIcon sx={{ fontSize: 16, color: adminTokens.status.success.base }} />}
               </IconButton>
@@ -248,19 +250,44 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, pu
 
         {draft.status === 'published' && draft.externalPostId && (
           <Alert severity="success" sx={{ mt: 1 }}>
-            Publisert på Facebook.{' '}
-            <a href={`https://www.facebook.com/${draft.externalPostId}`} target="_blank" rel="noreferrer"
-              style={{ color: '#86efac' }}>
-              Åpne post <OpenInNewIcon sx={{ fontSize: 12, verticalAlign: 'middle' }} />
-            </a>
+            Publisert på {pmeta.name}.{' '}
+            {draft.platform === 'facebook' || draft.platform === 'linkedin' ? (
+              <a
+                href={
+                  draft.platform === 'facebook'
+                    ? `https://www.facebook.com/${draft.externalPostId}`
+                    : `https://www.linkedin.com/feed/update/${
+                        draft.externalPostId.startsWith('urn:li:')
+                          ? draft.externalPostId
+                          : `urn:li:ugcPost:${draft.externalPostId}`
+                      }/`
+                }
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#86efac' }}
+              >
+                Åpne post <OpenInNewIcon sx={{ fontSize: 12, verticalAlign: 'middle' }} />
+              </a>
+            ) : (
+              <span>Post-ID: {draft.externalPostId}</span>
+            )}
           </Alert>
         )}
         {draft.status === 'failed' && draft.publishError && (
           <Alert severity="error" sx={{ mt: 1 }}>Publish-feil: {draft.publishError}</Alert>
         )}
+        {draft.status === 'uncertain' && (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            Publiseringsutfallet er uavklart. Kontroller LinkedIn før du redigerer eller prøver på nytt.
+          </Alert>
+        )}
 
         {/* PR 11: Auto-publish toggle — kun synlig hvis det er en planlagt tid + ikke publisert */}
-        {draft.suggestedPublishTime && draft.status !== 'published' && (
+        {draft.suggestedPublishTime
+          && draft.status !== 'published'
+          && draft.status !== 'publishing'
+          && draft.status !== 'uncertain'
+          && (
           <Box sx={{
             mt: 1.5, pt: 1.5, borderTop: `1px solid ${adminTokens.border.subtle}`,
             display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
@@ -269,7 +296,7 @@ function DraftCard({ draft, onEdit, onDelete, onPublish, onToggleAutoPublish, pu
               draft.platform === 'facebook'
                 ? 'Auto-publiser til FB Page når tidspunkt nås'
                 : draft.platform === 'linkedin'
-                  ? 'Auto-publiser til LinkedIn UGC når tidspunkt nås'
+                  ? 'Auto-publiser via LinkedIn Posts API når tidspunkt nås'
                   : draft.platform === 'instagram'
                     ? (draft.imageUrl || draft.hasImageData
                         ? 'Auto-publiser til IG via container-flow når tidspunkt nås'
@@ -389,18 +416,29 @@ export default function PostDraftsPanel() {
     }
   }, [load]);
 
-  const handlePublish = useCallback(async (id: number) => {
-    setPublishBusy(id);
+  const handlePublish = useCallback(async (draft: Draft) => {
+    setPublishBusy(draft.id);
     try {
-      const r = await fetch(`/api/role-room/agent/post-drafts/${id}/publish`, {
+      const r = await fetch(`/api/role-room/agent/post-drafts/${draft.id}/publish`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
       const d = await r.json();
       if (d.ok && d.status === 'published') {
-        setNotice({ kind: 'success', msg: `Publisert på FB Page. Permalink: ${d.permalink}` });
+        const platformName = PLATFORM_META[draft.platform].name;
+        setNotice({
+          kind: 'success',
+          msg: d.permalink
+            ? `Publisert på ${platformName}. Permalink: ${d.permalink}`
+            : `Publisert på ${platformName}.`,
+        });
       } else if (d.status === 'manual_copy') {
         setNotice({ kind: 'success', msg: d.message || 'Marker som manuell.' });
+      } else if (d.status === 'uncertain') {
+        setNotice({
+          kind: 'error',
+          msg: 'Publiseringsutfallet er uavklart. Kontroller LinkedIn før du prøver på nytt.',
+        });
       } else {
         setNotice({ kind: 'error', msg: d.error || 'Publish failed' });
       }

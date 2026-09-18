@@ -27,9 +27,14 @@ import {
   ROLE_ROOM_AGENT_SYSTEM_PROMPT,
   ROLE_ROOM_AGENT_TOOLS,
 } from './role-room-agent-definition.js';
+import {
+  LEADGRID_AGENT_SKILL_TOOLS,
+  LEADGRID_AGENT_SYSTEM_PROMPT,
+} from './leadgrid-agent-skills.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
+import { resolveEffectivePermissions } from './lead-map-permission-routes.js';
 import {
   appendMessage,
   createStreamingPlaceholder,
@@ -56,17 +61,29 @@ async function getAnthropicClient(): Promise<any> {
   return cachedAnthropicClient;
 }
 
-interface StreamRequestBody {
+export interface LeadgridAgentLeadContext extends PseudonymizableEntity {
+  status: string;
+  hasPhone: boolean;
+  hasEmail: boolean;
+  hasWebsite: boolean;
+  nextFollowUpAt?: string | null;
+  lastVisitAt?: string | null;
+}
+
+export interface StreamRequestBody {
   userMessage: string;
   requiredScope?: RoleRoomAiConsentScope;
   threadId?: string | null;
   persistThread?: boolean;
+  surface?: 'leadgrid_ipad';
+  organizationId?: string;
   context?: {
     briefSummary?: string;
     openReviews?: Array<{ id: string; title: string; status: string }>;
     timelineHighlights?: Array<{ id: string; title: string; phase: string; status: string; dueAt?: string | null }>;
     candidates?: PseudonymizableEntity[];
     crew?: PseudonymizableEntity[];
+    leads?: LeadgridAgentLeadContext[];
     shootingDays?: Array<any>;
     economyItems?: Array<any>;
   };
@@ -75,6 +92,88 @@ interface StreamRequestBody {
 function writeEvent(res: Response, event: string, data: unknown): void {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+export async function canAccessLeadgridAgentProject(
+  pool: Pool,
+  userId: string,
+  projectId: string,
+  organizationId: string,
+): Promise<boolean> {
+  if (!userId || !projectId || !organizationId) return false;
+  try {
+    const project = await pool.query(
+      `SELECT 1
+         FROM casting_projects p
+        WHERE p.id = $1
+          AND p.organization_id::text = $2
+          AND (
+            p.created_by = $3
+            OR EXISTS (
+              SELECT 1 FROM project_members pm
+               WHERE pm.project_id = p.id AND pm.user_id = $3
+            )
+            OR EXISTS (
+              SELECT 1 FROM crm_customers c
+               WHERE c.project_id = p.id AND c.owner_user_id = $3
+            )
+            OR EXISTS (
+              SELECT 1 FROM brand_kits bk
+               WHERE bk.project_id = p.id AND bk.workspace_owner_user_id = $3
+            )
+          )
+        LIMIT 1`,
+      [projectId, organizationId, userId],
+    );
+    if ((project.rowCount ?? 0) === 0) return false;
+    const { role, permissions } = await resolveEffectivePermissions(
+      pool,
+      organizationId,
+      userId,
+    );
+    return role !== null && permissions.has('leads.view');
+  } catch {
+    return false;
+  }
+}
+
+const LEADGRID_STATUSES = new Set([
+  'unvisited', 'visited', 'return', 'not_present', 'declined',
+  'interested', 'meeting_booked', 'proposal_sent', 'won', 'lost',
+  'do_not_contact',
+]);
+
+function safeLeadgridTimestamp(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 64) return null;
+  if (!/^[0-9T:.+-]+Z?$/.test(value) || Number.isNaN(Date.parse(value))) return null;
+  return value;
+}
+
+export function normalizeLeadgridAgentLeads(raw: unknown): LeadgridAgentLeadContext[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+    const lead = candidate as Record<string, unknown>;
+    if (
+      typeof lead.id !== 'string'
+      || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/.test(lead.id)
+      || typeof lead.name !== 'string'
+      || lead.name.length === 0
+      || lead.name.length > 240
+      || typeof lead.status !== 'string'
+      || !LEADGRID_STATUSES.has(lead.status)
+    ) return [];
+    return [{
+      id: lead.id,
+      name: lead.name,
+      status: lead.status,
+      hasPhone: lead.hasPhone === true,
+      hasEmail: lead.hasEmail === true,
+      hasWebsite: lead.hasWebsite === true,
+      nextFollowUpAt: safeLeadgridTimestamp(lead.nextFollowUpAt),
+      lastVisitAt: safeLeadgridTimestamp(lead.lastVisitAt),
+    }];
+  }).slice(0, 100);
 }
 
 export async function handleAgentStream(
@@ -86,6 +185,7 @@ export async function handleAgentStream(
 ): Promise<void> {
   const projectId = req.params.projectId;
   const body = (req.body ?? {}) as StreamRequestBody;
+  const isLeadgridSurface = body.surface === 'leadgrid_ipad';
   const userMessage = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
   if (!userMessage) {
     res.status(400).json({ error: 'userMessage required' });
@@ -106,7 +206,22 @@ export async function handleAgentStream(
   // (feed-godkjenningsstatus o.l.) ble injisert i modell-svaret, og consent +
   // AI-audit ble forbrukt/forurenset under offerets project_id. Entitlement/
   // rate-limit er kaller-scoped (userId) og stopper ikke dette. Fail-closed.
-  if (!(await canAccessRoleRoomProject(pool, userId, projectId))) {
+  if (isLeadgridSurface && (
+    typeof body.organizationId !== 'string'
+    || body.organizationId.length === 0
+  )) {
+    res.status(400).json({ error: 'organization_scope_required' });
+    return;
+  }
+  const canAccessProject = isLeadgridSurface
+    ? await canAccessLeadgridAgentProject(
+      pool,
+      userId,
+      projectId,
+      body.organizationId as string,
+    )
+    : await canAccessRoleRoomProject(pool, userId, projectId);
+  if (!canAccessProject) {
     res.status(403).json({ error: 'project_access_denied' });
     return;
   }
@@ -136,7 +251,17 @@ export async function handleAgentStream(
     throw err;
   }
 
-  const requiredScope: RoleRoomAiConsentScope = body.requiredScope ?? 'brief_only';
+  const requestedScope = body.requiredScope;
+  if (
+    requestedScope !== undefined
+    && !['brief_only', 'brief_and_reviews', 'full_context'].includes(requestedScope)
+  ) {
+    res.status(400).json({ error: 'invalid_required_scope' });
+    return;
+  }
+  const requiredScope: RoleRoomAiConsentScope = isLeadgridSurface
+    ? 'full_context'
+    : requestedScope ?? 'brief_only';
 
   // Consent check BEFORE we open the SSE stream so the client can react
   // to 403 without having to parse stream events.
@@ -170,36 +295,63 @@ export async function handleAgentStream(
   // Pseudonymize context before it leaves our server.
   const context = body.context ?? {};
   const excluded = new Set(consent.excludedEntityIds);
-  const candidates = (context.candidates ?? []).filter((c) => !excluded.has(c.id));
-  const crew = (context.crew ?? []).filter((c) => !excluded.has(c.id));
+  const candidates = isLeadgridSurface || !Array.isArray(context.candidates)
+    ? []
+    : context.candidates.filter((c) => c && !excluded.has(c.id));
+  const crew = isLeadgridSurface || !Array.isArray(context.crew)
+    ? []
+    : context.crew.filter((c) => c && !excluded.has(c.id));
+  const leads = isLeadgridSurface
+    ? normalizeLeadgridAgentLeads(context.leads).filter((lead) => !excluded.has(lead.id))
+    : [];
   const candidateMap = buildBackendPseudonymMap(candidates, 'candidate');
   const crewMap = buildBackendPseudonymMap(crew, 'crew');
-  const combinedAssignments = [...candidateMap.assignments, ...crewMap.assignments];
+  const leadMap = buildBackendPseudonymMap(leads, 'lead');
+  const combinedAssignments = [
+    ...candidateMap.assignments,
+    ...crewMap.assignments,
+    ...leadMap.assignments,
+  ];
 
-  const pseudonymizedMessage = crewMap.toPlaceholder(candidateMap.toPlaceholder(userMessage));
+  const toPlaceholder = (value: string): string =>
+    leadMap.toPlaceholder(crewMap.toPlaceholder(candidateMap.toPlaceholder(value)));
+  const pseudonymizedMessage = toPlaceholder(userMessage);
   const scrubbedFromUser = countScrubbed(userMessage);
 
   const systemLines: string[] = [
-    ROLE_ROOM_AGENT_SYSTEM_PROMPT,
+    isLeadgridSurface ? LEADGRID_AGENT_SYSTEM_PROMPT : ROLE_ROOM_AGENT_SYSTEM_PROMPT,
     '',
     '## Prosjektkontekst',
     `Prosjekt-id: ${projectId}`,
   ];
-  if (context.briefSummary) {
+  if (!isLeadgridSurface && context.briefSummary) {
     systemLines.push('', '### Brief-sammendrag');
-    systemLines.push(crewMap.toPlaceholder(candidateMap.toPlaceholder(context.briefSummary)));
+    systemLines.push(toPlaceholder(context.briefSummary));
   }
-  if (context.openReviews?.length) {
+  if (!isLeadgridSurface && Array.isArray(context.openReviews) && context.openReviews.length) {
     systemLines.push('', '### Aktive reviews');
     for (const r of context.openReviews) {
-      systemLines.push(`- id=${r.id} status=${r.status} — ${crewMap.toPlaceholder(candidateMap.toPlaceholder(r.title))}`);
+      systemLines.push(`- id=${r.id} status=${r.status} — ${toPlaceholder(r.title)}`);
     }
   }
-  if (context.timelineHighlights?.length) {
+  if (!isLeadgridSurface && Array.isArray(context.timelineHighlights) && context.timelineHighlights.length) {
     systemLines.push('', '### Timeline-høydepunkter');
     for (const item of context.timelineHighlights) {
       const due = item.dueAt ? ` frist=${item.dueAt}` : '';
       systemLines.push(`- id=${item.id} fase=${item.phase} status=${item.status}${due}`);
+    }
+  }
+  if (isLeadgridSurface && leads.length) {
+    systemLines.push('', '### Leadgrid-leads');
+    systemLines.push('Bruk bare id-er fra denne listen i Leadgrid-verktøy.');
+    for (const lead of leads) {
+      const next = lead.nextFollowUpAt ? ` neste_oppfølging=${lead.nextFollowUpAt}` : '';
+      const last = lead.lastVisitAt ? ` sist_kontakt=${lead.lastVisitAt}` : '';
+      systemLines.push(
+        `- id=${lead.id} navn=${toPlaceholder(lead.name ?? '')} status=${lead.status}`
+          + ` telefon=${lead.hasPhone} epost=${lead.hasEmail}`
+          + ` nettside=${lead.hasWebsite}${next}${last}`,
+      );
     }
   }
   const cachedSystem = systemLines.join('\n');
@@ -322,7 +474,9 @@ export async function handleAgentStream(
   // Aggregate, PII-free cross-tab status (Inbox/Leads/Analytics/Feed) in a
   // FRESH uncached system block so it stays current without busting the cached
   // project-context prefix. Best-effort: omitted when null.
-  const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+  const workspaceBlock = isLeadgridSurface
+    ? null
+    : await buildWorkspaceContextBlock(pool, { userId, projectId });
 
   try {
     const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [
@@ -339,7 +493,7 @@ export async function handleAgentStream(
       model: modelId,
       max_tokens: 1200,
       system: systemBlocks,
-      tools: ROLE_ROOM_AGENT_TOOLS,
+      tools: isLeadgridSurface ? LEADGRID_AGENT_SKILL_TOOLS : ROLE_ROOM_AGENT_TOOLS,
       messages: [{ role: 'user', content: pseudonymizedMessage }],
     });
 
@@ -400,9 +554,10 @@ export async function handleAgentStream(
         ...(context.openReviews?.length ? ['review_metadata'] : []),
         ...candidateMap.categoriesTouched,
         ...crewMap.categoriesTouched,
+        ...leadMap.categoriesTouched,
         ...finalToolUses.map((t) => `proposed_tool:${t.name}`),
       ],
-      entityCount: candidates.length + crew.length,
+      entityCount: candidates.length + crew.length + leads.length,
       emailsScrubbed: scrubbedFromUser.emails,
       phonesScrubbed: scrubbedFromUser.phones,
     });
@@ -424,8 +579,11 @@ export async function handleAgentStream(
           threadId,
           transparency: {
             model: modelId,
-            fields: candidateMap.categoriesTouched.concat(crewMap.categoriesTouched),
-            entityCount: candidates.length + crew.length,
+            fields: candidateMap.categoriesTouched.concat(
+              crewMap.categoriesTouched,
+              leadMap.categoriesTouched,
+            ),
+            entityCount: candidates.length + crew.length + leads.length,
             piiScrubbedFromInput: scrubbedFromUser,
           },
         },
@@ -446,8 +604,11 @@ export async function handleAgentStream(
           threadId,
           transparency: {
             model: modelId,
-            fields: candidateMap.categoriesTouched.concat(crewMap.categoriesTouched),
-            entityCount: candidates.length + crew.length,
+            fields: candidateMap.categoriesTouched.concat(
+              crewMap.categoriesTouched,
+              leadMap.categoriesTouched,
+            ),
+            entityCount: candidates.length + crew.length + leads.length,
             piiScrubbedFromInput: scrubbedFromUser,
           },
         },
@@ -461,8 +622,11 @@ export async function handleAgentStream(
       toolUses: finalToolUses,
       transparency: {
         model: modelId,
-        fields: candidateMap.categoriesTouched.concat(crewMap.categoriesTouched),
-        entityCount: candidates.length + crew.length,
+        fields: candidateMap.categoriesTouched.concat(
+          crewMap.categoriesTouched,
+          leadMap.categoriesTouched,
+        ),
+        entityCount: candidates.length + crew.length + leads.length,
         piiScrubbedFromInput: scrubbedFromUser,
       },
     });

@@ -13,6 +13,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { getCanvasAuthorization } from "./leadgrid-canvas-authorization.js";
 
 const GYLDIGE_KORT = new Set(["kpi", "dorsalg", "neste_handling", "oppgaver", "leads"]);
 // Canvas-funksjonene org-en kan rolle-styre (samme hierarki som kortene).
@@ -184,9 +185,11 @@ export function registerLeadgridOversiktRoutes(deps: {
         .map(String).filter((k) => GYLDIGE_CANVAS_FUNKSJONER.has(k)).slice(0, 12);
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
-      const roller = await hentRoller(pool, session.userId);
-      const krav = malgruppe === "leder" ? ADMIN_ROLLER : LEDER_ROLLER;
-      if (!harRolle(roller, krav)) { res.status(403).json({ error: "forbidden" }); return; }
+      const canvasAuth = await getCanvasAuthorization(pool, session.userId, orgId);
+      const kanEndre = malgruppe === "leder"
+        ? canvasAuth.roleGroup === "admin"
+        : canvasAuth.roleGroup === "admin" || canvasAuth.roleGroup === "leder";
+      if (!kanEndre) { res.status(403).json({ error: "forbidden" }); return; }
       await ensureSchema(pool);
       await pool.query(
         `INSERT INTO leadgrid_canvas_policy

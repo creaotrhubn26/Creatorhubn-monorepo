@@ -13,7 +13,6 @@ import LeadgridPricingPage from '@/pages/leadgrid-pricing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
-import LeadgridPartnerApplicationPage from '@/pages/leadgrid-partner-application';
 import LeadgridDevelopersPage from '@/pages/leadgrid-developers';
 import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-application';
 import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
@@ -24,6 +23,8 @@ import LeadgridImportPage from '@/pages/leadgrid-import';
 import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
 import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
 import LeadgridDealsPage from '@/pages/leadgrid-deals';
+import LeadgridRouteStatusPage from '@/pages/leadgrid-route-status';
+import LeadgridWelcomePage from '@/pages/leadgrid-welcome';
 import LeadgridSkaffeLeadsGuidePage from '@/pages/leadgrid-skaffe-leads-guide';
 import LeadgridFeltsalgSalgsteamPage from '@/pages/leadgrid-feltsalg-salgsteam';
 import LeadgridAkademiPage from '@/pages/leadgrid-akademi';
@@ -64,6 +65,7 @@ import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
 import { getActiveProfessionMode, type ProfessionMode } from './config/professionMode';
+import { resolveLeadgridSupplementalRoute } from '@/lib/leadgridNavigation';
 
 /**
  * Velkomst-teksten i onboarding-turen er felles for alle vertikaler unntatt
@@ -308,6 +310,9 @@ function CastingStandaloneAppContent() {
       || leadgridPath === '/leadgrid/priser' || leadgridPath === '/leadgrid/priser/') {
     return <LeadgridPricingPage />;
   }
+  if (leadgridPath === '/leadgrid/welcome' || leadgridPath === '/leadgrid/welcome/') {
+    return <LeadgridWelcomePage />;
+  }
   // GEO-innholdssider (offentlige — docs/integration-audit/09)
   if (leadgridPath === '/leadgrid/skaffe-leads-guide'
       || leadgridPath === '/leadgrid/skaffe-leads-guide/') {
@@ -390,6 +395,29 @@ function CastingStandaloneAppContent() {
   if (leadgridPath === '/leadgrid/utviklere/soknad' ||
       leadgridPath === '/leadgrid/utviklere/soknad/') {
     return <LeadgridDeveloperApplicationPage />;
+  }
+
+  // Historiske/engelske slugs og CTA-mål håndteres eksplisitt. Dette må ligge
+  // etter alle kanoniske ruter, siden resolveren også gir en ærlig not-found
+  // for ukjente /leadgrid/*-stier.
+  const bypassLeadgridFallback = leadgridHost
+    && (localeCtx.pathname.startsWith('/auth') || localeCtx.pathname.startsWith('/oauth'));
+  const supplementalLeadgridRoute = bypassLeadgridFallback
+    ? null
+    : resolveLeadgridSupplementalRoute(leadgridPath);
+  if (supplementalLeadgridRoute?.kind === 'developers') {
+    return <LeadgridDevelopersPage />;
+  }
+  if (supplementalLeadgridRoute?.kind === 'partners') {
+    return <LeadgridPartnerWizardPage />;
+  }
+  if (supplementalLeadgridRoute?.kind === 'status') {
+    return (
+      <LeadgridRouteStatusPage
+        kind={supplementalLeadgridRoute.status}
+        requestedConnector={supplementalLeadgridRoute.requestedConnector}
+      />
+    );
   }
 
   // Leadgrid-dedikert host: ukjente stier skal ALDRI falle gjennom til

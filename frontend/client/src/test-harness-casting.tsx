@@ -18,6 +18,8 @@ import { authSessionService } from './components/role-room/services/authSessionS
 import { settingsService } from './components/role-room/services/settingsService';
 import { castingService } from './components/role-room/services/castingService';
 import type { CastingProject } from './components/role-room/models/casting';
+import { DEV_ADMIN_SESSION_TOKEN } from './hooks/devAdminSessionGuard';
+import { resolveCastingHarnessAuth } from './testHarnessCastingAuth';
 
 // Sprint A.7: Lås `getCurrentUserId()` MED EN GANG (før React-tre mounter)
 // så all settings/casting-IO bruker samme nøkkel som vår pre-seed.
@@ -106,14 +108,26 @@ function buildBasicSeedProject(): CastingProject {
  * when isStandalone=true and the backend is unavailable.
  *
  * Sprint A.7: Når URL inneholder ?seed=basic seedes ett minimalt demo-prosjekt
- * så `selectFirstProject` i e2e-specs har en `<li>` å klikke på. Holder hele
- * test-harness uavhengig av backend.
+ * så `selectFirstProject` i e2e-specs har en `<li>` å klikke på. Varianten
+ * ?seed=story-writer legger også inn ett tomt manuskript for tester av
+ * manuskriptfanene. Holder hele test-harness uavhengig av backend.
  */
 function SessionSeeder({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const seedSession = async () => {
+      const harnessAuth = resolveCastingHarnessAuth({
+        url: window.location.href,
+        viteDevelopmentMode: import.meta.env.DEV,
+        hostname: window.location.hostname,
+        featureEnabled: import.meta.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+      });
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (harnessAuth.sanitizedPath !== currentPath) {
+        window.history.replaceState(null, '', harnessAuth.sanitizedPath);
+      }
+
       const searchParams = new URLSearchParams(window.location.search);
       const sessionMode = searchParams.get('session');
       const seedFlag = searchParams.get('seed');
@@ -128,14 +142,20 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         loginAs: isContentProducerSession ? 'content_producer' : undefined,
         requestedRole: isContentProducerSession ? 'content_producer' : null,
       });
-      // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
-      // «local-admin» (getLocalDevelopmentSession) → /api/casting-ruter passerer
-      // og data synkes til DB i stedet for å latche offline. Uten dette: 401.
-      // ?token=… overstyrer (sim-Safari-verifisering kan ikke kjøre
-      // addInitScript — se e2e/storyboard-vision-verify.spec.ts).
-      const overrideToken = new URLSearchParams(window.location.search).get('token');
-      window.localStorage.setItem('role_room_auth_token', overrideToken || 'dev-admin-local-session');
-      window.localStorage.setItem('creatorhub_auth_token', overrideToken || 'dev-admin-local-session');
+      // En ekte simulatortest kan bruke #token=…; fragmentet skrubbes før
+      // første await og sendes aldri til Vite. Standard dev-token krever samme
+      // eksplisitte loopback-port som resten av appen.
+      if (harnessAuth.token) {
+        await authSessionService.setSessionToken(harnessAuth.token);
+        window.localStorage.setItem('creatorhub_auth_token', harnessAuth.token);
+      } else {
+        if (window.localStorage.getItem('role_room_auth_token') === DEV_ADMIN_SESSION_TOKEN) {
+          await authSessionService.setSessionToken(null);
+        }
+        if (window.localStorage.getItem('creatorhub_auth_token') === DEV_ADMIN_SESSION_TOKEN) {
+          window.localStorage.removeItem('creatorhub_auth_token');
+        }
+      }
       // Pre-seed profession so the profession selector dialog doesn't open
       await settingsService.setSetting('virtualStudio_castingProfession', 'photographer', {
         userId: 'e2e-test-user',
@@ -155,7 +175,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer') {
         try {
           const seedProject = buildBasicSeedProject();
           await castingService.saveProject(seedProject);
@@ -173,6 +193,29 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             },
             { userId: 'e2e-test-user' },
           );
+
+          if (seedFlag === 'story-writer') {
+            const now = new Date().toISOString();
+            await settingsService.setSetting(
+              'virtualStudio_manuscripts',
+              [{
+                id: 'e2e-story-writer-manuscript',
+                projectId: seedProject.id,
+                title: 'E2E Story Writer',
+                subtitle: '',
+                author: 'E2E Tester',
+                version: '1.0',
+                format: 'fountain',
+                content: '',
+                pageCount: 0,
+                wordCount: 0,
+                status: 'draft',
+                createdAt: now,
+                updatedAt: now,
+              }],
+              { userId: 'e2e-test-user', projectId: seedProject.id },
+            );
+          }
         } catch (err) {
           console.warn('[test-harness] Failed to seed basic project:', err);
         }

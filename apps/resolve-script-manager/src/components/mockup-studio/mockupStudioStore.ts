@@ -358,10 +358,11 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   placeLibraryImage: async (id, target, at) => {
     const full = await idbGetFull(id);
     if (!full) return;
+    const meta = get().library.find((item) => item.id === id);
     const sel = get().selection;
     if (target === 'background') get().patchCanvas({ bgImage: full });
     else if (!at && sel.kind === 'device') get().setDeviceImage(sel.id, full);
-    else get().addImage(full, at ? { x: Math.round(at.x - 260), y: Math.round(at.y - 180) } : undefined); // frittstående (senter på drop-punkt)
+    else get().addImage(full, { ...(at ? { x: Math.round(at.x - 260), y: Math.round(at.y - 180) } : {}), source: { kind: 'library', label: meta?.name, origin: meta?.source, assetId: id } }); // frittstående
   },
 
   // Legg N bibliotek-bilder på lerretet i en valgt fremvisning (galleri). Ett kall bygger alt.

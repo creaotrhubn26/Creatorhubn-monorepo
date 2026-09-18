@@ -46,9 +46,14 @@ import {
   isSupportedPlatform as isSupportedFeedPlatform,
   loadFeedPlan,
   saveFeedPlan,
+  markFeedPlanPostFailed,
+  markFeedPlanPostPublished,
   type RoleRoomFeedApprovalState,
 } from "./role-room-feed-plan.js";
-import { listManagedCompaniesForUser } from "./social-publisher-linkedin.js";
+import {
+  getLinkedInConnectionStatusForUser,
+  listManagedCompaniesForUser,
+} from "./social-publisher-linkedin.js";
 import { listYouTubeChannels } from "./social-publisher-youtube.js";
 import { generateYouTubeChannelPlan } from "./social-publisher-youtube-channel-plan.js";
 import { getTikTokConnectionSummary } from "./social-publisher-tiktok.js";
@@ -70,6 +75,7 @@ import {
 import {
   dispatchPublish,
   dispatchFetchInsights,
+  type PublishResult,
 } from "./social-publisher.js";
 import { buildAgentFeedbackInsights } from "./role-room-agent-feedback-insights.js";
 import { getPublishQueueStats } from "./role-room-instagram-publish.js";
@@ -78,6 +84,12 @@ import {
   RateLimitExceededError,
 } from "./role-room-agent-ratelimit.js";
 import { claimIdempotencyKey } from "./role-room-social-idempotency.js";
+import {
+  enqueueLinkedInPublishJob,
+  getLinkedInPublishQueueStats,
+  LinkedInPublishQueueConflictError,
+  type LinkedInQueueMediaKind,
+} from "./role-room-linkedin-publish-queue.js";
 
 interface AdminSession {
   userId: string;
@@ -151,6 +163,45 @@ export async function userOwnsSocialConnection(
   }
 }
 
+/**
+ * LinkedIn publishing accepts either the producer's global connection or the
+ * connection bound to this exact project. A project-scoped row from another
+ * project must never be usable, even when it has the same producer user_id.
+ */
+export async function userCanUseLinkedInConnection(
+  pool: Pool,
+  connectionId: string,
+  userId: string,
+  projectId: string,
+  requiredScopes: string[] = ['w_member_social'],
+): Promise<boolean> {
+  if (
+    !connectionId
+    || connectionId.length > 200
+    || !projectId
+    || requiredScopes.length === 0
+    || requiredScopes.some((scope) => !/^[a-z_]+$/i.test(scope))
+  ) return false;
+  try {
+    const result = await pool.query(
+      `SELECT 1
+         FROM role_room_linkedin_connections
+        WHERE id::text = $1
+          AND user_id = $2
+          AND (project_id IS NULL OR project_id = $3)
+          AND connection_state IN ('connected', 'active')
+          AND expiry_date > NOW()
+          AND scopes @> $4::jsonb
+        LIMIT 1`,
+      [connectionId, userId, projectId, JSON.stringify(requiredScopes)],
+    );
+    return (result.rowCount ?? result.rows.length) > 0;
+  } catch (error) {
+    console.error('[social-routes] LinkedIn connection check failed', error);
+    return false;
+  }
+}
+
 /** Translate a RateLimitExceededError into an HTTP 429 + Retry-After. */
 function send429(
   res: express.Response,
@@ -175,13 +226,21 @@ export function setupRoleRoomSocialRoutes(
   // hvis tokenet ikke har det, returnerer vi scopeMissing=true og UI-en
   // kan be brukeren om å reconnecte.
   app.get("/api/role-room/linkedin/companies", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
-      const result = await listManagedCompaniesForUser(pool, session.userId);
+      const projectId = typeof req.query.projectId === "string"
+        ? req.query.projectId.trim() || null
+        : null;
+      if (projectId && !(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+        return res.status(403).json({ success: false, error: 'Ingen tilgang til prosjektet.' });
+      }
+      const result = await listManagedCompaniesForUser(pool, session.userId, projectId);
       return res.json({
         success: true,
         scopeMissing: result.scopeMissing,
+        reconnectRequired: result.reconnectRequired,
+        connectionScope: result.connectionScope,
         companies: result.companies,
       });
     } catch (error) {
@@ -194,42 +253,47 @@ export function setupRoleRoomSocialRoutes(
   // rendre brukerens LinkedIn-konto med navn + avatar (samme nivå som IG).
   // Bruker eksisterende role_room_linkedin_connections-tabell.
   app.get("/api/role-room/linkedin/profile", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
-      const result = await pool.query<{
-        linkedin_member_id: string | null;
-        linkedin_email: string | null;
-        linkedin_name: string | null;
-        connection_state: string;
-        profile: Record<string, unknown> | null;
-        expiry_date: Date | null;
-      }>(
-        `SELECT linkedin_member_id, linkedin_email, linkedin_name,
-                connection_state, profile, expiry_date
-           FROM role_room_linkedin_connections
-          WHERE user_id = $1 AND project_id IS NULL LIMIT 1`,
-        [session.userId],
-      );
-      const row = result.rows[0] ?? null;
-      if (!row || !row.linkedin_member_id) {
-        return res.json({ success: true, connected: false });
+      const projectId = typeof req.query.projectId === 'string'
+        ? req.query.projectId.trim() || null
+        : null;
+      if (projectId && !(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+        return res.status(403).json({ success: false, error: 'Ingen tilgang til prosjektet.' });
       }
-      const profile = row.profile ?? {};
-      const profilePictureUrl =
-        typeof (profile as Record<string, unknown>).profilePictureUrl === 'string'
-          ? ((profile as Record<string, unknown>).profilePictureUrl as string)
-          : typeof (profile as Record<string, unknown>).picture === 'string'
-            ? ((profile as Record<string, unknown>).picture as string)
-            : null;
+      const [personalStatus, organizationStatus] = await Promise.all([
+        getLinkedInConnectionStatusForUser(pool, session.userId, {
+          author: 'personal',
+        }),
+        getLinkedInConnectionStatusForUser(pool, session.userId, {
+          projectId,
+          author: 'company',
+        }),
+      ]);
+      const displayStatus = personalStatus.connectionId ? personalStatus : organizationStatus;
+      const scopes = [...new Set([...personalStatus.scopes, ...organizationStatus.scopes])];
       return res.json({
         success: true,
-        connected: row.connection_state === 'connected' || row.connection_state === 'active',
-        memberId: row.linkedin_member_id,
-        email: row.linkedin_email,
-        name: row.linkedin_name,
-        profilePictureUrl,
-        tokenExpiresAt: row.expiry_date,
+        ...displayStatus,
+        connected: personalStatus.connected || organizationStatus.connected,
+        connectionId: personalStatus.connectionId ?? organizationStatus.connectionId,
+        personalConnectionId: personalStatus.connectionId,
+        organizationConnectionId: organizationStatus.connectionId,
+        scopes,
+        publishReady: personalStatus.publishReady,
+        organizationPublishReady: organizationStatus.organizationPublishReady,
+        reconnectRequired:
+          personalStatus.connectionId !== null && !personalStatus.publishReady,
+        organizationReconnectRequired:
+          organizationStatus.connectionId !== null
+          && !organizationStatus.organizationPublishReady,
+        capabilities: {
+          personal: personalStatus.publishReady,
+          organization: organizationStatus.organizationPublishReady,
+        },
+        tokenExpiresAt: displayStatus.expiresAt,
+        projectId,
       });
     } catch (error) {
       console.error("[linkedin-profile] query failed", error);
@@ -243,7 +307,7 @@ export function setupRoleRoomSocialRoutes(
   // scopeMissing=true hvis Google-tokenet mangler youtube/youtube.readonly,
   // noConnection=true hvis brukeren ikke har Google-tilkoblet ennå.
   app.get("/api/role-room/youtube/channels", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
       const result = await listYouTubeChannels(pool, session.userId);
@@ -265,7 +329,7 @@ export function setupRoleRoomSocialRoutes(
   // til kunden + bransje. Dette lukker det vanligste blokk-hullet i e2e-
   // publish-flyten ("vi har det teknisk klart, men venter på tilgang").
   app.post("/api/role-room/social/access-request", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
     const platformInput = typeof req.body?.platform === 'string' ? req.body.platform.trim() : '';
@@ -312,7 +376,7 @@ export function setupRoleRoomSocialRoutes(
   // kryptert token. Vi støtter inbox-modus (video.upload-scope) for første
   // versjon; direct publish krever ekstra TikTok App Review.
   app.post("/api/role-room/tiktok/oauth/start", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     const config = getTikTokConfig();
     if (!config.configured) {
@@ -418,7 +482,7 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.get("/api/role-room/tiktok/connection", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
       const summary = await getTikTokConnectionSummary(pool, session.userId);
@@ -430,7 +494,7 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.post("/api/role-room/tiktok/disconnect", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
       await disconnectTikTok(pool, session.userId);
@@ -447,7 +511,7 @@ export function setupRoleRoomSocialRoutes(
   // og channel-trailer-konsept. Returnerer alltid en strukturert plan slik
   // at frontend kan rendre den ryddig uten å parse fri tekst.
   app.post("/api/role-room/youtube/channel-plan", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
     if (!projectId) {
@@ -482,7 +546,7 @@ export function setupRoleRoomSocialRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
 
     const platform = typeof req.query.platform === "string" ? req.query.platform : null;
@@ -567,7 +631,7 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.post("/api/role-room/social/inbox/:eventId/read", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
       // Scope the write to the caller's own accounts — same filter as the GET.
@@ -592,7 +656,7 @@ export function setupRoleRoomSocialRoutes(
   // Unified cross-platform publish-endepunkt. Router via dispatcher til
   // riktig SocialPublisher-implementasjon basert på platform-felt i body.
   app.post("/api/role-room/social/publish", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     const body = (req.body || {}) as Record<string, unknown>;
     const platform = String(body.platform || "").trim();
@@ -616,9 +680,8 @@ export function setupRoleRoomSocialRoutes(
     // role_room_instagram_connections row id; dispatchPublish (FB page) derives
     // the connection's owner from that row rather than the session, so without
     // this check one tenant could publish using another tenant's stored Page
-    // token (IDOR). LinkedIn/YouTube resolve the connection from the session
-    // userId directly (connectionId is ignored there), so they're already
-    // user-scoped and don't need this gate.
+    // token (IDOR). YouTube resolves the connection from the session userId.
+    // LinkedIn is checked below together with project/feed-plan ownership.
     if (platform === "instagram" || platform === "facebook_page") {
       if (
         !(await userOwnsSocialConnection(pool, String(post.connectionId), session.userId))
@@ -627,91 +690,305 @@ export function setupRoleRoomSocialRoutes(
       }
     }
 
-    // Idempotency: if the client supplied a stable key, the first claim wins
-    // and a duplicate short-circuits without re-publishing. Best-effort — a
-    // store error falls through to normal processing.
     const idempotencyKey =
       typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
         ? body.idempotencyKey.trim()
         : null;
-    if (idempotencyKey) {
-      try {
-        const claim = await claimIdempotencyKey(
-          pool,
-          "social_publish",
-          session.userId,
-          idempotencyKey,
-        );
-        if (!claim.fresh) {
-          return res.status(200).json({ success: true, deduped: true });
-        }
-      } catch (idemErr) {
-        console.warn("[social-publish] idempotency claim failed", idemErr);
-      }
-    }
-
     const projectId = String(post.projectId || "").trim();
     const feedPlanPostId =
-      typeof post.feedPlanPostId === "string" ? post.feedPlanPostId : undefined;
+      typeof post.feedPlanPostId === "string" && post.feedPlanPostId.trim()
+        ? post.feedPlanPostId.trim()
+        : undefined;
+    const hasProjectReference = Boolean(projectId);
+    const hasFeedPlanReference = Boolean(feedPlanPostId);
+    if (hasProjectReference !== hasFeedPlanReference) {
+      return res.status(400).json({
+        success: false,
+        error: "projectId og feedPlanPostId må sendes sammen.",
+        gate: "feed_plan_reference_incomplete",
+      });
+    }
+    if (platform === 'linkedin' && (!projectId || !feedPlanPostId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'LinkedIn-publisering må være knyttet til en feed-planpost.',
+        gate: 'linkedin_feed_plan_reference_required',
+      });
+    }
+    if (platform === 'linkedin' && !idempotencyKey) {
+      return res.status(400).json({
+        success: false,
+        error: 'idempotencyKey er påkrevd for LinkedIn-publisering.',
+        gate: 'idempotency_key_required',
+      });
+    }
 
-    // Approval-gate: hvis posten er knyttet til en feed-plan, må den være
-    // godkjent eller scheduled før vi får publisere. Vi finner posten ved
-    // å lese feed-planen for samme prosjekt + en plattform som matcher
-    // dispatcher-targeten:
-    //   instagram      → feed-plan key 'instagram'
-    //   facebook_page  → feed-plan key 'instagram' (deler row med IG)
-    //   linkedin       → feed-plan key 'linkedin'
-    //   tiktok         → feed-plan key 'tiktok'
-    // Hvis feedPlanPostId mangler, hopper vi over gate-en (one-off
-    // publish via FB-Mention osv).
+    const hasScheduledFor = post.scheduledFor !== null
+      && post.scheduledFor !== undefined
+      && String(post.scheduledFor).trim().length > 0;
+    const scheduledFor = hasScheduledFor
+      ? new Date(String(post.scheduledFor))
+      : null;
+    if (scheduledFor && !Number.isFinite(scheduledFor.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: "post.scheduledFor må være et gyldig tidspunkt.",
+      });
+    }
+    if (scheduledFor && scheduledFor.getTime() <= Date.now()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Planlagt publisering må ligge i fremtiden.',
+        gate: 'scheduled_time_not_future',
+      });
+    }
+    if (idempotencyKey && idempotencyKey.length > 240) {
+      return res.status(400).json({ success: false, error: 'idempotencyKey er for lang.' });
+    }
+    const mediaKind =
+      (post.mediaKind as Parameters<typeof dispatchPublish>[1]["mediaKind"] | undefined)
+      ?? "image";
+    const extras =
+      post.extras && typeof post.extras === "object" && !Array.isArray(post.extras)
+        ? (post.extras as Record<string, unknown>)
+        : undefined;
+
+    // Fail-closed approval and tenant gate. Once either feed-plan reference is
+    // present, a missing plan/post, unsupported platform or lookup failure must
+    // block publishing rather than silently becoming a one-off publish.
     if (projectId && feedPlanPostId) {
-      const feedPlatform = platform === "facebook_page" ? "instagram" : platform;
-      if (isSupportedFeedPlatform(feedPlatform)) {
-        try {
-          const plan = await loadFeedPlan(pool, projectId, feedPlatform);
-          const matchedPost = plan?.posts.find((p) => p.id === feedPlanPostId);
-          if (matchedPost) {
-            const state = matchedPost.approvalState ?? "draft";
-            if (state !== "approved" && state !== "scheduled") {
-              return res.status(409).json({
-                success: false,
-                error:
-                  state === "rejected"
-                    ? "Denne posten er avvist og kan ikke publiseres. Endre statusen først."
-                    : state === "needs_changes"
-                      ? "Posten venter på endringer. Godkjenn på nytt etter at du har redigert."
-                      : "Posten må godkjennes før den kan publiseres.",
-                approvalState: state,
-                gate: "approval_required",
-              });
-            }
-          }
-        } catch (gateError) {
-          // Ikke fatalt — gate-feil skal ikke blokkere publish hvis feed-
-          // planen ikke kan leses (f.eks. permission-feil på en spesifikk
-          // pool-tilkobling). Logger og fortsetter.
-          console.warn("[social-publish] approval-gate lookup failed", gateError);
+      try {
+        const feedPlatform = platform === "facebook_page" ? "instagram" : platform;
+        if (!isSupportedFeedPlatform(feedPlatform)) {
+          return res.status(400).json({
+            success: false,
+            error: "Plattformen støtter ikke feed-planpublisering.",
+            gate: "unsupported_feed_platform",
+          });
         }
+        if (!(await canAccessRoleRoomProject(pool, session.userId, projectId))) {
+          return res.status(403).json({
+            success: false,
+            error: "Ingen tilgang til prosjektet.",
+            gate: "project_access_required",
+          });
+        }
+        if (
+          platform === 'linkedin'
+          && !(await userCanUseLinkedInConnection(
+            pool,
+            String(post.connectionId),
+            session.userId,
+            projectId,
+            typeof extras?.linkedInOrganizationUrn === 'string'
+              ? ['r_organization_admin', 'w_organization_social']
+              : ['w_member_social'],
+          ))
+        ) {
+          return res.status(404).json({ success: false, error: 'connection_not_found' });
+        }
+        const plan = await loadFeedPlan(pool, projectId, feedPlatform);
+        const matchedPost = plan?.posts.find((candidate) => candidate.id === feedPlanPostId);
+        if (!plan || !matchedPost) {
+          return res.status(409).json({
+            success: false,
+            error: "Feed-planen eller posten finnes ikke. Last inn planen på nytt.",
+            gate: "feed_plan_post_not_found",
+          });
+        }
+        const state = matchedPost.approvalState ?? "draft";
+        const isSameFutureLinkedInSchedule =
+          state === "scheduled"
+          && platform === "linkedin"
+          && scheduledFor !== null
+          && matchedPost.scheduledFor === scheduledFor.toISOString();
+        if (state !== "approved" && !isSameFutureLinkedInSchedule) {
+          return res.status(409).json({
+            success: false,
+            error:
+              state === "rejected"
+                ? "Denne posten er avvist og kan ikke publiseres. Endre statusen først."
+                : state === "needs_changes"
+                  ? "Posten venter på endringer. Godkjenn på nytt etter at du har redigert."
+                  : state === "scheduled"
+                    ? "Posten er allerede planlagt og kan ikke publiseres umiddelbart."
+                    : "Posten må godkjennes før den kan publiseres.",
+            approvalState: state,
+            gate: "approval_required",
+          });
+        }
+      } catch (error) {
+        console.error('[social-publish] approval or connection gate failed', error);
+        return res.status(503).json({
+          success: false,
+          error: 'Kunne ikke verifisere publiseringstilgangen. Prøv igjen.',
+          gate: 'publish_gate_unavailable',
+        });
       }
     }
 
+    let linkedInImmediateExternalDispatchStarted = false;
     try {
-      const result = await dispatchPublish(
-        platform as Parameters<typeof dispatchPublish>[0],
-        {
+      let result: PublishResult & {
+        deduped?: boolean;
+        scheduledFor?: string;
+      };
+      let immediateIdempotencyClaimed = false;
+      const isFutureLinkedInPublish =
+        platform === "linkedin"
+        && scheduledFor !== null
+        && scheduledFor.getTime() > Date.now();
+      if (isFutureLinkedInPublish) {
+        const supportedKinds = new Set<LinkedInQueueMediaKind>([
+          "text",
+          "image",
+          "carousel",
+          "video",
+          "reel",
+          "link",
+        ]);
+        if (!supportedKinds.has(mediaKind as LinkedInQueueMediaKind)) {
+          return res.status(400).json({
+            success: false,
+            error: `LinkedIn scheduling støtter ikke mediaKind "${mediaKind}".`,
+          });
+        }
+        const queued = await enqueueLinkedInPublishJob(pool, {
           connectionId: String(post.connectionId),
           userId: session.userId,
           projectId,
-          feedPlanPostId,
-          mediaKind: (post.mediaKind as Parameters<typeof dispatchPublish>[1]["mediaKind"]) ?? "image",
+          feedPlanPostId: feedPlanPostId!,
+          mediaKind: mediaKind as LinkedInQueueMediaKind,
           caption: String(post.caption || ""),
           imageUrl: typeof post.imageUrl === "string" ? post.imageUrl : undefined,
           imageUrls: Array.isArray(post.imageUrls) ? (post.imageUrls as string[]) : undefined,
           videoUrl: typeof post.videoUrl === "string" ? post.videoUrl : undefined,
-          extras: (post.extras as Record<string, unknown>) ?? undefined,
-          scheduledFor: post.scheduledFor ? new Date(String(post.scheduledFor)) : null,
-        },
-      );
+          extras,
+          scheduledFor,
+          idempotencyKey,
+          changedBy: session.email || session.userId,
+        });
+        result = {
+          ok: true,
+          status: "scheduled",
+          jobId: queued.job.id,
+          deduped: queued.deduped,
+          scheduledFor: queued.job.scheduledFor.toISOString(),
+        };
+      } else {
+        // Immediate idempotency is separate from the durable queue's unique
+        // key. Claim only after all auth/approval checks have succeeded.
+        if (idempotencyKey) {
+          try {
+            const claim = await claimIdempotencyKey(
+              pool,
+              "social_publish",
+              session.userId,
+              idempotencyKey,
+            );
+            if (!claim.fresh) {
+              return res.status(409).json({
+                success: false,
+                deduped: true,
+                error: "idempotency_key_already_claimed",
+                state: "unknown_or_in_progress",
+              });
+            }
+            immediateIdempotencyClaimed = true;
+          } catch (idemErr) {
+            console.error("[social-publish] idempotency claim failed", idemErr);
+            return res.status(503).json({
+              success: false,
+              error: 'Kunne ikke sikre publiseringsforespørselen. Prøv igjen.',
+              gate: 'idempotency_unavailable',
+            });
+          }
+        }
+        if (platform === 'linkedin') {
+          linkedInImmediateExternalDispatchStarted = true;
+        }
+        result = await dispatchPublish(
+          platform as Parameters<typeof dispatchPublish>[0],
+          {
+            connectionId: String(post.connectionId),
+            userId: session.userId,
+            projectId,
+            feedPlanPostId,
+            mediaKind,
+            caption: String(post.caption || ""),
+            imageUrl: typeof post.imageUrl === "string" ? post.imageUrl : undefined,
+            imageUrls: Array.isArray(post.imageUrls) ? (post.imageUrls as string[]) : undefined,
+            videoUrl: typeof post.videoUrl === "string" ? post.videoUrl : undefined,
+            extras,
+            scheduledFor,
+          },
+        );
+      }
+
+      const linkedInPublishApiFailure =
+        result.reason === 'linkedin_api_error'
+        && /^publisering feilet:/i.test(result.error ?? '');
+      const linkedInOutcomeUncertain =
+        platform === 'linkedin'
+        && !result.ok
+        && (
+          result.reason === 'network_error'
+          || linkedInPublishApiFailure
+        );
+
+      if (immediateIdempotencyClaimed && !result.ok && idempotencyKey) {
+        const safelyRetryableReasons = new Set([
+          'validation_failed',
+          'unsupported_media_kind',
+          'platform_not_registered',
+          'connection_not_found',
+          'connection_lookup_failed',
+          'scope_missing',
+          'token_expired',
+          'reconnect_required',
+          'organization_not_managed',
+          'org_not_managed',
+          'organization_access_denied',
+          'permission_denied',
+          // A 429 is a definite provider response, including from POST /posts;
+          // no ambiguous transport failure occurred, so retrying is safe.
+          'rate_limited',
+        ]);
+        const safelyRetryableLinkedInApiFailure =
+          platform === 'linkedin'
+          && result.reason === 'linkedin_api_error'
+          && /^(?:bildeopplasting(?: \d+)?|videoopplasting|siderollekontroll) feilet:/i
+            .test(result.error ?? '');
+        if (
+          safelyRetryableReasons.has(result.reason ?? '')
+          || safelyRetryableLinkedInApiFailure
+        ) {
+          try {
+            await pool.query(
+              `DELETE FROM role_room_social_idempotency
+                WHERE scope = $1 AND user_id = $2 AND key = $3`,
+              ['social_publish', session.userId, idempotencyKey],
+            );
+          } catch (error) {
+            console.warn('[social-publish] failed to release safe idempotency claim', error);
+          }
+        }
+      }
+      if (linkedInOutcomeUncertain) {
+        await markFeedPlanPostFailed(
+          pool,
+          projectId,
+          feedPlanPostId!,
+          'Utfallet er ukjent. Kontroller LinkedIn manuelt før du forsøker på nytt.',
+        );
+        return res.status(202).json({
+          success: false,
+          ok: false,
+          status: 'uncertain',
+          reason: 'publish_outcome_uncertain',
+          error: 'LinkedIn svarte ikke entydig. Kontroller profilen eller siden før du prøver på nytt.',
+        });
+      }
 
       // Record publish-event til social_metrics for cross-platform analytics.
       // Dette gir Measure-fasen visibility på publish-rytme også for plattformer
@@ -740,14 +1017,19 @@ export function setupRoleRoomSocialRoutes(
             );
             accountId = accountRow.rows[0]?.account_id ?? null;
           } else if (!accountId && platform === 'linkedin') {
+            const organizationUrn =
+              typeof extras?.linkedInOrganizationUrn === 'string'
+                ? extras.linkedInOrganizationUrn
+                : null;
+            if (organizationUrn) accountId = organizationUrn;
             const accountRow = await pool.query<{
               linkedin_member_id: string | null;
             }>(
               `SELECT linkedin_member_id FROM role_room_linkedin_connections
-                WHERE user_id = $1 LIMIT 1`,
+                WHERE user_id = $1 AND project_id IS NULL LIMIT 1`,
               [session.userId],
             );
-            accountId = accountRow.rows[0]?.linkedin_member_id ?? null;
+            accountId = accountId ?? accountRow.rows[0]?.linkedin_member_id ?? null;
           }
           if (platform === 'youtube') {
             // Erstatt connection_id med Google-connection-rad slik at
@@ -786,11 +1068,32 @@ export function setupRoleRoomSocialRoutes(
           console.warn('[social-publish] publish-metric record failed', metricErr);
         }
       }
+      const { raw: _providerRaw, ...publicResult } = result;
 
       // Auto-transition: oppdater feed-plan-postens approvalState etter
       // suksessrik publish/scheduling, slik at UI-en reflekterer ny tilstand
       // uten egen API-rundtur. Best-effort — feiler ikke responsen.
       if (result.ok && projectId && feedPlanPostId) {
+        if (platform === "linkedin" && result.status === "published") {
+          try {
+            await markFeedPlanPostPublished(pool, projectId, feedPlanPostId, {
+              externalPostId: result.externalPostId ?? null,
+              permalink: result.permalink ?? null,
+              changedBy: session.email || session.userId,
+            });
+          } catch (postPublishErr) {
+            console.warn(
+              "[social-publish] LinkedIn feed-plan transition failed",
+              postPublishErr,
+            );
+          }
+          return res.status(200).json({ success: true, ...publicResult });
+        }
+        // Scheduled LinkedIn jobs transition atomically in enqueue; do not
+        // overwrite their publishJobId through the generic save path.
+        if (platform === "linkedin" && result.status === "scheduled") {
+          return res.status(200).json({ success: true, ...publicResult });
+        }
         const feedPlatform = platform === "facebook_page" ? "instagram" : platform;
         if (isSupportedFeedPlatform(feedPlatform)) {
           try {
@@ -824,12 +1127,42 @@ export function setupRoleRoomSocialRoutes(
         }
       }
 
-      return res.status(result.ok ? 200 : 422).json({ success: result.ok, ...result });
+      return res.status(result.ok ? 200 : 422).json({
+        success: result.ok,
+        ...publicResult,
+      });
     } catch (error) {
+      if (error instanceof LinkedInPublishQueueConflictError) {
+        return res.status(409).json({
+          success: false,
+          error: error.code,
+          gate: 'already_scheduled',
+        });
+      }
+      if (
+        platform === 'linkedin'
+        && linkedInImmediateExternalDispatchStarted
+        && projectId
+        && feedPlanPostId
+      ) {
+        await markFeedPlanPostFailed(
+          pool,
+          projectId,
+          feedPlanPostId,
+          'Utfallet er ukjent. Kontroller LinkedIn manuelt før du forsøker på nytt.',
+        );
+        return res.status(202).json({
+          success: false,
+          ok: false,
+          status: 'uncertain',
+          reason: 'publish_outcome_uncertain',
+          error: 'LinkedIn-publiseringen kunne ikke bekreftes. Kontroller LinkedIn før du prøver på nytt.',
+        });
+      }
       console.error("[social-publish] dispatch threw", error);
       return res.status(500).json({
         success: false,
-        error: (error as Error).message,
+        error: 'Kunne ikke fullføre publiseringen. Kontroller status før du prøver igjen.',
       });
     }
   });
@@ -837,7 +1170,7 @@ export function setupRoleRoomSocialRoutes(
   // Hent insights for en gitt connection + scope (page-level eller post-id).
   // Resultatet blir også INSERTet i social_metrics for tidsserie-tracking.
   app.post("/api/role-room/social/metrics/snapshot", async (req, res) => {
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     const body = (req.body || {}) as Record<string, unknown>;
     const platform = String(body.platform || "").trim();
@@ -950,7 +1283,7 @@ export function setupRoleRoomSocialRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
 
     // Bygg bruker-scoped account_id-set fra IG-tabellen (IG-id + FB-page-id),
@@ -1155,7 +1488,7 @@ export function setupRoleRoomSocialRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = req.adminSession;
+    const session = requireAdminSession(req, res);
     if (!session) return;
     try {
       const insights = await buildAgentFeedbackInsights(pool, session.userId);
@@ -1179,6 +1512,7 @@ export function setupRoleRoomSocialRoutes(
         lastScored,
         tokenStatus,
         publishQueue,
+        linkedInPublishQueue,
       ] = await Promise.all([
         pool.query<{ platform: string; total: string; unread: string; with_sentiment: string }>(
           `SELECT platform,
@@ -1219,6 +1553,7 @@ export function setupRoleRoomSocialRoutes(
             GROUP BY connection_state, bucket`,
         ),
         getPublishQueueStats(pool),
+        getLinkedInPublishQueueStats(pool),
       ]);
 
       // Aggregér token-status på tvers av buckets.
@@ -1264,6 +1599,7 @@ export function setupRoleRoomSocialRoutes(
         lastSentimentScoredAt: lastScored.rows[0]?.sentiment_processed_at ?? null,
         tokenSummary,
         publishQueue,
+        linkedInPublishQueue,
       });
     } catch (error) {
       console.error("[social-health] query failed", error);

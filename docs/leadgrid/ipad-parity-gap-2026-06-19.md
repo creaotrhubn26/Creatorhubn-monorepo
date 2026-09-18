@@ -1,5 +1,11 @@
 # iPad LeadMapApp ↔ Web Leadgrid — Gap-rapport
 
+> **Historisk snapshot:** Denne rapporten beskriver tilstanden 19. juni 2026
+> og er ikke dagens produktstatus. Bruk
+> [Leadgrid produktmanual](./manual/README.md) og særlig
+> [status, gap og testdekning](./manual/07-status-gap-og-testdekning.md) for
+> gjeldende, kildekontrollert status.
+
 **Dato**: 2026-06-19
 **Status**: Web Leadgrid har 30+ PR-er bygget bare denne uken. iPad LeadMapApp har vokst parallelt, men feature-paritet er ikke gjennomført.
 

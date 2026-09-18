@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -17,6 +17,8 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 
 interface LinkedInPublishAsSelectorProps {
+  /** Prosjektet styrer hvilken LinkedIn-tilkobling backend velger. */
+  projectId: string;
   /** Nåværende valg — null = personlig profil (default). Ellers
    *  organization-URN ('urn:li:organization:12345'). */
   value: string | null;
@@ -36,26 +38,116 @@ interface LinkedInPublishAsSelectorProps {
  * blir alltid personlig — ingen grunn til UI-støy).
  */
 export default function LinkedInPublishAsSelector({
+  projectId,
   value,
   onChange,
 }: LinkedInPublishAsSelectorProps): React.ReactElement | null {
   const [companies, setCompanies] = useState<RoleRoomLinkedInCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [scopeMissing, setScopeMissing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const popupRef = useRef<Window | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  const pollInFlightRef = useRef(false);
+
+  const stopOauthWatch = useCallback(() => {
+    if (pollRef.current !== null) window.clearInterval(pollRef.current);
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    pollRef.current = null;
+    timeoutRef.current = null;
+    pollInFlightRef.current = false;
+  }, []);
+
+  const loadCompanies = useCallback(async (showLoading = true) => {
+    if (showLoading && mountedRef.current) setLoading(true);
+    const result = await roleRoomAgentService.listLinkedInCompanies(projectId);
+    if (!mountedRef.current) return result;
+    setCompanies(result.companies);
+    setScopeMissing(result.scopeMissing);
+    setError(result.error ?? null);
+    if (showLoading) setLoading(false);
+    return result;
+  }, [projectId]);
+
+  const completeReconnect = useCallback(async (popupClosed = false) => {
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
+    try {
+      const result = await loadCompanies(false);
+      if (!result.error && !result.scopeMissing) {
+        stopOauthWatch();
+        setReconnecting(false);
+        if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
+        popupRef.current = null;
+        return;
+      }
+      if (popupClosed) {
+        stopOauthWatch();
+        setReconnecting(false);
+        popupRef.current = null;
+        setError(result.error ?? 'LinkedIn-vinduet ble lukket før bedriftstilgangen var aktivert.');
+      }
+    } finally {
+      pollInFlightRef.current = false;
+    }
+  }, [loadCompanies, stopOauthWatch]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const result = await roleRoomAgentService.listLinkedInCompanies();
-      if (cancelled) return;
-      setCompanies(result.companies);
-      setScopeMissing(result.scopeMissing);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
+    mountedRef.current = true;
+    void loadCompanies();
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !event.data || typeof event.data !== 'object') return;
+      const type = (event.data as { type?: string }).type;
+      if (type === 'linkedin-connected' || type === 'role-room:linkedin-connected') {
+        void completeReconnect(false);
+      }
     };
-  }, []);
+    window.addEventListener('message', onMessage);
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener('message', onMessage);
+      stopOauthWatch();
+    };
+  }, [completeReconnect, loadCompanies, stopOauthWatch]);
+
+  const startReconnect = async () => {
+    stopOauthWatch();
+    setReconnecting(true);
+    setError(null);
+    const popup = window.open('', 'li-oauth', 'width=720,height=820,resizable=yes');
+    if (!popup) {
+      setReconnecting(false);
+      setError('Popupen ble blokkert. Tillat popup for denne siden og prøv igjen.');
+      return;
+    }
+    popupRef.current = popup;
+    try {
+      const result = await roleRoomAgentService.startLinkedInOauth({
+        projectId,
+        returnPath: `${window.location.pathname}${window.location.search}`,
+        browserOrigin: window.location.origin,
+      });
+      popup.location.assign(result.authorizationUrl);
+      pollRef.current = window.setInterval(() => {
+        const currentPopup = popupRef.current;
+        if (!currentPopup) return;
+        void completeReconnect(currentPopup.closed);
+      }, 1_500);
+      timeoutRef.current = window.setTimeout(() => {
+        stopOauthWatch();
+        setReconnecting(false);
+        setError('LinkedIn-tilkoblingen tok for lang tid. Lukk vinduet og prøv igjen.');
+      }, 2 * 60_000);
+    } catch (caught) {
+      popup.close();
+      popupRef.current = null;
+      setReconnecting(false);
+      setError(caught instanceof Error ? caught.message : 'Kunne ikke starte LinkedIn OAuth.');
+    }
+  };
 
   if (loading) {
     return (
@@ -65,6 +157,33 @@ export default function LinkedInPublishAsSelector({
           Sjekker LinkedIn-bedrifter…
         </Typography>
       </Stack>
+    );
+  }
+
+  if (error && !scopeMissing && companies.length === 0) {
+    return (
+      <Box
+        role="alert"
+        data-testid="linkedin-publish-as-error"
+        sx={{
+          p: 1.2,
+          borderRadius: 1.4,
+          bgcolor: 'rgba(248,113,113,0.08)',
+          border: '1px solid rgba(248,113,113,0.3)',
+        }}
+      >
+        <Typography sx={{ color: '#fca5a5', fontSize: '0.76rem', mb: 0.8 }}>
+          {error}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => void loadCompanies()}
+          sx={{ textTransform: 'none', color: '#fecaca', borderColor: 'rgba(248,113,113,0.5)' }}
+        >
+          Prøv igjen
+        </Button>
+      </Box>
     );
   }
 
@@ -89,9 +208,9 @@ export default function LinkedInPublishAsSelector({
         <Button
           size="small"
           variant="outlined"
-          onClick={() => {
-            window.open('/api/role-room/linkedin/oauth/start', '_blank', 'width=600,height=720,noopener');
-          }}
+          onClick={() => void startReconnect()}
+          disabled={reconnecting}
+          startIcon={reconnecting ? <CircularProgress size={13} color="inherit" /> : undefined}
           sx={{
             textTransform: 'none',
             fontSize: '0.74rem',
@@ -99,8 +218,13 @@ export default function LinkedInPublishAsSelector({
             borderColor: 'rgba(251,191,36,0.5)',
           }}
         >
-          Re-connect LinkedIn
+          {reconnecting ? 'Venter på LinkedIn…' : 'Aktiver bedriftspublisering'}
         </Button>
+        {error ? (
+          <Typography role="alert" sx={{ color: '#fca5a5', fontSize: '0.72rem', mt: 0.8 }}>
+            {error}
+          </Typography>
+        ) : null}
       </Box>
     );
   }
@@ -222,6 +346,11 @@ export default function LinkedInPublishAsSelector({
           </MenuItem>
         ))}
       </Select>
+      {error ? (
+        <Typography role="alert" sx={{ color: '#fca5a5', fontSize: '0.7rem' }}>
+          {error}
+        </Typography>
+      ) : null}
     </Stack>
   );
 }

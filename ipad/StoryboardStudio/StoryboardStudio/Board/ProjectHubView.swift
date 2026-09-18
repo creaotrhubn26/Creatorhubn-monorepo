@@ -343,13 +343,16 @@ final class HubState: ObservableObject {
 
 struct ProjectHubView: View {
     @StateObject private var hub: HubState
+    private let onBrowseProjects: (() -> Void)?
     @State private var openBoardSceneIndex: Int?
     @State private var newTaskText = ""
     @State private var moodPickerItem: PhotosPickerItem?
     @State private var showBoard = false
 
-    init(project: ProjectSummary, manuscript: ManuscriptSummary) {
+    init(project: ProjectSummary, manuscript: ManuscriptSummary,
+         onBrowseProjects: (() -> Void)? = nil) {
         _hub = StateObject(wrappedValue: HubState(project: project, manuscript: manuscript))
+        self.onBrowseProjects = onBrowseProjects
     }
 
     var body: some View {
@@ -542,6 +545,14 @@ struct ProjectHubView: View {
                 // Prosjektvelgeren (mockup: PROJECT ▾) — bytt produksjon
                 // uten å forlate hubben.
                 Menu {
+                    if let onBrowseProjects {
+                        Button {
+                            onBrowseProjects()
+                        } label: {
+                            Label("Alle produksjoner", systemImage: "rectangle.stack")
+                        }
+                        Divider()
+                    }
                     ForEach(hub.allProjects) { project in
                         let manuscripts = hub.manuscriptsByProject[project.id] ?? []
                         if manuscripts.count <= 1 {

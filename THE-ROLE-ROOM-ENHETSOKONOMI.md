@@ -1,6 +1,7 @@
 # TheRoleRoom — Enhetsøkonomi & break-even-modell
 
-> Følgenotat til produktdokumentasjonen. Bygget 2026-05-27.
+> Følgenotat til produktdokumentasjonen. Bygget 2026-05-27, lagringsmodell
+> oppdatert 2026-09-10.
 > **Alle tall er antakelses-baserte** (produktet er pre-revenue) og ment å justeres etter
 > hvert som ekte data kommer inn. Antakelsene er gjort synlige slik at de kan endres.
 >
@@ -37,7 +38,7 @@ sterkeste motoren per kunde.
 | A6 | Din grunnlønn (brutto) | 45 000 kr/mnd (540 000 kr/år) |
 | A7 | Lønnspåslag (arb.giveravg. + feriepenger + pensjon) | ×1,30 → 58 500 kr/mnd |
 | A8 | Hosting-kost per aktiv bruker | $1,20/mnd (~12,6 kr) |
-| A9 | Stripe-gebyr | ~2,5 % av MRR |
+| A9 | Stripe Payments + Billing | ~3,1 % av fakturert beløp + 2 kr per faktura |
 | A10 | AI-kost (Claude, dagens features — Agent ikke skipet) | ~8 000 kr/mnd |
 | A11 | Gjennomsnittlig kundelevetid (for LTV) | 36 mnd |
 
@@ -68,9 +69,9 @@ sterkeste motoren per kunde.
 |---|---|---|
 | Hosting | ~2 160 aktive × $1,20 × 10,5 | 27 216 |
 | AI (Claude) | Dagens bruk (Agent ikke skipet) | 8 000 |
-| Stripe-gebyr | 2,5 % × 242 235 | 6 056 |
+| Stripe Payments + Billing | 3,1 % × 242 235 + fakturagebyrer | ~7 700 |
 | CDN / lagring / e-post / SMS-infra | Estimat | 3 000 |
-| **Sum variabelt** | | **~44 272** |
+| **Sum variabelt** | | **~45 916** |
 
 **Faste kostnader:**
 
@@ -88,13 +89,51 @@ sterkeste motoren per kunde.
 | Linje | Kr/mnd | Kr/år |
 |---|---|---|
 | Inntekt (MRR) | 242 235 | 2 906 820 |
-| − Variable kostnader | −44 272 | −531 264 |
-| **= Dekningsbidrag** | **197 963** | **2 375 556** |
+| − Variable kostnader | −45 916 | −550 992 |
+| **= Dekningsbidrag** | **196 319** | **2 355 828** |
 | − Faste kostnader | −69 500 | −834 000 |
-| **= Resultat** | **+128 463** | **+1 541 556** |
+| **= Resultat** | **+126 819** | **+1 521 828** |
 
-> Dekningsgrad ≈ 82 % (svært høy — typisk for SaaS). Det betyr at hver ekstra krone i
+> Dekningsgrad ≈ 81 % (svært høy — typisk for SaaS). Det betyr at hver ekstra krone i
 > inntekt over break-even nesten i sin helhet faller til bunnlinjen.
+
+### 4.1 Lagring i AWS S3
+
+Lagring er en inkludert del av hovedabonnementet, ikke et eget grunnabonnement:
+
+| Role Room-nivå | Inkludert lagring | S3-kost ved full kvote/mnd |
+|---|---:|---:|
+| Gratis | 5 GiB | ~1,21 kr |
+| Innholdsprodusent · 495 kr/mnd | 25 GiB | ~6,04 kr |
+| Produksjonsteam · minst 3 × 795 kr/mnd | 250 GiB pooled | ~60,38 kr |
+| Enterprise | 1 TiB pooled | ~247,30 kr |
+
+Kalkylen bruker S3 Standard i Stockholm til 0,023 USD/GiB-mnd og 10,5 NOK/USD.
+Forespørsler er små i forhold til lagring og utgående trafikk, og er ikke tatt med her.
+Video inngår ikke: self-tapes/video skal bruke Cloudflare Stream.
+
+Valgfrie tillegg faktureres separat:
+
+| Tillegg | Pris/mnd eks. mva | AWS-kost ved typisk bruk¹ | Stripe² | Affiliate 5 % | Bidrag |
+|---|---:|---:|---:|---:|---:|
+| +100 GiB | 129 kr | ~19,11 kr | ~6,00 kr | 6,45 kr | ~97,44 kr (76 %) |
+| +1 TiB | 799 kr | ~195,69 kr | ~26,77 kr | 39,95 kr | ~536,59 kr (67 %) |
+
+¹ Typisk scenario er 40 % gjennomsnittlig fyllingsgrad og månedlig nedlasting tilsvarende
+10 % av kjøpt kvote. Trafikkkostnaden er konservativt beregnet etter at AWS-kontoens
+felles gratisandel på 100 GB utgående trafikk per måned er brukt opp. ² Stripe Payments
+2,4 % + 2 kr og Billing 0,7 %.
+
+Utgående trafikk er den største risikoen. Ved full kvote og én full nedlasting hver måned
+blir AWS-kostnaden omtrent 118,65 kr for +100 GiB og 1 214,98 kr for +1 TiB før eventuell
+andel av kontoens første 100 GB gratis utgående trafikk. Gratisandelen deles på tvers av
+AWS-tjenester og kan derfor ikke loves til én kunde. Derfor må
+nedlastingsvolum måles fra dag én, video holdes utenfor S3, og det må innføres fair-use
+eller trafikkprising før +1 TiB åpnes bredt.
+
+Dagens S3-inventar er 3 053 objekter og 37 438 655 994 bytes (omtrent 37,44 GB), som
+koster rundt **9,04 kr/mnd** i ren S3-lagring. Ubrukte kundekvoter koster ingenting;
+CreatorHub betaler for faktisk lagrede bytes, forespørsler og utgående trafikk.
 
 ---
 
@@ -121,9 +160,9 @@ sterkeste motoren per kunde.
 | Brukerbase nådd | ~70 % (≈350) | 100 % (500) | 110 % + Agent-add-on |
 | **MRR** | ~158 000 kr | ~242 000 kr | ~333 000 kr |
 | **ARR** | ~1,9 mill. | ~2,9 mill. | ~4,0 mill. |
-| Variable kostnader | ~31 500 | ~44 300 | ~67 600 |
+| Variable kostnader | ~32 600 | ~45 900 | ~69 900 |
 | Faste kostnader | ~69 500 | ~69 500 | ~70 000 |
-| **Resultat/mnd** | **~ +57 000** | **~ +128 000** | **~ +195 000** |
+| **Resultat/mnd** | **~ +56 000** | **~ +127 000** | **~ +193 000** |
 | **Resultat/år** | **~ +0,7 mill.** | **~ +1,5 mill.** | **~ +2,3 mill.** |
 
 Alle tre scenarioene er **lønnsomme ved målbildet** — forskjellen er hvor mye margin, ikke

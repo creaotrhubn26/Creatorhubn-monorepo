@@ -59,7 +59,7 @@ export default defineConfig({
   // parallelle worktrees kan kjøre Playwright mot egne dev-servere uten
   // å kollidere. baseURL leses tilsvarende fra PLAYWRIGHT_BASE_URL.
   webServer: {
-    command: `npx vite --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host`,
+    command: `VITE_ENABLE_LOCAL_ADMIN_SESSION=true npx vite --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host 127.0.0.1`,
     port: Number(process.env.PLAYWRIGHT_PORT || '5001'),
     reuseExistingServer: true,
     timeout: 30_000,

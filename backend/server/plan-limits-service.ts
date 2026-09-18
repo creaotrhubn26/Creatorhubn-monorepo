@@ -151,7 +151,7 @@ export async function canAutoOnboard(pool: Pool, orgId: string): Promise<GateRes
   const orgPlan = await getOrgPlan(pool, orgId);
   const limits = await getPlanLimits(pool, orgPlan.effective_plan_key);
   if (!limits) {
-    return { allowed: true, current_plan: orgPlan.plan_key, reason: "plan_not_found" };
+    return { allowed: false, current_plan: orgPlan.plan_key, reason: "plan_not_found" };
   }
   if (limits.max_auto_onboards_per_month == null) {
     return { allowed: true, current_plan: orgPlan.plan_key };
@@ -194,7 +194,7 @@ export async function tryClaimAutoOnboard(pool: Pool, orgId: string): Promise<Ga
   const orgPlan = await getOrgPlan(pool, orgId);
   const limits = await getPlanLimits(pool, orgPlan.effective_plan_key);
   if (!limits) {
-    return { allowed: true, current_plan: orgPlan.plan_key, reason: "plan_not_found" };
+    return { allowed: false, current_plan: orgPlan.plan_key, reason: "plan_not_found" };
   }
   const cap = limits.max_auto_onboards_per_month;
   if (cap == null) {
@@ -254,7 +254,10 @@ export async function tryClaimAutoOnboard(pool: Pool, orgId: string): Promise<Ga
 export async function canCreateCustomer(pool: Pool, orgId: string): Promise<GateResult> {
   const orgPlan = await getOrgPlan(pool, orgId);
   const limits = await getPlanLimits(pool, orgPlan.effective_plan_key);
-  if (!limits || limits.max_active_customers == null) {
+  if (!limits) {
+    return { allowed: false, current_plan: orgPlan.plan_key, reason: "plan_not_found" };
+  }
+  if (limits.max_active_customers == null) {
     return { allowed: true, current_plan: orgPlan.plan_key };
   }
   const count = await getCustomerCount(pool, orgId);

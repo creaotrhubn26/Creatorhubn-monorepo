@@ -18,7 +18,11 @@ vi.mock('./social-access-request.js', () => ({}));
 vi.mock('./social-publisher.js', () => ({}));
 vi.mock('./role-room-agent-feedback-insights.js', () => ({}));
 vi.mock('./role-room-instagram-publish.js', () => ({}));
-import { userOwnsSocialConnection } from './role-room-social-routes';
+vi.mock('./role-room-linkedin-publish-queue.js', () => ({}));
+import {
+  userCanUseLinkedInConnection,
+  userOwnsSocialConnection,
+} from './role-room-social-routes';
 import { claimIdempotencyKey } from './role-room-social-idempotency';
 
 interface QueryRow { sql: string; args: unknown[]; }
@@ -74,6 +78,43 @@ describe('userOwnsSocialConnection', () => {
   it('fails closed (returns false) when the query throws', async () => {
     const { pool } = makePool(async () => { throw new Error('db offline'); });
     expect(await userOwnsSocialConnection(pool, 'conn-A', 'user-A')).toBe(false);
+  });
+});
+
+describe('userCanUseLinkedInConnection', () => {
+  it('binds connection, user and project and requires a non-expired active token', async () => {
+    const { pool, queries } = makePool(async () => ({
+      rows: [{ '?column?': 1 }],
+      rowCount: 1,
+    }));
+
+    expect(
+      await userCanUseLinkedInConnection(pool, 'connection-1', 'user-1', 'project-1'),
+    ).toBe(true);
+    expect(queries[0].args).toEqual([
+      'connection-1',
+      'user-1',
+      'project-1',
+      JSON.stringify(['w_member_social']),
+    ]);
+    expect(queries[0].sql).toContain('(project_id IS NULL OR project_id = $3)');
+    expect(queries[0].sql).toContain("connection_state IN ('connected', 'active')");
+    expect(queries[0].sql).toContain('expiry_date > NOW()');
+    expect(queries[0].sql).toContain('scopes @> $4::jsonb');
+    expect(queries[0].sql).not.toContain('expiry_date IS NULL');
+  });
+
+  it('fails closed for missing project input and database errors', async () => {
+    const query = vi.fn(async () => {
+      throw new Error('database unavailable');
+    });
+    const pool = { query } as never;
+
+    expect(await userCanUseLinkedInConnection(pool, 'connection-1', 'user-1', ''))
+      .toBe(false);
+    expect(query).not.toHaveBeenCalled();
+    expect(await userCanUseLinkedInConnection(pool, 'connection-1', 'user-1', 'project-1'))
+      .toBe(false);
   });
 });
 

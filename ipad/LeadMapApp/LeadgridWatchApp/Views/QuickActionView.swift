@@ -30,11 +30,15 @@ struct QuickActionView: View {
 
                 ForEach(LeadQuickAction.allCases, id: \.self) { action in
                     Button {
-                        session.sendQuickAction(action, for: lead)
+                        guard session.sendQuickAction(action, for: lead) else {
+                            WKInterfaceDevice.current().play(.failure)
+                            return
+                        }
                         lastAction = action
-                        // Liten haptisk + auto-dismiss
-                        WKInterfaceDevice.current().play(.success)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        // WatchConnectivity bekrefter bare at payloaden er
+                        // lagt i telefonkøen — ikke at backend har lagret.
+                        WKInterfaceDevice.current().play(.click)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             dismiss()
                         }
                     } label: {
@@ -43,13 +47,18 @@ struct QuickActionView: View {
                             Text(action.label)
                             Spacer()
                             if lastAction == action {
-                                Image(systemName: "checkmark")
+                                Image(systemName: "clock.arrow.circlepath")
                             }
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .tint(tint(for: action))
+                }
+                if lastAction != nil {
+                    Label("Sendt til iPhone for sikker lagring", systemImage: "iphone.and.arrow.forward")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 4)
@@ -65,4 +74,3 @@ struct QuickActionView: View {
         }
     }
 }
-

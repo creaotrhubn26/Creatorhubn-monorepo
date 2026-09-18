@@ -314,7 +314,7 @@ def _section_label_at(time_sec: float, sections: list[dict]) -> str:
     """Return section.label for the section covering `time_sec`, or 'other'."""
     for s in sections:
         if float(s.get("startSec") or 0) <= time_sec < float(s.get("endSec") or 0):
-            return str(s.get("label") or "other")
+            return str(s.get("label") or "other").strip().lower().replace("-", "_").replace(" ", "_")
     return "other"
 
 
@@ -570,7 +570,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             sys.exit(1)
 
     # #517 — section-aware variable cuts. Cache from detect_song_sections.
-    song_sections = _load_song_sections()
+    # A caller that sends `sections` is authoritative, including an explicit
+    # empty list after a failed analysis. This prevents another song's cache
+    # from silently influencing the current Music Video build.
+    explicit_sections = params.get("sections") if "sections" in params else None
+    song_sections = explicit_sections if isinstance(explicit_sections, list) else _load_song_sections()
     if song_sections:
         labelled = _build_segments_with_sections(beats, downbeats, prefer_downbeats, song_sections)
         segments = [(s, e) for (s, e, _label) in labelled]

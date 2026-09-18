@@ -23,8 +23,12 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { composeEmail } from "./email-design-system.js";
-import { resolveDefaultLinkedInOrg } from "./linkedin-oauth-routes.js";
-import { notifyAdmins } from "./admin-notify";
+import { resolveLinkedInOrg } from "./linkedin-oauth-routes.js";
+import {
+  listLinkedInCompanies,
+  publishLinkedInPostWithAccessToken,
+} from "./social-publisher-linkedin.js";
+import { notifyAdmins } from "./admin-notify.js";
 
 interface SessionLike { userId: string; email?: string }
 
@@ -50,86 +54,248 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
   // ── 1. LinkedIn Company auto-publish ─────────────────────────────
   app.post("/api/admin-room/cockpit/linkedin/publish/:draftId", async (req, res) => {
     const session = guard(req, res); if (!session) return;
-    // Override via body, ellers bruk default-orgen fra linkedin_org_config
-    const override = (req.body as { organization_urn?: string })?.organization_urn;
-    const resolved = await resolveDefaultLinkedInOrg(pool);
-    if (!resolved && !override) {
-      return res.status(503).json({
-        error: "LinkedIn er ikke koblet. Klikk «Koble LinkedIn» i Cockpit først.",
+    const draftId = req.params.draftId;
+    if (!/^\d+$/.test(draftId)) {
+      return res.status(400).json({ error: "Ugyldig draft-ID" });
+    }
+    const body = (req.body ?? {}) as {
+      organization_urn?: string;
+      visibility?: string;
+    };
+    if (body.visibility && body.visibility !== "PUBLIC") {
+      return res.status(400).json({
+        error: "LinkedIn Posts API støtter kun PUBLIC i denne flyten",
       });
     }
-    const accessToken = resolved?.accessToken;
-    const companyUrn = override ?? resolved?.organizationUrn;
-    if (!accessToken || !companyUrn) {
-      return res.status(503).json({ error: "Token eller URN mangler" });
+    const requestedUrn = body.organization_urn?.trim() || null;
+    if (
+      requestedUrn
+      && !/^urn:li:organization:[A-Za-z0-9_-]+$/.test(requestedUrn)
+    ) {
+      return res.status(400).json({ error: "Ugyldig LinkedIn organisasjons-URN" });
     }
-
+    let draftClaimed = false;
+    let publishStarted = false;
     try {
-      const r = await pool.query(
-        `SELECT id::text, caption, hashtags, cta_text, cta_link, platform, status
-           FROM marketing_post_drafts WHERE id = $1::uuid LIMIT 1`,
-        [req.params.draftId],
-      );
-      const draft = r.rows[0];
-      if (!draft) return res.status(404).json({ error: "Draft ikke funnet" });
-      if (draft.platform !== "linkedin") {
-        return res.status(400).json({ error: "Drafts platform er ikke LinkedIn" });
-      }
-
-      // Bygg LinkedIn UGC-post-body
-      const text = [
-        draft.caption ?? "",
-        draft.hashtags ? `\n\n${draft.hashtags}` : "",
-        draft.cta_link ? `\n\n${draft.cta_text ?? "Les mer"}: ${draft.cta_link}` : "",
-      ].join("").slice(0, 3000); // LinkedIn max 3000 chars
-
-      const visibility = (req.body as { visibility?: string })?.visibility ?? "PUBLIC";
-      const liResp = await fetch("https://api.linkedin.com/v2/ugcPosts", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "X-Restli-Protocol-Version": "2.0.0",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          author: companyUrn,
-          lifecycleState: "PUBLISHED",
-          specificContent: {
-            "com.linkedin.ugc.ShareContent": {
-              shareCommentary: { text },
-              shareMediaCategory: "NONE",
-            },
-          },
-          visibility: { "com.linkedin.ugc.MemberNetworkVisibility": visibility },
-        }),
-      });
-
-      if (!liResp.ok) {
-        const errText = await liResp.text().catch(() => "");
-        return res.status(502).json({
-          error: "LinkedIn-publish feilet",
-          detail: `${liResp.status} ${errText.slice(0, 400)}`,
+      const resolved = await resolveLinkedInOrg(pool, requestedUrn);
+      if (!resolved) {
+        return res.status(503).json({
+          error: "LinkedIn er ikke publiseringsklar. Koble kontoen til på nytt.",
         });
       }
-      const data = await liResp.json() as { id?: string };
-      const postUrn = data.id ?? null;
+      const requiredScopes = ["r_organization_admin", "w_organization_social"];
+      if (!requiredScopes.every((scope) => resolved.scopes.includes(scope))) {
+        return res.status(409).json({
+          error: "LinkedIn-koblingen mangler rettigheter. Koble til på nytt.",
+          reconnect_required: true,
+        });
+      }
 
-      await pool.query(
+      // Verifiser live ACL før vi låser draften. Lagret URN alene er ikke nok
+      // dersom brukerens siderolle senere er fjernet i LinkedIn.
+      const managedCompanies = await listLinkedInCompanies(resolved.accessToken);
+      if (!managedCompanies.some((company) => company.urn === resolved.organizationUrn)) {
+        return res.status(403).json({
+          error: "Du har ikke lenger en godkjent LinkedIn-rolle for denne siden.",
+          reconnect_required: true,
+        });
+      }
+
+      const claimed = await pool.query(
+        `UPDATE marketing_post_drafts
+            SET status = 'publishing',
+                publish_error = NULL
+          WHERE id = $1::bigint
+            AND platform = 'linkedin'
+            AND status IN ('draft', 'edited', 'failed')
+        RETURNING id::text, caption, hashtags, cta_text, cta_link, platform, status`,
+        [draftId],
+      );
+      const draft = claimed.rows[0];
+      if (!draft) {
+        const existing = await pool.query(
+          "SELECT platform, status FROM marketing_post_drafts WHERE id = $1::bigint LIMIT 1",
+          [draftId],
+        );
+        if (!existing.rowCount) {
+          return res.status(404).json({ error: "Draft ikke funnet" });
+        }
+        if (existing.rows[0].platform !== "linkedin") {
+          return res.status(400).json({ error: "Drafts platform er ikke LinkedIn" });
+        }
+        return res.status(409).json({
+          error: existing.rows[0].status === "publishing"
+            ? "Publiseringsutfallet er uavklart og må kontrolleres i LinkedIn før ny publisering."
+            : "Draften kan ikke publiseres fra nåværende status.",
+          status: existing.rows[0].status,
+        });
+      }
+      draftClaimed = true;
+
+      const rawHashtags = Array.isArray(draft.hashtags)
+        ? draft.hashtags
+        : typeof draft.hashtags === "string"
+          ? (() => {
+              try {
+                const parsed = JSON.parse(draft.hashtags);
+                return Array.isArray(parsed) ? parsed : draft.hashtags.split(/[\s,]+/);
+              } catch {
+                return draft.hashtags.split(/[\s,]+/);
+              }
+            })()
+          : [];
+      const hashtags = rawHashtags
+        .filter((tag: unknown): tag is string => typeof tag === "string")
+        .map((tag: string) => tag.trim())
+        .filter(Boolean)
+        .map((tag: string) => tag.startsWith("#") ? tag : `#${tag.replace(/^#+/, "")}`)
+        .join(" ");
+      const text = [
+        String(draft.caption ?? "").trim(),
+        hashtags ? `\n\n${hashtags}` : "",
+        draft.cta_link ? `\n\n${draft.cta_text ?? "Les mer"}: ${draft.cta_link}` : "",
+      ].join("");
+
+      publishStarted = true;
+      const publishResult = await publishLinkedInPostWithAccessToken({
+        accessToken: resolved.accessToken,
+        authorUrn: resolved.organizationUrn,
+        mediaKind: draft.cta_link ? "link" : "text",
+        caption: text,
+        extras: draft.cta_link
+          ? {
+              link: draft.cta_link,
+              linkTitle: draft.cta_text ?? undefined,
+            }
+          : undefined,
+      });
+
+      if (!publishResult.ok || publishResult.status !== "published") {
+        const uncertain =
+          publishResult.reason === "network_error"
+          || (
+            publishResult.reason === "linkedin_api_error"
+            && publishResult.error?.startsWith("publisering feilet:")
+          );
+        if (!uncertain) {
+          const safeError = `LinkedIn-publisering feilet (${publishResult.reason ?? "provider_error"})`;
+          await pool.query(
+            `UPDATE marketing_post_drafts
+                SET status = 'failed',
+                    publish_error = $1,
+                    raw_publish_response = $2::jsonb
+              WHERE id = $3::bigint
+                AND status = 'publishing'`,
+            [
+              safeError,
+              JSON.stringify({
+                ok: false,
+                status: publishResult.status,
+                reason: publishResult.reason,
+              }),
+              draftId,
+            ],
+          );
+        }
+        try {
+          await pool.query(
+            `UPDATE linkedin_org_config
+                SET last_error = $1,
+                    last_error_at = now()
+              WHERE id = $2::uuid`,
+            [
+              uncertain
+                ? "Uavklart publiseringsutfall — kontroller LinkedIn før nytt forsøk"
+                : `LinkedIn-publisering feilet (${publishResult.reason ?? "provider_error"})`,
+              resolved.configId,
+            ],
+          );
+        } catch (statusError) {
+          console.warn("[cockpit/linkedin publish] status update failed", statusError);
+        }
+        return res.status(uncertain ? 202 : 502).json({
+          ok: false,
+          status: uncertain ? "uncertain" : "failed",
+          error: uncertain
+            ? "LinkedIn svarte ikke entydig. Kontroller siden før du prøver på nytt."
+            : "LinkedIn-publisering feilet",
+          reason: publishResult.reason,
+        });
+      }
+      const postUrn =
+        publishResult.permalink?.match(/(urn:li:[^/]+)/)?.[1]
+        ?? publishResult.externalPostId
+        ?? null;
+
+      const persisted = await pool.query(
         `UPDATE marketing_post_drafts
             SET status = 'published',
                 published_at = now(),
                 external_post_id = COALESCE($1, external_post_id),
-                linkedin_post_urn = $1,
-                linkedin_company_urn = $2,
-                linkedin_visibility = $3
-          WHERE id = $4::uuid`,
-        [postUrn, companyUrn, visibility, draft.id],
+                linkedin_post_urn = $2,
+                linkedin_company_urn = $3,
+                linkedin_visibility = 'PUBLIC',
+                publish_error = NULL,
+                raw_publish_response = $4::jsonb
+          WHERE id = $5::bigint
+            AND status = 'publishing'`,
+        [
+          publishResult.externalPostId ?? postUrn,
+          postUrn,
+          resolved.organizationUrn,
+          JSON.stringify({
+            ok: true,
+            status: publishResult.status,
+            externalPostId: publishResult.externalPostId,
+            permalink: publishResult.permalink,
+          }),
+          draftId,
+        ],
       );
+      if (!persisted.rowCount) {
+        throw new Error("Kunne ikke lagre bekreftet LinkedIn-publisering");
+      }
+      try {
+        await pool.query(
+          `UPDATE linkedin_org_config
+              SET last_publish_at = now(),
+                  last_used_at = now(),
+                  last_error = NULL,
+                  last_error_at = NULL
+            WHERE id = $1::uuid`,
+          [resolved.configId],
+        );
+      } catch (statusError) {
+        console.warn("[cockpit/linkedin publish] success status update failed", statusError);
+      }
 
-      return res.json({ ok: true, post_urn: postUrn });
+      return res.json({
+        ok: true,
+        post_urn: postUrn,
+        external_post_id: publishResult.externalPostId ?? null,
+        permalink: publishResult.permalink ?? null,
+      });
     } catch (err) {
       console.error("[cockpit/linkedin publish] failed", err);
-      return res.status(500).json({ error: "Publish feilet", detail: "internal_error" });
+      if (draftClaimed && !publishStarted) {
+        await pool.query(
+          `UPDATE marketing_post_drafts
+              SET status = 'failed',
+                  publish_error = 'Kunne ikke starte LinkedIn-publisering'
+            WHERE id = $1::bigint
+              AND status = 'publishing'`,
+          [draftId],
+        ).catch(() => undefined);
+      }
+      return res.status(500).json(publishStarted
+        ? {
+            error: "Publiseringsutfallet kunne ikke bekreftes. Kontroller LinkedIn før nytt forsøk.",
+            status: "uncertain",
+          }
+        : {
+            error: "Kunne ikke starte LinkedIn-publisering.",
+            status: "failed",
+          });
     }
   });
 

@@ -22,6 +22,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import type { AdminRoomRoutesDeps } from "./_shared";
 
@@ -38,6 +39,16 @@ interface MigrationState {
 }
 
 const MAX_LOG_LINES = 200;
+
+interface MigrationInventory {
+  pendingFiles: string[];
+  checksumMismatches: Array<{
+    filename: string;
+    appliedChecksum: string;
+    fileChecksum: string;
+  }>;
+  legacyAppliedFiles: string[];
+}
 
 let currentState: MigrationState = {
   status: "idle",
@@ -65,7 +76,7 @@ function pushLogLine(line: string): void {
 export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
   const { app, pool, requireAdminRoomAccess, logAdminActivity } = deps;
 
-  async function detectPendingMigrations(): Promise<string[]> {
+  async function inspectMigrations(): Promise<MigrationInventory> {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const migrationsDir = path.resolve(__dirname, "..", "migrations");
@@ -74,18 +85,67 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       const entries = await fs.readdir(migrationsDir);
       allFiles = entries.filter((f) => f.endsWith(".sql"));
     } catch {
-      return [];
+      return { pendingFiles: [], checksumMismatches: [], legacyAppliedFiles: [] };
     }
 
-    let appliedSet = new Set<string>();
+    const appliedByFilename = new Map<string, string | null>();
     try {
-      const result = await pool.query("SELECT filename FROM _migrations_applied");
-      appliedSet = new Set(result.rows.map((r: { filename: string }) => r.filename));
+      const result = await pool.query(
+        "SELECT filename, checksum_sha256 FROM public._migrations_applied",
+      );
+      for (const row of result.rows as Array<{
+        filename: string;
+        checksum_sha256: string | null;
+      }>) {
+        appliedByFilename.set(row.filename, row.checksum_sha256);
+      }
     } catch {
-      // _migrations_applied finnes ikke ennå — alle filer er pending
+      // Tabellen eller checksum-kolonnen finnes ikke ennå. Behold filename-
+      // kompatibilitet for status, men migrate.sh oppgraderer tabellen før run.
+      try {
+        const legacyResult = await pool.query(
+          "SELECT filename FROM public._migrations_applied",
+        );
+        for (const row of legacyResult.rows as Array<{ filename: string }>) {
+          appliedByFilename.set(row.filename, null);
+        }
+      } catch {
+        // public._migrations_applied finnes ikke ennå — alle filer er pending.
+      }
     }
 
-    return allFiles.filter((f) => !appliedSet.has(f)).sort();
+    const pendingFiles: string[] = [];
+    const checksumMismatches: MigrationInventory["checksumMismatches"] = [];
+    const legacyAppliedFiles: string[] = [];
+
+    await Promise.all(
+      allFiles.map(async (filename) => {
+        if (!appliedByFilename.has(filename)) {
+          pendingFiles.push(filename);
+          return;
+        }
+
+        const appliedChecksum = appliedByFilename.get(filename);
+        if (!appliedChecksum) {
+          legacyAppliedFiles.push(filename);
+          return;
+        }
+
+        const sql = await fs.readFile(path.join(migrationsDir, filename));
+        const fileChecksum = createHash("sha256").update(sql).digest("hex");
+        if (fileChecksum !== appliedChecksum) {
+          checksumMismatches.push({ filename, appliedChecksum, fileChecksum });
+        }
+      }),
+    );
+
+    return {
+      pendingFiles: pendingFiles.sort(),
+      checksumMismatches: checksumMismatches.sort((a, b) =>
+        a.filename.localeCompare(b.filename),
+      ),
+      legacyAppliedFiles: legacyAppliedFiles.sort(),
+    };
   }
 
   // Gyldig MIGRATE_TRIGGER_TOKEN i header? Lar CI (GitHub Actions) polle status
@@ -95,7 +155,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     const triggerToken = (typeof header === "string" ? header : "").trim();
     const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
     if (!triggerToken || !expectedToken || triggerToken.length !== expectedToken.length) return false;
-    return require("crypto").timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken));
+    return timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken));
   }
 
   app.get("/api/admin-room/migrations/status", async (req, res) => {
@@ -105,8 +165,15 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       if (!session) return;
     }
     try {
-      const pendingFiles = await detectPendingMigrations();
-      res.json({ ...currentState, lockHeld: runLock, pendingFiles, pendingCount: pendingFiles.length });
+      const inventory = await inspectMigrations();
+      res.json({
+        ...currentState,
+        lockHeld: runLock,
+        ...inventory,
+        pendingCount: inventory.pendingFiles.length,
+        checksumMismatchCount: inventory.checksumMismatches.length,
+        legacyAppliedCount: inventory.legacyAppliedFiles.length,
+      });
     } catch (err) {
       // Graceful: returnér in-memory state uten pending-listing.
       console.warn("[migrations/status] failed:", (err as Error).message);
@@ -138,7 +205,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
         });
         return;
       }
-      if (triggerToken.length !== expectedToken.length || !require("crypto").timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken))) {
+      if (triggerToken.length !== expectedToken.length || !timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken))) {
         res.status(401).json({
           error:
             "Ugyldig migrate-trigger-token: GitHub-secret MIGRATE_TRIGGER_TOKEN matcher ikke backend-env-variabelen.",

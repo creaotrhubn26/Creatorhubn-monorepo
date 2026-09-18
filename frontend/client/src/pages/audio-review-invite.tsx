@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import { MusicNote, CheckCircle, ContentCopy, DoneAll, GraphicEq } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { easeVerseBoothUrl } from '@/lib/easeverse';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
 import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
@@ -39,7 +40,7 @@ export default function AudioReviewInvitePage() {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f: any) => ({ ...f, [k]: e.target.value }));
   const setV = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const isVocalist = /vokal/i.test(form.role);
-  const boothUrl = invite?.external_track_id ? `https://easeverse.vercel.app/booth/${invite.external_track_id}` : '';
+  const boothUrl = invite?.external_track_id ? easeVerseBoothUrl(invite.external_track_id) : '';
 
   React.useEffect(() => {
     if (!token) { setLoading(false); return; }

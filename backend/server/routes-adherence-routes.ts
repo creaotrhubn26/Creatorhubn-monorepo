@@ -34,8 +34,19 @@
  * salgssjef+ (matcher isAdminLikeRole i sales-leadership-routes.ts).
  */
 
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { readIdempotencyKey } from "./_shared-idempotency.js";
+import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import {
+  createLeadFromDraft,
+  leadDraftInputSchema,
+  LeadDuplicateConflictError,
+  LeadIdempotencyConflictError,
+  LeadScopeValidationError,
+  normalizeLeadDraft,
+} from "./leadgrid-lead-creation-service.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionUser = {
@@ -80,12 +91,23 @@ function isSalesManagerRole(role: string | undefined): boolean {
   if (!role) return false;
   const r = role.toLowerCase();
   return (
+
     r === "sales_manager" ||
     r === "org_admin" ||
     r === "super_admin" ||
     r === "admin" ||
     r === "owner"
   );
+}
+
+function creationIdForPositionRequest(req: Request): string {
+  const explicit = req.body?.creation_id;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  const key = readIdempotencyKey(req);
+  const uuid = key?.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+  )?.[0];
+  return uuid ?? randomUUID();
 }
 
 function readString(v: unknown, fallback = ""): string {
@@ -936,6 +958,7 @@ export function registerRoutesAdherenceRoutes(
   // Reverse-geocoder via Google Places + returnerer nytt lead-id.
   // Klienten redirecter til AddLeadSheet med lead-id prefilled.
   // ───────────────────────────────────────────────────────────────
+
   app.post("/api/leadgrid/routes/leads/at-position", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
@@ -945,42 +968,82 @@ export function registerRoutesAdherenceRoutes(
     if (lat === null || lon === null) {
       return res.status(400).json({ error: "lat_and_lon_required" });
     }
-    const orgId = readString(body.org_id) || (await resolveOrgIdForUser(pool, session.userId));
+
     try {
-      const geo = await reverseGeocode(lat, lon);
-      // Insert i crm_customers — samme mønster som eksisterende lead-oppretting.
-      // Vi bruker minimalt sett med kolonner som er trygt å inserte fra map-flyten.
-      // Fix 2026-07-02: To bug-fixes i denne INSERT-en:
-      //   (a) inconsistent-parameter-types: samme placeholder til to kolonner
-      //       med forskjellig type (owner_user_id TEXT, assigned_user_id
-      //       VARCHAR(255)) → separate parametere + eksplisitt cast.
-      //   (b) `id` UUID PRIMARY KEY har ingen DEFAULT i crm_customers-skjema
-      //       (drift fra mange migreringer), så NULL ble insert-et og krasjet
-      //       på not-null constraint. Genererer eksplisitt UUID i queryen
-      //       med `gen_random_uuid()`.
-      const r = await pool.query<{ id: string }>(
-        `INSERT INTO crm_customers
-           (id, name, owner_user_id, assigned_user_id, latitude, longitude,
-            address, google_place_id, lead_source, pipeline_stage, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2::text, $3::varchar, $4, $5, $6, $7, 'map_drop', 'new', NOW(), NOW())
-         RETURNING id`,
-        [geo.name, session.userId, session.userId, lat, lon, geo.address, geo.place_id],
+      const organizationId =
+        readString(body.org_id) || (await resolveOrgIdForUser(pool, session.userId));
+      if (!organizationId) {
+        return res.status(400).json({ error: "organization_required" });
+      }
+      const access = await resolveEffectivePermissions(
+        pool,
+        organizationId,
+        session.userId,
       );
-      const leadId = r.rows[0]?.id;
-      return res.status(201).json({
-        lead_id: leadId,
+      if (!access.role) {
+        return res.status(403).json({
+          error: "ikke_medlem_av_org",
+          organization_id: organizationId,
+        });
+      }
+      if (!access.permissions.has("leads.create")) {
+        return res.status(403).json({
+          error: "mangler_tillatelse",
+          required: "leads.create",
+          organization_id: organizationId,
+        });
+      }
+
+      const geo = await reverseGeocode(lat, lon);
+      const parsed = leadDraftInputSchema.safeParse({
+        creation_id: creationIdForPositionRequest(req),
+        organization_id: organizationId,
+        name: geo.name,
+        address: geo.address,
+        latitude: lat,
+        longitude: lon,
+        google_place_id: geo.place_id,
+        location_confidence: geo.place_id ? "geocoded" : "exact",
+        lead_source: "map_drop",
+        allow_duplicate: body.allow_duplicate === true,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "validation_failed",
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        });
+      }
+      const result = await createLeadFromDraft(pool, {
+        organizationId,
+        userId: session.userId,
+        draft: normalizeLeadDraft(parsed.data),
+      });
+      return res.status(result.created ? 201 : 200).json({
+        lead_id: result.id,
         name: geo.name,
         address: geo.address,
         google_place_id: geo.place_id,
         latitude: lat,
         longitude: lon,
-        org_id: orgId,
+        org_id: organizationId,
+        created: result.created,
+        replayed: result.replayed,
       });
-    } catch (err) {
-      console.error("[routes-adherence] leads/at-position failed:", err);
-      return res
-        .status(500)
-        .json({ error: "lead_create_failed", detail: String("internal_error") });
+    } catch (error) {
+      if (error instanceof LeadDuplicateConflictError) {
+        return res.status(409).json({ error: "duplicate_conflict", candidates: error.candidates });
+      }
+      if (error instanceof LeadIdempotencyConflictError) {
+        return res.status(409).json({ error: "idempotency_payload_conflict" });
+      }
+      if (error instanceof LeadScopeValidationError) {
+        return res.status(400).json({ error: error.code });
+      }
+      console.error("[routes-adherence] leads/at-position failed:", error);
+      return res.status(500).json({ error: "lead_create_failed", detail: "internal_error" });
     }
   });
 

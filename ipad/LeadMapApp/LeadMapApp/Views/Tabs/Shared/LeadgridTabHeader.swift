@@ -224,30 +224,23 @@ struct LeadgridTabHeader<Extra: View>: View {
             case .bookMeeting:
                 BookMeetingSheet(dayOfMonth: bookMeetingDay)
             case .addLead:
-                AddLeadSheet { newLead in
-                    // 2026-08-16: kallet manglet helt — se KartView.swift for samme fiks.
-                    guard let api = state.api, !DemoModeManager.isActiveNonisolated else {
-                        addLeadToast = DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget"
-                        return
-                    }
-                    Task {
-                        do {
-                            let newId = try await api.createLeadAtPin(
-                                name: newLead.companyName, company: newLead.companyName,
-                                phone: newLead.phone, email: newLead.email,
-                                industryId: nil, leadTemperature: nil,
-                                latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                                address: newLead.address
-                            )
-                            addLeadToast = "«\(newLead.companyName)» lagt til"
-                            // Bytt til Kart-fanen og vis hvor den havnet (2026-08-19).
+                AddLeadSheet { draft, result in
+                    switch result {
+                    case .sent(let response):
+                        addLeadToast = "«\(draft.name)» lagt til"
+                        if let lat = draft.latitude, let lon = draft.longitude {
                             state.pendingMapFocus = AppState.PendingMapFocus(
-                                id: newId, name: newLead.companyName, address: newLead.address,
-                                lat: newLead.coord.latitude, lon: newLead.coord.longitude
+                                id: response.id,
+                                name: draft.name,
+                                address: draft.address ?? "",
+                                lat: lat,
+                                lon: lon
                             )
-                        } catch {
-                            addLeadToast = "Kunne ikke lagre lead — prøv igjen"
                         }
+                    case .queued:
+                        addLeadToast = "«\(draft.name)» lagret offline og sendes automatisk"
+                    case .duplicate, .rejected:
+                        break
                     }
                 }
             case .newFollowUp:

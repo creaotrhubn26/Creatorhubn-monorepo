@@ -6,7 +6,7 @@
  * caps size to prevent runaway payloads.
  */
 
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 export type RoleRoomFeedPlatform = 'instagram' | 'tiktok' | 'linkedin';
 
@@ -52,6 +52,10 @@ export interface RoleRoomFeedPostInput {
   locked?: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  customImageUrls?: string[] | null;
+  customImageNames?: string[] | null;
+  customVideoDataUrl?: string | null;
+  customVideoName?: string | null;
   // Grid-beskjæring + egendefinert cover/thumbnail (vises i feed-grid,
   // nettside-portfolio, deling & link-preview). gridAspect default '4:5'.
   gridAspect?: '1:1' | '4:5' | '16:9' | null;
@@ -72,6 +76,12 @@ export interface RoleRoomFeedPostInput {
   // som personlig profil. Format: 'urn:li:organization:12345'. Null
   // = publiser som @bruker. Settes via "Publiser som"-dropdown i UI.
   linkedInOrganizationUrn?: string | null;
+  // Durable publisher metadata. These fields are system-owned and are
+  // preserved when the producer autosaves an older editor snapshot.
+  publishJobId?: string | null;
+  publishedAt?: string | null;
+  externalPostId?: string | null;
+  publishedPermalink?: string | null;
 }
 
 export interface RoleRoomFeedPlanRow {
@@ -92,11 +102,63 @@ const MAX_STRING_LENGTH = 2000;
 // per post so high-detail photos still fit. Combined with MAX_POSTS_PER_PLAN
 // this keeps plan payloads below the 50MB Express body limit.
 const MAX_CUSTOM_IMAGE_LENGTH = 2_000_000;
+const MAX_CUSTOM_IMAGE_BYTES = 1_500_000;
 const MAX_CUSTOM_IMAGE_NAME_LENGTH = 200;
+const MAX_CAROUSEL_IMAGES = 20;
+const MIN_CAROUSEL_IMAGES = 2;
+// Inline media is currently sent through the 50 MB JSON endpoint. Keep both
+// one post and the complete plan below that ceiling (JSON/base64 overhead
+// included) so autosave fails predictably instead of at Express' body parser.
+const MAX_CUSTOM_VIDEO_LENGTH = 40_000_000;
+const MAX_CUSTOM_VIDEO_BYTES = 30_000_000;
+const MAX_INLINE_MEDIA_PER_POST_LENGTH = 42_000_000;
+const MAX_INLINE_MEDIA_PER_PLAN_LENGTH = 45_000_000;
 
 function clipString(value: unknown, max = MAX_STRING_LENGTH): string {
   if (typeof value !== 'string') return '';
   return value.length > max ? value.slice(0, max) : value;
+}
+
+function estimateBase64Bytes(value: string): number {
+  const comma = value.indexOf(',');
+  if (comma < 0) return Number.POSITIVE_INFINITY;
+  const encoded = value.slice(comma + 1).replace(/\s/g, '');
+  if (!encoded) return 0;
+  const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((encoded.length * 3) / 4) - padding);
+}
+
+function normalizeInlineDataUrl(
+  value: unknown,
+  kind: 'image' | 'video',
+  maxLength: number,
+  maxBytes: number,
+): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > maxLength) {
+    return null;
+  }
+  const comma = value.indexOf(',');
+  if (comma <= 0 || comma > 160) return null;
+  const header = value.slice(0, comma + 1);
+  if (!new RegExp(`^data:${kind}/[a-z0-9+.-]+;base64,$`, 'i').test(header)) {
+    return null;
+  }
+  return estimateBase64Bytes(value) <= maxBytes ? value : null;
+}
+
+function normalizeInlineImageValue(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  // Never truncate base64: a clipped data URL is corrupt and cannot be
+  // published. Remote URLs can safely use the ordinary string cap.
+  if (value.startsWith('data:')) {
+    return normalizeInlineDataUrl(
+      value,
+      'image',
+      MAX_CUSTOM_IMAGE_LENGTH,
+      MAX_CUSTOM_IMAGE_BYTES,
+    );
+  }
+  return clipString(value, MAX_CUSTOM_IMAGE_LENGTH);
 }
 
 function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInput | null {
@@ -116,14 +178,49 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     ? (record.logoPlacement as RoleRoomFeedPostInput['logoPlacement'])
     : null;
 
-  const customImageUrl =
-    typeof record.customImageUrl === 'string' && record.customImageUrl.length > 0
-      ? clipString(record.customImageUrl, MAX_CUSTOM_IMAGE_LENGTH)
-      : null;
+  const customImageUrl = normalizeInlineImageValue(record.customImageUrl);
   const customImageName =
     typeof record.customImageName === 'string' && record.customImageName.length > 0
       ? clipString(record.customImageName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
       : null;
+  const rawCustomImageNames = Array.isArray(record.customImageNames)
+    ? record.customImageNames
+    : [];
+  const rawCustomImageEntries = Array.isArray(record.customImageUrls)
+    ? record.customImageUrls
+        .slice(0, MAX_CAROUSEL_IMAGES)
+        .map((value, index) => ({
+          value: normalizeInlineImageValue(value),
+          name:
+            typeof rawCustomImageNames[index] === 'string'
+              ? clipString(rawCustomImageNames[index], MAX_CUSTOM_IMAGE_NAME_LENGTH)
+              : '',
+        }))
+        .filter((entry): entry is { value: string; name: string } => entry.value !== null)
+    : [];
+  let customImageUrls: string[] | null = null;
+  let customImageNames: string[] | null = null;
+  if (rawCustomImageEntries.length >= MIN_CAROUSEL_IMAGES) {
+    let used = 0;
+    const bounded = rawCustomImageEntries.filter((entry) => {
+      if (used + entry.value.length > MAX_INLINE_MEDIA_PER_POST_LENGTH) return false;
+      used += entry.value.length;
+      return true;
+    });
+    if (bounded.length >= MIN_CAROUSEL_IMAGES) {
+      customImageUrls = bounded.map((entry) => entry.value);
+      customImageNames = bounded.map((entry) => entry.name);
+    }
+  }
+  const customVideoDataUrl = normalizeInlineDataUrl(
+    record.customVideoDataUrl,
+    'video',
+    MAX_CUSTOM_VIDEO_LENGTH,
+    MAX_CUSTOM_VIDEO_BYTES,
+  );
+  const customVideoName = customVideoDataUrl && typeof record.customVideoName === 'string'
+    ? clipString(record.customVideoName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
+    : null;
 
   const approvalState =
     typeof record.approvalState === 'string' &&
@@ -135,10 +232,7 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     record.gridAspect === '1:1' || record.gridAspect === '4:5' || record.gridAspect === '16:9'
       ? record.gridAspect
       : null;
-  const coverImageUrl =
-    typeof record.coverImageUrl === 'string' && record.coverImageUrl.length > 0
-      ? clipString(record.coverImageUrl, MAX_CUSTOM_IMAGE_LENGTH)
-      : null;
+  const coverImageUrl = normalizeInlineImageValue(record.coverImageUrl);
   const coverImageName =
     typeof record.coverImageName === 'string' && record.coverImageName.length > 0
       ? clipString(record.coverImageName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
@@ -161,6 +255,10 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     locked: Boolean(record.locked),
     customImageUrl,
     customImageName,
+    customImageUrls,
+    customImageNames,
+    customVideoDataUrl,
+    customVideoName,
     gridAspect,
     coverImageUrl,
     coverImageName,
@@ -182,15 +280,55 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
       record.linkedInOrganizationUrn.startsWith('urn:li:organization:')
         ? clipString(record.linkedInOrganizationUrn, 200)
         : null,
+    publishJobId:
+      typeof record.publishJobId === 'string' ? clipString(record.publishJobId, 200) : null,
+    publishedAt:
+      typeof record.publishedAt === 'string' ? clipString(record.publishedAt, 40) : null,
+    externalPostId:
+      typeof record.externalPostId === 'string' ? clipString(record.externalPostId, 500) : null,
+    publishedPermalink:
+      typeof record.publishedPermalink === 'string' ? clipString(record.publishedPermalink, 2000) : null,
   };
 }
 
 export function normalizeFeedPostsPayload(raw: unknown): RoleRoomFeedPostInput[] {
   if (!Array.isArray(raw)) return [];
-  return raw
+  const posts = raw
     .slice(0, MAX_POSTS_PER_PLAN)
     .map((entry, index) => normalizePost(entry, index))
     .filter((entry): entry is RoleRoomFeedPostInput => entry !== null);
+  let remainingInlineMedia = MAX_INLINE_MEDIA_PER_PLAN_LENGTH;
+  const keepWithinPlanBudget = (value: string | null | undefined): string | null => {
+    if (!value) return null;
+    if (!value.startsWith('data:')) return value;
+    if (value.length > remainingInlineMedia) return null;
+    remainingInlineMedia -= value.length;
+    return value;
+  };
+  return posts.map((post) => {
+    const customImageUrl = keepWithinPlanBudget(post.customImageUrl);
+    const coverImageUrl = keepWithinPlanBudget(post.coverImageUrl);
+    const carouselLength = (post.customImageUrls ?? []).reduce(
+      (total, value) => total + (value.startsWith('data:') ? value.length : 0),
+      0,
+    );
+    const customImageUrls = carouselLength <= remainingInlineMedia
+      ? post.customImageUrls ?? null
+      : null;
+    if (customImageUrls) remainingInlineMedia -= carouselLength;
+    const customVideoDataUrl = keepWithinPlanBudget(post.customVideoDataUrl);
+    return {
+      ...post,
+      customImageUrl,
+      customImageName: customImageUrl ? post.customImageName ?? null : null,
+      coverImageUrl,
+      coverImageName: coverImageUrl ? post.coverImageName ?? null : null,
+      customImageUrls,
+      customImageNames: customImageUrls ? post.customImageNames ?? null : null,
+      customVideoDataUrl,
+      customVideoName: customVideoDataUrl ? post.customVideoName ?? null : null,
+    };
+  });
 }
 
 function mapRow(row: Record<string, unknown>): RoleRoomFeedPlanRow {
@@ -356,6 +494,10 @@ const PRESERVED_APPROVAL_KEYS = [
   'reviewRequestedAt',
   'reviewRequestedBy',
   'reviewDeadline',
+  'publishJobId',
+  'publishedAt',
+  'externalPostId',
+  'publishedPermalink',
 ] as const;
 
 /**
@@ -434,7 +576,7 @@ export async function markFeedPlanPostFailed(
   for (const platform of SUPPORTED_FEED_PLATFORMS) {
     try {
       let found = false;
-      await mutateFeedPlanLocked(pool, projectId, platform, (current) => {
+      const updated = await mutateFeedPlanLocked(pool, projectId, platform, (current) => {
         if (!current) return null;
         const idx = current.posts.findIndex((p) => p.id === feedPlanPostId);
         if (idx === -1) return null;
@@ -453,7 +595,7 @@ export async function markFeedPlanPostFailed(
         );
         return { posts: nextPosts, updatedBy: 'system:publish-worker' };
       });
-      if (found) return { touched: true };
+      if (found && updated) return { touched: true };
     } catch (error) {
       console.warn(
         `[feed-plan] markFeedPlanPostFailed failed for ${projectId}/${platform}/${feedPlanPostId}`,
@@ -462,4 +604,143 @@ export async function markFeedPlanPostFailed(
     }
   }
   return { touched: false };
+}
+
+/**
+ * Moves one LinkedIn feed-plan post to scheduled after the durable queue row
+ * exists. The locked mutation prevents an autosave from racing this state.
+ */
+export async function markFeedPlanPostScheduled(
+  pool: Pool,
+  projectId: string,
+  feedPlanPostId: string,
+  jobId: string,
+  scheduledFor: Date,
+  changedBy: string,
+): Promise<{ touched: boolean }> {
+  if (!projectId || !feedPlanPostId || !jobId) return { touched: false };
+  let found = false;
+  const updated = await mutateFeedPlanLocked(pool, projectId, 'linkedin', (current) => {
+    if (!current) return null;
+    const target = current.posts.find((post) => post.id === feedPlanPostId);
+    if (!target || (target.approvalState ?? 'draft') !== 'approved') return null;
+    found = true;
+    const now = new Date().toISOString();
+    return {
+      posts: current.posts.map((post) =>
+        post.id === feedPlanPostId
+          ? {
+              ...post,
+              scheduledFor: scheduledFor.toISOString(),
+              approvalState: 'scheduled' as RoleRoomFeedApprovalState,
+              approvalChangedAt: now,
+              approvalChangedBy: changedBy,
+              approvalNote: null,
+              publishJobId: jobId,
+            }
+          : post,
+      ),
+      updatedBy: changedBy,
+    };
+  });
+  return { touched: found && Boolean(updated) };
+}
+
+/**
+ * Transaction-local variant used by the durable LinkedIn queue. The caller
+ * owns BEGIN/COMMIT. Taking the same advisory lock as mutateFeedPlanLocked
+ * makes the queue INSERT and the approval-state transition one atomic unit,
+ * while the locked re-check closes the approve/reject race at publish time.
+ */
+export async function markFeedPlanPostScheduledInTransaction(
+  client: Pick<PoolClient, 'query'>,
+  projectId: string,
+  feedPlanPostId: string,
+  jobId: string,
+  scheduledFor: Date,
+  changedBy: string,
+): Promise<{ touched: boolean }> {
+  if (!projectId || !feedPlanPostId || !jobId) return { touched: false };
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+    `${projectId}::linkedin`,
+  ]);
+  const existing = await client.query(
+    `SELECT id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at
+       FROM role_room_feed_plans
+      WHERE project_id = $1 AND platform = 'linkedin'
+      LIMIT 1
+      FOR UPDATE`,
+    [projectId],
+  );
+  if (!existing.rows[0]) return { touched: false };
+  const current = mapRow(existing.rows[0]);
+  const target = current.posts.find((post) => post.id === feedPlanPostId);
+  if (!target || (target.approvalState ?? 'draft') !== 'approved') {
+    return { touched: false };
+  }
+  const now = new Date().toISOString();
+  const posts = current.posts.map((post) =>
+    post.id === feedPlanPostId
+      ? {
+          ...post,
+          scheduledFor: scheduledFor.toISOString(),
+          approvalState: 'scheduled' as RoleRoomFeedApprovalState,
+          approvalChangedAt: now,
+          approvalChangedBy: changedBy,
+          approvalNote: null,
+          publishJobId: jobId,
+        }
+      : post,
+  );
+  const updated = await client.query(
+    `UPDATE role_room_feed_plans
+        SET posts = $3::jsonb,
+            updated_by = $4,
+            updated_at = NOW()
+      WHERE project_id = $1 AND platform = $2
+      RETURNING id`,
+    [projectId, 'linkedin', JSON.stringify(posts), changedBy],
+  );
+  return { touched: (updated.rowCount ?? updated.rows.length) > 0 };
+}
+
+/** Records a successful LinkedIn publish on the canonical feed-plan row. */
+export async function markFeedPlanPostPublished(
+  pool: Pool,
+  projectId: string,
+  feedPlanPostId: string,
+  result: {
+    jobId?: string | null;
+    externalPostId?: string | null;
+    permalink?: string | null;
+    changedBy: string;
+  },
+): Promise<{ touched: boolean }> {
+  if (!projectId || !feedPlanPostId) return { touched: false };
+  let found = false;
+  const updated = await mutateFeedPlanLocked(pool, projectId, 'linkedin', (current) => {
+    if (!current) return null;
+    if (!current.posts.some((post) => post.id === feedPlanPostId)) return null;
+    found = true;
+    const now = new Date().toISOString();
+    return {
+      posts: current.posts.map((post) =>
+        post.id === feedPlanPostId
+          ? {
+              ...post,
+              approvalState: 'published' as RoleRoomFeedApprovalState,
+              approvalChangedAt: now,
+              approvalChangedBy: result.changedBy,
+              approvalNote: null,
+              publishJobId: result.jobId ?? post.publishJobId ?? null,
+              publishedAt: now,
+              externalPostId: result.externalPostId ?? null,
+              publishedPermalink: result.permalink ?? null,
+            }
+          : post,
+      ),
+      updatedBy: result.changedBy,
+    };
+  });
+  return { touched: found && Boolean(updated) };
 }

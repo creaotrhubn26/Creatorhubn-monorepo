@@ -62,6 +62,7 @@ interface RoleRoomMobileProfileSheetProps {
   email?: string | null;
   roleLabel?: string | null;
   workspaceSummary?: ProfileWorkspaceSummary | null;
+  organizationId?: string | null;
   onLogout?: () => void;
   /** Admin-only: vis profession-mode-switcher i profilen. */
   isAdmin?: boolean;
@@ -84,6 +85,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   email,
   roleLabel,
   workspaceSummary,
+  organizationId,
   onLogout,
   isAdmin,
 }) => {
@@ -381,7 +383,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         </MuiIconButton>
       </DialogTitle>
       <DialogContent>
-        <RoleRoomStoragePanel />
+        <RoleRoomStoragePanel organizationId={organizationId} />
       </DialogContent>
     </Dialog>
   );

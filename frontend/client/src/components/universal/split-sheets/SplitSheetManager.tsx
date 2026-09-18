@@ -72,7 +72,12 @@ import SplitSheetBillingPanel from './SplitSheetBillingPanel';
 import SplitSheetReports from './SplitSheetReports';
 import ContractEditingInterface from '../../contracts/ContractEditingInterface';
 import type { SplitSheet, SplitSheetStatus } from './types';
-import { STATUS_DISPLAY_NAMES, STATUS_COLORS } from './types';
+import {
+  STATUS_DISPLAY_NAMES,
+  STATUS_COLORS,
+  isVersionedSignedSplitSheet,
+  splitSheetUsesFeeCompensation,
+} from './types';
 
 // Simple TabPanel component to replace MUI's non-existent TabPanel
 interface TabPanelProps {
@@ -210,6 +215,8 @@ export default function SplitSheetManager({
   const [viewerTab, setViewerTab] = useState(0);
   const [showContractEditor, setShowContractEditor] = useState(false);
   const [contractEditorData, setContractEditorData] = useState<any>(null);
+  const selectedIsLocked = selectedSplitSheet ? isVersionedSignedSplitSheet(selectedSplitSheet) : false;
+  const selectedUsesFeeCompensation = selectedSplitSheet ? splitSheetUsesFeeCompensation(selectedSplitSheet) : false;
 
   const effectiveUserId = userId || user?.id;
   
@@ -230,7 +237,10 @@ export default function SplitSheetManager({
     enabled: !!effectiveUserId
   });
 
-  const splitSheets: SplitSheet[] = splitSheetsData?.data || [];
+  const splitSheets: SplitSheet[] = useMemo(
+    () => splitSheetsData?.data || [],
+    [splitSheetsData?.data],
+  );
 
   // Filter and search split sheets
   const filteredSplitSheets = useMemo(() => {
@@ -274,7 +284,21 @@ export default function SplitSheetManager({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['split-sheets'] });
       setSelectedSplitSheet(null);
-    }
+    },
+    onError: (error: any) => window.alert(
+      error?.message || 'Avtalen kunne ikke slettes. Hvis noen nettopp har signert, må avtalen arkiveres i stedet.',
+    ),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest(`/api/split-sheets/${id}`, { method: 'PUT', body: { status: 'archived' } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheets'] });
+      setSelectedSplitSheet(null);
+    },
+    onError: () => window.alert('Kunne ikke arkivere avtalen. Prøv igjen.'),
   });
 
   const handleCreateNew = useCallback(() => {
@@ -282,10 +306,34 @@ export default function SplitSheetManager({
     setShowEditor(true);
   }, []);
 
-  const handleEdit = useCallback((splitSheet: SplitSheet) => {
-    setSelectedSplitSheet(splitSheet);
-    setShowEditor(true);
-  }, []);
+  const handleEdit = useCallback(async (splitSheet: SplitSheet) => {
+    if (!splitSheet.id) return;
+    if (isVersionedSignedSplitSheet(splitSheet)) {
+      window.alert('Avtalen er signert og låst. Opprett en ny avtale for endringer.');
+      return;
+    }
+    if (splitSheetUsesFeeCompensation(splitSheet)) {
+      window.alert('Time- og kombinasjonsavtaler endres ved å slette utkastet og opprette en ny avtale i Workspace.');
+      return;
+    }
+    try {
+      const response: any = await apiRequest(`/api/split-sheets/${splitSheet.id}`);
+      const freshSplitSheet = response?.data || splitSheet;
+      if (isVersionedSignedSplitSheet(freshSplitSheet)) {
+        queryClient.invalidateQueries({ queryKey: ['split-sheets'] });
+        window.alert('Avtalen ble nettopp signert og er nå låst. Opprett en ny avtale for endringer.');
+        return;
+      }
+      if (splitSheetUsesFeeCompensation(freshSplitSheet)) {
+        window.alert('Time- og kombinasjonsavtaler redigeres ikke i prosenteditoren. Opprett et nytt utkast i Workspace.');
+        return;
+      }
+      setSelectedSplitSheet(freshSplitSheet);
+      setShowEditor(true);
+    } catch {
+      window.alert('Kunne ikke hente avtaledetaljene for redigering. Prøv igjen.');
+    }
+  }, [queryClient]);
 
   const handleView = useCallback((splitSheet: SplitSheet) => {
     setSelectedSplitSheet(splitSheet);
@@ -293,9 +341,31 @@ export default function SplitSheetManager({
     setShowViewer(true);
   }, []);
 
-  const handleDelete = useCallback((splitSheet: SplitSheet) => {
-    setConfirmDeleteSheet(splitSheet);
-  }, []);
+  const handleDelete = useCallback(async (splitSheet: SplitSheet) => {
+    if (!splitSheet.id) return;
+    if (isVersionedSignedSplitSheet(splitSheet)) {
+      window.alert('Signerte avtaler kan ikke slettes. Arkiver avtalen i stedet.');
+      return;
+    }
+    try {
+      const response: any = await apiRequest(`/api/split-sheets/${splitSheet.id}`);
+      const freshSplitSheet = response?.data || splitSheet;
+      if (isVersionedSignedSplitSheet(freshSplitSheet)) {
+        queryClient.invalidateQueries({ queryKey: ['split-sheets'] });
+        window.alert('Avtalen ble nettopp signert og kan ikke slettes. Arkiver avtalen i stedet.');
+        return;
+      }
+      setConfirmDeleteSheet(freshSplitSheet);
+    } catch {
+      window.alert('Kunne ikke kontrollere avtalen før sletting. Prøv igjen.');
+    }
+  }, [queryClient]);
+
+  const handleArchive = useCallback((splitSheet: SplitSheet) => {
+    if (!splitSheet.id || !isVersionedSignedSplitSheet(splitSheet) || splitSheet.status === 'archived') return;
+    if (!window.confirm('Arkivere den signerte avtalen? Arkivering kan ikke angres, og endringer må opprettes som en ny avtale.')) return;
+    archiveMutation.mutate(splitSheet.id);
+  }, [archiveMutation]);
 
   const executeDelete = useCallback(async () => {
     if (!confirmDeleteSheet?.id) return;
@@ -403,7 +473,7 @@ export default function SplitSheetManager({
     });
 
     return unsubscribe;
-  }, [communication, queryClient, effectiveUserId, selectedSplitSheet]);
+  }, [communication, queryClient, effectiveUserId, selectedSplitSheet, handleCreateNew]);
 
   // Register component with EnhancedMasterIntegration
   useEffect(() => {
@@ -528,17 +598,26 @@ export default function SplitSheetManager({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Rediger">
+          <Tooltip title={selectedIsLocked
+            ? 'Første signatur har låst vilkårene. Opprett en ny avtale for endringer.'
+            : selectedUsesFeeCompensation
+              ? 'Time- og kombinasjonsavtaler administreres i Workspace.'
+              : 'Rediger'}>
             <span>
-              <IconButton disabled={!selectedSplitSheet} onClick={() => selectedSplitSheet && handleEdit(selectedSplitSheet)}>
+              <IconButton disabled={!selectedSplitSheet || selectedIsLocked || selectedUsesFeeCompensation} onClick={() => selectedSplitSheet && handleEdit(selectedSplitSheet)}>
                 <EditIcon />
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Slett">
+          <Tooltip title={selectedIsLocked
+            ? selectedSplitSheet?.status === 'archived' ? 'Avtalen er allerede arkivert' : 'Arkiver signert avtale'
+            : 'Slett'}>
             <span>
-              <IconButton disabled={!selectedSplitSheet} onClick={() => selectedSplitSheet && handleDelete(selectedSplitSheet)}>
-                <DeleteIcon />
+              <IconButton
+                disabled={!selectedSplitSheet || (selectedIsLocked && selectedSplitSheet?.status === 'archived')}
+                onClick={() => selectedSplitSheet && (selectedIsLocked ? handleArchive(selectedSplitSheet) : handleDelete(selectedSplitSheet))}
+              >
+                {selectedIsLocked ? <ArchiveIcon /> : <DeleteIcon />}
               </IconButton>
             </span>
           </Tooltip>
@@ -722,6 +801,11 @@ export default function SplitSheetManager({
       )}
 
       {/* Split Sheets List */}
+      {activeView === 'list' && splitSheets.some(isVersionedSignedSplitSheet) && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Signerte avtaler er permanente. De kan vises eller arkiveres, mens endrede vilkår opprettes som en ny avtale.
+        </Alert>
+      )}
       {activeView === 'list' && isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
           <CircularProgress />
@@ -768,6 +852,7 @@ export default function SplitSheetManager({
           onView={handleView}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onArchive={handleArchive}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           profession={profession}
@@ -863,7 +948,7 @@ export default function SplitSheetManager({
                   // Pre-populate contract from split sheet
                   if (selectedSplitSheet) {
                     const totalRevenue = selectedSplitSheet.contributors?.reduce(
-                      (sum: number, c: any) => sum + (c.percentage || 0),
+                      (sum: number, c: any) => sum + (Number(c.percentage) || 0),
                       0
                     ) || 0;
                     const clientContributor = selectedSplitSheet.contributors?.find(
@@ -969,7 +1054,3 @@ export default function SplitSheetManager({
     </Box>
   );
 }
-
-
-
-

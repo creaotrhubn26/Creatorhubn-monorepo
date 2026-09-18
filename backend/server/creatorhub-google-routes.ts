@@ -20,6 +20,7 @@ type ActiveSessionData = {
   email: string;
   name: string;
   role: string;
+  authSessionVersion?: string;
   loginAt: string;
   roleLabel?: string;
   permissions?: string[];
@@ -102,6 +103,7 @@ type CreatorHubResolvedUser = {
   email: string;
   name: string;
   role: string;
+  authSessionVersion: string;
   profession?: string;
   roleLabel?: string;
   displayName?: string;
@@ -388,7 +390,9 @@ async function resolveCreatorHubGoogleLoginUser(
   let result: { rows: Array<Record<string, unknown>>; rowCount?: number };
   try {
     result = (await pool.query(
-      `SELECT id, email, username, first_name, last_name, role, profession, company_name
+      `SELECT id, email, username, first_name, last_name, role, profession, company_name,
+              auth_session_version::text AS auth_session_version,
+              COALESCE(is_active, TRUE) AS is_active
        FROM users
        WHERE LOWER(email) = LOWER($1)
        LIMIT 1`,
@@ -399,7 +403,9 @@ async function resolveCreatorHubGoogleLoginUser(
       // "column does not exist" — fall back til minimal SELECT
       console.warn('[creatorhub-google] users-tabell mangler kolonner — bruker minimal SELECT:', err.message);
       result = (await pool.query(
-        `SELECT id, email, username, first_name, last_name, role
+        `SELECT id, email, username, first_name, last_name, role,
+                auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
          FROM users
          WHERE LOWER(email) = LOWER($1)
          LIMIT 1`,
@@ -412,6 +418,9 @@ async function resolveCreatorHubGoogleLoginUser(
 
   const row = result.rows[0] as Record<string, unknown> | undefined;
   if (!row) {
+    return null;
+  }
+  if (row.is_active === false) {
     return null;
   }
 
@@ -461,6 +470,7 @@ async function resolveCreatorHubGoogleLoginUser(
     name: baseName,
     displayName: coupleCheck.rows[0]?.display_name || baseName,
     role,
+    authSessionVersion: String(row.auth_session_version ?? "0"),
     roleLabel: roleLabelForRole(role),
     profession: readStringValue(row.profession) ?? undefined,
     vendorId: vendorCheck.rows[0]?.id ? String(vendorCheck.rows[0].id) : undefined,
@@ -586,6 +596,7 @@ function buildCreatorHubSessionData(
     email: user.email,
     name: user.name,
     role: user.role,
+    authSessionVersion: user.authSessionVersion,
     roleLabel: user.roleLabel,
     profession: user.profession,
     userType: user.profession,

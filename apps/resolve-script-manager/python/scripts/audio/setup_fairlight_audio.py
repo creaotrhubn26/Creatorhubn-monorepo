@@ -27,12 +27,20 @@ Conflict-policy:
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import bridge
+
+
+def _linear_to_db(value: float) -> float:
+    """Convert the existing 0-1 direction scale to Resolve's 21.1 dB scale."""
+    if value <= 0:
+        return -100.0
+    return max(-100.0, min(30.0, 20.0 * math.log10(value)))
 
 
 # Resolve marker-colors mappet til chapter-typer for visuell konsistens
@@ -148,6 +156,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     #    chapter (Bjarne kan da bytte til manual-control i Fairlight om
     #    han vil tweake).
     clips_adjusted = 0
+    clips_adjusted_native = 0
+    clips_skipped_existing = 0
     try:
         audio_track_count = int(timeline.GetTrackCount("audio") or 0)
         for track_idx in range(1, audio_track_count + 1):
@@ -171,13 +181,23 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                     if not direction:
                         continue
 
-                    # SAFETY: hvis clip allerede har custom volume satt (ikke
-                    # default 0dB), respekterer vi det
-                    current_volume = None
-                    if hasattr(item, "GetClipColor"):
-                        # Vi bruker clip-color som proxy for "Bjarne har tagget"
-                        try: current_volume = item.GetClipColor()
-                        except Exception: pass
+                    # SAFETY: les 21.1-egenskapene direkte. Et aktivt, ikke-null
+                    # clip-gain betyr at brukeren allerede har gjort manuelt arbeid.
+                    current_properties = {}
+                    if hasattr(item, "GetProperties"):
+                        try:
+                            current_properties = item.GetProperties() or {}
+                        except Exception:
+                            current_properties = {}
+                    try:
+                        existing_db = float(current_properties.get("AudioVolume", 0) or 0)
+                    except (TypeError, ValueError):
+                        existing_db = 0.0
+                    if (respect_existing
+                            and current_properties.get("AudioVolumeEnabled")
+                            and abs(existing_db) > 0.01):
+                        clips_skipped_existing += 1
+                        continue
 
                     # ambient/source-audio antas å være lavere track (1-2)
                     # music-track antas å være høyere track (3+) — heuristikk
@@ -192,11 +212,23 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
                         try: item.SetClipColor(chapter_color)
                         except Exception: pass
 
-                    # Forsøk å sette volume (Studio-only API kan være null i free)
-                    if hasattr(item, "SetProperty"):
+                    # Resolve 21.1 bruker AudioVolume i dB via SetProperties.
+                    # Behold legacy-fallbacken for eldre installasjoner.
+                    target_db = _linear_to_db(target_volume)
+                    if hasattr(item, "SetProperties"):
                         try:
-                            item.SetProperty("Volume", str(target_volume))
-                            clips_adjusted += 1
+                            if item.SetProperties({
+                                "AudioVolumeEnabled": True,
+                                "AudioVolume": target_db,
+                            }):
+                                clips_adjusted += 1
+                                clips_adjusted_native += 1
+                        except Exception:
+                            pass
+                    elif hasattr(item, "SetProperty"):
+                        try:
+                            if item.SetProperty("Volume", str(target_volume)):
+                                clips_adjusted += 1
                         except Exception:
                             pass
                 except Exception:
@@ -209,6 +241,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     bridge.result({
         "duckMarkersAdded": duck_markers_added,
         "clipsAdjusted": clips_adjusted,
+        "clipsAdjustedWithResolve21_1Properties": clips_adjusted_native,
+        "clipsSkippedExistingGain": clips_skipped_existing,
         "existingAudioTracks": existing_audio_tracks,
         "respectedExisting": respect_existing,
         "lufsTarget": overall_lufs,
@@ -217,4 +251,5 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     })
 
 
-bridge.main_guard(run)
+if __name__ == "__main__":
+    bridge.main_guard(run)

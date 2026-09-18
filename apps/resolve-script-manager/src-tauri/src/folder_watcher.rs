@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
 const VIDEO_AUDIO_EXTS: &[&str] = &[
-    "mov", "mp4", "m4v", "mxf", "avi", "mkv", "braw", "r3d",
-    "wav", "aif", "aiff", "mp3", "flac", "m4a",
+    "mov", "mp4", "m4v", "mxf", "avi", "mkv", "braw", "r3d", "wav", "aif", "aiff", "mp3", "flac",
+    "m4a",
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -67,7 +67,11 @@ fn scan_existing(folder: &Path) -> HashSet<String> {
     set
 }
 
-pub fn start_watching(app: AppHandle, state: &FolderWatcherState, folder_path: String) -> Result<(), String> {
+pub fn start_watching(
+    app: AppHandle,
+    state: &FolderWatcherState,
+    folder_path: String,
+) -> Result<(), String> {
     let folder = PathBuf::from(&folder_path);
     if !folder.is_dir() {
         return Err(format!("{} is not a directory", folder.display()));
@@ -176,7 +180,11 @@ pub fn start_watching(app: AppHandle, state: &FolderWatcherState, folder_path: S
     Ok(())
 }
 
-pub fn stop_watching(app: AppHandle, state: &FolderWatcherState, folder_path: &str) -> Result<(), String> {
+pub fn stop_watching(
+    app: AppHandle,
+    state: &FolderWatcherState,
+    folder_path: &str,
+) -> Result<(), String> {
     state
         .handles
         .lock()

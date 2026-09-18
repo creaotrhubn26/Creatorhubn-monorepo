@@ -81,6 +81,260 @@ struct LoginView: View {
     }
 }
 
+@MainActor
+struct ProductionBrowserView: View {
+    let showsCloseButton: Bool
+    let onSelect: (ProjectSummary, ManuscriptSummary) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var projects: [ProjectSummary] = []
+    @State private var manuscriptsByProject: [String: [ManuscriptSummary]] = [:]
+    @State private var projectErrors: [String: String] = [:]
+    @State private var creatingProjectID: String?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    init(
+        showsCloseButton: Bool = false,
+        onSelect: @escaping (ProjectSummary, ManuscriptSummary) -> Void
+    ) {
+        self.showsCloseButton = showsCloseButton
+        self.onSelect = onSelect
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                BoardBrand.chrome.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("Produksjoner")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if showsCloseButton {
+                        Button("Lukk") { dismiss() }
+                            .foregroundStyle(BoardBrand.accent)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await load() }
+                    } label: {
+                        Label("Oppdater", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isLoading)
+                    .foregroundStyle(BoardBrand.accent)
+                }
+            }
+        }
+        .task {
+            if projects.isEmpty {
+                await load()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading && projects.isEmpty {
+            VStack(spacing: 12) {
+                ProgressView().tint(.white)
+                Text("Henter produksjonene dine …")
+                    .font(.system(size: 13))
+                    .foregroundStyle(BoardBrand.dim)
+            }
+        } else if projects.isEmpty {
+            VStack(spacing: 14) {
+                Image(systemName: "rectangle.stack.badge.plus")
+                    .font(.system(size: 34))
+                    .foregroundStyle(BoardBrand.accent)
+                Text("Ingen produksjoner ennå")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(errorMessage ?? "Opprett en produksjon på theroleroom.com, og trykk Oppdater.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(BoardBrand.dim)
+                    .multilineTextAlignment(.center)
+                Button("Prøv igjen") {
+                    Task { await load() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(BoardBrand.accent)
+            }
+            .padding(28)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("VELG PRODUKSJON")
+                                .font(.system(size: 10, weight: .bold))
+                                .kerning(1.2)
+                                .foregroundStyle(BoardBrand.label)
+                            Text("\(projects.count) prosjekter fra The Role Room")
+                                .font(.system(size: 13))
+                                .foregroundStyle(BoardBrand.dim)
+                        }
+                        Spacer()
+                    }
+                    .padding(.bottom, 4)
+
+                    ForEach(projects) { project in
+                        projectCard(project)
+                    }
+                }
+                .padding(22)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func projectCard(_ project: ProjectSummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(BoardBrand.accent.opacity(0.16))
+                    .frame(width: 42, height: 42)
+                    .overlay {
+                        Image(systemName: "film.stack")
+                            .foregroundStyle(BoardBrand.accent)
+                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(project.name)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(project.id)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(BoardBrand.label)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+
+            if let manuscripts = manuscriptsByProject[project.id] {
+                if manuscripts.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        Text("Prosjektet har ikke manus ennå.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(BoardBrand.dim)
+                        Button {
+                            Task { await createManuscript(for: project) }
+                        } label: {
+                            HStack {
+                                if creatingProjectID == project.id {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Image(systemName: "doc.badge.plus")
+                                }
+                                Text("Opprett storyboard-manus")
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(BoardBrand.accent)
+                        .disabled(creatingProjectID != nil)
+                        .accessibilityLabel("Opprett storyboard-manus for \(project.name)")
+                    }
+                } else {
+                    ForEach(manuscripts) { manuscript in
+                        Button {
+                            select(project: project, manuscript: manuscript)
+                        } label: {
+                            HStack {
+                                Image(systemName: "doc.text")
+                                    .foregroundStyle(BoardBrand.accent)
+                                Text(manuscript.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Text("Åpne")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(BoardBrand.accent)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(BoardBrand.label)
+                            }
+                            .padding(11)
+                            .background(Color.white.opacity(0.045),
+                                        in: RoundedRectangle(cornerRadius: 9))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Åpne \(project.name), \(manuscript.title)")
+                    }
+                }
+            } else if let message = projectErrors[project.id] {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Kunne ikke hente manus")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.orange)
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(BoardBrand.dim)
+                }
+            } else {
+                ProgressView().tint(BoardBrand.accent)
+            }
+        }
+        .padding(16)
+        .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(BoardBrand.border)
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        errorMessage = nil
+        projectErrors = [:]
+        do {
+            let fetched = try await RoleRoomAPIClient.shared.fetchProjects()
+            projects = fetched
+            manuscriptsByProject = [:]
+            for project in fetched {
+                do {
+                    manuscriptsByProject[project.id] = try await RoleRoomAPIClient.shared
+                        .fetchManuscripts(projectId: project.id)
+                } catch {
+                    projectErrors[project.id] = error.localizedDescription
+                }
+            }
+        } catch {
+            projects = []
+            manuscriptsByProject = [:]
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func createManuscript(for project: ProjectSummary) async {
+        creatingProjectID = project.id
+        projectErrors[project.id] = nil
+        do {
+            let manuscript = try await RoleRoomAPIClient.shared.createManuscript(
+                projectId: project.id,
+                title: "\(project.name) — Storyboard")
+            manuscriptsByProject[project.id] = [manuscript]
+            select(project: project, manuscript: manuscript)
+        } catch {
+            projectErrors[project.id] = error.localizedDescription
+        }
+        creatingProjectID = nil
+    }
+
+    private func select(project: ProjectSummary, manuscript: ManuscriptSummary) {
+        UserDefaults.standard.set(project.id, forKey: "rr.lastProjectId")
+        UserDefaults.standard.set(manuscript.id, forKey: "rr.lastManuscriptId")
+        onSelect(project, manuscript)
+        if showsCloseButton {
+            dismiss()
+        }
+    }
+}
+
 struct ProjectListView: View {
     @State private var projects: [ProjectSummary] = []
     @State private var error: String?

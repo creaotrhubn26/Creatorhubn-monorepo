@@ -10,6 +10,29 @@ import type { Express, Request, Response } from "express";
 import { enqueueJob, registerJobHandler, startJobQueueWorker } from "./job-queue.js";
 
 export function registerCoreJobHandlers(): void {
+  // Full-file Video Room QC. The user-facing project_video_qc_results row is
+  // created before enqueue, so it survives deploys and can be polled by UI.
+  registerJobHandler("project_video_qc", async (pool, payload, job) => {
+    const qcResultId = typeof payload.qcResultId === "string" ? payload.qcResultId : null;
+    if (!qcResultId) throw new Error("payload mangler qcResultId");
+    try {
+      const { processProjectVideoQc } = await import("./project-video-qc-service.js");
+      return await processProjectVideoQc(pool, qcResultId);
+    } catch (error) {
+      if (job.attempts >= job.max_attempts) {
+        const errorCode = String((error as Error)?.message || "video_qc_failed").slice(0, 120);
+        await pool.query(
+          `UPDATE project_video_qc_results
+              SET status='failed',summary=$2::jsonb,
+                  findings=$3::jsonb,completed_at=NOW()
+            WHERE id=$1 AND status='running'`,
+          [qcResultId, JSON.stringify({ phase: "failed", findingCount: 1, errorCode }), JSON.stringify([{ severity: "error", code: errorCode, message: "Teknisk QC kunne ikke fullføres." }])],
+        ).catch(() => undefined);
+      }
+      throw error;
+    }
+  });
+
   // Første konsument: BRREG-berikelse av leads (visittkort-skann m.fl.).
   // Var fire-and-forget-promise i from-card-ruten — døde ved redeploy.
   // Idempotent: enrichLeadWithBrreg gjenbruker enrichment_org_nr og
@@ -24,6 +47,32 @@ export function registerCoreJobHandlers(): void {
       workspaceOwnerUserId: ownerUserId,
     });
     return { found: result.found };
+  });
+
+  // lead.created legges i samme transaksjon som lead-raden. Dermed kan en
+  // deploy mellom COMMIT og sideeffekt aldri miste workflow-eventen.
+  registerJobHandler("leadgrid_workflow_event", async (pool, payload) => {
+    const organizationId =
+      typeof payload.organizationId === "string" ? payload.organizationId : null;
+    const leadId = typeof payload.leadId === "string" ? payload.leadId : null;
+    const actorUserId =
+      typeof payload.actorUserId === "string" ? payload.actorUserId : null;
+    const source = typeof payload.source === "string" ? payload.source : "unknown";
+    const occurredAt =
+      typeof payload.occurredAt === "string" ? payload.occurredAt : new Date().toISOString();
+    if (!organizationId || !leadId || !actorUserId) {
+      throw new Error("payload mangler organizationId/leadId/actorUserId");
+    }
+    const { publishEventDurably } = await import("./leadgrid-workflow-engine.js");
+    await publishEventDurably({
+      pool,
+      organizationId,
+      type: "lead.created",
+      leadId,
+      actorUserId,
+      data: { source, occurred_at: occurredAt },
+    });
+    return { published: true };
   });
 
 

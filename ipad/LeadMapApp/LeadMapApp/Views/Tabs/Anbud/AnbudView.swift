@@ -1493,15 +1493,69 @@ struct AnbudView: View {
     private func createLead(from k: DoffinKunngjoringDTO) async {
         guard let api = appState.api, let og = k.oppdragsgivere.first,
               creatingLeadId == nil else { return }
+        guard let organizationId = appState.activeOrganizationId else {
+            leadErrorText = "Velg en organisasjon før du oppretter lead."
+            return
+        }
         creatingLeadId = k.id
         leadErrorText = nil
-        do {
-            _ = try await api.createLeadFromAnbud(
-                navn: og.navn, orgnr: og.orgnr,
-                tittel: k.tittel, url: k.url, frist: k.frist)
+
+        var rawText = "Org.nr: \(og.orgnr)\nAnbud: \(k.tittel)"
+        if let deadline = k.frist, !deadline.isEmpty {
+            rawText += "\nFrist: \(deadline)"
+        }
+        rawText += "\n\(k.url)"
+        let draft = LeadDraft(
+            creationId: UUID(),
+            organizationId: organizationId,
+            name: og.navn,
+            company: og.navn,
+            organizationNumber: og.orgnr,
+            websiteUrl: nil,
+            contactName: nil,
+            contactRole: nil,
+            email: nil,
+            phone: nil,
+            address: nil,
+            postalCode: nil,
+            city: nil,
+            country: "NO",
+            latitude: nil,
+            longitude: nil,
+            googlePlaceId: nil,
+            industryId: nil,
+            industry: selectedBransje?.navn,
+            employeeCountEstimate: nil,
+            annualRevenueNokEstimate: nil,
+            estimatedValue: nil,
+            notes: rawText,
+            leadTemperature: "warm",
+            pipelineStage: "new",
+            leadStatus: "unvisited",
+            nextFollowUpAt: nil,
+            nextAction: "Vurder anbudet: \(k.tittel)",
+            locationConfidence: "unknown",
+            leadSource: "doffin_anbud",
+            projectId: appState.activeProjectId,
+            rawText: rawText,
+            allowDuplicate: false
+        )
+
+        let result = await OfflineResilientActions.createLead(api: api, draft: draft)
+        switch result {
+        case .sent:
             withAnimation { _ = createdLeadIds.insert(k.id) }
-        } catch {
-            leadErrorText = "Kunne ikke opprette lead — prøv igjen. (\(error.localizedDescription))"
+            await appState.refreshAll()
+        case .queued:
+            withAnimation { _ = createdLeadIds.insert(k.id) }
+            leadErrorText = "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+        case .duplicate(let candidates):
+            let names = candidates.prefix(3).map(\.name).joined(separator: ", ")
+            leadErrorText = names.isEmpty
+                ? "En mulig duplikat finnes allerede i organisasjonen."
+                : "Mulig eksisterende lead: \(names)."
+        case .rejected(let message):
+            leadErrorText = message
         }
         creatingLeadId = nil
     }

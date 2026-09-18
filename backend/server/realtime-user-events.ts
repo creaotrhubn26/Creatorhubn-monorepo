@@ -1,8 +1,15 @@
 import type { IncomingMessage, Server as HttpServer } from "http";
+import type express from "express";
+import { createHash, randomBytes } from "node:crypto";
 import type { Duplex } from "stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
+import {
+  parseWebSocketRequestUrl,
+  resolveWebSocketPathOwner,
+  WEBSOCKET_PATHS,
+} from "./websocket-path-policy.js";
 
 /**
  * User-scoped realtime events channel. Complements the existing
@@ -181,8 +188,8 @@ export type UserEvent =
       timestamp: string;
     }
   /// Video Room (produsent-side versjonsgjennomgang, project_video_versions/
-  /// project_video_comments) fikk en ny versjon, kommentar, godkjenning eller
-  /// chapter-endring. Broadcastes til prosjektets ANDRE team-medlemmer (ikke
+  /// project_video_comments) fikk en ny versjon, kommentar, godkjenning,
+  /// chapter-endring eller delingslenke. Broadcastes til prosjektets ANDRE team-medlemmer (ikke
   /// aktøren selv) slik at VideoRoomTab refetcher instant i stedet for å
   /// vente på neste besøk/reload — samme "bare refetch"-mønster som
   /// shot.list-updated, men fanet ut til hele teamet i stedet for kun
@@ -190,7 +197,7 @@ export type UserEvent =
   | {
       kind: "video-room.updated";
       projectId: string;
-      reason: "version" | "comment" | "approval" | "chapters";
+      reason: "version" | "comment" | "approval" | "chapters" | "share";
       timestamp: string;
     }
   /// Sound Room (Audio Showcase, audio_review_projects/-versions/-comments,
@@ -204,9 +211,16 @@ export type UserEvent =
       projectId: string;
       reason: "version" | "comment" | "approval";
       timestamp: string;
+    }
+  | {
+      kind: "mockup.review-updated";
+      projectId: string;
+      versionId: string | null;
+      reason: "review" | "version" | "comment" | "resolution" | "decision" | "presence";
+      timestamp: string;
     };
 
-export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";
+export const USER_EVENTS_WS_PATH = WEBSOCKET_PATHS.userEvents;
 
 /// Client registry: userId → set of open WebSocket instances. A
 /// single photographer might have two tabs + one iPad, and we want
@@ -283,6 +297,42 @@ async function resolveBearerSession(
   return null;
 }
 
+const ticketHash = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+export function setupUserEventsTicketRoute(args: {
+  app: express.Application;
+  pool: Pool;
+  requireUserSession: (req: any, res: any) => { userId: string; [key: string]: unknown } | null;
+}): void {
+  let schemaReady: Promise<unknown> | null = null;
+  args.app.post("/api/realtime/user-events/ticket", async (req, res) => {
+    const session = args.requireUserSession(req, res); if (!session) return;
+    try {
+      schemaReady ||= args.pool.query(`
+        CREATE TABLE IF NOT EXISTS realtime_user_event_tickets (
+          ticket_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,issued_at TIMESTAMPTZ NOT NULL,expires_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_realtime_user_event_tickets_expires ON realtime_user_event_tickets(expires_at);
+      `);
+      await schemaReady;
+      const ticket = randomBytes(32).toString("base64url");
+      const expiresAt = new Date(Date.now() + 30_000);
+      await args.pool.query(
+        `INSERT INTO realtime_user_event_tickets(ticket_hash,user_id,issued_at,expires_at) VALUES ($1,$2,NOW(),$3)`,
+        [ticketHash(ticket), session.userId, expiresAt],
+      );
+      void args.pool.query(`DELETE FROM realtime_user_event_tickets WHERE expires_at<NOW()`).catch(() => undefined);
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ ticket, expiresAt: expiresAt.toISOString() });
+    } catch (error) {
+      schemaReady = null;
+      console.error("[user-events] ticket issue failed:", error);
+      return res.status(503).json({ error: "realtime_ticket_unavailable" });
+    }
+  });
+}
+
+
 export function attachUserEventsWebSocket(
   server: HttpServer,
   pool: Pool,
@@ -290,32 +340,28 @@ export function attachUserEventsWebSocket(
 ): void {
   const wss = new WebSocketServer({ noServer: true });
 
-  // RT-3: 30s heartbeat sweep. Samme mønster som capture-websocket.
-  // Halv-åpen TCP rapporterer fortsatt OPEN — uten denne ville zombie-
-  // sockets akkumulere i userClients-Map'et per-bruker over tid.
-  const heartbeatInterval = setInterval(() => {
-    for (const set of userClients.values()) {
-      for (const ws of set) {
-        const tagged = ws as WebSocket & { isAlive?: boolean };
-        if (tagged.isAlive === false) {
-          try { ws.terminate(); } catch { /* noop */ }
-          continue;
-        }
-        tagged.isAlive = false;
-        try { ws.ping(); } catch { /* noop */ }
-      }
-    }
-  }, 30_000);
-  wss.on("close", () => clearInterval(heartbeatInterval));
-
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    if (url.pathname !== USER_EVENTS_WS_PATH) return;
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url) return;
+    if (resolveWebSocketPathOwner(url.pathname) !== "user-events") return;
 
+    const ticket = (url.searchParams.get("ticket") ?? "").trim();
     const token = (url.searchParams.get("token") ?? "").trim();
 
     void (async () => {
-      const session = await resolveBearerSession(pool, activeSessions, token);
+      let session: SessionData | null = null;
+      if (ticket) {
+        const consumed = await pool.query(
+          `DELETE FROM realtime_user_event_tickets WHERE ticket_hash=$1 AND expires_at>NOW() RETURNING user_id`,
+          [ticketHash(ticket)],
+        );
+        if (consumed.rows[0]?.user_id) {
+          session = { userId: String(consumed.rows[0].user_id), email: "", name: "", role: "user", loginAt: new Date().toISOString() };
+        }
+      } else {
+        // Midlertidig kompatibilitet for eldre native/web-klienter.
+        session = await resolveBearerSession(pool, activeSessions, token);
+      }
       if (!session?.userId) {
         socket.destroy();
         return;
@@ -360,9 +406,6 @@ function registerClient(userId: string, ws: WebSocket): () => void {
     (ws as LiveWebSocket).isAlive = true;
   });
 
-  // RT-3: marker alive ved connect + pong
-  (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
-
   try {
     ws.send(
       JSON.stringify({
@@ -379,9 +422,6 @@ function registerClient(userId: string, ws: WebSocket): () => void {
     }
   };
 
-  ws.on("pong", () => {
-    (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
-  });
   ws.on("close", cleanup);
   ws.on("error", () => {
     // RT-3: kall cleanup() eksplisitt før terminate slik at Map-entry

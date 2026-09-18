@@ -80,7 +80,7 @@ export default function SplitSheetEditor({
       name: c.name,
       email: c.email || '',
       role: c.role,
-      percentage: c.percentage,
+      percentage: Number(c.percentage) || 0,
       user_id: c.user_id || undefined,
       order_index: c.order_index || 0,
       custom_fields: c.custom_fields || {}
@@ -88,7 +88,7 @@ export default function SplitSheetEditor({
       name: c.name,
       email: c.email || '',
       role: c.role,
-      percentage: c.percentage,
+      percentage: Number(c.percentage) || 0,
       user_id: c.user_id || undefined,
       order_index: c.order_index || 0,
       custom_fields: c.custom_fields || {}
@@ -162,14 +162,14 @@ export default function SplitSheetEditor({
 
   // Calculate total percentage
   const totalPercentage = useMemo(() => {
-    return contributors.reduce((sum, c) => sum + (c.percentage || 0), 0);
+    return contributors.reduce((sum, c) => sum + (Number(c.percentage) || 0), 0);
   }, [contributors]);
 
   const isValid = useMemo(() => {
     return title.trim().length > 0 && 
            Math.abs(totalPercentage - 100) < 0.01 && 
            contributors.length > 0 &&
-           contributors.every(c => c.name.trim().length > 0 && c.percentage > 0);
+           contributors.every(c => c.name.trim().length > 0 && Number(c.percentage) > 0);
   }, [title, totalPercentage, contributors]);
 
   // Create/Update mutation
@@ -740,7 +740,6 @@ export default function SplitSheetEditor({
     </Box>
   );
 }
-
 
 
 

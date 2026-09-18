@@ -124,6 +124,11 @@ def run(params: dict, dry_run: bool) -> None:
         "scriptingModulePath": None,
         "fusionscriptLibPath": None,
         "resolveRunning": False,
+        "resolveVersion": None,
+        "resolveVersionParts": [],
+        "supportsResolve21_1": False,
+        "mcpPackagePath": None,
+        "capabilities": {},
         "projectOpen": False,
         "projectName": None,
         "timelineName": None,
@@ -153,6 +158,12 @@ def run(params: dict, dry_run: bool) -> None:
     conn = bridge.ResolveConnection()
     if conn.connect():
         status["resolveRunning"] = True
+        capabilities = bridge.inspect_resolve_capabilities(conn)
+        status["resolveVersion"] = capabilities["resolveVersion"]
+        status["resolveVersionParts"] = capabilities["versionParts"]
+        status["supportsResolve21_1"] = capabilities["supportsResolve21_1"]
+        status["mcpPackagePath"] = capabilities["mcpPackagePath"]
+        status["capabilities"] = capabilities["features"]
         if conn.project:
             status["projectOpen"] = True
             try:
@@ -169,7 +180,12 @@ def run(params: dict, dry_run: bool) -> None:
                         pass
             except Exception:  # noqa: BLE001
                 pass
-        bridge.log("Connected to Resolve", project=status["projectName"])
+        bridge.log(
+            "Connected to Resolve",
+            project=status["projectName"],
+            resolveVersion=status["resolveVersion"],
+            supportsResolve21_1=status["supportsResolve21_1"],
+        )
     else:
         bridge.warn("Resolve not reachable. Open DaVinci Resolve Studio to enable live scripts.")
 

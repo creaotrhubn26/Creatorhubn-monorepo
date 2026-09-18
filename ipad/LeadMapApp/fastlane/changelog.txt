@@ -1,58 +1,12 @@
-Leadgrid 2.0 — Canvas, kundeminnet og en smartere hverdag
+Leadgrid 2.1
 
-NYTT I DETTE BYGGET — PENCIL HOVER (M2+ iPad Pro)
-• Lead-kort løfter seg når pennen svever over (Kart-panelet + Canvas-listene)
-• Svev over kartet → ghost-pin viser hvor pinnen lander før du trykker
-• Svev over et bilde i Canvas → 2×-forstørrelsesglass følger pennen
-
-NYTT I DETTE BYGGET — SAMARBEID I SANNTID
-• Ekte multi-penn: delte notater tegnes SAMMEN — kollegaens strøk dukker opp i det de tegnes (WebSocket, ikke polling)
-• «Tegner sammen med deg»-banner viser hvem som er i notatet akkurat nå
-• Org-delt element-bibliotek: «Del med teamet» på dine elementer — salgssjefen deler standard-oppsett med alle
-
-NYTT I DETTE BYGGET — CANVAS ORGANISERT
-• Canvas-oversikt: notatene ligger i mapper per kunde (utledet automatisk av lead-koblingen) + «Uten kunde»
-• Mappe-visning: kundeminnet festet øverst + «Nytt i mappa» pre-koblet til kunden
-• Papirkurv: slettede notater kan angres i 30 dager — gjenopprett eller slett for godt
-• Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯-meny — én ting om gangen
-• Auto-tittel: øverste håndskrift-linje blir notatets tittel mens du skriver
-• PDF-analyse: importert tilbud/kontrakt leses av AI med en gang — viktig oppsummering + punkter du huker av og tar opp på møtet (havner i møtesløyfa og som kort på flata)
-• Ekte PDF-håndtering: dokumentet lagres i original, sidene rendres vektor-skarpt (aldri bilder) — og «Del dokumentet (annotert PDF)» beholder søkbar tekst med blekket oppå
-• Marker med tusjen i PDF-en → teksten under foreslås som punkt: «Ta opp på møtet» eller rett i kundeminnet
-• Leser-modus: åpne dokumentet i fullskjerm med søk, klyp-zoom, tekstmarkering og side-navigator
-• «Send til kontakten»: e-post med den annoterte PDF-en vedlagt — logges i møteloggen
-• Tilbuds-diff: ny versjon i samme kundemappe sammenlignes automatisk med forrige (pris/frister/forbehold)
-• Den annoterte eksporten tar nå med tekstbokser, stempler og former — og notatlista laster raskere (dokumentene hentes først når du åpner notatet)
-
-NYTT: LEADGRID CANVAS
-• Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso
-• 6 notattyper med egne covers: Møte, Lead, Befaring, Salgsplan, Prosjekt, Rute
-• 10 papir-maler: SWOT, Kanban, Pipeline, Tankekart, Møte, Rute, Salgsstrategi, Brainstorm, Territorium
-• Levende tankekart: bobler med «+»-håndtak, koblinger som følger, skriv i dem med Scribble
-• Former som objekter: dra, klyp for størrelse, vri for rotasjon, hold for å fjerne — og shape recognition: tegn + hold pennen stille → perfekt sirkel/rektangel/pil
-• Penn-galleri: Kart-markør, Laser (toner bort), Pil-penn, Plan-penn
-• Bilder: dra inn fra Bilder/Filer, flytt, skaler, tegn oppå
-• PDF-annotering: importer tilbud/kontrakter/plantegninger — marker, skriv, signer, del som PDF
-• Levende kort: lead-kort, KPI-er, kart-utsnitt og oppgaver som oppdateres live fra CRM
-• Håndskrift → tekst (Vision) + AI-analyse → oppgaver og møtelogg — også on-device med Apple Intelligence
-• Universalsøk: finn tekst i håndskrift, PDF-er og bilder
-• Spatial Search: søk i notatet → flata flyr til treffet
-• Faner (flere notater åpne), undo-historikk, Tidsreise-slider (se idéene utvikle seg dag for dag)
-• Multi-select, element-bibliotek, Smart Layers (slå lag av/på)
-• Deling i teamet + varsel når en kollega oppdaterer
-• KUNDEMINNET: hele kundeforholdet på ett visuelt lerret — AI-oppsummeringer festes kronologisk
-
-MØTER
-• Reisetids-vakt: «kjøreturen tar 32 min — du har 25» + anbefalt ny tid
-• Dra-og-slipp møter i dag/uke + «Varsle kontakten»-utkast
-• Møtesløyfa lukket: AI-oppgaver til Oversikt + én-klikks statusendring
-• «Skissa fra sist» i møtebriefen
-
-OVERSIKT
-• Ny beslutningsskjerm uten kart-duplikat — kompakt leads-liste med intern navigasjon
-• Alle kort kan kollapses og velges bort — og salgsleder/organisasjon styrer hva teamet ser
-• «Oppgaver fra møtene»-kortet med avhuking
-
-ANNET
-• Alle Naviger-knapper bruker nå Leadgrids egen turn-by-turn (ikke Apple Maps)
-• Canvas-notater som kart-lag på Kart-fanen
+• Ett felles og mer oversiktlig skjema for nye leads i både Kart og Leads.
+• Feltspesifikke feilmeldinger for organisasjonsnummer, e-post, nettside og tekstlengder før lagring.
+• Mer konsistent oppførsel ved opprettelse og redigering av leads.
+• Ny Leadgrid-assistent med seks ferdigheter: duplikatsøk, BRREG-berikelse, besøkslogg, offline-synk, oppfølgingsplan og datakvalitet.
+• Alle agentforslag må bekreftes før de utføres, med tydelig personverninformasjon og sikker organisasjonsavgrensning.
+• Stabilitets- og ytelsesforbedringer i Kart og Oversikt.
+• Pondus har fått én samlet samtalecoach på tvers av Oversikt, Maler og Pondus.
+• Nye forklarbare kvalitetsscorer, sikker versjonshistorikk og serververifisert quiz.
+• Pondus-økter synkroniseres idempotent etter nettverksbrudd, med samme økt fra start til utfall.
+• Bedre organisasjonsavgrensning, ledertilgang og stabil åpning fra Siri og Apple Watch.

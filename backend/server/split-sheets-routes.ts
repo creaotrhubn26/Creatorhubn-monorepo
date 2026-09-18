@@ -39,6 +39,145 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
+import {
+  calculateHourlyAmount,
+  hasRequiredSplitSheetParticipantCount,
+  normalizeCurrencyAmount,
+  normalizeEstimatedHours,
+  splitSheetCompensationModel,
+} from "../../frontend/shared/split-sheet-compensation.ts";
+import {
+  isWorkspaceParticipantCompensationMetadata,
+  WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE,
+} from "../../frontend/shared/workspace-participant-compensation.ts";
+
+const jsonObject = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+const isVersionedWorkspaceAgreement = (value: unknown): boolean =>
+  Number(jsonObject(value).agreementVersion) >= 1;
+
+const databaseNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+export const splitSheetContributorForApi = (row: any): any => ({
+  ...row,
+  percentage: databaseNumber(row?.percentage),
+});
+
+export const splitSheetForApi = (row: any): any => ({
+  ...row,
+  total_percentage: databaseNumber(row?.total_percentage),
+  ...(row?.contributor_count === undefined
+    ? {}
+    : { contributor_count: Math.max(0, Math.trunc(databaseNumber(row.contributor_count))) }),
+  ...(row?.signed_count === undefined
+    ? {}
+    : { signed_count: Math.max(0, Math.trunc(databaseNumber(row.signed_count))) }),
+});
+
+export const normalizeSplitSheetContributorPercentages = (value: unknown): any[] => {
+  const contributors = Array.isArray(value)
+    ? value.map((contributor) => {
+        const normalizedContributor = { ...jsonObject(contributor) } as Record<string, any>;
+        const customFields = { ...jsonObject(normalizedContributor.custom_fields) } as Record<string, any>;
+        const compensationType = customFields.compensationType;
+        if (compensationType === "hourly") {
+          const hourlyRate = normalizeCurrencyAmount(customFields.hourlyRate ?? customFields.feeAmount);
+          const estimatedHours = normalizeEstimatedHours(customFields.estimatedHours);
+          normalizedContributor.custom_fields = {
+            ...customFields,
+            compensationType: "hourly",
+            hourlyRate,
+            estimatedHours,
+            estimatedAmount: calculateHourlyAmount(hourlyRate, estimatedHours),
+            currency: typeof customFields.currency === "string" && /^[A-Z]{3}$/i.test(customFields.currency.trim())
+              ? customFields.currency.trim().toUpperCase()
+              : "NOK",
+            feeType: "hourly",
+            feeAmount: hourlyRate,
+          };
+        } else if (compensationType === "fixed") {
+          const estimatedAmount = normalizeCurrencyAmount(customFields.estimatedAmount ?? customFields.feeAmount);
+          normalizedContributor.custom_fields = {
+            ...customFields,
+            compensationType: "fixed",
+            hourlyRate: null,
+            estimatedHours: null,
+            estimatedAmount,
+            currency: typeof customFields.currency === "string" && /^[A-Z]{3}$/i.test(customFields.currency.trim())
+              ? customFields.currency.trim().toUpperCase()
+              : "NOK",
+            feeType: "fixed",
+            feeAmount: estimatedAmount,
+          };
+        } else if (compensationType === "share") {
+          normalizedContributor.custom_fields = {
+            ...customFields,
+            compensationType: "share",
+            hourlyRate: null,
+            estimatedHours: null,
+            estimatedAmount: null,
+          };
+        }
+        return normalizedContributor;
+      })
+    : [];
+  const shareIndexes = contributors
+    .map((contributor, index) => {
+      const compensationType = jsonObject(contributor.custom_fields).compensationType;
+      return compensationType === "hourly" || compensationType === "fixed" ? -1 : index;
+    })
+    .filter((index) => index >= 0);
+
+  const normalized = contributors.map((contributor) => ({ ...contributor, percentage: 0 }));
+  if (shareIndexes.length === 0) return normalized;
+
+  const rawShares = shareIndexes.map((index) => {
+    const parsed = Number(contributors[index].percentage);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  });
+  const rawShareTotal = rawShares.reduce((sum, percentage) => sum + percentage, 0);
+  const onlyShareParticipants = shareIndexes.length === contributors.length;
+  const roundingTolerance = shareIndexes.length * 0.005 + Number.EPSILON;
+  const isRoundedHundred = onlyShareParticipants
+    && Math.abs(rawShareTotal - 100) <= roundingTolerance;
+  const targetBasisPoints = isRoundedHundred
+    ? 10_000
+    : Math.max(0, Math.min(10_000, Math.round(rawShareTotal * 100)));
+  let remainingBasisPoints = targetBasisPoints;
+
+  shareIndexes.forEach((contributorIndex, sharePosition) => {
+    const isLastShare = sharePosition === shareIndexes.length - 1;
+    const basisPoints = isLastShare
+      ? remainingBasisPoints
+      : Math.max(0, Math.min(
+          remainingBasisPoints,
+          Math.round(rawShares[sharePosition] * 100),
+        ));
+    normalized[contributorIndex].percentage = basisPoints / 100;
+    remainingBasisPoints -= basisPoints;
+  });
+
+  return normalized;
+};
+
+const contributorCompensationModel = (contributors: any[]) =>
+  splitSheetCompensationModel(contributors.map((contributor) => ({
+    compensationType: jsonObject(contributor.custom_fields).compensationType as any,
+  })));
+
+const hasValidHourlyTerms = (contributors: any[]): boolean =>
+  contributors.every((contributor) => {
+    const fields = jsonObject(contributor.custom_fields);
+    return fields.compensationType !== "hourly"
+      || (normalizeCurrencyAmount(fields.hourlyRate) > 0
+        && normalizeEstimatedHours(fields.estimatedHours) > 0);
+  });
 
 export interface SplitSheetsRoutesDeps {
   app: express.Application;
@@ -68,6 +207,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
         FROM split_sheets ss
         LEFT JOIN split_sheet_contributors ssc ON ss.id = ssc.split_sheet_id
         WHERE ss.user_id = $1
+          AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
       `;
       const params: any[] = [userId];
       let idx = 2;
@@ -89,7 +229,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       params.push(Number(limit));
 
       const result = await pool.query(query, params);
-      res.json({ success: true, data: result.rows });
+      res.json({ success: true, data: result.rows.map(splitSheetForApi) });
     } catch (error) {
       console.error("Error fetching split sheets:", error);
       res.json({ success: true, data: [] });
@@ -111,24 +251,29 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId) return res.status(401).json({ error: "unauthorized" });
 
       const totalResult = await pool.query(
-        "SELECT COUNT(*) as count FROM split_sheets WHERE user_id = $1",
+        `SELECT COUNT(*) as count FROM split_sheets
+          WHERE user_id = $1
+            AND COALESCE(metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
       const pendingResult = await pool.query(
         `SELECT COUNT(*) as count FROM split_sheets ss
          JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
-         WHERE ss.user_id = $1 AND ssc.signed_at IS NULL`,
+         WHERE ss.user_id = $1 AND ssc.signed_at IS NULL
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
       const completedResult = await pool.query(
         `SELECT COUNT(*) as count FROM split_sheets ss
-         WHERE ss.user_id = $1 AND ss.status = 'completed'`,
+         WHERE ss.user_id = $1 AND ss.status = 'completed'
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
       const revenueResult = await pool.query(
         `SELECT COALESCE(SUM(ssc.percentage), 0) as total FROM split_sheet_contributors ssc
          JOIN split_sheets ss ON ss.id = ssc.split_sheet_id
-         WHERE ss.user_id = $1`,
+         WHERE ss.user_id = $1
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
 
@@ -161,6 +306,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
            COUNT(ss.id) AS sheet_count,
            SUM(ss.total_percentage) AS total_percentage
          FROM split_sheets ss
+         WHERE COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY DATE_TRUNC('month', ss.created_at)
          ORDER BY month ASC`,
       );
@@ -183,6 +329,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
                 COUNT(ssc.id) AS contributor_count
          FROM split_sheets ss
          LEFT JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
+         WHERE COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY ss.id, ss.title, ss.total_percentage, ss.status
          ORDER BY ss.created_at DESC
          LIMIT 10`,
@@ -216,6 +363,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const statusResult = await pool.query(
         `SELECT status, COUNT(*) AS count
          FROM split_sheets
+         WHERE COALESCE(metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY status
          ORDER BY count DESC`,
       );
@@ -233,7 +381,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
            MIN(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS min_days,
            MAX(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS max_days
          FROM split_sheets
-         WHERE completed_at IS NOT NULL`,
+         WHERE completed_at IS NOT NULL
+           AND COALESCE(metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
       );
 
       const proc = processingResult.rows[0];
@@ -262,7 +411,9 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
            MAX(ssc.percentage) AS max_percentage,
            COUNT(ssc.id) AS count
          FROM split_sheet_contributors ssc
+         JOIN split_sheets ss ON ss.id = ssc.split_sheet_id
          WHERE ssc.role IS NOT NULL AND ssc.role != ''
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY ssc.role
          ORDER BY avg_percentage DESC`,
       );
@@ -334,13 +485,22 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
       }
+      if (isWorkspaceParticipantCompensationMetadata(ssResult.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const contribs = await pool.query(
         "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index ASC, created_at ASC",
         [id],
       );
       res.json({
         success: true,
-        data: { ...ssResult.rows[0], contributors: contribs.rows },
+        data: {
+          ...splitSheetForApi(ssResult.rows[0]),
+          contributors: contribs.rows.map(splitSheetContributorForApi),
+        },
       });
     } catch (error) {
       console.error("Error fetching split sheet:", error);
@@ -360,60 +520,99 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
         track_id,
         title,
         description,
-        contributors = [],
+        metadata = {},
+        contributors: requestedContributors = [],
       } = req.body;
       const id = crypto.randomUUID();
+      const contributors = normalizeSplitSheetContributorPercentages(requestedContributors);
+      const normalizedMetadata = { ...jsonObject(metadata) };
+      if (isWorkspaceParticipantCompensationMetadata(normalizedMetadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_source_reserved",
+        });
+      }
+      if (isVersionedWorkspaceAgreement(normalizedMetadata)) {
+        const compensationModel = contributorCompensationModel(contributors);
+        if (!hasRequiredSplitSheetParticipantCount(compensationModel, contributors.length)) {
+          return res.status(400).json({
+            success: false,
+            error: "share_agreement_requires_two_participants",
+          });
+        }
+        if (!hasValidHourlyTerms(contributors)) {
+          return res.status(400).json({
+            success: false,
+            error: "invalid_hourly_compensation_terms",
+          });
+        }
+        normalizedMetadata.compensationModel = compensationModel;
+      }
+      const client = await pool.connect();
 
-      await pool.query(
-        `INSERT INTO split_sheets (id, user_id, project_id, track_id, title, description, status, total_percentage, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, 'draft', 0, '{}')`,
-        [
-          id,
-          userId,
-          project_id || null,
-          track_id || null,
-          title || "Untitled Split Sheet",
-          description || null,
-        ],
-      );
-
-      for (let i = 0; i < contributors.length; i++) {
-        const c = contributors[i];
-        await pool.query(
-          `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO split_sheets (id, user_id, project_id, track_id, title, description, status, total_percentage, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, 'draft', 0, $7::jsonb)`,
           [
-            crypto.randomUUID(),
             id,
-            c.name,
-            c.email || null,
-            c.role || "collaborator",
-            c.percentage || 0,
-            i,
-            c.user_id || null,
-            JSON.stringify(c.custom_fields || {}),
+            userId,
+            project_id || null,
+            track_id || null,
+            title || "Untitled Split Sheet",
+            description || null,
+            JSON.stringify(normalizedMetadata),
           ],
         );
+
+        for (let i = 0; i < contributors.length; i++) {
+          const c = contributors[i];
+          await client.query(
+            `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+              crypto.randomUUID(),
+              id,
+              c.name,
+              c.email || null,
+              c.role || "collaborator",
+              c.percentage,
+              i,
+              c.user_id || null,
+              JSON.stringify(jsonObject(c.custom_fields)),
+            ],
+          );
+        }
+
+        // Keep the denormalized sheet total aligned with the exact DECIMAL rows.
+        await client.query(
+          "UPDATE split_sheets SET total_percentage = (SELECT COALESCE(SUM(percentage), 0) FROM split_sheet_contributors WHERE split_sheet_id = $1) WHERE id = $1",
+          [id],
+        );
+
+        const result = await client.query(
+          "SELECT * FROM split_sheets WHERE id = $1",
+          [id],
+        );
+        const contribs = await client.query(
+          "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
+          [id],
+        );
+        await client.query("COMMIT");
+        res.json({
+          success: true,
+          data: {
+            ...splitSheetForApi(result.rows[0]),
+            contributors: contribs.rows.map(splitSheetContributorForApi),
+          },
+        });
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
-
-      // Update total_percentage
-      await pool.query(
-        "UPDATE split_sheets SET total_percentage = (SELECT COALESCE(SUM(percentage), 0) FROM split_sheet_contributors WHERE split_sheet_id = $1) WHERE id = $1",
-        [id],
-      );
-
-      const result = await pool.query(
-        "SELECT * FROM split_sheets WHERE id = $1",
-        [id],
-      );
-      const contribs = await pool.query(
-        "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-        [id],
-      );
-      res.json({
-        success: true,
-        data: { ...result.rows[0], contributors: contribs.rows },
-      });
     } catch (error) {
       console.error("Error creating split sheet:", error);
       res
@@ -428,100 +627,224 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     if (!_ssUserId) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
-      // Ownership scope: only the owner may mutate the sheet. Return 404 (not
-      // 403) so non-owners cannot enumerate which sheet ids exist (IDOR).
-      const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
-        [id, _ssUserId],
-      );
-      if (_own.rowCount === 0) {
-        return res
-          .status(404)
-          .json({ success: false, error: "Split sheet not found" });
+      if (isWorkspaceParticipantCompensationMetadata(req.body?.metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_source_reserved",
+        });
       }
-      const { title, description, status, project_id, track_id, contributors } =
-        req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
 
-      const updates: string[] = [];
-      const params: any[] = [];
-      let idx = 1;
+        // This row lock serializes owner mutations with public signing, which
+        // locks the same split_sheets row before capturing its legal snapshot.
+        // Ownership remains part of the locked lookup to preserve tenant scope.
+        const _own = await client.query(
+          `SELECT ss.metadata
+             FROM split_sheets ss
+            WHERE ss.id = $1 AND ss.user_id = $2
+            FOR UPDATE OF ss`,
+          [id, _ssUserId],
+        );
+        if (_own.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res
+            .status(404)
+            .json({ success: false, error: "Split sheet not found" });
+        }
+        if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "managed_compensation_uses_participant_contract",
+          });
+        }
 
-      if (title !== undefined) {
-        updates.push(`title = $${idx++}`);
-        params.push(title);
-      }
-      if (description !== undefined) {
-        updates.push(`description = $${idx++}`);
-        params.push(description);
-      }
-      if (status !== undefined) {
-        updates.push(`status = $${idx++}`);
-        params.push(status);
-      }
-      if (project_id !== undefined) {
-        updates.push(`project_id = $${idx++}`);
-        params.push(project_id);
-      }
-      if (track_id !== undefined) {
-        updates.push(`track_id = $${idx++}`);
-        params.push(track_id);
-      }
-      updates.push(`updated_at = NOW()`);
+        // Use a separate statement after acquiring the row lock. At READ
+        // COMMITTED this gets a fresh snapshot, so a signer that committed
+        // while this request waited cannot be missed.
+        const signedState = await client.query(
+          `SELECT EXISTS (
+             SELECT 1
+               FROM split_sheet_contributors
+              WHERE split_sheet_id = $1 AND signed_at IS NOT NULL
+           ) AS has_signed`,
+          [id],
+        );
+        const hasSigned = Boolean(signedState.rows[0]?.has_signed);
+        const requestBody = req.body || {};
+        const { title, description, status, project_id, track_id, metadata, contributors } =
+          requestBody;
+        const currentIsVersioned = isVersionedWorkspaceAgreement(_own.rows[0].metadata);
+        const requestedMetadata = metadata === undefined
+          ? undefined
+          : { ...jsonObject(metadata) };
+        const willBeVersioned = currentIsVersioned
+          || (requestedMetadata !== undefined && isVersionedWorkspaceAgreement(requestedMetadata));
+        const normalizedContributors = Array.isArray(contributors)
+          ? normalizeSplitSheetContributorPercentages(contributors)
+          : null;
+        const derivedCompensationModel = normalizedContributors && willBeVersioned
+          ? contributorCompensationModel(normalizedContributors)
+          : null;
 
-      if (status === "completed") {
-        updates.push(`completed_at = NOW()`);
-      }
+        if (currentIsVersioned && requestedMetadata !== undefined) {
+          const requestedAgreementVersion = Number(requestedMetadata.agreementVersion);
+          if (Object.prototype.hasOwnProperty.call(requestedMetadata, "agreementVersion")
+            && (!Number.isFinite(requestedAgreementVersion) || requestedAgreementVersion < 1)) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              success: false,
+              error: "agreement_version_managed_by_server",
+            });
+          }
+        }
 
-      if (updates.length > 0) {
+        // A legacy signature was not captured with the versioned personal
+        // consent + snapshot contract. Do not relabel that evidence as though
+        // it had been; the database trigger enforces the same boundary.
+        if (!currentIsVersioned && willBeVersioned && hasSigned) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "personal_signing_required",
+            message: "Existing legacy signatures cannot be converted to versioned personal signatures.",
+          });
+        }
+
+        // Versioned workspace agreements are participant-signed legal records.
+        // Once any participant has signed, terms require a new agreement instead
+        // of replacing rows (which would also delete signature evidence).
+        if (currentIsVersioned && hasSigned) {
+          const termFields = ["title", "description", "project_id", "track_id", "metadata", "contributors"];
+          const changesTerms = termFields.some((field) => Object.prototype.hasOwnProperty.call(requestBody, field));
+          const changesProtectedStatus = status !== undefined && status !== "archived";
+          if (changesTerms || changesProtectedStatus) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              success: false,
+              error: "signed_agreement_locked",
+              message: "Signed agreement terms cannot be changed. Create a new agreement for amendments.",
+            });
+          }
+        }
+
+        if (normalizedContributors && willBeVersioned) {
+          if (!hasRequiredSplitSheetParticipantCount(derivedCompensationModel || "share", normalizedContributors.length)) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({
+              success: false,
+              error: "share_agreement_requires_two_participants",
+            });
+          }
+          if (!hasValidHourlyTerms(normalizedContributors)) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({
+              success: false,
+              error: "invalid_hourly_compensation_terms",
+            });
+          }
+        }
+
+        const updates: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+
+        if (title !== undefined) {
+          updates.push(`title = $${idx++}`);
+          params.push(title);
+        }
+        if (description !== undefined) {
+          updates.push(`description = $${idx++}`);
+          params.push(description);
+        }
+        if (status !== undefined) {
+          updates.push(`status = $${idx++}`);
+          params.push(status);
+        }
+        if (project_id !== undefined) {
+          updates.push(`project_id = $${idx++}`);
+          params.push(project_id);
+        }
+        if (track_id !== undefined) {
+          updates.push(`track_id = $${idx++}`);
+          params.push(track_id);
+        }
+        if (requestedMetadata !== undefined || derivedCompensationModel !== null) {
+          // Merge supplied agreement metadata so existing source/integration
+          // keys survive updates from the workspace editor.
+          updates.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${idx++}::jsonb`);
+          params.push(JSON.stringify({
+            ...(requestedMetadata || {}),
+            ...(derivedCompensationModel ? { compensationModel: derivedCompensationModel } : {}),
+          }));
+        }
+        updates.push("updated_at = NOW()");
+
+        if (status === "completed") {
+          updates.push("completed_at = NOW()");
+        }
+
         params.push(id);
-        await pool.query(
+        await client.query(
           `UPDATE split_sheets SET ${updates.join(", ")} WHERE id = $${idx}`,
           params,
         );
-      }
 
-      // Replace contributors if provided
-      if (contributors && Array.isArray(contributors)) {
-        await pool.query(
-          "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
-          [id],
-        );
-        for (let i = 0; i < contributors.length; i++) {
-          const c = contributors[i];
-          await pool.query(
-            `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [
-              crypto.randomUUID(),
-              id,
-              c.name,
-              c.email || null,
-              c.role || "collaborator",
-              c.percentage || 0,
-              i,
-              c.user_id || null,
-              JSON.stringify(c.custom_fields || {}),
-            ],
+        // Replace contributors if provided. The sheet lock stays held until
+        // commit, so a signer can never observe a partial replacement.
+        if (normalizedContributors) {
+          await client.query(
+            "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
+            [id],
+          );
+          for (let i = 0; i < normalizedContributors.length; i++) {
+            const c = normalizedContributors[i];
+            await client.query(
+              `INSERT INTO split_sheet_contributors (id, split_sheet_id, name, email, role, percentage, order_index, user_id, custom_fields)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [
+                crypto.randomUUID(),
+                id,
+                c.name,
+                c.email || null,
+                c.role || "collaborator",
+                c.percentage,
+                i,
+                c.user_id || null,
+                JSON.stringify(jsonObject(c.custom_fields)),
+              ],
+            );
+          }
+          await client.query(
+            "UPDATE split_sheets SET total_percentage = (SELECT COALESCE(SUM(percentage), 0) FROM split_sheet_contributors WHERE split_sheet_id = $1) WHERE id = $1",
+            [id],
           );
         }
-        await pool.query(
-          "UPDATE split_sheets SET total_percentage = (SELECT COALESCE(SUM(percentage), 0) FROM split_sheet_contributors WHERE split_sheet_id = $1) WHERE id = $1",
+
+        const result = await client.query(
+          "SELECT * FROM split_sheets WHERE id = $1",
           [id],
         );
+        const contribs = await client.query(
+          "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
+          [id],
+        );
+        await client.query("COMMIT");
+        res.json({
+          success: true,
+          data: {
+            ...splitSheetForApi(result.rows[0]),
+            contributors: contribs.rows.map(splitSheetContributorForApi),
+          },
+        });
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
-
-      const result = await pool.query(
-        "SELECT * FROM split_sheets WHERE id = $1",
-        [id],
-      );
-      const contribs = await pool.query(
-        "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index",
-        [id],
-      );
-      res.json({
-        success: true,
-        data: { ...result.rows[0], contributors: contribs.rows },
-      });
     } catch (error) {
       console.error("Error updating split sheet:", error);
       res
@@ -536,43 +859,100 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     if (!_ssUserId2) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
-      // Ownership scope: only the owner may delete the sheet + its children.
-      // Return 404 (not 403) to prevent id enumeration (IDOR).
-      const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
-        [id, _ssUserId2],
-      );
-      if (_own.rowCount === 0) {
-        return res
-          .status(404)
-          .json({ success: false, error: "Split sheet not found" });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // Lock the same header row as the signing transaction. Whichever
+        // operation acquires it first completes first; the waiter then sees the
+        // committed state before deciding whether deletion is allowed.
+        const _own = await client.query(
+          `SELECT ss.metadata
+             FROM split_sheets ss
+            WHERE ss.id = $1 AND ss.user_id = $2
+            FOR UPDATE OF ss`,
+          [id, _ssUserId2],
+        );
+        if (_own.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res
+            .status(404)
+            .json({ success: false, error: "Split sheet not found" });
+        }
+        if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "managed_compensation_uses_participant_contract",
+          });
+        }
+
+        const signedState = await client.query(
+          `SELECT EXISTS (
+             SELECT 1
+               FROM split_sheet_contributors
+              WHERE split_sheet_id = $1 AND signed_at IS NOT NULL
+           ) AS has_signed`,
+          [id],
+        );
+        if (isVersionedWorkspaceAgreement(_own.rows[0].metadata)
+          && Boolean(signedState.rows[0]?.has_signed)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "signed_agreement_locked",
+            message: "Signed agreements must be archived instead of deleted.",
+          });
+        }
+
+        await client.query(
+          "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
+          [id],
+        );
+        await client.query(
+          "DELETE FROM split_sheet_comments WHERE split_sheet_id = $1",
+          [id],
+        );
+        await client.query(
+          "DELETE FROM split_sheet_versions WHERE split_sheet_id = $1",
+          [id],
+        );
+
+        // These tables are optional in older installations. Savepoints retain
+        // the historical tolerance without leaving the transaction aborted.
+        await client.query("SAVEPOINT delete_split_sheet_revenue");
+        try {
+          await client.query(
+            "DELETE FROM split_sheet_revenue WHERE split_sheet_id = $1",
+            [id],
+          );
+          await client.query("RELEASE SAVEPOINT delete_split_sheet_revenue");
+        } catch {
+          await client.query("ROLLBACK TO SAVEPOINT delete_split_sheet_revenue");
+          await client.query("RELEASE SAVEPOINT delete_split_sheet_revenue");
+        }
+
+        await client.query("SAVEPOINT delete_split_sheet_payments");
+        try {
+          await client.query(
+            "DELETE FROM split_sheet_payments WHERE split_sheet_id = $1",
+            [id],
+          );
+          await client.query("RELEASE SAVEPOINT delete_split_sheet_payments");
+        } catch {
+          await client.query("ROLLBACK TO SAVEPOINT delete_split_sheet_payments");
+          await client.query("RELEASE SAVEPOINT delete_split_sheet_payments");
+        }
+
+        await client.query("DELETE FROM split_sheets WHERE id = $1", [id]);
+        await client.query("COMMIT");
+        res.json({ success: true, message: "Split sheet deleted successfully" });
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
-      await pool.query(
-        "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
-        [id],
-      );
-      await pool.query(
-        "DELETE FROM split_sheet_comments WHERE split_sheet_id = $1",
-        [id],
-      );
-      await pool.query(
-        "DELETE FROM split_sheet_versions WHERE split_sheet_id = $1",
-        [id],
-      );
-      try {
-        await pool.query(
-          "DELETE FROM split_sheet_revenue WHERE split_sheet_id = $1",
-          [id],
-        );
-      } catch {}
-      try {
-        await pool.query(
-          "DELETE FROM split_sheet_payments WHERE split_sheet_id = $1",
-          [id],
-        );
-      } catch {}
-      await pool.query("DELETE FROM split_sheets WHERE id = $1", [id]);
-      res.json({ success: true, message: "Split sheet deleted successfully" });
     } catch (error) {
       console.error("Error deleting split sheet:", error);
       res
@@ -592,42 +972,76 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const userId = getSplitSheetUserId(req);
       if (!userId)
         return res.status(401).json({ success: false, error: "unauthorized" });
-      const own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
-        [id, userId],
-      );
-      if (own.rowCount === 0)
-        return res
-          .status(404)
-          .json({ success: false, error: "Split sheet not found" });
       const { contributor_id, signature_data } = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const own = await client.query(
+          `SELECT metadata
+             FROM split_sheets
+            WHERE id = $1 AND user_id = $2
+            FOR UPDATE`,
+          [id, userId],
+        );
+        if (own.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res
+            .status(404)
+            .json({ success: false, error: "Split sheet not found" });
+        }
+        if (isWorkspaceParticipantCompensationMetadata(own.rows[0].metadata)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "managed_compensation_uses_participant_contract",
+          });
+        }
+        if (isVersionedWorkspaceAgreement(own.rows[0].metadata)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "personal_signing_required",
+            message: "Versioned workspace agreements must be signed from the participant's personal link.",
+          });
+        }
 
-      await pool.query(
-        `UPDATE split_sheet_contributors SET signed_at = NOW(), signature_data = $1, updated_at = NOW() WHERE id = $2 AND split_sheet_id = $3`,
-        [JSON.stringify(signature_data || {}), contributor_id, id],
-      );
+        await client.query(
+          `UPDATE split_sheet_contributors
+              SET signed_at = COALESCE(signed_at, NOW()),
+                  signature_data = COALESCE(signature_data, $1::jsonb),
+                  updated_at = NOW()
+            WHERE id = $2 AND split_sheet_id = $3`,
+          [JSON.stringify(signature_data || {}), contributor_id, id],
+        );
 
-      // Check if all contributors signed
-      const check = await pool.query(
-        `SELECT COUNT(*) as total, COUNT(signed_at) as signed FROM split_sheet_contributors WHERE split_sheet_id = $1`,
-        [id],
-      );
-      if (
-        check.rows[0].total > 0 &&
-        check.rows[0].total === check.rows[0].signed
-      ) {
-        await pool.query(
-          `UPDATE split_sheets SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        // Check if all contributors signed while the header lock is held.
+        const check = await client.query(
+          `SELECT COUNT(*) as total, COUNT(signed_at) as signed
+             FROM split_sheet_contributors WHERE split_sheet_id = $1`,
           [id],
         );
-      } else {
-        await pool.query(
-          `UPDATE split_sheets SET status = 'pending_signatures', updated_at = NOW() WHERE id = $1`,
-          [id],
-        );
+        if (
+          check.rows[0].total > 0 &&
+          check.rows[0].total === check.rows[0].signed
+        ) {
+          await client.query(
+            `UPDATE split_sheets SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+            [id],
+          );
+        } else {
+          await client.query(
+            `UPDATE split_sheets SET status = 'pending_signatures', updated_at = NOW() WHERE id = $1`,
+            [id],
+          );
+        }
+        await client.query("COMMIT");
+        return res.json({ success: true, message: "Signature recorded successfully" });
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
-
-      res.json({ success: true, message: "Signature recorded successfully" });
     } catch (error) {
       console.error("Error signing split sheet:", error);
       res
@@ -642,27 +1056,49 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const { id } = req.params;
       const userId = getSplitSheetUserId(req);
       if (!userId) return res.status(401).json({ error: "unauthorized" });
-      // Ownership scope: only the owner may (re)send invitations for their sheet.
-      // 404 to prevent id enumeration.
-      const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
-        [id, userId],
-      );
-      if (_own.rowCount === 0) {
-        return res
-          .status(404)
-          .json({ success: false, error: "Split sheet not found" });
-      }
       const { contributor_ids, message } = req.body;
-
-      // Update invitation status for contributors
-      if (contributor_ids && contributor_ids.length > 0) {
-        for (const cid of contributor_ids) {
-          await pool.query(
-            `UPDATE split_sheet_contributors SET invitation_sent_at = NOW(), invitation_status = 'sent', updated_at = NOW() WHERE id = $1 AND split_sheet_id = $2`,
-            [cid, id],
-          );
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Ownership scope and header-first ordering for every contributor write.
+        // 404 prevents id enumeration.
+        const _own = await client.query(
+          `SELECT id, metadata
+             FROM split_sheets
+            WHERE id = $1 AND user_id = $2
+            FOR UPDATE`,
+          [id, userId],
+        );
+        if (_own.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res
+            .status(404)
+            .json({ success: false, error: "Split sheet not found" });
         }
+        if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            success: false,
+            error: "managed_compensation_uses_participant_contract",
+          });
+        }
+
+        if (contributor_ids && contributor_ids.length > 0) {
+          for (const cid of contributor_ids) {
+            await client.query(
+              `UPDATE split_sheet_contributors
+                  SET invitation_sent_at = NOW(), invitation_status = 'sent', updated_at = NOW()
+                WHERE id = $1 AND split_sheet_id = $2`,
+              [cid, id],
+            );
+          }
+        }
+        await client.query("COMMIT");
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
 
       res.json({ success: true, message: "Split sheet shared successfully" });
@@ -688,6 +1124,14 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       // PDF-eksporten hele sheetet + kontributor-PII/økonomi for enhver :id.
       const userId = getSplitSheetUserId(req);
       const isOwner = userId && sheet.user_id === userId;
+      if (isWorkspaceParticipantCompensationMetadata(sheet.metadata)) {
+        return isOwner
+          ? res.status(409).json({
+              success: false,
+              error: "managed_compensation_uses_participant_contract",
+            })
+          : res.status(404).json({ success: false, error: "Not found" });
+      }
       const code = String(req.query.access_code || req.query.token || "")
         .trim()
         .toUpperCase();
@@ -702,11 +1146,38 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
         [id],
       );
 
+      const publicSheet = {
+        id: sheet.id,
+        title: sheet.title,
+        description: sheet.description,
+        status: sheet.status,
+        total_percentage: databaseNumber(sheet.total_percentage),
+        metadata: sheet.metadata,
+        created_at: sheet.created_at,
+        updated_at: sheet.updated_at,
+        completed_at: sheet.completed_at,
+      };
+      const publicContributors = contribs.rows.map((contributor: any) => {
+        const fields = jsonObject(contributor.custom_fields);
+        return {
+          id: contributor.id,
+          name: contributor.name,
+          role: fields.roleLabel || contributor.role,
+          percentage: Number(contributor.percentage) || 0,
+          signed: !!contributor.signed_at,
+          compensationType: fields.compensationType || "share",
+          hourlyRate: fields.hourlyRate ?? null,
+          estimatedHours: fields.estimatedHours ?? null,
+          estimatedAmount: fields.estimatedAmount ?? null,
+          currency: fields.currency || "NOK",
+        };
+      });
+
       res.json({
         success: true,
         data: {
-          splitSheet: sheet,
-          contributors: contribs.rows,
+          splitSheet: isOwner ? splitSheetForApi(sheet) : publicSheet,
+          contributors: isOwner ? contribs.rows.map(splitSheetContributorForApi) : publicContributors,
           generatedAt: new Date().toISOString(),
         },
       });
@@ -725,11 +1196,17 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId)
         return res.status(401).json({ success: false, error: "unauthorized" });
       const owner = await pool.query(
-        "SELECT user_id FROM split_sheets WHERE id = $1",
+        "SELECT user_id, metadata FROM split_sheets WHERE id = $1",
         [id],
       );
       if (owner.rows.length === 0 || owner.rows[0].user_id !== userId)
         return res.status(404).json({ success: false, error: "Not found" });
+      if (isWorkspaceParticipantCompensationMetadata(owner.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const result = await pool.query(
         "SELECT * FROM split_sheet_versions WHERE split_sheet_id = $1 ORDER BY created_at DESC",
         [id],
@@ -760,6 +1237,12 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
         return res.status(404).json({ success: false, error: "Not found" });
 
       const ss = original.rows[0];
+      if (isWorkspaceParticipantCompensationMetadata(ss.metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const newId = crypto.randomUUID();
 
       await pool.query(
@@ -809,7 +1292,10 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       );
       res.json({
         success: true,
-        data: { ...result.rows[0], contributors: newContribs.rows },
+        data: {
+          ...splitSheetForApi(result.rows[0]),
+          contributors: newContribs.rows.map(splitSheetContributorForApi),
+        },
       });
     } catch (error) {
       console.error("Error duplicating split sheet:", error);
@@ -830,13 +1316,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       // other user's split sheet (financial data tampering). 404 to prevent
       // id enumeration.
       const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (_own.rowCount === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
       }
       const {
         amount,
@@ -896,13 +1388,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const userId = getSplitSheetUserId(req);
       if (!userId) return res.status(401).json({ error: "unauthorized" });
       const own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (own.rowCount === 0)
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      if (isWorkspaceParticipantCompensationMetadata(own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const result = await pool.query(
         "SELECT * FROM split_sheet_revenue WHERE split_sheet_id = $1 ORDER BY created_at DESC",
         [id],
@@ -923,13 +1421,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId)
         return res.status(401).json({ success: false, error: "unauthorized" });
       const owns = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (owns.rowCount === 0)
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      if (isWorkspaceParticipantCompensationMetadata(owns.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const { contributor_id, status: payStatus } = req.query;
 
       let query = "SELECT * FROM split_sheet_payments WHERE split_sheet_id = $1";
@@ -959,6 +1463,25 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     if (!_ssUserId3) return res.status(401).json({ error: "unauthorized" });
     try {
       const { paymentId } = req.params;
+      const paymentParent = await pool.query(
+        `SELECT ss.metadata
+           FROM split_sheet_payments payment
+           JOIN split_sheets ss ON ss.id = payment.split_sheet_id
+          WHERE payment.id = $1 AND ss.user_id = $2
+          LIMIT 1`,
+        [paymentId, _ssUserId3],
+      );
+      if (paymentParent.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Payment not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(paymentParent.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const {
         payment_status,
         payment_date,

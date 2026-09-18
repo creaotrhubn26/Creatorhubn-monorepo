@@ -2,7 +2,7 @@
 # Creatorhub daglig cron-trigger.
 #
 # Render kjører dette daglig (se render.yaml schedule "0 9 * * *").
-# Kaller tre interne endepunkter sekvensielt:
+# Kaller de interne endepunktene sekvensielt:
 #
 #   1. check-trial-expiry — sender trialExpiringEmail til brukere med
 #      ~3 dager igjen av trial.
@@ -11,6 +11,8 @@
 #   3. role-room reconcile-seats (dry-run) — sammenligner Stripe-quantity
 #      mot aktive medlemmer pr. produksjonsteam-eier. Drift logges som
 #      billing-alert i admin-panelet. Apply kjøres manuelt fra admin.
+#   4. role-room affiliate-payouts — kjøres bare den første dagen i måneden.
+#      Backend-flagget holder overføringer avslått frem til Connect er godkjent.
 #
 # Alle er idempotente — de logger hva som er sendt og dropper duplikater.
 #
@@ -18,6 +20,7 @@
 #   BACKEND_URL                       base-URL til creatorhub-backend
 #   NEXTROLE_CRON_SECRET              NextRole-secret (auto-injectet)
 #   ROLE_ROOM_RECONCILE_CRON_TOKEN    Reconcile-token (auto-injectet)
+#   ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET  Affiliate payout-token (auto-injectet)
 
 set -e
 
@@ -57,6 +60,17 @@ if [ -n "${ROLE_ROOM_RECONCILE_CRON_TOKEN}" ]; then
     "x-reconcile-token: ${ROLE_ROOM_RECONCILE_CRON_TOKEN}"
 else
   echo "[creatorhub-cron] ROLE_ROOM_RECONCILE_CRON_TOKEN ikke satt — hopper over reconcile"
+fi
+
+# Affiliateoverføringer er månedlige. Batch- og Stripe-idempotens gjør retry
+# trygt, men vi begrenser den ordinære kjøringen til første UTC-dag i måneden.
+if [ "$(date -u +%d)" = "01" ]; then
+  if [ -n "${ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET}" ]; then
+    call_endpoint "/api/internal/role-room/affiliate-payouts/run" \
+      "x-cron-secret: ${ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET}"
+  else
+    echo "[creatorhub-cron] ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET ikke satt — hopper over affiliate-payouts"
+  fi
 fi
 
 echo "[creatorhub-cron] done"

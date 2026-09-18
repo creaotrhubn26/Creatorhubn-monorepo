@@ -3768,6 +3768,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               projectAmount: data.projectAmount,
               createdAt: new Date().toISOString(),
               model: data.model,
+              compensationModel: data.compensationModel,
               participants: data.participants,
             };
             const next = [entry, ...localSplitSheets];

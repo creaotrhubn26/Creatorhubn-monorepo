@@ -532,6 +532,8 @@ struct TeamForecastSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var horizon: Horizon = .q
 
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
     enum Horizon: String, CaseIterable, Identifiable {
         case m = "30d"
         case q = "Q3"
@@ -544,7 +546,7 @@ struct TeamForecastSheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if TeamForecastMockData.rows.isEmpty {
+                    if !isDemo {
                         cockpitEmptyState(
                             icon: "chart.line.uptrend.xyaxis",
                             title: "Ingen forecast-data enda",
@@ -591,7 +593,7 @@ struct TeamForecastSheet: View {
                             Image(systemName: "sparkles").font(.appScaled(size: 20, weight: .bold))
                                 .foregroundStyle(SlBrand.purpleLight)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("CLAUDE ANALYSE")
+                                Text("DEMO · AI-ANALYSE")
                                     .font(.appScaled(size: 10, weight: .black))
                                     .foregroundStyle(SlBrand.purpleLight).tracking(0.8)
                                 Text("Karoline og Marte har 3× mer pipeline enn kvote — flytt 4 leads fra Anniken til dem for å balansere forecast-risiko.")
@@ -614,15 +616,17 @@ struct TeamForecastSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    ShareLink(item: forecastReport) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
-                            Text("Del rapport").font(.appScaled(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(SlBrand.purple, in: Capsule())
-                    }.buttonStyle(.plain)
+                    if isDemo {
+                        ShareLink(item: forecastReport) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
+                                Text("Del demorapport").font(.appScaled(size: 12, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(SlBrand.purple, in: Capsule())
+                        }.buttonStyle(.plain)
+                    }
                 }
             }
             .toolbarBackground(SlBrand.bg, for: .navigationBar)
@@ -1036,7 +1040,10 @@ private struct NewCoachingSheet: View {
         return PondusQuizResult(
             id: -1, userId: "demo", userName: name,
             autoritet: a, klarhet: k, troverdighet: t, trygghet: tr, fremdrift: f,
-            total: (a + k + t + tr + f) / 5, createdAt: nil)
+            total: (a + k + t + tr + f) / 5,
+            scoringVersion: "demo-v1",
+            createdAt: nil
+        )
     }
 
     private func quizDateLabel(_ iso: String?) -> String? {
@@ -1077,7 +1084,9 @@ private struct NewCoachingSheet: View {
             .onAppear { if selectedName.isEmpty { selectedName = candidates.first?.name ?? "" } }
             .task {
                 guard !isDemo, let api = appState.api else { return }
-                orgProfiles = (try? await api.fetchPondusQuizOrg()) ?? []
+                orgProfiles = (try? await api.fetchPondusQuizOrg(
+                    organizationId: appState.activeOrganizationId
+                )) ?? []
             }
         }
     }
@@ -1686,7 +1695,7 @@ struct TeamRoutesTodaySheet: View {
                     .background(SlBrand.blue.opacity(0.15), in: Capsule())
                 }.buttonStyle(.plain)
                 Button {
-                    flash("Melding sendt til \(route.name.split(separator: " ").first ?? "")")
+                    flash("Demo — ingen melding ble sendt")
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "message.fill").font(.appScaled(size: 10, weight: .bold))

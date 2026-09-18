@@ -2,9 +2,9 @@ import { chromium } from 'playwright';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5001';
 const PROJECT_ID = '62541498-eec0-4868-b3d9-b0db86b3513a';
-const EMERGENCY_TOKEN = '3389fa994209cd8e4678ebff3889be8c67f4e8b8b7e148d7cff324291feb2209';
-const USER_EMAIL = 'daniel@creatorhubn.com';
-const USER_ID = '53391080-8437-471e-800b-8b0d01e8b465';
+const EMERGENCY_TOKEN = process.env.SUPER_ADMIN_EMERGENCY_TOKEN;
+const USER_EMAIL = process.env.SUPER_ADMIN_EMERGENCY_EMAIL || 'daniel@creatorhubn.com';
+const USER_ID = process.env.SUPER_ADMIN_USER_ID || '53391080-8437-471e-800b-8b0d01e8b465';
 
 let passed = 0;
 let failed = 0;
@@ -20,6 +20,9 @@ function assert(condition, message) {
 }
 
 async function run() {
+  if (!EMERGENCY_TOKEN) {
+    throw new Error('SUPER_ADMIN_EMERGENCY_TOKEN must be provided in the environment');
+  }
   console.log('🚀 Starting Full End-to-End MediaTab Verification...\n');
 
   // 1. Authenticate via emergency-login API

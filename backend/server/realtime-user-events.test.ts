@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 import {
   broadcastUserEvent,
   connectedUserClientCount,
   registerUserClientForTests,
   resetUserClientsForTests,
+  setupUserEventsTicketRoute,
 } from "./realtime-user-events";
 
 /**
@@ -176,5 +177,50 @@ describe("realtime-user-events broadcast routing", () => {
     const frame = JSON.parse(ws.sent[0]);
     expect(frame.type).toBe("connection_established");
     expect(typeof frame.serverTime).toBe("string");
+  });
+});
+
+describe("realtime user-event tickets", () => {
+  it("issues a short-lived single-purpose ticket without exposing the bearer token", async () => {
+    let route: ((req: unknown, res: any) => Promise<unknown>) | undefined;
+    const app = {
+      post: vi.fn((_path: string, handler: typeof route) => { route = handler; }),
+    };
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("INSERT INTO realtime_user_event_tickets")) {
+        expect(params?.[1]).toBe("workspace-user-1");
+        expect(String(params?.[0])).toMatch(/^[a-f0-9]{64}$/);
+      }
+      return { rows: [] };
+    });
+    setupUserEventsTicketRoute({
+      app: app as any,
+      pool: { query } as any,
+      requireUserSession: () => ({
+        userId: "workspace-user-1",
+        email: "producer@example.com",
+        name: "Producer",
+        role: "user",
+        loginAt: new Date().toISOString(),
+      }),
+    });
+
+    const json = vi.fn();
+    const setHeader = vi.fn();
+    await route?.({}, { json, setHeader, status: vi.fn() });
+
+    expect(app.post).toHaveBeenCalledWith(
+      "/api/realtime/user-events/ticket",
+      expect.any(Function),
+    );
+    expect(setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(json).toHaveBeenCalledWith({
+      ticket: expect.stringMatching(/^[A-Za-z0-9_-]+$/),
+      expiresAt: expect.any(String),
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO realtime_user_event_tickets"),
+      expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/), "workspace-user-1"]),
+    );
   });
 });

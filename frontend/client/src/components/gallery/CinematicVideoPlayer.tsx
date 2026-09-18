@@ -47,6 +47,8 @@ import {
   ChatBubbleOutline as CommentIcon,
   Close as CloseIcon,
   Send as SendIcon,
+  Draw as DrawIcon,
+  Undo as UndoIcon,
 } from '@mui/icons-material';
 import { TextField, Button } from '@mui/material';
 
@@ -79,6 +81,16 @@ export interface VideoTimecodeComment {
   suggestedMediaLabel?: string | null;
   suggestedMediaFromSec?: number | null;
   suggestedMediaToSec?: number | null;
+  isDecision?: boolean;
+  annotation?: VideoFrameAnnotation | null;
+}
+
+export interface VideoFrameAnnotation {
+  paths: Array<{
+    color: string;
+    width: number;
+    points: Array<{ x: number; y: number }>;
+  }>;
 }
 
 interface Props {
@@ -114,9 +126,22 @@ interface Props {
     suggestedMediaLabel?: string | null;
     suggestedMediaFromSec?: number | null;
     suggestedMediaToSec?: number | null;
+    isDecision?: boolean;
+    annotation?: VideoFrameAnnotation | null;
   }) => Promise<void> | void;
   /** Klient-navn (forhåndsfyller comment-modalen) */
   clientName?: string | null;
+  /** Kommentar valgt i sidelinjen; viser eventuell frame-markering. */
+  activeCommentId?: string | null;
+  /** Programmatisk seek fra kommentar-/rapportlisten. */
+  seekToSec?: number | null;
+  /** Delt playhead/tegning for en aktiv live-review. */
+  liveAnnotation?: VideoFrameAnnotation | null;
+  syncIsPlaying?: boolean | null;
+  onPlaybackState?: (state: { timecodeSec: number; isPlaying: boolean; reason: 'time' | 'play' | 'pause' }) => void;
+  onLiveAnnotation?: (annotation: VideoFrameAnnotation, timecodeSec: number) => void | Promise<void>;
+  /** Visible, non-interactive recipient watermark that remains in fullscreen. */
+  watermark?: { text: string } | null;
 }
 
 function fmtTime(sec: number): string {
@@ -242,6 +267,13 @@ const CinematicVideoPlayer: React.FC<Props> = ({
   comments = [],
   onAddComment,
   clientName,
+  activeCommentId,
+  seekToSec,
+  liveAnnotation,
+  syncIsPlaying,
+  onPlaybackState,
+  onLiveAnnotation,
+  watermark,
 }) => {
   // Slice 9X.82 (Bjarne) — comment-state med edit-feedback-felter
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -258,6 +290,12 @@ const CinematicVideoPlayer: React.FC<Props> = ({
   const [showMusicFields, setShowMusicFields] = useState(false);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
+  const [pendingIsDecision, setPendingIsDecision] = useState(false);
+  const [pendingAnnotation, setPendingAnnotation] = useState<VideoFrameAnnotation | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [drawPaths, setDrawPaths] = useState<VideoFrameAnnotation['paths']>([]);
+  const [currentPath, setCurrentPath] = useState<VideoFrameAnnotation['paths'][number] | null>(null);
+  const [drawColor, setDrawColor] = useState('#ff7a00');
 
   const sortedComments = useMemo(
     () => [...(comments || [])].sort((a, b) => a.timecodeSec - b.timecodeSec),
@@ -277,6 +315,8 @@ const CinematicVideoPlayer: React.FC<Props> = ({
     setPendingMusicFromSec(0);
     setPendingMusicToSec(null);
     setShowMusicFields(false);
+    setPendingIsDecision(false);
+    setPendingAnnotation(null);
     setShowCommentModal(true);
   }, []);
 
@@ -296,13 +336,15 @@ const CinematicVideoPlayer: React.FC<Props> = ({
         suggestedMediaToSec: pendingMusicUrl.trim() && pendingMusicToSec != null && pendingMusicToSec > pendingMusicFromSec
           ? pendingMusicToSec
           : null,
+        isDecision: pendingIsDecision,
+        annotation: pendingAnnotation,
       });
       setShowCommentModal(false);
       setPendingCommentText('');
     } finally {
       setCommentSubmitting(false);
     }
-  }, [onAddComment, pendingCommentText, pendingCommentTime, pendingEndTime, pendingCategory, pendingPriority, pendingMusicUrl, pendingMusicLabel, pendingMusicFromSec, pendingMusicToSec]);
+  }, [onAddComment, pendingCommentText, pendingCommentTime, pendingEndTime, pendingCategory, pendingPriority, pendingMusicUrl, pendingMusicLabel, pendingMusicFromSec, pendingMusicToSec, pendingIsDecision, pendingAnnotation]);
 
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -320,6 +362,59 @@ const CinematicVideoPlayer: React.FC<Props> = ({
   const [hasStarted, setHasStarted] = useState(autoPlay);
   const [chapterToast, setChapterToast] = useState<VideoChapterMarker | null>(null);
   const [showTitleOverlay, setShowTitleOverlay] = useState(true);
+
+  // Native HLS på Safari, hls.js på øvrige moderne nettlesere. Direkte MP4/MOV
+  // settes som vanlig src. Dermed virker også versjoner som kun har Stream UID.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return;
+    let hls: any = null;
+    let cancelled = false;
+    const isHls = /\.m3u8(?:$|\?)/i.test(src) || /\/manifest\/video/i.test(src);
+    if (!isHls || video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+      return () => { video.removeAttribute('src'); video.load(); };
+    }
+    import('hls.js').then(({ default: Hls }) => {
+      if (cancelled || !Hls.isSupported()) return;
+      hls = new Hls({ enableWorker: true });
+      hls.loadSource(src); hls.attachMedia(video);
+    }).catch(() => { video.src = src; });
+    return () => { cancelled = true; hls?.destroy(); video.removeAttribute('src'); video.load(); };
+  }, [src]);
+
+  useEffect(() => {
+    if (seekToSec == null || !videoRef.current) return;
+    videoRef.current.currentTime = Math.max(0, Number(seekToSec) || 0);
+    if (syncIsPlaying === true) void videoRef.current.play().catch(() => undefined);
+    else videoRef.current.pause();
+  }, [seekToSec, syncIsPlaying]);
+
+  const visibleAnnotation = useMemo(() => {
+    const id = activeCommentId || hoveredCommentId;
+    if (liveAnnotation) return liveAnnotation;
+    if (id) return comments.find((comment) => comment.id === id)?.annotation || null;
+    return comments.find((comment) => comment.annotation && Math.abs(comment.timecodeSec - currentTime) < 0.35)?.annotation || null;
+  }, [activeCommentId, hoveredCommentId, comments, currentTime, liveAnnotation]);
+
+  const pointFromEvent = (event: React.PointerEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+  };
+
+  const finishDrawing = () => {
+    const paths = currentPath ? [...drawPaths, currentPath] : drawPaths;
+    if (!paths.length || !videoRef.current) return;
+    if (onLiveAnnotation) {
+      void onLiveAnnotation({ paths }, videoRef.current.currentTime);
+      setCurrentPath(null); setDrawPaths([]); setDrawing(false);
+      return;
+    }
+    setPendingCommentTime(videoRef.current.currentTime);
+    setPendingEndTime(null); setPendingCategory('edit'); setPendingPriority('nice-to-have');
+    setPendingCommentText(''); setPendingIsDecision(false); setPendingAnnotation({ paths });
+    setCurrentPath(null); setDrawing(false); setShowCommentModal(true);
+  };
 
   const sortedChapters = useMemo(
     () => [...(chapters || [])].sort((a, b) => a.startSec - b.startSec),
@@ -376,10 +471,10 @@ const CinematicVideoPlayer: React.FC<Props> = ({
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const onTime = () => setCurrentTime(v.currentTime);
+    const onTime = () => { setCurrentTime(v.currentTime); onPlaybackState?.({ timecodeSec: v.currentTime, isPlaying: !v.paused, reason: 'time' }); };
     const onMeta = () => setDuration(v.duration || 0);
-    const onPlay = () => { setIsPlaying(true); setHasStarted(true); };
-    const onPause = () => setIsPlaying(false);
+    const onPlay = () => { setIsPlaying(true); setHasStarted(true); onPlaybackState?.({ timecodeSec: v.currentTime, isPlaying: true, reason: 'play' }); };
+    const onPause = () => { setIsPlaying(false); onPlaybackState?.({ timecodeSec: v.currentTime, isPlaying: false, reason: 'pause' }); };
     const onVol = () => { setVolume(v.volume); setIsMuted(v.muted); };
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('loadedmetadata', onMeta);
@@ -393,7 +488,7 @@ const CinematicVideoPlayer: React.FC<Props> = ({
       v.removeEventListener('pause', onPause);
       v.removeEventListener('volumechange', onVol);
     };
-  }, []);
+  }, [onPlaybackState]);
 
   // Fullscreen-event-handler
   useEffect(() => {
@@ -514,15 +609,90 @@ const CinematicVideoPlayer: React.FC<Props> = ({
     >
       <video
         ref={videoRef}
-        src={src}
         poster={poster ?? undefined}
         autoPlay={autoPlay}
         loop={loop}
         muted={startMuted}
         playsInline
         preload="metadata"
-        onClick={togglePlay}
+        onClick={drawing ? undefined : togglePlay}
       />
+
+      {watermark?.text && (
+        <Box
+          aria-label={`Vannmerke: ${watermark.text}`}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 5,
+            pointerEvents: 'none',
+            overflow: 'hidden',
+            userSelect: 'none',
+          }}
+        >
+          {[
+            ['14%', '18%'],
+            ['62%', '24%'],
+            ['35%', '54%'],
+            ['72%', '76%'],
+            ['10%', '82%'],
+          ].map(([left, top], index) => (
+            <Typography
+              key={`${left}-${top}`}
+              sx={{
+                position: 'absolute',
+                left,
+                top,
+                transform: 'translate(-50%, -50%) rotate(-22deg)',
+                color: 'rgba(255,255,255,.20)',
+                textShadow: '0 1px 2px rgba(0,0,0,.55)',
+                fontSize: { xs: 10, sm: 13 },
+                fontWeight: 800,
+                letterSpacing: '.08em',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {watermark.text}{index === 2 ? ` · ${new Date().toLocaleDateString('nb-NO')}` : ''}
+            </Typography>
+          ))}
+        </Box>
+      )}
+
+      {(visibleAnnotation || drawing) && (
+        <Box
+          component="svg"
+          viewBox="0 0 1000 562.5"
+          preserveAspectRatio="none"
+          onPointerDown={drawing ? (event: any) => {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            const point = pointFromEvent(event);
+            setCurrentPath({ color: drawColor, width: 4, points: [point] });
+          } : undefined}
+          onPointerMove={drawing ? (event: any) => {
+            if (!currentPath || event.buttons !== 1) return;
+            const point = pointFromEvent(event);
+            setCurrentPath((path) => path ? { ...path, points: [...path.points, point] } : null);
+          } : undefined}
+          onPointerUp={drawing ? () => {
+            if (currentPath?.points.length > 1) setDrawPaths((paths) => [...paths, currentPath]);
+            setCurrentPath(null);
+          } : undefined}
+          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: drawing ? 8 : 4, pointerEvents: drawing ? 'auto' : 'none', cursor: drawing ? 'crosshair' : 'default', touchAction: 'none' }}
+        >
+          {[...(visibleAnnotation?.paths || []), ...drawPaths, ...(currentPath ? [currentPath] : [])].map((path, pathIndex) => (
+            <polyline key={pathIndex} points={path.points.map((point) => `${point.x * 1000},${point.y * 562.5}`).join(' ')} fill="none" stroke={path.color} strokeWidth={path.width * 2} strokeLinecap="round" strokeLinejoin="round" />
+          ))}
+        </Box>
+      )}
+
+      {drawing && (
+        <Stack direction="row" spacing={1} sx={{ position: 'absolute', top: 12, left: 12, zIndex: 9, bgcolor: 'rgba(10,8,7,.88)', p: 1, borderRadius: 1 }}>
+          {['#ff7a00', '#ef4444', '#22c55e', '#38bdf8', '#ffffff'].map((color) => <Box key={color} onClick={() => setDrawColor(color)} sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: color, cursor: 'pointer', border: drawColor === color ? '3px solid #fff' : '1px solid rgba(255,255,255,.4)' }} />)}
+          <IconButton aria-label="Angre strek" onClick={() => setDrawPaths((paths) => paths.slice(0, -1))} sx={{ color: '#fff', p: .25 }}><UndoIcon /></IconButton>
+          <Button size="small" onClick={() => { setDrawing(false); setDrawPaths([]); setCurrentPath(null); }} sx={{ color: '#fff' }}>Avbryt</Button>
+          <Button size="small" variant="contained" onClick={finishDrawing} disabled={!drawPaths.length && !currentPath} sx={{ bgcolor: '#d97706' }}>{onLiveAnnotation ? 'Del tegning live' : 'Legg til kommentar'}</Button>
+        </Stack>
+      )}
 
       {/* Video-kvalitet-indikator: hjelper klient å forstå at lav
           oppløsning skyldes deres nett, ikke en dårlig leveranse.
@@ -875,21 +1045,26 @@ const CinematicVideoPlayer: React.FC<Props> = ({
 
             {/* Slice 9X.82 (Bjarne) — Frame.io-stil kommentar-knapp */}
             {onAddComment && (
-              <Tooltip title={`Kommenter på ${fmtTime(currentTime)}`}>
-                <IconButton
-                  onClick={openCommentForCurrentTime}
-                  aria-label="Kommenter på dette tidspunktet"
-                  sx={{
-                    color: '#d97706',
-                    bgcolor: 'rgba(217, 119, 6, 0.12)',
-                    minWidth: 44,
-                    minHeight: 44,
-                    '&:hover': { bgcolor: 'rgba(217, 119, 6, 0.22)' },
-                  }}
-                >
-                  <CommentIcon />
-                </IconButton>
-              </Tooltip>
+              <>
+                <Tooltip title={`Tegn på bildet ved ${fmtTime(currentTime)}`}>
+                  <IconButton onClick={() => { videoRef.current?.pause(); setDrawPaths([]); setCurrentPath(null); setDrawing(true); }} aria-label="Tegn på videobildet" sx={{ color: '#d97706', minWidth: 44, minHeight: 44 }}><DrawIcon /></IconButton>
+                </Tooltip>
+                <Tooltip title={`Kommenter på ${fmtTime(currentTime)}`}>
+                  <IconButton
+                    onClick={openCommentForCurrentTime}
+                    aria-label="Kommenter på dette tidspunktet"
+                    sx={{
+                      color: '#d97706',
+                      bgcolor: 'rgba(217, 119, 6, 0.12)',
+                      minWidth: 44,
+                      minHeight: 44,
+                      '&:hover': { bgcolor: 'rgba(217, 119, 6, 0.22)' },
+                    }}
+                  >
+                    <CommentIcon />
+                  </IconButton>
+                </Tooltip>
+              </>
             )}
 
             <Tooltip title={isFullscreen ? 'Avslutt fullskjerm (F)' : 'Fullskjerm (F)'}>
@@ -1121,6 +1296,9 @@ const CinematicVideoPlayer: React.FC<Props> = ({
                 },
               }}
             />
+            <Box onClick={() => setPendingIsDecision((value) => !value)} role="checkbox" aria-checked={pendingIsDecision} tabIndex={0} sx={{ mt: 1.5, p: 1, cursor: 'pointer', border: `1px solid ${pendingIsDecision ? '#2563eb' : '#d4c4b0'}`, bgcolor: pendingIsDecision ? 'rgba(37,99,235,.08)' : 'transparent', color: '#1a1612', fontSize: '.8rem', fontWeight: 700 }}>
+              {pendingIsDecision ? '✓ ' : ''}Lagre som beslutning
+            </Box>
             {/* Slice 9X.82 — Musikk-forslag (toggle-section) */}
             <Box
               onClick={() => setShowMusicFields((s) => !s)}

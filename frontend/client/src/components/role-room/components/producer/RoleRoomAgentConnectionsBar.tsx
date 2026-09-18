@@ -28,6 +28,8 @@ interface RoleRoomAgentConnectionsBarProps {
   onConnectInstagram?: () => void;
   /** Connect FB Page bruker samme OAuth som IG (Pages discoveres parallelt). */
   onConnectFacebookPage?: () => void;
+  /** LinkedIn bruker en POST-basert OAuth-start slik at state bindes til bruker/prosjekt. */
+  onConnectLinkedIn?: () => void;
 }
 
 function formatCount(n: number | null | undefined): string {
@@ -41,13 +43,16 @@ export default function RoleRoomAgentConnectionsBar({
   projectId,
   onConnectInstagram,
   onConnectFacebookPage,
+  onConnectLinkedIn,
 }: RoleRoomAgentConnectionsBarProps): React.ReactElement {
   const [igConnections, setIgConnections] = useState<RoleRoomInstagramConnection[]>([]);
   const [linkedInProfile, setLinkedInProfile] = useState<{
     connected: boolean;
+    publishReady: boolean;
+    reconnectRequired: boolean;
     name?: string | null;
     profilePictureUrl?: string | null;
-  }>({ connected: false });
+  }>({ connected: false, publishReady: false, reconnectRequired: false });
   const [tiktokProfile, setTiktokProfile] = useState<{
     connected: boolean;
     displayName?: string | null;
@@ -65,13 +70,15 @@ export default function RoleRoomAgentConnectionsBar({
       try {
         const [igData, liData, ttData] = await Promise.all([
           roleRoomAgentService.listInstagramConnections(),
-          roleRoomAgentService.fetchLinkedInProfile(),
+          roleRoomAgentService.fetchLinkedInProfile(projectId),
           roleRoomAgentService.fetchTikTokConnection(),
         ]);
         if (cancelled) return;
         setIgConnections(igData.connections ?? []);
         setLinkedInProfile({
           connected: liData.connected,
+          publishReady: liData.publishReady,
+          reconnectRequired: liData.reconnectRequired,
           name: liData.name,
           profilePictureUrl: liData.profilePictureUrl,
         });
@@ -144,7 +151,7 @@ export default function RoleRoomAgentConnectionsBar({
   // LinkedIn er live for text + image. Hvis brukeren har en aktiv kobling,
   // viser vi connected slot med navn/avatar (samme nivå som IG); ellers
   // viser vi den som available med Connect-CTA.
-  const linkedInSlot: PlatformSlot = linkedInProfile.connected
+  const linkedInSlot: PlatformSlot = linkedInProfile.publishReady
     ? {
         id: 'linkedin',
         label: linkedInProfile.name ?? 'LinkedIn',
@@ -160,7 +167,9 @@ export default function RoleRoomAgentConnectionsBar({
         shortLabel: 'LI',
         color: '#0a66c2',
         status: 'available',
-        hint: 'Tekst, bilde, video og lenke-posts',
+        hint: linkedInProfile.connected && linkedInProfile.reconnectRequired
+          ? 'Koble til på nytt for å gi publiseringstilgang'
+          : 'Tekst, bilde, video, karusell og lenkeposter',
       };
 
   // TikTok er live for inbox-mode publisering (kreator publiserer fra app).
@@ -250,14 +259,13 @@ export default function RoleRoomAgentConnectionsBar({
             );
           }
           if (slot.status === 'available') {
-            // Only Instagram + Facebook Page have a real connect handler. The
-            // other "available" slots had a clickable look but did nothing on
-            // click — render those as clearly non-actionable instead.
             const handler =
               slot.id === 'instagram'
                 ? onConnectInstagram
                 : slot.id === 'facebook_page'
                   ? onConnectFacebookPage ?? onConnectInstagram
+                  : slot.id === 'linkedin'
+                    ? onConnectLinkedIn
                   : undefined;
             const isConnectable = Boolean(handler);
             return (

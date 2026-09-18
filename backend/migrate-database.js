@@ -6,12 +6,13 @@
 
 import pg from 'pg';
 import readline from 'readline';
+import { requireMigrationDatabaseUrls } from './scripts/database-url-env.js';
 
 const { Pool } = pg;
 
 // Database URLs
-const OLD_DB_URL = 'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
-const NEW_DB_URL = process.env.DATABASE_URL;
+const { source: OLD_DB_URL, destination: NEW_DB_URL } =
+  requireMigrationDatabaseUrls();
 
 // Create connection pools
 const oldPool = new Pool({
@@ -281,4 +282,3 @@ async function main() {
 
 // Run migration
 main().catch(console.error);
-

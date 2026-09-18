@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageRuntimeObjectsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:ListMultipartUploadParts",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/agencies/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/education/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/exports/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/organizations/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/platform/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/projects/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/quarantine/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/talents/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/temporary/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/users/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/workspaces/*"
+      ]
+    }
+  ]
+}

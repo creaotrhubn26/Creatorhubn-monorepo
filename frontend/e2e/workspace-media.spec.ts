@@ -2,22 +2,30 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5001';
 const PROJECT_ID = '62541498-eec0-4868-b3d9-b0db86b3513a';
-const EMERGENCY_TOKEN = '3389fa994209cd8e4678ebff3889be8c67f4e8b8b7e148d7cff324291feb2209';
-const USER_EMAIL = 'daniel@creatorhubn.com';
-const USER_ID = '53391080-8437-471e-800b-8b0d01e8b465';
+const EMERGENCY_TOKEN = process.env.E2E_SUPER_ADMIN_EMERGENCY_TOKEN ?? '';
+const USER_EMAIL = process.env.E2E_SUPER_ADMIN_EMAIL ?? '';
+const USER_ID = process.env.E2E_SUPER_ADMIN_USER_ID ?? '';
+
+test.skip(
+  !EMERGENCY_TOKEN || !USER_EMAIL || !USER_ID,
+  'Set the three E2E_SUPER_ADMIN_* variables for emergency-login E2E',
+);
 
 async function getAuthToken() {
-  const randomIp = `127.0.0.${Math.floor(Math.random() * 200 + 10)}`;
+  if (!EMERGENCY_TOKEN || !USER_EMAIL || !USER_ID) {
+    throw new Error(
+      'E2E_SUPER_ADMIN_EMERGENCY_TOKEN, E2E_SUPER_ADMIN_EMAIL and E2E_SUPER_ADMIN_USER_ID are required',
+    );
+  }
   const authRes = await fetch(`http://localhost:3003/api/super-admin/emergency-login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Forwarded-For': randomIp,
-    },
-    body: JSON.stringify({ token: EMERGENCY_TOKEN, email: USER_EMAIL, userId: USER_ID }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: EMERGENCY_TOKEN, email: USER_EMAIL }),
   });
   const authData = await authRes.json();
-  return authData.token || authData.sessionToken;
+  const token = authData.token || authData.sessionToken;
+  if (!authRes.ok || !token) throw new Error(`Emergency login failed (${authRes.status})`);
+  return token;
 }
 
 test.describe('MediaTab E2E', () => {

@@ -29,6 +29,7 @@ const ROLE_ROOM_TURNSTILE_VERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const ROLE_ROOM_TURNSTILE_TEST_SECRET_KEY =
   "1x0000000000000000000000000000000AA";
+const ROLE_ROOM_TURNSTILE_VERIFY_TIMEOUT_MS = 5_000;
 
 type RoleRoomTurnstileVerificationResult = {
   success: boolean;
@@ -49,6 +50,8 @@ export interface RoleRoomTurnstileVerificationOutcome {
 export interface RoleRoomTurnstileServiceDeps {
   normalizeMailConfigValue: (value: unknown) => string;
   getDefaultRoleRoomPublicOrigin: () => string;
+  fetchImpl?: typeof fetch;
+  verificationTimeoutMs?: number;
 }
 
 export interface RoleRoomTurnstileService {
@@ -65,7 +68,12 @@ export interface RoleRoomTurnstileService {
 export function createRoleRoomTurnstileService(
   deps: RoleRoomTurnstileServiceDeps,
 ): RoleRoomTurnstileService {
-  const { normalizeMailConfigValue, getDefaultRoleRoomPublicOrigin } = deps;
+  const {
+    normalizeMailConfigValue,
+    getDefaultRoleRoomPublicOrigin,
+    fetchImpl = fetch,
+    verificationTimeoutMs = ROLE_ROOM_TURNSTILE_VERIFY_TIMEOUT_MS,
+  } = deps;
 
   function isRoleRoomTurnstileTestSecretKey(secret: string) {
     return secret === ROLE_ROOM_TURNSTILE_TEST_SECRET_KEY;
@@ -86,10 +94,20 @@ export function createRoleRoomTurnstileService(
   }
 
   function getRoleRoomTurnstileSecretKey() {
-    return (
+    const secret = (
       normalizeMailConfigValue(process.env.ROLE_ROOM_TURNSTILE_SECRET_KEY) ||
       normalizeMailConfigValue(process.env.TURNSTILE_SECRET_KEY)
     );
+    // Cloudflare's always-pass test secret is useful locally, but treating it
+    // as configured in production disables hostname/action verification and
+    // turns human verification into a no-op.
+    if (
+      process.env.NODE_ENV === "production" &&
+      isRoleRoomTurnstileTestSecretKey(secret)
+    ) {
+      return "";
+    }
+    return secret;
   }
 
   function getRoleRoomTurnstileExpectedHostnames(req: express.Request) {
@@ -143,16 +161,38 @@ export function createRoleRoomTurnstileService(
       formData.set("remoteip", input.ipAddress);
     }
 
-    const response = await fetch(ROLE_ROOM_TURNSTILE_VERIFY_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), verificationTimeoutMs);
+    let response: Response;
+    let result: RoleRoomTurnstileVerificationResult | null;
 
-    const result =
-      (await response.json().catch(() => null)) as RoleRoomTurnstileVerificationResult | null;
+    try {
+      response = await fetchImpl(ROLE_ROOM_TURNSTILE_VERIFY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+
+      result = (await response.json().catch((error) => {
+        if (controller.signal.aborted) {
+          throw error;
+        }
+        return null;
+      })) as RoleRoomTurnstileVerificationResult | null;
+    } catch {
+      const timedOut = controller.signal.aborted;
+      throw new Error(
+        timedOut
+          ? "turnstile_siteverify_timeout"
+          : "turnstile_siteverify_unavailable",
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+
     const hostname =
       typeof result?.hostname === "string"
         ? result.hostname.trim().toLowerCase()
@@ -161,7 +201,8 @@ export function createRoleRoomTurnstileService(
       typeof result?.action === "string" ? result.action.trim() : "";
     const errorCodes = Array.isArray(result?.["error-codes"])
       ? result?.["error-codes"].filter(
-          (code): code is string => typeof code === "string" && code.trim().length > 0,
+          (code): code is string =>
+            typeof code === "string" && code.trim().length > 0,
         )
       : [];
 
@@ -176,7 +217,10 @@ export function createRoleRoomTurnstileService(
       };
     }
 
-    if (!isRoleRoomTurnstileTestSecretKey(secret) && action !== input.expectedAction) {
+    if (
+      !isRoleRoomTurnstileTestSecretKey(secret) &&
+      action !== input.expectedAction
+    ) {
       return {
         configured: true,
         success: false,

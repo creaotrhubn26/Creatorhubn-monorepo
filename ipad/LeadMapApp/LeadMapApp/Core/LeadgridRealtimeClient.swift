@@ -14,62 +14,128 @@ import Observation
 final class LeadgridRealtimeClient {
     static let shared = LeadgridRealtimeClient()
 
+    private struct ConnectionConfiguration: Equatable {
+        let baseURL: String
+        let authToken: String
+        let channels: Set<String>
+    }
+
     private var task: URLSessionWebSocketTask?
     private var session: URLSession?
-    private var subscribedChannels: Set<String> = []
-    private var baseURL: String = ""
-    private var authToken: String = ""
+    private var configuration: ConnectionConfiguration?
+    /// Økes før gammel transport kanselleres og før hver ny socket åpnes.
+    /// Receive-/reconnect-callbacks må matche generasjonen de ble startet i.
+    private var connectionGeneration: UInt64 = 0
     private(set) var isConnected: Bool = false
     private(set) var lastEventAt: Date?
     private var reconnectAttempts = 0
     private var heartbeatTimer: Timer?
     private var reconnectTask: Task<Void, Never>?
+    private let shouldStartNetworkTasks: Bool
 
-    private init() {}
+    private init(startNetworkTasks: Bool) {
+        self.shouldStartNetworkTasks = startNetworkTasks
+    }
+
+    private convenience init() {
+        self.init(startNetworkTasks: true)
+    }
+
+    #if DEBUG
+    /// Deterministisk test-seam: oppretter socket-objekter, men starter ikke
+    /// nettverk, receive-loop eller heartbeat.
+    convenience init(testingWithoutNetwork: Bool) {
+        self.init(startNetworkTasks: !testingWithoutNetwork)
+    }
+
+    var connectionGenerationForTesting: UInt64 { connectionGeneration }
+    var configuredChannelsForTesting: Set<String> { configuration?.channels ?? [] }
+    var hasConfigurationForTesting: Bool { configuration != nil }
+    #endif
 
     func connect(baseURL: String, token: String, channels: [String]) {
-        guard !isConnected else { return }
-        self.baseURL = baseURL
-        self.authToken = token
-        self.subscribedChannels = Set(channels)
+        let next = ConnectionConfiguration(
+            baseURL: baseURL,
+            authToken: token,
+            channels: Set(channels)
+        )
+
+        if configuration == next {
+            // Samme logiske forbindelse er allerede tilkoblet, i handshake
+            // eller venter på kontrollert reconnect. Unngå duplikat socket.
+            guard task == nil, reconnectTask == nil else { return }
+            openSocket()
+            return
+        }
+
+        // Token, baseURL eller kanaler er endret. Invalider generasjonen FØR
+        // cancel slik at callback fra gammel handshake/socket ikke kan sette
+        // state eller planlegge reconnect med den gamle org-kanalen.
+        cancelCurrentTransport()
+        configuration = next
+        reconnectAttempts = 0
+        lastEventAt = nil
         openSocket()
     }
 
     func disconnect() {
+        configuration = nil
+        reconnectAttempts = 0
+        lastEventAt = nil
+        cancelCurrentTransport()
+    }
+
+    private func cancelCurrentTransport() {
+        connectionGeneration &+= 1
         reconnectTask?.cancel()
         reconnectTask = nil
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
-        task?.cancel(with: .goingAway, reason: nil)
+        let previousTask = task
         task = nil
+        previousTask?.cancel(with: .goingAway, reason: nil)
+        let previousSession = session
+        session = nil
+        previousSession?.invalidateAndCancel()
         isConnected = false
     }
 
     private func openSocket() {
-        var components = URLComponents(string: baseURL)
+        guard let configuration else { return }
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
+        isConnected = false
+
+        var components = URLComponents(string: configuration.baseURL)
         if components?.scheme == "https" {
             components?.scheme = "wss"
         } else if components?.scheme == "http" {
             components?.scheme = "ws"
         }
         components?.path = "/ws/leadgrid"
-        components?.queryItems = [URLQueryItem(name: "token", value: authToken)]
+        // Bearer må aldri ligge i URL/query: proxy-, access- og crashlogger
+        // kan ellers persistere hele tokenet. WebSocket-handshaken bruker
+        // samme Authorization-header som ordinære API-kall.
+        components?.queryItems = nil
         guard let url = components?.url else {
-            print("[leadgrid-rt] Ugyldig URL: \(baseURL)")
+            print("[leadgrid-rt] Ugyldig URL: \(configuration.baseURL)")
             return
         }
         let s = URLSession(configuration: .default)
         session = s
-        let t = s.webSocketTask(with: url)
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(configuration.authToken)", forHTTPHeaderField: "Authorization")
+        let t = s.webSocketTask(with: request)
         task = t
+        guard shouldStartNetworkTasks else { return }
         t.resume()
-        receiveLoop()
-        startHeartbeat()
+        receiveLoop(on: t, generation: generation)
+        startHeartbeat(generation: generation)
     }
 
     private func sendSubscription() {
-        guard !subscribedChannels.isEmpty else { return }
-        send(["type": "subscribe", "channels": Array(subscribedChannels)])
+        guard let channels = configuration?.channels, !channels.isEmpty else { return }
+        send(["type": "subscribe", "channels": channels.sorted()])
     }
 
     private func send(_ payload: [String: Any]) {
@@ -82,10 +148,17 @@ final class LeadgridRealtimeClient {
         }
     }
 
-    private func receiveLoop() {
-        task?.receive { [weak self] result in
-            guard let self else { return }
+    private func receiveLoop(
+        on socket: URLSessionWebSocketTask,
+        generation: UInt64
+    ) {
+        socket.receive { [weak self, weak socket] result in
+            guard let self, let socket else { return }
             Task { @MainActor in
+                guard self.connectionGeneration == generation,
+                      self.task === socket,
+                      self.configuration != nil
+                else { return }
                 switch result {
                 case .success(let message):
                     if !self.isConnected {
@@ -94,11 +167,16 @@ final class LeadgridRealtimeClient {
                         self.sendSubscription()
                     }
                     self.handle(message: message)
-                    self.receiveLoop()
+                    self.receiveLoop(on: socket, generation: generation)
                 case .failure(let error):
                     print("[leadgrid-rt] receive failed: \(error.localizedDescription)")
                     self.isConnected = false
-                    self.scheduleReconnect()
+                    self.heartbeatTimer?.invalidate()
+                    self.heartbeatTimer = nil
+                    self.task = nil
+                    self.session?.invalidateAndCancel()
+                    self.session = nil
+                    self.scheduleReconnect(expectedGeneration: generation)
                 }
             }
         }
@@ -140,27 +218,36 @@ final class LeadgridRealtimeClient {
         )
     }
 
-    private func startHeartbeat() {
+    private func startHeartbeat(generation: UInt64) {
         heartbeatTimer?.invalidate()
         heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.send(["type": "pong"])
+                guard let self,
+                      self.connectionGeneration == generation,
+                      self.task != nil
+                else { return }
+                self.send(["type": "pong"])
             }
         }
     }
 
-    private func scheduleReconnect() {
+    private func scheduleReconnect(expectedGeneration: UInt64) {
         reconnectTask?.cancel()
         reconnectAttempts += 1
         let delay = min(pow(2.0, Double(reconnectAttempts)), 32.0)
-        reconnectTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard let self else { return }
-            if !Task.isCancelled {
-                await MainActor.run {
-                    self.openSocket()
-                }
+        reconnectTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            } catch {
+                return
             }
+            guard let self,
+                  !Task.isCancelled,
+                  self.connectionGeneration == expectedGeneration,
+                  self.configuration != nil
+            else { return }
+            self.reconnectTask = nil
+            self.openSocket()
         }
     }
 }

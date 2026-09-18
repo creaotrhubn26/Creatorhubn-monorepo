@@ -12,12 +12,12 @@
  *   STRIPE_LEADGRID_SOLO_PRO_MONTHLY / _YEARLY
  *   STRIPE_LEADGRID_AGENCY_MONTHLY / _YEARLY
  *
- * Checkout går via /api/leadgrid/self-onboard (paid plans) eller
- * /leadgrid?signup=solo_free (gratis-plan).
+ * Gratis-plan åpner self-onboarding. Betalte planer åpner en planmerket
+ * demo-/kontaktflyt, siden offentlig self-onboarding foreløpig kun støtter
+ * Solo-malen.
  */
 
 import React, { useEffect, useState } from 'react';
-import { Link } from 'wouter';
 import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
   Box, Container, Typography, Button, Grid, Stack, Chip, Card,
@@ -129,7 +129,7 @@ const TIERS: Tier[] = [
       { label: 'Route Planner', included: true },
       { label: 'E-post support', included: true },
     ],
-    cta: { label: 'Velg Solo Pro', stripeId: 'STRIPE_LEADGRID_SOLO_PRO_MONTHLY' },
+    cta: { label: 'Book Solo Pro-demo', stripeId: 'STRIPE_LEADGRID_SOLO_PRO_MONTHLY' },
   },
   {
     id: 'agency',
@@ -159,7 +159,7 @@ const TIERS: Tier[] = [
       { label: 'Route Planner', included: true },
       { label: 'Prioritert support + dedicated CSM', included: true },
     ],
-    cta: { label: 'Velg Agency', stripeId: 'STRIPE_LEADGRID_AGENCY_MONTHLY' },
+    cta: { label: 'Book Agency-demo', stripeId: 'STRIPE_LEADGRID_AGENCY_MONTHLY' },
   },
 ];
 
@@ -539,29 +539,29 @@ export default function LeadgridPricingPage() {
           <Typography sx={{ fontSize: '1.25rem', opacity: 0.92, mb: 5 }}>
             Gratis å starte. Ingen kortkrav. iPad-app inkludert.
           </Typography>
-          <Link href="/leadgrid?signup=solo_free">
-            <Button
-              variant="contained"
-              size="large"
-              endIcon={<ArrowForwardOutlined />}
-              onClick={() => trackEvent('leadgrid_pricing_final_cta', { tier: 'solo_free' })}
-              sx={{
-                bgcolor: '#FFF',
-                color: PALETTE.accent,
-                fontWeight: 700,
-                px: 5,
-                py: 1.75,
-                borderRadius: 999,
-                fontSize: '1.05rem',
-                textTransform: 'none',
-                boxShadow: '0 18px 40px rgba(0,0,0,0.18)',
-                '&:hover': { bgcolor: '#F8F4FF', transform: 'translateY(-2px)' },
-                transition: 'all 0.2s',
-              }}
-            >
-              Start gratis
-            </Button>
-          </Link>
+          <Button
+            component="a"
+            href="/leadgrid?signup=solo_free"
+            variant="contained"
+            size="large"
+            endIcon={<ArrowForwardOutlined />}
+            onClick={() => trackEvent('leadgrid_pricing_final_cta', { tier: 'solo_free' })}
+            sx={{
+              bgcolor: '#FFF',
+              color: PALETTE.accent,
+              fontWeight: 700,
+              px: 5,
+              py: 1.75,
+              borderRadius: 999,
+              fontSize: '1.05rem',
+              textTransform: 'none',
+              boxShadow: '0 18px 40px rgba(0,0,0,0.18)',
+              '&:hover': { bgcolor: '#F8F4FF', transform: 'translateY(-2px)' },
+              transition: 'all 0.2s',
+            }}
+          >
+            Start gratis
+          </Button>
         </Container>
       </Box>
     </Box>
@@ -580,10 +580,9 @@ function TierCard({
 }) {
   const price = yearly ? tier.priceYearly : tier.priceMonthly;
 
-  // Bygg checkout-URL
-  // - Gratis-plan: /leadgrid?signup=solo_free
-  // - Paid: /api/leadgrid/self-onboard backed by Stripe Checkout. Frontend
-  //   sender bruker til signup-flow m/ tier + billing-periode i query.
+  // Gratis åpner self-onboarding. Paid-planene sender plan + periode til
+  // landingen, som åpner en planmerket demo-flyt (serveren støtter ikke
+  // offentlig paid self-onboarding ennå).
   const ctaHref = tier.cta.href
     ? tier.cta.href
     : `/leadgrid?signup=${tier.id}&billing=${yearly ? 'yearly' : 'monthly'}`;

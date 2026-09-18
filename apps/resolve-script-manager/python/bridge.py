@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import sys
 import time
 from typing import Any
@@ -37,6 +38,13 @@ FUSIONSCRIPT_PATHS_MAC = (
 )
 
 
+MCP_PACKAGE_PATHS_MAC = (
+    "/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Resources/DaVinciResolve.mcpb",
+    "/Applications/DaVinci Resolve.app/Contents/Resources/DaVinciResolve.mcpb",
+    "/Applications/DaVinci Resolve Studio.app/Contents/Resources/DaVinciResolve.mcpb",
+)
+
+
 def _ensure_fusionscript_lib() -> str | None:
     """Locate fusionscript.so and set RESOLVE_SCRIPT_LIB before DaVinciResolveScript imports it."""
     existing = os.environ.get("RESOLVE_SCRIPT_LIB")
@@ -48,6 +56,93 @@ def _ensure_fusionscript_lib() -> str | None:
                 os.environ["RESOLVE_SCRIPT_LIB"] = path
                 return path
     return None
+
+
+def resolve_version_string(resolve: Any) -> str | None:
+    """Return Resolve's runtime version without assuming a specific API shape."""
+    if resolve is None:
+        return None
+    try:
+        value = resolve.GetVersionString()
+        return str(value).strip() or None
+    except Exception:  # noqa: BLE001 — host-provided proxy
+        return None
+
+
+def resolve_version_tuple(resolve: Any) -> tuple[int, ...]:
+    """Parse ``21.1.0``-style versions for feature gates."""
+    version = resolve_version_string(resolve) or ""
+    match = re.search(r"\d+(?:\.\d+)+", version)
+    if not match:
+        return ()
+    try:
+        return tuple(int(part) for part in match.group(0).split("."))
+    except ValueError:
+        return ()
+
+
+def _has_api(obj: Any, name: str) -> bool:
+    if obj is None:
+        return False
+    try:
+        return callable(getattr(obj, name, None))
+    except Exception:  # noqa: BLE001 — some Resolve proxies throw on lookup
+        return False
+
+
+def inspect_resolve_capabilities(connection: "ResolveConnection") -> dict[str, Any]:
+    """Inspect version-gated Resolve features used by Post Agent.
+
+    The booleans are runtime checks when an object is available. Item-level APIs
+    (transcription, fades, smart switch) are additionally gated by Resolve 21.1
+    because a MediaPoolItem/TimelineItem may not exist during a health check.
+    """
+    resolve = connection.resolve
+    project = connection.project
+    media_pool = connection.media_pool
+    version = resolve_version_string(resolve)
+    version_parts = resolve_version_tuple(resolve)
+    is_21_1_or_newer = version_parts >= (21, 1) if version_parts else False
+
+    timeline = None
+    if project is not None:
+        try:
+            timeline = project.GetCurrentTimeline()
+        except Exception:  # noqa: BLE001
+            timeline = None
+
+    media_storage = None
+    if resolve is not None:
+        try:
+            media_storage = resolve.GetMediaStorage()
+        except Exception:  # noqa: BLE001
+            media_storage = None
+
+    mcp_path = None
+    if platform.system() == "Darwin":
+        mcp_path = next((p for p in MCP_PACKAGE_PATHS_MAC if os.path.isfile(p)), None)
+
+    features = {
+        "nativeMulticam": _has_api(media_pool, "CreateMulticamClip"),
+        "timelineAutoAlign": _has_api(timeline, "AutoAlignClips"),
+        "multicamSmartSwitch": is_21_1_or_newer,
+        "mediaTranscription": is_21_1_or_newer,
+        "audioNormalization": _has_api(timeline, "NormalizeAudioLevel"),
+        "timelineItemAudioProperties": is_21_1_or_newer,
+        "projectSettingsPresets": _has_api(project, "GetProjectSettingsPresetList"),
+        "renderPresetUpdates": _has_api(project, "UpdateRenderPreset"),
+        "mediaClone": _has_api(media_storage, "StartCloneMedia"),
+        "dctlValidation": _has_api(resolve, "ValidateDCTL"),
+        "keyboardPresets": _has_api(resolve, "GetKeyboardPresetList"),
+        "builtInMcpPackage": mcp_path is not None,
+    }
+    return {
+        "resolveVersion": version,
+        "versionParts": list(version_parts),
+        "supportsResolve21_1": is_21_1_or_newer,
+        "mcpPackagePath": mcp_path,
+        "features": features,
+    }
 
 
 VENV_PYTHON = os.path.expanduser(

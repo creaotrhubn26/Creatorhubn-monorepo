@@ -20,8 +20,12 @@
 
 import crypto from "crypto";
 import type express from "express";
-import type { Pool } from "pg";
-import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
+import type { Pool, PoolClient } from "pg";
+import {
+  AuthSessionStoreUnavailableError,
+  deletePersistedAuthSessionsByUserIdStrict,
+  ensureAuthSessionTableStrict,
+} from "./auth-session-store.js";
 
  
 export interface AdminUsersRoutesDeps {
@@ -35,7 +39,13 @@ export interface AdminUsersRoutesDeps {
   normalizeAdminRoleId: (role: any) => any;
   resolveAdminProfessionForPersistence: (input: any) => any;
   upsertAdminInviteRequest: (input: any) => Promise<any>;
-  upsertAdminAccountUser: (input: any) => Promise<any>;
+  upsertAdminAccountUser: (
+    input: any,
+    options?: {
+      queryClient?: Pick<Pool, "query">;
+      bumpAuthSessionVersion?: boolean;
+    },
+  ) => Promise<any>;
   ensureInviteRequestAccessProvisioning: (inviteRequest: any) => Promise<any>;
   resolveAdminUserView: (id: string, email?: string) => Promise<any>;
   toAdminString: (value: any) => string | null;
@@ -235,17 +245,56 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
             })
           : undefined;
 
-      if (accountUserId) {
-        await upsertAdminAccountUser({
-          email,
-          firstName: nextFirstName,
-          lastName: nextLastName,
-          role: nextRole,
-          profession: nextProfession,
-          businessName: nextBusinessName,
-          organizationNumber: undefined,
-          isActive: nextIsActive,
-        });
+      // Persistent revocation must succeed before role/account state changes.
+      // Otherwise a demoted or deactivated user could keep an old role snapshot
+      // even though this endpoint reported success.
+      const roleChanged =
+        nextRole !== undefined && nextRole !== currentRole;
+      const currentIsActive = toAdminBoolean(userView.isActive);
+      const isActiveChanged =
+        nextIsActive !== undefined && nextIsActive !== currentIsActive;
+      const securityStateChanged = roleChanged || isActiveChanged;
+      const accountUpdate = {
+        email,
+        firstName: nextFirstName,
+        lastName: nextLastName,
+        role: nextRole,
+        profession: nextProfession,
+        businessName: nextBusinessName,
+        organizationNumber: undefined,
+        isActive: nextIsActive,
+      };
+      let accountUpdated = false;
+
+      if (securityStateChanged && accountUserId) {
+        let client: PoolClient | null = null;
+        try {
+          // Readiness may create the session table. Do that before opening the
+          // account transaction; the actual delete remains inside it.
+          await ensureAuthSessionTableStrict(pool);
+          client = await pool.connect();
+          await client.query("BEGIN");
+          await upsertAdminAccountUser(accountUpdate, {
+            queryClient: client,
+            bumpAuthSessionVersion: true,
+          });
+          await deletePersistedAuthSessionsByUserIdStrict(client, accountUserId);
+          await client.query("COMMIT");
+          accountUpdated = true;
+        } catch (error) {
+          await client?.query("ROLLBACK").catch(() => undefined);
+          console.error("Admin user session revocation failed:", error);
+          return res.status(503).json({ error: "session_store_unavailable" });
+        } finally {
+          client?.release();
+        }
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
+        }
+      }
+
+      if (accountUserId && !accountUpdated) {
+        await upsertAdminAccountUser(accountUpdate);
       }
 
       if (inviteRequestId) {
@@ -264,17 +313,8 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       // role changes. Live sessions carry a role snapshot and are only ever
       // upgraded (never downgraded) by reconcileSessionAdminRole, so a demoted
       // admin would otherwise retain admin access in their existing session
-      // indefinitely (there is no session TTL). Forcing re-login rebuilds a
-      // fresh snapshot from the persisted role.
-      const roleChanged =
-        nextRole !== undefined && nextRole !== currentRole;
-      if ((nextIsActive === false || roleChanged) && accountUserId) {
-        for (const [tok, sess] of activeSessions.entries()) {
-          if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
-        }
-        await deletePersistedAuthSessionsByUserId(pool, accountUserId);
-      }
-
+      // until expiry. Forcing re-login rebuilds a fresh snapshot from the
+      // persisted role immediately.
       const updatedUser = await resolveAdminUserView(req.params.id, email);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
@@ -672,18 +712,22 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           await client.query(`DELETE FROM ${ident} WHERE ${col}::text = $1`, [targetId]);
         }
       }
+      // Keep durable revocation and account deletion in the same transaction.
+      // A failure leaves both the user and their sessions untouched.
+      await deletePersistedAuthSessionsByUserIdStrict(client, targetId);
       const del = await client.query("DELETE FROM users WHERE id::text = $1", [targetId]);
       await client.query("COMMIT");
       // Evict all in-memory sessions for deleted user
       for (const [tok, sess] of activeSessions.entries()) {
         if (String(sess?.userId) === targetId) activeSessions.delete(tok);
       }
-      // Evict persisted sessions so they aren't rehydrated on restart
-      await deletePersistedAuthSessionsByUserId(pool, targetId);
       return res.json({ success: true, deletedEmail: target.email, deleted: del.rowCount });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       console.error("Error deleting user:", error);
+      if (error instanceof AuthSessionStoreUnavailableError) {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       return res.status(500).json({ error: "Kunne ikke slette bruker." });
     } finally {
       client.release();

@@ -21,6 +21,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -31,25 +32,40 @@ interface PermissionOptions {
   resolveOrgId?: (req: Request, pool: Pool, userId: string) => Promise<string | null>;
 }
 
-function getUser(
+async function getUser(
   req: Request,
+  pool: Pool,
   activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
+): Promise<SessionData | null> {
+  return resolveLeadMapSession(req, pool, activeSessions);
 }
 
 /** Default org-resolve: body > query > params > prosjekt-FK > brukerens default-org */
-async function defaultResolveOrgId(
+export async function resolveLeadMapOrganizationId(
   req: Request,
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
-  // 1. Eksplisitt i request.
+  // 1. Ressursens kanoniske org. Klientens body/query må aldri kunne
+  // overstyre tenant til en eksisterende lead.
+  const routePath = String(req.route?.path ?? req.path ?? "");
+  const isLeadResourceRoute = routePath.includes("/leads/:id");
+  const leadId = req.params?.leadId ?? req.params?.id;
+  if (isLeadResourceRoute && typeof leadId === "string" && leadId.length > 0) {
+    const r = await pool.query<{ organization_id: string | null }>(
+      `SELECT COALESCE(c.organization_id::text, cp.organization_id::text)
+                AS organization_id
+         FROM crm_customers c
+         LEFT JOIN casting_projects cp ON cp.id = c.project_id
+        WHERE c.id::text = $1 LIMIT 1`,
+      [leadId],
+    );
+    // An unknown lead has no permission context. Do not fall through to an
+    // attacker-supplied organization; the route handler will return 404.
+    return r.rows[0]?.organization_id ?? null;
+  }
+
+  // 2. Eksplisitt i request for create/list/org-scoped routes.
   // Workflow-QA 2026-07-05: `req.params.id` lå blindt i listen «for
   // /organizations/:id-rutene» — men på /leads/:id/... er params.id
   // LEAD-uuid-en, som da ble tolket som org-id → «ikke_medlem_av_org»
@@ -69,7 +85,7 @@ async function defaultResolveOrgId(
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 0) return c;
   }
-  // 2. Avled fra projectId i body/params
+  // 3. Avled fra projectId i body/params
   const projectId = req.body?.projectId ?? req.body?.project_id
     ?? req.query?.projectId ?? req.query?.project_id
     ?? req.params?.projectId;
@@ -77,21 +93,6 @@ async function defaultResolveOrgId(
     const r = await pool.query<{ organization_id: string | null }>(
       `SELECT organization_id::text FROM casting_projects WHERE id = $1 LIMIT 1`,
       [projectId],
-    );
-    if (r.rows[0]?.organization_id) return r.rows[0].organization_id;
-  }
-  // 3. Avled fra lead-id i params (for /leads/:id). crm_customers har
-  // organization_id direkte — prosjekt-JOIN-en er fallback for eldre
-  // rader uten org-kolonne satt.
-  const leadId = req.params?.leadId ?? req.params?.id;
-  if (typeof leadId === "string" && leadId.length > 0) {
-    const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT COALESCE(c.organization_id::text, cp.organization_id::text)
-                AS organization_id
-         FROM crm_customers c
-         LEFT JOIN casting_projects cp ON cp.id = c.project_id
-        WHERE c.id = $1 LIMIT 1`,
-      [leadId],
     );
     if (r.rows[0]?.organization_id) return r.rows[0].organization_id;
   }
@@ -121,9 +122,9 @@ export function requireLeadMapPermission(
   permissionKey: string,
   opts: PermissionOptions,
 ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-  const resolver = opts.resolveOrgId ?? defaultResolveOrgId;
+  const resolver = opts.resolveOrgId ?? resolveLeadMapOrganizationId;
   return async (req, res, next) => {
-    const session = getUser(req, opts.activeSessions);
+    const session = await getUser(req, opts.pool, opts.activeSessions);
     if (!session?.userId) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -151,6 +152,10 @@ export function requireLeadMapPermission(
       });
       return;
     }
+    // Gjør den autoriserte org-konteksten tilgjengelig for handleren.
+    // Create-ruter må aldri resolve tenant en gang til via en annen
+    // medlemskapstabell eller stole direkte på request-body.
+    res.locals.leadMapOrganizationId = orgId;
     next();
   };
 }
@@ -169,11 +174,11 @@ export function registerMePermissionsRoute(
   app.get(
     "/api/admin-room/lead-map/me/permissions",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const orgId =
         (typeof req.query.organization_id === "string" && req.query.organization_id)
-        || (await defaultResolveOrgId(req, pool, session.userId));
+        || (await resolveLeadMapOrganizationId(req, pool, session.userId));
       if (!orgId) {
         return res.json({ role: null, permissions: [], organization_id: null });
       }

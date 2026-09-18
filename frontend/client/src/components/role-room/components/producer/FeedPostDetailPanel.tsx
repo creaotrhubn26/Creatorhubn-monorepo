@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -28,7 +28,9 @@ import {
   GridView as GridViewIcon,
   LockOpen as LockOpenIcon,
   Lock as LockIcon,
+  LinkedIn as LinkedInIcon,
   Movie as MovieIcon,
+  OpenInNew as OpenInNewIcon,
   Tag as TagIcon,
   UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
@@ -48,6 +50,9 @@ import type {
   RoleRoomFeedPostConcept,
   RoleRoomFeedTemplate,
   RoleRoomFeedTemplatePayload,
+  RoleRoomLinkedInMediaKind,
+  RoleRoomLinkedInProfile,
+  RoleRoomLinkedInPublishResult,
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS, FEED_POST_CONCEPT_ORDER, buildFeedPost } from '../../utils/feedPlanner';
 import { describeProducerError } from '../../utils/producerErrorMessage';
@@ -94,6 +99,131 @@ const GRID_ASPECT_OPTIONS: { value: RoleRoomFeedGridAspect; label: string; hint:
 // Cover/thumbnail lagres som data: URL i samme JSONB-rad som posten.
 // 2 MB matcher backendens MAX_CUSTOM_IMAGE_LENGTH.
 const MAX_COVER_BYTES = 2_000_000;
+
+const EMPTY_LINKEDIN_PROFILE: RoleRoomLinkedInProfile = {
+  connected: false,
+  connectionId: null,
+  memberId: null,
+  email: null,
+  name: null,
+  profilePictureUrl: null,
+  publishReady: false,
+  organizationPublishReady: false,
+  reconnectRequired: false,
+  scopes: [],
+  expiryDate: null,
+};
+
+export type LinkedInPublishMediaSelection = {
+  mediaKind: RoleRoomLinkedInMediaKind;
+  imageUrl?: string;
+  imageUrls?: string[];
+  videoUrl?: string;
+  warning: string | null;
+  error: string | null;
+};
+
+export function buildLinkedInCaption(
+  post: Pick<RoleRoomFeedPost, 'title' | 'caption' | 'hashtags' | 'callToAction'>,
+): string {
+  return [post.title, post.caption, post.hashtags.join(' '), post.callToAction]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function buildLinkedInPublishMedia(
+  post: Pick<RoleRoomFeedPost, 'mediaType' | 'customImageUrl' | 'customImageUrls' | 'customVideoDataUrl'>,
+): LinkedInPublishMediaSelection {
+  if (post.mediaType === 'reel') {
+    if (!post.customVideoDataUrl) {
+      return {
+        mediaKind: 'video',
+        warning: null,
+        error: 'Video-posten trenger en video fra Drive før den kan publiseres.',
+      };
+    }
+    return {
+      mediaKind: 'video',
+      videoUrl: post.customVideoDataUrl,
+      warning: null,
+      error: null,
+    };
+  }
+
+  if (post.mediaType === 'carousel') {
+    const imageUrls = (post.customImageUrls ?? []).filter(Boolean);
+    if (imageUrls.length < 2 || imageUrls.length > 20) {
+      return {
+        mediaKind: 'carousel',
+        warning: null,
+        error: 'LinkedIn-karusell krever 2–20 bilder fra Drive.',
+      };
+    }
+    return {
+      mediaKind: 'carousel',
+      imageUrls,
+      warning: null,
+      error: null,
+    };
+  }
+
+  if (!post.customImageUrl) {
+    return {
+      mediaKind: 'text',
+      warning: 'Ingen bildefil er valgt. LinkedIn-posten publiseres som en ren tekstpost.',
+      error: null,
+    };
+  }
+
+  return {
+    mediaKind: 'image',
+    imageUrl: post.customImageUrl,
+    warning: null,
+    error: null,
+  };
+}
+
+function fnv1a32(input: string, seed: number): string {
+  let hash = seed >>> 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export function getLinkedInFutureSchedule(
+  scheduledFor: string | null | undefined,
+  nowMs = Date.now(),
+): string | null {
+  if (!scheduledFor) return null;
+  const timestamp = new Date(scheduledFor).getTime();
+  return Number.isFinite(timestamp) && timestamp > nowMs ? scheduledFor : null;
+}
+
+export function buildLinkedInPublishIdempotencyKey(
+  projectId: string,
+  post: RoleRoomFeedPost,
+  caption = buildLinkedInCaption(post),
+): string {
+  const revision = JSON.stringify({
+    projectId,
+    feedPlanPostId: post.id,
+    caption,
+    scheduledFor: getLinkedInFutureSchedule(post.scheduledFor),
+    organizationUrn: post.linkedInOrganizationUrn ?? null,
+    mediaType: post.mediaType,
+    image: post.customImageUrl ?? null,
+    images: post.customImageUrls ?? [],
+    video: post.customVideoDataUrl ?? null,
+  });
+  // Two independent 32-bit passes give a compact 64-bit revision fingerprint.
+  // Hash the complete media payload so equal-length data URLs cannot collide
+  // merely because their prefixes and suffixes happen to match.
+  const fingerprint = `${fnv1a32(revision, 0x811c9dc5)}${fnv1a32(revision, 0x9e3779b1)}`;
+  return `role-room-linkedin:${projectId}:${post.id}:${fingerprint}`;
+}
 
 function formatScheduleInputValue(iso: string | null): string {
   if (!iso) return '';
@@ -238,6 +368,12 @@ export default function FeedPostDetailPanel({
 
   const [publishing, setPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<string | null>(null);
+  const [linkedInProfile, setLinkedInProfile] = useState<RoleRoomLinkedInProfile>(EMPTY_LINKEDIN_PROFILE);
+  const [linkedInProfileLoading, setLinkedInProfileLoading] = useState(platform === 'linkedin');
+  const [linkedInProfileError, setLinkedInProfileError] = useState<string | null>(null);
+  const [linkedInPublishing, setLinkedInPublishing] = useState(false);
+  const [linkedInPublishResult, setLinkedInPublishResult] = useState<RoleRoomLinkedInPublishResult | null>(null);
+  const [linkedInPublishError, setLinkedInPublishError] = useState<string | null>(null);
   const [fbPages, setFbPages] = useState<Array<{ id: string; name: string | null }>>([]);
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>('');
   const [fbPublishing, setFbPublishing] = useState(false);
@@ -254,6 +390,83 @@ export default function FeedPostDetailPanel({
     topMediaPreview: string | null;
     validationError: string | null;
   }>>([]);
+
+  const linkedInCaption = useMemo(() => buildLinkedInCaption(post), [post]);
+  const linkedInMedia = useMemo(() => buildLinkedInPublishMedia(post), [post]);
+  const linkedInFutureScheduledFor = getLinkedInFutureSchedule(post.scheduledFor);
+  const linkedInScheduled = Boolean(linkedInFutureScheduledFor);
+  const linkedInScheduledStateInvalid = post.approvalState === 'scheduled' && !linkedInScheduled;
+  const linkedInApprovalReady = post.approvalState === 'approved'
+    || (post.approvalState === 'scheduled' && linkedInScheduled);
+  const linkedInOrganizationSelected = Boolean(post.linkedInOrganizationUrn);
+  const linkedInTargetReady = Boolean(
+    linkedInProfile.connectionId
+    && linkedInProfile.publishReady
+    && (!linkedInOrganizationSelected || linkedInProfile.organizationPublishReady),
+  );
+
+  const refreshLinkedInProfile = useCallback(async (showLoading = true) => {
+    if (platform !== 'linkedin') return null;
+    if (showLoading) setLinkedInProfileLoading(true);
+    try {
+      const profile = await roleRoomAgentService.fetchLinkedInProfile(projectId);
+      setLinkedInProfile(profile);
+      setLinkedInProfileError(null);
+      return profile;
+    } catch (caught) {
+      setLinkedInProfileError(
+        caught instanceof Error ? caught.message : 'Kunne ikke hente LinkedIn-status.',
+      );
+      return null;
+    } finally {
+      if (showLoading) setLinkedInProfileLoading(false);
+    }
+  }, [platform, projectId]);
+
+  useEffect(() => {
+    if (platform !== 'linkedin') {
+      setLinkedInProfileLoading(false);
+      return undefined;
+    }
+    void refreshLinkedInProfile();
+    const onConnectionUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (
+        detail
+        && typeof detail === 'object'
+        && typeof (detail as RoleRoomLinkedInProfile).connected === 'boolean'
+        && typeof (detail as RoleRoomLinkedInProfile).publishReady === 'boolean'
+        && Array.isArray((detail as RoleRoomLinkedInProfile).scopes)
+      ) {
+        setLinkedInProfile(detail as RoleRoomLinkedInProfile);
+        setLinkedInProfileError(null);
+      } else {
+        void refreshLinkedInProfile(false);
+      }
+    };
+    window.addEventListener('role-room:linkedin-connection-updated', onConnectionUpdated);
+    return () => {
+      window.removeEventListener('role-room:linkedin-connection-updated', onConnectionUpdated);
+    };
+  }, [platform, refreshLinkedInProfile]);
+
+  useEffect(() => {
+    setLinkedInPublishResult(null);
+    setLinkedInPublishError(null);
+  }, [
+    post.id,
+    post.title,
+    post.caption,
+    post.hashtags,
+    post.callToAction,
+    post.scheduledFor,
+    post.linkedInOrganizationUrn,
+    post.mediaType,
+    post.customImageUrl,
+    post.customImageUrls,
+    post.customVideoDataUrl,
+    projectId,
+  ]);
 
   const resolveAuthToken = (): string | null => {
     try {
@@ -342,6 +555,112 @@ export default function FeedPostDetailPanel({
       setFbPublishStatus(e instanceof Error ? e.message : 'FB-publisering feilet.');
     } finally {
       setFbPublishing(false);
+    }
+  };
+
+  const publishToLinkedIn = async () => {
+    setLinkedInPublishError(null);
+    setLinkedInPublishResult(null);
+
+    if (platform !== 'linkedin') return;
+    const effectiveScheduledFor = getLinkedInFutureSchedule(post.scheduledFor);
+    if (post.approvalState === 'scheduled' && !effectiveScheduledFor) {
+      setLinkedInPublishError(
+        'En planlagt post må ha et gyldig tidspunkt i fremtiden. Velg et nytt tidspunkt før du sender den til køen.',
+      );
+      return;
+    }
+    if (!linkedInApprovalReady) {
+      setLinkedInPublishError('Posten må være godkjent eller planlagt før den kan sendes til LinkedIn.');
+      return;
+    }
+    if (!linkedInProfile.connectionId || !linkedInProfile.publishReady) {
+      setLinkedInPublishError(
+        'LinkedIn-kontoen er ikke publiseringsklar. Koble til på nytt med w_member_social.',
+      );
+      return;
+    }
+    if (linkedInOrganizationSelected && !linkedInProfile.organizationPublishReady) {
+      setLinkedInPublishError(
+        'Bedriftspublisering krever w_organization_social og administratorrolle på siden.',
+      );
+      return;
+    }
+    if (linkedInMedia.error) {
+      setLinkedInPublishError(linkedInMedia.error);
+      return;
+    }
+    if (!linkedInCaption) {
+      setLinkedInPublishError('LinkedIn-posten trenger tekst før den kan publiseres.');
+      return;
+    }
+
+    const targetLabel = linkedInOrganizationSelected
+      ? 'den valgte bedriftssiden'
+      : linkedInProfile.name
+        ? `den personlige profilen ${linkedInProfile.name}`
+        : 'din personlige LinkedIn-profil';
+    const scheduleLabel = effectiveScheduledFor
+      ? new Date(effectiveScheduledFor).toLocaleString('nb-NO')
+      : null;
+    const confirmation = scheduleLabel
+      ? `Planlegg publisering til ${targetLabel} ${scheduleLabel}?`
+      : `Publiser nå til ${targetLabel}?`;
+    if (!window.confirm(confirmation)) return;
+
+    setLinkedInPublishing(true);
+    try {
+      const requestPost = effectiveScheduledFor === post.scheduledFor
+        ? post
+        : { ...post, scheduledFor: effectiveScheduledFor };
+      const result = await roleRoomAgentService.publishLinkedIn({
+        connectionId: linkedInProfile.connectionId,
+        projectId,
+        feedPlanPostId: post.id,
+        mediaKind: linkedInMedia.mediaKind,
+        caption: linkedInCaption,
+        imageUrl: linkedInMedia.imageUrl,
+        imageUrls: linkedInMedia.imageUrls,
+        videoUrl: linkedInMedia.videoUrl,
+        linkedInOrganizationUrn: post.linkedInOrganizationUrn ?? null,
+        scheduledFor: effectiveScheduledFor,
+        idempotencyKey: buildLinkedInPublishIdempotencyKey(projectId, requestPost, linkedInCaption),
+      });
+
+      if (!result.ok || result.status === 'failed' || result.status === 'rate_limited' || result.status === 'unsupported') {
+        throw new Error(result.error ?? result.reason ?? 'LinkedIn-publisering ble ikke fullført.');
+      }
+
+      setLinkedInPublishResult(result);
+      const nextApprovalState = result.status === 'published'
+        ? 'published'
+        : result.status === 'queued' || result.status === 'scheduled'
+          ? 'scheduled'
+          : null;
+      if (nextApprovalState && nextApprovalState !== post.approvalState) {
+        onUpdate({
+          approvalState: nextApprovalState,
+          approvalChangedAt: new Date().toISOString(),
+        });
+      }
+    } catch (caught) {
+      const publishError = caught as Error & { status?: number; reason?: string; approvalState?: string };
+      const reason = publishError.reason ?? '';
+      const message = publishError.status === 401 || reason.includes('auth')
+        ? 'LinkedIn-tokenet er utløpt eller ugyldig. Koble til på nytt og prøv igjen.'
+        : publishError.status === 403 || reason.includes('scope')
+          ? 'LinkedIn-tilkoblingen mangler nødvendig publiseringstilgang for valgt mål.'
+          : publishError.status === 409 || reason.includes('approval')
+            ? 'Posten må godkjennes før publisering. Oppdater godkjenningsstatus og prøv igjen.'
+            : publishError.status === 429
+              ? 'LinkedIn har begrenset antall forespørsler. Vent litt og prøv igjen.'
+              : publishError.message || 'LinkedIn-publisering feilet.';
+      setLinkedInPublishError(message);
+      if (publishError.status === 401 || publishError.status === 403 || reason.includes('auth') || reason.includes('scope')) {
+        void refreshLinkedInProfile(false);
+      }
+    } finally {
+      setLinkedInPublishing(false);
     }
   };
 
@@ -571,13 +890,14 @@ export default function FeedPostDetailPanel({
 
       {platform === 'linkedin' ? (
         <LinkedInPublishAsSelector
+          projectId={projectId}
           value={post.linkedInOrganizationUrn ?? null}
           onChange={(urn) => onUpdate({ linkedInOrganizationUrn: urn })}
         />
       ) : null}
 
       {/* Media picker — reacts to the post's mediaType: image = single
-          picker, carousel = multi-pick (2-10), reel = video picker. All
+          picker, carousel = multi-pick (2-20 on LinkedIn / 2-10 elsewhere), reel = video picker. All
           three surface the same Drive flow; kind= filters the listing
           server-side. */}
       {post.mediaType === 'carousel' ? (
@@ -595,7 +915,7 @@ export default function FeedPostDetailPanel({
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
                 {post.customImageUrls && post.customImageUrls.length > 0
                   ? `${post.customImageUrls.length} bilder valgt`
-                  : 'Carousel trenger 2-10 bilder'}
+                  : `Carousel trenger 2-${platform === 'linkedin' ? 20 : 10} bilder`}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.72rem' }}>
                 {post.customImageUrls && post.customImageUrls.length > 0
@@ -821,7 +1141,7 @@ export default function FeedPostDetailPanel({
         open={drivePickerOpen}
         onClose={() => setDrivePickerOpen(false)}
         kind={post.mediaType === 'reel' ? 'video' : 'image'}
-        multiSelect={post.mediaType === 'carousel' ? { min: 2, max: 10 } : undefined}
+        multiSelect={post.mediaType === 'carousel' ? { min: 2, max: platform === 'linkedin' ? 20 : 10 } : undefined}
         onPick={(media) => {
           if (post.mediaType === 'reel') {
             onUpdate({ customVideoDataUrl: media.dataUrl, customVideoName: media.name });
@@ -1354,6 +1674,184 @@ export default function FeedPostDetailPanel({
           </Stack>
         ) : null}
       </Stack>
+
+      {platform === 'linkedin' ? (
+        <Stack
+          spacing={0.9}
+          data-testid="linkedin-publish-section"
+          sx={{
+            p: 1.2,
+            borderRadius: 1.8,
+            bgcolor: 'rgba(10,102,194,0.07)',
+            border: '1px solid rgba(10,102,194,0.28)',
+          }}
+        >
+          <Stack direction="row" alignItems="center" spacing={0.7}>
+            <LinkedInIcon sx={{ color: '#60a5fa', fontSize: '1.15rem' }} />
+            <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 750 }}>
+              Publiser til LinkedIn
+            </Typography>
+          </Stack>
+
+          {linkedInProfileLoading ? (
+            <Stack direction="row" spacing={0.8} alignItems="center">
+              <CircularProgress size={14} />
+              <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
+                Sjekker publiseringstilgang…
+              </Typography>
+            </Stack>
+          ) : (
+            <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+              <Chip
+                size="small"
+                label={linkedInProfile.publishReady ? 'Personlig profil: klar' : 'Personlig profil: ikke klar'}
+                sx={{
+                  color: linkedInProfile.publishReady ? '#86efac' : '#fde68a',
+                  bgcolor: linkedInProfile.publishReady ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.08)',
+                  fontSize: '0.68rem',
+                }}
+              />
+              <Chip
+                size="small"
+                label={linkedInProfile.organizationPublishReady ? 'Bedriftsside: klar' : 'Bedriftsside: ekstra scope kreves'}
+                sx={{
+                  color: linkedInProfile.organizationPublishReady ? '#86efac' : '#bfdbfe',
+                  bgcolor: linkedInProfile.organizationPublishReady ? 'rgba(34,197,94,0.1)' : 'rgba(59,130,246,0.08)',
+                  fontSize: '0.68rem',
+                }}
+              />
+            </Stack>
+          )}
+
+          <Typography sx={{ color: 'rgba(226,232,240,0.67)', fontSize: '0.73rem' }}>
+            {linkedInOrganizationSelected
+              ? `Mål: bedriftsside (${post.linkedInOrganizationUrn}).`
+              : `Mål: personlig profil${linkedInProfile.name ? ` (${linkedInProfile.name})` : ''}.`}{' '}
+            {linkedInScheduledStateInvalid
+              ? 'Planlagt tidspunkt mangler eller ligger i fortiden.'
+              : linkedInFutureScheduledFor
+              ? `Planlagt ${new Date(linkedInFutureScheduledFor).toLocaleString('nb-NO')}.`
+              : 'Publiseres umiddelbart.'}
+          </Typography>
+
+          {linkedInProfile.scopes.length > 0 ? (
+            <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.66rem' }}>
+              Aktive scopes: {linkedInProfile.scopes.join(', ')}
+            </Typography>
+          ) : null}
+
+          {linkedInProfileError ? (
+            <Alert
+              severity="error"
+              action={(
+                <Button color="inherit" size="small" onClick={() => void refreshLinkedInProfile()}>
+                  Prøv igjen
+                </Button>
+              )}
+              sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}
+            >
+              {linkedInProfileError}
+            </Alert>
+          ) : null}
+
+          {!linkedInProfileLoading && !linkedInTargetReady ? (
+            <Alert severity="warning" sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
+              {linkedInOrganizationSelected && linkedInProfile.publishReady
+                ? 'Valgt bedriftsside er ikke publiseringsklar. Aktiver w_organization_social over.'
+                : 'LinkedIn er ikke publiseringsklar. Koble kontoen til på nytt over med w_member_social.'}
+            </Alert>
+          ) : null}
+
+          {linkedInScheduledStateInvalid ? (
+            <Alert severity="error" sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
+              Status er «planlagt», men tidspunktet mangler eller ligger i fortiden. Velg et nytt fremtidig tidspunkt.
+            </Alert>
+          ) : !linkedInApprovalReady ? (
+            <Alert severity="warning" sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
+              Godkjenn posten først. Bare poster med status «godkjent» eller «planlagt» kan sendes til LinkedIn.
+            </Alert>
+          ) : null}
+
+          {linkedInMedia.warning ? (
+            <Alert severity="info" sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
+              {linkedInMedia.warning}
+            </Alert>
+          ) : null}
+
+          {linkedInMedia.error ? (
+            <Alert severity="warning" sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
+              {linkedInMedia.error}
+            </Alert>
+          ) : null}
+
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => void publishToLinkedIn()}
+            disabled={
+              linkedInPublishing
+              || linkedInProfileLoading
+              || Boolean(linkedInProfileError)
+              || !linkedInApprovalReady
+              || !linkedInTargetReady
+              || Boolean(linkedInMedia.error)
+              || !linkedInCaption
+            }
+            data-testid="linkedin-publish-submit"
+            sx={{
+              alignSelf: 'flex-start',
+              textTransform: 'none',
+              fontWeight: 700,
+              bgcolor: '#0a66c2',
+              '&:hover': { bgcolor: '#0958a8' },
+            }}
+          >
+            {linkedInPublishing
+              ? linkedInScheduled ? 'Planlegger…' : 'Publiserer…'
+              : linkedInScheduled ? 'Planlegg på LinkedIn' : 'Publiser nå på LinkedIn'}
+          </Button>
+
+          {linkedInPublishResult ? (
+            <Alert
+              severity="success"
+              data-testid="linkedin-publish-success"
+              action={linkedInPublishResult.permalink ? (
+                <Button
+                  component="a"
+                  href={linkedInPublishResult.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  color="inherit"
+                  size="small"
+                  endIcon={<OpenInNewIcon fontSize="small" />}
+                >
+                  Åpne posten
+                </Button>
+              ) : undefined}
+              sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}
+            >
+              {linkedInPublishResult.deduped
+                ? 'Denne publiseringsforespørselen er allerede mottatt og blir ikke duplisert.'
+                : linkedInPublishResult.status === 'published'
+                  ? 'Publisert til LinkedIn.'
+                  : linkedInPublishResult.status === 'scheduled' || linkedInPublishResult.status === 'queued'
+                    ? `Køet for LinkedIn${linkedInFutureScheduledFor ? ` ${new Date(linkedInFutureScheduledFor).toLocaleString('nb-NO')}` : ''}.`
+                    : 'LinkedIn-forespørselen er mottatt.'}
+            </Alert>
+          ) : null}
+
+          {linkedInPublishError ? (
+            <Alert
+              severity="error"
+              role="alert"
+              data-testid="linkedin-publish-error"
+              sx={{ py: 0, '& .MuiAlert-message': { fontSize: '0.72rem' } }}
+            >
+              {linkedInPublishError}
+            </Alert>
+          ) : null}
+        </Stack>
+      ) : null}
 
       {isShowrunner && platform === 'instagram' ? (
         <Stack

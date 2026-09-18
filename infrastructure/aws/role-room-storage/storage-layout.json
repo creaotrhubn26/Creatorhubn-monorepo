@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "bucket": "the-role-room-prod-745600963362-eu-north-1",
+  "region": "eu-north-1",
+  "rules": {
+    "identifiers": "Tenant-owned keys use opaque UUIDs and never names, email addresses, phone numbers or original filenames. Platform releases, models and datasets may retain stable technical artifact paths required by runtimes.",
+    "videos": "New showreels and self-tapes stay in Cloudflare Stream. Any historical video bytes copied for retention are legacy archives and must not be used for new uploads.",
+    "database": "The database owns display names, MIME type, size, checksum, ownership and entity relationships. S3 owns bytes only."
+  },
+  "prefixes": {
+    "platform/releases/{product}/{version}/{artifact}": "Shared application releases and downloadable artifacts",
+    "platform/models/{modelFamily}/weights/{artifact}": "Shared machine-learning model weights",
+    "platform/models/legacy-b2/{modelFamily}/{artifact}": "Historical B2 model variants retained without colliding with the authoritative model source",
+    "platform/datasets/{datasetFamily}/{artifact}": "Shared test and training datasets",
+    "platform/assets/{assetFamily}/{artifact}": "Shared non-user product assets",
+    "platform/services/{service}/{assetFamily}/{artifact}": "Service-owned artifacts without a tenant owner",
+    "platform/staging/{service}/{assetId}/source": "Short-lived platform processing input",
+    "platform/archives/{archiveType}/{assetId}/original": "Legacy or platform-owned archive data without a tenant owner",
+    "organizations/{organizationId}/projects/{projectId}/files/{assetId}/original": "Files billed to and owned by a core organization",
+    "organizations/{organizationId}/shared/{assetId}/original": "Organization-owned files not tied to a project",
+    "workspaces/{workspaceId}/storyboards/{storyboardId}/animation-sources/{assetId}/source": "Legacy workspace animation sources with opaque identifiers",
+    "talents/{talentId}/portfolio/headshots/{assetId}/original": "Talent headshots",
+    "talents/{talentId}/portfolio/photos/{assetId}/original": "Additional talent photos",
+    "talents/{talentId}/documents/resumes/{assetId}/original": "CV and resume documents",
+    "projects/{projectId}/documents/{assetId}/original": "Production and casting project documents",
+    "agencies/{agencyId}/documents/{assetId}/original": "Agency-owned documents",
+    "education/{institutionId}/documents/{assetId}/original": "Education workspace documents",
+    "users/{userId}/files/{assetId}/original": "Private user files not owned by another entity",
+    "users/{userId}/projects/{projectId}/files/{assetId}/original": "User-owned project files where no organization owner is established",
+    "users/{userHash}/sound-room/{audioReviewProjectId}/{objectId}/original.{ext}": "Verified private Sound Room original from browser or Pro Tools",
+    "users/{userHash}/sound-room/{audioReviewProjectId}/{objectId}/preview.m4a": "Server-generated streaming preview",
+    "users/{userHash}/sound-room/{audioReviewProjectId}/{objectId}/waveform.json": "Server-generated waveform peaks",
+    "temporary/{uploadId}": "Unfinalized uploads; expires automatically after one day",
+    "quarantine/{uploadId}": "Rejected or suspicious uploads; expires automatically after fourteen days",
+    "exports/{exportId}": "Temporary GDPR exports; expires automatically after seven days",
+    "migration/{source}/{migrationItemId}": "Migration staging; retained until explicitly finalized",
+    "_system/": "Non-personal storage manifests and operational metadata"
+  }
+}

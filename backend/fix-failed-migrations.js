@@ -8,9 +8,25 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-// Database URLs
-const OLD_DB_URL = 'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
-const NEW_DB_URL = process.env.DATABASE_URL;
+// Never embed database credentials in this tracked recovery script.
+// Running it requires two explicit URLs plus a deliberate confirmation guard.
+const OLD_DB_URL = process.env.LEGACY_DATABASE_URL?.trim();
+const NEW_DB_URL = process.env.DATABASE_URL?.trim();
+const REQUIRED_CONFIRMATION = 'copy-reviewed-legacy-tables';
+
+if (!OLD_DB_URL || !NEW_DB_URL) {
+  throw new Error(
+    'LEGACY_DATABASE_URL and DATABASE_URL must be provided via the environment',
+  );
+}
+if (process.env.CONFIRM_LEGACY_DATABASE_COPY !== REQUIRED_CONFIRMATION) {
+  throw new Error(
+    'Set CONFIRM_LEGACY_DATABASE_COPY=copy-reviewed-legacy-tables after reviewing both database targets',
+  );
+}
+if (OLD_DB_URL === NEW_DB_URL) {
+  throw new Error('Legacy and destination database URLs must be different');
+}
 
 // Tables that failed to migrate
 const FAILED_TABLES = [
@@ -152,13 +168,13 @@ const FAILED_TABLES = [
 
 const oldPool = new Pool({
   connectionString: OLD_DB_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: true },
   max: 10,
 });
 
 const newPool = new Pool({
   connectionString: NEW_DB_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: true },
   max: 10,
 });
 
@@ -423,4 +439,3 @@ async function main() {
 }
 
 main().catch(console.error);
-

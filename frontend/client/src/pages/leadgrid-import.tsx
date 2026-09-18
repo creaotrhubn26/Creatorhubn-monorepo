@@ -555,7 +555,7 @@ function BulkSuccessBanner({
               href="/leadgrid/map"
               sx={{ bgcolor: "#7c3aed", "&:hover": { bgcolor: "#6d28d9" } }}
             >
-              Vis alle på kartet
+              Slik åpner du kartet
             </Button>
             <Button startIcon={<RestartAltIcon />} onClick={onReset}>
               Importer flere

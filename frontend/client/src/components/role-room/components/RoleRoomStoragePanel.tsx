@@ -26,6 +26,8 @@ import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
 import LinkOffOutlinedIcon from '@mui/icons-material/LinkOffOutlined';
 import SwapHorizOutlinedIcon from '@mui/icons-material/SwapHorizOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import CreditCardOutlinedIcon from '@mui/icons-material/CreditCardOutlined';
+import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 
 const palette = {
   bg: '#150b2e',
@@ -49,6 +51,46 @@ interface Stats {
   quotaBytes: number | null;
   fileCount: number;
   percentageUsed: number;
+}
+
+interface OrganizationBillingContext {
+  organization: {
+    id: string;
+    name: string;
+    membershipRole: string | null;
+    canAdminister: boolean;
+  };
+  storage: {
+    storageAccountId: string;
+    ownerType: 'organization';
+    planKey: string | null;
+    usedBytes: number;
+    quotaBytes: number;
+    fileCount: number;
+    percentageUsed: number;
+    status: 'active' | 'read_only' | 'suspended' | 'closed';
+    billing: {
+      subscriptionId: string | null;
+      subscriptionStatus: string | null;
+      currentPeriodEnd: string | null;
+      cancelAtPeriodEnd: boolean;
+      graceUntil: string | null;
+    };
+  };
+  checkoutAvailability: {
+    extra100Gib: boolean;
+    extra1Tib: boolean;
+    billingPortal: boolean;
+  };
+  pricing: {
+    currency: 'NOK';
+    taxBehavior: 'exclusive';
+    interval: 'month';
+    addOns: {
+      extra100Gib: { amount: number; bytes: number };
+      extra1Tib: { amount: number; bytes: number };
+    };
+  };
 }
 
 interface FileRow {
@@ -89,6 +131,39 @@ interface ByoStatus {
   };
 }
 
+interface AffiliateConnectContext {
+  partner: {
+    id: string;
+    organizationId: string;
+    referralCode: string;
+    status: string;
+    minimumPayoutMinor: number;
+    payoutCurrency: string;
+  };
+  connect: {
+    accountId: string | null;
+    onboardingStatus: 'not_started' | 'pending' | 'restricted' | 'complete';
+    detailsSubmitted: boolean;
+    payoutsEnabled: boolean;
+    transfersStatus: string | null;
+    requirements: {
+      currentlyDue?: string[];
+      eventuallyDue?: string[];
+      pastDue?: string[];
+      pendingVerification?: string[];
+      disabledReason?: string | null;
+    };
+  };
+  balance: {
+    currency: string;
+    accruedMinor: number;
+    adjustmentMinor: number;
+    reservedOrTransferredMinor: number;
+    availableMinor: number;
+    nextMaturityAt: string | null;
+  };
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -116,7 +191,12 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export default function RoleRoomStoragePanel() {
+async function sha256Hex(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export default function RoleRoomStoragePanel({ organizationId = null }: { organizationId?: string | null }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [files, setFiles] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,10 +216,88 @@ export default function RoleRoomStoragePanel() {
   const [byoSaving, setByoSaving] = useState(false);
   const [byoError, setByoError] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
+  const [billingContext, setBillingContext] = useState<OrganizationBillingContext | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [affiliateSaving, setAffiliateSaving] = useState(false);
+  const [affiliateMessage, setAffiliateMessage] = useState<string | null>(null);
+  const [affiliateConnect, setAffiliateConnect] = useState<AffiliateConnectContext | null>(null);
+  const [affiliateConnectLoading, setAffiliateConnectLoading] = useState(false);
+  const [affiliateConnectMessage, setAffiliateConnectMessage] = useState<string | null>(null);
 
   const refresh = async () => {
     setError(null);
+    if (!organizationId) setBillingContext(null);
     try {
+      if (organizationId) {
+        setBillingContext(null);
+        setAffiliateConnect(null);
+        setAffiliateConnectMessage(null);
+        const organizationQuery = encodeURIComponent(organizationId);
+        const [contextRes, objectsRes, affiliateConnectRes] = await Promise.all([
+          fetch(`/api/role-room/storage/billing/context?organizationId=${organizationQuery}`, { headers: authHeaders() }),
+          fetch(`/api/role-room/storage/objects?organizationId=${organizationQuery}&limit=50`, { headers: authHeaders() }),
+          fetch(`/api/role-room/storage/affiliate/connect/status?organizationId=${organizationQuery}`, { headers: authHeaders() }),
+        ]);
+        if (contextRes.status === 401) {
+          setError('Logg inn for å se lagringen.');
+          return;
+        }
+        if (!contextRes.ok) {
+          const body = await contextRes.json().catch(() => ({}));
+          setError(body.error ?? `Kunne ikke hente organisasjonskvoten (HTTP ${contextRes.status}).`);
+          return;
+        }
+        const context = await contextRes.json() as OrganizationBillingContext;
+        setBillingContext(context);
+        if (context.organization.canAdminister && affiliateConnectRes.ok) {
+          setAffiliateConnect(await affiliateConnectRes.json() as AffiliateConnectContext);
+        }
+        setStats({
+          userId: context.organization.id,
+          tier: context.storage.planKey === 'solo_free' && !context.storage.billing.subscriptionId
+            ? 'free'
+            : 'paid',
+          usedBytes: context.storage.usedBytes,
+          quotaBytes: context.storage.quotaBytes,
+          fileCount: context.storage.fileCount,
+          percentageUsed: context.storage.percentageUsed,
+        });
+        if (objectsRes.ok) {
+          const body = await objectsRes.json();
+          const organizationFiles = (body.objects ?? []) as Array<{
+            id: string; displayName: string; sizeBytes: number; contentType: string | null;
+            projectId: string | null; sourceModule: string | null; createdAt: string;
+          }>;
+          setFiles(organizationFiles.map((file) => ({
+            ...file,
+            sceneId: null,
+            attachedToEntityType: null,
+            attachedToEntityId: null,
+            attachmentNote: null,
+            uploadedAt: file.createdAt,
+          })));
+          const grouped = new Map<string | null, PerProjectRow>();
+          for (const file of organizationFiles) {
+            const current = grouped.get(file.projectId) ?? {
+              projectId: file.projectId,
+              projectName: null,
+              fileCount: 0,
+              totalBytes: 0,
+            };
+            current.fileCount += 1;
+            current.totalBytes += file.sizeBytes;
+            grouped.set(file.projectId, current);
+          }
+          setPerProject(Array.from(grouped.values()).sort((a, b) => b.totalBytes - a.totalBytes));
+        } else {
+          setFiles([]);
+          setPerProject([]);
+        }
+        setByo(null);
+        return;
+      }
+
       const [statsRes, filesRes, byoRes, perProjectRes] = await Promise.all([
         fetch('/api/role-room/storage/stats', { headers: authHeaders() }),
         fetch('/api/role-room/storage/files?limit=50', { headers: authHeaders() }),
@@ -171,7 +329,10 @@ export default function RoleRoomStoragePanel() {
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    setLoading(true);
+    void refresh();
+  }, [organizationId]);
 
   // Poll BYO migration progress when running
   useEffect(() => {
@@ -262,6 +423,58 @@ export default function RoleRoomStoragePanel() {
     setError(null);
     try {
       for (const file of Array.from(selected)) {
+        if (organizationId) {
+          if (file.size > 500 * 1024 * 1024) {
+            setError('Nettleseropplasting er foreløpig begrenset til 500 MB per fil.');
+            break;
+          }
+          const checksumSha256 = await sha256Hex(file);
+          const initiate = await fetch('/api/role-room/storage/objects/initiate', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({
+              organizationId,
+              displayName: file.name,
+              sizeBytes: file.size,
+              contentType: file.type || 'application/octet-stream',
+              checksumSha256,
+              sourceModule: 'manual-upload',
+            }),
+          });
+          const initiated = await initiate.json().catch(() => ({}));
+          if (!initiate.ok) {
+            setError(
+              initiate.status === 507
+                ? 'Organisasjonens lagringskvote er nådd eller skrivebeskyttet.'
+                : initiate.status === 415 && file.type.startsWith('video/')
+                  ? 'Video lagres i Cloudflare Stream. Last opp self-tape eller video fra den aktuelle videoflyten.'
+                  : initiated.error ?? `Opplasting kunne ikke startes (HTTP ${initiate.status}).`,
+            );
+            break;
+          }
+          const uploaded = await fetch(initiated.uploadUrl, {
+            method: 'PUT',
+            headers: initiated.requiredHeaders,
+            body: file,
+          });
+          if (!uploaded.ok) {
+            setError(`S3-opplastingen feilet (HTTP ${uploaded.status}). Prøv igjen.`);
+            break;
+          }
+          const completed = await fetch(`/api/role-room/storage/objects/${encodeURIComponent(initiated.objectId)}/complete`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ organizationId }),
+          });
+          if (!completed.ok) {
+            const body = await completed.json().catch(() => ({}));
+            setError(body.error ?? `Opplastingen kunne ikke verifiseres (HTTP ${completed.status}).`);
+            break;
+          }
+          continue;
+        }
         const fd = new FormData();
         fd.append('file', file);
         fd.append('sourceModule', 'manual-upload');
@@ -291,21 +504,140 @@ export default function RoleRoomStoragePanel() {
   const handleDelete = async (fileId: string) => {
     if (!confirm('Slette filen permanent?')) return;
     try {
-      const r = await fetch(`/api/role-room/storage/files/${fileId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
+      const r = organizationId
+        ? await fetch(`/api/role-room/storage/objects/${fileId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ organizationId }),
+          })
+        : await fetch(`/api/role-room/storage/files/${fileId}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+          });
       if (r.ok) await refresh();
     } catch (e) {
       setError(String(e));
     }
   };
 
-  const handleDownload = (fileId: string) => {
-    // Backend redirector til signed B2-URL
+  const handleDownload = async (fileId: string) => {
+    if (organizationId) {
+      const response = await fetch(
+        `/api/role-room/storage/objects/${encodeURIComponent(fileId)}/download?organizationId=${encodeURIComponent(organizationId)}`,
+        { headers: authHeaders() },
+      );
+      if (!response.ok) {
+        setError(`Kunne ikke lage nedlastingslenke (HTTP ${response.status}).`);
+        return;
+      }
+      const body = await response.json();
+      window.location.href = body.url;
+      return;
+    }
+    // Backend redirector til en tidsbegrenset URL i valgt privat objektlager.
     const token = localStorage.getItem('rr_bearer');
     const url = `/api/role-room/storage/files/${fileId}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     window.location.href = url;
+  };
+
+  const startStorageCheckout = async (addOn: 'extra100Gib' | 'extra1Tib') => {
+    if (!organizationId) return;
+    setBillingLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/role-room/storage/billing/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          organizationId,
+          addOns: {
+            extra100Gib: addOn === 'extra100Gib' ? 1 : 0,
+            extra1Tib: addOn === 'extra1Tib' ? 1 : 0,
+          },
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(body.error ?? `Checkout kunne ikke startes (HTTP ${response.status}).`);
+        return;
+      }
+      window.location.href = body.url;
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const openBillingPortal = async () => {
+    if (!organizationId) return;
+    setBillingLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/role-room/storage/billing/portal', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ organizationId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(body.error ?? `Betalingsportalen kunne ikke åpnes (HTTP ${response.status}).`);
+        return;
+      }
+      window.location.href = body.url;
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const attributeReferral = async () => {
+    if (!organizationId || referralCode.trim().length < 3) return;
+    setAffiliateSaving(true);
+    setAffiliateMessage(null);
+    try {
+      const response = await fetch('/api/role-room/storage/affiliate/attribute', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ organizationId, referralCode: referralCode.trim() }),
+      });
+      const body = await response.json().catch(() => ({}));
+      setAffiliateMessage(response.ok
+        ? 'Partnerkoden er registrert. Bonuslagring aktiveres etter første betaling.'
+        : body.error ?? `Partnerkoden kunne ikke registreres (HTTP ${response.status}).`);
+    } finally {
+      setAffiliateSaving(false);
+    }
+  };
+
+  const startAffiliateConnectOnboarding = async () => {
+    if (!organizationId || !affiliateConnect) return;
+    setAffiliateConnectLoading(true);
+    setAffiliateConnectMessage(null);
+    try {
+      const response = await fetch('/api/role-room/storage/affiliate/connect/onboarding', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ organizationId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setAffiliateConnectMessage(body.error ?? `Stripe-verifisering kunne ikke startes (HTTP ${response.status}).`);
+        return;
+      }
+      const onboardingUrl = new URL(String(body.onboardingUrl || ''));
+      if (onboardingUrl.protocol !== 'https:' || onboardingUrl.hostname !== 'connect.stripe.com') {
+        setAffiliateConnectMessage('Stripe returnerte en ugyldig onboarding-lenke. Prøv igjen.');
+        return;
+      }
+      window.location.assign(onboardingUrl.href);
+    } catch {
+      setAffiliateConnectMessage('Stripe-verifisering kunne ikke startes. Prøv igjen.');
+    } finally {
+      setAffiliateConnectLoading(false);
+    }
   };
 
   if (loading) {
@@ -323,7 +655,8 @@ export default function RoleRoomStoragePanel() {
     : `${formatBytes(stats?.usedBytes ?? 0)} (ubegrenset — BYO)`;
   const pct = stats?.percentageUsed ?? 0;
   const barColor = pct >= 90 ? palette.danger : pct >= 75 ? palette.warning : palette.accent;
-  const isFull = pct >= 100;
+  const isFull = pct >= 100 || billingContext?.storage.status === 'read_only'
+    || billingContext?.storage.status === 'suspended' || billingContext?.storage.status === 'closed';
 
   return (
     <Card sx={{ bgcolor: palette.bg, border: `1px solid ${palette.border}`, borderRadius: 2 }}>
@@ -343,7 +676,9 @@ export default function RoleRoomStoragePanel() {
                 Lagring
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-                Self-tapes, decks, postere og dokumenter du har lastet opp
+                {billingContext
+                  ? `Felles lagring for ${billingContext.organization.name}`
+                  : 'Bilder, lydfiler og dokumenter du har lastet opp'}
               </Typography>
             </Stack>
           </Stack>
@@ -372,7 +707,9 @@ export default function RoleRoomStoragePanel() {
               {quotaLabel}
             </Typography>
             <Chip
-              label={stats?.tier === 'free' ? 'GRATIS · 1 GB' : stats?.tier === 'paid' ? 'BETALT' : 'BYO B2'}
+              label={billingContext
+                ? `${(billingContext.storage.planKey ?? 'solo_free').replace('_', ' ').toUpperCase()} · FELLES`
+                : stats?.tier === 'free' ? 'GRATIS · 1 GB' : stats?.tier === 'paid' ? 'BETALT' : 'BYO B2'}
               size="small"
               sx={{
                 bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent,
@@ -399,6 +736,184 @@ export default function RoleRoomStoragePanel() {
           </Stack>
         </Box>
 
+        {billingContext && (
+          <Box sx={{
+            p: 2.2, mb: 2.4, borderRadius: 1.6,
+            bgcolor: palette.bgSubtle,
+            border: `1px solid ${palette.border}`,
+          }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+              <Stack direction="row" alignItems="center" spacing={1.2}>
+                <CreditCardOutlinedIcon sx={{ color: palette.accent, fontSize: 22 }} />
+                <Stack>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.92rem', color: palette.textPrimary }}>
+                    Organisasjonsbetaling
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.76rem', color: palette.textSecondary }}>
+                    {billingContext.storage.billing.subscriptionStatus
+                      ? `Stripe-status: ${billingContext.storage.billing.subscriptionStatus}`
+                      : 'Ingen separat lagringsbetaling'}
+                  </Typography>
+                </Stack>
+              </Stack>
+              {billingContext.organization.canAdminister
+                && billingContext.storage.billing.subscriptionId
+                && billingContext.checkoutAvailability.billingPortal && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={billingLoading}
+                  onClick={openBillingPortal}
+                  sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700 }}
+                >
+                  Administrer
+                </Button>
+              )}
+            </Stack>
+            <Typography sx={{ mt: 1.2, fontSize: '0.78rem', color: palette.textSecondary }}>
+              Grunnkvoten følger Role Room-abonnementet. Du betaler bare for ekstra lagring.
+            </Typography>
+            {billingContext.organization.canAdminister && !billingContext.storage.billing.subscriptionId && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.6 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={billingLoading || !billingContext.checkoutAvailability.extra100Gib}
+                  onClick={() => startStorageCheckout('extra100Gib')}
+                  sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700 }}
+                >
+                  +100 GiB · {billingContext.pricing.addOns.extra100Gib.amount} kr/mnd eks. mva.
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={billingLoading || !billingContext.checkoutAvailability.extra1Tib}
+                  onClick={() => startStorageCheckout('extra1Tib')}
+                  sx={{ color: palette.accent, borderColor: palette.borderStrong, fontWeight: 700 }}
+                >
+                  +1 TiB · {billingContext.pricing.addOns.extra1Tib.amount} kr/mnd eks. mva.
+                </Button>
+              </Stack>
+            )}
+            {billingContext.organization.canAdminister
+              && !billingContext.storage.billing.subscriptionId
+              && !billingContext.checkoutAvailability.extra100Gib
+              && !billingContext.checkoutAvailability.extra1Tib && (
+                <Typography sx={{ mt: 1.2, fontSize: '0.74rem', color: palette.textMuted }}>
+                  Kjøp av ekstra lagring er deaktivert til Stripe-prisene er aktivert på serveren.
+                </Typography>
+              )}
+            {billingContext.organization.canAdminister && !billingContext.storage.billing.subscriptionId && (
+              <Stack spacing={0.8} sx={{ mt: 1.6 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField
+                    size="small"
+                    label="Partnerkode"
+                    value={referralCode}
+                    onChange={(event) => setReferralCode(event.target.value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80))}
+                    sx={{ flex: 1, '& .MuiInputBase-root': { color: palette.textPrimary } }}
+                  />
+                  <Button
+                    size="small"
+                    variant="text"
+                    disabled={affiliateSaving || referralCode.trim().length < 3}
+                    onClick={attributeReferral}
+                    sx={{ color: palette.textSecondary, fontWeight: 700 }}
+                  >
+                    Registrer kode
+                  </Button>
+                </Stack>
+                {affiliateMessage && (
+                  <Typography sx={{ fontSize: '0.74rem', color: palette.textSecondary }}>
+                    {affiliateMessage}
+                  </Typography>
+                )}
+              </Stack>
+            )}
+          </Box>
+        )}
+
+        {billingContext?.organization.canAdminister && affiliateConnect && (
+          <Box sx={{
+            p: 2.2, mb: 2.4, borderRadius: 1.6,
+            bgcolor: palette.bgSubtle,
+            border: `1px solid ${palette.border}`,
+          }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={2}>
+              <Stack direction="row" alignItems="center" spacing={1.2}>
+                <AccountBalanceWalletOutlinedIcon sx={{ color: palette.accent, fontSize: 22 }} />
+                <Stack>
+                  <Stack direction="row" alignItems="center" spacing={0.8}>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.92rem', color: palette.textPrimary }}>
+                      Affiliateutbetaling
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={affiliateConnect.connect.onboardingStatus === 'complete'
+                        ? 'VERIFISERT'
+                        : affiliateConnect.connect.onboardingStatus === 'restricted'
+                          ? 'KREVER OPPDATERING'
+                          : 'IKKE FERDIG'}
+                      sx={{
+                        height: 20,
+                        bgcolor: affiliateConnect.connect.onboardingStatus === 'complete'
+                          ? `${palette.success}33`
+                          : affiliateConnect.connect.onboardingStatus === 'restricted'
+                            ? `${palette.warning}33`
+                            : 'rgba(168,85,247,0.18)',
+                        color: affiliateConnect.connect.onboardingStatus === 'complete'
+                          ? palette.success
+                          : affiliateConnect.connect.onboardingStatus === 'restricted'
+                            ? palette.warning
+                            : palette.accent,
+                        fontWeight: 700,
+                        fontSize: '0.64rem',
+                      }}
+                    />
+                  </Stack>
+                  <Typography sx={{ fontSize: '0.76rem', color: palette.textSecondary }}>
+                    Tilgjengelig: {(affiliateConnect.balance.availableMinor / 100).toLocaleString('nb-NO', {
+                      style: 'currency', currency: affiliateConnect.partner.payoutCurrency.toUpperCase(),
+                    })}
+                  </Typography>
+                </Stack>
+              </Stack>
+              {affiliateConnect.connect.onboardingStatus !== 'complete' && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={affiliateConnectLoading}
+                  onClick={startAffiliateConnectOnboarding}
+                  startIcon={affiliateConnectLoading ? <CircularProgress size={14} color="inherit" /> : undefined}
+                  sx={{ bgcolor: palette.accentBright, fontWeight: 700, '&:hover': { bgcolor: palette.accent } }}
+                >
+                  {affiliateConnect.connect.onboardingStatus === 'not_started'
+                    ? 'Start Stripe-verifisering'
+                    : affiliateConnect.connect.onboardingStatus === 'restricted'
+                      ? 'Oppdater opplysninger'
+                      : 'Fortsett verifisering'}
+                </Button>
+              )}
+            </Stack>
+            <Typography sx={{ mt: 1.2, fontSize: '0.78rem', color: palette.textSecondary }}>
+              Provisjon holdes i 30 dager og utbetales månedlig når netto saldo er minst{' '}
+              {(affiliateConnect.partner.minimumPayoutMinor / 100).toLocaleString('nb-NO', {
+                style: 'currency', currency: affiliateConnect.partner.payoutCurrency.toUpperCase(),
+              })}.
+            </Typography>
+            {(affiliateConnect.connect.requirements.currentlyDue?.length ?? 0) > 0 && (
+              <Typography sx={{ mt: 0.7, fontSize: '0.74rem', color: palette.warning }}>
+                Stripe mangler {affiliateConnect.connect.requirements.currentlyDue?.length} opplysninger fra organisasjonen.
+              </Typography>
+            )}
+            {affiliateConnectMessage && (
+              <Alert severity="warning" sx={{ mt: 1.2, fontSize: '0.78rem' }}>
+                {affiliateConnectMessage}
+              </Alert>
+            )}
+          </Box>
+        )}
+
         {/* Last opp */}
         <Box
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -424,6 +939,7 @@ export default function RoleRoomStoragePanel() {
             ref={fileInputRef}
             type="file"
             multiple
+            accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
             style={{ display: 'none' }}
             onChange={(e) => handleFiles(e.target.files)}
             disabled={isFull}
@@ -571,7 +1087,7 @@ export default function RoleRoomStoragePanel() {
           )
         )}
 
-        {isFull && stats?.tier === 'free' && (
+        {!organizationId && isFull && stats?.tier === 'free' && (
           <Alert severity="warning" sx={{ mt: 2, fontSize: '0.86rem' }}>
             Du har brukt opp gratis-grensen på 1 GB. Slett filer for å frigjøre plass,
             eller koble din egen Backblaze B2 (BYO) for ubegrenset plass på din egen
@@ -582,7 +1098,7 @@ export default function RoleRoomStoragePanel() {
         {/* ──────────────────────────────────────────────────────────── */}
         {/* Storyboard-migrate: flytt PG-image_data til B2 m/ kontekst  */}
         {/* ──────────────────────────────────────────────────────────── */}
-        <Box sx={{
+        {!organizationId && <Box sx={{
           mt: 2, p: 2, borderRadius: 1.6,
           bgcolor: palette.bgSubtle,
           border: `1px solid ${palette.border}`,
@@ -621,12 +1137,12 @@ export default function RoleRoomStoragePanel() {
               {storyboardMigrateResult}
             </Alert>
           )}
-        </Box>
+        </Box>}
 
         {/* ──────────────────────────────────────────────────────────── */}
         {/* BYO B2 — "Bring Your Own Backblaze"                          */}
         {/* ──────────────────────────────────────────────────────────── */}
-        <Box sx={{
+        {!organizationId && <Box sx={{
           mt: 3, p: 2.4, borderRadius: 1.6,
           bgcolor: palette.bgSubtle,
           border: `1px solid ${palette.border}`,
@@ -743,7 +1259,7 @@ export default function RoleRoomStoragePanel() {
               )}
             </Box>
           )}
-        </Box>
+        </Box>}
       </CardContent>
 
       {/* BYO connect-dialog */}

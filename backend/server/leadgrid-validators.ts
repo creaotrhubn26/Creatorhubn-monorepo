@@ -40,13 +40,37 @@ export const fromTextBody = z.object({
 export type FromTextBody = z.infer<typeof fromTextBody>;
 
 // ─── POST /api/leadgrid/leads/:id/meeting-notes/upload-audio ──────────
+export const MAX_LEADGRID_AUDIO_DECODED_BYTES = 32 * 1024 * 1024;
+export const MAX_LEADGRID_AUDIO_BASE64_CHARS =
+  Math.ceil(MAX_LEADGRID_AUDIO_DECODED_BYTES / 3) * 4;
+const canonicalBase64 =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
 export const uploadAudioBody = z.object({
   // base64 av minst ~75 bytes lyd-payload
-  audio_base64: z.string().min(100),
+  audio_base64: z
+    .string()
+    .min(100)
+    .max(MAX_LEADGRID_AUDIO_BASE64_CHARS)
+    .regex(canonicalBase64, "audio_base64 må være kanonisk base64"),
   duration_seconds: z.number().int().min(1).max(7200).optional(), // max 2 timer
   language: z.enum(["no", "en", "sv", "da"]).default("no"),
 });
 export type UploadAudioBody = z.infer<typeof uploadAudioBody>;
+
+export function decodeLeadgridAudioBase64(
+  value: string,
+  maxDecodedBytes = MAX_LEADGRID_AUDIO_DECODED_BYTES,
+): Buffer | null {
+  if (
+    value.length > MAX_LEADGRID_AUDIO_BASE64_CHARS ||
+    !canonicalBase64.test(value)
+  ) {
+    return null;
+  }
+  const decoded = Buffer.from(value, "base64");
+  return decoded.byteLength <= maxDecodedBytes ? decoded : null;
+}
 
 // ─── POST /api/leadgrid/routes/plan ───────────────────────────────────
 export const planRouteBody = z.object({

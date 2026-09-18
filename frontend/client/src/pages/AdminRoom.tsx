@@ -115,6 +115,10 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
+import {
+  canUseLocalDevAdminSession,
+  DEV_ADMIN_SESSION_TOKEN,
+} from '../hooks/devAdminSessionGuard';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
@@ -251,7 +255,23 @@ function getCurrentUserEmail(): string {
       || localStorage.getItem('user')
       || localStorage.getItem('creatorhub_user');
     if (userObjRaw) {
-      const parsed = JSON.parse(userObjRaw) as { email?: string };
+      const parsed = JSON.parse(userObjRaw) as {
+        email?: string;
+        id?: string;
+        isAdmin?: boolean;
+      };
+      const isLocalDevelopmentAdmin =
+        canUseLocalDevAdminSession(
+          import.meta.env.DEV,
+          window.location.hostname,
+          import.meta.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+        ) &&
+        localStorage.getItem('creatorhub_auth_token') === DEV_ADMIN_SESSION_TOKEN &&
+        parsed.id === 'local-admin' &&
+        parsed.isAdmin === true;
+      if (isLocalDevelopmentAdmin) {
+        return ADMIN_ROOM_OWNER_EMAIL;
+      }
       if (typeof parsed?.email === 'string' && parsed.email) {
         return parsed.email.toLowerCase();
       }

@@ -2152,6 +2152,57 @@
       "requiresTimeline": false
     },
     {
+      "id": "create_native_multicam",
+      "name": "Create Native Multicam (Resolve 21.1)",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/create_native_multicam.py",
+      "description": "Oppretter et ekte Resolve 21.1 multicam-klipp fra 2+ filer med audio/timecode-sync, valgfri split ved gaps, timeline-backup, innsetting og Smart Switch.",
+      "requiredInputs": [
+        {
+          "key": "clipPaths",
+          "label": "Array av klipp-stier (2+)",
+          "type": "json",
+          "required": true
+        },
+        {
+          "key": "name",
+          "label": "Multicam-navn",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "syncMode",
+          "label": "Sync-modus: audio eller timecode",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "splitAtGaps",
+          "label": "Splitt ved timecode-gaps (audio-sync)",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "appendToTimeline",
+          "label": "Sett inn på aktiv timeline",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "smartSwitch",
+          "label": "Kjør Resolve Smart Switch på nytt klipp",
+          "type": "boolean",
+          "required": false
+        }
+      ],
+      "resolvePageDependency": "Edit",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
+    },
+    {
       "id": "extract_audio_waveform_data",
       "name": "Extract Audio Waveform Data",
       "category": "audio",
@@ -3763,6 +3814,60 @@
       "dryRunSupported": true,
       "requiresProject": true,
       "requiresTimeline": true
+    },
+    {
+      "id": "apply_music_video_look",
+      "name": "Apply Music Video Look",
+      "category": "color",
+      "scriptPath": "scripts/color/apply_music_video_look.py",
+      "description": "Anvender valgt Music Video Agent-look som LUT på node 1 i én eksakt timeline. Bruker Resolve 21.1 Graph.SetLUT og hopper som standard over eksisterende grade-arbeid.",
+      "requiredInputs": [
+        {
+          "key": "lookPack",
+          "label": "Music Video look-pack ID",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "timelineUniqueId",
+          "label": "Eksakt timeline-ID",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "projectId",
+          "label": "Eksakt Resolve prosjekt-ID",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "resolvePageDependency": "color",
+      "riskLevel": "medium",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": true
+    },
+    {
+      "id": "rollback_music_video_build",
+      "name": "Rollback Music Video Build",
+      "category": "timeline",
+      "scriptPath": "scripts/timeline/rollback_music_video_build.py",
+      "description": "Sletter bare timelines fra siste godkjente Music Video Editor-build etter dobbel verifisering av prosjekt-ID, timeline-ID og timeline-navn.",
+      "requiredInputs": [
+        {
+          "key": "operationId",
+          "label": "Music Video build-operasjon",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "resolvePageDependency": "edit",
+      "riskLevel": "high",
+      "status": "ready",
+      "dryRunSupported": true,
+      "requiresProject": true,
+      "requiresTimeline": false
     },
     {
       "id": "arkiv_stil",

@@ -21,8 +21,11 @@ async fn err_body(resp: reqwest::Response) -> String {
 }
 
 /// POST /api/protools/pair/claim — bytt 6-sifret kode mot device-token.
-/// Returnerer (token, user_email).
-pub async fn claim_pair(api_base: &str, code: &str) -> Result<(String, String), String> {
+/// Returnerer (token, user_email, device_id, pairing_context).
+pub async fn claim_pair(
+    api_base: &str,
+    code: &str,
+) -> Result<(String, String, Option<String>, Value), String> {
     let resp = client()
         .post(format!("{}/api/protools/pair/claim", base(api_base)))
         .json(&json!({ "code": code }))
@@ -32,15 +35,39 @@ pub async fn claim_pair(api_base: &str, code: &str) -> Result<(String, String), 
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    let v: Value = resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))?;
-    let token = v.get("token").and_then(|t| t.as_str()).ok_or("Mangler token i svar")?;
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    let token = v
+        .get("token")
+        .and_then(|t| t.as_str())
+        .ok_or("Mangler token i svar")?;
     let email = v
         .get("user")
         .and_then(|u| u.get("email"))
         .and_then(|e| e.as_str())
         .unwrap_or("")
         .to_string();
-    Ok((token.to_string(), email))
+    let device_id = v
+        .get("deviceId")
+        .and_then(|x| x.as_str())
+        .map(|x| x.to_string());
+    let context = v.get("context").cloned().unwrap_or_else(|| json!({}));
+    Ok((token.to_string(), email, device_id, context))
+}
+
+pub async fn revoke_device(api_base: &str, token: &str) -> Result<(), String> {
+    let resp = client()
+        .post(format!("{}/api/protools/device/revoke", base(api_base)))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    Ok(())
 }
 
 /// GET /api/protools/me — koblingsbare EaseVerse-tracks. Returnerer rå JSON-array.
@@ -54,7 +81,10 @@ pub async fn list_tracks(api_base: &str, token: &str) -> Result<Value, String> {
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    let v: Value = resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))?;
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
     Ok(v.get("tracks").cloned().unwrap_or(Value::Array(vec![])))
 }
 
@@ -70,29 +100,53 @@ pub async fn create_session(api_base: &str, token: &str, payload: Value) -> Resu
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    let v: Value = resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))?;
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
     Ok(v.get("session").cloned().unwrap_or(v))
 }
 
 /// POST /api/protools/sessions/:id/markers
-pub async fn post_markers(api_base: &str, token: &str, session_id: &str, markers: Value) -> Result<Value, String> {
+pub async fn post_markers(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    markers: Value,
+    event_id: &str,
+) -> Result<Value, String> {
     let resp = client()
-        .post(format!("{}/api/protools/sessions/{}/markers", base(api_base), session_id))
+        .post(format!(
+            "{}/api/protools/sessions/{}/markers",
+            base(api_base),
+            session_id
+        ))
         .bearer_auth(token)
-        .json(&json!({ "markers": markers }))
+        .json(&json!({ "markers": markers, "eventId": event_id }))
         .send()
         .await
         .map_err(|e| format!("Nettverksfeil: {}", e))?;
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
 }
 
 /// POST /api/protools/sessions/:id/metadata
-pub async fn post_metadata(api_base: &str, token: &str, session_id: &str, meta: Value) -> Result<(), String> {
+pub async fn post_metadata(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    meta: Value,
+) -> Result<(), String> {
     let resp = client()
-        .post(format!("{}/api/protools/sessions/{}/metadata", base(api_base), session_id))
+        .post(format!(
+            "{}/api/protools/sessions/{}/metadata",
+            base(api_base),
+            session_id
+        ))
         .bearer_auth(token)
         .json(&meta)
         .send()
@@ -104,50 +158,124 @@ pub async fn post_metadata(api_base: &str, token: &str, session_id: &str, meta: 
     Ok(())
 }
 
-/// POST /api/protools/sessions/:id/bounce/presign → (upload_url, file_url, storage_key)
+/// POST /api/protools/sessions/:id/bounce/presign → felles AWS-opplastingsticket.
 pub async fn presign_bounce(
     api_base: &str,
     token: &str,
     session_id: &str,
     file_name: &str,
     size_bytes: u64,
-) -> Result<(String, String, String), String> {
+    mime_type: &str,
+    checksum_sha256: &str,
+    client_event_id: &str,
+) -> Result<Value, String> {
     let resp = client()
-        .post(format!("{}/api/protools/sessions/{}/bounce/presign", base(api_base), session_id))
+        .post(format!(
+            "{}/api/protools/sessions/{}/bounce/presign",
+            base(api_base),
+            session_id
+        ))
         .bearer_auth(token)
-        .json(&json!({ "fileName": file_name, "sizeBytes": size_bytes, "mimeType": "audio/wav" }))
+        .json(&json!({
+            "fileName": file_name,
+            "sizeBytes": size_bytes,
+            "mimeType": mime_type,
+            "checksumSha256": checksum_sha256,
+            "clientEventId": client_event_id,
+        }))
         .send()
         .await
         .map_err(|e| format!("Nettverksfeil: {}", e))?;
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    let v: Value = resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))?;
-    let upload = v.get("uploadUrl").and_then(|x| x.as_str()).ok_or("Mangler uploadUrl")?;
-    let file = v.get("fileUrl").and_then(|x| x.as_str()).ok_or("Mangler fileUrl")?;
-    let key = v.get("storageKey").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    Ok((upload.to_string(), file.to_string(), key))
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    Ok(v)
 }
 
-/// PUT bytes til presignert URL.
-pub async fn put_bytes(upload_url: &str, bytes: Vec<u8>) -> Result<(), String> {
-    let resp = client()
-        .put(upload_url)
-        .header("Content-Type", "audio/wav")
-        .body(bytes)
-        .send()
+/// PUT bytes til presignert URL og returner S3-ETag for multipart-complete.
+pub async fn put_bytes(upload_url: &str, bytes: Vec<u8>, required_headers: &Value) -> Result<String, String> {
+    let mut request = client().put(upload_url);
+    if let Some(headers) = required_headers.as_object() {
+        for (name, value) in headers {
+            let value = value.as_str().ok_or_else(|| format!("Ugyldig headerverdi: {}", name))?;
+            request = request.header(name, value);
+        }
+    }
+    let resp = request.body(bytes).send()
         .await
         .map_err(|e| format!("Opplasting feilet: {}", e))?;
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    Ok(())
+    Ok(resp.headers().get("etag")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string())
+}
+
+/// GET allerede fullførte multipart-deler etter restart.
+pub async fn bounce_upload_status(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    object_id: &str,
+) -> Result<Value, String> {
+    let resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/bounce/{}/status",
+            base(api_base), session_id, object_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+/// POST checksum-bundne presignerte URL-er for multipart-deler.
+pub async fn presign_bounce_parts(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    object_id: &str,
+    parts: Value,
+) -> Result<Value, String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/bounce/{}/parts",
+            base(api_base), session_id, object_id
+        ))
+        .bearer_auth(token)
+        .json(&json!({ "parts": parts }))
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))
 }
 
 /// POST /api/protools/sessions/:id/bounce/complete
-pub async fn complete_bounce(api_base: &str, token: &str, session_id: &str, payload: Value) -> Result<Value, String> {
+pub async fn complete_bounce(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    payload: Value,
+) -> Result<Value, String> {
     let resp = client()
-        .post(format!("{}/api/protools/sessions/{}/bounce/complete", base(api_base), session_id))
+        .post(format!(
+            "{}/api/protools/sessions/{}/bounce/complete",
+            base(api_base),
+            session_id
+        ))
         .bearer_auth(token)
         .json(&payload)
         .send()
@@ -156,5 +284,7 @@ pub async fn complete_bounce(api_base: &str, token: &str, session_id: &str, payl
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))
 }

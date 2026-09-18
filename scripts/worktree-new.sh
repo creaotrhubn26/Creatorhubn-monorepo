@@ -10,12 +10,14 @@
 #
 # Eksempel:
 #   ./scripts/worktree-new.sh role-room-billing-extract
-#   → oppretter /Users/danielqazi/monorepo-role-room-billing-extract
+#   → oppretter ~/Creatorhubn-worktrees/role-room-billing-extract
 #   → ny branch feat/role-room-billing-extract off main
 #   → symlinker node_modules + .vite-cache fra hovedrepoet
+#   → låser worktreet mot git prune
 #
-# Etterpå: cd ~/monorepo-<tema> og start din Claude-sesjon der.
-# Worktreen er immun mot andre sessioners checkouts.
+# Etterpå: cd ~/Creatorhubn-worktrees/<tema> og start sesjonen der.
+# CREATORHUB_WORKTREE_ROOT kan overstyre roten, men midlertidige
+# macOS-mapper avvises fordi de kan slettes ved omstart.
 
 set -euo pipefail
 
@@ -28,8 +30,27 @@ fi
 
 TEMA="$1"
 BRANCH="${2:-feat/$TEMA}"
-WORKTREE_PATH="$HOME/monorepo-$TEMA"
-MAIN_REPO="$HOME/Creatorhubn-monorepo"
+CREATORHUB_MAIN_REPO="${CREATORHUB_MAIN_REPO:-$HOME/Creatorhubn-monorepo}"
+CREATORHUB_WORKTREE_ROOT="${CREATORHUB_WORKTREE_ROOT:-$HOME/Creatorhubn-worktrees}"
+
+if [[ ! "$TEMA" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "❌ Tema må starte med bokstav/tall og bare inneholde bokstaver, tall, punktum, _ eller -." >&2
+  exit 1
+fi
+
+mkdir -p "$CREATORHUB_WORKTREE_ROOT"
+CREATORHUB_WORKTREE_ROOT="$(cd "$CREATORHUB_WORKTREE_ROOT" && pwd -P)"
+
+case "$CREATORHUB_WORKTREE_ROOT" in
+  /tmp|/tmp/*|/private/tmp|/private/tmp/*|/var/folders|/var/folders/*|/private/var/folders|/private/var/folders/*)
+    echo "❌ Worktrees kan ikke ligge i et midlertidig område: $CREATORHUB_WORKTREE_ROOT" >&2
+    echo "   Bruk en varig mappe, for eksempel $HOME/Creatorhubn-worktrees." >&2
+    exit 1
+    ;;
+esac
+
+WORKTREE_PATH="$CREATORHUB_WORKTREE_ROOT/$TEMA"
+MAIN_REPO="$CREATORHUB_MAIN_REPO"
 
 if [[ ! -d "$MAIN_REPO" ]]; then
   echo "❌ Fant ikke hovedrepoet på $MAIN_REPO" >&2
@@ -45,6 +66,10 @@ fi
 
 cd "$MAIN_REPO"
 
+# Behold administrative worktree-poster permanent. Den eksplisitte låsen
+# nedenfor beskytter hvert worktree i tillegg.
+git config gc.worktreePruneExpire never
+
 # Sjekk om branchen finnes — local eller remote
 if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
   echo "ℹ️  Bruker eksisterende local branch: $BRANCH"
@@ -59,6 +84,10 @@ else
   git fetch origin main
   git worktree add -b "$BRANCH" "$WORKTREE_PATH" origin/main
 fi
+
+git worktree lock \
+  --reason "Persistent CreatorHub worktree created by scripts/worktree-new.sh" \
+  "$WORKTREE_PATH"
 
 cd "$WORKTREE_PATH"
 
@@ -79,6 +108,7 @@ echo ""
 echo "✅ Worktree opprettet"
 echo "   Path:   $WORKTREE_PATH"
 echo "   Branch: $BRANCH"
+echo "   Vern:   persistent mappe + git worktree lock"
 echo ""
 echo "Neste steg:"
 echo "   cd $WORKTREE_PATH"
@@ -86,4 +116,5 @@ echo "   # ... arbeid her — immun mot andre sessions ..."
 echo ""
 echo "Når ferdig (etter merge til main):"
 echo "   cd $MAIN_REPO"
+echo "   git worktree unlock $WORKTREE_PATH"
 echo "   git worktree remove $WORKTREE_PATH"

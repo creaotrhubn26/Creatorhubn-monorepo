@@ -56,6 +56,13 @@ export interface EmailResult {
   provider: "gmail" | null;
   messageId?: string;
   error?: string;
+  /**
+   * `definite_pre_delivery` means the SMTP transaction provably failed before
+   * message data could be accepted. Every other send error is conservative:
+   * the server may have accepted the message before the acknowledgement was
+   * lost, so callers must not automatically retry it.
+   */
+  failureCertainty?: "definite_pre_delivery" | "uncertain";
 }
 
 interface TwilioBrandConfig {
@@ -199,26 +206,74 @@ interface SendEmailInput {
   text?: string;
   fromName: string;
   transportFactory?: () => GmailTransport;
+  /**
+   * Bounds SMTP connection/greeting/inactivity waits for lease-backed jobs.
+   * This is intentionally opt-in so existing reminder call sites keep their
+   * current transport behaviour.
+   */
+  smtpTimeoutMs?: number;
+  /** Stable RFC Message-ID used as defense in depth by lease-backed senders. */
+  messageId?: string;
+}
+
+function isDefinitePreDeliveryEmailFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = String(record.code ?? "").trim().toUpperCase();
+  const command = String(record.command ?? "").trim().toUpperCase();
+
+  // DNS and authentication fail before SMTP can accept message data.
+  if (code === "EDNS" || code === "EAUTH") return true;
+  // MAIL FROM / RCPT TO rejection happens before DATA. Nodemailer's
+  // EENVELOPE+DATA variant is the server rejecting the DATA command itself,
+  // before the body stream starts. Connection/timeout errors are deliberately
+  // never classified as definite: Nodemailer can label a post-DATA disconnect
+  // as CONN, making the provider outcome unknowable.
+  if (command.startsWith("MAIL FROM") || command.startsWith("RCPT TO")) {
+    return true;
+  }
+  return code === "EENVELOPE" && command === "DATA";
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<EmailResult> {
   const cfg = readGmailConfig();
-  if (!cfg) return { success: false, provider: null, error: "gmail_not_configured" };
+  if (!cfg) {
+    return {
+      success: false,
+      provider: null,
+      error: "gmail_not_configured",
+      failureCertainty: "definite_pre_delivery",
+    };
+  }
 
-  const transport =
-    input.transportFactory?.() ??
-    nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: cfg.user, pass: cfg.password },
-    });
+  const smtpTimeoutMs =
+    Number.isFinite(input.smtpTimeoutMs) && Number(input.smtpTimeoutMs) > 0
+      ? Math.min(Math.max(Math.trunc(Number(input.smtpTimeoutMs)), 1_000), 15 * 60_000)
+      : null;
 
+  let sendMailStarted = false;
   try {
+    const transport =
+      input.transportFactory?.() ??
+      nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: cfg.user, pass: cfg.password },
+        ...(smtpTimeoutMs
+          ? {
+              connectionTimeout: Math.min(smtpTimeoutMs, 30_000),
+              greetingTimeout: Math.min(smtpTimeoutMs, 30_000),
+              socketTimeout: smtpTimeoutMs,
+            }
+          : {}),
+      });
+    sendMailStarted = true;
     const info = await transport.sendMail({
       from: `${input.fromName} <${cfg.user}>`,
       to: input.to,
       subject: input.subject,
       text: input.text,
       html: input.html,
+      ...(input.messageId ? { messageId: input.messageId } : {}),
     });
     return { success: true, provider: "gmail", messageId: info.messageId };
   } catch (error) {
@@ -226,6 +281,9 @@ export async function sendEmail(input: SendEmailInput): Promise<EmailResult> {
       success: false,
       provider: "gmail",
       error: error instanceof Error ? error.message : String(error),
+      failureCertainty: !sendMailStarted || isDefinitePreDeliveryEmailFailure(error)
+        ? "definite_pre_delivery"
+        : "uncertain",
     };
   }
 }

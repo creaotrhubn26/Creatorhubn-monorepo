@@ -500,9 +500,9 @@ function persistCreatorHubAuthSession(
   sessionToken: string,
   user: CreatorHubAuthUser,
   dispatchEvent: boolean,
-): void {
+): boolean {
   if (typeof window === 'undefined') {
-    return;
+    return false;
   }
 
   try {
@@ -513,17 +513,28 @@ function persistCreatorHubAuthSession(
     if (dispatchEvent) {
       window.dispatchEvent(new Event('auth-changed'));
     }
+    return true;
   } catch {
-    // Ignore storage failures.
+    // Unngå en halv session (f.eks. token uten bruker) dersom browseren
+    // avviser ett av localStorage-kallene.
+    try {
+      window.localStorage.removeItem(CREATORHUB_AUTH_TOKEN_KEY);
+      window.localStorage.removeItem(CREATORHUB_AUTH_USER_KEY);
+      window.localStorage.removeItem(CREATORHUB_USER_ID_KEY);
+      window.localStorage.removeItem(CREATORHUB_USER_EMAIL_KEY);
+    } catch {
+      // Storage kan være helt utilgjengelig; callsite får fortsatt false.
+    }
+    return false;
   }
 }
 
 export function storeCreatorHubAuthSession(
   sessionToken: string,
   user: CreatorHubAuthUser,
-): void {
+): boolean {
   clearValidatedSessionCache();
-  persistCreatorHubAuthSession(sessionToken, user, true);
+  return persistCreatorHubAuthSession(sessionToken, user, true);
 }
 
 export function clearCreatorHubAuthSession(options?: { dispatch?: boolean }): void {

@@ -9,20 +9,24 @@
  *
  * Bruker producerens LinkedIn OAuth-tilkobling (lagret i
  * role_room_ads_oauth_connections via platform='linkedin' og scopes
- * r_ads + r_ads_reporting + rw_ads).
+ * r_ads + r_ads_reporting + rw_ads). Matched Audiences-operasjonene krever
+ * i tillegg separat produktgodkjenning og rw_dmp_segments.
  *
  * LinkedIn-API: https://api.linkedin.com/rest/...
- * Versjons-header: LinkedIn-Version: 202410 (oppdateres månedlig)
+ * Versjons-header hentes fra den delte LinkedIn-versjonsmodulen.
  */
 
 import type { Pool } from "pg";
 import {
   ensureFreshAdsToken,
   getAdsOauthConnection,
+  isLinkedInMatchedAudiencesEnabled,
 } from "./role-room-ads-oauth.js";
+import {
+  LINKEDIN_API_VERSION,
+  LINKEDIN_REST_BASE,
+} from './linkedin-api-version.js';
 
-const LINKEDIN_REST_BASE = "https://api.linkedin.com/rest";
-const LINKEDIN_VERSION = "202410";
 
 async function token(pool: Pool, producerUserId: string): Promise<string | null> {
   const conn = await getAdsOauthConnection(pool, producerUserId, "linkedin");
@@ -36,7 +40,7 @@ function liHeaders(accessToken: string): Record<string, string> {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
     "X-Restli-Protocol-Version": "2.0.0",
-    "LinkedIn-Version": LINKEDIN_VERSION,
+    "LinkedIn-Version": LINKEDIN_API_VERSION,
   };
 }
 
@@ -374,13 +378,190 @@ export async function fetchLinkedinAdsMetrics(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// LinkedIn Matched Audiences — DMP-segmenter med email/phone-match
+// LinkedIn Matched Audiences — DMP-segmenter med e-post-match
 // ─────────────────────────────────────────────────────────────────────
 
 import crypto from "node:crypto";
 
+// CreatorHub er en plattform som synkroniserer målgrupper for flere
+// annonsører, ikke en enkelt direkteannonsør eller et byrå.
+const LINKEDIN_DMP_SOURCE_PLATFORM = "PARTNER_API" as const;
+const LINKEDIN_DMP_SCOPE = "rw_dmp_segments";
+const LINKEDIN_DMP_READY_DELAY_MS = 5_000;
+const LINKEDIN_DMP_BATCH_SIZE = 5_000;
+
+type LinkedInDmpUser = {
+  action: "ADD";
+  userIds: Array<{
+    idType: "SHA256_EMAIL";
+    idValue: string;
+  }>;
+};
+
+type LinkedInDmpAccess =
+  | { ok: true; accessToken: string }
+  | {
+      ok: false;
+      error:
+        | "matched_audiences_disabled"
+        | "not_connected"
+        | "missing_rw_dmp_segments";
+    };
+
+type LinkedInDmpUploadResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+type LinkedInDmpPersistenceStatus = "processing" | "failed";
+
 function liHash(value: string): string {
   return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+async function linkedInDmpAccessToken(
+  pool: Pool,
+  producerUserId: string,
+): Promise<LinkedInDmpAccess> {
+  if (!isLinkedInMatchedAudiencesEnabled()) {
+    return { ok: false, error: "matched_audiences_disabled" };
+  }
+  const connection = await getAdsOauthConnection(pool, producerUserId, "linkedin");
+  if (!connection) return { ok: false, error: "not_connected" };
+  const fresh = await ensureFreshAdsToken(pool, connection);
+  if (fresh.connectionState !== "connected" || !fresh.accessToken) {
+    return { ok: false, error: "not_connected" };
+  }
+  if (!fresh.scopes.includes(LINKEDIN_DMP_SCOPE)) {
+    return { ok: false, error: "missing_rw_dmp_segments" };
+  }
+  return { ok: true, accessToken: fresh.accessToken };
+}
+
+function buildLinkedInDmpUsers(
+  identifiers: Array<{ email?: string; phone?: string }>,
+): LinkedInDmpUser[] {
+  const seen = new Set<string>();
+  const users: LinkedInDmpUser[] = [];
+  for (const identifier of identifiers) {
+    const email = identifier.email?.trim().toLowerCase();
+    if (!email) continue;
+    const idValue = liHash(email);
+    if (seen.has(idValue)) continue;
+    seen.add(idValue);
+    users.push({
+      action: "ADD",
+      userIds: [{ idType: "SHA256_EMAIL", idValue }],
+    });
+  }
+  return users;
+}
+
+function linkedInDmpSegmentId(value: unknown): string | null {
+  const candidate = String(value ?? "").trim();
+  if (/^\d+$/.test(candidate)) return candidate;
+  return /^urn:li:dmpSegment:(\d+)$/.exec(candidate)?.[1] ?? null;
+}
+
+function linkedInDmpBatchFailed(raw: string, expectedCount: number): boolean {
+  if (!raw.trim()) return true;
+  try {
+    const body = JSON.parse(raw) as {
+      elements?: Array<{ status?: number; error?: unknown }>;
+    };
+    if (!Array.isArray(body.elements) || body.elements.length !== expectedCount) {
+      return true;
+    }
+    return body.elements.some((element) =>
+      Boolean(element.error) || Number(element.status) !== 201,
+    );
+  } catch {
+    return true;
+  }
+}
+
+async function uploadLinkedInDmpUsers(
+  accessToken: string,
+  segmentId: string,
+  users: LinkedInDmpUser[],
+): Promise<LinkedInDmpUploadResult> {
+  for (let index = 0; index < users.length; index += LINKEDIN_DMP_BATCH_SIZE) {
+    const batch = users.slice(index, index + LINKEDIN_DMP_BATCH_SIZE);
+    let response: Response;
+    try {
+      response = await fetch(
+        `${LINKEDIN_REST_BASE}/dmpSegments/${encodeURIComponent(segmentId)}/users`,
+        {
+          method: "POST",
+          headers: {
+            ...liHeaders(accessToken),
+            "X-RestLi-Method": "BATCH_CREATE",
+          },
+          body: JSON.stringify({ elements: batch }),
+        },
+      );
+    } catch {
+      return { ok: false, error: "dmpUsers network_error" };
+    }
+    const raw = await response.text().catch(() => "");
+    if (!response.ok) {
+      return { ok: false, error: `dmpUsers HTTP ${response.status}` };
+    }
+    if (linkedInDmpBatchFailed(raw, batch.length)) {
+      return { ok: false, error: "dmpUsers batch_rejected" };
+    }
+  }
+  return { ok: true };
+}
+
+async function waitForLinkedInDmpSegment(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, LINKEDIN_DMP_READY_DELAY_MS);
+  });
+}
+
+async function persistLinkedInDmpAudience(
+  pool: Pool,
+  opts: {
+    configId?: string | null;
+    producerUserId: string;
+    adAccountUrn: string;
+    name: string;
+    sourceDescription?: string;
+  },
+  segmentUrn: string,
+  uploadCount: number,
+  status: LinkedInDmpPersistenceStatus,
+): Promise<boolean> {
+  try {
+    await pool.query(
+      `INSERT INTO linkedin_matched_audiences (
+         config_id, producer_user_id, ad_account_urn, linkedin_segment_urn,
+         audience_name, source_description, upload_count, status
+       ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (linkedin_segment_urn) DO UPDATE
+       SET upload_count = EXCLUDED.upload_count,
+           status = EXCLUDED.status,
+           updated_at = NOW()`,
+      [
+        opts.configId ?? null,
+        opts.producerUserId,
+        opts.adAccountUrn,
+        segmentUrn,
+        opts.name,
+        opts.sourceDescription ?? null,
+        uploadCount,
+        status,
+      ],
+    );
+    return true;
+  } catch (error) {
+    console.error("[linkedin-dmp] failed to persist audience", {
+      segmentUrn,
+      status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 export async function createLinkedinMatchedAudience(
@@ -393,75 +574,97 @@ export async function createLinkedinMatchedAudience(
     identifiers: Array<{ email?: string; phone?: string }>;
     configId?: string | null;
   },
-): Promise<{ ok: true; segmentUrn: string; uploadCount: number } | { ok: false; error: string }> {
-  const access = await token(pool, opts.producerUserId);
-  if (!access) return { ok: false, error: "not_connected" };
+): Promise<
+  | { ok: true; segmentUrn: string; uploadCount: number }
+  | { ok: false; error: string; segmentUrn?: string }
+> {
+  const users = buildLinkedInDmpUsers(opts.identifiers);
+  if (users.length === 0) {
+    return { ok: false, error: "Ingen gyldige e-postidentifikatorer" };
+  }
+  const access = await linkedInDmpAccessToken(pool, opts.producerUserId);
+  if (!access.ok) return access;
 
   // 1) Opprett DMP segment
-  const segR = await fetch(`${LINKEDIN_REST_BASE}/dmpSegments`, {
-    method: "POST",
-    headers: liHeaders(access),
-    body: JSON.stringify({
-      name: opts.name,
-      sourcePlatform: "API",
-      sourceSegmentId: `rr_agent_${Date.now()}`,
-      type: "USER",
-      destinations: [{ destination: "LINKEDIN" }],
-      account: opts.adAccountUrn,
-    }),
-  });
-  if (!segR.ok) {
-    const t = await segR.text();
-    return { ok: false, error: `dmpSegments HTTP ${segR.status} — ${t.slice(0, 200)}` };
+  let segR: Response;
+  try {
+    segR = await fetch(`${LINKEDIN_REST_BASE}/dmpSegments`, {
+      method: "POST",
+      headers: liHeaders(access.accessToken),
+      body: JSON.stringify({
+        name: opts.name,
+        sourcePlatform: LINKEDIN_DMP_SOURCE_PLATFORM,
+        sourceSegmentId: `rr_agent_${Date.now()}`,
+        type: "USER",
+        destinations: [{ destination: "LINKEDIN" }],
+        account: opts.adAccountUrn,
+        ...(opts.sourceDescription?.trim()
+          ? { description: opts.sourceDescription.trim() }
+          : {}),
+      }),
+    });
+  } catch {
+    return { ok: false, error: "dmpSegments network_error" };
   }
-  const segId = segR.headers.get("x-linkedin-id") || (await segR.json().catch(() => ({})) as { id?: string }).id;
+  if (!segR.ok) {
+    return { ok: false, error: `dmpSegments HTTP ${segR.status}` };
+  }
+  const responseBody = segR.headers.get("x-restli-id")
+    ? null
+    : await segR.json().catch(() => null) as { id?: string | number } | null;
+  const segId = linkedInDmpSegmentId(
+    segR.headers.get("x-restli-id") ?? responseBody?.id,
+  );
   if (!segId) return { ok: false, error: "Manglende segment-id i respons" };
   const segmentUrn = `urn:li:dmpSegment:${segId}`;
 
-  // 2) Last opp brukere (hashed)
-  const users: Array<{ email?: string; phone?: string; action: string }> = [];
-  for (const id of opts.identifiers) {
-    const entry: { email?: string; phone?: string; action: string } = { action: "ADD" };
-    if (id.email) entry.email = liHash(id.email);
-    if (id.phone) entry.phone = liHash(id.phone);
-    if (entry.email || entry.phone) users.push(entry);
-  }
-  if (users.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
-
-  // LinkedIn batch-upload (max 5000 per call)
-  for (let i = 0; i < users.length; i += 5000) {
-    const batch = users.slice(i, i + 5000);
-    await fetch(`${LINKEDIN_REST_BASE}/dmpSegments/${encodeURIComponent(segmentUrn)}/users`, {
-      method: "POST",
-      headers: liHeaders(access),
-      body: JSON.stringify({ elements: batch }),
-    }).catch(() => null);
+  // LinkedIn dokumenterer at et nytt segment trenger fem sekunder før upload.
+  await waitForLinkedInDmpSegment();
+  const uploaded = await uploadLinkedInDmpUsers(
+    access.accessToken,
+    segId,
+    users,
+  );
+  if (!uploaded.ok) {
+    const tracked = await persistLinkedInDmpAudience(
+      pool,
+      opts,
+      segmentUrn,
+      0,
+      "failed",
+    );
+    if (!tracked) {
+      return {
+        ok: false,
+        error: "audience_persistence_failed",
+        segmentUrn,
+      };
+    }
+    return { ...uploaded, segmentUrn };
   }
 
   // 3) Cache
-  await pool.query(
-    `INSERT INTO linkedin_matched_audiences (
-       config_id, producer_user_id, ad_account_urn, linkedin_segment_urn,
-       audience_name, source_description, upload_count, status
-     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'processing')
-     ON CONFLICT (linkedin_segment_urn) DO NOTHING`,
-    [
-      opts.configId ?? null,
-      opts.producerUserId,
-      opts.adAccountUrn,
+  const persisted = await persistLinkedInDmpAudience(
+    pool,
+    opts,
+    segmentUrn,
+    users.length,
+    "processing",
+  );
+  if (!persisted) {
+    return {
+      ok: false,
+      error: "audience_persistence_failed",
       segmentUrn,
-      opts.name,
-      opts.sourceDescription ?? null,
-      users.length,
-    ],
-  ).catch(() => {});
+    };
+  }
 
   return { ok: true, segmentUrn, uploadCount: users.length };
 }
 
 /**
  * Refresh: last opp medlemmer til et EKSISTERENDE dmpSegment (POST
- * /dmpSegments/{urn}/users, action ADD) — samme upload-steg som create, uten
+ * /dmpSegments/{id}/users, action ADD) — samme upload-steg som create, uten
  * å opprette et nytt segment. Brukt av segment-refresh-cronen.
  */
 export async function syncLinkedinMatchedAudienceMembers(
@@ -472,25 +675,20 @@ export async function syncLinkedinMatchedAudienceMembers(
     identifiers: Array<{ email?: string; phone?: string }>;
   },
 ): Promise<{ ok: true; uploadCount: number } | { ok: false; error: string }> {
-  const access = await token(pool, opts.producerUserId);
-  if (!access) return { ok: false, error: "not_connected" };
-
-  const users: Array<{ email?: string; phone?: string; action: string }> = [];
-  for (const id of opts.identifiers) {
-    const entry: { email?: string; phone?: string; action: string } = { action: "ADD" };
-    if (id.email) entry.email = liHash(id.email);
-    if (id.phone) entry.phone = liHash(id.phone);
-    if (entry.email || entry.phone) users.push(entry);
+  const segmentId = linkedInDmpSegmentId(opts.segmentUrn);
+  if (!segmentId) return { ok: false, error: "invalid_segment_urn" };
+  const users = buildLinkedInDmpUsers(opts.identifiers);
+  if (users.length === 0) {
+    return { ok: false, error: "Ingen gyldige e-postidentifikatorer" };
   }
-  if (users.length === 0) return { ok: false, error: "Ingen gyldige identifiers" };
-
-  for (let i = 0; i < users.length; i += 5000) {
-    await fetch(`${LINKEDIN_REST_BASE}/dmpSegments/${encodeURIComponent(opts.segmentUrn)}/users`, {
-      method: "POST",
-      headers: liHeaders(access),
-      body: JSON.stringify({ elements: users.slice(i, i + 5000) }),
-    }).catch(() => null);
-  }
+  const access = await linkedInDmpAccessToken(pool, opts.producerUserId);
+  if (!access.ok) return access;
+  const uploaded = await uploadLinkedInDmpUsers(
+    access.accessToken,
+    segmentId,
+    users,
+  );
+  if (!uploaded.ok) return uploaded;
   return { ok: true, uploadCount: users.length };
 }
 

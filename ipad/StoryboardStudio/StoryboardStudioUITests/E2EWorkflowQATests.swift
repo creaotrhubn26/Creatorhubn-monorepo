@@ -6,6 +6,15 @@ import XCTest
 // steg; eksporteres med `xcresulttool export attachments`.
 final class E2EWorkflowQATests: XCTestCase {
 
+    private func requireStoryboardToken() throws -> String {
+        let token = ProcessInfo.processInfo.environment["SB_TOKEN"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !token.isEmpty else {
+            throw XCTSkip("SB_TOKEN mangler; prod-QA krever en kortlivet test-session")
+        }
+        return token
+    }
+
     /// iOS-varslingsdialogen (push) dukker ved første hub-innlasting.
     func dismissPushPrompt() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -17,7 +26,7 @@ final class E2EWorkflowQATests: XCTestCase {
     func testFullBoardWorkflow() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_TOKEN"] = try requireStoryboardToken()
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
 

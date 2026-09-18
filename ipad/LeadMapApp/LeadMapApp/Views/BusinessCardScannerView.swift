@@ -96,6 +96,9 @@ struct BusinessCardScannerView: View {
     /// «Fant: X AS (org.nr …)» fra BRREG-koblingen — vises et øyeblikk
     /// etter lagring så selgeren ser at leaden ble beriket.
     @State private var brregMessage: String?
+    @State private var creationId = UUID()
+    @State private var duplicateCandidates: [LeadDuplicateCandidate] = []
+    @State private var pendingDuplicateDraft: LeadDraft?
 
     var body: some View {
         NavigationStack {
@@ -118,6 +121,27 @@ struct BusinessCardScannerView: View {
                     Button("Avbryt") { dismiss() }
                 }
             }
+        }
+        .confirmationDialog(
+            "Mulig duplikat",
+            isPresented: Binding(
+                get: { pendingDuplicateDraft != nil },
+                set: { if !$0 { pendingDuplicateDraft = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Opprett likevel") {
+                guard var draft = pendingDuplicateDraft else { return }
+                draft.allowDuplicate = true
+                pendingDuplicateDraft = nil
+                Task { await save(draft) }
+            }
+            Button("Avbryt", role: .cancel) { pendingDuplicateDraft = nil }
+        } message: {
+            let names = duplicateCandidates.prefix(3).map(\.name).joined(separator: ", ")
+            Text(names.isEmpty
+                 ? "En mulig duplikat finnes allerede."
+                 : "Fant mulig eksisterende lead: \(names).")
         }
     }
 
@@ -219,24 +243,85 @@ struct BusinessCardScannerView: View {
     }
 
     @MainActor
-    private func save() async {
-        guard let api = state.api, let extracted = coordinator.extracted else { return }
-        saving = true; error = nil
+    private func save(_ suppliedDraft: LeadDraft? = nil) async {
+        guard !saving else { return }
+        guard let api = state.api else {
+            error = "Du må være innlogget for å opprette lead."
+            return
+        }
+
+        let draft: LeadDraft
+        if let suppliedDraft {
+            draft = suppliedDraft
+        } else {
+            guard let extracted = coordinator.extracted else { return }
+            guard let organizationId = state.activeOrganizationId else {
+                error = "Velg en organisasjon før du oppretter lead."
+                return
+            }
+            let leadName = LeadDraft.optionalText(extracted.company) ?? extracted.name
+            draft = LeadDraft(
+                creationId: creationId,
+                organizationId: organizationId,
+                name: leadName,
+                company: LeadDraft.optionalText(extracted.company),
+                organizationNumber: nil,
+                websiteUrl: LeadDraft.optionalText(extracted.website),
+                contactName: LeadDraft.optionalText(extracted.name),
+                contactRole: LeadDraft.optionalText(extracted.title),
+                email: LeadDraft.optionalText(extracted.email),
+                phone: LeadDraft.optionalText(extracted.phone),
+                address: nil,
+                postalCode: nil,
+                city: nil,
+                country: "NO",
+                latitude: nil,
+                longitude: nil,
+                googlePlaceId: nil,
+                industryId: nil,
+                industry: nil,
+                employeeCountEstimate: nil,
+                annualRevenueNokEstimate: nil,
+                estimatedValue: nil,
+                notes: nil,
+                leadTemperature: "cold",
+                pipelineStage: "new",
+                leadStatus: "unvisited",
+                nextFollowUpAt: nil,
+                nextAction: nil,
+                locationConfidence: "unknown",
+                leadSource: "business_card_scan",
+                projectId: state.activeProjectId,
+                rawText: LeadDraft.optionalText(extracted.raw),
+                allowDuplicate: false
+            )
+        }
+
+        saving = true
+        error = nil
         defer { saving = false }
-        do {
-            let response = try await api.createLeadFromCard(extracted: extracted)
-            // Refresh workload for å vise nylig opprettet
+
+        let result = await OfflineResilientActions.createLead(api: api, draft: draft)
+        switch result {
+        case .sent(let response):
             await state.refreshAll()
             if let brreg = response.brreg {
+                let orgNumber = brreg.orgNr.map { " (org.nr \($0))" } ?? ""
                 brregMessage = brreg.status == "linked"
-                    ? "Fant i Brønnøysund: \(brreg.matchedName ?? "ukjent navn") (org.nr \(brreg.orgNr)) — leaden berikes automatisk."
-                    : "BRREG-forslag: \(brreg.matchedName ?? "?") (org.nr \(brreg.orgNr)) — bekreft i lead-kortet."
-                // La selgeren rekke å lese koblingen før arket lukkes.
+                    ? "Fant i Brønnøysund: \(brreg.matchedName ?? "ukjent navn")\(orgNumber) — leaden berikes automatisk."
+                    : "BRREG-forslag: \(brreg.matchedName ?? "?")\(orgNumber)."
                 try? await Task.sleep(nanoseconds: 2_200_000_000)
             }
             dismiss()
-        } catch {
-            self.error = "Lagring feilet: \(error.localizedDescription)"
+        case .queued:
+            brregMessage = "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            dismiss()
+        case .duplicate(let candidates):
+            duplicateCandidates = candidates
+            pendingDuplicateDraft = draft
+        case .rejected(let message):
+            error = message
         }
     }
 }

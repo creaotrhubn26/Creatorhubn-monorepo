@@ -6,6 +6,15 @@ import XCTest
 // via `xcrun xcresulttool export attachments`.
 final class FeatureVisualQATests: XCTestCase {
 
+    private func requireStoryboardToken() throws -> String {
+        let token = ProcessInfo.processInfo.environment["SB_TOKEN"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !token.isEmpty else {
+            throw XCTSkip("SB_TOKEN mangler; prod-QA krever en kortlivet test-session")
+        }
+        return token
+    }
+
     /// iOS-varslingsdialogen (push) dukker ved første hub-innlasting.
     func dismissPushPrompt() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -16,7 +25,7 @@ final class FeatureVisualQATests: XCTestCase {
     @MainActor
     func testBoardPerspectiveAndOnionSkinScreenshots() throws {
         let app = XCUIApplication()
-        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_TOKEN"] = try requireStoryboardToken()
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
 
@@ -67,7 +76,7 @@ final class FeatureVisualQATests: XCTestCase {
     func testRound7BoardFeatures() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_TOKEN"] = try requireStoryboardToken()
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
         // Ny root-flyt: env-token lander rett i prosjekt-huben.
@@ -118,7 +127,7 @@ final class FeatureVisualQATests: XCTestCase {
     func testProjectHubScreenshot() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_TOKEN"] = try requireStoryboardToken()
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
         // Ny root-flyt: env-token lander rett i prosjekt-huben.
@@ -139,7 +148,7 @@ final class FeatureVisualQATests: XCTestCase {
     func testAssetsScreenshot() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_TOKEN"] = try requireStoryboardToken()
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
         // Ny root-flyt: env-token lander rett i prosjekt-huben.
@@ -158,7 +167,7 @@ final class FeatureVisualQATests: XCTestCase {
     func testReviewScreenshot() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_TOKEN"] = try requireStoryboardToken()
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
         // Ny root-flyt: env-token lander rett i prosjekt-huben.

@@ -253,12 +253,26 @@ const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/univer
 import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
+const MockupReviewPage = React.lazy(() => import('@/pages/mockup-review'));
+const VideoReviewPage = React.lazy(() => import('@/pages/video-review'));
+const VideoApprovalPage = React.lazy(() => import('@/pages/video-approval'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
 const ChatGuidePage = React.lazy(() => import('@/pages/chat-guide'));
 const ChatActionsGuidePage = React.lazy(() => import('@/pages/chat-actions-guide'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
+
+// A client-side navigation into the private legal portal must leave the full
+// application tree. The next document load is selected by the minimal bootstrap
+// in main.tsx, before account providers or telemetry can initialize.
+const ParticipantDocumentBootstrapHandoff = () => {
+  React.useEffect(() => {
+    window.location.reload();
+  }, []);
+
+  return null;
+};
 
 type AcademyRouteQueryContext = {
   courseId?: string;
@@ -465,6 +479,18 @@ const TeamWorkspaceRouteWrapper = () => (
       </ErrorBoundary>
     </RealTimeProvider>
   </SettingsProvider>
+);
+
+const AudioShowcaseRouteWrapper = () => (
+  <React.Suspense
+    fallback={
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0A0A0B' }}>
+        <CircularProgress sx={{ color: '#FF6B35' }} />
+      </Box>
+    }
+  >
+    <AudioShowcasePage />
+  </React.Suspense>
 );
 
 // Community Landing Page Wrapper - gets userId and profession from hooks
@@ -939,11 +965,15 @@ function App() {
                   <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
+                  <Route path="/mockup-review/:token" component={MockupReviewPage as React.ComponentType<any>} />
+                  <Route path="/video-review/:token" component={VideoReviewPage as React.ComponentType<any>} />
+                  <Route path="/video-approval/:token" component={VideoApprovalPage as React.ComponentType<any>} />
+                  <Route path="/participant-document/:documentId" component={ParticipantDocumentBootstrapHandoff} />
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/chat" component={ChatGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/actions" component={ChatActionsGuidePage as React.ComponentType<any>} />
-                  <Route path="/audio-review/:projectId" component={AudioShowcasePage as React.ComponentType<any>} />
-                  <Route path="/audio-review" component={AudioShowcasePage as React.ComponentType<any>} />
+                  <Route path="/audio-review/:projectId" component={AudioShowcaseRouteWrapper} />
+                  <Route path="/audio-review" component={AudioShowcaseRouteWrapper} />
                   <Route
                     path="/equipment-rental"
                     component={() => <SmartDashboardRoute profession="photographer" />}

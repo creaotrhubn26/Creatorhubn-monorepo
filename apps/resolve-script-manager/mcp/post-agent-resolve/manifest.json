@@ -1,0 +1,53 @@
+{
+  "manifest_version": "0.3",
+  "name": "post-agent-resolve",
+  "display_name": "Post Agent for DaVinci Resolve",
+  "version": "0.2.0",
+  "description": "Safe, semantic Resolve workflows for Claude through Post Agent",
+  "long_description": "Post Agent adds a safety and workflow layer in front of DaVinci Resolve Studio 21.1. Claude can inspect the active project, run allowlisted read-only analyses, and prepare a locked approval plan. Resolve writes are never exposed to the AI client; the user must approve them in the visible Post Agent app.",
+  "author": {
+    "name": "CreatorHub AS",
+    "url": "https://www.theroleroom.com"
+  },
+  "homepage": "https://www.theroleroom.com",
+  "icon": "icon.svg",
+  "tools": [
+    {
+      "name": "post_agent_resolve_status",
+      "description": "Check the local Post Agent bridge, Resolve MCP and DaVinci Resolve 21.1 connection. Read-only."
+    },
+    {
+      "name": "post_agent_list_resolve_skills",
+      "description": "List Post Agent's allowlisted Resolve analyses and approval-based workflows. Read-only."
+    },
+    {
+      "name": "post_agent_run_resolve_analysis",
+      "description": "Run one allowlisted read-only Resolve analysis: Project Doctor, Timeline QC, Media Health or Delivery QC."
+    },
+    {
+      "name": "post_agent_create_resolve_plan",
+      "description": "Prepare a target-bound Resolve workflow plan. This does not modify Resolve; the user must approve the plan in Post Agent."
+    },
+    {
+      "name": "post_agent_get_resolve_plan",
+      "description": "Read a previously prepared Resolve plan and its current approval/execution state."
+    },
+    {
+      "name": "post_agent_get_resolve_intelligence",
+      "description": "Read version-matched Resolve What's New and scripting API evidence used by Post Agent."
+    }
+  ],
+  "license": "Proprietary",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"]
+    }
+  }
+}

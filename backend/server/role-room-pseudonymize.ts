@@ -28,7 +28,7 @@ const PHONE_REGEX = /(?:\+?\d[\d\s\-().]{6,}\d)/g;
 
 export function buildBackendPseudonymMap(
   entities: PseudonymizableEntity[],
-  prefix: 'candidate' | 'crew' = 'candidate',
+  prefix: 'candidate' | 'crew' | 'lead' = 'candidate',
 ): BackendPseudonymMap {
   const real2placeholder = new Map<string, string>();
   const placeholder2real = new Map<string, string>();

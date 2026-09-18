@@ -45,6 +45,7 @@ struct LogActivitySheet: View {
     @State private var showSmartSheet = false
     @State private var smartAnalyzing = false
     @State private var smartError: String?
+    @State private var showPersistenceUnavailable = false
 
     enum ActivityType: String, CaseIterable, Hashable {
         case call = "Telefon"
@@ -177,6 +178,11 @@ struct LogActivitySheet: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { actionBar }
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
+        .alert("Aktivitetsloggen er ikke koblet til ennå", isPresented: $showPersistenceUnavailable) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Opplysningene er ikke lagret. Lukk arket med Avbryt, eller behold det åpent til serverlagring er tilgjengelig.")
+        }
     }
 
     // MARK: Lead-header
@@ -195,7 +201,7 @@ struct LogActivitySheet: View {
                 Text(lead.company)
                     .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Logger som Lars Kristensen · \(formattedNow)")
+                Text("Logger som \(appState.displayName) · \(formattedNow)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(LaBrand.textSecondary)
             }
@@ -480,7 +486,7 @@ struct LogActivitySheet: View {
                             Text("Avtal ny oppfølging")
                                 .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
-                            Text("Legg automatisk i kalenderen")
+                            Text("Velg tidspunkt — oppfølgingen lagres ikke ennå")
                                 .font(.appScaled(size: 10))
                                 .foregroundStyle(LaBrand.textSecondary)
                         }
@@ -514,7 +520,7 @@ struct LogActivitySheet: View {
                                 .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             if let stage = outcome.movesToStage {
-                                Text("Auto-stage: \(stage)")
+                                Text("Valgt stage: \(stage) — lagres ikke ennå")
                                     .font(.appScaled(size: 10))
                                     .foregroundStyle(LaBrand.green)
                             } else {
@@ -576,7 +582,7 @@ struct LogActivitySheet: View {
                 }
                 .buttonStyle(.plain)
 
-                Button { dismiss() } label: {
+                Button { showPersistenceUnavailable = true } label: {
                     Text("Lagre + lag ny")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LaBrand.purpleLight)
@@ -587,7 +593,7 @@ struct LogActivitySheet: View {
                 }
                 .buttonStyle(.plain)
 
-                Button { dismiss() } label: {
+                Button { showPersistenceUnavailable = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.appScaled(size: 13, weight: .bold))

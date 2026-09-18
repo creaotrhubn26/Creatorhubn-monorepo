@@ -3,7 +3,7 @@
 // Sheets som åpnes fra MeetingDetailSidebar:
 //   - StartMeetingSheet  (FaceTime/Meet/Telefon/Sjekk inn)
 //   - NavigateSheet      (4 transport-modus + 3 nav-apper, samme som Kart-fanen)
-//   - LogNoteSheet       (rask notat-input m/ AI-transkribering-stub)
+//   - LogNoteSheet       (rask notat-input; lagring sperres til write finnes)
 //   - LeadDetailStub     (lett-vekt sheet for "Åpne lead")
 
 import SwiftUI
@@ -33,6 +33,9 @@ struct StartMeetingSheet: View {
     var onAvsluttOgLogg: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var mode: Mode = .checkIn
+    @State private var showActionUnavailable = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
     enum Mode: String, CaseIterable, Hashable {
         case checkIn = "Sjekk inn (fysisk)"
@@ -66,6 +69,7 @@ struct StartMeetingSheet: View {
     }
 
     private func link(for mode: Mode) -> String? {
+        guard isDemo else { return nil }
         let short = String(UUID().uuidString.prefix(8)).lowercased()
         switch mode {
         case .facetime:   return "https://facetime.apple.com/join#v=1&p=\(short)"
@@ -81,7 +85,13 @@ struct StartMeetingSheet: View {
                 VStack(spacing: 16) {
                     meetingHeader
                     modeGrid
-                    if mode == .checkIn { checkInCard } else if let l = link(for: mode) { linkCard(l) }
+                    if mode == .checkIn {
+                        checkInCard
+                    } else if let l = link(for: mode) {
+                        linkCard(l)
+                    } else {
+                        integrationUnavailableCard
+                    }
                     Color.clear.frame(height: 90)
                 }
                 .padding(20)
@@ -99,6 +109,13 @@ struct StartMeetingSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { actionBar }
+        }
+        .alert("Møtehandlingen er ikke koblet til ennå", isPresented: $showActionUnavailable) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(isDemo
+                 ? "Dette er en demo. Ingen innsjekking eller samtale ble startet eller registrert."
+                 : "Ingen innsjekking, statusendring eller ekstern samtale ble registrert. Koble en verifisert møte-write og kontaktkanal før handlingen aktiveres i live modus.")
         }
     }
 
@@ -155,7 +172,7 @@ struct StartMeetingSheet: View {
                     Text(m.rawValue)
                         .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(m.subtitle)
+                    Text(isDemo ? m.subtitle : liveSubtitle(for: m))
                         .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.textSecondary)
                 }
@@ -177,6 +194,15 @@ struct StartMeetingSheet: View {
         .buttonStyle(.plain)
     }
 
+    private func liveSubtitle(for mode: Mode) -> String {
+        switch mode {
+        case .checkIn:    return "Krever posisjonsverifisering og møte-write"
+        case .facetime:   return "Krever en lagret FaceTime-lenke"
+        case .googleMeet: return "Krever en lagret Google Meet-lenke"
+        case .phone:      return "Krever registrert telefonnummer"
+        }
+    }
+
     private var checkInCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 9) {
@@ -188,25 +214,34 @@ struct StartMeetingSheet: View {
                     .foregroundStyle(.white)
                 Spacer()
             }
-            HStack(spacing: 9) {
-                ZStack {
-                    Circle().fill(SBrand.green.opacity(0.22))
-                    Image(systemName: "location.fill")
-                        .font(.appScaled(size: 11))
-                        .foregroundStyle(SBrand.green)
-                }
-                .frame(width: 26, height: 26)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Du er innenfor 50m av adressen")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(meeting.address)
-                        .font(.appScaled(size: 10))
+            Group {
+                if isDemo {
+                    HStack(spacing: 9) {
+                        ZStack {
+                            Circle().fill(SBrand.green.opacity(0.22))
+                            Image(systemName: "location.fill")
+                                .font(.appScaled(size: 11))
+                                .foregroundStyle(SBrand.green)
+                        }
+                        .frame(width: 26, height: 26)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Demo: innenfor 50 m av adressen")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(meeting.address)
+                                .font(.appScaled(size: 10))
+                                .foregroundStyle(SBrand.textSecondary)
+                        }
+                        Spacer()
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(SBrand.green)
+                    }
+                } else {
+                    Text("Posisjonen er ikke verifisert mot dette møtet. Innsjekking er derfor ikke tilgjengelig ennå.")
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(SBrand.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(SBrand.green)
             }
             .padding(10)
             .background(SBrand.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
@@ -248,6 +283,21 @@ struct StartMeetingSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.stroke, lineWidth: 1))
     }
 
+    private var integrationUnavailableCard: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(SBrand.orange)
+            Text("Ingen verifisert lenke eller telefonkanal finnes for dette møtet. Ingenting åpnes eller registreres i live modus.")
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(SBrand.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(14)
+        .background(SBrand.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.orange.opacity(0.35), lineWidth: 1))
+    }
+
     private var actionBar: some View {
         VStack(spacing: 8) {
         if let onAvsluttOgLogg {
@@ -270,10 +320,7 @@ struct StartMeetingSheet: View {
             .buttonStyle(.plain)
         }
         Button {
-            if let l = link(for: mode), let url = URL(string: l) {
-                UIApplication.shared.open(url)
-            }
-            dismiss()
+            showActionUnavailable = true
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "play.circle.fill")
@@ -317,6 +364,7 @@ struct LogNoteSheet: View {
     @State private var note: String = ""
     @State private var category: NoteCategory = .general
     @State private var pinned: Bool = false
+    @State private var showPersistenceUnavailable = false
 
     enum NoteCategory: String, CaseIterable, Hashable {
         case general = "Generelt"
@@ -372,6 +420,11 @@ struct LogNoteSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
+        }
+        .alert("Møtenotater kan ikke lagres ennå", isPresented: $showPersistenceUnavailable) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Notatet er ikke lagret. Innholdet beholdes i arket til du velger Avbryt.")
         }
     }
 
@@ -493,7 +546,7 @@ struct LogNoteSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(SBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button { dismiss() } label: {
+            Button { showPersistenceUnavailable = true } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.appScaled(size: 13, weight: .bold))
@@ -667,30 +720,38 @@ struct LeadDetailStub: View {
             Text("Siste aktivitet")
                 .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(SBrand.blue.opacity(0.20))
-                    Image(systemName: "envelope.fill")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(SBrand.blue)
+            if DemoModeManager.isActiveNonisolated {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(SBrand.blue.opacity(0.20))
+                        Image(systemName: "envelope.fill")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(SBrand.blue)
+                    }
+                    .frame(width: 30, height: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Tilbud sendt")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("Demoaktivitet · 15. mai 14:18")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(SBrand.textSecondary)
+                    }
+                    Spacer()
                 }
-                .frame(width: 30, height: 30)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Tilbud sendt")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("15. mai 14:18 · Lars Kristensen")
-                        .font(.appScaled(size: 10))
-                        .foregroundStyle(SBrand.textSecondary)
-                }
-                Spacer()
+                .padding(10)
+                .background(SBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text("Ingen verifisert aktivitet er lastet for dette møtet.")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(SBrand.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(SBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
             }
-            .padding(10)
-            .background(SBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
         }
         .padding(14)
         .background(SBrand.card, in: RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(SBrand.stroke, lineWidth: 1))
     }
 }
-

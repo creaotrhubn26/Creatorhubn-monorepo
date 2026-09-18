@@ -17,6 +17,7 @@ import crypto from "crypto";
 import type { Pool } from "pg";
 
 import { resolveDefaultLinkedInOrg } from "./linkedin-oauth-routes.js";
+import { LINKEDIN_API_VERSION } from './linkedin-api-version.js';
 
 export type ConversionEventType =
   | "PAGE_VIEW" | "LEAD" | "SIGN_UP" | "PURCHASE"
@@ -220,7 +221,7 @@ export async function sendDueConversionEvents(pool: Pool): Promise<{
           Authorization: `Bearer ${resolved.accessToken}`,
           "Content-Type": "application/json",
           "X-Restli-Protocol-Version": "2.0.0",
-          "LinkedIn-Version": "202410",
+          "LinkedIn-Version": LINKEDIN_API_VERSION,
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(10_000),

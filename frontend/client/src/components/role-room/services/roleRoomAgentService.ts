@@ -1,5 +1,9 @@
 import settingsService from './settingsService';
 import { authSessionService } from './authSessionService';
+import {
+  canUseLocalDevAdminSession,
+  DEV_ADMIN_SESSION_TOKEN,
+} from '../../../hooks/devAdminSessionGuard';
 
 const AGENT_SNAPSHOT_NAMESPACE = 'role-room-agent-snapshot';
 
@@ -577,9 +581,12 @@ const readRoleRoomAgentHeaders = (): Record<string, string> => {
   const adminUser = session.adminUser;
 
   if (Object.keys(headers).length === 0 && typeof window !== 'undefined') {
-    const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    if (isLocalHost) {
-      headers.Authorization = 'Bearer dev-admin-local-session';
+    if (canUseLocalDevAdminSession(
+      import.meta.env.DEV,
+      window.location.hostname,
+      import.meta.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+    )) {
+      headers.Authorization = `Bearer ${DEV_ADMIN_SESSION_TOKEN}`;
     }
   }
 
@@ -649,6 +656,57 @@ export interface RoleRoomLinkedInCompany {
   vanityName: string | null;
   logoUrl: string | null;
   role: string;
+}
+
+export interface RoleRoomLinkedInProfile {
+  connected: boolean;
+  /** Stable row id for the selected global/project LinkedIn connection. */
+  connectionId: string | null;
+  memberId: string | null;
+  email: string | null;
+  name: string | null;
+  profilePictureUrl: string | null;
+  /** True only when the token is valid and includes w_member_social. */
+  publishReady: boolean;
+  /** True only when personal publishing is ready and both organization scopes are present. */
+  organizationPublishReady: boolean;
+  reconnectRequired: boolean;
+  scopes: string[];
+  expiryDate: string | null;
+}
+
+export interface RoleRoomLinkedInOauthStartResult {
+  success: true;
+  mode: 'link';
+  authorizationUrl: string;
+  stateId: string | null;
+}
+
+export type RoleRoomLinkedInMediaKind = 'text' | 'image' | 'video' | 'carousel';
+
+export interface RoleRoomLinkedInPublishInput {
+  connectionId: string;
+  projectId: string;
+  feedPlanPostId: string;
+  mediaKind: RoleRoomLinkedInMediaKind;
+  caption: string;
+  imageUrl?: string;
+  imageUrls?: string[];
+  videoUrl?: string;
+  linkedInOrganizationUrn?: string | null;
+  scheduledFor?: string | null;
+  idempotencyKey: string;
+}
+
+export interface RoleRoomLinkedInPublishResult {
+  ok: boolean;
+  status: 'queued' | 'published' | 'scheduled' | 'failed' | 'rate_limited' | 'unsupported' | null;
+  externalPostId: string | null;
+  permalink: string | null;
+  jobId: string | null;
+  reason: string | null;
+  error: string | null;
+  deduped: boolean;
 }
 
 export interface RoleRoomTikTokConnection {
@@ -785,7 +843,7 @@ export interface RoleRoomFeedPost {
    *  grid-visningen — nyttig som poster-frame for reels/video. */
   coverImageUrl?: string | null;
   coverImageName?: string | null;
-  /** 2-10 images for carousel posts. Parallel to customImageUrl;
+  /** 2-20 images for LinkedIn carousel posts. Parallel to customImageUrl;
    *  when mediaType='carousel' this is the authoritative source. */
   customImageUrls?: string[] | null;
   customImageNames?: string[] | null;
@@ -2013,15 +2071,22 @@ export const roleRoomAgentService = {
     }
   },
 
-  async listLinkedInCompanies(): Promise<{
+  async listLinkedInCompanies(projectId?: string | null): Promise<{
     companies: RoleRoomLinkedInCompany[];
     scopeMissing: boolean;
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/linkedin/companies', {
+      const params = new URLSearchParams();
+      if (projectId?.trim()) params.set('projectId', projectId.trim());
+      const query = params.toString();
+      const response = await fetch(
+        `/api/role-room/linkedin/companies${query ? `?${query}` : ''}`,
+        {
         headers: readRoleRoomAgentHeaders(),
-      });
+        credentials: 'include',
+        },
+      );
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
         return {
@@ -2039,31 +2104,106 @@ export const roleRoomAgentService = {
     }
   },
 
-  async fetchLinkedInProfile(): Promise<{
-    connected: boolean;
-    memberId?: string;
-    email?: string | null;
-    name?: string | null;
-    profilePictureUrl?: string | null;
-  }> {
-    try {
-      const response = await fetch('/api/role-room/linkedin/profile', {
-        headers: readRoleRoomAgentHeaders(),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success) {
-        return { connected: false };
-      }
-      return {
-        connected: Boolean(payload.connected),
-        memberId: payload.memberId,
-        email: payload.email,
-        name: payload.name,
-        profilePictureUrl: payload.profilePictureUrl,
-      };
-    } catch {
-      return { connected: false };
+  async fetchLinkedInProfile(projectId?: string | null): Promise<RoleRoomLinkedInProfile> {
+    const params = new URLSearchParams();
+    if (projectId?.trim()) params.set('projectId', projectId.trim());
+    const query = params.toString();
+    const response = await fetch(
+      `/api/role-room/linkedin/profile${query ? `?${query}` : ''}`,
+      {
+      headers: readRoleRoomAgentHeaders(),
+      credentials: 'include',
+      },
+    );
+    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (!response.ok || !payload?.success) {
+      throw new Error(
+        typeof payload?.error === 'string'
+          ? payload.error
+          : 'Kunne ikke hente LinkedIn-profil.',
+      );
     }
+
+    const connected = Boolean(payload.connected);
+    const scopes = Array.isArray(payload.scopes)
+      ? payload.scopes.filter((scope): scope is string => typeof scope === 'string')
+      : [];
+    const rawExpiry = payload.expiryDate ?? payload.expiresAt ?? payload.tokenExpiresAt;
+    const expiryDate = typeof rawExpiry === 'string'
+      ? rawExpiry
+      : rawExpiry instanceof Date
+        ? rawExpiry.toISOString()
+        : null;
+    const expiryMs = expiryDate ? new Date(expiryDate).getTime() : Number.NaN;
+    const expired = !Number.isFinite(expiryMs) || expiryMs <= Date.now();
+    const backendPublishReady = payload.publishReady === true;
+    const publishReady = connected
+      && !expired
+      && scopes.includes('w_member_social')
+      && backendPublishReady;
+    const backendOrganizationPublishReady = payload.organizationPublishReady === true;
+    const organizationPublishReady = publishReady
+      && scopes.includes('r_organization_admin')
+      && scopes.includes('w_organization_social')
+      && backendOrganizationPublishReady;
+    const reconnectRequired = connected && (
+      !publishReady
+      || expired
+      || payload.reconnectRequired === true
+    );
+    const memberId = typeof payload.memberId === 'string' ? payload.memberId : null;
+    const explicitConnectionId = typeof payload.connectionId === 'string'
+      ? payload.connectionId
+      : typeof payload.id === 'string'
+        ? payload.id
+        : null;
+
+    return {
+      connected,
+      connectionId: explicitConnectionId,
+      memberId,
+      email: typeof payload.email === 'string' ? payload.email : null,
+      name: typeof payload.name === 'string' ? payload.name : null,
+      profilePictureUrl: typeof payload.profilePictureUrl === 'string' ? payload.profilePictureUrl : null,
+      publishReady,
+      organizationPublishReady,
+      reconnectRequired,
+      scopes,
+      expiryDate,
+    };
+  },
+
+  async startLinkedInOauth(input: {
+    projectId: string;
+    returnPath?: string;
+    browserOrigin?: string;
+  }): Promise<RoleRoomLinkedInOauthStartResult> {
+    const response = await fetch('/api/role-room/linkedin/oauth/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      credentials: 'include',
+      body: JSON.stringify({
+        projectId: input.projectId,
+        returnPath: input.returnPath
+          ?? (typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/'),
+        browserOrigin: input.browserOrigin
+          ?? (typeof window !== 'undefined' ? window.location.origin : undefined),
+      }),
+    });
+    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (!response.ok || !payload?.success || typeof payload.authorizationUrl !== 'string') {
+      throw new Error(
+        typeof payload?.error === 'string'
+          ? payload.error
+          : 'Kunne ikke starte LinkedIn OAuth.',
+      );
+    }
+    return {
+      success: true,
+      mode: 'link',
+      authorizationUrl: payload.authorizationUrl,
+      stateId: typeof payload.stateId === 'string' ? payload.stateId : null,
+    };
   },
 
   async listYouTubeChannels(): Promise<{
@@ -2375,6 +2515,69 @@ export const roleRoomAgentService = {
       job: payload.job,
       immediatelyPublished: Boolean(payload.immediatelyPublished),
       rateLimited: Boolean(payload.rateLimited),
+    };
+  },
+
+  async publishLinkedIn(input: RoleRoomLinkedInPublishInput): Promise<RoleRoomLinkedInPublishResult> {
+    const response = await fetch('/api/role-room/social/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      credentials: 'include',
+      body: JSON.stringify({
+        platform: 'linkedin',
+        idempotencyKey: input.idempotencyKey,
+        post: {
+          connectionId: input.connectionId,
+          projectId: input.projectId,
+          feedPlanPostId: input.feedPlanPostId,
+          mediaKind: input.mediaKind,
+          caption: input.caption,
+          imageUrl: input.imageUrl,
+          imageUrls: input.imageUrls,
+          videoUrl: input.videoUrl,
+          extras: input.linkedInOrganizationUrn
+            ? { linkedInOrganizationUrn: input.linkedInOrganizationUrn }
+            : {},
+          scheduledFor: input.scheduledFor ?? null,
+        },
+      }),
+    });
+    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    const succeeded = Boolean(payload?.success) && payload?.ok !== false;
+    if (!response.ok || !succeeded) {
+      const error = typeof payload?.error === 'string'
+        ? payload.error
+        : 'LinkedIn-publisering feilet.';
+      const publishError = new Error(error) as Error & {
+        status?: number;
+        reason?: string;
+        approvalState?: string;
+      };
+      publishError.status = response.status;
+      if (typeof payload?.reason === 'string') publishError.reason = payload.reason;
+      if (typeof payload?.approvalState === 'string') publishError.approvalState = payload.approvalState;
+      throw publishError;
+    }
+
+    const rawStatus = typeof payload?.status === 'string' ? payload.status : null;
+    const allowedStatuses: Array<NonNullable<RoleRoomLinkedInPublishResult['status']>> = [
+      'queued', 'published', 'scheduled', 'failed', 'rate_limited', 'unsupported',
+    ];
+    return {
+      ok: payload?.ok !== false,
+      status: allowedStatuses.includes(rawStatus as NonNullable<RoleRoomLinkedInPublishResult['status']>)
+        ? rawStatus as NonNullable<RoleRoomLinkedInPublishResult['status']>
+        : null,
+      externalPostId: typeof payload?.externalPostId === 'string'
+        ? payload.externalPostId
+        : typeof payload?.externalPostId === 'number'
+          ? String(payload.externalPostId)
+          : null,
+      permalink: typeof payload?.permalink === 'string' ? payload.permalink : null,
+      jobId: typeof payload?.jobId === 'string' ? payload.jobId : null,
+      reason: typeof payload?.reason === 'string' ? payload.reason : null,
+      error: typeof payload?.error === 'string' ? payload.error : null,
+      deduped: Boolean(payload?.deduped),
     };
   },
 

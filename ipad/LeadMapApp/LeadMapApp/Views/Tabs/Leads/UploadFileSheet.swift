@@ -12,8 +12,8 @@
 //   • Dropbox
 //   • OneDrive
 //
-// Etter valg: progress-overlay + metadata-felt (navn/tags/beskrivelse).
-// I prod kobles hver kilde til sin native picker.
+// Metadata kan forberedes, men serveropplasting er foreløpig ikke koblet.
+// UI-et skal derfor aldri simulere progresjon eller hevde at en fil er lagret.
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -57,6 +57,7 @@ struct UploadFileSheet: View {
     @State private var tags: Set<String> = []
     @State private var uploadProgress: Double = 0
     @State private var filesPickerPresented: Bool = false
+    @State private var showUploadUnavailable = false
 
     enum Stage { case selectSource, metadata, uploading, done }
 
@@ -163,6 +164,11 @@ struct UploadFileSheet: View {
                     stage = .metadata
                 }
             }
+            .alert("Filen ble ikke lastet opp", isPresented: $showUploadUnavailable) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Serveropplasting og dokumentlagring er ikke koblet til denne flaten ennå. Ingen fil eller metadata er lagret.")
+            }
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 660)
     }
@@ -225,7 +231,7 @@ struct UploadFileSheet: View {
                 Text("Velg kilde")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Du kan laste opp én eller flere filer fra en av kildene under. Filer lagres kryptert i Leadgrid B2-storage.")
+                Text("Velg en lokal fil for å forberede metadata. Selve serveropplastingen er tydelig sperret frem til lagringskontrakten er koblet.")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(UfBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -304,27 +310,11 @@ struct UploadFileSheet: View {
     private func selectSource(_ src: UploadSource) {
         selectedSource = src
         switch src {
-        case .files:
+        case .files, .icloud:
             filesPickerPresented = true
-        case .photos:
-            fileName = "IMG_\(Int.random(in: 1000...9999)).heic"
-            stage = .metadata
-        case .camera:
-            fileName = "Foto_\(Int.random(in: 1000...9999)).jpg"
-            stage = .metadata
-        case .video:
-            fileName = "Video_\(Int.random(in: 1000...9999)).mov"
-            stage = .metadata
-        case .scan:
-            fileName = "Scan_\(Int.random(in: 1000...9999)).pdf"
-            stage = .metadata
-        case .icloud, .googleDrive, .dropbox, .onedrive:
-            // I prod: åpner cloud picker. Her: mock filnavn
-            fileName = "\(src.rawValue.replacingOccurrences(of: " ", with: "_"))_dok.pdf"
-            stage = .metadata
-        case .pasteURL:
-            fileName = "lenke_dokument.pdf"
-            stage = .metadata
+        case .photos, .camera, .video, .scan,
+             .googleDrive, .dropbox, .onedrive, .pasteURL:
+            showUploadUnavailable = true
         }
     }
 
@@ -479,14 +469,14 @@ struct UploadFileSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.appScaled(size: 13, weight: .bold))
-                    Text("Last opp")
+                    Text("Opplasting ikke koblet")
                         .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
                 .background(
-                    LinearGradient(colors: [UfBrand.purple, UfBrand.purpleLight],
+                    LinearGradient(colors: [UfBrand.orange, UfBrand.orange.opacity(0.75)],
                                    startPoint: .leading, endPoint: .trailing),
                     in: RoundedRectangle(cornerRadius: 11)
                 )
@@ -503,16 +493,7 @@ struct UploadFileSheet: View {
     }
 
     private func startUpload() {
-        stage = .uploading
-        uploadProgress = 0
-        // Mock upload-progress
-        Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { timer in
-            uploadProgress += 0.04
-            if uploadProgress >= 1 {
-                timer.invalidate()
-                stage = .done
-            }
-        }
+        showUploadUnavailable = true
     }
 
     // MARK: Uploading

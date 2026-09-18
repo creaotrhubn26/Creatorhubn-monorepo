@@ -28,7 +28,7 @@
  * backdrop-overlay som placeholder.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 import { useElementEdits } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
@@ -65,6 +65,13 @@ import {
 import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
 import { DEFAULT_PRICING_CONFIG, type LeadgridPricingConfig } from '@shared/leadgridPricingConfig';
+import {
+  describeLeadgridPaidIntent,
+  parseLeadgridSignupIntent,
+  type LeadgridSignupIntent,
+} from '@/lib/leadgridNavigation';
+
+type PaidPlanIntent = Extract<LeadgridSignupIntent, { kind: 'paid' }>;
 
 const PALETTE = {
   bg: 'var(--lgl-bg, #0b0518)',
@@ -176,15 +183,25 @@ export default function LeadgridLanding() {
   useLandingBrand('leadgrid', { landingAccent: '--lgl-accent', landingBg: '--lgl-bg', landingText: '--lgl-text' });
   // CreatorHub Design (per-element-lag): anvend lagrede edits + ?design=1 live-editor.
   useElementEdits('leadgrid');
+  const [initialSignupIntent] = useState<LeadgridSignupIntent | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return parseLeadgridSignupIntent(window.location.search);
+  });
   const [designMode, setDesignMode] = useState<boolean>(() => {
     try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
   });
-  const [expStartOpen, setExpStartOpen] = useState(false);
+  const [expStartOpen, setExpStartOpen] = useState(initialSignupIntent?.kind === 'free');
+  const [paidPlanIntent, setPaidPlanIntent] = useState<PaidPlanIntent | null>(
+    initialSignupIntent?.kind === 'paid' ? initialSignupIntent : null,
+  );
   // «Book demo» — én dialog, åpnes fra alle CTA-er via custom-event
   // (unngår prop-threading gjennom header/hero/final-seksjonene).
-  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(initialSignupIntent?.kind === 'paid');
   useEffect(() => {
-    const open = () => setDemoOpen(true);
+    const open = () => {
+      setPaidPlanIntent(null);
+      setDemoOpen(true);
+    };
     window.addEventListener('leadgrid:book-demo', open);
     return () => window.removeEventListener('leadgrid:book-demo', open);
   }, []);
@@ -323,7 +340,11 @@ export default function LeadgridLanding() {
       <StickyHeader />
       <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
-      <BookDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} />
+      <BookDemoDialog
+        open={demoOpen}
+        onClose={() => setDemoOpen(false)}
+        planIntent={paidPlanIntent}
+      />
       <AppWaitlistDialog open={appWaitlistOpen} onClose={() => setAppWaitlistOpen(false)} />
       <HeroSection />
       <TrustStrip />
@@ -332,7 +353,13 @@ export default function LeadgridLanding() {
       <EcosystemSection />
       <TestimonialsSection />
       <StackReplaceSection onStartFree={() => setExpStartOpen(true)} />
-      <PricingSection />
+      <PricingSection
+        onStartFree={() => setExpStartOpen(true)}
+        onPaidPlan={(plan) => {
+          setPaidPlanIntent({ kind: 'paid', plan, billing: 'monthly' });
+          setDemoOpen(true);
+        }}
+      />
       <FinalCtaSection />
       <Footer />
     </Box>
@@ -587,6 +614,115 @@ function HeroSection() {
 // Start gratis dialog — kobles direkte til Stripe Checkout
 // ────────────────────────────────────────────────────────────
 
+const LEADGRID_TURNSTILE_ACTION = 'leadgrid_self_onboard';
+const LEADGRID_TURNSTILE_SCRIPT_ID = 'role-room-turnstile-script';
+const LEADGRID_TURNSTILE_SCRIPT_SRC =
+  'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+const LEADGRID_TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
+
+function getLeadgridTurnstileSiteKey() {
+  const configured = String(
+    import.meta.env.VITE_ROLE_ROOM_TURNSTILE_SITE_KEY
+      || import.meta.env.VITE_TURNSTILE_SITE_KEY
+      || '',
+  ).trim();
+  if (configured) return configured;
+  return import.meta.env.DEV ? LEADGRID_TURNSTILE_TEST_SITE_KEY : '';
+}
+
+function LeadgridTurnstileWidget({
+  siteKey,
+  resetSignal,
+  onTokenChange,
+  onErrorChange,
+}: {
+  siteKey: string;
+  resetSignal: number;
+  onTokenChange: (token: string) => void;
+  onErrorChange: (message: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | number | null>(null);
+
+  useEffect(() => {
+    if (!siteKey || typeof window === 'undefined') return;
+    let cancelled = false;
+
+    const renderWidget = () => {
+      if (
+        cancelled
+        || !window.turnstile
+        || !containerRef.current
+        || widgetIdRef.current !== null
+      ) return;
+      onErrorChange('');
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        action: LEADGRID_TURNSTILE_ACTION,
+        theme: 'dark',
+        callback: (token) => {
+          onErrorChange('');
+          onTokenChange(token);
+        },
+        'expired-callback': () => {
+          onTokenChange('');
+          onErrorChange('Bekreftelsen utløp. Bekreft på nytt.');
+        },
+        'timeout-callback': () => {
+          onTokenChange('');
+          onErrorChange('Bekreftelsen tok for lang tid. Prøv igjen.');
+        },
+        'error-callback': () => {
+          onTokenChange('');
+          onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+        },
+      });
+    };
+
+    const handleLoad = () => renderWidget();
+    let script = document.getElementById(
+      LEADGRID_TURNSTILE_SCRIPT_ID,
+    ) as HTMLScriptElement | null;
+    if (window.turnstile) {
+      renderWidget();
+    } else if (script) {
+      script.addEventListener('load', handleLoad);
+      script.addEventListener('error', () => {
+        onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+      }, { once: true });
+    } else {
+      script = document.createElement('script');
+      script.id = LEADGRID_TURNSTILE_SCRIPT_ID;
+      script.src = LEADGRID_TURNSTILE_SCRIPT_SRC;
+      script.async = true;
+      script.defer = true;
+      script.addEventListener('load', handleLoad);
+      script.addEventListener('error', () => {
+        onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+      }, { once: true });
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      script?.removeEventListener('load', handleLoad);
+      if (widgetIdRef.current !== null) {
+        window.turnstile?.remove?.(widgetIdRef.current);
+        widgetIdRef.current = null;
+      }
+    };
+  }, [onErrorChange, onTokenChange, siteKey]);
+
+  useEffect(() => {
+    if (widgetIdRef.current === null || !window.turnstile) return;
+    onTokenChange('');
+    onErrorChange('');
+    window.turnstile.reset(widgetIdRef.current);
+  }, [onErrorChange, onTokenChange, resetSignal]);
+
+  return <Box ref={containerRef} aria-label="Sikkerhetsbekreftelse" sx={{ minHeight: 65 }} />;
+}
+
 function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState('');
   const [orgName, setOrgName] = useState('');
@@ -594,8 +730,22 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [contactName, setContactName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileError, setTurnstileError] = useState('');
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const turnstileSiteKey = getLeadgridTurnstileSiteKey();
+  const turnstileUnavailable = import.meta.env.PROD && !turnstileSiteKey;
+  const verificationReady = turnstileSiteKey
+    ? Boolean(turnstileToken)
+    : !import.meta.env.PROD;
 
-  const canStart = email.includes('@') && email.includes('.') && orgName.trim().length > 1;
+  const canStart =
+    email.includes('@')
+    && email.includes('.')
+    && email.trim().length <= 254
+    && orgName.trim().length > 1
+    && orgName.trim().length <= 160
+    && verificationReady;
 
   async function submit() {
     setSubmitting(true);
@@ -610,11 +760,14 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
           templateKey: 'solo',
           website: website.trim() || undefined,
           contactName: contactName.trim() || undefined,
+          turnstileToken: turnstileToken || undefined,
         }),
       });
       const data = await r.json();
       if (!r.ok) {
         setError(data.error ?? 'Noe gikk galt');
+        setTurnstileToken('');
+        setTurnstileResetSignal((value) => value + 1);
         setSubmitting(false);
         return;
       }
@@ -647,11 +800,13 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
       alert(
         data.magic_link_sent
           ? 'Sjekk e-posten din. Vi sendte deg en magic link til Leadgrid.'
-          : 'Klar! Gå til /leadgrid/welcome for å komme i gang.',
+          : 'Klar! Organisasjonen er opprettet. Bruk din eksisterende Leadgrid-innlogging for å fortsette.',
       );
       onClose();
     } catch (e: any) {
       setError(String(e?.message ?? e));
+      setTurnstileToken('');
+      setTurnstileResetSignal((value) => value + 1);
     }
     setSubmitting(false);
   }
@@ -684,6 +839,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
             fullWidth required label="E-post"
             type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="ola@bedrift.no"
+            inputProps={{ maxLength: 254 }}
             InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
             sx={{
               '& .MuiOutlinedInput-root': {
@@ -698,6 +854,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
             fullWidth required label="Navn på din organisasjon"
             value={orgName} onChange={(e) => setOrgName(e.target.value)}
             placeholder="F.eks. Ola Markedsføring"
+            inputProps={{ maxLength: 160 }}
             InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
             sx={{
               '& .MuiOutlinedInput-root': {
@@ -711,6 +868,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
           <TextField
             fullWidth label="Ditt navn (valgfritt)"
             value={contactName} onChange={(e) => setContactName(e.target.value)}
+            inputProps={{ maxLength: 120 }}
             InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
             sx={{
               '& .MuiOutlinedInput-root': {
@@ -723,8 +881,10 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
           />
           <TextField
             fullWidth label="Website (valgfritt)"
+            type="url"
             value={website} onChange={(e) => setWebsite(e.target.value)}
             placeholder="https://dinbedrift.no"
+            inputProps={{ maxLength: 500 }}
             InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
             sx={{
               '& .MuiOutlinedInput-root': {
@@ -735,6 +895,21 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
               },
             }}
           />
+          {turnstileSiteKey && (
+            <LeadgridTurnstileWidget
+              siteKey={turnstileSiteKey}
+              resetSignal={turnstileResetSignal}
+              onTokenChange={setTurnstileToken}
+              onErrorChange={setTurnstileError}
+            />
+          )}
+          {turnstileError && <Alert severity="warning">{turnstileError}</Alert>}
+          {turnstileUnavailable && (
+            <Alert severity="error">
+              Sikkerhetsbekreftelsen er ikke konfigurert. Registrering er
+              midlertidig utilgjengelig.
+            </Alert>
+          )}
           <Typography variant="caption" sx={{ color: PALETTE.textFaint }}>
             Vi tar betalingskortet ditt i neste steg via Stripe. Du blir
             ikke belastet før du oppgraderer. Avslutt når som helst.
@@ -745,7 +920,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
         <Button onClick={onClose} sx={{ color: PALETTE.textMuted }}>Avbryt</Button>
         <Button
           variant="contained"
-          disabled={!canStart || submitting}
+          disabled={!canStart || submitting || turnstileUnavailable}
           onClick={submit}
           sx={{
             bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700,
@@ -773,7 +948,15 @@ const lgField = {
   },
 } as const;
 
-function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function BookDemoDialog({
+  open,
+  onClose,
+  planIntent,
+}: {
+  open: boolean;
+  onClose: () => void;
+  planIntent: PaidPlanIntent | null;
+}) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   // 2026-08-19: org.nr erstatter fritekst-firmanavn — vi trenger å vite
@@ -788,6 +971,7 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
 
   const orgNumberDigits = orgNumber.replace(/\D/g, '');
   const canSend = email.includes('@') && email.includes('.') && orgNumberDigits.length === 9;
+  const planDescription = planIntent ? describeLeadgridPaidIntent(planIntent) : null;
 
   async function submit() {
     setSubmitting(true);
@@ -798,12 +982,21 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(), email: email.trim(), org_number: orgNumberDigits,
-          preferred: preferred.trim(), note: note.trim(),
+          preferred: preferred.trim(),
+          note: [planDescription ? `Planinteresse: ${planDescription}` : '', note.trim()]
+            .filter(Boolean)
+            .join('\n'),
         }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
-      try { trackEvent('leadgrid_demo_requested', { has_org_number: orgNumberDigits.length === 9 }); } catch { /* */ }
+      try {
+        trackEvent('leadgrid_demo_requested', {
+          has_org_number: orgNumberDigits.length === 9,
+          plan: planIntent?.plan ?? null,
+          billing: planIntent?.billing ?? null,
+        });
+      } catch { /* */ }
       setDone(true);
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -839,6 +1032,11 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
         ) : (
           <>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            {planDescription && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Valgt fra prissiden: <strong>{planDescription}</strong>
+              </Alert>
+            )}
             <Stack spacing={2} sx={{ mt: 1 }}>
               <TextField fullWidth required label="E-post" type="email" value={email}
                 onChange={(e) => setEmail(e.target.value)} placeholder="ola@bedrift.no"
@@ -1540,7 +1738,13 @@ function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
   );
 }
 
-function PricingSection() {
+function PricingSection({
+  onStartFree,
+  onPaidPlan,
+}: {
+  onStartFree: () => void;
+  onPaidPlan: (plan: 'solo_pro' | 'agency') => void;
+}) {
   // Én sannhetskilde: super-admin redigerer, landing leser. Fallback til
   // lokal default så seksjonen aldri står tom om API-et svikter.
   const [config, setConfig] = useState<LeadgridPricingConfig>(DEFAULT_PRICING_CONFIG);
@@ -1620,6 +1824,13 @@ function PricingSection() {
                 <Button
                   variant={p.popular ? 'contained' : 'outlined'}
                   fullWidth
+                  onClick={() => {
+                    if (p.key === 'free') {
+                      onStartFree();
+                      return;
+                    }
+                    onPaidPlan(p.key === 'agency' ? 'agency' : 'solo_pro');
+                  }}
                   sx={{
                     bgcolor: p.popular ? PALETTE.accent : 'transparent',
                     color: p.popular ? '#1a0535' : PALETTE.text,
@@ -1633,9 +1844,12 @@ function PricingSection() {
                       borderColor: PALETTE.accent,
                     },
                   }}
-                  href="/"
                 >
-                  {p.cta}
+                  {p.key === 'free'
+                    ? p.cta
+                    : p.key === 'agency'
+                      ? 'Book Agency-demo'
+                      : 'Book Solo Pro-demo'}
                 </Button>
               </Card>
             </Grid>
@@ -1858,7 +2072,7 @@ function Footer() {
                 { label: 'Funksjoner', href: '#losninger' },
                 { label: 'Priser', href: '#priser' },
                 { label: 'Integrasjoner', href: '/leadgrid/connectors' },
-                { label: 'For utviklere', href: '/leadgrid/developers' },
+                { label: 'For utviklere', href: '/leadgrid/utviklere' },
               ],
             },
             {

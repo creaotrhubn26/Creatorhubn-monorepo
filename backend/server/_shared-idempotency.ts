@@ -69,7 +69,12 @@ export async function ensureIdempotencyTable(pool: Pool): Promise<boolean> {
       return false;
     }
   })();
-  return tableReadyPromise;
+  const ready = await tableReadyPromise;
+  // En kort DB-/DDL-feil skal ikke forgifte hele prosessen frem til restart.
+  // Samtidige kall deler fortsatt samme forsøk; neste senere kall får prøve på
+  // nytt dersom dette forsøket feilet.
+  if (!ready) tableReadyPromise = null;
+  return ready;
 }
 
 /**
@@ -130,6 +135,16 @@ export interface IdempotencyMiddlewareDeps {
   scope: string;
   /** TTL i sekunder. Etter dette ses keys som "ikke sett før". Default 86400 (24t). */
   ttlSeconds?: number;
+  /**
+   * Velg hvilke svar som kan replayes. Default bevarer legacy-atferd og
+   * cacher alle JSON-svar. Retry-køer bør normalt bare cache 2xx, slik at en
+   * midlertidig 5xx ikke låses som resultat for hele TTL-perioden.
+   */
+  shouldCacheResponse?: (status: number) => boolean;
+  /** Når true blokkeres requesten hvis claim-lageret ikke kan bevises. */
+  failClosedOnUnavailable?: boolean;
+  /** Lease for en prosess som døde etter claim, default 120 sekunder. */
+  processingLeaseSeconds?: number;
 }
 
 /**
@@ -150,6 +165,9 @@ export function idempotencyMiddleware(
 ): express.RequestHandler {
   const { pool, scope } = deps;
   const ttlSeconds = deps.ttlSeconds ?? 86400; // 24 timer default
+  const shouldCacheResponse = deps.shouldCacheResponse ?? (() => true);
+  const failClosed = deps.failClosedOnUnavailable ?? false;
+  const processingLeaseSeconds = deps.processingLeaseSeconds ?? 120;
 
   return async function idempotencyHandler(req, res, next) {
     const key = readIdempotencyKey(req);
@@ -160,33 +178,72 @@ export function idempotencyMiddleware(
 
     const tableReady = await ensureIdempotencyTable(pool);
     if (!tableReady) {
-      // DB utilgjengelig → la handler kjøre uten cache (failure mode skal
-      // ikke blokkere normal trafikk).
+      if (failClosed) {
+        return res.status(503).json({ error: "idempotency_unavailable" });
+      }
       return next();
     }
 
     const hash = hashRequest(req);
 
     try {
-      const lookup = await pool.query<{
+      // Atomisk claim FØR handleren. Den gamle lookup→handler→async INSERT-
+      // flyten lot to samtidige requests begge utføre sideeffekten.
+      const claim = await pool.query<{ idempotency_key: string }>(
+        `INSERT INTO ${IDEMPOTENCY_TABLE}
+           (scope, request_method, request_path, idempotency_key, request_hash,
+            response_status, response_body, created_at)
+         VALUES ($1, $2, $3, $4, $5, 102, $6::jsonb, NOW())
+         ON CONFLICT (scope, request_method, request_path, idempotency_key)
+         DO UPDATE SET
+           request_hash = EXCLUDED.request_hash,
+           response_status = EXCLUDED.response_status,
+           response_body = EXCLUDED.response_body,
+           created_at = NOW()
+         WHERE (
+                 ${IDEMPOTENCY_TABLE}.response_status = 102
+                 AND ${IDEMPOTENCY_TABLE}.created_at <=
+                     NOW() - $8 * INTERVAL '1 second'
+               )
+            OR (
+                 ${IDEMPOTENCY_TABLE}.response_status <> 102
+                 AND ${IDEMPOTENCY_TABLE}.created_at <=
+                     NOW() - $7 * INTERVAL '1 second'
+               )
+         RETURNING idempotency_key`,
+        [
+          scope,
+          req.method,
+          req.path,
+          key,
+          hash,
+          JSON.stringify({ processing: true }),
+          ttlSeconds,
+          processingLeaseSeconds,
+        ],
+      );
+
+      if (claim.rows.length === 0) {
+        const lookup = await pool.query<{
         request_hash: string;
         response_status: number;
         response_body: unknown;
         created_at: Date;
-      }>(
-        `SELECT request_hash, response_status, response_body, created_at
-         FROM ${IDEMPOTENCY_TABLE}
-         WHERE scope = $1
-           AND request_method = $2
-           AND request_path = $3
-           AND idempotency_key = $4
-           AND created_at > NOW() - $5 * INTERVAL '1 second'
-         LIMIT 1`,
-        [scope, req.method, req.path, key, ttlSeconds],
-      );
-
-      const cached = lookup.rows[0];
-      if (cached) {
+        }>(
+          `SELECT request_hash, response_status, response_body, created_at
+             FROM ${IDEMPOTENCY_TABLE}
+            WHERE scope = $1
+              AND request_method = $2
+              AND request_path = $3
+              AND idempotency_key = $4
+              AND created_at > NOW() - $5 * INTERVAL '1 second'
+            LIMIT 1`,
+          [scope, req.method, req.path, key, ttlSeconds],
+        );
+        const cached = lookup.rows[0];
+        if (!cached) {
+          return res.status(503).json({ error: "idempotency_unavailable" });
+        }
         if (cached.request_hash !== hash) {
           // Samme key, ulik body — klient-feil.
           return res.status(422).json({
@@ -194,12 +251,19 @@ export function idempotencyMiddleware(
               "Idempotency-Key er brukt tidligere med forskjellig payload. Bruk en ny nøkkel eller send samme payload.",
           });
         }
+        if (cached.response_status === 102) {
+          res.setHeader("Retry-After", "1");
+          return res.status(409).json({ error: "idempotency_request_in_progress" });
+        }
         // Replay cached respons.
         res.setHeader("Idempotent-Replayed", "true");
         return res.status(cached.response_status).json(cached.response_body);
       }
     } catch (error) {
-      console.warn("idempotency lookup failed:", error);
+      console.warn("idempotency claim failed:", error);
+      if (failClosed) {
+        return res.status(503).json({ error: "idempotency_unavailable" });
+      }
       return next();
     }
 
@@ -208,19 +272,55 @@ export function idempotencyMiddleware(
     const originalJson = res.json.bind(res);
     res.json = function patchedJson(body: unknown) {
       const status = res.statusCode || 200;
-      // Lagre i bakgrunnen — IKKE blokker respons.
-      pool
-        .query(
-          `INSERT INTO ${IDEMPOTENCY_TABLE}
-             (scope, request_method, request_path, idempotency_key, request_hash, response_status, response_body)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-           ON CONFLICT DO NOTHING`,
-          [scope, req.method, req.path, key, hash, status, JSON.stringify(body)],
-        )
+      const persist = shouldCacheResponse(status)
+        ? pool.query(
+            `UPDATE ${IDEMPOTENCY_TABLE}
+                SET response_status = $6,
+                    response_body = $7::jsonb
+              WHERE scope = $1
+                AND request_method = $2
+                AND request_path = $3
+                AND idempotency_key = $4
+                AND request_hash = $5
+                AND response_status = 102`,
+            [
+              scope,
+              req.method,
+              req.path,
+              key,
+              hash,
+              status,
+              JSON.stringify(body),
+            ],
+          )
+        : pool.query(
+            `DELETE FROM ${IDEMPOTENCY_TABLE}
+              WHERE scope = $1
+                AND request_method = $2
+                AND request_path = $3
+                AND idempotency_key = $4
+                AND request_hash = $5
+                AND response_status = 102`,
+            [scope, req.method, req.path, key, hash],
+          );
+
+      // Responsen sendes først etter at claimen er fullført/frigitt. Dermed
+      // kan en umiddelbar retry aldri løpe forbi lagringen.
+      void persist
+        .then((result) => {
+          if ((result.rowCount ?? 0) !== 1) {
+            throw new Error("idempotency_claim_completion_lost");
+          }
+          return originalJson(body);
+        })
         .catch((error) => {
-          console.warn("idempotency record-store failed:", error);
+          console.warn("idempotency response-store failed:", error);
+          if (!res.headersSent) {
+            res.status(503);
+            originalJson({ error: "idempotency_completion_failed" });
+          }
         });
-      return originalJson(body);
+      return res;
     };
 
     return next();

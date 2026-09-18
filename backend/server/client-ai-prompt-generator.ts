@@ -1268,7 +1268,7 @@ function promptInstallLinkedinCapi(ctx: PromptContext): GeneratedPrompt {
 - Klient har strenge consent-regler hvor pixel ikke fyrer
 - Du vil sende offline-konverteringer (telefonsamtaler, in-store, CRM-deals)
 
-**⚠️ Tilgangsstatus:** Som av 2026-06-08 har vår app **"Conversions API (Standard tier) – Review in progress"** hos LinkedIn. Vi kan ikke sende live events før Standard tier er godkjent. Når godkjent:
+**Tilgangsstatus:** LinkedIn-appen har **Conversions API (Standard tier)** aktivert. Live events krever i tillegg gyldig OAuth-token, korrekt conversion-URN og samtykkebehandlet matchdata.
 
 1. Hent et access-token via LinkedIn Conversions API-flowen (server-side OAuth).
 2. Lagre tokenet kryptert via Agent-UI ("LinkedIn CAPI-token") — det havner i \`linkedin_capi_access_token\` (encrypted).
@@ -1279,7 +1279,7 @@ POST /rest/conversionEvents HTTP/1.1
 Authorization: Bearer {LINKEDIN_CAPI_ACCESS_TOKEN}
 Content-Type: application/json
 X-Restli-Protocol-Version: 2.0.0
-LinkedIn-Version: 202410
+LinkedIn-Version: ${process.env.LINKEDIN_API_VERSION?.trim() || '202608'}
 
 {
   "conversion": "urn:lla:llaPartnerConversion:{conversion-id}",

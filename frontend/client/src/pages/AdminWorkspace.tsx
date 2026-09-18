@@ -14,13 +14,7 @@
  * Auth: samme email-gating som AdminRoom (kun produkteier).
  */
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Alert,
   Avatar,
@@ -75,13 +69,7 @@ import RocketLaunchOutlinedIcon from '@mui/icons-material/RocketLaunchOutlined';
 import SsidChartOutlinedIcon from '@mui/icons-material/SsidChartOutlined';
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined';
 
-import {
-  BusinessPlanTab,
-  FundingAppsTab,
-  InvestorContactsTab,
-  PartnerContactsTab,
-  ActivityLogTab,
-} from './AdminRoom';
+import { BusinessPlanTab, FundingAppsTab, InvestorContactsTab, PartnerContactsTab, ActivityLogTab } from './AdminRoom';
 import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
 import { MarketingSegmentsTab } from '../components/admin/content-marketing/MarketingSegmentsTab';
 import { BusinessDnaOnboarding } from '../components/admin/content-marketing/BusinessDnaOnboarding';
@@ -98,8 +86,16 @@ import { WhatsNewTab } from '../components/role-room/components/admin-room/Whats
 import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
+import { DocumentsTab } from './admin-workspace/DocumentsTab';
 import { SakerTab } from './admin-workspace/SakerTab';
+import { ProjectsTab } from './admin-workspace/ProjectsTab';
+import { TasksTab } from './admin-workspace/TasksTab';
+import { CalendarTab } from './admin-workspace/CalendarTab';
 import { LeadgridAppWaitlistTab } from './admin-workspace/LeadgridAppWaitlistTab';
+import {
+  canUseLocalDevAdminSession,
+  DEV_ADMIN_SESSION_TOKEN,
+} from '../hooks/devAdminSessionGuard';
 
 import {
   activityLogApi,
@@ -144,6 +140,23 @@ const BRAND = {
 };
 
 // ─────────────────────────────────────────────────────────
+// Panelpreferanser
+// ─────────────────────────────────────────────────────────
+const PANEL_PREFERENCE_KEYS = {
+  teamchat: 'admin-workspace:teamchat-collapsed',
+  notifications: 'admin-workspace:notifications-collapsed',
+} as const;
+
+function readCollapsedPreference(key: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(key) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 // Sidebar-struktur
 // ─────────────────────────────────────────────────────────
 
@@ -178,6 +191,7 @@ type WorkspaceItemId =
   | 'marketing-segments'
   | 'content-marketing'
   | 'marketing-cockpit'
+  | 'leadgrid-app-waitlist'
   | 'operating-system'
   | 'role-room-agent'
   | 'content-calendar'
@@ -211,25 +225,32 @@ interface InboxNotification {
   message?: string;
   body?: string;
   created_at?: string;
+  createdAt?: string;
   type?: string;
   seen?: boolean;
 }
 
 async function fetchNotifications(): Promise<InboxNotification[]> {
   try {
-    const token =
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('authToken') ||
-      '';
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('authToken') || '';
     const r = await fetch('/api/notifications/inbox', {
       credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!r.ok) return [];
     const data = await r.json();
-    if (Array.isArray(data)) return data as InboxNotification[];
-    if (Array.isArray(data?.items)) return data.items as InboxNotification[];
-    return [];
+    const items: InboxNotification[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.notifications)
+          ? data.notifications
+          : [];
+    return items.map((item) => ({
+      ...item,
+      created_at: item.created_at ?? item.createdAt,
+      seen: item.seen ?? false,
+    }));
   } catch {
     return [];
   }
@@ -246,7 +267,23 @@ function getCurrentUserEmail(): string {
       localStorage.getItem('user') ||
       localStorage.getItem('creatorhub_user');
     if (userObjRaw) {
-      const parsed = JSON.parse(userObjRaw) as { email?: string };
+      const parsed = JSON.parse(userObjRaw) as {
+        email?: string;
+        id?: string;
+        isAdmin?: boolean;
+      };
+      const isLocalDevelopmentAdmin =
+        canUseLocalDevAdminSession(
+          import.meta.env.DEV,
+          window.location.hostname,
+          import.meta.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+        ) &&
+        localStorage.getItem('creatorhub_auth_token') === DEV_ADMIN_SESSION_TOKEN &&
+        parsed.id === 'local-admin' &&
+        parsed.isAdmin === true;
+      if (isLocalDevelopmentAdmin) {
+        return ADMIN_ROOM_OWNER_EMAIL;
+      }
       if (typeof parsed?.email === 'string' && parsed.email) {
         return parsed.email.toLowerCase();
       }
@@ -303,12 +340,8 @@ function EmptyState({ title, description, icon, todo }: EmptyStateProps) {
       >
         {icon ?? <ConstructionOutlinedIcon />}
       </Box>
-      <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '1.1rem' }}>
-        {title}
-      </Typography>
-      <Typography sx={{ color: BRAND.textMuted, maxWidth: 480, lineHeight: 1.6 }}>
-        {description}
-      </Typography>
+      <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '1.1rem' }}>{title}</Typography>
+      <Typography sx={{ color: BRAND.textMuted, maxWidth: 480, lineHeight: 1.6 }}>{description}</Typography>
       <Chip
         label="Kommer snart — under utvikling"
         sx={{
@@ -319,11 +352,7 @@ function EmptyState({ title, description, icon, todo }: EmptyStateProps) {
           border: `1px solid ${BRAND.border}`,
         }}
       />
-      {todo ? (
-        <Typography sx={{ color: BRAND.textDim, fontSize: '0.75rem', mt: 1 }}>
-          TODO: {todo}
-        </Typography>
-      ) : null}
+      {todo ? <Typography sx={{ color: BRAND.textDim, fontSize: '0.75rem', mt: 1 }}>TODO: {todo}</Typography> : null}
     </Stack>
   );
 }
@@ -398,7 +427,11 @@ function Sidebar({
       {
         id: 'main',
         items: [
-          { id: 'overview', label: 'Oversikt', icon: <DashboardOutlinedIcon /> },
+          {
+            id: 'overview',
+            label: 'Oversikt',
+            icon: <DashboardOutlinedIcon />,
+          },
           {
             id: 'inbox',
             label: 'Innboks',
@@ -406,22 +439,54 @@ function Sidebar({
             badge: inboxBadge,
           },
           { id: 'cases', label: 'Saker', icon: <GavelOutlinedIcon /> },
-          { id: 'projects', label: 'Prosjekter', icon: <FolderOpenOutlinedIcon /> },
-          { id: 'documents', label: 'Dokumenter', icon: <DescriptionOutlinedIcon /> },
+          {
+            id: 'projects',
+            label: 'Prosjekter',
+            icon: <FolderOpenOutlinedIcon />,
+          },
+          {
+            id: 'documents',
+            label: 'Dokumenter',
+            icon: <DescriptionOutlinedIcon />,
+          },
           { id: 'tasks', label: 'Oppgaver', icon: <TaskAltOutlinedIcon /> },
           { id: 'calendar', label: 'Kalender', icon: <EventOutlinedIcon /> },
-          { id: 'files', label: 'Filer', icon: <InsertDriveFileOutlinedIcon /> },
-          { id: 'teamchat', label: 'Teamchat', icon: <ChatBubbleOutlineOutlinedIcon /> },
-          { id: 'automations', label: 'Automatiseringer', icon: <AutoFixHighOutlinedIcon /> },
+          {
+            id: 'files',
+            label: 'Filer',
+            icon: <InsertDriveFileOutlinedIcon />,
+          },
+          {
+            id: 'teamchat',
+            label: 'Teamchat',
+            icon: <ChatBubbleOutlineOutlinedIcon />,
+          },
+          {
+            id: 'automations',
+            label: 'Automatiseringer',
+            icon: <AutoFixHighOutlinedIcon />,
+          },
         ],
       },
       {
         id: 'teamspaces',
         label: 'Teamspaces',
         items: [
-          { id: 'ledelse', label: 'Ledelse', icon: <BusinessCenterOutlinedIcon /> },
-          { id: 'kundeprosjekt', label: 'Kundeprosjekt', icon: <GroupsOutlinedIcon /> },
-          { id: 'markedsforing', label: 'Markedsføring', icon: <CampaignOutlinedIcon /> },
+          {
+            id: 'ledelse',
+            label: 'Ledelse',
+            icon: <BusinessCenterOutlinedIcon />,
+          },
+          {
+            id: 'kundeprosjekt',
+            label: 'Kundeprosjekt',
+            icon: <GroupsOutlinedIcon />,
+          },
+          {
+            id: 'markedsforing',
+            label: 'Markedsføring',
+            icon: <CampaignOutlinedIcon />,
+          },
           { id: 'produkt', label: 'Produkt', icon: <ScienceOutlinedIcon /> },
           { id: 'hr', label: 'HR', icon: <PersonOutlineOutlinedIcon /> },
         ],
@@ -483,11 +548,7 @@ function Sidebar({
             >
               Creatorhub AS
             </Typography>
-            <Typography
-              sx={{ color: BRAND.textDim, fontSize: '0.72rem' }}
-            >
-              Admin workspace
-            </Typography>
+            <Typography sx={{ color: BRAND.textDim, fontSize: '0.72rem' }}>Admin workspace</Typography>
           </Box>
         ) : null}
         {!collapsed ? (
@@ -505,7 +566,15 @@ function Sidebar({
       {/* Produkt-velger */}
       {!collapsed ? (
         <Stack spacing={0.5} sx={{ px: 2, py: 1.5, borderBottom: `1px solid ${BRAND.border}` }}>
-          <Typography sx={{ color: BRAND.textDim, fontSize: '0.68rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+          <Typography
+            sx={{
+              color: BRAND.textDim,
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              textTransform: 'uppercase',
+            }}
+          >
             Produkt
           </Typography>
           <Stack direction="row" spacing={0.5}>
@@ -540,12 +609,7 @@ function Sidebar({
       ) : (
         // Collapsed: vis bare collapse-toggle nederst, og en liten dot
         <Stack alignItems="center" sx={{ py: 1 }}>
-          <IconButton
-            size="small"
-            onClick={onToggleCollapse}
-            sx={{ color: BRAND.textMuted }}
-            aria-label="Vis sidebar"
-          >
+          <IconButton size="small" onClick={onToggleCollapse} sx={{ color: BRAND.textMuted }} aria-label="Vis sidebar">
             <MenuIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -573,12 +637,7 @@ function Sidebar({
             {section.items.map((item) => {
               const isSelected = item.id === selected;
               return (
-                <Tooltip
-                  key={item.id}
-                  title={collapsed ? item.label : ''}
-                  placement="right"
-                  arrow
-                >
+                <Tooltip key={item.id} title={collapsed ? item.label : ''} placement="right" arrow>
                   <Stack
                     direction="row"
                     alignItems="center"
@@ -592,9 +651,7 @@ function Sidebar({
                       borderRadius: 1.5,
                       color: isSelected ? BRAND.text : BRAND.textMuted,
                       bgcolor: isSelected ? BRAND.selectedBg : 'transparent',
-                      borderLeft: isSelected
-                        ? `3px solid ${BRAND.accent}`
-                        : '3px solid transparent',
+                      borderLeft: isSelected ? `3px solid ${BRAND.accent}` : '3px solid transparent',
                       transition: 'background-color 120ms ease',
                       '&:hover': {
                         bgcolor: isSelected ? BRAND.selectedBg : BRAND.hoverBg,
@@ -664,11 +721,7 @@ function Sidebar({
           >
             <SettingsOutlinedIcon />
             {!collapsed ? (
-              <Typography
-                sx={{ flex: 1, fontSize: '0.86rem', fontWeight: 500 }}
-              >
-                Innstillinger
-              </Typography>
+              <Typography sx={{ flex: 1, fontSize: '0.86rem', fontWeight: 500 }}>Innstillinger</Typography>
             ) : null}
           </Stack>
         </Tooltip>
@@ -692,7 +745,12 @@ function MobileBottomNav({
 }) {
   const items: NavItem[] = [
     { id: 'overview', label: 'Oversikt', icon: <DashboardOutlinedIcon /> },
-    { id: 'inbox', label: 'Innboks', icon: <InboxOutlinedIcon />, badge: inboxBadge },
+    {
+      id: 'inbox',
+      label: 'Innboks',
+      icon: <InboxOutlinedIcon />,
+      badge: inboxBadge,
+    },
     { id: 'tasks', label: 'Oppgaver', icon: <TaskAltOutlinedIcon /> },
     { id: 'teamchat', label: 'Chat', icon: <ChatBubbleOutlineOutlinedIcon /> },
     { id: 'settings', label: 'Meny', icon: <MenuIcon /> },
@@ -744,9 +802,7 @@ function MobileBottomNav({
             >
               {item.icon}
             </Badge>
-            <Typography sx={{ fontSize: '0.62rem', mt: 0.25 }}>
-              {item.label}
-            </Typography>
+            <Typography sx={{ fontSize: '0.62rem', mt: 0.25 }}>{item.label}</Typography>
           </IconButton>
         );
       })}
@@ -758,14 +814,46 @@ function MobileBottomNav({
 // Teamchat-panel (høyre kolonne 1)
 // ─────────────────────────────────────────────────────────
 
-function TeamchatPanel() {
+function TeamchatPanel({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   // Backend: /api/role-room/projects/:projectId/messages krever projectId,
   // og det finnes ikke et "team-wide" admin-chat-endepunkt. Vi viser empty-
   // state med write-feltet låst, og lister TODO.
   const [message, setMessage] = useState('');
+  if (collapsed) {
+    return (
+      <Stack
+        data-testid="workspace-teamchat-panel"
+        alignItems="center"
+        sx={{
+          width: 52,
+          flexShrink: 0,
+          bgcolor: BRAND.panelBg,
+          borderLeft: `1px solid ${BRAND.border}`,
+          height: '100vh',
+          position: 'sticky',
+          top: 0,
+          pt: 1,
+          transition: 'width 180ms ease',
+        }}
+      >
+        <Tooltip title="Vis Teamchat" placement="left" arrow disableInteractive>
+          <IconButton
+            onClick={onToggle}
+            aria-label="Vis Teamchat-panelet"
+            aria-controls="workspace-teamchat-content"
+            aria-expanded={false}
+            sx={{ color: BRAND.accent }}
+          >
+            <ChatBubbleOutlineOutlinedIcon />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    );
+  }
 
   return (
     <Stack
+      data-testid="workspace-teamchat-panel"
       sx={{
         width: 320,
         flexShrink: 0,
@@ -774,6 +862,7 @@ function TeamchatPanel() {
         height: '100vh',
         position: 'sticky',
         top: 0,
+        transition: 'width 180ms ease',
       }}
     >
       <Stack
@@ -788,23 +877,35 @@ function TeamchatPanel() {
       >
         <Stack direction="row" alignItems="center" spacing={1}>
           <ChatBubbleOutlineOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-          <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.92rem' }}>
-            Teamchat
-          </Typography>
+          <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.92rem' }}>Teamchat</Typography>
         </Stack>
-        <Chip
-          label="Solo"
-          size="small"
-          sx={{
-            height: 18,
-            fontSize: '0.66rem',
-            bgcolor: 'rgba(167, 139, 250, 0.16)',
-            color: '#ddd6fe',
-          }}
-        />
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Chip
+            label="Solo"
+            size="small"
+            sx={{
+              height: 18,
+              fontSize: '0.66rem',
+              bgcolor: 'rgba(167, 139, 250, 0.16)',
+              color: '#ddd6fe',
+            }}
+          />
+          <Tooltip title="Skjul Teamchat" arrow>
+            <IconButton
+              size="small"
+              onClick={onToggle}
+              aria-label="Skjul Teamchat-panelet"
+              aria-controls="workspace-teamchat-content"
+              aria-expanded
+              sx={{ color: BRAND.textMuted }}
+            >
+              <ChevronRightIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Stack>
 
-      <Box sx={{ flex: 1, px: 2, py: 2, overflowY: 'auto' }}>
+      <Box id="workspace-teamchat-content" sx={{ flex: 1, px: 2, py: 2, overflowY: 'auto' }}>
         <Stack
           alignItems="center"
           justifyContent="center"
@@ -817,9 +918,7 @@ function TeamchatPanel() {
           }}
         >
           <ChatBubbleOutlineOutlinedIcon sx={{ fontSize: 36, color: BRAND.accent, opacity: 0.6 }} />
-          <Typography sx={{ color: BRAND.text, fontWeight: 600, fontSize: '0.92rem' }}>
-            Ingen team ennå
-          </Typography>
+          <Typography sx={{ color: BRAND.text, fontWeight: 600, fontSize: '0.92rem' }}>Ingen team ennå</Typography>
           <Typography sx={{ fontSize: '0.78rem', lineHeight: 1.5 }}>
             Workspace-bred teamchat krever et felles rom-endepunkt — i dag er
             <code style={{ color: BRAND.accent, margin: '0 4px' }}>/api/role-room/projects/:projectId/messages</code>
@@ -879,23 +978,34 @@ function TodayAgendaSection() {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     const refresh = () => {
-      workspaceAggregatorApi.todayAgenda()
-        .then((rows) => { if (!cancelled) { setItems(rows); setError(null); } })
-        .catch((err) => { if (!cancelled) setError((err as Error).message); })
-        .finally(() => { if (!cancelled) setLoading(false); });
+      workspaceAggregatorApi
+        .todayAgenda()
+        .then((rows) => {
+          if (!cancelled) {
+            setItems(rows);
+            setError(null);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) setError((err as Error).message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     };
     refresh();
     timer = setInterval(refresh, 60_000);
-    return () => { cancelled = true; if (timer) clearInterval(timer); };
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
   }, []);
 
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
         <ScheduleOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
-          Dagens agenda
-        </Typography>
+        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>Dagens agenda</Typography>
         {items.length > 0 ? (
           <Chip
             size="small"
@@ -916,9 +1026,7 @@ function TodayAgendaSection() {
       ) : error ? (
         <Typography sx={{ color: '#fda4af', fontSize: '0.78rem' }}>Kunne ikke laste agenda</Typography>
       ) : items.length === 0 ? (
-        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
-          Ingen møter i dag.
-        </Typography>
+        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>Ingen møter i dag.</Typography>
       ) : (
         <Stack spacing={0.6}>
           {items.map((item) => {
@@ -995,14 +1103,15 @@ function TodayAgendaSection() {
 }
 
 // ─────────────────────────────────────────────────────────
-// Kommende frister — aggregat fra funding-apps + cases + meetings
+// Kommende frister — aggregat fra funding-apps + cases + tasks + meetings
 // Kilde-chips fargekoder per type, sortert chronologisk.
 // ─────────────────────────────────────────────────────────
 
 const DEADLINE_SOURCE_COLOR: Record<DeadlineItem['source'], string> = {
   funding_app: '#fbbf24', // amber — søknader
-  case: '#a78bfa',        // violet — saker (Leadgrid-accent)
-  meeting: '#22d3ee',     // cyan — møter
+  case: '#a78bfa', // violet — saker (Leadgrid-accent)
+  task: '#22c55e', // grønn — adminoppgaver
+  meeting: '#22d3ee', // cyan — møter
 };
 
 function formatDeadlineLabel(due: string): string {
@@ -1032,23 +1141,34 @@ function UpcomingDeadlinesSection() {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     const refresh = () => {
-      workspaceAggregatorApi.upcomingDeadlines(14)
-        .then((data) => { if (!cancelled) { setItems(data.items); setError(null); } })
-        .catch((err) => { if (!cancelled) setError((err as Error).message); })
-        .finally(() => { if (!cancelled) setLoading(false); });
+      workspaceAggregatorApi
+        .upcomingDeadlines(14)
+        .then((data) => {
+          if (!cancelled) {
+            setItems(data.items);
+            setError(null);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) setError((err as Error).message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     };
     refresh();
     timer = setInterval(refresh, 120_000); // 2 min — frister endrer seg sjeldnere enn agenda
-    return () => { cancelled = true; if (timer) clearInterval(timer); };
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
   }, []);
 
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
         <EventAvailableOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
-          Kommende frister
-        </Typography>
+        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>Kommende frister</Typography>
         {items.length > 0 ? (
           <Chip
             size="small"
@@ -1069,9 +1189,7 @@ function UpcomingDeadlinesSection() {
       ) : error ? (
         <Typography sx={{ color: '#fda4af', fontSize: '0.78rem' }}>Kunne ikke laste frister</Typography>
       ) : items.length === 0 ? (
-        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
-          Ingen frister kommer opp.
-        </Typography>
+        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>Ingen frister kommer opp.</Typography>
       ) : (
         <Stack spacing={0.6}>
           {items.slice(0, 8).map((item) => {
@@ -1081,7 +1199,9 @@ function UpcomingDeadlinesSection() {
               try {
                 const diff = (new Date(item.due_date).getTime() - Date.now()) / 86_400_000;
                 return diff <= 1;
-              } catch { return false; }
+              } catch {
+                return false;
+              }
             })();
             return (
               <Box
@@ -1094,12 +1214,16 @@ function UpcomingDeadlinesSection() {
                   '&:hover': { bgcolor: 'rgba(167,139,250,0.10)' },
                   cursor: item.link_path ? 'pointer' : 'default',
                 }}
-                onClick={item.link_path ? () => {
-                  // Best-effort navigasjon — link_path er full URL inkl. query
-                  if (typeof window !== 'undefined' && item.link_path) {
-                    window.location.assign(item.link_path);
-                  }
-                } : undefined}
+                onClick={
+                  item.link_path
+                    ? () => {
+                        // Best-effort navigasjon — link_path er full URL inkl. query
+                        if (typeof window !== 'undefined' && item.link_path) {
+                          window.location.assign(item.link_path);
+                        }
+                      }
+                    : undefined
+                }
               >
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.25 }}>
                   <Box
@@ -1155,14 +1279,20 @@ function UpcomingDeadlinesSection() {
 function NotificationsAgendaPanel({
   notifications,
   notificationsLoading,
+  collapsed,
+  onToggle,
 }: {
   notifications: InboxNotification[];
   notificationsLoading: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   const [activityItems, setActivityItems] = useState<ActivityLogEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
 
   useEffect(() => {
+    if (collapsed) return undefined;
+
     let cancelled = false;
     setActivityLoading(true);
     activityLogApi
@@ -1179,10 +1309,53 @@ function NotificationsAgendaPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [collapsed]);
+  if (collapsed) {
+    return (
+      <Stack
+        data-testid="workspace-notifications-panel"
+        alignItems="center"
+        sx={{
+          width: 52,
+          flexShrink: 0,
+          bgcolor: BRAND.panelBg,
+          borderLeft: `1px solid ${BRAND.border}`,
+          height: '100vh',
+          position: 'sticky',
+          top: 0,
+          pt: 1,
+          transition: 'width 180ms ease',
+        }}
+      >
+        <Tooltip title="Vis Varsler og agenda" placement="left" arrow disableInteractive>
+          <IconButton
+            onClick={onToggle}
+            aria-label="Vis Varsler-panelet"
+            aria-expanded={false}
+            sx={{ color: BRAND.accent }}
+          >
+            <Badge
+              badgeContent={notifications.length}
+              max={99}
+              sx={{
+                '& .MuiBadge-badge': {
+                  bgcolor: BRAND.accentStrong,
+                  color: '#fff',
+                },
+              }}
+            >
+              <NotificationsNoneOutlinedIcon />
+            </Badge>
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    );
+  }
 
   return (
     <Stack
+      id="workspace-notifications-content"
+      data-testid="workspace-notifications-panel"
       spacing={2}
       sx={{
         width: 280,
@@ -1194,44 +1367,50 @@ function NotificationsAgendaPanel({
         position: 'sticky',
         top: 0,
         overflowY: 'auto',
+        transition: 'width 180ms ease',
       }}
     >
       {/* Varsler */}
       <Box>
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{ mb: 1 }}
-        >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
           <Stack direction="row" alignItems="center" spacing={0.75}>
             <NotificationsNoneOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-            <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
-              Varsler
-            </Typography>
+            <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>Varsler</Typography>
           </Stack>
-          {notifications.length > 0 ? (
-            <Chip
-              label={notifications.length}
-              size="small"
-              sx={{
-                height: 18,
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                bgcolor: BRAND.accentStrong,
-                color: '#fff',
-              }}
-            />
-          ) : null}
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            {notifications.length > 0 ? (
+              <Chip
+                label={notifications.length}
+                size="small"
+                sx={{
+                  height: 18,
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  bgcolor: BRAND.accentStrong,
+                  color: '#fff',
+                }}
+              />
+            ) : null}
+            <Tooltip title="Skjul Varsler og agenda" arrow>
+              <IconButton
+                size="small"
+                onClick={onToggle}
+                aria-label="Skjul Varsler-panelet"
+                aria-controls="workspace-notifications-content"
+                aria-expanded
+                sx={{ color: BRAND.textMuted }}
+              >
+                <ChevronRightIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Stack>
         {notificationsLoading ? (
           <Stack alignItems="center" sx={{ py: 2 }}>
             <CircularProgress size={16} sx={{ color: BRAND.accent }} />
           </Stack>
         ) : notifications.length === 0 ? (
-          <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
-            Ingen uleste varsler.
-          </Typography>
+          <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>Ingen uleste varsler.</Typography>
         ) : (
           <Stack spacing={1}>
             {notifications.slice(0, 5).map((n) => (
@@ -1246,7 +1425,13 @@ function NotificationsAgendaPanel({
                   border: `1px solid ${BRAND.border}`,
                 }}
               >
-                <Typography sx={{ color: BRAND.text, fontWeight: 600, fontSize: '0.78rem' }}>
+                <Typography
+                  sx={{
+                    color: BRAND.text,
+                    fontWeight: 600,
+                    fontSize: '0.78rem',
+                  }}
+                >
                   {n.title ?? n.type ?? 'Varsel'}
                 </Typography>
                 {n.message || n.body ? (
@@ -1287,30 +1472,19 @@ function NotificationsAgendaPanel({
       <Box>
         <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
           <HistoryOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-          <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
-            Nylig aktivitet
-          </Typography>
+          <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>Nylig aktivitet</Typography>
         </Stack>
         {activityLoading ? (
           <Stack alignItems="center" sx={{ py: 2 }}>
             <CircularProgress size={16} sx={{ color: BRAND.accent }} />
           </Stack>
         ) : activityItems.length === 0 ? (
-          <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
-            Ingen aktivitet logget.
-          </Typography>
+          <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>Ingen aktivitet logget.</Typography>
         ) : (
           <Stack spacing={0.75}>
             {activityItems.slice(0, 6).map((a) => (
-              <Stack
-                key={a.id}
-                direction="row"
-                spacing={0.75}
-                alignItems="flex-start"
-              >
-                <CircleIcon
-                  sx={{ fontSize: 6, mt: 0.75, color: BRAND.accent }}
-                />
+              <Stack key={a.id} direction="row" spacing={0.75} alignItems="flex-start">
+                <CircleIcon sx={{ fontSize: 6, mt: 0.75, color: BRAND.accent }} />
                 <Box sx={{ minWidth: 0 }}>
                   <Typography
                     sx={{
@@ -1349,13 +1523,7 @@ function NotificationsAgendaPanel({
 // Innboks-side (hovedinnhold)
 // ─────────────────────────────────────────────────────────
 
-function InboxView({
-  notifications,
-  loading,
-}: {
-  notifications: InboxNotification[];
-  loading: boolean;
-}) {
+function InboxView({ notifications, loading }: { notifications: InboxNotification[]; loading: boolean }) {
   if (loading) {
     return (
       <Stack alignItems="center" sx={{ py: 8 }}>
@@ -1393,7 +1561,14 @@ function InboxView({
                 {n.title ?? n.type ?? 'Varsel'}
               </Typography>
               {n.message || n.body ? (
-                <Typography sx={{ color: BRAND.textMuted, fontSize: '0.84rem', mt: 0.5, lineHeight: 1.5 }}>
+                <Typography
+                  sx={{
+                    color: BRAND.textMuted,
+                    fontSize: '0.84rem',
+                    mt: 0.5,
+                    lineHeight: 1.5,
+                  }}
+                >
                   {n.message ?? n.body}
                 </Typography>
               ) : null}
@@ -1426,14 +1601,13 @@ function InboxView({
 // Oversikt-side (hovedinnhold)
 // ─────────────────────────────────────────────────────────
 
-function OverviewView({
-  onJumpTo,
-  product,
-}: {
-  onJumpTo: (id: WorkspaceItemId) => void;
-  product: AdminProductId;
-}) {
-  const cards: { id: WorkspaceItemId; label: string; description: string; icon: ReactNode }[] = [
+function OverviewView({ onJumpTo, product }: { onJumpTo: (id: WorkspaceItemId) => void; product: AdminProductId }) {
+  const cards: {
+    id: WorkspaceItemId;
+    label: string;
+    description: string;
+    icon: ReactNode;
+  }[] = [
     {
       id: 'business-plan',
       label: 'Forretningsplan',
@@ -1523,16 +1697,21 @@ function OverviewView({
             </Typography>
             <Typography sx={{ color: BRAND.textMuted, fontSize: '0.88rem' }}>
               Aktivt produkt:{' '}
-              <strong style={{ color: BRAND.text }}>
-                {ADMIN_PRODUCTS.find((p) => p.id === product)?.label}
-              </strong>
+              <strong style={{ color: BRAND.text }}>{ADMIN_PRODUCTS.find((p) => p.id === product)?.label}</strong>
             </Typography>
           </Box>
         </Stack>
       </Box>
 
       <Box>
-        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.96rem', mb: 1.5 }}>
+        <Typography
+          sx={{
+            color: BRAND.text,
+            fontWeight: 700,
+            fontSize: '0.96rem',
+            mb: 1.5,
+          }}
+        >
           Hurtigvalg
         </Typography>
         <Box
@@ -1581,11 +1760,23 @@ function OverviewView({
                 >
                   {c.icon}
                 </Box>
-                <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.88rem' }}>
+                <Typography
+                  sx={{
+                    color: BRAND.text,
+                    fontWeight: 700,
+                    fontSize: '0.88rem',
+                  }}
+                >
                   {c.label}
                 </Typography>
               </Stack>
-              <Typography sx={{ color: BRAND.textMuted, fontSize: '0.76rem', lineHeight: 1.4 }}>
+              <Typography
+                sx={{
+                  color: BRAND.textMuted,
+                  fontSize: '0.76rem',
+                  lineHeight: 1.4,
+                }}
+              >
                 {c.description}
               </Typography>
             </Box>
@@ -1629,11 +1820,12 @@ function resolveContent(
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Innboks'],
         statusChip:
           notifications.length > 0
-            ? { label: `${notifications.length} uleste`, color: BRAND.accentStrong }
+            ? {
+                label: `${notifications.length} uleste`,
+                color: BRAND.accentStrong,
+              }
             : { label: 'Alt klart', color: '#22c55e' },
-        render: () => (
-          <InboxView notifications={notifications} loading={notificationsLoading} />
-        ),
+        render: () => <InboxView notifications={notifications} loading={notificationsLoading} />,
       };
     case 'cases':
       return {
@@ -1645,53 +1837,25 @@ function resolveContent(
       return {
         title: 'Prosjekter',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Prosjekter'],
-        render: () => (
-          <EmptyState
-            title="Prosjekter"
-            description="Workspace-bred prosjekt-oversikt på tvers av kundeprosjekter er ikke koblet på ennå. Bruk Creative Sync Workspace (i Role Room) for prosjekt-detaljer i mellomtiden."
-            icon={<FolderOpenOutlinedIcon />}
-            todo="Aggregér casting_projects + showcase_galleries + role_room_projects til én feed."
-          />
-        ),
+        render: () => <ProjectsTab parentProduct={product} />,
       };
     case 'documents':
       return {
         title: 'Dokumenter',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Dokumenter'],
-        render: () => (
-          <EmptyState
-            title="Dokumenter"
-            description="Sentralt dokument-bibliotek (kontrakter, briefer, notater) er ikke koblet på ennå."
-            icon={<DescriptionOutlinedIcon />}
-            todo="Koble på vendor_documents + contracts + role_room_briefs til én bibliotek-visning."
-          />
-        ),
+        render: () => <DocumentsTab parentProduct={product} />,
       };
     case 'tasks':
       return {
         title: 'Oppgaver',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Oppgaver'],
-        render: () => (
-          <EmptyState
-            title="Oppgaver"
-            description="Workspace-bred oppgave-feed er ikke implementert ennå. CRM-task-inbox finnes per kunde."
-            icon={<TaskAltOutlinedIcon />}
-            todo="Aggregér crm_tasks + role_room_tasks + leadgrid_tasks i én feed."
-          />
-        ),
+        render: () => <TasksTab parentProduct={product} />,
       };
     case 'calendar':
       return {
         title: 'Kalender',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Kalender'],
-        render: () => (
-          <EmptyState
-            title="Kalender"
-            description="Workspace-bred kalender (møter + frister + opptaksdager) er ikke implementert ennå. Bruk Google Calendar via integrasjons-fane i mellomtiden."
-            icon={<EventOutlinedIcon />}
-            todo="Aggregér role_room_meetings + funding_apps.deadline + showcase deadline-feed."
-          />
-        ),
+        render: () => <CalendarTab parentProduct={product} />,
       };
     case 'files':
       return {
@@ -1738,8 +1902,7 @@ function resolveContent(
         breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Forretningsplan'],
         statusChip: { label: 'Autosave', color: '#22c55e' },
         contentTabs: ['Oversikt', 'Aktivitet'],
-        render: (activeTab) =>
-          activeTab === 1 ? <ActivityLogTab /> : <BusinessPlanTab />,
+        render: (activeTab) => (activeTab === 1 ? <ActivityLogTab /> : <BusinessPlanTab />),
       };
     case 'funding':
       return {
@@ -1897,7 +2060,10 @@ function resolveContent(
               { id: 'business-dna', label: 'Business DNA' },
               { id: 'marketing-catalog', label: 'Katalog' },
               { id: 'marketing-cockpit', label: 'Marketing Cockpit' },
-              { id: 'leadgrid-app-waitlist', label: 'Leadgrid: App-venteliste' },
+              {
+                id: 'leadgrid-app-waitlist',
+                label: 'Leadgrid: App-venteliste',
+              },
               { id: 'content-marketing', label: 'Content marketing' },
               { id: 'content-calendar', label: 'Content-kalender' },
               { id: 'newsletter-studio', label: 'Newsletter Studio' },
@@ -2003,12 +2169,13 @@ function TeamspaceLanding({
               bgcolor: BRAND.panelBg,
               border: `1px solid ${BRAND.border}`,
               cursor: 'pointer',
-              '&:hover': { borderColor: BRAND.borderHover, bgcolor: BRAND.hoverBg },
+              '&:hover': {
+                borderColor: BRAND.borderHover,
+                bgcolor: BRAND.hoverBg,
+              },
             }}
           >
-            <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.88rem' }}>
-              {c.label}
-            </Typography>
+            <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.88rem' }}>{c.label}</Typography>
             <ChevronRightIcon sx={{ color: BRAND.accent }} />
           </Stack>
         ))}
@@ -2066,9 +2233,7 @@ function TopBar({
             ))}
           </Stack>
           <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.5 }}>
-            <Typography sx={{ color: BRAND.text, fontWeight: 800, fontSize: '1.2rem' }}>
-              {resolved.title}
-            </Typography>
+            <Typography sx={{ color: BRAND.text, fontWeight: 800, fontSize: '1.2rem' }}>{resolved.title}</Typography>
             {resolved.statusChip ? (
               <Chip
                 label={resolved.statusChip.label}
@@ -2126,11 +2291,7 @@ function TopBar({
       </Stack>
 
       {resolved.contentTabs && resolved.contentTabs.length > 0 ? (
-        <ContentTabs
-          tabs={resolved.contentTabs}
-          active={contentTab}
-          onChange={onContentTabChange}
-        />
+        <ContentTabs tabs={resolved.contentTabs} active={contentTab} onChange={onContentTabChange} />
       ) : null}
     </Stack>
   );
@@ -2165,6 +2326,12 @@ export default function AdminWorkspace() {
   const [contentTab, setContentTab] = useState(0);
   const [notifications, setNotifications] = useState<InboxNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [teamchatCollapsed, setTeamchatCollapsed] = useState(() =>
+    readCollapsedPreference(PANEL_PREFERENCE_KEYS.teamchat),
+  );
+  const [notificationsCollapsed, setNotificationsCollapsed] = useState(() =>
+    readCollapsedPreference(PANEL_PREFERENCE_KEYS.notifications),
+  );
 
   const isMobile = useMediaQuery('(max-width: 767px)');
   const isTablet = useMediaQuery('(max-width: 1199px)');
@@ -2180,6 +2347,21 @@ export default function AdminWorkspace() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // Dokumentarbeid trenger full skrivebredde; panelene kan åpnes igjen manuelt.
+  useEffect(() => {
+    if (selected !== 'documents') return;
+    setTeamchatCollapsed(true);
+    setNotificationsCollapsed(true);
+  }, [selected]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PANEL_PREFERENCE_KEYS.teamchat, String(teamchatCollapsed));
+      window.localStorage.setItem(PANEL_PREFERENCE_KEYS.notifications, String(notificationsCollapsed));
+    } catch {
+      /* localStorage kan være blokkert; panelene virker fortsatt i økten */
+    }
+  }, [teamchatCollapsed, notificationsCollapsed]);
 
   // Sync URL state (uten å trigge router-navigasjon)
   useEffect(() => {
@@ -2314,13 +2496,7 @@ export default function AdminWorkspace() {
     );
   }
 
-  const resolved = resolveContent(
-    selected,
-    product,
-    notifications,
-    notificationsLoading,
-    handleSelect,
-  );
+  const resolved = resolveContent(selected, product, notifications, notificationsLoading, handleSelect);
   const inboxBadge = notifications.length;
 
   return (
@@ -2350,33 +2526,25 @@ export default function AdminWorkspace() {
 
       {/* Hovedinnhold */}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <TopBar
-          resolved={resolved}
-          contentTab={contentTab}
-          onContentTabChange={setContentTab}
-        />
-        <Box sx={{ flex: 1, px: { xs: 1.5, md: 3 }, py: { xs: 2, md: 3 } }}>
-          {resolved.render(contentTab)}
-        </Box>
+        <TopBar resolved={resolved} contentTab={contentTab} onContentTabChange={setContentTab} />
+        <Box sx={{ flex: 1, px: { xs: 1.5, md: 3 }, py: { xs: 2, md: 3 } }}>{resolved.render(contentTab)}</Box>
       </Box>
 
       {/* Høyre kolonner (skjules på tablet+mobil) */}
-      {!isTablet ? <TeamchatPanel /> : null}
+      {!isTablet ? (
+        <TeamchatPanel collapsed={teamchatCollapsed} onToggle={() => setTeamchatCollapsed((current) => !current)} />
+      ) : null}
       {!isTablet ? (
         <NotificationsAgendaPanel
           notifications={notifications}
           notificationsLoading={notificationsLoading}
+          collapsed={notificationsCollapsed}
+          onToggle={() => setNotificationsCollapsed((current) => !current)}
         />
       ) : null}
 
       {/* Mobil bottom-nav */}
-      {isMobile ? (
-        <MobileBottomNav
-          selected={selected}
-          onSelect={handleSelect}
-          inboxBadge={inboxBadge}
-        />
-      ) : null}
+      {isMobile ? <MobileBottomNav selected={selected} onSelect={handleSelect} inboxBadge={inboxBadge} /> : null}
     </Box>
   );
 }

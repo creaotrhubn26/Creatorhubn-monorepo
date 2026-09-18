@@ -100,7 +100,10 @@ import {
   type ParsedScreenplay,
 } from "./casting-screenplay-formats.js";
 import { newEntityId } from "./_shared-ids.js";
-import { userOwnsCastingProjectViaStore } from "./casting-project-ownership.js";
+import {
+  userCanAccessCastingProject,
+  userOwnsCastingProjectViaStore,
+} from "./casting-project-ownership.js";
 
 export interface CastingManuscriptsRoutesDeps {
   app: express.Application;
@@ -199,6 +202,17 @@ export function setupCastingManuscriptsRoutes(
 ): void {
   const { app, requireUserSession, compatStoreGet, manuscriptsService, revisionsService, pool } = deps;
 
+  async function canAccessProject(
+    projectId: string | null | undefined,
+    userId: string | null | undefined,
+  ): Promise<boolean> {
+    if (!projectId || !userId) return false;
+    if (pool && await userCanAccessCastingProject(pool, projectId, userId)) {
+      return true;
+    }
+    return userOwnsCastingProjectViaStore(compatStoreGet, projectId, userId);
+  }
+
   // Manuscript content (full screenplay text, dialogue, revisions) is
   // tenant-private. These read endpoints were unauthenticated — anyone who
   // knew/guessed a manuscriptId could read another production's script. Gate
@@ -229,7 +243,7 @@ export function setupCastingManuscriptsRoutes(
     const projectId = await readProjectIdOfManuscript(manuscriptId);
     if (
       !projectId ||
-      !(await userOwnsCastingProjectViaStore(compatStoreGet, projectId, session.userId))
+      !(await canAccessProject(projectId, session.userId))
     ) {
       res.status(404).json({ error: "not_found" });
       return false;
@@ -254,7 +268,7 @@ export function setupCastingManuscriptsRoutes(
         return;
       }
       if (
-        !(await userOwnsCastingProjectViaStore(compatStoreGet, projectId, session.userId))
+        !(await canAccessProject(projectId, session.userId))
       ) {
         res.status(404).json({ error: "not_found" });
         return;
@@ -268,7 +282,8 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/manuscripts", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId =
@@ -281,6 +296,13 @@ export function setupCastingManuscriptsRoutes(
         payload,
         readProjectId(existing, "default-project"),
       );
+      if (
+        projectId === "default-project" ||
+        !(await canAccessProject(projectId, session.userId))
+      ) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
       const manuscript = {
         ...existing,
         ...payload,

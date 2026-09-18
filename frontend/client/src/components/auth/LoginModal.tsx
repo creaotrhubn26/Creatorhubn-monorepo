@@ -26,6 +26,7 @@ import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { startCreatorHubGoogleLogin, consumeCreatorHubGoogleLoginError, dismissCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
 import { useAuth } from '@/hooks/useAuth';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
+import { canUseLocalDevAdminSession } from '@/hooks/devAdminSessionGuard';
 
 interface LoginModalProps {
   open: boolean;
@@ -40,9 +41,13 @@ const AUTH_TOKEN_KEY = 'creatorhub_auth_token';
 const AUTH_USER_KEY = 'creatorhub_auth_user';
 const PROTOTYPE_GUEST_EMAIL = 'academy-guest@creatorhubn.com';
 const PROTOTYPE_GUEST_PASSWORD = 'guest-access';
-const IS_DEVELOPMENT =
+const CAN_USE_LOCAL_DEV_GUEST =
   typeof window !== 'undefined' &&
-  (import.meta.env.DEV || window.location.hostname === 'localhost');
+  canUseLocalDevAdminSession(
+    import.meta.env.DEV,
+    window.location.hostname,
+    import.meta.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+  );
 
 // Context-based title mapping
 const getContextTitle = (context?: string) => {
@@ -172,6 +177,11 @@ export function LoginModal({
   };
 
   const handlePrototypeGuestLogin = async () => {
+    if (!CAN_USE_LOCAL_DEV_GUEST) {
+      setError('Lokal gjesteinnlogging er bare tilgjengelig fra en loopback-adresse i utviklingsmodus.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -647,7 +657,7 @@ export function LoginModal({
               </>
             )}
 
-            {IS_DEVELOPMENT && loginType === 'prototype' && context === 'academy' && (
+            {CAN_USE_LOCAL_DEV_GUEST && loginType === 'prototype' && context === 'academy' && (
               <Box sx={{ textAlign: 'center' }}>
                 <Typography
                   variant="caption"

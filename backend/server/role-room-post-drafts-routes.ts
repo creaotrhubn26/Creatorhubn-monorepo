@@ -18,6 +18,8 @@ import type { Pool } from 'pg';
 import { composePost, type ComposePostInput } from './role-room-post-composer-claude.js';
 import { THEROLERROOM_BOOTSTRAP } from './role-room-agent-profile-recommendations.js';
 import { dispatchPublish } from './social-publisher.js';
+import { isAutoPublishInternalRequest } from './role-room-post-drafts-autopublish-scheduler.js';
+import { ssrfSafeFetch } from './ssrf-guard.js';
 
 export interface SetupPostDraftsRoutesDeps {
   app: Application;
@@ -26,6 +28,7 @@ export interface SetupPostDraftsRoutesDeps {
 }
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
+const MAX_DRAFT_IMAGE_BYTES = 20 * 1024 * 1024;
 
 type ImageResolveResult =
   | { ok: true; dataUrl: string }
@@ -48,20 +51,7 @@ async function resolveImageDataUrl(draft: Record<string, unknown>): Promise<Imag
   const httpUrl = typeof draft.image_url === 'string' ? draft.image_url.trim() : '';
   if (!httpUrl) return { ok: false, reason: 'no_image' };
   try {
-    const _u = new URL(httpUrl);
-    const _h = _u.hostname.toLowerCase();
-    if (!['http:', 'https:'].includes(_u.protocol) ||
-        _h === 'localhost' || _h === '127.0.0.1' || _h === '::1' ||
-        /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(_h) ||
-        _h === '169.254.169.254' || _h.endsWith('.internal') || _h.endsWith('.local')) {
-      return { ok: false, reason: 'fetch_failed', error: 'image_url peker til en ikke-tillatt adresse' };
-    }
-  } catch {
-    return { ok: false, reason: 'fetch_failed', error: 'image_url er ugyldig' };
-  }
-
-  try {
-    const resp = await fetch(httpUrl, {
+    const resp = await ssrfSafeFetch(httpUrl, {
       headers: {
         'User-Agent': 'TheRoleRoom-MarketingBot/1.0 (+https://theroleroom.com)',
         Accept: 'image/*',
@@ -74,7 +64,27 @@ async function resolveImageDataUrl(draft: Record<string, unknown>): Promise<Imag
     if (!ct.startsWith('image/')) {
       return { ok: false, reason: 'fetch_failed', error: `Image URL returnerte ikke et bilde (content-type: ${ct})` };
     }
-    const buf = Buffer.from(await resp.arrayBuffer());
+    const contentLength = Number(resp.headers.get('content-length') ?? Number.NaN);
+    if (Number.isFinite(contentLength) && contentLength > MAX_DRAFT_IMAGE_BYTES) {
+      return { ok: false, reason: 'fetch_failed', error: 'Bildet er større enn 20 MB' };
+    }
+    if (!resp.body) {
+      return { ok: false, reason: 'fetch_failed', error: 'Image URL returnerte tomt body' };
+    }
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    const reader = resp.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MAX_DRAFT_IMAGE_BYTES) {
+        await reader.cancel().catch(() => {});
+        return { ok: false, reason: 'fetch_failed', error: 'Bildet er større enn 20 MB' };
+      }
+      chunks.push(value);
+    }
+    const buf = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), received);
     if (buf.length === 0) {
       return { ok: false, reason: 'fetch_failed', error: 'Image URL returnerte tomt body' };
     }
@@ -507,35 +517,65 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
   });
 
   // ── POST post-drafts/:id/publish ─────────────────────────────────────────
-  // For FB: direct POST to /v21.0/{page-id}/feed med THEROLERROOM env-tokens.
-  // For IG/LinkedIn/TikTok: not yet wired — markeres som "manual_copy" status.
+  // Publisering er atomisk claimet før første eksterne sideeffekt. Det hindrer
+  // dobbeltposter ved dobbeltklikk eller parallelle worker-instanser.
   app.post('/api/role-room/agent/post-drafts/:id/publish', async (req, res) => {
-    if (!requireAdminOrDemoBypass(req, res)) return;
+    if (!isAutoPublishInternalRequest(req) && !requireAdminOrDemoBypass(req, res)) return;
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) { res.status(400).json({ ok: false, error: 'invalid id' }); return; }
+    let publishSideEffectStarted = false;
 
     try {
       const r = await pool.query('SELECT * FROM marketing_post_drafts WHERE id = $1', [id]);
       if (!r.rowCount) { res.status(404).json({ ok: false, error: 'draft not found' }); return; }
-      const draft = r.rows[0];
-      const platform = String(draft.platform);
+      const existingDraft = r.rows[0];
+      const platform = String(existingDraft.platform);
 
       // Predecessor-guard: en allerede publisert draft skal ikke re-publiseres
       // (duplikat offentlig FB/LinkedIn-post + overskriving av external_post_id).
       // 'failed'/'draft'/'scheduled' kan fortsatt (re)publiseres.
-      if (String(draft.status) === 'published') {
+      if (String(existingDraft.status) === 'published') {
         res.status(409).json({
           ok: false,
           error: 'already_published',
-          externalPostId: draft.external_post_id ?? null,
+          externalPostId: existingDraft.external_post_id ?? null,
         });
         return;
       }
+      if (String(existingDraft.status) === 'publishing' || String(existingDraft.status) === 'uncertain') {
+        res.status(409).json({
+          ok: false,
+          status: 'uncertain',
+          error: 'publish_outcome_uncertain',
+          message: 'Kontroller plattformen før draften redigeres eller publiseres på nytt.',
+        });
+        return;
+      }
+
+      const claimed = await pool.query(
+        `UPDATE marketing_post_drafts
+            SET status = 'publishing', publish_error = NULL, updated_at = now()
+          WHERE id = $1
+            AND status IN ('draft', 'edited', 'failed', 'manual_copy', 'scheduled')
+          RETURNING *`,
+        [id],
+      );
+      if (!claimed.rowCount) {
+        res.status(409).json({ ok: false, error: 'publish_in_progress' });
+        return;
+      }
+      const draft = claimed.rows[0];
 
       if (platform === 'facebook') {
         const pageId = (process.env.THEROLERROOM_PAGE_ID || '').trim();
         const pageToken = (process.env.THEROLERROOM_PAGE_ACCESS_TOKEN || '').trim();
         if (!pageId || !pageToken) {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+                SET status = 'failed', publish_error = $2, updated_at = now()
+              WHERE id = $1`,
+            [id, 'THEROLERROOM_PAGE_ID/TOKEN not configured'],
+          );
           res.status(503).json({ ok: false, error: 'THEROLERROOM_PAGE_ID/TOKEN not configured' });
           return;
         }
@@ -587,10 +627,16 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           return;
         }
       } else if (platform === 'linkedin') {
-        // LinkedIn UGC via registrert publisher. Henter user_id fra
+        // LinkedIn Posts API via registrert publisher. Henter user_id fra
         // env (ROLE_ROOM_MARKETING_USER_ID) — fallback til daniel-konto.
         const userId = await resolveMarketingUserId(pool);
         if (!userId) {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+                SET status = 'failed', publish_error = $2, updated_at = now()
+              WHERE id = $1`,
+            [id, 'Ingen marketing-bruker konfigurert for LinkedIn.'],
+          );
           res.status(503).json({
             ok: false,
             error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
@@ -602,6 +648,7 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         const caption = String(draft.caption || '') + (hashtags.length > 0 ? '\n\n' + hashtags.join(' ') : '');
         const ctaLink = draft.cta_link ? String(draft.cta_link).trim() : '';
 
+        publishSideEffectStarted = true;
         const result = await dispatchPublish('linkedin', {
           connectionId: userId,
           userId,
@@ -613,32 +660,65 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         });
 
         if (result.ok && result.status === 'published') {
+          const linkedInPostUrn =
+            result.permalink?.match(/urn:li:[^/]+/)?.[0]
+            ?? (result.externalPostId?.startsWith('urn:li:') ? result.externalPostId : null);
+          const storedExternalPostId = linkedInPostUrn ?? result.externalPostId ?? null;
           await pool.query(
             `UPDATE marketing_post_drafts
              SET status = 'published', published_at = now(),
                  external_post_id = $2, raw_publish_response = $3, publish_error = NULL,
                  updated_at = now()
              WHERE id = $1`,
-            [id, result.externalPostId ?? null, JSON.stringify(result.raw ?? result)],
+            [
+              id,
+              storedExternalPostId,
+              JSON.stringify({
+                ok: true,
+                status: result.status,
+                externalPostId: result.externalPostId ?? null,
+                permalink: result.permalink ?? null,
+              }),
+            ],
           );
           res.json({
             ok: true,
             status: 'published',
-            externalPostId: result.externalPostId,
+            externalPostId: storedExternalPostId,
             permalink: result.permalink,
           });
           return;
         }
 
-        const errMsg = result.error || result.reason || `LinkedIn publish status: ${result.status}`;
+        const uncertain =
+          result.reason === 'network_error'
+          || (
+            result.reason === 'linkedin_api_error'
+            && result.error?.startsWith('publisering feilet:')
+          );
+        const safeError = uncertain
+          ? 'Uavklart LinkedIn-utfall — kontroller LinkedIn før nytt forsøk'
+          : `LinkedIn-publisering feilet (${result.reason ?? 'provider_error'})`;
         await pool.query(
           `UPDATE marketing_post_drafts
-           SET status = 'failed', publish_error = $2, raw_publish_response = $3, updated_at = now()
-           WHERE id = $1`,
-          [id, errMsg, JSON.stringify(result.raw ?? result)],
+           SET status = $2, publish_error = $3, raw_publish_response = $4, updated_at = now()
+           WHERE id = $1 AND status = 'publishing'`,
+          [
+            id,
+            uncertain ? 'uncertain' : 'failed',
+            safeError,
+            JSON.stringify({
+              ok: false,
+              status: uncertain ? 'uncertain' : 'failed',
+              reason: result.reason ?? null,
+            }),
+          ],
         );
-        res.status(502).json({
-          ok: false, status: 'failed', error: errMsg, reason: result.reason,
+        res.status(uncertain ? 202 : 502).json({
+          ok: false,
+          status: uncertain ? 'uncertain' : 'failed',
+          error: safeError,
+          reason: result.reason,
         });
         return;
       } else if (platform === 'instagram') {
@@ -647,6 +727,12 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         //   2) et bilde — enten image_data_url (base64) eller image_url (offentlig HTTP)
         const userId = await resolveMarketingUserId(pool);
         if (!userId) {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+                SET status = 'failed', publish_error = $2, updated_at = now()
+              WHERE id = $1`,
+            [id, 'Ingen marketing-bruker konfigurert for Instagram.'],
+          );
           res.status(503).json({
             ok: false,
             error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
@@ -722,6 +808,13 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           // og lagrer jobId for sporing. NB: vi oppdaterer ikke til 'published'
           // før Meta bekrefter; engagement-workeren plukker den opp via
           // external_post_id-feltet senere.
+          await pool.query(
+            `UPDATE marketing_post_drafts
+                SET status = 'edited', external_post_id = $2,
+                    raw_publish_response = $3, updated_at = now()
+              WHERE id = $1`,
+            [id, result.jobId ?? null, JSON.stringify(result.raw ?? result)],
+          );
           res.json({
             ok: true,
             status: result.status,
@@ -748,6 +841,12 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         //   2) en video — enten video_data_url (base64 data:video/mp4) eller video_url (HTTP MP4)
         const userId = await resolveMarketingUserId(pool);
         if (!userId) {
+          await pool.query(
+            `UPDATE marketing_post_drafts
+                SET status = 'failed', publish_error = $2, updated_at = now()
+              WHERE id = $1`,
+            [id, 'Ingen marketing-bruker konfigurert for TikTok.'],
+          );
           res.status(503).json({
             ok: false,
             error: 'Ingen marketing-bruker konfigurert. Sett ROLE_ROOM_MARKETING_USER_ID eller opprett bruker daniel@creatorhubn.com.',
@@ -818,7 +917,8 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
           // publishId i external_post_id slik at engagement-tracking kan finne den.
           await pool.query(
             `UPDATE marketing_post_drafts
-             SET external_post_id = $2, raw_publish_response = $3, updated_at = now()
+             SET status = 'edited', external_post_id = $2,
+                 raw_publish_response = $3, updated_at = now()
              WHERE id = $1`,
             [id, result.externalPostId ?? result.jobId ?? null, JSON.stringify(result.raw ?? result)],
           );
@@ -861,7 +961,24 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         return;
       }
     } catch (err) {
-      res.status(500).json({ ok: false, error: "internal_error" });
+      const uncertain = publishSideEffectStarted;
+      await pool.query(
+        `UPDATE marketing_post_drafts
+            SET status = $2, publish_error = $3, updated_at = now()
+          WHERE id = $1 AND status = 'publishing'`,
+        [
+          id,
+          uncertain ? 'uncertain' : 'failed',
+          uncertain
+            ? 'Uavklart publiseringsutfall — kontroller plattformen før nytt forsøk'
+            : 'Kunne ikke starte publisering',
+        ],
+      ).catch(() => {});
+      res.status(uncertain ? 202 : 500).json({
+        ok: false,
+        status: uncertain ? 'uncertain' : 'failed',
+        error: uncertain ? 'publish_outcome_uncertain' : 'internal_error',
+      });
     }
   });
 }

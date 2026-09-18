@@ -1056,6 +1056,24 @@ export default function RoleRoomAgentDialog({
             window.open(result.url, '_blank', 'width=600,height=720,noopener');
           }
         }}
+        onConnectLinkedIn={() => {
+          // Åpne vinduet synkront for å unngå popup-blokkering mens den
+          // POST-baserte OAuth-starten oppretter state på serveren.
+          const popup = window.open('', '_blank', 'width=600,height=720');
+          if (popup) popup.opener = null;
+          void roleRoomAgentService.startLinkedInOauth({ projectId })
+            .then((result) => {
+              if (popup && !popup.closed) {
+                popup.location.href = result.authorizationUrl;
+              } else {
+                window.location.assign(result.authorizationUrl);
+              }
+            })
+            .catch((error: unknown) => {
+              popup?.close();
+              console.error('[RoleRoomAgent] LinkedIn OAuth-start feilet', error);
+            });
+        }}
       />
       {/* Guided flow bar: step through tabs with Forrige/Neste so users don't
           have to pick among ~12. Toggle collapses the full tab strip. */}

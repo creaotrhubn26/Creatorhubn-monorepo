@@ -60,6 +60,31 @@ export interface AgentThreadsRoutesDeps {
   activeSessions: Map<string, SessionData>;
 }
 
+export function buildAgentThreadStreamBody(
+  raw: Record<string, unknown>,
+  threadId: string,
+): Record<string, unknown> {
+  const content = raw.content ?? raw.message ?? raw.userMessage ?? '';
+  const surface = raw.surface === 'leadgrid_ipad' ? raw.surface : undefined;
+  const context = raw.context && typeof raw.context === 'object' && !Array.isArray(raw.context)
+    ? raw.context
+    : undefined;
+  const organizationId = typeof raw.organization_id === 'string'
+    ? raw.organization_id
+    : typeof raw.organizationId === 'string'
+      ? raw.organizationId
+      : undefined;
+  return {
+    userMessage: typeof content === 'string' ? content.trim() : '',
+    requiredScope: raw.required_scope ?? raw.requiredScope ?? 'brief_only',
+    threadId,
+    persistThread: true,
+    ...(surface ? { surface } : {}),
+    ...(organizationId ? { organizationId } : {}),
+    ...(context ? { context } : {}),
+  };
+}
+
 function getSession(
   req: Request,
   activeSessions: Map<string, SessionData>,
@@ -330,13 +355,7 @@ export function registerRoleRoomAgentThreadsRoutes(
         res.status(404).json({ error: "thread_not_found" });
         return;
       }
-      const body = (req.body ?? {}) as {
-        content?: string;
-        message?: string;
-        userMessage?: string;
-        required_scope?: string;
-        requiredScope?: string;
-      };
+      const body = (req.body ?? {}) as Record<string, unknown>;
       const userMessage = body.content ?? body.message ?? body.userMessage ?? "";
       if (typeof userMessage !== "string" || userMessage.trim().length === 0) {
         res.status(400).json({ error: "content required" });
@@ -344,12 +363,7 @@ export function registerRoleRoomAgentThreadsRoutes(
       }
       // Shimme req.body til formatet handleAgentStream forventer + sett
       // params.projectId (handleAgentStream leser fra req.params).
-      req.body = {
-        userMessage: userMessage.trim(),
-        requiredScope: body.required_scope ?? body.requiredScope ?? "brief_only",
-        threadId: req.params.id,
-        persistThread: true,
-      };
+      req.body = buildAgentThreadStreamBody(body, req.params.id);
       (req.params as Record<string, string>).projectId = owner.projectId;
       try {
         await handleAgentStream(pool, req, res, session.userId, session.role);

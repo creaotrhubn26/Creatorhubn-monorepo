@@ -14,6 +14,10 @@ import * as schema from '../migrations/schema.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { canAccessProject } from './project-team-routes.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
+import {
+  parseWebSocketRequestUrl,
+  resolveWebSocketPathOwner,
+} from './websocket-path-policy.js';
 import crypto from 'crypto';
 
 type DB = NodePgDatabase<typeof schema>;
@@ -304,17 +308,13 @@ export function createWebSocketServer(
   }
 
   server.on('upgrade', (req, socket, head) => {
-    try {
-      const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-      const pathname = url.pathname || '/';
-      if (pathname === '/ws' || pathname.startsWith('/ws/')) {
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          wss.emit('connection', ws, req);
-        });
-        return;
-      }
-    } catch {
-      // Ignore malformed upgrade URL and let other listeners handle it.
+    const url = parseWebSocketRequestUrl(req.url);
+    const pathname = url?.pathname || '/';
+    if (url && resolveWebSocketPathOwner(pathname) === 'chat') {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+      return;
     }
 
     // If this is the only upgrade listener, proactively close unsupported paths.
@@ -325,7 +325,11 @@ export function createWebSocketServer(
 
   wss.on('connection', (ws, req) => {
     const clientId = crypto.randomUUID();
-    const url    = new URL(req.url || '/', `http://${req.headers.host}`);
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url) {
+      ws.close(1008, 'invalid_request_target');
+      return;
+    }
     // The `?userId=` query param is NO LONGER trusted for identity — it is kept
     // only as a provisional label for unauthenticated sockets (which cannot
     // send/receive chat). The real identity comes from the verified token below.

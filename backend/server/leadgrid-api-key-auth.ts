@@ -110,6 +110,44 @@ export function requireApiKey(pool: Pool, requiredScopes: string[] = []) {
       return;
     }
 
+    // API-keyens organization_id er kanonisk. Public API ligger utenfor
+    // /api/leadgrid-mounten og må derfor håndheve samme statusmatrise her.
+    // Nøkkelen er allerede validert, så statusdetaljer eksponeres ikke til
+    // anonyme kall.
+    try {
+      const org = await pool.query<{ status: string }>(
+        `SELECT status
+           FROM organizations
+          WHERE id::text = $1
+          LIMIT 1`,
+        [row.organization_id],
+      );
+      const status = org.rows[0]?.status;
+      if (!status) {
+        res.status(403).json({ error: "organization_unavailable" });
+        return;
+      }
+      if (status === "suspended" || status === "closed") {
+        res.status(403).json({ error: "organization_suspended", status });
+        return;
+      }
+      const write = !["GET", "HEAD", "OPTIONS"].includes(
+        req.method.toUpperCase(),
+      );
+      if ((status === "paused" || status === "read_only") && write) {
+        res.status(423).json({ error: "organization_read_only", status });
+        return;
+      }
+      if (!["active", "paused", "read_only"].includes(status)) {
+        res.status(423).json({ error: "organization_status_not_allowed", status });
+        return;
+      }
+    } catch (err) {
+      console.warn("[api-key-auth] org-status lookup feilet:", err);
+      res.status(503).json({ error: "organization_status_unavailable" });
+      return;
+    }
+
     // Scope check (OR-logikk + wildcard)
     const scopes: string[] = Array.isArray(row.scopes)
       ? (row.scopes as string[])

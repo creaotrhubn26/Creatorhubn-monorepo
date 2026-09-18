@@ -228,6 +228,24 @@ const LINKEDIN_AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization";
  *  Google: utvidet 2026-06-08 til full Google-suite (Ads + GA4 + GSC + GTM)
  *  så samme MCC-tilkobling dekker O2/O3/O4. Eksisterende connections med kun
  *  `adwords` må re-koble for å få GA4/GSC/GTM-rettigheter. */
+export function isLinkedInMatchedAudiencesEnabled(): boolean {
+  return /^(?:1|true|yes)$/i.test(
+    process.env.LINKEDIN_MATCHED_AUDIENCES_ENABLED?.trim() ?? "",
+  );
+}
+
+export function buildLinkedInAdsOauthScopes(
+  includeMatchedAudiences = isLinkedInMatchedAudiencesEnabled(),
+): string[] {
+  return [
+    "r_ads",
+    "r_ads_reporting",
+    "rw_ads",
+    "r_organization_admin",
+    ...(includeMatchedAudiences ? ["rw_dmp_segments"] : []),
+  ];
+}
+
 export const ADS_OAUTH_SCOPES: Partial<Record<AdsPlatform, string[]>> = {
   google: [
     "https://www.googleapis.com/auth/adwords",
@@ -239,7 +257,8 @@ export const ADS_OAUTH_SCOPES: Partial<Record<AdsPlatform, string[]>> = {
   ],
   // r_organization_admin powers the "which Company Pages am I admin of" view.
   // rw_ads kreves for å POST-e til /rest/conversions og /rest/insightTags.
-  linkedin: ["r_ads", "r_ads_reporting", "rw_ads", "r_organization_admin"],
+  // rw_dmp_segments tas bare med etter separat Matched Audiences-godkjenning.
+  linkedin: buildLinkedInAdsOauthScopes(),
 };
 
 export function buildAdsAuthUrl(
@@ -326,9 +345,23 @@ function clientCredsFor(platform: AdsPlatform): { clientId: string; clientSecret
     return clientId && clientSecret ? { clientId, clientSecret } : null;
   }
   if (platform === "linkedin") {
-    const clientId = process.env.LINKEDIN_ADS_OAUTH_CLIENT_ID;
-    const clientSecret = process.env.LINKEDIN_ADS_OAUTH_CLIENT_SECRET;
-    return clientId && clientSecret ? { clientId, clientSecret } : null;
+    const credentialPairs = [
+      [
+        process.env.LINKEDIN_ADS_OAUTH_CLIENT_ID,
+        process.env.LINKEDIN_ADS_OAUTH_CLIENT_SECRET,
+      ],
+      [process.env.LINKEDIN_CLIENT_ID, process.env.LINKEDIN_CLIENT_SECRET],
+      [
+        process.env.ROLE_ROOM_LINKEDIN_CLIENT_ID,
+        process.env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET,
+      ],
+    ];
+    for (const [clientId, clientSecret] of credentialPairs) {
+      if (clientId?.trim() && clientSecret?.trim()) {
+        return { clientId: clientId.trim(), clientSecret: clientSecret.trim() };
+      }
+    }
+    return null;
   }
   return null;
 }

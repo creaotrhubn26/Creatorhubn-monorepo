@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowExactRenderService",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::745600963362:oidc-provider/oidc.render.com/tea-d47oibshg0os73fra97g"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.render.com/tea-d47oibshg0os73fra97g:aud": "sts.amazonaws.com",
+          "oidc.render.com/tea-d47oibshg0os73fra97g:sub": "workspace:tea-d47oibshg0os73fra97g:environment:evm-d47s5lmmcj7s73djf8tg:service:srv-d76ob60ule4c73dv2p60"
+        }
+      }
+    }
+  ]
+}

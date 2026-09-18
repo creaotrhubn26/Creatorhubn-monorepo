@@ -65,6 +65,81 @@ export async function seedTrollDemo(
   try {
     await client.query('BEGIN');
 
+    const existingCastingProject = await client.query(
+      `SELECT created_by, metadata
+         FROM casting_projects
+        WHERE id = $1
+        FOR UPDATE`,
+      [TROLL_PROJECT_ID],
+    );
+    if ((existingCastingProject.rowCount ?? 0) > 0) {
+      const row = existingCastingProject.rows[0];
+      const metadata = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      if (row.created_by !== ownerUserId
+        || metadata.isDemo !== true
+        || metadata.source !== 'troll_seed_v1') {
+        const error = new Error('seed_target_is_not_owned_demo_project');
+        (error as Error & { code?: string }).code = 'SEED_TARGET_NOT_DEMO';
+        throw error;
+      }
+    }
+
+    // split_sheets is shared with real Workspace agreements. Resolve and lock
+    // every header before any destructive seed work so personal signing cannot
+    // race this transaction. Only this owner's explicit TROLL demo sheets may
+    // be replaced; a live/non-demo sheet makes the whole seed fail closed.
+    const existingSplitSheets = await client.query(
+      `SELECT id, user_id, metadata
+         FROM split_sheets
+        WHERE project_id = $1
+        ORDER BY id
+        FOR UPDATE`,
+      [TROLL_PROJECT_ID],
+    );
+    const existingSplitSheetIds = existingSplitSheets.rows.map((row) => String(row.id));
+    const signedSplitSheetIds = new Set<string>();
+    if (existingSplitSheetIds.length > 0) {
+      const signedRows = await client.query(
+        `SELECT DISTINCT split_sheet_id
+           FROM split_sheet_contributors
+          WHERE split_sheet_id = ANY($1::uuid[])
+            AND signed_at IS NOT NULL`,
+        [existingSplitSheetIds],
+      );
+      for (const row of signedRows.rows) {
+        signedSplitSheetIds.add(String(row.split_sheet_id));
+      }
+    }
+
+    const nonDemoSheets = existingSplitSheets.rows.filter((row) => {
+      const metadata = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      return row.user_id !== ownerUserId
+        || metadata.isDemo !== true
+        || metadata.source !== 'troll_seed_v1';
+    });
+    if (nonDemoSheets.length > 0) {
+      const error = new Error('seed_target_contains_non_demo_split_sheets');
+      (error as Error & { code?: string }).code = 'SEED_TARGET_NOT_DEMO';
+      throw error;
+    }
+
+    const signedVersionedSheet = existingSplitSheets.rows.find((row) => {
+      const metadata = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      return Number(metadata.agreementVersion) >= 1
+        && signedSplitSheetIds.has(String(row.id));
+    });
+    if (signedVersionedSheet) {
+      const error = new Error('signed_agreement_locked');
+      (error as Error & { code?: string }).code = 'SIGNED_AGREEMENT_LOCKED';
+      throw error;
+    }
+
     // ── 1. Slett alle sub-data for å gjøre seed idempotent ───────────
     // Rekkefølge: barn-tabeller før parent (FK-cascading sikrer at
     // sletting av casting_projects ville fjerne alt, men vi vil beholde
@@ -794,13 +869,19 @@ THE END.
     }
 
     // ── 12d. split_sheets + split_sheet_contributors ──────────────────
-    // Idempotent: slett eksisterende sheet for prosjektet før INSERT.
-    await client.query(
-      `DELETE FROM split_sheet_contributors
-         WHERE split_sheet_id IN (SELECT id FROM split_sheets WHERE project_id = $1)`,
-      [TROLL_PROJECT_ID],
-    );
-    await client.query(`DELETE FROM split_sheets WHERE project_id = $1`, [TROLL_PROJECT_ID]);
+    // Idempotent: slett bare de eksplisitt verifiserte demoarkene som ble låst
+    // ved transaksjonsstart. Reelle Workspace-avtaler berøres aldri.
+    if (existingSplitSheetIds.length > 0) {
+      await client.query(
+        `DELETE FROM split_sheet_contributors
+          WHERE split_sheet_id = ANY($1::uuid[])`,
+        [existingSplitSheetIds],
+      );
+      await client.query(
+        `DELETE FROM split_sheets WHERE id = ANY($1::uuid[])`,
+        [existingSplitSheetIds],
+      );
+    }
 
     const splitSheetRow = await client.query<{ id: string }>(
       `INSERT INTO split_sheets

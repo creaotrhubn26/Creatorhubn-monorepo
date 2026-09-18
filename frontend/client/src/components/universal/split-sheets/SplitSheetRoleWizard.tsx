@@ -66,6 +66,14 @@ import {
   Legend,
 } from 'recharts';
 import TeamMembersDirectory, { loadTeamMembers, type TeamMember } from './TeamMembersDirectory';
+import {
+  calculateHourlyAmount,
+  hasRequiredSplitSheetParticipantCount,
+  normalizeCurrencyAmount,
+  normalizeEstimatedHours,
+  splitSheetCompensationModel,
+  type SplitSheetCompensationType,
+} from '@shared/split-sheet-compensation';
 
 // ─── Rolle-katalog ───────────────────────────────────────────────────
 // Vekt-tall basert på Stines feedback. Admin kan flytte disse til DB
@@ -136,6 +144,9 @@ interface Participant {
   email?: string;
   roleId: string;
   manualPct?: number; // brukes i manual + hybrid
+  compensationType?: SplitSheetCompensationType;
+  hourlyRate?: number | string;
+  estimatedHours?: number | string;
   // Eksternt firma (kostnad av-toppen, hentet fra vendorens katalog):
   isExternal?: boolean;
   vendorUserId?: string;
@@ -161,6 +172,8 @@ interface VendorCatalog {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Timepris er foreløpig en workspace-avtale og krever kanonisk API/signering. */
+  allowHourly?: boolean;
   projectAmount?: number; // brutto-beløp som skal splittes
   projectName?: string;
   profession?: string; // styrer hvilken rolle-katalog som vises
@@ -180,15 +193,18 @@ interface Props {
     projectName: string;
     projectAmount: number;
     model: SplitModel;
+    compensationModel: 'share' | 'hourly' | 'mixed';
     participants: Array<Participant & { sharePct: number; shareKr: number; roleLabel: string }>;
   }) => void;
 }
 
-const STEPS = ['Hvem', 'Roller', 'Modell', 'Forhåndsvis & signer'] as const;
+const STEPS = ['Hvem', 'Roller & honorar', 'Fordeling', 'Forhåndsvis & signer'] as const;
+const isValidSigningEmail = (value?: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 
 const SplitSheetRoleWizard: React.FC<Props> = ({
   open,
   onClose,
+  allowHourly = false,
   projectAmount: initialAmount = 25_000,
   projectName: initialName = '',
   profession = 'photographer',
@@ -206,6 +222,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
       email: p.email || '',
       roleId: p.roleId || 'photo',
       manualPct: initialParticipants.length > 0 ? Math.floor(100 / initialParticipants.length) : 100,
+      compensationType: 'share',
     })),
   );
   const [model, setModel] = useState<SplitModel>('weighted');
@@ -221,6 +238,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         email: p.email || '',
         roleId: p.roleId || 'photo',
         manualPct: Math.floor(100 / initialParticipants.length),
+        compensationType: 'share',
       })));
       // Hopp direkte til steg 2 (roller) hvis deltakere er pre-fylt
       setStep(1);
@@ -292,15 +310,31 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
     return p.externalLines.reduce((s, l) => s + toNok((Number(l.pricePerImage) || 0) * (Number(l.qty) || 0), l.currency), 0);
   };
 
-  // ─── Beregn shares (ekstern vendor-kostnad av-toppen i NOK, så splitt resten) ──
+  // ─── Beregn honorar ───────────────────────────────────────────
+  // Eksterne kataloglinjer og timebetalte deltakere trekkes av toppen. Resten
+  // fordeles mellom andelsdeltakerne etter valgt split-modell. Hvis alle er
+  // time-/fastbetalt, er avtaleverdien summen av disse honorarene og feltet
+  // «oppdragsverdi» brukes ikke.
   const externalTotal = participants.reduce((s, p) => s + costNok(p), 0);
-  const splittable = Math.max(0, projectAmount - externalTotal);
+  const hourlyParticipants = participants.filter((p) => !p.isExternal && p.compensationType === 'hourly');
+  const shareParticipants = participants.filter((p) => !p.isExternal && p.compensationType !== 'hourly');
+  const effectiveHybridBasePct = shareParticipants.length > 0
+    ? Math.min(hybridBasePct, Math.floor(100 / shareParticipants.length))
+    : 0;
+  const hourlyTotal = hourlyParticipants.reduce(
+    (sum, p) => sum + calculateHourlyAmount(p.hourlyRate, p.estimatedHours),
+    0,
+  );
+  const fixedCompensationTotal = externalTotal + hourlyTotal;
+  const effectiveProjectAmount = shareParticipants.length === 0
+    ? fixedCompensationTotal
+    : projectAmount;
+  const splittable = Math.max(0, effectiveProjectAmount - fixedCompensationTotal);
 
   const computedSplits = useMemo(() => {
     if (participants.length === 0) return [];
-    const internals = participants.filter((p) => !p.isExternal);
-    const n = internals.length;
-    const totalWeight = internals.reduce(
+    const n = shareParticipants.length;
+    const totalWeight = shareParticipants.reduce(
       (sum, q) => sum + (activeRoleCatalog.find((r) => r.id === q.roleId)?.weight || 1), 0,
     );
     // Intern andel (% av splittable) per intern deltaker, basert på modell.
@@ -311,23 +345,44 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
       if (model === 'manual') return p.manualPct ?? 100 / n;
       if (model === 'weighted') return totalWeight > 0 ? (w / totalWeight) * 100 : 0;
       // hybrid: base + vekt på resten
-      const remainingPct = Math.max(0, 100 - hybridBasePct * n);
-      return hybridBasePct + (totalWeight > 0 ? (w / totalWeight) * remainingPct : 0);
+      const remainingPct = Math.max(0, 100 - effectiveHybridBasePct * n);
+      return effectiveHybridBasePct + (totalWeight > 0 ? (w / totalWeight) * remainingPct : 0);
     };
-    const pctOfTotal = (kr: number) => (projectAmount > 0 ? (kr / projectAmount) * 100 : 0);
+    const pctOfTotal = (kr: number) => (effectiveProjectAmount > 0 ? (kr / effectiveProjectAmount) * 100 : 0);
     return participants.map((p) => {
       if (p.isExternal) {
         const cost = costNok(p); // i NOK (konvertert fra katalog-valuta)
-        return { ...p, sharePct: pctOfTotal(cost), shareKr: cost, roleLabel: p.vendorName || 'Eksternt firma' };
+        return { ...p, compensationType: 'fixed', sharePct: pctOfTotal(cost), shareKr: cost, roleLabel: p.vendorName || 'Eksternt firma' };
+      }
+      if (p.compensationType === 'hourly') {
+        const amount = calculateHourlyAmount(p.hourlyRate, p.estimatedHours);
+        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
+        return {
+          ...p,
+          compensationType: 'hourly',
+          sharePct: pctOfTotal(amount),
+          shareKr: amount,
+          estimatedAmount: amount,
+          roleLabel: role?.label || '—',
+        };
       }
       const role = activeRoleCatalog.find((r) => r.id === p.roleId);
       const kr = (internalPct(p) / 100) * splittable;
-      return { ...p, sharePct: pctOfTotal(kr), shareKr: kr, roleLabel: role?.label || '—' };
+      return { ...p, compensationType: 'share', sharePct: pctOfTotal(kr), shareKr: kr, roleLabel: role?.label || '—' };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participants, model, projectAmount, splittable, hybridBasePct, activeRoleCatalog, fxData]);
+  }, [participants, model, effectiveProjectAmount, splittable, effectiveHybridBasePct, activeRoleCatalog, fxData]);
 
-  const totalPct = computedSplits.reduce((s, p) => s + p.sharePct, 0);
+  const manualSharePct = shareParticipants.reduce((sum, p) => sum + (Number(p.manualPct) || 0), 0);
+  const computedTotalPct = computedSplits.reduce((sum, p) => sum + (Number(p.sharePct) || 0), 0);
+  const compensationModel = splitSheetCompensationModel(computedSplits);
+  const hasRequiredParticipantCount = hasRequiredSplitSheetParticipantCount(compensationModel, participants.length);
+
+  useEffect(() => {
+    if (shareParticipants.length === 0) return;
+    const maxBase = Math.floor(100 / shareParticipants.length);
+    setHybridBasePct((current) => Math.min(current, maxBase));
+  }, [shareParticipants.length]);
 
   // ─── Handlers ──────────────────────────────────────────────────
   const addParticipant = () => {
@@ -340,6 +395,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         email: '',
         roleId: defaultRoleId,
         manualPct: prev.length > 0 ? Math.floor(100 / (prev.length + 1)) : 100,
+        compensationType: 'share',
       },
     ]);
   };
@@ -353,26 +409,35 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
   };
 
   const canProceed = (() => {
-    if (step === 0) return participants.length >= 2 && participants.every((p) => p.name.trim().length > 0);
-    if (step === 1) return participants.every((p) => p.roleId);
+    if (step === 0) return participants.length >= (allowHourly ? 1 : 2) && participants.every((p) =>
+      p.name.trim().length > 0 && (!allowHourly || isValidSigningEmail(p.email)));
+    if (step === 1) return hasRequiredParticipantCount && participants.every((p) => p.roleId && (
+      p.isExternal || p.compensationType !== 'hourly' || calculateHourlyAmount(p.hourlyRate, p.estimatedHours) > 0
+    ));
     if (step === 2) {
-      if (model === 'manual') return Math.abs(totalPct - 100) < 0.5;
+      if (!hasRequiredParticipantCount) return false;
+      if (effectiveProjectAmount <= 0) return false;
+      if (shareParticipants.length > 0 && fixedCompensationTotal > effectiveProjectAmount) return false;
+      if (computedTotalPct > 100.5) return false;
+      if (model === 'manual' && shareParticipants.length > 0) return Math.abs(manualSharePct - 100) < 0.5;
       return true;
     }
     return true;
   })();
 
   const handleSave = () => {
+    if (!hasRequiredParticipantCount) return;
     splitSheetEvents.saved({
       model,
       participantCount: computedSplits.length,
-      totalAmount: projectAmount,
+      totalAmount: effectiveProjectAmount,
       profession,
     });
     onSave({
       projectName: projectName.trim() || 'Uten navn',
-      projectAmount,
+      projectAmount: effectiveProjectAmount,
       model,
+      compensationModel,
       participants: computedSplits,
     });
     onClose();
@@ -427,7 +492,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 {source === 'inquiry-suggestion' ? 'Forslag fra forespørsel' : 'Split Sheet'}
               </Typography>
               <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, letterSpacing: '-0.02em' }}>
-                Fordel honorar i team
+                Avtal honorar i team
               </Typography>
             </Box>
           </Stack>
@@ -496,14 +561,21 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 placeholder="F.eks. Bryllup Anna & Bob"
               />
               <TextField
-                label="Brutto-beløp"
+                label="Oppdragsverdi"
                 type="number"
                 value={projectAmount || ''}
                 onChange={(e) => setProjectAmount(Number(e.target.value) || 0)}
                 sx={{ minWidth: 200 }}
+                helperText="Brukes når noen får en andel. Ved ren timepris beregnes totalen automatisk."
                 InputProps={{ endAdornment: <InputAdornment position="end" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>kr</InputAdornment> }}
               />
             </Stack>
+
+            {allowHourly && (
+              <Alert severity="info">
+                Hver deltaker må ha e-post, fordi signering skjer med en personlig og sikker lenke.
+              </Alert>
+            )}
 
             <Box sx={{ pt: 1 }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }} flexWrap="wrap" gap={1}>
@@ -548,6 +620,12 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 </Stack>
               </Stack>
 
+              {!allowHourly && participants.length === 1 && (
+                <Alert severity="info" sx={{ mb: 1.5 }}>
+                  Legg til én person til. Et split sheet med prosentfordeling krever minst to deltakere.
+                </Alert>
+              )}
+
               {participants.length === 0 ? (
                 <Card sx={{
                   p: 4,
@@ -560,7 +638,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 }}>
                   <TeamIcon sx={{ fontSize: 48, color: 'rgba(255, 140, 0,0.4)', mb: 1 }} />
                   <Typography variant="body2">
-                    Legg til minst 2 personer for å starte
+                    Legg til minst {allowHourly ? 'én person' : 'to personer'} for å starte
                   </Typography>
                 </Card>
               ) : (
@@ -596,9 +674,12 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                         />
                         <TextField
                           size="small"
-                          placeholder="E-post (valgfri)"
+                          type="email"
+                          required={allowHourly}
+                          placeholder={allowHourly ? 'E-post for signering' : 'E-post (valgfri)'}
                           value={p.email}
                           onChange={(e) => updateParticipant(p.id, { email: e.target.value })}
+                          error={allowHourly && !!p.email && !isValidSigningEmail(p.email)}
                           sx={{ flex: 1 }}
                         />
                         <IconButton
@@ -739,8 +820,14 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 '& .MuiAlert-icon': { color: '#4cc9f0' },
               }}
             >
-              Hver rolle har en vekt som reflekterer typisk arbeidsmengde. Foto + redigering tjener mer enn bare foto, video + redigering enda mer.
+              Velg rolle og honorarform per person. Timepris trekkes av toppen før resten fordeles mellom andelsdeltakerne.
             </Alert>
+
+            {!hasRequiredParticipantCount && (
+              <Alert severity="warning">
+                En ren prosentfordeling krever minst to deltakere. Gå tilbake og legg til én person, eller velg timepris.
+              </Alert>
+            )}
 
             {participants.map((p) => {
               const role = activeRoleCatalog.find((r) => r.id === p.roleId);
@@ -809,6 +896,64 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       );
                     })}
                   </Box>
+
+                  {allowHourly && !p.isExternal && (
+                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.75, color: 'rgba(255, 255, 255,0.62)', fontWeight: 700 }}>
+                        Honorarform
+                      </Typography>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'flex-start' }}>
+                        <Select
+                          size="small"
+                          value={p.compensationType || 'share'}
+                          onChange={(e) => updateParticipant(p.id, {
+                            compensationType: e.target.value as 'share' | 'hourly',
+                          })}
+                          sx={{ minWidth: 190 }}
+                        >
+                          <MenuItem value="share">Andel av oppdraget</MenuItem>
+                          <MenuItem value="hourly">Timepris</MenuItem>
+                        </Select>
+                        {p.compensationType === 'hourly' && (
+                          <>
+                            <TextField
+                              size="small"
+                              type="number"
+                              label="Timesats"
+                              value={p.hourlyRate ?? ''}
+                              onChange={(e) => updateParticipant(p.id, { hourlyRate: e.target.value })}
+                              onBlur={(e) => updateParticipant(p.id, { hourlyRate: normalizeCurrencyAmount(e.target.value) })}
+                              inputProps={{ min: 0, step: 0.01 }}
+                              InputProps={{ endAdornment: <InputAdornment position="end">kr/t</InputAdornment> }}
+                              sx={{ width: { xs: '100%', sm: 180 } }}
+                            />
+                            <TextField
+                              size="small"
+                              type="number"
+                              label="Estimerte timer"
+                              value={p.estimatedHours ?? ''}
+                              onChange={(e) => updateParticipant(p.id, { estimatedHours: e.target.value })}
+                              onBlur={(e) => updateParticipant(p.id, { estimatedHours: normalizeEstimatedHours(e.target.value) })}
+                              inputProps={{ min: 0, step: 0.01 }}
+                              InputProps={{ endAdornment: <InputAdornment position="end">t</InputAdornment> }}
+                              sx={{ width: { xs: '100%', sm: 180 } }}
+                            />
+                            <Box sx={{ minWidth: 140, px: 1.5, py: 0.85, borderRadius: 1.5, bgcolor: 'rgba(255, 140, 0,0.08)', border: '1px solid rgba(255, 140, 0,0.18)' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>Estimert honorar</Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 800, color: 'var(--ws-accent, #ff8c00)' }}>
+                                {calculateHourlyAmount(p.hourlyRate, p.estimatedHours).toLocaleString('nb-NO')} kr
+                              </Typography>
+                            </Box>
+                          </>
+                        )}
+                      </Stack>
+                      {p.compensationType === 'hourly' && (
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'rgba(255, 255, 255,0.5)' }}>
+                          Timesatsen er avtalevilkåret. Sluttbeløpet følger godkjente timer; timeantallet her er et estimat.
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                 </Card>
               );
             })}
@@ -818,6 +963,26 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         {/* STEG 3: Modell */}
         {step === 2 && (
           <Stack spacing={2}>
+            <Alert severity={shareParticipants.length === 0 ? 'success' : 'info'}>
+              {shareParticipants.length === 0
+                ? `Alle honorarer er time-/fastbasert. Estimert avtaleverdi er ${Math.round(effectiveProjectAmount).toLocaleString('nb-NO')} kr, så ingen prosentfordeling er nødvendig.`
+                : `${Math.round(fixedCompensationTotal).toLocaleString('nb-NO')} kr er satt av til time-/fasthonorar. De resterende ${Math.round(splittable).toLocaleString('nb-NO')} kr fordeles mellom ${shareParticipants.length} andelsdeltaker${shareParticipants.length === 1 ? '' : 'e'}.`}
+            </Alert>
+
+            {shareParticipants.length === 0 ? (
+              <Card sx={{ p: 2.5, bgcolor: 'rgba(76,175,80,0.08)', border: '1px solid rgba(76,175,80,0.28)', boxShadow: 'none' }}>
+                <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>Timeavtalen er klar for forhåndsvisning</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
+                  Neste steg viser timesats, estimerte timer og estimert honorar for hver person før avtalen sendes til signering.
+                </Typography>
+              </Card>
+            ) : (
+              <>
+            {fixedCompensationTotal > effectiveProjectAmount && (
+              <Alert severity="error">
+                Time-/fasthonorar er høyere enn oppdragsverdien. Øk oppdragsverdien eller juster sats/timer før du fortsetter.
+              </Alert>
+            )}
             <RadioGroup value={model} onChange={(e) => setModel(e.target.value as SplitModel)}>
               {([
                 { v: 'weighted', label: 'Vekt-basert (anbefalt)', desc: 'Hver person får andel proporsjonalt til rolle-vekten' },
@@ -863,13 +1028,13 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
             {model === 'hybrid' && (
               <Card sx={{ p: 2.5, bgcolor: 'rgba(255, 140, 0,0.06)', border: '1px solid rgba(255, 140, 0,0.18)', boxShadow: 'none' }}>
                 <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 600 }}>
-                  Base per person: {hybridBasePct}%
+                  Base per person: {effectiveHybridBasePct}%
                 </Typography>
                 <Slider
-                  value={hybridBasePct}
-                  onChange={(_, v) => setHybridBasePct(Math.min(100 / participants.length, v as number))}
+                  value={effectiveHybridBasePct}
+                  onChange={(_, v) => setHybridBasePct(Math.min(100 / shareParticipants.length, v as number))}
                   min={0}
-                  max={Math.floor(100 / Math.max(1, participants.length))}
+                  max={Math.floor(100 / Math.max(1, shareParticipants.length))}
                   step={1}
                   sx={{
                     color: 'var(--ws-accent, #ff8c00)',
@@ -877,7 +1042,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   }}
                 />
                 <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
-                  Resterende {100 - hybridBasePct * participants.length}% fordeles etter rolle-vekt.
+                  Resterende {100 - effectiveHybridBasePct * shareParticipants.length}% fordeles etter rolle-vekt.
                 </Typography>
               </Card>
             )}
@@ -885,7 +1050,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
             {model === 'manual' && (
               <Stack spacing={1.5}>
                 <Typography variant="subtitle2">Sett prosenter manuelt:</Typography>
-                {participants.map((p) => (
+                {shareParticipants.map((p) => (
                   <Card key={p.id} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: 'none' }}>
                     <Stack direction="row" alignItems="center" spacing={2}>
                       <Typography sx={{ flex: 1 }}>{p.name}</Typography>
@@ -902,15 +1067,17 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 ))}
                 <Box sx={{
                   p: 1.5,
-                  bgcolor: Math.abs(totalPct - 100) < 0.5 ? 'rgba(76,175,80,0.12)' : 'rgba(244,67,54,0.12)',
-                  border: `1px solid ${Math.abs(totalPct - 100) < 0.5 ? 'rgba(76,175,80,0.4)' : 'rgba(244,67,54,0.4)'}`,
+                  bgcolor: Math.abs(manualSharePct - 100) < 0.5 ? 'rgba(76,175,80,0.12)' : 'rgba(244,67,54,0.12)',
+                  border: `1px solid ${Math.abs(manualSharePct - 100) < 0.5 ? 'rgba(76,175,80,0.4)' : 'rgba(244,67,54,0.4)'}`,
                   borderRadius: 1.5,
                 }}>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    Total: {totalPct.toFixed(1)}% {Math.abs(totalPct - 100) < 0.5 ? '✓' : '— må summere til 100'}
+                    Total: {manualSharePct.toFixed(1)}% {Math.abs(manualSharePct - 100) < 0.5 ? '✓' : '— må summere til 100'}
                   </Typography>
                 </Box>
               </Stack>
+            )}
+              </>
             )}
           </Stack>
         )}
@@ -925,20 +1092,26 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               borderRadius: 2,
               boxShadow: 'none',
             }}>
-              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>Total</Typography>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>
+                {compensationModel === 'share' ? 'Total' : 'Estimert total'}
+              </Typography>
               <Stack direction="row" alignItems="baseline" spacing={1}>
                 <Typography variant="h3" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>
-                  {projectAmount.toLocaleString('nb-NO')}
+                  {effectiveProjectAmount.toLocaleString('nb-NO')}
                 </Typography>
                 <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>kr</Typography>
               </Stack>
               {/* MVA-oppdeling (samme modell som editing-marketplace + Fiken). */}
-              {(() => {
+              {hourlyParticipants.length > 0 ? (
+                <Alert severity="info" sx={{ mt: 1, mb: 1 }}>
+                  Timehonoraret er et estimat basert på avtalt timesats og estimerte timer. Faktisk honorar følger godkjente timer. Eventuell MVA avhenger av hver leverandørs avgiftsstatus.
+                </Alert>
+              ) : (() => {
                 // Utenlandske eksterne andeler = snudd avregning (ingen norsk MVA).
                 const foreignExternal = participants
                   .filter((p) => p.isExternal && p.vendorIsForeign)
                   .reduce((s, p) => s + externalCostOf(p), 0);
-                const mvaBase = Math.max(0, projectAmount - foreignExternal);
+                const mvaBase = Math.max(0, effectiveProjectAmount - foreignExternal);
                 const mva = Math.round(mvaBase * 0.25);
                 return (
                   <Box sx={{ mt: 1, mb: 1, color: 'rgba(255, 255, 255,0.82)' }}>
@@ -951,7 +1124,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       <span>+ 25 % MVA (MVA-grunnlag {mvaBase.toLocaleString('nb-NO')})</span><span>{mva.toLocaleString('nb-NO')} kr</span>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.12)', mt: 0.5, pt: 0.5 }}>
-                      <span>Totalt inkl. MVA</span><span>{(projectAmount + mva).toLocaleString('nb-NO')} kr</span>
+                      <span>Totalt inkl. MVA</span><span>{(effectiveProjectAmount + mva).toLocaleString('nb-NO')} kr</span>
                     </Box>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'rgba(255, 255, 255,0.55)' }}>
                       Utenlandsk eksternt firma: snudd avregning — andelen utbetales uten norsk MVA; mottaker selv-avregner. Innenlands andel + provisjon: 25 % MVA.
@@ -959,8 +1132,15 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   </Box>
                 );
               })()}
+              <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
+                Første personlige signatur gjør avtalevilkårene permanente. Hvis vilkårene senere må endres, oppretter du en ny avtale; den opprinnelige signerte avtalen kan arkiveres.
+              </Alert>
               <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
-                {projectName || 'Uten prosjektnavn'} · {participants.length} personer · {model === 'weighted' ? 'Vekt-basert' : model === 'equal' ? 'Lik splitt' : model === 'hybrid' ? 'Hybrid' : 'Manuelt'}
+                {projectName || 'Uten prosjektnavn'} · {participants.length} personer · {compensationModel === 'hourly'
+                  ? 'Timebasert avtale'
+                  : compensationModel === 'mixed'
+                    ? `Timepris + ${model === 'weighted' ? 'vekt-basert andel' : model === 'equal' ? 'lik andel' : model === 'hybrid' ? 'hybridandel' : 'manuell andel'}`
+                    : model === 'weighted' ? 'Vekt-basert' : model === 'equal' ? 'Lik splitt' : model === 'hybrid' ? 'Hybrid' : 'Manuelt'}
               </Typography>
               {/* Valutakurs-info — vises når en ekstern vendor har annen valuta enn NOK. */}
               {participants.some((p) => p.isExternal && p.vendorCurrency && p.vendorCurrency !== 'NOK') && (
@@ -985,7 +1165,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               boxShadow: 'none',
             }}>
               <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.14em', mb: 1, display: 'block' }}>
-                Fordeling
+                {compensationModel === 'share' ? 'Fordeling' : 'Honorarestimat'}
               </Typography>
               <Box sx={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -1001,7 +1181,9 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       paddingAngle={2}
                       stroke="rgba(15,10,7,0.95)"
                       strokeWidth={2}
-                      label={({ name, pct }) => `${name} · ${pct.toFixed(1)}%`}
+                      label={({ name, value, pct }) => compensationModel === 'share'
+                        ? `${name} · ${pct.toFixed(1)}%`
+                        : `${name} · ${Number(value).toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr`}
                       labelLine={{ stroke: 'rgba(255, 255, 255,0.4)' }}
                     >
                       {computedSplits.map((_, idx) => {
@@ -1017,7 +1199,9 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                         color: '#fff5e8',
                       }}
                       formatter={(value: any, _name: any, props: any) => [
-                        `${Number(value).toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr (${props.payload.pct.toFixed(1)}%)`,
+                        compensationModel === 'share'
+                          ? `${Number(value).toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr (${props.payload.pct.toFixed(1)}%)`
+                          : `${Number(value).toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr`,
                         props.payload.role,
                       ]}
                     />
@@ -1045,7 +1229,9 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="body1" sx={{ fontWeight: 700 }}>{split.name}</Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
-                        {split.roleLabel}
+                        {split.roleLabel}{split.compensationType === 'hourly'
+                          ? ` · ${Number(split.hourlyRate || 0).toLocaleString('nb-NO')} kr/t × ${Number(split.estimatedHours || 0).toLocaleString('nb-NO')} t estimert`
+                          : ''}
                       </Typography>
                     </Box>
                     <Box sx={{ textAlign: 'right' }}>
@@ -1053,7 +1239,11 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                         {split.shareKr.toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
-                        {split.sharePct.toFixed(1)}%
+                        {split.compensationType === 'hourly'
+                          ? 'Estimert honorar'
+                          : split.compensationType === 'fixed'
+                            ? 'Fast kostnad'
+                            : `${split.sharePct.toFixed(1)}%`}
                       </Typography>
                     </Box>
                   </Stack>
@@ -1083,7 +1273,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 '& .MuiAlert-icon': { color: 'var(--ws-accent, #ff8c00)' },
               }}
             >
-              Etter "Opprett & send" får hvert team-medlem en e-post med signerings-lenke. Splitt-en aktiveres når alle har signert.
+              Etter at avtalen er opprettet kan du sende personlige signeringslenker til teamet. Timesats, estimat og eventuell andel vises før de signerer.
             </Alert>
           </Stack>
         )}
@@ -1129,6 +1319,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
             endIcon={<DoneIcon />}
             variant="contained"
             onClick={handleSave}
+            disabled={!hasRequiredParticipantCount}
             sx={{
               borderRadius: '999px',
               px: 3,
@@ -1140,7 +1331,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               '&:hover': { bgcolor: '#ffc788' },
             }}
           >
-            Opprett & send for signering
+            {compensationModel === 'share' ? 'Opprett split sheet' : 'Opprett honoraravtale'}
           </Button>
         )}
       </DialogActions>
@@ -1186,6 +1377,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   email: m.email,
                   roleId: activeRoleCatalog.find((r) => r.id === m.defaultRoleId) ? m.defaultRoleId! : defaultRoleId,
                   manualPct: 0,
+                  compensationType: 'share',
                 }));
               splitSheetEvents.participantAdded('team_picker', defaultRoleId);
               setParticipants((prev) => [...prev, ...newOnes]);

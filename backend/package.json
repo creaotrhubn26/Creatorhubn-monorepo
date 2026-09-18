@@ -8,7 +8,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=16384 --no-strip-types' tsx watch server/index.ts",
+    "dev": "NODE_ENV=development NODE_OPTIONS='--max-old-space-size=16384 --no-strip-types' tsx watch server/index.ts",
+    "e2e:admin-workspace-harness": "tsx server/admin-workspace-e2e-harness.ts",
     "dev:all": "concurrently -n \"node,python\" -c \"cyan,yellow\" \"npm run dev\" \"npm run ml:start\"",
     "pyannote:start": "bash scripts/start-pyannote-service.sh",
     "whisperx:start": "bash scripts/start-whisperx-service.sh",
@@ -25,6 +26,10 @@
     "migrate": "./migrate.sh",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.config.ts",
+    "storage:migrate-role-room-to-s3": "node scripts/migrate-role-room-storage-to-s3.mjs",
+    "storage:migrate-sound-room-to-s3": "tsx scripts/migrate-sound-room-b2-to-s3.ts",
+    "storage:audit-role-room-s3": "tsx scripts/audit-role-room-storage-s3.ts",
+    "storage:provision-stripe": "node scripts/provision-role-room-storage-stripe.mjs",
     "test:unit:watch": "vitest --config vitest.config.ts",
     "lint": "eslint . --ext .ts --fix",
     "format": "prettier --write .",

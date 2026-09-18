@@ -1,8 +1,8 @@
 /**
  * role-room-talent-uploads-routes.ts
  *
- * Direkte fil-opplastning til Cloudflare R2 via presigned PUT-URL.
- * Klienten streamer filen direkte til R2 — backend ser aldri filebytes.
+ * Direkte fil-opplastning til privat AWS S3 via presigned PUT-URL.
+ * Klienten streamer filen direkte til S3 — backend ser aldri filebytes.
  *
  * Flow:
  *   1. Klient: POST /api/role-room/talents/me/uploads/sign
@@ -13,8 +13,9 @@
  *
  * Sikkerhet:
  *   - Krever auth-session (talent.owner_user_id må eie URL-en)
- *   - kind whitelisted: 'headshot' | 'showreel' | 'resume' | 'alt_photo'
- *   - size_bytes maks: 25 MB for bilder, 500 MB for showreel, 10 MB for CV
+ *   - kind whitelisted: 'headshot' | 'resume' | 'alt_photo'
+ *   - showreel går kun via Cloudflare Stream
+ *   - size_bytes maks: 25 MB for bilder og 10 MB for CV
  *   - contentType whitelisted per kind
  *   - Filer lagres under nøkkel: talents/{talent_id}/{kind}/{uuid}.{ext}
  *   - Presigned URL utløper etter 10 minutter
@@ -23,8 +24,9 @@
 import type express from "express";
 import type { Pool } from "pg";
 import crypto from "node:crypto";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { getRoleRoomObjectStorage } from "./role-room-object-storage.js";
 
 interface SessionLike {
   userId: string;
@@ -42,29 +44,24 @@ type UploadKind = "headshot" | "showreel" | "resume" | "alt_photo";
 interface KindSpec {
   maxBytes: number;
   allowedTypes: string[];
-  pathSegment: string;
 }
 
 const KIND_SPECS: Record<UploadKind, KindSpec> = {
   headshot: {
     maxBytes: 25 * 1024 * 1024,
     allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/avif"],
-    pathSegment: "headshot",
   },
   alt_photo: {
     maxBytes: 25 * 1024 * 1024,
     allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/avif"],
-    pathSegment: "photos",
   },
   showreel: {
     maxBytes: 500 * 1024 * 1024, // 500 MB
     allowedTypes: ["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"],
-    pathSegment: "showreel",
   },
   resume: {
     maxBytes: 10 * 1024 * 1024,
     allowedTypes: ["application/pdf"],
-    pathSegment: "resume",
   },
 };
 
@@ -81,66 +78,6 @@ const EXT_BY_MIME: Record<string, string> = {
 };
 
 const PRESIGN_TTL = 10 * 60; // 10 minutter
-
-// R2-config — gjenbruker samme env-var-prefiks-fallback som cms-media-service.
-function buildR2Config() {
-  const firstNonEmpty = (...vals: (string | undefined)[]) =>
-    vals.find((v) => v && v.trim().length > 0);
-  const endpoint = firstNonEmpty(
-    process.env.TALENTS_R2_ENDPOINT,
-    process.env.CMS_R2_ENDPOINT,
-    process.env.CLOUDFLARE_R2_ENDPOINT,
-    process.env.R2_ENDPOINT,
-  );
-  const bucket = firstNonEmpty(
-    process.env.TALENTS_R2_BUCKET,
-    process.env.CMS_R2_BUCKET,
-    process.env.CLOUDFLARE_R2_BUCKET,
-    process.env.R2_BUCKET,
-  );
-  const accessKeyId = firstNonEmpty(
-    process.env.TALENTS_R2_ACCESS_KEY_ID,
-    process.env.CMS_R2_ACCESS_KEY_ID,
-    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
-    process.env.R2_ACCESS_KEY_ID,
-  );
-  const secretAccessKey = firstNonEmpty(
-    process.env.TALENTS_R2_SECRET_ACCESS_KEY,
-    process.env.CMS_R2_SECRET_ACCESS_KEY,
-    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-    process.env.R2_SECRET_ACCESS_KEY,
-  );
-  const publicUrlBase = firstNonEmpty(
-    process.env.TALENTS_R2_PUBLIC_URL_BASE,
-    process.env.CMS_R2_PUBLIC_URL_BASE,
-    process.env.CLOUDFLARE_R2_PUBLIC_BASE, // ← matcher eksisterende casting-video-service-konvensjon
-    process.env.R2_PUBLIC_URL_BASE,
-  );
-  return {
-    enabled: Boolean(endpoint && bucket && accessKeyId && secretAccessKey),
-    endpoint,
-    bucket,
-    accessKeyId,
-    secretAccessKey,
-    publicUrlBase, // hvis bucket er public: 'https://media.theroleroom.com'
-  };
-}
-
-let cachedClient: S3Client | null = null;
-function getR2Client(): S3Client | null {
-  const cfg = buildR2Config();
-  if (!cfg.enabled || !cfg.endpoint || !cfg.accessKeyId || !cfg.secretAccessKey) return null;
-  if (cachedClient) return cachedClient;
-  cachedClient = new S3Client({
-    region: "auto",
-    endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: cfg.accessKeyId,
-      secretAccessKey: cfg.secretAccessKey,
-    },
-  });
-  return cachedClient;
-}
 
 /** Hent eksisterende talent for en owner-user-id. */
 async function fetchTalentForUser(pool: Pool, userId: string) {
@@ -183,6 +120,12 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
     if (!kind || !(kind in KIND_SPECS)) {
       return res.status(400).json({ error: `Ugyldig 'kind' (må være ${Object.keys(KIND_SPECS).join(", ")})` });
     }
+    if (kind === "showreel") {
+      return res.status(400).json({
+        error: "Showreel må lastes opp via Cloudflare Stream",
+        detail: "Bruk /api/role-room/talents/me/uploads/sign-stream",
+      });
+    }
     const spec = KIND_SPECS[kind as UploadKind];
     if (!contentType || !spec.allowedTypes.includes(contentType)) {
       return res.status(400).json({
@@ -200,12 +143,11 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       });
     }
 
-    const cfg = buildR2Config();
-    const client = getR2Client();
-    if (!client || !cfg.bucket) {
+    const storage = getRoleRoomObjectStorage();
+    if (!storage) {
       return res.status(503).json({
         error: "Fil-opplasting er ikke konfigurert på serveren",
-        detail: "Sett R2_ENDPOINT/R2_BUCKET/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY i miljøet",
+        detail: "Konfigurer The Role Room sitt private objektlager",
       });
     }
 
@@ -216,34 +158,32 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       }
 
       const ext = EXT_BY_MIME[contentType] ?? "bin";
-      const uuid = crypto.randomBytes(12).toString("hex");
-      const safeFilename = (filename || "file")
-        .replace(/[^a-zA-Z0-9._-]/g, "_")
-        .slice(0, 80);
-      const key = `talents/${talent.id}/${spec.pathSegment}/${uuid}-${safeFilename}.${ext}`;
+      const assetId = crypto.randomUUID();
+      const directory = kind === "headshot"
+        ? "portfolio/headshots"
+        : kind === "alt_photo"
+          ? "portfolio/photos"
+          : "documents/resumes";
+      const key = `talents/${talent.id}/${directory}/${assetId}/original.${ext}`;
 
       const command = new PutObjectCommand({
-        Bucket: cfg.bucket,
+        Bucket: storage.bucket,
         Key: key,
         ContentType: contentType,
         ContentLength: size,
-        // Cache-policy: media skal cache lenge, men kan invalideres ved overskrivning
-        CacheControl: kind === "showreel" ? "public, max-age=86400" : "public, max-age=2592000",
+        CacheControl: "private, max-age=86400",
+        ServerSideEncryption: "AES256",
         Metadata: {
           talent_id: String(talent.id),
           kind,
           uploaded_by: session.userId,
           uploaded_at: new Date().toISOString(),
+          original_name_sha256: crypto.createHash("sha256").update(filename || "file").digest("hex"),
         },
       });
 
-      const uploadUrl = await getSignedUrl(client, command, { expiresIn: PRESIGN_TTL });
-      // finalUrl er hva som lagres i talents-tabellen. Hvis bucket har public
-      // base → bruk direkte; ellers → bruk vår signed-GET-proxy som genererer
-      // en ny signed URL ved hver visning (auth-gated, ingen public R2-exposure).
-      const finalUrl = cfg.publicUrlBase
-        ? `${cfg.publicUrlBase.replace(/\/+$/, "")}/${key}`
-        : `/api/role-room/talents/media-proxy?key=${encodeURIComponent(key)}`;
+      const uploadUrl = await getSignedUrl(storage.client, command, { expiresIn: PRESIGN_TTL });
+      const finalUrl = `/api/role-room/talents/media-proxy?key=${encodeURIComponent(key)}`;
 
       return res.json({
         uploadUrl,
@@ -278,10 +218,14 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       return res.status(400).json({ error: "Ugyldig key" });
     }
 
-    // Trekk ut talent_id fra key: talents/{talent_id}/{kind}/{uuid}-...
-    const m = key.match(/^talents\/([0-9a-f-]{36})\/([a-z_]+)\//);
+    // Nye S3-nøkler er hierarkiske. Legacy R2-nøkler støttes under cutover.
+    const m = key.match(/^talents\/([0-9a-f-]{36})\/(.+)$/);
     if (!m) return res.status(400).json({ error: "Ugyldig key-format" });
-    const [, talentId, kindSegment] = m;
+    const [, talentId, objectPath] = m;
+    const kindSegment = objectPath.startsWith("portfolio/headshots/") ? "headshot"
+      : objectPath.startsWith("portfolio/photos/") ? "photos"
+        : objectPath.startsWith("documents/resumes/") ? "resume"
+          : objectPath.split("/", 1)[0];
 
     try {
       // Sjekk 1: er session-user eieren av denne talent-profilen?
@@ -325,15 +269,14 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
         return res.status(403).json({ error: "Du har ikke tilgang til denne filen" });
       }
 
-      const cfg = buildR2Config();
-      const client = getR2Client();
-      if (!client || !cfg.bucket) {
+      const storage = getRoleRoomObjectStorage();
+      if (!storage) {
         return res.status(503).json({ error: "Storage ikke konfigurert" });
       }
       const signed = await getSignedUrl(
-        client,
-        new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
-        { expiresIn: 6 * 60 * 60 },
+        storage.client,
+        new GetObjectCommand({ Bucket: storage.bucket, Key: key }),
+        { expiresIn: 15 * 60 },
       );
 
       // Audit-log: hvis partner-user ser filen, log det
@@ -356,7 +299,7 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
         }
       }
 
-      res.set("Cache-Control", "private, max-age=1800");
+      res.set("Cache-Control", "private, max-age=600");
       return res.redirect(302, signed);
     } catch (err) {
       console.error("[media-proxy] failed", err);
@@ -584,10 +527,11 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
   // ── GET /me/uploads/config — sjekk om upload er konfigurert ────────
   // Frontend bruker dette for å vise enten file-picker eller URL-fallback
   app.get("/api/role-room/talents/me/uploads/config", async (_req, res) => {
-    const cfg = buildR2Config();
+    const storage = getRoleRoomObjectStorage();
     const streamCfg = buildStreamConfig();
     return res.json({
-      enabled: cfg.enabled,
+      enabled: Boolean(storage),
+      storageProvider: storage?.provider ?? null,
       streamEnabled: streamCfg.enabled,
       streamSubdomain: streamCfg.subdomain || null,
       maxBytes: {

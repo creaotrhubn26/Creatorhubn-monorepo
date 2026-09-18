@@ -6,7 +6,7 @@
  *   GET  /api/storyboards/templates          — stil-maler (statiske)
  *   GET  /api/storyboards/camera-angles       — kameravinkler (statiske)
  *   GET  /api/storyboards/camera-movements    — kamerabevegelser (statiske)
- *   POST /api/storyboards/generate-frame      — DALL·E-3 referansebilde
+ *   POST /api/storyboards/generate-frame      — Prompt Engine + GPT Image 2
  *
  * NB: dette er SEPARAT fra `storyboard-routes.ts` (som eier den prosjekt-scopede
  * storyboard-CRUD-en under /api/role-room/projects/:id/storyboards). Her lager vi
@@ -28,6 +28,15 @@ import {
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
+import {
+  contextFromLegacyStoryboardInput,
+  STORYBOARD_IMAGE_MODEL,
+} from './storyboard-ai-context.js';
+import {
+  compileStoryboardPrompt,
+  validateGeneratedImageBase64,
+  type CompiledStoryboardPrompt,
+} from './storyboard-prompt-engine/index.js';
 
 interface SessionData {
   userId: string;
@@ -48,37 +57,42 @@ export const STORYBOARD_TEMPLATES: Record<string, { id: string; name: string; de
 };
 
 export const STORYBOARD_CAMERA_ANGLES: Record<string, string> = {
+  "extreme-wide": "Ekstrem total",
   wide: "Totalbilde",
   medium: "Halvtotalt",
+  "medium-close": "Halvnært",
   "close-up": "Nærbilde",
+  "extreme-close-up": "Ekstremt nærbilde",
   "over-shoulder": "Over skulder",
+  pov: "Point of view",
 };
 
 export const STORYBOARD_CAMERA_MOVEMENTS: Record<string, string> = {
   static: "Statisk",
+  dolly: "Dolly",
+  push: "Push",
+  pull: "Pull",
   pan: "Panorering",
+  tilt: "Tilt",
+  truck: "Truck",
+  crane: "Crane",
+  handheld: "Håndholdt",
+  steadicam: "Steadicam",
+  orbit: "Orbit",
   tracking: "Tracking",
 };
 
-// DALL·E-3 støtter kun disse størrelsene. Frontend defaulter til '1536x1024'
-// (en gpt-image-1-størrelse) → map til nærmeste gyldige landskaps-format.
-const DALLE_SIZES = new Set(["1024x1024", "1792x1024", "1024x1792"]);
-export function normalizeDalleSize(size: string | undefined): "1024x1024" | "1792x1024" | "1024x1792" {
-  if (size && DALLE_SIZES.has(size)) return size as "1024x1024" | "1792x1024" | "1024x1792";
-  // 1536x1024 (landskap) / ukjent → 1792x1024; portrett-hint → 1024x1792.
+const STORYBOARD_IMAGE_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
+export function normalizeDalleSize(size: string | undefined): "1024x1024" | "1536x1024" | "1024x1536" {
+  if (size && STORYBOARD_IMAGE_SIZES.has(size)) {
+    return size as "1024x1024" | "1536x1024" | "1024x1536";
+  }
   if (size && /^(\d+)x(\d+)$/.test(size)) {
     const [w, h] = size.split("x").map((n) => parseInt(n, 10));
-    if (h > w) return "1024x1792";
+    if (h > w) return "1024x1536";
   }
-  return "1792x1024";
+  return "1536x1024";
 }
-
-const TEMPLATE_STYLE: Record<string, string> = {
-  cinematic: "cinematic film look, dramatic lighting, shallow depth of field",
-  documentary: "natural documentary style, available light, realistic",
-  commercial: "polished commercial look, clean, bright, high production value",
-  drama: "warm intimate TV-drama tones, soft key light",
-};
 
 export interface GenerateFrameBody {
   prompt?: string;
@@ -92,21 +106,40 @@ export interface GenerateFrameBody {
   project_id?: string;
 }
 
-/** Komponer en storyboard-referanse-prompt fra shot-dialogens felt. */
+/** Komponer via samme production-aware motor som den native iPad-flyten. */
+export function compileFramePrompt(body: GenerateFrameBody): CompiledStoryboardPrompt {
+  const styleProfileId = body.template && STORYBOARD_TEMPLATES[body.template]
+    ? body.template : 'cinematic';
+  const base = contextFromLegacyStoryboardInput({
+    storyboardId: body.frame_id || body.storyboard_id,
+    title: body.prompt,
+    shotType: body.camera_angle,
+    prompt: body.additional_notes || body.prompt,
+    styleNote: styleProfileId,
+  });
+  const context = {
+    ...base,
+    project: {
+      styleProfileId,
+      creativeDirection: body.additional_notes || '',
+    },
+    shot: {
+      ...base.shot,
+      notes: body.additional_notes || '',
+      shotType: body.camera_angle || '',
+      movement: body.camera_movement || '',
+    },
+  };
+  return compileStoryboardPrompt({
+    kind: 'storyboard-image',
+    modelId: STORYBOARD_IMAGE_MODEL,
+    context,
+    userAction: body.prompt,
+  });
+}
+
 export function composeFramePrompt(body: GenerateFrameBody): string {
-  const templateStyle = body.template && TEMPLATE_STYLE[body.template] ? TEMPLATE_STYLE[body.template] : TEMPLATE_STYLE.cinematic;
-  const angleLabel = body.camera_angle ? STORYBOARD_CAMERA_ANGLES[body.camera_angle] ?? body.camera_angle : null;
-  const moveLabel = body.camera_movement ? STORYBOARD_CAMERA_MOVEMENTS[body.camera_movement] ?? body.camera_movement : null;
-  const parts: (string | null)[] = [
-    "Cinematic storyboard reference frame",
-    body.prompt ? body.prompt.trim() : null,
-    angleLabel ? `Camera angle: ${angleLabel}` : null,
-    moveLabel ? `Camera movement: ${moveLabel}` : null,
-    body.additional_notes ? `Notes: ${body.additional_notes.trim()}` : null,
-    `Style: ${templateStyle}`,
-    "Black-and-white storyboard sketch, no text, no captions, no logos, focus on composition and lighting.",
-  ];
-  return parts.filter(Boolean).join(". ");
+  return compileFramePrompt(body).compiledPrompt;
 }
 
 async function resolveUser(
@@ -173,7 +206,16 @@ export function createStoryboardAiRouter(pool: Pool, deps: CreateStoryboardAiRou
       }
     }
 
-    const composedPrompt = composeFramePrompt(body);
+    const promptEngine = compileFramePrompt(body);
+    if (!promptEngine.validation.valid) {
+      res.status(422).json({
+        error: 'prompt_validation_failed',
+        detail: 'Shotet mangler nødvendig produksjonskontekst.',
+        validation: promptEngine.validation,
+      });
+      return;
+    }
+    const composedPrompt = promptEngine.compiledPrompt;
     const size = normalizeDalleSize(body.size);
 
     let openaiResponse: Awaited<ReturnType<typeof fetch>> | undefined;
@@ -181,7 +223,7 @@ export function createStoryboardAiRouter(pool: Pool, deps: CreateStoryboardAiRou
       openaiResponse = await fetchImpl("https://api.openai.com/v1/images/generations", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: "dall-e-3", prompt: composedPrompt, n: 1, size, quality: "standard", response_format: "b64_json" }),
+        body: JSON.stringify({ model: STORYBOARD_IMAGE_MODEL, prompt: composedPrompt, n: 1, size, quality: "medium" }),
       });
     } catch {
       res.status(502).json({ error: "openai_network", detail: "internal_error" });
@@ -189,9 +231,11 @@ export function createStoryboardAiRouter(pool: Pool, deps: CreateStoryboardAiRou
     }
     if (!openaiResponse || !openaiResponse.ok) {
       const status = openaiResponse?.status ?? 0;
-      const errText = openaiResponse ? await openaiResponse.text().catch(() => "") : "";
+      if (openaiResponse) await openaiResponse.text().catch(() => "");
       // Send 402 videre uendret (frontend viser «kredittgrense nådd»).
-      res.status(status === 402 ? 402 : 502).json({ error: "openai_failed", status, detail: errText.slice(0, 500) });
+      res.status(status === 402 ? 402 : 502).json({
+        error: "openai_failed", status, detail: 'Bildeleverandøren avviste forespørselen.',
+      });
       return;
     }
     const data = (await openaiResponse.json()) as { data?: Array<{ b64_json?: string; revised_prompt?: string }> };
@@ -200,12 +244,23 @@ export function createStoryboardAiRouter(pool: Pool, deps: CreateStoryboardAiRou
       res.status(502).json({ error: "openai_no_image", detail: "No b64_json in response." });
       return;
     }
+    const generationValidation = validateGeneratedImageBase64(b64);
+    if (!generationValidation.valid) {
+      res.status(502).json({
+        error: 'openai_invalid_image',
+        detail: 'Bildeleverandøren returnerte en ugyldig bildepayload.',
+        validation: generationValidation,
+      });
+      return;
+    }
     res.json({
       success: true,
       imageBase64: b64,
       prompt: composedPrompt,
       template: body.template ?? "cinematic",
-      model: "dall-e-3",
+      model: STORYBOARD_IMAGE_MODEL,
+      promptEngine,
+      generationValidation,
     });
   });
 

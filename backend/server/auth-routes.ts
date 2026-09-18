@@ -43,7 +43,7 @@ export interface AuthRoutesDeps {
   pool: Pool;
   buildAdminRoleEntry: (...args: any[]) => any;
   buildSessionUserFromActiveSession: (...args: any[]) => any;
-  deletePersistedAuthSession: (...args: any[]) => Promise<void>;
+  deletePersistedAuthSessionStrict: (...args: any[]) => Promise<void>;
   getRoleRoomCommercialLoginGate: (...args: any[]) => any;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   isRoleRoomCommercialLoginIntent: (...args: any[]) => boolean;
@@ -69,7 +69,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
     pool,
     buildAdminRoleEntry,
     buildSessionUserFromActiveSession,
-    deletePersistedAuthSession,
+    deletePersistedAuthSessionStrict,
     getRoleRoomCommercialLoginGate,
     getTableColumns,
     isRoleRoomCommercialLoginIntent,
@@ -159,6 +159,12 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         userColumns.has("role") ? "role" : "NULL::text AS role",
         userColumns.has("profession") ? "profession" : "NULL::text AS profession",
         userColumns.has("company_name") ? "company_name" : "NULL::text AS company_name",
+        userColumns.has("is_active")
+          ? "COALESCE(is_active, TRUE) AS is_active"
+          : "TRUE AS is_active",
+        userColumns.has("auth_session_version")
+          ? "auth_session_version::text AS auth_session_version"
+          : "'0'::text AS auth_session_version",
       ];
 
       // Look up user by email
@@ -260,6 +266,13 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         }
       }
 
+      // Keep the response indistinguishable from a normal credential failure,
+      // but never mint a session for a deactivated account.
+      if (dbUser.is_active === false) {
+        _recordFailedLogin(normalizedEmail);
+        return res.status(401).json({ error: "Ugyldig e-post eller passord" });
+      }
+
       // Determine role
       const dbRole = String(dbUser.role || "").trim().toLowerCase();
       let role =
@@ -337,6 +350,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         isAdmin: ADMIN_SESSION_ROLES.has(normalizedSessionRole),
         loginAs: loginAs || undefined,
         requestedRole: normalizedRequestedRole,
+        authSessionVersion: String(dbUser.auth_session_version ?? "0"),
         loginAt: new Date().toISOString(),
       };
       if (role === "vendor" && vendorCheck.rows.length > 0) {
@@ -568,6 +582,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       if (!result.ok) {
         const httpStatus = result.error === "weak_password" ? 400
                          : result.error === "expired" || result.error === "already_used" || result.error === "invalid_token" ? 410
+                         : result.error === "db_error" ? 503
                          : 500;
         return res.status(httpStatus).json({ error: result.error, message: result.message });
       }
@@ -612,6 +627,27 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
             : "Verifisering feilet.",
         });
       }
+      const currentUser = await pool.query<{
+        auth_session_version: string;
+        is_active: boolean;
+      }>(
+        `SELECT auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
+           FROM users
+          WHERE id::text = $1
+          LIMIT 1`,
+        [String(pending.userId)],
+      );
+      const currentSnapshot = currentUser.rows[0];
+      if (
+        !currentSnapshot ||
+        currentSnapshot.is_active !== true ||
+        String(currentSnapshot.auth_session_version) !==
+          String(pending.sessionData.authSessionVersion)
+      ) {
+        pendingTwoFactorLogins.delete(tempToken);
+        return res.status(401).json({ error: "session_snapshot_stale" });
+      }
       // Commit session
       pendingTwoFactorLogins.delete(tempToken);
       const sessionToken = String(pending.responsePayload.token);
@@ -633,10 +669,15 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
 
   // POST /api/auth/logout — Logout
   app.post("/api/auth/logout", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
+    const token = readActiveSessionToken(req);
     if (token) {
+      try {
+        await deletePersistedAuthSessionStrict(pool, token);
+      } catch (error) {
+        console.error("[/api/auth/logout] persistent revocation failed", error);
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       activeSessions.delete(token);
-      await deletePersistedAuthSession(pool, token);
     }
     res.json({ success: true });
   });

@@ -61,13 +61,21 @@ final class AppStateBridge {
     /// deep-linken i en «pending»-slot og deployer den så snart AppState
     /// registrerer seg. Dette dekker cold-start-scenariet der Intent-
     /// perform kjører før @State-init.
-    func navigateToPondus(templateId: String? = nil, templateName: String? = nil) {
+    func navigateToPondus(
+        templateId: String? = nil,
+        templateName: String? = nil,
+        stepIndex: Int? = nil
+    ) {
         if let state = appState {
-            state.setPondusDeepLink(templateId: templateId, templateName: templateName)
+            state.setPondusDeepLink(
+                templateId: templateId,
+                templateName: templateName,
+                stepIndex: stepIndex
+            )
         } else {
             // Buffer inntil AppState registrerer seg. `pendingPondusDeepLink`
             // konsumeres i `register(_:)` nedenfor.
-            pendingPondusDeepLink = (templateId, templateName, Date())
+            pendingPondusDeepLink = (templateId, templateName, stepIndex, Date())
         }
     }
 
@@ -92,7 +100,9 @@ final class AppStateBridge {
 
     // MARK: - Pending buffer (cold-start-support)
 
-    private var pendingPondusDeepLink: (templateId: String?, templateName: String?, at: Date)?
+    private var pendingPondusDeepLink: (
+        templateId: String?, templateName: String?, stepIndex: Int?, at: Date
+    )?
 
     /// Kalles av `LeadMapApp.@main.init` etter at AppState er laget. Hvis
     /// vi har en buffret deep-link fra en intent-perform som kjørte før
@@ -105,7 +115,8 @@ final class AppStateBridge {
             if Date().timeIntervalSince(pending.at) < 60 {
                 state.setPondusDeepLink(
                     templateId: pending.templateId,
-                    templateName: pending.templateName
+                    templateName: pending.templateName,
+                    stepIndex: pending.stepIndex
                 )
             }
             pendingPondusDeepLink = nil

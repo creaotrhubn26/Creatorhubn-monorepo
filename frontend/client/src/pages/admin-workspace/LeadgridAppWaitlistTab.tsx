@@ -13,6 +13,7 @@ import {
   Alert, Box, Button, CircularProgress, Stack, TextField, Typography,
 } from '@mui/material';
 import RocketLaunchOutlinedIcon from '@mui/icons-material/RocketLaunchOutlined';
+import { apiFetch } from '@/lib/queryClient';
 
 interface WaitlistStatus {
   total: number;
@@ -38,9 +39,16 @@ export function LeadgridAppWaitlistTab() {
     setLoadingStatus(true);
     setStatusError(null);
     try {
-      const r = await fetch('/api/leadgrid/app-waitlist/status');
+      const r = await apiFetch('/api/leadgrid/app-waitlist/status');
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) { setStatusError(data.error === 'krever_admin' ? 'Krever admin-tilgang' : 'Kunne ikke hente status'); return; }
+      if (!r.ok) {
+        setStatusError(r.status === 401
+          ? 'Logg inn på nytt for å hente status'
+          : r.status === 403
+            ? 'Krever produkteier-tilgang'
+            : 'Kunne ikke hente status');
+        return;
+      }
       setStatus({ total: data.total ?? 0, pending: data.pending ?? 0 });
     } catch (e: any) {
       setStatusError(String(e?.message ?? e));
@@ -62,10 +70,9 @@ export function LeadgridAppWaitlistTab() {
     setSendError(null);
     setResult(null);
     try {
-      const r = await fetch('/api/leadgrid/app-waitlist/notify-launch', {
+      const r = await apiFetch('/api/leadgrid/app-waitlist/notify-launch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appStoreUrl: appStoreUrl.trim() }),
+        body: { appStoreUrl: appStoreUrl.trim() },
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setSendError(data.error ?? 'Utsendelse feilet'); return; }

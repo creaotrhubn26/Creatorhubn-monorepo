@@ -16,9 +16,11 @@ import crypto from 'crypto';
 import {
   persistOauthState,
   loadOauthState,
+  consumeOauthState,
   deleteOauthState,
   persistOauthTransfer,
   loadOauthTransfer,
+  consumeOauthTransfer,
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
@@ -344,7 +346,7 @@ type ProducerPhase = 'preproduction' | 'production' | 'postproduction';
 type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
 type RoleRoomGoogleConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
 type RoleRoomGoogleOauthMode = 'login' | 'link';
-type RoleRoomLinkedInConnectionState = 'disconnected' | 'connected' | 'expired' | 'error';
+type RoleRoomLinkedInConnectionState = 'disconnected' | 'connected' | 'active' | 'expired' | 'error';
 type ProducerAccountAccessPlatform =
   | 'google'
   | 'meta'
@@ -556,6 +558,7 @@ interface RoleRoomClientInviteTransferPayload {
 interface RoleRoomLinkedInConnectionRow {
   id: string;
   user_id: string;
+  project_id: string | null;
   role_room_email: string | null;
   linkedin_member_id: string | null;
   linkedin_email: string | null;
@@ -573,16 +576,20 @@ interface RoleRoomLinkedInConnectionRow {
 }
 
 interface RoleRoomLinkedInOauthState {
+  source: 'producer' | 'client_portal';
   returnPath: string;
   browserOrigin?: string | null;
   projectId?: string | null;
-  createdByUserId?: string | null;
+  createdByUserId: string;
   createdAt: number;
 }
 
 interface RoleRoomLinkedInTransferPayload {
   mode: 'link';
   createdAt: number;
+  createdByUserId: string;
+  projectId?: string | null;
+  tokensEncrypted?: boolean;
   linkedInMemberId: string;
   linkedInEmail?: string | null;
   linkedInName?: string | null;
@@ -965,6 +972,9 @@ const ROLE_ROOM_LINKEDIN_SCOPES = [
   'openid',
   'profile',
   'email',
+  'w_member_social',
+  'r_organization_admin',
+  'w_organization_social',
 ] as const;
 const ROLE_ROOM_GOOGLE_DRIVE_FOLDERS = [
   { key: 'brief', label: '01 Brief' },
@@ -1256,6 +1266,7 @@ function deriveRoleRoomServiceEncryptionKey(primaryEnvKey: string): Buffer | nul
   const secret = readStringValue(
     process.env[primaryEnvKey]
     ?? process.env.ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY
+    ?? process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
     ?? process.env.SESSION_SECRET
     ?? process.env.JWT_SECRET
     ?? process.env.AUTH_SECRET,
@@ -1335,6 +1346,47 @@ function decryptRoleRoomLinkedInToken(value: string | null | undefined): string 
   } catch {
     return null;
   }
+}
+
+function sealRoleRoomLinkedInTransfer(
+  payload: RoleRoomLinkedInTransferPayload,
+): RoleRoomLinkedInTransferPayload {
+  return {
+    ...payload,
+    tokensEncrypted: true,
+    tokenBundle: {
+      ...payload.tokenBundle,
+      accessToken: payload.tokenBundle.accessToken
+        ? encryptRoleRoomLinkedInToken(payload.tokenBundle.accessToken)
+        : null,
+      refreshToken: payload.tokenBundle.refreshToken
+        ? encryptRoleRoomLinkedInToken(payload.tokenBundle.refreshToken)
+        : null,
+    },
+  };
+}
+
+function openRoleRoomLinkedInTransfer(
+  payload: RoleRoomLinkedInTransferPayload,
+): RoleRoomLinkedInTransferPayload | null {
+  if (!payload.tokensEncrypted) return payload;
+  const accessToken = payload.tokenBundle.accessToken
+    ? decryptRoleRoomLinkedInToken(payload.tokenBundle.accessToken)
+    : null;
+  const refreshToken = payload.tokenBundle.refreshToken
+    ? decryptRoleRoomLinkedInToken(payload.tokenBundle.refreshToken)
+    : null;
+  if (payload.tokenBundle.accessToken && !accessToken) return null;
+  if (payload.tokenBundle.refreshToken && !refreshToken) return null;
+  return {
+    ...payload,
+    tokensEncrypted: false,
+    tokenBundle: {
+      ...payload.tokenBundle,
+      accessToken,
+      refreshToken,
+    },
+  };
 }
 
 function encryptRoleRoomVaultSecret(value: string): string {
@@ -2306,6 +2358,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           CREATE TABLE IF NOT EXISTS role_room_linkedin_connections (
             id UUID PRIMARY KEY,
             user_id TEXT NOT NULL,
+            project_id VARCHAR(255),
             role_room_email TEXT,
             linkedin_member_id TEXT,
             linkedin_email TEXT,
@@ -2321,9 +2374,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             last_used_at TIMESTAMPTZ
           );
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_linkedin_connections_user_id_unique ON role_room_linkedin_connections(user_id);
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_linkedin_connections_member_id_unique ON role_room_linkedin_connections(linkedin_member_id);
+          ALTER TABLE role_room_linkedin_connections
+            ADD COLUMN IF NOT EXISTS project_id VARCHAR(255);
+          DROP INDEX IF EXISTS idx_rr_linkedin_connections_user_id_unique;
+          DROP INDEX IF EXISTS idx_rr_linkedin_connections_member_id_unique;
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_linkedin_user_project_unique
+            ON role_room_linkedin_connections(user_id, COALESCE(project_id, ''));
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_linkedin_member_project_unique
+            ON role_room_linkedin_connections(linkedin_member_id, COALESCE(project_id, ''));
           CREATE INDEX IF NOT EXISTS idx_rr_linkedin_connections_email ON role_room_linkedin_connections(linkedin_email);
+          CREATE INDEX IF NOT EXISTS idx_rr_linkedin_project
+            ON role_room_linkedin_connections(project_id)
+            WHERE project_id IS NOT NULL;
         `);
         return true;
       } catch (error) {
@@ -2355,19 +2417,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return null;
     }
     const result = await pool.query<RoleRoomLinkedInConnectionRow>(
-      `SELECT * FROM role_room_linkedin_connections WHERE user_id = $1 LIMIT 1`,
+      `SELECT * FROM role_room_linkedin_connections
+        WHERE user_id = $1 AND project_id IS NULL
+        LIMIT 1`,
       [userId],
     );
     return result.rows[0] ?? null;
   }
 
-  async function getRoleRoomLinkedInConnectionByMemberId(memberId: string): Promise<RoleRoomLinkedInConnectionRow | null> {
+  async function getRoleRoomLinkedInConnectionByMemberId(
+    memberId: string,
+    projectId: string | null = null,
+  ): Promise<RoleRoomLinkedInConnectionRow | null> {
     if (!(await ensureRoleRoomLinkedInTables())) {
       return null;
     }
     const result = await pool.query<RoleRoomLinkedInConnectionRow>(
-      `SELECT * FROM role_room_linkedin_connections WHERE linkedin_member_id = $1 LIMIT 1`,
-      [memberId],
+      `SELECT * FROM role_room_linkedin_connections
+        WHERE linkedin_member_id = $1
+          AND COALESCE(project_id, '') = COALESCE($2, '')
+        LIMIT 1`,
+      [memberId, projectId],
     );
     return result.rows[0] ?? null;
   }
@@ -2600,7 +2670,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         $7, $8, $9, $10::jsonb,
         'connected', NULL, $11::jsonb, $12, NOW(), NOW(), NOW()
       )
-      ON CONFLICT (user_id, COALESCE(project_id, '')) DO UPDATE SET
+      ON CONFLICT (user_id, (COALESCE(project_id, ''))) DO UPDATE SET
         role_room_email = EXCLUDED.role_room_email,
         linkedin_member_id = EXCLUDED.linkedin_member_id,
         linkedin_email = EXCLUDED.linkedin_email,
@@ -4408,30 +4478,66 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         configured: config.configured,
         missing: config.missing,
         state: 'disconnected' as const,
+        connected: false,
+        connectionId: null,
+        scopes: [] as string[],
+        expiresAt: null,
+        tokenExpiresAt: null,
+        publishReady: false,
+        organizationPublishReady: false,
+        reconnectRequired: false,
+        organizationReconnectRequired: false,
         connection: null,
       };
     }
 
     const expiryTimestamp = connection.expiry_date ? Date.parse(connection.expiry_date) : null;
-    const derivedState = connection.connection_state === 'connected'
-      && typeof expiryTimestamp === 'number'
+    const hasValidFutureExpiry = typeof expiryTimestamp === 'number'
       && Number.isFinite(expiryTimestamp)
-      && expiryTimestamp <= Date.now()
-        ? 'expired'
-        : (connection.connection_state ?? 'disconnected');
+      && expiryTimestamp > Date.now();
+    const storageConnected = connection.connection_state === 'connected'
+      || connection.connection_state === 'active';
+    const derivedState = storageConnected
+      ? (hasValidFutureExpiry ? 'connected' : 'expired')
+      : (connection.connection_state ?? 'disconnected');
+    const scopes = readStringArray(connection.scopes);
+    const connected = derivedState === 'connected';
+    const publishReady = connected && scopes.includes('w_member_social');
+    const organizationPublishReady =
+      connected
+      && scopes.includes('r_organization_admin')
+      && scopes.includes('w_organization_social');
 
     return {
       configured: config.configured,
       missing: config.missing,
       state: derivedState,
+      connected,
+      connectionId: connection.id,
+      scopes,
+      expiresAt: connection.expiry_date,
+      tokenExpiresAt: connection.expiry_date,
+      publishReady,
+      organizationPublishReady,
+      reconnectRequired:
+        derivedState === 'expired'
+        || derivedState === 'error'
+        || derivedState === 'disconnected'
+        || (connected && !publishReady),
+      organizationReconnectRequired:
+        derivedState === 'expired'
+        || derivedState === 'error'
+        || derivedState === 'disconnected'
+        || (connected && !organizationPublishReady),
       connection: {
         id: connection.id,
         userId: connection.user_id,
+        projectId: connection.project_id,
         roleRoomEmail: readStringValue(connection.role_room_email),
         linkedInMemberId: readStringValue(connection.linkedin_member_id),
         linkedInEmail: readStringValue(connection.linkedin_email),
         linkedInName: readStringValue(connection.linkedin_name),
-        scopes: readStringArray(connection.scopes),
+        scopes,
         state: derivedState,
         lastError: readStringValue(connection.last_error),
         profile: readJsonObject(connection.profile),
@@ -9873,7 +9979,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Role Room LinkedIn Layer
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/linkedin/status', async (req: Request, res: Response) => {
+  router.get('/linkedin/status', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       pruneExpiredRoleRoomGoogleState();
       const config = getRoleRoomLinkedInConfig(req);
@@ -9888,7 +9994,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
-  router.post('/linkedin/oauth/start', async (req: Request, res: Response) => {
+  router.post('/linkedin/oauth/start', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       pruneExpiredRoleRoomGoogleState();
       const config = getRoleRoomLinkedInConfig(req);
@@ -9910,13 +10016,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const returnPath = sanitizeRoleRoomReturnPath(req.body?.returnPath, req);
       const projectId = readStringValue(req.body?.projectId);
 
-      roleRoomLinkedInOauthStateStore.set(stateId, {
+      const oauthState: RoleRoomLinkedInOauthState = {
+        source: 'producer',
         returnPath,
         browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
         projectId,
         createdByUserId: requestUser.userId,
         createdAt: Date.now(),
-      });
+      };
+      const persisted = await persistOauthState(
+        pool,
+        stateId,
+        oauthState,
+        new Date(Date.now() + ROLE_ROOM_GOOGLE_STATE_TTL_MS),
+      );
+      if (!persisted) {
+        res.status(503).json({ error: 'Kunne ikke lagre OAuth-state. Prøv igjen.' });
+        return;
+      }
+      roleRoomLinkedInOauthStateStore.set(stateId, oauthState);
 
       const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${
         new URLSearchParams({
@@ -9966,13 +10084,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const stateId = crypto.randomUUID();
       // Redirect klienten tilbake til portalen etter kobling.
       const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=linkedin`;
-      roleRoomLinkedInOauthStateStore.set(stateId, {
+      const oauthState: RoleRoomLinkedInOauthState = {
+        source: 'client_portal',
         returnPath,
         browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
         projectId: session.projectId,
         createdByUserId: producerUserId,
         createdAt: Date.now(),
-      });
+      };
+      const persisted = await persistOauthState(
+        pool,
+        stateId,
+        oauthState,
+        new Date(Date.now() + ROLE_ROOM_GOOGLE_STATE_TTL_MS),
+      );
+      if (!persisted) {
+        res.status(503).json({ error: 'Kunne ikke lagre OAuth-state. Prøv igjen.' });
+        return;
+      }
+      roleRoomLinkedInOauthStateStore.set(stateId, oauthState);
 
       const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${
         new URLSearchParams({
@@ -10013,17 +10143,23 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
     const stateId = readStringValue(req.query.state);
     const code = readStringValue(req.query.code);
-    const oauthState = stateId ? roleRoomLinkedInOauthStateStore.get(stateId) : null;
+    const oauthState = stateId
+      ? await consumeOauthState<RoleRoomLinkedInOauthState>(pool, stateId)
+      : null;
+    if (stateId) roleRoomLinkedInOauthStateStore.delete(stateId);
     if (!oauthState || !code) {
-      redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig LinkedIn-forespørsel', oauthState?.browserOrigin);
+      redirectWithError(
+        oauthState?.returnPath ?? fallbackReturnPath,
+        'LinkedIn-godkjenningen ble avbrutt eller er utløpt.',
+        oauthState?.browserOrigin,
+      );
       return;
     }
-
-    roleRoomLinkedInOauthStateStore.delete(stateId!);
 
     try {
       const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
         method: 'POST',
+        signal: AbortSignal.timeout(15_000),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
@@ -10038,9 +10174,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const tokenPayload = await tokenResponse.json().catch(() => null) as Record<string, unknown> | null;
       if (!tokenResponse.ok || !tokenPayload) {
+        console.warn('Role Room LinkedIn token exchange rejected', tokenResponse.status);
         redirectWithError(
           oauthState.returnPath,
-          readStringValue(tokenPayload?.error_description) ?? readStringValue(tokenPayload?.error) ?? 'LinkedIn OAuth-feil',
+          'LinkedIn avviste godkjenningen. Prøv å koble til på nytt.',
           oauthState.browserOrigin,
         );
         return;
@@ -10048,20 +10185,60 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const accessToken = readStringValue(tokenPayload.access_token);
       if (!accessToken) {
-        redirectWithError(oauthState.returnPath, 'LinkedIn svarte uten access token', oauthState.browserOrigin);
+        redirectWithError(oauthState.returnPath, 'LinkedIn-godkjenningen mangler nødvendig tilgang. Koble til på nytt.', oauthState.browserOrigin);
+        return;
+      }
+
+      const expiresInSeconds = Number(tokenPayload.expires_in);
+      if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+        redirectWithError(
+          oauthState.returnPath,
+          'LinkedIn returnerte ingen gyldig utløpstid. Koble til på nytt.',
+          oauthState.browserOrigin,
+        );
+        return;
+      }
+      const rawScopes = readStringValue(tokenPayload.scope);
+      const grantedScopes = rawScopes
+        ? [...new Set(rawScopes.split(/\s+/).filter(Boolean))]
+        : [];
+      const requiredPersonalScopes = ['openid', 'profile', 'email', 'w_member_social'];
+      const missingPersonalScopes = requiredPersonalScopes.filter(
+        (scope) => !grantedScopes.includes(scope),
+      );
+      const missingOrganizationScopes = [
+        'r_organization_admin',
+        'w_organization_social',
+      ].filter((scope) => !grantedScopes.includes(scope));
+      if (
+        missingPersonalScopes.length > 0
+        || (oauthState.source === 'client_portal' && missingOrganizationScopes.length > 0)
+      ) {
+        console.warn('Role Room LinkedIn callback missing scopes', {
+          source: oauthState.source,
+          missingPersonalScopes,
+          missingOrganizationScopes,
+        });
+        redirectWithError(
+          oauthState.returnPath,
+          'LinkedIn-koblingen mangler nødvendige publiseringsrettigheter. Koble til på nytt og godkjenn alle tilganger.',
+          oauthState.browserOrigin,
+        );
         return;
       }
 
       const profileResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
       const profilePayload = await profileResponse.json().catch(() => null) as Record<string, unknown> | null;
       if (!profileResponse.ok || !profilePayload) {
+        console.warn('Role Room LinkedIn profile request rejected', profileResponse.status);
         redirectWithError(
           oauthState.returnPath,
-          readStringValue(profilePayload?.message) ?? 'Kunne ikke hente LinkedIn-profilen',
+          'Kunne ikke bekrefte LinkedIn-profilen. Prøv å koble til på nytt.',
           oauthState.browserOrigin,
         );
         return;
@@ -10080,22 +10257,22 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const existingConnection = await getRoleRoomLinkedInConnectionByMemberId(linkedInMemberId);
+      const existingConnection = await getRoleRoomLinkedInConnectionByMemberId(
+        linkedInMemberId,
+        oauthState.source === 'client_portal' ? oauthState.projectId ?? null : null,
+      );
       if (existingConnection && existingConnection.user_id !== oauthState.createdByUserId) {
         redirectWithError(oauthState.returnPath, 'Denne LinkedIn-kontoen er allerede koblet til en annen bruker', oauthState.browserOrigin);
         return;
       }
 
-      const expiryDate = typeof tokenPayload.expires_in === 'number'
-        ? Date.now() + (Number(tokenPayload.expires_in) * 1000)
-        : null;
-      const rawScopes = readStringValue(tokenPayload.scope);
+      const expiryDate = Date.now() + (expiresInSeconds * 1000);
 
       // Klient-portal: klienten er IKKE innlogget, så transfer→/linkedin/link-
       // fullføringen (som krever getUserId) finnes ikke for dem. Auto-upsert
       // direkte her, prosjekt-scopet under produsentens user_id. Produsentens
       // egen kobling går fortsatt via transfer-store + /linkedin/link (under).
-      if (oauthState.returnPath.startsWith('/client/portal/') && oauthState.createdByUserId) {
+      if (oauthState.source === 'client_portal' && oauthState.createdByUserId) {
         await upsertRoleRoomLinkedInConnection(
           oauthState.createdByUserId,
           linkedInEmail,
@@ -10104,9 +10281,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             accessToken,
             refreshToken: readStringValue(tokenPayload.refresh_token),
             expiryDate,
-            scopes: rawScopes
-              ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-              : [...ROLE_ROOM_LINKEDIN_SCOPES],
+            scopes: grantedScopes,
           },
           oauthState.projectId ?? null,
         );
@@ -10129,9 +10304,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const transferId = crypto.randomUUID();
-      roleRoomLinkedInTransferStore.set(transferId, {
+      const transferPayload: RoleRoomLinkedInTransferPayload = {
         mode: 'link',
         createdAt: Date.now(),
+        createdByUserId: oauthState.createdByUserId,
+        projectId: oauthState.projectId ?? null,
         linkedInMemberId,
         linkedInEmail,
         linkedInName,
@@ -10140,11 +10317,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           accessToken,
           refreshToken: readStringValue(tokenPayload.refresh_token),
           expiryDate,
-          scopes: rawScopes
-            ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-            : [...ROLE_ROOM_LINKEDIN_SCOPES],
+          scopes: grantedScopes,
         },
-      });
+      };
+      const durableTransferPayload = sealRoleRoomLinkedInTransfer(transferPayload);
+      await persistOauthTransfer(
+        pool,
+        transferId,
+        durableTransferPayload,
+        new Date(Date.now() + ROLE_ROOM_GOOGLE_STATE_TTL_MS),
+      );
+      const durableTransfer = await loadOauthTransfer<RoleRoomLinkedInTransferPayload>(
+        pool,
+        transferId,
+      );
+      if (!durableTransfer) {
+        throw new Error('Kunne ikke lagre LinkedIn-overføringen');
+      }
+      roleRoomLinkedInTransferStore.set(transferId, transferPayload);
 
       res.redirect(
         buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
@@ -10157,13 +10347,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       console.error('Role Room LinkedIn callback error:', error);
       redirectWithError(
         oauthState.returnPath,
-        error instanceof Error ? error.message : 'LinkedIn-innlogging feilet',
+        'LinkedIn-innloggingen kunne ikke fullføres. Prøv å koble til på nytt.',
         oauthState.browserOrigin,
       );
     }
   });
 
-  router.get('/linkedin/oauth/session-result/:transferId', async (req: Request, res: Response) => {
+  router.get('/linkedin/oauth/session-result/:transferId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       pruneExpiredRoleRoomGoogleState();
       const transferId = readStringValue(req.params.transferId);
@@ -10172,8 +10362,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const payload = roleRoomLinkedInTransferStore.get(transferId);
-      if (!payload) {
+      const userId = getUserId(req);
+      const payload =
+        roleRoomLinkedInTransferStore.get(transferId)
+        ?? await loadOauthTransfer<RoleRoomLinkedInTransferPayload>(pool, transferId);
+      if (!payload || payload.createdByUserId !== userId) {
         res.status(404).json({ error: 'LinkedIn-overføringen er utløpt eller brukt' });
         return;
       }
@@ -10204,13 +10397,30 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const payload = roleRoomLinkedInTransferStore.get(transferId);
-      if (!payload) {
+      const pending =
+        roleRoomLinkedInTransferStore.get(transferId)
+        ?? await loadOauthTransfer<RoleRoomLinkedInTransferPayload>(pool, transferId);
+      if (!pending || pending.createdByUserId !== userId) {
+        res.status(404).json({ error: 'Fant ikke en gyldig LinkedIn-kobling å fullføre' });
+        return;
+      }
+      const consumedPayload = await consumeOauthTransfer<RoleRoomLinkedInTransferPayload>(
+        pool,
+        transferId,
+      );
+      roleRoomLinkedInTransferStore.delete(transferId);
+      const payload = consumedPayload
+        ? openRoleRoomLinkedInTransfer(consumedPayload)
+        : null;
+      if (!payload || payload.createdByUserId !== userId) {
         res.status(404).json({ error: 'Fant ikke en gyldig LinkedIn-kobling å fullføre' });
         return;
       }
 
-      const existingConnection = await getRoleRoomLinkedInConnectionByMemberId(payload.linkedInMemberId);
+      const existingConnection = await getRoleRoomLinkedInConnectionByMemberId(
+        payload.linkedInMemberId,
+        null,
+      );
       if (existingConnection && existingConnection.user_id !== userId) {
         res.status(409).json({ error: 'Denne LinkedIn-kontoen er allerede koblet til en annen bruker' });
         return;
@@ -10228,8 +10438,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         },
         payload.tokenBundle,
       );
-
-      roleRoomLinkedInTransferStore.delete(transferId);
       res.json(buildRoleRoomLinkedInConnectionResponse(connection, getRoleRoomLinkedInConfig(req)));
     } catch (error) {
       console.error('Role Room LinkedIn link error:', error);
@@ -10241,7 +10449,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const userId = getUserId(req);
       await ensureRoleRoomLinkedInTables();
-      await pool.query(`DELETE FROM role_room_linkedin_connections WHERE user_id = $1`, [userId]);
+      await pool.query(
+        `DELETE FROM role_room_linkedin_connections
+          WHERE user_id = $1 AND project_id IS NULL`,
+        [userId],
+      );
       res.json({
         success: true,
         ...buildRoleRoomLinkedInConnectionResponse(null, getRoleRoomLinkedInConfig(req)),
@@ -25030,12 +25242,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const redirectUri = `${browserOrigin}/api/role-room/ads/${platform}/oauth/callback`;
         const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/';
         const stateId = crypto.randomUUID();
-        await persistOauthState(
+        const persisted = await persistOauthState(
           pool,
           stateId,
           { platform, browserOrigin, redirectUri, returnPath, userId, createdAt: Date.now() },
           new Date(Date.now() + 10 * 60 * 1000),
         );
+        if (!persisted) {
+          return res.status(503).json({ error: 'oauth_state_store_unavailable' });
+        }
         const authorizationUrl = buildAdsAuthUrl(typedPlatform, {
           clientId: creds.clientId,
           redirectUri,
@@ -25057,7 +25272,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const stateId = typeof req.query.state === 'string' ? req.query.state : '';
         const code = typeof req.query.code === 'string' ? req.query.code : '';
         const state = stateId
-          ? await loadOauthState<{
+          ? await consumeOauthState<{
               platform: string;
               browserOrigin: string | null;
               redirectUri: string;

@@ -14,9 +14,9 @@
  *   POST /api/v1/leads              — opprett ny lead       (leads.write)
  *   GET  /api/v1/recommendations    — list NBA              (recommendations.read)
  *
- * NB: crm_customers har IKKE organization_id-kolonne. Vi filtrerer via
- * owner_user_id IN (SELECT user_id FROM organization_members WHERE org=$1).
- * Samme mønster som leadgrid-analytics-service.ts.
+ * Tenantgrense: crm_customers.organization_id er autoritativ. Eierens
+ * nåværende medlemskap kan endres og må aldri flytte eller eksponere en lead
+ * på tvers av organisasjoner. Legacy-rader med NULL er derfor fail-closed.
  */
 
 import type { Express, Request, Response } from "express";
@@ -27,13 +27,6 @@ interface Deps {
   app: Express;
   pool: Pool;
 }
-
-/**
- * CTE-fragment for å filtrere crm_customers på org. Brukes som
- *   `WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})` med $1 = orgId.
- * Matcher leadgrid-analytics-service.ts.
- */
-const ORG_MEMBERS_SUBQUERY = `SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid`;
 
 function clampInt(v: unknown, min: number, max: number, def: number): number {
   const n = parseInt(String(v ?? def), 10);
@@ -82,7 +75,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
                 city, country, lead_source, lead_category,
                 created_at::text, updated_at::text
            FROM crm_customers
-          WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+          WHERE organization_id = $1::uuid
             AND archived_at IS NULL
           ORDER BY updated_at DESC NULLS LAST, created_at DESC
           LIMIT $2 OFFSET $3`,
@@ -90,7 +83,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
       );
       const totalR = await pool.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM crm_customers
-          WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+          WHERE organization_id = $1::uuid
             AND archived_at IS NULL`,
         [orgId],
       );
@@ -126,9 +119,9 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
                 address, city, country, postal_code,
                 lead_source, lead_category, website_url,
                 created_at::text, updated_at::text
-           FROM crm_customers
+          FROM crm_customers
           WHERE id = $1::uuid
-            AND owner_user_id IN (${ORG_MEMBERS_SUBQUERY.replace("$1::uuid", "$2::uuid")})
+            AND organization_id = $2::uuid
             AND archived_at IS NULL`,
         [req.params.id, orgId],
       );
@@ -150,11 +143,9 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
   //         lead_source, lead_category }
   // Returnerer { data: { id }, meta: { version: "v1" } } 201.
   //
-  // NB: vi setter owner_user_id = "leadgrid_api" (system-owner) slik at
-  // raden tilhører org-en via owner→org-medlemskap. Hvis du heller vil
-  // ha en konkret bruker som eier: bytt ut owner_user_id-defaulten etter
-  // org_id-resolve. Dagens analytics filtrerer via org_members, så vi må
-  // velge en owner som ER medlem av org-en.
+  // owner_user_id velges blant aktive orgmedlemmer for ansvar/arbeidsflyt.
+  // organization_id kommer alltid fra API-key-konteksten og er den
+  // autoritative tenantgrensen; en eventuell org-verdi i body ignoreres.
   // ───────────────────────────────────────────────────────────────────
   app.post("/api/v1/leads", requireLeadsWrite, async (req: Request, res: Response) => {
     const orgId = req.apiKey!.organizationId;
@@ -215,9 +206,9 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
            (name, company, email, phone,
             address, city, country, postal_code,
             latitude, longitude, lead_source, lead_category,
-            pipeline_stage, lead_status, owner_user_id)
+            pipeline_stage, lead_status, owner_user_id, organization_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                 'new', 'unvisited', $13)
+                 'new', 'unvisited', $13, $14::uuid)
          RETURNING id::text`,
         [
           b.name.trim(),
@@ -233,6 +224,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
           b.lead_source ?? "api",
           b.lead_category ?? null,
           ownerUserId,
+          orgId,
         ],
       );
       res.status(201).json({
@@ -263,25 +255,29 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
       let where = "";
       if (priority) {
         params.push(priority);
-        where = "AND priority = $3";
+        where = "AND lr.priority = $3";
       }
       const r = await pool.query(
-        `SELECT id::text, lead_id::text, action_type, channel, priority,
-                reason, status, confidence::float8 AS confidence,
-                created_at::text, expires_at::text
-           FROM lead_recommendations
-          WHERE organization_id = $1::uuid
-            AND status = 'pending'
+        `SELECT lr.id::text, lr.lead_id::text, lr.action_type, lr.channel, lr.priority,
+                lr.reason, lr.status, lr.confidence::float8 AS confidence,
+                lr.created_at::text, lr.expires_at::text
+           FROM lead_recommendations lr
+           JOIN crm_customers c
+             ON c.id = lr.lead_id
+            AND c.organization_id = $1::uuid
+            AND c.archived_at IS NULL
+          WHERE lr.organization_id = $1::uuid
+            AND lr.status = 'pending'
             ${where}
           ORDER BY
-            CASE priority
+            CASE lr.priority
               WHEN 'urgent' THEN 1
               WHEN 'high' THEN 2
               WHEN 'normal' THEN 3
               WHEN 'low' THEN 4
               ELSE 5
             END,
-            created_at DESC
+            lr.created_at DESC
           LIMIT $2`,
         params,
       );

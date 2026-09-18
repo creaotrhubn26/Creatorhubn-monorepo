@@ -1,16 +1,19 @@
 // Audition-reminder cron sweep.
 //
 // Speiler runRoleRoomCommercialReminderSweep i form: in-process setInterval,
-// idempotent via casting_schedules.reminders_sent JSONB, status persistert i
-// modul-scope. SMS via Twilio (brand=role-room), e-post som fallback når
-// kandidat mangler telefon eller har slått av SMS.
+// men idempotens eies av en distribuert DB-claim per schedule + terskel +
+// kanal. `casting_schedules.reminders_sent` beholdes som kompatibilitetsmarkør.
+// SMS via Twilio (brand=role-room), e-post som fallback når kandidat mangler
+// telefon eller har slått av SMS.
 
+import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 import {
   buildAuditionReminderEmail,
   buildAuditionReminderSmsBody,
   isEmailConfigured,
   isSmsBrandConfigured,
+  normalizePhoneE164,
   parseReminderPrefs,
   sendEmail,
   sendSms,
@@ -32,6 +35,34 @@ const AUDITION_REMINDER_BRAND: ReminderBrand = "role-room";
 const AUDITION_REMINDER_BRAND_LABEL = "The Role Room";
 const AUDITION_REMINDER_RUNNER_KEY = "audition-reminder";
 const THRESHOLD_WINDOW_MINUTES = 15;
+const DELIVERY_CLAIM_LEASE_SECONDS = 10 * 60;
+const DELIVERY_SMTP_TIMEOUT_MS = 2 * 60_000;
+
+type ReminderChannel = "whatsapp" | "sms" | "email";
+type DeliveryFailureCertainty = "definite_pre_delivery" | "uncertain";
+
+interface ChannelSendResult {
+  success: boolean;
+  messageRef?: string;
+  templateName?: string;
+  conversationId?: string | null;
+  error?: string;
+  failureCertainty?: DeliveryFailureCertainty;
+}
+
+interface ClaimedDelivery {
+  claimId: string;
+  messageId: string | null;
+}
+
+type ChannelDeliveryOutcome =
+  | { status: "not_claimed" }
+  | { status: "delivered"; result: ChannelSendResult }
+  | {
+      status: "failed";
+      result: ChannelSendResult;
+      certainty: DeliveryFailureCertainty;
+    };
 
 export interface AuditionReminderSweepSummary {
   reason: "startup" | "interval" | "manual";
@@ -133,7 +164,9 @@ function readIntervalMs(): number {
   return Math.max(1, Math.floor(minutes)) * 60 * 1000;
 }
 
-function buildSummary(reason: AuditionReminderSweepSummary["reason"]): AuditionReminderSweepSummary {
+function buildSummary(
+  reason: AuditionReminderSweepSummary["reason"],
+): AuditionReminderSweepSummary {
   const ts = new Date().toISOString();
   return {
     reason,
@@ -243,6 +276,296 @@ async function fetchUpcomingAuditions(pool: Pool): Promise<ScheduleRow[]> {
   return result.rows;
 }
 
+function stableAuditionReminderMessageId(
+  scheduleId: string,
+  threshold: ReminderThreshold,
+): string {
+  const digest = createHash("sha256")
+    .update(`${scheduleId}\u0000${threshold}\u0000email`, "utf8")
+    .digest("hex");
+  return `<audition-reminder-${digest}@creatorhubn.com>`;
+}
+
+async function claimChannelDelivery(input: {
+  pool: Pool;
+  scheduleId: string;
+  threshold: ReminderThreshold;
+  channel: ReminderChannel;
+}): Promise<ClaimedDelivery | null> {
+  const claimId = globalThis.crypto.randomUUID();
+  const stableMessageId =
+    input.channel === "email"
+      ? stableAuditionReminderMessageId(input.scheduleId, input.threshold)
+      : null;
+  const claimed = await input.pool.query<{
+    claim_id: string;
+    message_id: string | null;
+  }>(
+    `WITH schedule_state AS (
+       SELECT
+         CASE
+           WHEN jsonb_typeof(COALESCE(schedule.reminders_sent, '{}'::jsonb)) = 'object'
+             THEN NULLIF(schedule.reminders_sent ->> $2, '') IS NOT NULL
+           ELSE FALSE
+         END AS has_legacy_marker,
+         EXISTS (
+           SELECT 1
+             FROM casting_reminder_delivery_claims AS existing
+            WHERE existing.schedule_id = $1
+              AND existing.threshold = $2
+         ) AS has_delivery_state
+         FROM casting_schedules AS schedule
+        WHERE schedule.id = $1
+     )
+     INSERT INTO casting_reminder_delivery_claims AS delivery
+       (schedule_id, threshold, channel, claim_id, claim_expires_at,
+        message_id, attempt_count, created_at, updated_at)
+     SELECT
+       $1, $2, $3, $4::uuid,
+       now() + ($6::int * interval '1 second'), $5, 1, now(), now()
+       FROM schedule_state
+      WHERE NOT has_legacy_marker OR has_delivery_state
+     ON CONFLICT (schedule_id, threshold, channel) DO UPDATE
+       SET claim_id = EXCLUDED.claim_id,
+           claim_expires_at = EXCLUDED.claim_expires_at,
+           message_id = COALESCE(delivery.message_id, EXCLUDED.message_id),
+           delivery_uncertain_at = NULL,
+           last_error = NULL,
+           attempt_count = delivery.attempt_count + 1,
+           updated_at = now()
+     WHERE delivery.delivered_at IS NULL
+       AND delivery.delivery_started_at IS NULL
+       AND (
+         delivery.claim_id IS NULL
+         OR delivery.claim_expires_at IS NULL
+         OR delivery.claim_expires_at <= now()
+       )
+     RETURNING claim_id, message_id`,
+    [
+      input.scheduleId,
+      input.threshold,
+      input.channel,
+      claimId,
+      stableMessageId,
+      DELIVERY_CLAIM_LEASE_SECONDS,
+    ],
+  );
+  const row = claimed.rows[0];
+  if (!row) return null;
+  return { claimId: row.claim_id, messageId: row.message_id };
+}
+
+async function startChannelDelivery(input: {
+  pool: Pool;
+  scheduleId: string;
+  threshold: ReminderThreshold;
+  channel: ReminderChannel;
+  claimId: string;
+}): Promise<boolean> {
+  // At-most-once-grensen committes før provider-kallet. Når denne verdien er
+  // satt, gjør verken en utløpt lease eller en ny prosess raden claimbar igjen.
+  const started = await input.pool.query(
+    `UPDATE casting_reminder_delivery_claims
+        SET delivery_started_at = now(),
+            delivery_uncertain_at = NULL,
+            last_error = NULL,
+            updated_at = now()
+      WHERE schedule_id = $1
+        AND threshold = $2
+        AND channel = $3
+        AND claim_id = $4::uuid
+        AND claim_expires_at > now()
+        AND delivery_started_at IS NULL
+        AND delivered_at IS NULL`,
+    [input.scheduleId, input.threshold, input.channel, input.claimId],
+  );
+  return (started.rowCount ?? 0) === 1;
+}
+
+async function completeChannelDelivery(input: {
+  pool: Pool;
+  scheduleId: string;
+  threshold: ReminderThreshold;
+  channel: ReminderChannel;
+  claimId: string;
+  providerMessageId?: string;
+}): Promise<boolean> {
+  const completed = await input.pool.query(
+    `UPDATE casting_reminder_delivery_claims
+        SET delivered_at = now(),
+            provider_message_id = COALESCE($5, provider_message_id),
+            claim_id = NULL,
+            claim_expires_at = NULL,
+            delivery_uncertain_at = NULL,
+            last_error = NULL,
+            updated_at = now()
+      WHERE schedule_id = $1
+        AND threshold = $2
+        AND channel = $3
+        AND claim_id = $4::uuid
+        AND delivery_started_at IS NOT NULL
+        AND delivered_at IS NULL`,
+    [
+      input.scheduleId,
+      input.threshold,
+      input.channel,
+      input.claimId,
+      input.providerMessageId ?? null,
+    ],
+  );
+  return (completed.rowCount ?? 0) === 1;
+}
+
+async function quarantineChannelDelivery(input: {
+  pool: Pool;
+  scheduleId: string;
+  threshold: ReminderThreshold;
+  channel: ReminderChannel;
+  claimId: string;
+  error: string;
+}): Promise<void> {
+  await input.pool.query(
+    `UPDATE casting_reminder_delivery_claims
+        SET delivery_uncertain_at = COALESCE(delivery_uncertain_at, now()),
+            claim_id = NULL,
+            claim_expires_at = NULL,
+            last_error = $5,
+            updated_at = now()
+      WHERE schedule_id = $1
+        AND threshold = $2
+        AND channel = $3
+        AND claim_id = $4::uuid
+        AND delivery_started_at IS NOT NULL
+        AND delivered_at IS NULL`,
+    [
+      input.scheduleId,
+      input.threshold,
+      input.channel,
+      input.claimId,
+      input.error.slice(0, 500),
+    ],
+  );
+}
+
+async function releaseDefinitePreDeliveryFailure(input: {
+  pool: Pool;
+  scheduleId: string;
+  threshold: ReminderThreshold;
+  channel: ReminderChannel;
+  claimId: string;
+  error: string;
+}): Promise<void> {
+  await input.pool.query(
+    `UPDATE casting_reminder_delivery_claims
+        SET claim_id = NULL,
+            claim_expires_at = NULL,
+            delivery_started_at = NULL,
+            delivery_uncertain_at = NULL,
+            last_error = $5,
+            updated_at = now()
+      WHERE schedule_id = $1
+        AND threshold = $2
+        AND channel = $3
+        AND claim_id = $4::uuid
+        AND delivery_started_at IS NOT NULL
+        AND delivery_uncertain_at IS NULL
+        AND delivered_at IS NULL`,
+    [
+      input.scheduleId,
+      input.threshold,
+      input.channel,
+      input.claimId,
+      input.error.slice(0, 500),
+    ],
+  );
+}
+
+async function attemptClaimedChannelDelivery(input: {
+  pool: Pool;
+  scheduleId: string;
+  candidateId: string;
+  threshold: ReminderThreshold;
+  channel: ReminderChannel;
+  send: (messageId: string | null) => Promise<ChannelSendResult>;
+}): Promise<ChannelDeliveryOutcome> {
+  const claim = await claimChannelDelivery(input);
+  if (!claim) return { status: "not_claimed" };
+
+  const started = await startChannelDelivery({
+    ...input,
+    claimId: claim.claimId,
+  });
+  if (!started) return { status: "not_claimed" };
+
+  let result: ChannelSendResult;
+  try {
+    result = await input.send(claim.messageId);
+  } catch (error) {
+    // Etter at send-funksjonen er kalt kan vi ikke bevise at provider ikke
+    // mottok payloaden. Derfor karantene, aldri automatisk retry.
+    result = {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      failureCertainty: "uncertain",
+    };
+  }
+
+  await logDelivery(input.pool, {
+    scheduleId: input.scheduleId,
+    candidateId: input.candidateId,
+    threshold: input.threshold,
+    method: input.channel,
+    success: result.success,
+    messageRef: result.messageRef,
+    errorMessage: result.error,
+  });
+
+  if (result.success) {
+    try {
+      const completed = await completeChannelDelivery({
+        ...input,
+        claimId: claim.claimId,
+        providerMessageId: result.messageRef,
+      });
+      if (!completed) {
+        throw new Error("delivery_receipt_not_persisted");
+      }
+    } catch (error) {
+      // delivery_started_at er allerede committet. Selv om quarantine-write
+      // også feiler, kan ingen ny worker auto-claime den mulige leveransen.
+      await quarantineChannelDelivery({
+        ...input,
+        claimId: claim.claimId,
+        error: `delivery_receipt_persist_failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      }).catch(() => undefined);
+      throw error;
+    }
+    return { status: "delivered", result };
+  }
+
+  const certainty: DeliveryFailureCertainty =
+    result.failureCertainty === "definite_pre_delivery"
+      ? "definite_pre_delivery"
+      : "uncertain";
+  if (certainty === "definite_pre_delivery") {
+    await releaseDefinitePreDeliveryFailure({
+      ...input,
+      claimId: claim.claimId,
+      error: result.error ?? "definite_pre_delivery_failure",
+    });
+  } else {
+    await quarantineChannelDelivery({
+      ...input,
+      claimId: claim.claimId,
+      error: `provider_outcome_uncertain: ${result.error ?? "unknown"}`,
+    });
+  }
+
+  return { status: "failed", result, certainty };
+}
+
 async function processScheduleRow(input: {
   row: ScheduleRow;
   summary: AuditionReminderSweepSummary;
@@ -254,7 +577,10 @@ async function processScheduleRow(input: {
     startTime: row.start_time,
     status: row.status,
     type: row.type,
-    remindersSent: row.reminders_sent || {},
+    // Migrasjon 0463 backfiller gamle markører. Etter det er den atomiske
+    // per-kanal-tabellen autoritativ, slik at én levert kanal ikke hindrer en
+    // sikker pre-delivery retry på en annen kanal.
+    remindersSent: {},
     now: deps.now,
   });
 
@@ -283,8 +609,7 @@ async function processScheduleRow(input: {
 
   const whatsappAllowed =
     decision.threshold === "24h" ? prefs.whatsapp24h : prefs.whatsapp1h;
-  const smsAllowed =
-    decision.threshold === "24h" ? prefs.sms24h : prefs.sms1h;
+  const smsAllowed = decision.threshold === "24h" ? prefs.sms24h : prefs.sms1h;
   const emailAllowed =
     decision.threshold === "24h" ? prefs.email24h : prefs.email1h;
 
@@ -292,51 +617,77 @@ async function processScheduleRow(input: {
 
   // ── Kanal 1: WhatsApp (per-org config, fallback til env) ──────────────
   if (whatsappAllowed && row.candidate_phone) {
-    const config = await resolveWhatsAppConfigForProject(deps.pool, row.project_id);
+    const config = await resolveWhatsAppConfigForProject(
+      deps.pool,
+      row.project_id,
+    );
     if (config) {
-      const result = await sendWhatsAppAuditionReminder({
-        config,
-        to: row.candidate_phone,
-        context: {
-          candidateName: ctx.candidateName,
-          projectName: ctx.projectName,
-          date: ctx.date,
-          startTime: ctx.startTime,
-          location: ctx.location,
-          threshold: decision.threshold,
-        },
-        fetchImpl: deps.fetchImpl,
-      });
-
-      await logDelivery(deps.pool, {
-        scheduleId: row.id,
-        candidateId: row.candidate_id,
-        threshold: decision.threshold,
-        method: "whatsapp",
-        success: result.success,
-        messageRef: result.messageId,
-        errorMessage: result.error,
-      });
-
-      if (result.success) {
-        summary.whatsappSent += 1;
-        anyDelivered = true;
-        await recordWhatsAppUsage({
-          pool: deps.pool,
-          projectId: row.project_id,
+      if (!normalizePhoneE164(row.candidate_phone)) {
+        await logDelivery(deps.pool, {
           scheduleId: row.id,
           candidateId: row.candidate_id,
           threshold: decision.threshold,
-          brand: AUDITION_REMINDER_BRAND,
-          templateName: result.templateName ?? null,
-          whatsappMessageId: result.messageId ?? null,
-          conversationId: result.conversationId ?? null,
+          method: "whatsapp",
+          success: false,
+          errorMessage: "invalid_phone",
         });
-      } else {
         summary.failures += 1;
         summary.notes.push(
-          `whatsapp_failed schedule=${row.id} reason=${result.error ?? "unknown"}`,
+          `whatsapp_failed schedule=${row.id} reason=invalid_phone`,
         );
+      } else {
+        const outcome = await attemptClaimedChannelDelivery({
+          pool: deps.pool,
+          scheduleId: row.id,
+          candidateId: row.candidate_id,
+          threshold: decision.threshold,
+          channel: "whatsapp",
+          send: async () => {
+            const result = await sendWhatsAppAuditionReminder({
+              config,
+              to: row.candidate_phone!,
+              context: {
+                candidateName: ctx.candidateName,
+                projectName: ctx.projectName,
+                date: ctx.date,
+                startTime: ctx.startTime,
+                location: ctx.location,
+                threshold: decision.threshold,
+              },
+              fetchImpl: deps.fetchImpl,
+            });
+            return {
+              success: result.success,
+              messageRef: result.messageId,
+              templateName: result.templateName,
+              conversationId: result.conversationId,
+              error: result.error,
+            };
+          },
+        });
+
+        if (outcome.status === "delivered") {
+          summary.whatsappSent += 1;
+          anyDelivered = true;
+          await recordWhatsAppUsage({
+            pool: deps.pool,
+            projectId: row.project_id,
+            scheduleId: row.id,
+            candidateId: row.candidate_id,
+            threshold: decision.threshold,
+            brand: AUDITION_REMINDER_BRAND,
+            templateName: outcome.result.templateName ?? null,
+            whatsappMessageId: outcome.result.messageRef ?? null,
+            conversationId: outcome.result.conversationId ?? null,
+          });
+        } else if (outcome.status === "failed") {
+          summary.failures += 1;
+          summary.notes.push(
+            `whatsapp_failed schedule=${row.id} reason=${
+              outcome.result.error ?? "unknown"
+            } certainty=${outcome.certainty}`,
+          );
+        }
       }
     }
   }
@@ -347,72 +698,100 @@ async function processScheduleRow(input: {
     row.candidate_phone &&
     isSmsBrandConfigured(AUDITION_REMINDER_BRAND)
   ) {
-    const body = buildAuditionReminderSmsBody(ctx);
-    const result = await sendSms({
-      brand: AUDITION_REMINDER_BRAND,
-      to: row.candidate_phone,
-      body,
-      fetchImpl: deps.fetchImpl,
-    });
-
-    await logDelivery(deps.pool, {
-      scheduleId: row.id,
-      candidateId: row.candidate_id,
-      threshold: decision.threshold,
-      method: "sms",
-      success: result.success,
-      messageRef: result.messageSid,
-      errorMessage: result.error,
-    });
-
-    if (result.success) {
-      summary.smsSent += 1;
-      anyDelivered = true;
-      await recordSmsUsage({
-        pool: deps.pool,
-        projectId: row.project_id,
+    if (!normalizePhoneE164(row.candidate_phone)) {
+      await logDelivery(deps.pool, {
         scheduleId: row.id,
         candidateId: row.candidate_id,
         threshold: decision.threshold,
-        brand: AUDITION_REMINDER_BRAND,
-        twilioMessageSid: result.messageSid ?? null,
+        method: "sms",
+        success: false,
+        errorMessage: "invalid_phone",
       });
-    } else {
       summary.failures += 1;
-      summary.notes.push(
-        `sms_failed schedule=${row.id} reason=${result.error ?? "unknown"}`,
-      );
+      summary.notes.push(`sms_failed schedule=${row.id} reason=invalid_phone`);
+    } else {
+      const body = buildAuditionReminderSmsBody(ctx);
+      const outcome = await attemptClaimedChannelDelivery({
+        pool: deps.pool,
+        scheduleId: row.id,
+        candidateId: row.candidate_id,
+        threshold: decision.threshold,
+        channel: "sms",
+        send: async () => {
+          const result = await sendSms({
+            brand: AUDITION_REMINDER_BRAND,
+            to: row.candidate_phone!,
+            body,
+            fetchImpl: deps.fetchImpl,
+          });
+          return {
+            success: result.success,
+            messageRef: result.messageSid,
+            error: result.error,
+          };
+        },
+      });
+
+      if (outcome.status === "delivered") {
+        summary.smsSent += 1;
+        anyDelivered = true;
+        await recordSmsUsage({
+          pool: deps.pool,
+          projectId: row.project_id,
+          scheduleId: row.id,
+          candidateId: row.candidate_id,
+          threshold: decision.threshold,
+          brand: AUDITION_REMINDER_BRAND,
+          twilioMessageSid: outcome.result.messageRef ?? null,
+        });
+      } else if (outcome.status === "failed") {
+        summary.failures += 1;
+        summary.notes.push(
+          `sms_failed schedule=${row.id} reason=${
+            outcome.result.error ?? "unknown"
+          } certainty=${outcome.certainty}`,
+        );
+      }
     }
   }
 
   // ── Kanal 3: E-post (Gmail) ────────────────────────────────────────────
   if (emailAllowed && row.candidate_email && isEmailConfigured()) {
     const built = buildAuditionReminderEmail(ctx);
-    const result = await sendEmail({
-      to: row.candidate_email,
-      subject: built.subject,
-      html: built.html,
-      text: built.text,
-      fromName: AUDITION_REMINDER_BRAND_LABEL,
-    });
-
-    await logDelivery(deps.pool, {
+    const outcome = await attemptClaimedChannelDelivery({
+      pool: deps.pool,
       scheduleId: row.id,
       candidateId: row.candidate_id,
       threshold: decision.threshold,
-      method: "email",
-      success: result.success,
-      messageRef: result.messageId,
-      errorMessage: result.error,
+      channel: "email",
+      send: async (messageId) => {
+        const result = await sendEmail({
+          to: row.candidate_email!,
+          subject: built.subject,
+          html: built.html,
+          text: built.text,
+          fromName: AUDITION_REMINDER_BRAND_LABEL,
+          smtpTimeoutMs: DELIVERY_SMTP_TIMEOUT_MS,
+          ...(messageId ? { messageId } : {}),
+        });
+        return {
+          success: result.success,
+          messageRef: result.messageId,
+          error: result.error,
+          failureCertainty: result.failureCertainty,
+        };
+      },
     });
 
-    if (result.success) {
+    if (outcome.status === "delivered") {
       summary.emailSent += 1;
       anyDelivered = true;
-    } else {
+    } else if (outcome.status === "failed") {
       summary.failures += 1;
       summary.notes.push(
-        `email_failed schedule=${row.id} reason=${result.error ?? "unknown"}`,
+        `email_failed schedule=${row.id} reason=${
+          outcome.result.error ?? "unknown"
+        } certainty=${outcome.certainty}`,
       );
     }
   }

@@ -45,7 +45,7 @@ export async function persistOauthState(
   stateId: string,
   payload: unknown,
   expiresAt: Date,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await ensureSchema(pool);
     await pool.query(
@@ -55,8 +55,10 @@ export async function persistOauthState(
          SET payload = EXCLUDED.payload, expires_at = EXCLUDED.expires_at`,
       [stateId, JSON.stringify(payload), expiresAt],
     );
+    return true;
   } catch (err) {
     console.error("[oauth-store] persistOauthState failed:", err);
+    return false;
   }
 }
 
@@ -78,6 +80,33 @@ export async function loadOauthState<T>(
     return r.rows[0].payload as T;
   } catch (err) {
     console.error("[oauth-store] loadOauthState failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Atomically consumes a non-expired OAuth state.
+ *
+ * A separate load followed by delete allows two callbacks to observe the same
+ * state. DELETE ... RETURNING makes the database the single-use authority
+ * across processes and pods.
+ */
+export async function consumeOauthState<T>(
+  pool: Pool,
+  stateId: string,
+): Promise<T | null> {
+  try {
+    await ensureSchema(pool);
+    const result = await pool.query(
+      `DELETE FROM role_room_oauth_pending_state
+        WHERE state_id = $1 AND expires_at > NOW()
+        RETURNING payload`,
+      [stateId],
+    );
+    if (result.rows.length === 0) return null;
+    return result.rows[0].payload as T;
+  } catch (err) {
+    console.error("[oauth-store] consumeOauthState failed:", err);
     return null;
   }
 }
@@ -127,6 +156,27 @@ export async function loadOauthTransfer<T>(
     return r.rows[0].payload as T;
   } catch (err) {
     console.error("[oauth-store] loadOauthTransfer failed:", err);
+    return null;
+  }
+}
+
+/** Atomically consumes a non-expired OAuth transfer across all app pods. */
+export async function consumeOauthTransfer<T>(
+  pool: Pool,
+  transferId: string,
+): Promise<T | null> {
+  try {
+    await ensureSchema(pool);
+    const result = await pool.query(
+      `DELETE FROM role_room_oauth_pending_transfer
+        WHERE transfer_id = $1 AND expires_at > NOW()
+        RETURNING payload`,
+      [transferId],
+    );
+    if (result.rows.length === 0) return null;
+    return result.rows[0].payload as T;
+  } catch (err) {
+    console.error("[oauth-store] consumeOauthTransfer failed:", err);
     return null;
   }
 }

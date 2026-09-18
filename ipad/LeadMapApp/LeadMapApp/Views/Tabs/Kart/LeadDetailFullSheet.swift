@@ -29,10 +29,14 @@ struct LeadDetailFullSheet: View {
     @State private var showScheduleMeeting = false
     @State private var showAssign = false
 
-    // Ekte kontakt m/ demo-fallback (MapLeadMock.phoneOrDemo/emailOrDemo):
-    // ekte modus uten data skjuler handlingen i stedet for å late som.
-    private var leadPhone: String? { lead.phoneOrDemo }
-    private var leadEmail: String? { lead.emailOrDemo }
+    // Demo-fallback brukes bare når demo eksplisitt er aktiv. Live skjuler
+    // kontaktkanalen hvis LeadModel ikke leverer verdien.
+    private var leadPhone: String? {
+        DemoModeManager.isActiveNonisolated ? lead.phoneOrDemo : lead.phone
+    }
+    private var leadEmail: String? {
+        DemoModeManager.isActiveNonisolated ? lead.emailOrDemo : lead.email
+    }
 
     private func call(_ phone: String) {
         let clean = phone.replacingOccurrences(of: " ", with: "")
@@ -473,10 +477,14 @@ struct LeadDetailFullSheet: View {
             }
 
             sectionCard(title: "Beskrivelse + notat", icon: "doc.text") {
-                Text("Interessert i nytt el-anlegg til kontorbygg på Storgata. Følge opp prisforslag og referanseprosjekter fra finansbygg.")
-                    .font(.appScaled(size: 12))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
+                if DemoModeManager.isActiveNonisolated {
+                    Text("Demo: Interessert i nytt el-anlegg til kontorbygg på Storgata. Følge opp prisforslag og referanseprosjekter fra finansbygg.")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    sectionEmptyState("Ingen beskrivelse eller notat er registrert på leaden.")
+                }
             }
         }
     }
@@ -546,11 +554,15 @@ struct LeadDetailFullSheet: View {
                 pipelineBar
             }
             sectionCard(title: "Deal-historikk", icon: "clock.arrow.circlepath") {
-                VStack(alignment: .leading, spacing: 8) {
-                    pipelineEvent(stage: "Tilbud sendt",        date: "20. mai 09:15", value: "420 000 kr", current: true)
-                    pipelineEvent(stage: "Møte gjennomført",    date: "15. mai 14:00", value: nil)
-                    pipelineEvent(stage: "Kvalifisert",         date: "10. mai 11:30", value: nil)
-                    pipelineEvent(stage: "Lead opprettet",      date: "18. apr.",       value: nil)
+                if DemoModeManager.isActiveNonisolated {
+                    VStack(alignment: .leading, spacing: 8) {
+                        pipelineEvent(stage: "Tilbud sendt (demo)", date: "20. mai 09:15", value: "420 000 kr", current: true)
+                        pipelineEvent(stage: "Møte gjennomført",    date: "15. mai 14:00", value: nil)
+                        pipelineEvent(stage: "Kvalifisert",         date: "10. mai 11:30", value: nil)
+                        pipelineEvent(stage: "Lead opprettet",      date: "18. apr.",       value: nil)
+                    }
+                } else {
+                    sectionEmptyState("Ingen verifisert deal-historikk er tilgjengelig.")
                 }
             }
         }
@@ -668,7 +680,9 @@ struct LeadDetailFullSheet: View {
                             Text(a.label)
                                 .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
-                            Text("Anders Johansen · Nordic Elektro")
+                            Text(DemoModeManager.isActiveNonisolated
+                                 ? "Anders Johansen · Nordic Elektro (demo)"
+                                 : lead.name)
                                 .font(.appScaled(size: 10))
                                 .foregroundStyle(LdBrand.textTertiary)
                         }

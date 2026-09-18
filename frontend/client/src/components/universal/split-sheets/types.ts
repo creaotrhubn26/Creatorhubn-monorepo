@@ -93,6 +93,47 @@ export interface SplitSheet {
   signed_count?: number;
 }
 
+export type SplitSheetCompensationModel = 'share' | 'hourly' | 'mixed';
+
+const splitSheetMetadata = (value: unknown): Record<string, any> => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
+export const splitSheetSignedCount = (splitSheet: SplitSheet): number => {
+  const aggregateCount = Number(splitSheet.signed_count);
+  const contributorCount = splitSheet.contributors?.filter((contributor) => Boolean(contributor.signed_at)).length || 0;
+  return Math.max(Number.isFinite(aggregateCount) ? aggregateCount : 0, contributorCount);
+};
+
+export const splitSheetTotalPercentage = (splitSheet: SplitSheet): number => {
+  const percentage = Number(splitSheet.total_percentage);
+  return Number.isFinite(percentage) ? percentage : 0;
+};
+
+export const splitSheetCompensationModelOf = (splitSheet: SplitSheet): SplitSheetCompensationModel => {
+  const model = splitSheetMetadata(splitSheet.metadata).compensationModel;
+  return model === 'hourly' || model === 'mixed' ? model : 'share';
+};
+
+export const isVersionedSignedSplitSheet = (splitSheet: SplitSheet): boolean => {
+  const agreementVersion = Number(splitSheetMetadata(splitSheet.metadata).agreementVersion);
+  return Number.isFinite(agreementVersion) && agreementVersion >= 1 && splitSheetSignedCount(splitSheet) > 0;
+};
+
+export const splitSheetUsesFeeCompensation = (splitSheet: SplitSheet): boolean =>
+  splitSheetCompensationModelOf(splitSheet) !== 'share';
+
 export interface SplitSheetEaseVerseLink {
   id?: string;
   splitSheetId?: string;
@@ -322,6 +363,4 @@ export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   overdue: '#f44336',
   cancelled: '#757575'
 };
-
-
 

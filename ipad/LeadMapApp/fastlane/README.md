@@ -31,6 +31,14 @@ Bump CFBundleVersion by 1
 
 Archive + upload til TestFlight
 
+### ios staging_beta
+
+```sh
+[bundle exec] fastlane ios staging_beta
+```
+
+Archive + upload a staging-connected build to TestFlight
+
 ### ios release
 
 ```sh

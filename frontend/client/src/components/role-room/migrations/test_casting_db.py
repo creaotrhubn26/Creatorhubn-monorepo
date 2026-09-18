@@ -11,10 +11,18 @@ from psycopg2.extras import RealDictCursor, Json
 from datetime import datetime
 import json
 
-DATABASE_URL = os.getenv(
-    'DATABASE_URL',
-    'postgresql://neondb_owner:npg_vgy4STuQ8Mja@ep-soft-pond-ag9vm5a4-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-)
+def _require_database_url():
+    value = os.getenv('DATABASE_URL', '').strip()
+    if not value:
+        raise RuntimeError('DATABASE_URL must be provided via the environment')
+    if not value.startswith(('postgres://', 'postgresql://')):
+        raise RuntimeError(
+            'DATABASE_URL must use the postgres or postgresql protocol'
+        )
+    return value
+
+
+DATABASE_URL = _require_database_url()
 
 
 def get_db_connection():
@@ -229,4 +237,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

@@ -895,6 +895,7 @@ interface LinkedInStatus {
   configured: boolean;
   client_id_set: boolean;
   client_secret_set: boolean;
+  token_encryption_set: boolean;
   redirect_uri: string;
   connections: Array<{
     id: string;
@@ -909,6 +910,9 @@ interface LinkedInStatus {
     last_error: string | null;
     last_error_at: string | null;
     scopes: string[];
+    publish_ready: boolean;
+    reconnect_required: boolean;
+    missing_scopes: string[];
   }>;
 }
 
@@ -937,14 +941,25 @@ function LinkedInPublishSection() {
       void reload();
     } else if (linkedinParam === 'error') {
       const reason = params.get('reason') ?? 'ukjent';
-      setMsg({ tone: 'error', text: `LinkedIn-feil: ${reason}` });
+      const messageByReason: Record<string, string> = {
+        missing_scopes: 'LinkedIn ga ikke alle publiseringsrettighetene. Koble til på nytt og godkjenn alle.',
+        no_managed_organizations: 'Kontoen har ingen LinkedIn-side med godkjent publiseringsrolle.',
+        invalid_state: 'Koblingen er utløpt eller allerede brukt. Start på nytt.',
+        token_exchange: 'LinkedIn kunne ikke fullføre innloggingen. Prøv på nytt.',
+      };
+      setMsg({ tone: 'error', text: messageByReason[reason] ?? 'LinkedIn-koblingen feilet. Prøv på nytt.' });
     }
   }, [reload]);
 
   const connect = async () => {
     setMsg(null);
     try {
-      const r = await fetch('/api/admin-room/cockpit/linkedin/oauth-start', { credentials: 'include' });
+      const r = await fetch('/api/admin-room/cockpit/linkedin/oauth-start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
       const payload = await r.json();
       if (!r.ok) throw new Error(payload.error ?? `HTTP ${r.status}`);
       window.location.href = payload.redirect_url;
@@ -1017,14 +1032,20 @@ function LinkedInPublishSection() {
             Mangler LinkedIn-app-konfig
           </Typography>
           <Typography sx={{ fontSize: '0.84rem' }}>
-            Sett <code>LINKEDIN_CLIENT_ID</code> + <code>LINKEDIN_CLIENT_SECRET</code> på Render.
+            Sett <code>ROLE_ROOM_LINKEDIN_CLIENT_ID</code>,
+            {' '}<code>ROLE_ROOM_LINKEDIN_CLIENT_SECRET</code>,
+            {' '}<code>ROLE_ROOM_LINKEDIN_REDIRECT_URI</code> og
+            {' '}<code>ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY</code> på Render.
+            Cockpit godtar også <code>LINKEDIN_CLIENT_ID</code>/<code>LINKEDIN_CLIENT_SECRET</code>
+            {' '}som aliaser.
             Lag en app i{' '}
             <a href="https://developer.linkedin.com/" target="_blank" rel="noreferrer"
                style={{ color: '#c084fc' }}>
               LinkedIn Developer Portal
             </a>
-            {' '}med scopes: <code>r_organization_admin</code>, <code>w_organization_social</code>,
-            {' '}<code>r_basicprofile</code>. Redirect-URI: <code>{status?.redirect_uri ?? ''}</code>
+            {' '}med scopes: <code>openid</code>, <code>profile</code>, <code>email</code>,
+            {' '}<code>w_member_social</code>, <code>r_organization_admin</code> og
+            {' '}<code>w_organization_social</code>. Redirect-URI: <code>{status?.redirect_uri ?? ''}</code>
           </Typography>
         </Alert>
       ) : null}
@@ -1091,6 +1112,17 @@ function LinkedInPublishSection() {
                           sx={{ bgcolor: 'rgba(52,211,153,0.20)', color: '#34d399',
                                 fontWeight: 700, fontSize: '0.7rem', height: 20 }} />
                       ) : null}
+                      <Chip
+                        label={conn.publish_ready ? 'KLAR' : 'KOBLE TIL PÅ NYTT'}
+                        size="small"
+                        sx={{
+                          bgcolor: conn.publish_ready ? 'rgba(52,211,153,0.20)' : 'rgba(248,113,113,0.18)',
+                          color: conn.publish_ready ? '#34d399' : '#f87171',
+                          fontWeight: 700,
+                          fontSize: '0.66rem',
+                          height: 20,
+                        }}
+                      />
                     </Stack>
                     {conn.parent_display_name ? (
                       <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mt: 0.3 }}>

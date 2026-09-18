@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:unit": "vitest run",
+    "test:mcp": "node mcp/test-post-agent-resolve-mcp.mjs",
+    "test:mcp:live": "node mcp/test-post-agent-resolve-mcp.mjs --live",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -32,6 +35,7 @@
     "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.0.8"
   }
 }

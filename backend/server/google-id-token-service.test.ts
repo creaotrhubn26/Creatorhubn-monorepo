@@ -9,7 +9,12 @@ import {
 // We don't go near a real Postgres in the unit tests — pass a stub
 // matching the slice of the Pool surface the service actually calls.
 function makePoolStub(opts: {
-  upsertResult?: { id: string; role: string | null }[];
+  upsertResult?: {
+    id: string;
+    role: string | null;
+    auth_session_version?: string;
+    is_active?: boolean;
+  }[];
   shouldThrow?: boolean;
 } = {}) {
   const calls: { sql: string; params: unknown[] }[] = [];
@@ -22,7 +27,14 @@ function makePoolStub(opts: {
       if (sql.includes('CREATE TABLE')) return { rows: [] };
       if (sql.includes('INSERT INTO creatorhub_auth_sessions')) return { rows: [] };
       if (sql.includes('INSERT INTO users')) {
-        return { rows: opts.upsertResult ?? [{ id: 'user-uuid-1', role: 'user' }] };
+        return {
+          rows: opts.upsertResult ?? [{
+            id: 'user-uuid-1',
+            role: 'user',
+            auth_session_version: '7',
+            is_active: true,
+          }],
+        };
       }
       return { rows: [] };
     }),
@@ -134,6 +146,7 @@ describe('exchangeGoogleIdToken', () => {
       userId: 'user-uuid-1',
       email: 'daniel@creatorhubn.com',
       role: 'user',
+      authSessionVersion: '7',
     });
     const upsertCall = calls.find(c => c.sql.includes('INSERT INTO users'));
     // params: [email, username(=email), password, first_name, last_name, profile_image]
@@ -182,6 +195,32 @@ describe('exchangeGoogleIdToken', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.user.role).toBe('admin');
+  });
+
+  it('does not mint a session for an inactive account', async () => {
+    const { stub } = makePoolStub({
+      upsertResult: [{
+        id: 'inactive-user',
+        role: 'user',
+        auth_session_version: '3',
+        is_active: false,
+      }],
+    });
+    const sessions = new Map<string, ActiveSessionLike>();
+    const result = await exchangeGoogleIdToken({
+      idToken: 'token',
+      pool: stub,
+      activeSessions: sessions,
+      clientIdOverride: 'cid',
+      verifyOverride: async () => goodPayload,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 403,
+      error: 'account_inactive',
+    });
+    expect(sessions.size).toBe(0);
   });
 
   it('accepts a token via the iPad-specific CAPTUREAPP_GOOGLE_CLIENT_ID', async () => {

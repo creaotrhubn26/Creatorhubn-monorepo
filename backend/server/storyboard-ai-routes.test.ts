@@ -12,25 +12,25 @@ import {
 // ── Rene helpers ────────────────────────────────────────────────────────────
 
 describe("normalizeDalleSize", () => {
-  it("beholder gyldige dall-e-3-størrelser", () => {
+  it("beholder gyldige GPT Image 2-størrelser", () => {
     expect(normalizeDalleSize("1024x1024")).toBe("1024x1024");
-    expect(normalizeDalleSize("1792x1024")).toBe("1792x1024");
-    expect(normalizeDalleSize("1024x1792")).toBe("1024x1792");
+    expect(normalizeDalleSize("1536x1024")).toBe("1536x1024");
+    expect(normalizeDalleSize("1024x1536")).toBe("1024x1536");
   });
-  it("mapper frontend-default 1536x1024 → 1792x1024", () => {
-    expect(normalizeDalleSize("1536x1024")).toBe("1792x1024");
+  it("mapper gammel landskapsstørrelse til GPT Image 2", () => {
+    expect(normalizeDalleSize("1792x1024")).toBe("1536x1024");
   });
-  it("portrett-hint → 1024x1792", () => {
-    expect(normalizeDalleSize("1024x1536")).toBe("1024x1792");
+  it("portrett-hint → 1024x1536", () => {
+    expect(normalizeDalleSize("1024x1792")).toBe("1024x1536");
   });
-  it("undefined/ukjent → 1792x1024", () => {
-    expect(normalizeDalleSize(undefined)).toBe("1792x1024");
-    expect(normalizeDalleSize("weird")).toBe("1792x1024");
+  it("undefined/ukjent → 1536x1024", () => {
+    expect(normalizeDalleSize(undefined)).toBe("1536x1024");
+    expect(normalizeDalleSize("weird")).toBe("1536x1024");
   });
 });
 
 describe("composeFramePrompt", () => {
-  it("inkluderer prompt, kameravinkel-LABEL, bevegelse-LABEL og stil", () => {
+  it("inkluderer intent, normalisert kamera, bevegelse og StyleProfile", () => {
     const p = composeFramePrompt({
       prompt: "Hero enters the room",
       template: "drama",
@@ -39,13 +39,13 @@ describe("composeFramePrompt", () => {
       additional_notes: "tense",
     });
     expect(p).toContain("Hero enters the room");
-    expect(p).toContain("Nærbilde"); // close-up → norsk label
-    expect(p).toContain("Tracking");
-    expect(p).toContain("warm intimate TV-drama tones"); // drama-stil
-    expect(p).toContain("no text, no captions, no logos");
+    expect(p).toContain("close-up");
+    expect(p).toContain("controlled dolly movement");
+    expect(p).toContain("intimate television drama storyboard");
+    expect(p).toContain("No lettering, captions");
   });
   it("ukjent template → cinematic-stil (fallback)", () => {
-    expect(composeFramePrompt({ prompt: "x", template: "nope" })).toContain("cinematic film look");
+    expect(composeFramePrompt({ prompt: "x", template: "nope" })).toContain("cinematic production concept frame");
   });
   it("utelater tomme felt", () => {
     const p = composeFramePrompt({ prompt: "solo" });
@@ -57,8 +57,11 @@ describe("composeFramePrompt", () => {
 describe("statiske referansekart", () => {
   it("har forventede nøkler", () => {
     expect(Object.keys(STORYBOARD_TEMPLATES)).toEqual(["cinematic", "documentary", "commercial", "drama"]);
+    expect(STORYBOARD_CAMERA_ANGLES["extreme-wide"]).toBe("Ekstrem total");
+    expect(STORYBOARD_CAMERA_ANGLES.pov).toBe("Point of view");
     expect(STORYBOARD_CAMERA_ANGLES["close-up"]).toBe("Nærbilde");
     expect(STORYBOARD_CAMERA_MOVEMENTS.pan).toBe("Panorering");
+    expect(STORYBOARD_CAMERA_MOVEMENTS.orbit).toBe("Orbit");
   });
 });
 
@@ -145,17 +148,20 @@ describe("generate-frame handler", () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ data: [{ b64_json: "AAAA", revised_prompt: "r" }] }),
+      json: async () => ({
+        data: [{ b64_json: Buffer.alloc(2_048, 1).toString('base64'), revised_prompt: "r" }],
+      }),
     });
     const stack = getGenerateFrame(fetchImpl);
     const res = makeRes();
     await runChain(stack, { headers: { authorization: "Bearer tok-1" }, body: { prompt: "hero", template: "drama", size: "1536x1024" } }, res);
     expect(res.body.success).toBe(true);
-    expect(res.body.imageBase64).toBe("AAAA");
-    expect(res.body.model).toBe("dall-e-3");
-    // size normalisert til gyldig dall-e-3-verdi
+    expect(res.body.imageBase64).toBeTruthy();
+    expect(res.body.model).toBe("gpt-image-2");
+    expect(res.body.promptEngine.version).toBe('trr-prompt-engine-v1');
+    // size normalisert til gyldig GPT Image 2-verdi
     const sentBody = JSON.parse(fetchImpl.mock.calls[0][1].body);
-    expect(sentBody.size).toBe("1792x1024");
+    expect(sentBody.size).toBe("1536x1024");
     expect(sentBody.prompt).toContain("hero");
   });
 

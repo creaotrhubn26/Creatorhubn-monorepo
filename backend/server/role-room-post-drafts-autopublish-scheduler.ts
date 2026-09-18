@@ -21,6 +21,7 @@
 
 import type { Application, Request, Response } from 'express';
 import type { Pool } from 'pg';
+import crypto from 'node:crypto';
 
 export interface SetupAutoPublishSchedulerDeps {
   app: Application;
@@ -51,6 +52,25 @@ const state: SchedulerState = {
 };
 
 let tickInterval: NodeJS.Timeout | null = null;
+const INTERNAL_PUBLISH_HEADER = 'x-role-room-autopublish-token';
+const internalPublishToken = crypto.randomBytes(32).toString('base64url');
+
+function isLoopbackAddress(value: string | undefined): boolean {
+  return value === '127.0.0.1' || value === '::1' || value === '::ffff:127.0.0.1';
+}
+
+/**
+ * Kun self-HTTP fra samme prosess får bruke den interne publish-broen.
+ * Tokenet genereres ved boot og eksponeres aldri som env/config, og
+ * loopback-sjekken hindrer at headeren kan brukes eksternt.
+ */
+export function isAutoPublishInternalRequest(req: Request): boolean {
+  const supplied = req.get(INTERNAL_PUBLISH_HEADER) ?? '';
+  if (!supplied || !isLoopbackAddress(req.socket.remoteAddress)) return false;
+  const expected = Buffer.from(internalPublishToken);
+  const actual = Buffer.from(supplied);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
 
 async function publishDraftViaSelfHttp(draftId: number): Promise<{
   ok: boolean;
@@ -59,14 +79,16 @@ async function publishDraftViaSelfHttp(draftId: number): Promise<{
   error?: string;
 }> {
   const port = process.env.PORT || '10000';
-  const bypassToken = (process.env.WHATSAPP_DEMO_BYPASS_TOKEN || '').trim();
-  if (!bypassToken) {
-    return { ok: false, error: 'WHATSAPP_DEMO_BYPASS_TOKEN missing' };
-  }
   try {
     const resp = await fetch(
-      `http://127.0.0.1:${port}/api/role-room/agent/post-drafts/${draftId}/publish?token=${encodeURIComponent(bypassToken)}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+      `http://127.0.0.1:${port}/api/role-room/agent/post-drafts/${draftId}/publish`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [INTERNAL_PUBLISH_HEADER]: internalPublishToken,
+        },
+      },
     );
     const body = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
     if (resp.ok && body.ok === true) {
@@ -78,34 +100,72 @@ async function publishDraftViaSelfHttp(draftId: number): Promise<{
     }
     return {
       ok: false,
+      status: typeof body.status === 'string' ? body.status : undefined,
       error: (body.error as string) || (body.reason as string) || `http ${resp.status}`,
     };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    // Når requesten kan ha nådd endepunktet, vet vi ikke om den eksterne
+    // sideeffekten allerede skjedde. Dette må aldri bli en automatisk retry.
+    return { ok: false, status: 'uncertain', error: 'self_http_outcome_uncertain' };
   }
 }
 
 async function runTickInternal(pool: Pool): Promise<{ published: number; failed: number; processed: number }> {
-  // Hent drafts som er due. Atomisk: marker auto_publish_attempted_at før vi
-  // ringer publish, så to ticks samtidig ikke begge prøver samme draft.
-  const due = await pool.query<{ id: string; platform: string; auto_publish_attempts: number }>(
-    `SELECT id, platform, auto_publish_attempts
-       FROM marketing_post_drafts
-      WHERE auto_publish_enabled = TRUE
-        AND status IN ('draft', 'edited')
-        AND suggested_publish_time IS NOT NULL
-        AND suggested_publish_time <= now()
-        AND auto_publish_attempts < $1
-        AND (
-          auto_publish_attempted_at IS NULL
-          OR auto_publish_attempted_at < now() - ($2::int * INTERVAL '1 millisecond')
-        )
-      ORDER BY suggested_publish_time ASC
-      LIMIT $3`,
-    [MAX_ATTEMPTS, RETRY_BACKOFF_MS, BATCH_LIMIT],
-  );
+  // Claim i én transaksjon. SKIP LOCKED gjør at flere Render-instanser kan
+  // kjøre samme worker uten dobbeltpublisering.
+  const client = await pool.connect();
+  let due: { rows: Array<{ id: string; platform: string; auto_publish_attempts: number }>; rowCount: number | null };
+  try {
+    await client.query('BEGIN');
+    // En prosess kan dø etter at LinkedIn/Meta mottok requesten, men før vi
+    // lagret svaret. Slike claims må granskes manuelt, aldri auto-retries.
+    await client.query(
+      `UPDATE marketing_post_drafts
+          SET status = 'uncertain',
+              auto_publish_enabled = FALSE,
+              publish_error = COALESCE(
+                publish_error,
+                'Uavklart publiseringsutfall — kontroller plattformen før nytt forsøk'
+              ),
+              updated_at = now()
+        WHERE status = 'publishing'
+          AND updated_at < now() - interval '15 minutes'`,
+    );
+    due = await client.query<{ id: string; platform: string; auto_publish_attempts: number }>(
+      `SELECT id, platform, auto_publish_attempts
+         FROM marketing_post_drafts
+        WHERE auto_publish_enabled = TRUE
+          AND status IN ('draft', 'edited')
+          AND suggested_publish_time IS NOT NULL
+          AND suggested_publish_time <= now()
+          AND auto_publish_attempts < $1
+          AND (
+            auto_publish_attempted_at IS NULL
+            OR auto_publish_attempted_at < now() - ($2::int * INTERVAL '1 millisecond')
+          )
+        ORDER BY suggested_publish_time ASC
+        LIMIT $3
+        FOR UPDATE SKIP LOCKED`,
+      [MAX_ATTEMPTS, RETRY_BACKOFF_MS, BATCH_LIMIT],
+    );
+    if (due.rows.length > 0) {
+      await client.query(
+        `UPDATE marketing_post_drafts
+            SET auto_publish_attempted_at = now(),
+                auto_publish_attempts = auto_publish_attempts + 1
+          WHERE id = ANY($1::bigint[])`,
+        [due.rows.map((row) => row.id)],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 
-  if (due.rowCount === 0) {
+  if (due.rows.length === 0) {
     return { published: 0, failed: 0, processed: 0 };
   }
 
@@ -113,15 +173,6 @@ async function runTickInternal(pool: Pool): Promise<{ published: number; failed:
 
   for (const row of due.rows) {
     const draftId = Number(row.id);
-    // Reserver med å bumpe attempted_at + attempts FØR publish
-    await pool.query(
-      `UPDATE marketing_post_drafts
-          SET auto_publish_attempted_at = now(),
-              auto_publish_attempts = auto_publish_attempts + 1
-        WHERE id = $1`,
-      [draftId],
-    );
-
     const result = await publishDraftViaSelfHttp(draftId);
     if (result.ok && result.status === 'published') {
       published++;
@@ -136,13 +187,41 @@ async function runTickInternal(pool: Pool): Promise<{ published: number; failed:
           [draftId, `Platform ${row.platform} støtter ikke auto-publish. Disablet.`],
       );
       console.log(`[autopublish] draftId=${draftId} platform=${row.platform} → manual_copy, disabled auto`);
+    } else if (result.status === 'uncertain') {
+      failed++;
+      await pool.query(
+        `UPDATE marketing_post_drafts
+            SET status = 'uncertain',
+                auto_publish_enabled = FALSE,
+                publish_error = COALESCE(
+                  publish_error,
+                  'Uavklart publiseringsutfall — kontroller plattformen før nytt forsøk'
+                ),
+                updated_at = now()
+          WHERE id = $1`,
+        [draftId],
+      );
+      console.warn(
+        '[autopublish] draftId=' + draftId
+        + ' platform=' + row.platform
+        + ' → uncertain; automatic retry disabled',
+      );
     } else {
       failed++;
+      const attemptNumber = Number(row.auto_publish_attempts) + 1;
+      await pool.query(
+        `UPDATE marketing_post_drafts
+            SET status = CASE WHEN $2 < $3 THEN 'edited' ELSE 'failed' END,
+                publish_error = $4,
+                updated_at = now()
+          WHERE id = $1`,
+        [draftId, attemptNumber, MAX_ATTEMPTS, String(result.error || 'Auto-publisering feilet').slice(0, 1000)],
+      );
       console.warn(`[autopublish] draftId=${draftId} platform=${row.platform} → failed: ${result.error}`);
     }
   }
 
-  return { published, failed, processed: due.rowCount ?? 0 };
+  return { published, failed, processed: due.rows.length };
 }
 
 export async function runAutoPublishTick(pool: Pool): Promise<{ published: number; failed: number; processed: number }> {

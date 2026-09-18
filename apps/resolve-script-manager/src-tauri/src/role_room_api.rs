@@ -21,7 +21,9 @@ fn extract_creds(settings: &State<AppSettings>) -> Result<(String, String), Stri
         .get("RR_BEARER_TOKEN")
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Not signed in — RR_BEARER_TOKEN missing. Sign in via Role Room first.".to_string())?;
+        .ok_or_else(|| {
+            "Not signed in — RR_BEARER_TOKEN missing. Sign in via Role Room first.".to_string()
+        })?;
     // Frontend skriver KUN RR_POST_AGENT_BASE_URL (samme format, inkl. /api/post-agent).
     // Les den først; RR_API_BASE beholdes som legacy-fallback. Uten dette ble en
     // egendefinert backend-URL ignorert (Rust falt alltid til DEFAULT_BASE).
@@ -55,6 +57,23 @@ async fn fetch_json(base: &str, path: &str, token: &str) -> Result<Value, String
         .map_err(|e| format!("Parse JSON from {}: {} (body: {})", url, e, text))
 }
 
+fn creatorhub_api_base(post_agent_base: &str) -> String {
+    post_agent_base
+        .trim_end_matches('/')
+        .strip_suffix("/api/post-agent")
+        .unwrap_or(post_agent_base.trim_end_matches('/'))
+        .to_string()
+}
+
+async fn parse_json_response(res: reqwest::Response, url: &str) -> Result<Value, String> {
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("HTTP {} from {}: {}", status, url, body));
+    }
+    serde_json::from_str::<Value>(&body).map_err(|e| format!("Parse JSON from {}: {}", url, e))
+}
+
 /// GET /api/post-agent/projects/:project_id/scenes
 /// Returns `{ scenes: [{ id, sceneNumber, title, intExt, timeOfDay, characters }] }`.
 /// Used by the frontend + Python bridge to pre-create matching bins in Resolve.
@@ -77,7 +96,12 @@ pub async fn role_room_fetch_equipment(
     settings: State<'_, AppSettings>,
 ) -> Result<Value, String> {
     let (base, token) = extract_creds(&settings)?;
-    fetch_json(&base, &format!("/projects/{}/equipment", project_id), &token).await
+    fetch_json(
+        &base,
+        &format!("/projects/{}/equipment", project_id),
+        &token,
+    )
+    .await
 }
 
 /// GET /api/post-agent/projects/:project_id/live-set-state
@@ -102,9 +126,7 @@ pub async fn role_room_fetch_live_set_state(
 /// Returns `{ productions: [{ id, name, projectType, eventDate, activeSeats }] }`.
 /// Used to populate a project-picker in the desktop app.
 #[tauri::command]
-pub async fn role_room_my_productions(
-    settings: State<'_, AppSettings>,
-) -> Result<Value, String> {
+pub async fn role_room_my_productions(settings: State<'_, AppSettings>) -> Result<Value, String> {
     let (base, token) = extract_creds(&settings)?;
     fetch_json(&base, "/team/my-productions", &token).await
 }
@@ -116,6 +138,81 @@ pub async fn role_room_my_productions(
 pub async fn role_room_my_seats(settings: State<'_, AppSettings>) -> Result<Value, String> {
     let (base, token) = extract_creds(&settings)?;
     fetch_json(&base, "/team/my-seats", &token).await
+}
+
+/// Access-scoped Video Room projects and versions for native NLE sync.
+#[tauri::command]
+pub async fn role_room_video_nle_projects(
+    settings: State<'_, AppSettings>,
+) -> Result<Value, String> {
+    let (post_agent_base, token) = extract_creds(&settings)?;
+    let base = creatorhub_api_base(&post_agent_base);
+    fetch_json(&base, "/api/video-nle/projects", &token).await
+}
+
+/// Pull the canonical review markers for one Video Room version.
+#[tauri::command]
+pub async fn role_room_video_resolve_markers(
+    project_id: String,
+    version_id: String,
+    settings: State<'_, AppSettings>,
+) -> Result<Value, String> {
+    let (post_agent_base, token) = extract_creds(&settings)?;
+    let base = creatorhub_api_base(&post_agent_base);
+    fetch_json(
+        &base,
+        &format!(
+            "/api/projects/{}/video-marker-sync/resolve?versionId={}",
+            project_id, version_id
+        ),
+        &token,
+    )
+    .await
+}
+
+/// Push a complete Resolve marker snapshot into the canonical review model.
+#[tauri::command]
+pub async fn role_room_push_video_resolve_markers(
+    project_id: String,
+    version_id: String,
+    markers: Value,
+    settings: State<'_, AppSettings>,
+) -> Result<Value, String> {
+    let (post_agent_base, token) = extract_creds(&settings)?;
+    let base = creatorhub_api_base(&post_agent_base);
+    let url = format!(
+        "{}/api/projects/{}/video-marker-sync/resolve",
+        base, project_id
+    );
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))?;
+    let res = client
+        .post(&url)
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "versionId": version_id, "markers": markers }))
+        .send()
+        .await
+        .map_err(|e| format!("POST {} failed: {}", url, e))?;
+    parse_json_response(res, &url).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::creatorhub_api_base;
+
+    #[test]
+    fn derives_root_api_base_from_post_agent_base() {
+        assert_eq!(
+            creatorhub_api_base("https://creatorhubn.com/api/post-agent/"),
+            "https://creatorhubn.com"
+        );
+        assert_eq!(
+            creatorhub_api_base("http://localhost:5000"),
+            "http://localhost:5000"
+        );
+    }
 }
 
 /// POST /api/post-agent/projects/:projectId/clips/download-urls
@@ -146,8 +243,7 @@ pub async fn role_room_fetch_clip_download_urls(
     if !status.is_success() {
         return Err(format!("HTTP {} from {}: {}", status, url, text));
     }
-    serde_json::from_str::<Value>(&text)
-        .map_err(|e| format!("Parse JSON: {} (body: {})", e, text))
+    serde_json::from_str::<Value>(&text).map_err(|e| format!("Parse JSON: {} (body: {})", e, text))
 }
 
 /// Download a single clip from a presigned URL to a local path. Returns
@@ -169,7 +265,11 @@ pub async fn role_room_download_clip(
         .map_err(|e| format!("Download GET failed: {}", e))?;
     let status = res.status();
     if !status.is_success() {
-        return Err(format!("HTTP {} downloading {}", status, &download_url[..download_url.len().min(80)]));
+        return Err(format!(
+            "HTTP {} downloading {}",
+            status,
+            &download_url[..download_url.len().min(80)]
+        ));
     }
     let bytes = res
         .bytes()
@@ -181,7 +281,6 @@ pub async fn role_room_download_clip(
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("create_dir_all {} failed: {}", parent.display(), e))?;
     }
-    std::fs::write(&dest_path, &bytes)
-        .map_err(|e| format!("Write {} failed: {}", dest_path, e))?;
+    std::fs::write(&dest_path, &bytes).map_err(|e| format!("Write {} failed: {}", dest_path, e))?;
     Ok(len)
 }

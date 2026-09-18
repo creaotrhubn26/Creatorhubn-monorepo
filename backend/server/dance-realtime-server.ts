@@ -21,6 +21,10 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import crypto from 'crypto';
+import {
+  parseWebSocketRequestUrl,
+  resolveWebSocketPathOwner,
+} from './websocket-path-policy.js';
 
 interface DanceClient {
   ws: WebSocket;
@@ -52,15 +56,11 @@ export function createDanceRealtimeServer(server: Server): WebSocketServer {
   const clients = new Map<string, DanceClient>();
 
   server.on('upgrade', (req, socket, head) => {
-    try {
-      const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-      if (url.pathname !== '/ws/dance/realtime') return;
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit('connection', ws, req);
-      });
-    } catch {
-      // Malformed URL — la andre listeners håndtere
-    }
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url || resolveWebSocketPathOwner(url.pathname) !== 'dance') return;
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
   });
 
   // Helper: send til alle i samme projectId-rom (except sender)
@@ -88,7 +88,11 @@ export function createDanceRealtimeServer(server: Server): WebSocketServer {
   }
 
   wss.on('connection', (ws, req) => {
-    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url) {
+      ws.close(1008, 'invalid_request_target');
+      return;
+    }
     const projectId = url.searchParams.get('projectId') || '';
     const userId = url.searchParams.get('userId') || 'anonymous';
     const displayName = url.searchParams.get('displayName') || 'Anonymous';

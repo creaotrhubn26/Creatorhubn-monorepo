@@ -7,6 +7,10 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, eq } from 'drizzle-orm';
 import { captureSessions } from '../migrations/capture-schema.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
+import {
+  matchCaptureWebSocketSessionPath,
+  parseWebSocketRequestUrl,
+} from './websocket-path-policy.js';
 
 interface SessionData {
   userId: string;
@@ -16,8 +20,6 @@ interface SessionData {
   loginAt: string;
   [key: string]: unknown;
 }
-
-const SESSION_PATH_RE = /^\/api\/capture\/ws\/sessions\/([0-9a-f-]{36})$/;
 
 const sessionClients = new Map<string, Set<WebSocket>>();
 
@@ -143,8 +145,9 @@ export function attachCaptureWebSocket(
   wss.on('close', () => clearInterval(heartbeatInterval));
 
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const match = url.pathname.match(SESSION_PATH_RE);
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url) return;
+    const match = matchCaptureWebSocketSessionPath(url.pathname);
     if (!match) return;
 
     const sessionId = match[1];

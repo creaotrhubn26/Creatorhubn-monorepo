@@ -22,6 +22,11 @@ import type express from "express";
 import type { Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import {
+  decryptLinkedInToken,
+  encryptLinkedInToken,
+  listLinkedInCompanies,
+} from "./social-publisher-linkedin.js";
 
 interface SessionLike { userId: string; email?: string }
 
@@ -33,13 +38,75 @@ export interface LinkedInOAuthRoutesDeps {
 }
 
 const PUBLIC_URL = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
-// Scopes vi trenger for å:
-//   - r_organization_admin: lese hvilke orgs Daniel er admin på (Company + Showcase)
-//   - w_organization_social: publisere UGC-posts på vegne av orgen
-//   - r_basicprofile: bare for å vite hvem som koblet
-const REQUIRED_SCOPES = ["r_organization_admin", "w_organization_social", "r_basicprofile"];
+// Én consent-flow dekker OIDC-identitet, personlig publisering og publisering
+// til sider brukeren faktisk administrerer.
+const REQUIRED_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "w_member_social",
+  "r_organization_admin",
+  "w_organization_social",
+] as const;
+const ORGANIZATION_PUBLISH_SCOPES = [
+  "r_organization_admin",
+  "w_organization_social",
+] as const;
 
 const REDIRECT_URI = `${PUBLIC_URL}/api/admin-room/cockpit/linkedin/oauth-callback`;
+
+function normalizeScopes(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(
+      value.filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ));
+  }
+  if (typeof value !== "string") return [];
+  return Array.from(new Set(value.split(/[\s,]+/).map((entry) => entry.trim()).filter(Boolean)));
+}
+
+function readStoredLinkedInToken(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const stored = value.trim();
+  // Midlertidig bakoverkompatibilitet for eksisterende klartekst-rader. Alle
+  // nye writes krypteres, og resolveren migrerer gamle rader ved første bruk.
+  if (!stored.startsWith("v1.")) return stored;
+  return decryptLinkedInToken(stored);
+}
+
+function hasScopes(scopes: string[], required: readonly string[]): boolean {
+  const granted = new Set(scopes);
+  return required.every((scope) => granted.has(scope));
+}
+
+function tokenEncryptionConfigured(): boolean {
+  return Boolean(
+    process.env.ROLE_ROOM_LINKEDIN_TOKEN_ENCRYPTION_KEY?.trim()
+    || process.env.ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.trim()
+    || process.env.GOOGLE_TOKEN_ENCRYPTION_KEY?.trim()
+    || process.env.SESSION_SECRET?.trim()
+    || process.env.JWT_SECRET?.trim()
+    || process.env.AUTH_SECRET?.trim(),
+  );
+}
+
+function linkedInClientId(): string | null {
+  return (
+    process.env.LINKEDIN_CLIENT_ID?.trim()
+    || process.env.ROLE_ROOM_LINKEDIN_CLIENT_ID?.trim()
+    || null
+  );
+}
+
+function linkedInClientSecret(): string | null {
+  return (
+    process.env.LINKEDIN_CLIENT_SECRET?.trim()
+    || process.env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET?.trim()
+    || null
+  );
+}
 
 export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
   const { app, pool, getActiveSession, isAdminEmail } = deps;
@@ -51,8 +118,7 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
     return session;
   };
 
-  const isConfigured = () =>
-    !!(process.env.LINKEDIN_CLIENT_ID?.trim() && process.env.LINKEDIN_CLIENT_SECRET?.trim());
+  const isConfigured = () => Boolean(linkedInClientId() && linkedInClientSecret());
 
   // ── GET /linkedin/status — er det koblet? ────────────────────────
   app.get("/api/admin-room/cockpit/linkedin/status", async (req, res) => {
@@ -61,16 +127,39 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
       const r = await pool.query(
         `SELECT id::text, organization_urn, vanity_name, display_name, org_type,
                 parent_display_name, expires_at, is_default,
-                last_publish_at, last_error, last_error_at, scopes
+                last_publish_at, last_error, last_error_at, scopes, access_token
            FROM linkedin_org_config
           ORDER BY org_type, display_name`,
       );
+      const connections = r.rows.map(({ access_token, ...row }) => {
+        const scopes = normalizeScopes(row.scopes);
+        const expiresAt = new Date(row.expires_at).getTime();
+        const tokenReadable = Boolean(readStoredLinkedInToken(access_token));
+        const missingScopes = ORGANIZATION_PUBLISH_SCOPES.filter(
+          (scope) => !scopes.includes(scope),
+        );
+        const publishReady =
+          tokenEncryptionConfigured()
+          &&
+          tokenReadable
+          && Number.isFinite(expiresAt)
+          && expiresAt > Date.now()
+          && missingScopes.length === 0;
+        return {
+          ...row,
+          scopes,
+          publish_ready: publishReady,
+          reconnect_required: !publishReady,
+          missing_scopes: missingScopes,
+        };
+      });
       return res.json({
-        configured: isConfigured(),
-        client_id_set: !!process.env.LINKEDIN_CLIENT_ID?.trim(),
-        client_secret_set: !!process.env.LINKEDIN_CLIENT_SECRET?.trim(),
+        configured: isConfigured() && tokenEncryptionConfigured(),
+        client_id_set: Boolean(linkedInClientId()),
+        client_secret_set: Boolean(linkedInClientSecret()),
+        token_encryption_set: tokenEncryptionConfigured(),
         redirect_uri: REDIRECT_URI,
-        connections: r.rows,
+        connections,
       });
     } catch (err) {
       console.error("[linkedin/status]", err);
@@ -78,12 +167,12 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
     }
   });
 
-  // ── GET /linkedin/oauth-start — redirect til LinkedIn ────────────
-  app.get("/api/admin-room/cockpit/linkedin/oauth-start", async (req, res) => {
+  // ── POST /linkedin/oauth-start — mynt en engangs state ───────────
+  app.post("/api/admin-room/cockpit/linkedin/oauth-start", async (req, res) => {
     const session = guard(req, res); if (!session) return;
-    if (!isConfigured()) {
+    if (!isConfigured() || !tokenEncryptionConfigured()) {
       return res.status(503).json({
-        error: "LINKEDIN_CLIENT_ID + LINKEDIN_CLIENT_SECRET må settes på Render først",
+        error: "LinkedIn client-konfig og tokenkryptering må settes på Render først",
       });
     }
     try {
@@ -98,7 +187,7 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
 
       const params = new URLSearchParams({
         response_type: "code",
-        client_id: process.env.LINKEDIN_CLIENT_ID!,
+        client_id: linkedInClientId()!,
         redirect_uri: REDIRECT_URI,
         state,
         scope: REQUIRED_SCOPES.join(" "),
@@ -113,19 +202,17 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
 
   // ── GET /linkedin/oauth-callback — LinkedIn redirecter hit ───────
   app.get("/api/admin-room/cockpit/linkedin/oauth-callback", async (req, res) => {
-    const { code, state, error: oauthError } = req.query as {
-      code?: string; state?: string; error?: string;
-    };
-
-    if (oauthError) {
-      return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=${encodeURIComponent(oauthError)}`);
-    }
-    if (!code || !state) {
+    const code = typeof req.query.code === "string" ? req.query.code.trim() : "";
+    const state = typeof req.query.state === "string" ? req.query.state.trim() : "";
+    const oauthError =
+      typeof req.query.error === "string" ? req.query.error.trim() : "";
+    if (!state) {
       return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=missing_params`);
     }
 
     try {
-      // Verifisér state
+      // State konsumeres atomisk ved enhver callback, også når brukeren avviser
+      // samtykke. Dermed kan samme nettleser-state aldri gjenbrukes senere.
       const stateRow = await pool.query(
         `DELETE FROM linkedin_oauth_states
           WHERE state = $1 AND expires_at > now()
@@ -135,6 +222,17 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
       if (!stateRow.rowCount) {
         return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=invalid_state`);
       }
+      if (oauthError) {
+        return res.redirect(
+          `${PUBLIC_URL}/admin-room?linkedin=error&reason=${encodeURIComponent(oauthError)}`,
+        );
+      }
+      if (!code) {
+        return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=missing_params`);
+      }
+      if (!isConfigured() || !tokenEncryptionConfigured()) {
+        return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=not_configured`);
+      }
       const userId = stateRow.rows[0].user_id;
 
       // Exchange code → access_token
@@ -142,13 +240,14 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
         grant_type: "authorization_code",
         code,
         redirect_uri: REDIRECT_URI,
-        client_id: process.env.LINKEDIN_CLIENT_ID!,
-        client_secret: process.env.LINKEDIN_CLIENT_SECRET!,
+        client_id: linkedInClientId()!,
+        client_secret: linkedInClientSecret()!,
       });
       const tokenResp = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: tokenForm.toString(),
+        signal: AbortSignal.timeout(20_000),
       });
       if (!tokenResp.ok) {
         const errText = await tokenResp.text().catch(() => "");
@@ -163,119 +262,103 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
         scope?: string;
       };
 
-      const accessToken = tokenData.access_token;
+      const accessToken = tokenData.access_token?.trim();
+      if (!accessToken || !Number.isFinite(tokenData.expires_in) || tokenData.expires_in <= 0) {
+        return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=invalid_token_response`);
+      }
       const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-      const refreshToken = tokenData.refresh_token ?? null;
+      const refreshToken = tokenData.refresh_token?.trim() || null;
       const refreshExpiresAt = tokenData.refresh_token_expires_in
         ? new Date(Date.now() + tokenData.refresh_token_expires_in * 1000).toISOString()
         : null;
-      const scopes = (tokenData.scope ?? "").split(/\s+/).filter(Boolean);
-
-      // Hent alle orgs Daniel er admin på
-      const orgsResp = await fetch(
-        "https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&projection=(elements*(organizationalTarget~(id,vanityName,localizedName,organizationType,parentRelationship~(localizedName,vanityName,id,organizationType))))",
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202410",
-          },
-        },
-      );
-
-      if (!orgsResp.ok) {
-        const errText = await orgsResp.text().catch(() => "");
-        console.error("[linkedin/oauth-callback] orgs-fetch failed", orgsResp.status, errText);
-        // Fallback: lagre token uten orgs så Daniel kan velge manuelt
-        return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=token_saved_no_orgs`);
+      const scopes = normalizeScopes(tokenData.scope);
+      const missingScopes = REQUIRED_SCOPES.filter((scope) => !scopes.includes(scope));
+      if (missingScopes.length > 0) {
+        console.warn("[linkedin/oauth-callback] missing scopes", missingScopes);
+        return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=missing_scopes`);
       }
-      const orgsData = await orgsResp.json() as {
-        elements?: Array<{
-          "organizationalTarget~"?: {
-            id: number;
-            vanityName?: string;
-            localizedName: string;
-            organizationType?: string;
-            "parentRelationship~"?: {
-              id: number;
-              localizedName: string;
-              vanityName?: string;
-            };
-          };
-        }>;
-      };
 
-      const orgs = (orgsData.elements ?? [])
-        .map((e) => e["organizationalTarget~"])
-        .filter((o): o is NonNullable<typeof o> => !!o);
+      // ACL- og organisasjonsoppslaget bruker samme versjonerte /rest-klient
+      // som publiseringsmotoren. Tom liste er ikke en gyldig kobling for
+      // Cockpit, siden denne flyten eksplisitt er sidepublisering.
+      const orgs = await listLinkedInCompanies(accessToken);
+      if (orgs.length === 0) {
+        return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=no_managed_organizations`);
+      }
 
-      // Lagre hver org i linkedin_org_config (samme token brukes for alle)
-      let savedCount = 0;
-      let defaultUrn: string | null = null;
-      for (const org of orgs) {
-        const urn = `urn:li:organization:${org.id}`;
-        const orgType = String(org.organizationType ?? "")
-          .toLowerCase().includes("showcase") ? "showcase" : "company";
-        const parent = org["parentRelationship~"];
-        const parentUrn = parent ? `urn:li:organization:${parent.id}` : null;
-        const parentName = parent?.localizedName ?? null;
-
-        await pool.query(
-          `INSERT INTO linkedin_org_config (
-             organization_urn, vanity_name, display_name, org_type,
-             parent_organization_urn, parent_display_name,
-             access_token, refresh_token, expires_at, refresh_expires_at,
-             scopes, connected_by_user_id
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::timestamptz, $11::text[], $12)
-           ON CONFLICT (organization_urn) DO UPDATE SET
-             vanity_name = EXCLUDED.vanity_name,
-             display_name = EXCLUDED.display_name,
-             org_type = EXCLUDED.org_type,
-             parent_organization_urn = EXCLUDED.parent_organization_urn,
-             parent_display_name = EXCLUDED.parent_display_name,
-             access_token = EXCLUDED.access_token,
-             refresh_token = COALESCE(EXCLUDED.refresh_token, linkedin_org_config.refresh_token),
-             expires_at = EXCLUDED.expires_at,
-             refresh_expires_at = COALESCE(EXCLUDED.refresh_expires_at, linkedin_org_config.refresh_expires_at),
-             scopes = EXCLUDED.scopes,
-             last_error = NULL,
-             last_error_at = NULL`,
-          [
-            urn,
-            org.vanityName ?? null,
-            org.localizedName,
-            orgType,
-            parentUrn,
-            parentName,
-            accessToken,
-            refreshToken,
-            expiresAt,
-            refreshExpiresAt,
-            scopes,
-            userId,
-          ],
+      const encryptedAccessToken = encryptLinkedInToken(accessToken);
+      const encryptedRefreshToken = refreshToken
+        ? encryptLinkedInToken(refreshToken)
+        : null;
+      const orgUrns = orgs.map((org) => org.urn);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const existingDefault = await client.query<{ organization_urn: string }>(
+          `SELECT organization_urn
+             FROM linkedin_org_config
+            WHERE is_default = TRUE
+              AND organization_urn = ANY($1::text[])
+            LIMIT 1`,
+          [orgUrns],
         );
-        savedCount++;
 
-        // Foretrekk showcase som default (det er publish-target)
-        if (orgType === "showcase" && !defaultUrn) defaultUrn = urn;
-      }
+        for (const org of orgs) {
+          await client.query(
+            `INSERT INTO linkedin_org_config (
+               organization_urn, vanity_name, display_name, org_type,
+               access_token, refresh_token, expires_at, refresh_expires_at,
+               scopes, connected_by_user_id, metadata
+             ) VALUES (
+               $1, $2, $3, 'company',
+               $4, $5, $6::timestamptz, $7::timestamptz,
+               $8::text[], $9, $10::jsonb
+             )
+             ON CONFLICT (organization_urn) DO UPDATE SET
+               vanity_name = EXCLUDED.vanity_name,
+               display_name = EXCLUDED.display_name,
+               access_token = EXCLUDED.access_token,
+               refresh_token = COALESCE(EXCLUDED.refresh_token, linkedin_org_config.refresh_token),
+               expires_at = EXCLUDED.expires_at,
+               refresh_expires_at = COALESCE(EXCLUDED.refresh_expires_at, linkedin_org_config.refresh_expires_at),
+               scopes = EXCLUDED.scopes,
+               connected_by_user_id = EXCLUDED.connected_by_user_id,
+               metadata = linkedin_org_config.metadata || EXCLUDED.metadata,
+               last_error = NULL,
+               last_error_at = NULL`,
+            [
+              org.urn,
+              org.vanityName,
+              org.name,
+              encryptedAccessToken,
+              encryptedRefreshToken,
+              expiresAt,
+              refreshExpiresAt,
+              scopes,
+              userId,
+              JSON.stringify({ linkedinRole: org.role, logoUrl: org.logoUrl }),
+            ],
+          );
+        }
 
-      // Hvis ingen showcase, bruk første org som default
-      if (!defaultUrn && orgs.length > 0) {
-        defaultUrn = `urn:li:organization:${orgs[0].id}`;
-      }
-
-      // Sett default
-      if (defaultUrn) {
-        await pool.query(`UPDATE linkedin_org_config SET is_default = FALSE`);
-        await pool.query(
-          `UPDATE linkedin_org_config SET is_default = TRUE WHERE organization_urn = $1`,
-          [defaultUrn],
+        const preferredDefault =
+          existingDefault.rows[0]?.organization_urn
+          ?? orgs.find((org) => /the\s*role\s*room/i.test(org.name ?? ""))?.urn
+          ?? orgs[0].urn;
+        await client.query("UPDATE linkedin_org_config SET is_default = FALSE");
+        await client.query(
+          "UPDATE linkedin_org_config SET is_default = TRUE WHERE organization_urn = $1",
+          [preferredDefault],
         );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
       }
 
-      return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=connected&count=${savedCount}`);
+      return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=connected&count=${orgs.length}`);
     } catch (err) {
       console.error("[linkedin/oauth-callback]", err);
       return res.redirect(`${PUBLIC_URL}/admin-room?linkedin=error&reason=server_error`);
@@ -362,38 +445,62 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
   // Bruker refresh_token til å hente fresh access_token (uten OAuth-redirect)
   app.post("/api/admin-room/cockpit/linkedin/orgs/:id/refresh", async (req, res) => {
     if (!guard(req, res)) return;
-    if (!isConfigured()) return res.status(503).json({ error: "Client ID/secret mangler" });
+    if (!isConfigured() || !tokenEncryptionConfigured()) {
+      return res.status(503).json({ error: "LinkedIn-konfig eller tokenkryptering mangler" });
+    }
     try {
       const r = await pool.query(
         `SELECT refresh_token, refresh_expires_at FROM linkedin_org_config WHERE id = $1::uuid LIMIT 1`,
         [req.params.id],
       );
       const row = r.rows[0];
-      if (!row?.refresh_token) {
+      const refreshToken = readStoredLinkedInToken(row?.refresh_token);
+      const refreshExpiresAt = row?.refresh_expires_at
+        ? new Date(row.refresh_expires_at).getTime()
+        : null;
+      if (
+        !refreshToken
+        || (
+          row?.refresh_expires_at
+          && (!Number.isFinite(refreshExpiresAt) || Number(refreshExpiresAt) <= Date.now())
+        )
+      ) {
         return res.status(400).json({ error: "Ingen refresh-token tilgjengelig — kjør OAuth-flow på nytt" });
       }
 
       const form = new URLSearchParams({
         grant_type: "refresh_token",
-        refresh_token: row.refresh_token,
-        client_id: process.env.LINKEDIN_CLIENT_ID!,
-        client_secret: process.env.LINKEDIN_CLIENT_SECRET!,
+        refresh_token: refreshToken,
+        client_id: linkedInClientId()!,
+        client_secret: linkedInClientSecret()!,
       });
       const resp = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
+        signal: AbortSignal.timeout(20_000),
       });
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
-        return res.status(502).json({ error: "Refresh feilet", detail: errText.slice(0, 400) });
+        console.error("[linkedin/orgs refresh] provider rejected", resp.status, errText.slice(0, 400));
+        return res.status(502).json({ error: "LinkedIn avviste tokenfornyelsen" });
       }
       const data = await resp.json() as {
         access_token: string;
         expires_in: number;
         refresh_token?: string;
         refresh_token_expires_in?: number;
+        scope?: string;
       };
+      if (
+        !data.access_token?.trim()
+        || !Number.isFinite(data.expires_in)
+        || data.expires_in <= 0
+      ) {
+        console.error("[linkedin/orgs refresh] invalid provider response");
+        return res.status(502).json({ error: "LinkedIn returnerte en ugyldig tokenrespons" });
+      }
+      const nextScopes = normalizeScopes(data.scope);
 
       await pool.query(
         `UPDATE linkedin_org_config
@@ -401,15 +508,20 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
                 refresh_token = COALESCE($2, refresh_token),
                 expires_at = $3::timestamptz,
                 refresh_expires_at = COALESCE($4::timestamptz, refresh_expires_at),
+                scopes = CASE
+                  WHEN cardinality($5::text[]) > 0 THEN $5::text[]
+                  ELSE scopes
+                END,
                 last_error = NULL, last_error_at = NULL
-          WHERE id = $5::uuid`,
+          WHERE id = $6::uuid`,
         [
-          data.access_token,
-          data.refresh_token ?? null,
+          encryptLinkedInToken(data.access_token),
+          data.refresh_token ? encryptLinkedInToken(data.refresh_token) : null,
           new Date(Date.now() + data.expires_in * 1000).toISOString(),
           data.refresh_token_expires_in
             ? new Date(Date.now() + data.refresh_token_expires_in * 1000).toISOString()
             : null,
+          nextScopes,
           req.params.id,
         ],
       );
@@ -421,67 +533,154 @@ export function setupLinkedInOAuthRoutes(deps: LinkedInOAuthRoutesDeps): void {
   });
 }
 
-/**
- * Resolver: returnerer (access_token, organization_urn) for default-orgen.
- * Brukes av publish-endepunktet i cockpit-b2b-routes.
- *
- * Auto-refresher tokenet hvis det utløper innen 5 minutter (best-effort).
- */
-export async function resolveDefaultLinkedInOrg(pool: Pool): Promise<{
+export interface ResolvedLinkedInOrg {
   accessToken: string;
   organizationUrn: string;
   configId: string;
-} | null> {
+  scopes: string[];
+}
+
+/**
+ * Resolver en lagret organisasjon og dekrypterer tokenet kun i minnet.
+ * En eksplisitt URN må finnes i vår egen konfigurasjon; den kan derfor ikke
+ * brukes til å låne standardtokenet til en vilkårlig LinkedIn-side.
+ */
+export async function resolveLinkedInOrg(
+  pool: Pool,
+  requestedOrganizationUrn: string | null = null,
+): Promise<ResolvedLinkedInOrg | null> {
+  const organizationUrn = requestedOrganizationUrn?.trim() || null;
+  if (
+    organizationUrn
+    && !/^urn:li:organization:[A-Za-z0-9_-]+$/.test(organizationUrn)
+  ) {
+    return null;
+  }
   const r = await pool.query(
-    `SELECT id::text, organization_urn, access_token, refresh_token, expires_at
+    `SELECT id::text, organization_urn, access_token, refresh_token,
+            expires_at, refresh_expires_at, scopes
        FROM linkedin_org_config
-      WHERE is_default = TRUE LIMIT 1`,
+      WHERE (
+        ($1::text IS NULL AND is_default = TRUE)
+        OR organization_urn = $1::text
+      )
+      ORDER BY is_default DESC
+      LIMIT 1`,
+    [organizationUrn],
   );
   const row = r.rows[0];
   if (!row) return null;
 
-  // Hvis tokenen er nær utløp og vi har refresh-token, prøv å fornye
+  let accessToken = readStoredLinkedInToken(row.access_token);
+  let refreshToken = readStoredLinkedInToken(row.refresh_token);
+  let scopes = normalizeScopes(row.scopes);
+  if (!accessToken || !tokenEncryptionConfigured()) return null;
+
   const expiresAt = new Date(row.expires_at).getTime();
-  if (expiresAt - Date.now() < 5 * 60 * 1000 && row.refresh_token
-      && process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
+  if (!Number.isFinite(expiresAt)) return null;
+  const expiresSoon = expiresAt - Date.now() < 5 * 60 * 1000;
+  if (
+    expiresSoon
+    && refreshToken
+    && linkedInClientId()
+    && linkedInClientSecret()
+  ) {
     try {
       const form = new URLSearchParams({
         grant_type: "refresh_token",
-        refresh_token: row.refresh_token,
-        client_id: process.env.LINKEDIN_CLIENT_ID,
-        client_secret: process.env.LINKEDIN_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        client_id: linkedInClientId()!,
+        client_secret: linkedInClientSecret()!,
       });
       const resp = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: form.toString(),
+        signal: AbortSignal.timeout(20_000),
       });
       if (resp.ok) {
-        const data = await resp.json() as { access_token: string; expires_in: number };
+        const data = await resp.json() as {
+          access_token?: string;
+          expires_in?: number;
+          refresh_token?: string;
+          refresh_token_expires_in?: number;
+          scope?: string;
+        };
+        if (
+          !data.access_token?.trim()
+          || !Number.isFinite(data.expires_in)
+          || Number(data.expires_in) <= 0
+        ) {
+          throw new Error("LinkedIn returnerte ugyldig refresh-respons");
+        }
+        accessToken = data.access_token.trim();
+        refreshToken = data.refresh_token?.trim() || refreshToken;
+        const refreshedScopes = normalizeScopes(data.scope);
+        if (refreshedScopes.length > 0) scopes = refreshedScopes;
         await pool.query(
           `UPDATE linkedin_org_config
-              SET access_token = $1, expires_at = $2::timestamptz
-            WHERE id = $3::uuid`,
+              SET access_token = $1,
+                  refresh_token = $2,
+                  expires_at = $3::timestamptz,
+                  refresh_expires_at = COALESCE($4::timestamptz, refresh_expires_at),
+                  scopes = $5::text[],
+                  last_error = NULL,
+                  last_error_at = NULL
+            WHERE id = $6::uuid`,
           [
-            data.access_token,
-            new Date(Date.now() + data.expires_in * 1000).toISOString(),
+            encryptLinkedInToken(accessToken),
+            refreshToken ? encryptLinkedInToken(refreshToken) : null,
+            new Date(Date.now() + Number(data.expires_in) * 1000).toISOString(),
+            data.refresh_token_expires_in
+              ? new Date(Date.now() + data.refresh_token_expires_in * 1000).toISOString()
+              : null,
+            scopes,
             row.id,
           ],
         );
         return {
-          accessToken: data.access_token,
+          accessToken,
           organizationUrn: row.organization_urn,
           configId: row.id,
+          scopes,
         };
       }
     } catch (err) {
-      console.warn("[linkedin resolveDefault auto-refresh]", err);
+      console.warn("[linkedin resolve auto-refresh]", err);
     }
   }
 
+  // Et utløpt token må aldri brukes etter en mislykket/umulig refresh.
+  if (expiresAt <= Date.now()) return null;
+
+  // Migrer eksisterende klartekst-rader til AES-GCM ved første vellykkede les.
+  if (
+    !String(row.access_token).startsWith("v1.")
+    || (row.refresh_token && !String(row.refresh_token).startsWith("v1."))
+  ) {
+    await pool.query(
+      `UPDATE linkedin_org_config
+          SET access_token = $1,
+              refresh_token = $2
+        WHERE id = $3::uuid`,
+      [
+        encryptLinkedInToken(accessToken),
+        refreshToken ? encryptLinkedInToken(refreshToken) : null,
+        row.id,
+      ],
+    );
+  }
+
   return {
-    accessToken: row.access_token,
+    accessToken,
     organizationUrn: row.organization_urn,
     configId: row.id,
+    scopes,
   };
+}
+
+export async function resolveDefaultLinkedInOrg(
+  pool: Pool,
+): Promise<ResolvedLinkedInOrg | null> {
+  return resolveLinkedInOrg(pool);
 }

@@ -53,6 +53,70 @@ struct LeadMapApp: App {
                     // på telefonen, ellers backend). watchOS < 27 har ikke
                     // Foundation Models, så klokka relayer hit.
                     WatchSession.shared.activate()
+                    WatchSession.shared.onQuickAction = { leadId, action, organizationId, actionId in
+                        guard let api = appState.api else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Du må være logget inn i Leadgrid på iPhone før handlingen kan lagres."
+                            )
+                            return
+                        }
+                        // Et org-bytte skal ikke omscope en Watch-handling.
+                        // Bruk payloadens opprinnelige org hvis medlemskapet
+                        // fortsatt er kjent. Før org-listen er lastet godtar
+                        // vi bare eksakt aktiv kontekst; serveren validerer
+                        // medlemskapet på nytt via X-Organization-Id.
+                        let hasOrganizationContext = appState.organizations.contains {
+                            $0.id == organizationId
+                        } || (
+                            appState.organizations.isEmpty &&
+                            appState.activeOrganizationId == organizationId
+                        )
+                        guard hasOrganizationContext else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Du har ikke lenger tilgang til organisasjonen denne leaden tilhører. Handlingen ble ikke lagret."
+                            )
+                            return
+                        }
+                        guard ["called", "visited", "meeting_booked", "declined"].contains(action) else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Denne Watch-handlingen støttes ikke av Leadgrid."
+                            )
+                            return
+                        }
+                        Task { @MainActor in
+                            let disposition: OfflineResilientActions.WriteDisposition
+                            switch action {
+                            case "called":
+                                disposition = await OfflineResilientActions.logPhoneCall(
+                                    api: api,
+                                    organizationId: organizationId,
+                                    leadId: leadId,
+                                    actionId: actionId
+                                )
+                            case "visited", "meeting_booked", "declined":
+                                disposition = await OfflineResilientActions.updateLeadStatus(
+                                    api: api,
+                                    organizationId: organizationId,
+                                    leadId: leadId,
+                                    status: action,
+                                    actionId: actionId
+                                )
+                            default:
+                                // Ukjent Watch-action skal aldri bli tolket som
+                                // en vilkårlig CRM-status.
+                                return
+                            }
+                            if case .rejected(let message) = disposition {
+                                WatchSession.shared.sendQuickActionRejection(
+                                    actionId: actionId,
+                                    message: message
+                                )
+                            }
+                        }
+                    }
                     WatchSession.shared.onTranscriptRequest = { leadId, transcript in
                         guard let api = appState.api else { return nil }
                         let intel = TranscriptIntelligenceFactory.make(api: api, leadId: leadId)
@@ -232,12 +296,11 @@ extension Notification.Name {
 }
 
 /// Rotvisning bestemmer hvilken skjerm som rendres basert på auth-state.
-/// På iPad-landscape (regular horizontal size class) viser vi
-/// `MainSidebarView` med 8-item NavigationSplitView — matcher
-/// marketing-mockens iPad-layout. Portrait + iPhone bruker bottom tabs.
+/// iPad beholder samme NavigationSplitView gjennom rotasjon, Split View og
+/// Stage Manager. Split-viewet kollapser selv i compact; bare iPhone bruker
+/// bottom tabs. Dermed avmonteres ikke en åpen Canvas-editor ved resize.
 struct RootView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.horizontalSizeClass) private var hSize
     #if DEBUG
     @State private var qaFeedback = false
     #endif
@@ -246,7 +309,7 @@ struct RootView: View {
         @Bindable var bindableState = appState
         Group {
             if appState.isAuthenticated {
-                if UIDevice.current.userInterfaceIdiom == .pad && hSize == .regular {
+                if UIDevice.current.userInterfaceIdiom == .pad {
                     MainSidebarView()
                 } else {
                     MainTabView()
@@ -255,6 +318,41 @@ struct RootView: View {
                 PairingView()
             }
         }
+        .overlay(alignment: .top) {
+            if APIClient.isNonProduction {
+                Text("STAGING")
+                    .font(.caption2.weight(.black))
+                    .tracking(1.2)
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.yellow, in: Capsule())
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("staging-environment-badge")
+                    .allowsHitTesting(false)
+            }
+        }
+        #if DEBUG
+        .overlay(alignment: .bottomTrailing) {
+            if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1" {
+                HStack(spacing: 6) {
+                    Button("QA Offline") {
+                        NetworkMonitor.shared.setConnectivityForTesting(online: false)
+                    }
+                    .accessibilityIdentifier("qa-network-offline")
+                    Button("QA Online") {
+                        NetworkMonitor.shared.setConnectivityForTesting(online: true)
+                    }
+                    .accessibilityIdentifier("qa-network-online")
+                }
+                .font(.caption2.bold())
+                .buttonStyle(.borderedProminent)
+                .padding(6)
+                .background(.black.opacity(0.75), in: Capsule())
+                .padding(8)
+            }
+        }
+        #endif
         // Session-expiry-sheet — vises når en API-call returnerer 401.
         // Gir brukeren en synlig "Logg inn på nytt"-handling i stedet for
         // en kryptisk "APIError error 0" eller evig spinner.
@@ -289,16 +387,25 @@ struct RootView: View {
             TripDetector.shared.startIfEnabled()
             // Robusthet-pakke 3: drain offline-køen ved app-start hvis online,
             // og sett opp connectivity-restore-handler.
-            if let api = appState.api {
-                let result = await OfflineActionQueue.shared.drain(api: api)
+            if let api = appState.api,
+               let organizationId = appState.activeOrganizationId {
+                let result = await OfflineActionQueue.shared.drain(
+                    api: api,
+                    organizationId: organizationId
+                )
                 if result.success > 0 || result.failed > 0 {
                     print("[offline-queue] drained at boot: \(result.success) ok, \(result.failed) failed")
                 }
             }
             NetworkMonitor.shared.onConnectivityRestored = {
                 Task {
-                    guard let api = appState.api else { return }
-                    let result = await OfflineActionQueue.shared.drain(api: api)
+                    guard let api = appState.api,
+                          let organizationId = appState.activeOrganizationId
+                    else { return }
+                    let result = await OfflineActionQueue.shared.drain(
+                        api: api,
+                        organizationId: organizationId
+                    )
                     print("[offline-queue] drained on reconnect: \(result.success) ok, \(result.failed) failed")
                 }
             }
@@ -330,6 +437,21 @@ struct RootView: View {
                 appState.stopLeadgridPolling()
                 LeadgridRealtimeClient.shared.disconnect()
             }
+        }
+        .onChange(of: appState.activeOrganizationId) { _, newOrganizationId in
+            guard let token = appState.authToken,
+                  let organizationId = newOrganizationId
+            else {
+                // Ingen aktiv org betyr ingen gyldig org-kanal. Forlat gammel
+                // socket umiddelbart i stedet for å motta stale events.
+                LeadgridRealtimeClient.shared.disconnect()
+                return
+            }
+            LeadgridRealtimeClient.shared.connect(
+                baseURL: APIClient.baseURL,
+                token: token,
+                channels: ["org:\(organizationId)"]
+            )
         }
         // Lytt på alle WebSocket-events globalt så vi kan trigge
         // pulse-animasjon på nye pins uavhengig av hvilken fane er åpen.
@@ -885,6 +1007,8 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     /// verken på iPad-sidebar eller iPhone (kun MoreTabView pekte på den,
     /// og MoreTabView selv ble aldri instansiert noe sted).
     case hub
+    /// Bekreftelsesstyrt Leadgrid-agent med seks lead-skills.
+    case agent
 
     var id: String { rawValue }
 
@@ -902,6 +1026,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .anbud:        return "Anbud"
         case .canvas:       return "Canvas"
         case .hub:          return "Verktøy"
+        case .agent:        return "Agent"
         }
     }
 
@@ -919,6 +1044,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .anbud:        return "doc.text.magnifyingglass"
         case .canvas:       return "pencil.and.outline"
         case .hub:          return "magnifyingglass.circle.fill"
+        case .agent:        return "sparkles"
         }
     }
 }
@@ -934,9 +1060,13 @@ struct MainSidebarView: View {
         #endif
         return .all
     }()
+    @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $visibility) {
+        NavigationSplitView(
+            columnVisibility: $visibility,
+            preferredCompactColumn: $preferredCompactColumn
+        ) {
             sidebarList
                 // Brand-lockup øverst i sidemenyen erstatter tekst-tittelen
                 // (wordmarken ligger i logoen — «Leadgrid»-tekst ville doblet).
@@ -953,7 +1083,13 @@ struct MainSidebarView: View {
         // (2026-08-19). iPad-landscape bruker DENNE sidebaren, ikke
         // MainTabView — samme mekanisme trengs begge steder (se MainTabView).
         .onChange(of: state.pendingMapFocus) { _, newValue in
-            if newValue != nil { state.selectedSidebarItem = .kart }
+            if newValue != nil {
+                state.selectedSidebarItem = .kart
+                preferredCompactColumn = .detail
+            }
+        }
+        .onChange(of: state.selectedSidebarItem) { _, _ in
+            preferredCompactColumn = .detail
         }
     }
 
@@ -1004,6 +1140,10 @@ struct MainSidebarView: View {
                     if item == .canvas {
                         return EntitlementStore.shared.canUse(.leadgridCanvas)
                     }
+                    if item == .agent {
+                        return EntitlementStore.shared.canUse(.leads)
+                            && state.permissions.contains("leads.view")
+                    }
                     return true
                 }
                 ForEach(visibleItems) { item in
@@ -1029,6 +1169,7 @@ struct MainSidebarView: View {
         let isActive = selection.wrappedValue == item
         Button {
             selection.wrappedValue = item
+            preferredCompactColumn = .detail
         } label: {
             HStack {
                 Label(item.label, systemImage: item.systemImage)
@@ -1072,6 +1213,7 @@ struct MainSidebarView: View {
         case .anbud:        AnbudView()
         case .canvas:       CanvasView()
         case .hub:          LeadgridHubView(embedded: true)
+        case .agent:        LeadgridAgentChatView(projectId: nil)
         }
     }
 

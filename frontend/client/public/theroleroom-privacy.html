@@ -50,7 +50,7 @@
         <span>The Role Room — Creatorhub AS</span>
       </header>
       <h1>Personvern­erklæring</h1>
-      <p class="muted">Sist oppdatert: 31. mai 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
+      <p class="muted">Sist oppdatert: 10. september 2026 · Behandlings­ansvarlig: Creatorhub AS, org.nr 937 518 684</p>
 
       <div class="toc">
         <strong>Innhold</strong>
@@ -108,8 +108,10 @@
       <p>Kjører backend-applikasjonen (API-er for Role Room, Capture, gallerier). USA, SCC-er. Ingen tilgang til ukryptert innhold utover det som er nødvendig for å kjøre prosessene.</p>
       <h3>Neon, Inc.</h3>
       <p>Managed PostgreSQL-database for alle konto-, prosjekt- og koblings­data (inkludert krypterte Instagram-tokens). Region: EU-west-2 (Irland), så dataen blir liggende i EØS. Neon opptrer som underdatabehandler.</p>
+      <h3>Amazon Web Services EMEA SARL</h3>
+      <p>Amazon S3 brukes til organisasjonsstyrt lagring av opplastede dokumenter, bilder og lyd. Data lagres i AWS-regionen EU (Stockholm), krypteres i ro og utleveres gjennom tidsbegrensede signerte URL-er. AWS opptrer som underdatabehandler under sin databehandleravtale.</p>
       <h3>Cloudflare, Inc.</h3>
-      <p>Cloudflare R2 brukes som object storage for opplastede bilder, carousel-media og reels-video. Midlertidige signerte URL-er (1–7 dager) deles med Meta når du publiserer — selve filene er tilgjengelige bare fra vår backend. EU-jurisdiksjon, SCC-er.</p>
+      <p>Cloudflare Stream brukes til opplasting, transkoding, lagring og avspilling av video. Vanlige dokumenter og bilder lagres ikke i Cloudflare R2 som del av denne lagringsløsningen. Cloudflare opptrer som underdatabehandler.</p>
       <h3>Vercel Inc.</h3>
       <p>Hoster den statiske frontenden (theroleroom.com, dashboardet, denne siden). Har ikke tilgang til innhold i prosjekter eller Instagram-tokens. USA, SCC-er.</p>
 
@@ -263,19 +265,19 @@
         Hver gang en partner åpner profilen din eller laster ned media, logger vi det i <code>talent_access_audit</code>. Du ser denne loggen på <code>/talents/aktivitet</code> (aggregert per partner og dag, siste 90 dager). Vi rydder loggen etter 12 måneder automatisk.
       </p>
 
-      <h3>Media-lagring (Cloudflare R2 + Stream)</h3>
+      <h3>Media-lagring (Amazon S3 + Cloudflare Stream)</h3>
       <ul>
-        <li><strong>Headshot, alternativ-foto, CV (PDF):</strong> Cloudflare R2 i bucket <code>casting-videos</code>. Filer lagres under <code>talents/{talent-id}/{kind}/{uuid}-{filename}</code>. Hver fil har metadata: talent-ID, opplaster, opplastnings-tid.</li>
-        <li><strong>Showreel-video:</strong> Cloudflare Stream — auto-transkodet til adaptive bitrate (HLS/DASH), spilt av via innebygd iframe-player. Stream lagrer i Cloudflares EU-region.</li>
-        <li><strong>Streaming-tilkobling direkte</strong> — backend ser aldri filebytes. Vi genererer en signert PUT-URL og din nettleser streamer filen direkte til Cloudflare.</li>
+        <li><strong>Headshot, alternativ-foto, CV (PDF) og lyd:</strong> Amazon S3 i region EU (Stockholm), med hierarkisk eierskap per organisasjon, prosjekt, talent og bruker. Hver fil kobles til eier og opplaster i databasen.</li>
+        <li><strong>Showreel-video:</strong> Cloudflare Stream — auto-transkodet til adaptive bitrate (HLS/DASH) og spilt av via innebygd iframe-player.</li>
+        <li><strong>Direkte opplasting:</strong> Backend oppretter en kortvarig, signert opplastingsadresse, slik at filinnholdet sendes direkte til den aktuelle lagringstjenesten. Backend lagrer tilgangs- og eiermetadata.</li>
         <li><strong>Tilgang til media</strong> er gated per consent: en partner kan ikke laste ned din headshot uten en aktiv <code>media_portfolio</code>- eller <code>full_profile</code>-scope.</li>
-        <li>Cloudflare har EU-jurisdiksjon for R2 og Stream. Standard personvernklausuler (SCC) er på plass.</li>
+        <li>Dokumenter, bilder og lyd holdes adskilt fra videostrømming; tilgang gis bare gjennom applikasjonens autorisasjon og tidsbegrensede URL-er.</li>
       </ul>
 
       <h3>Dine rettigheter på Talents-portalen</h3>
       <ul>
         <li><strong>Last ned data</strong> (GDPR art. 20): Innstillinger → "Last ned mine data" gir deg en JSON-fil med profil, alle consents, alle invitasjoner, hele audit-loggen, og alle stream-uploads.</li>
-        <li><strong>Slett alt</strong> (GDPR art. 17): Innstillinger → "Slett kontoen min" sletter profilen, alle R2-filer (bulk delete via S3 API), alle Cloudflare Stream-videoer (DELETE via Stream API), og CASCADE-sletter consents/invitasjoner/audit-logg. Du må skrive <code>SLETT MIN PROFIL</code> for å bekrefte. Endelig — kan ikke angres.</li>
+        <li><strong>Slett alt</strong> (GDPR art. 17): Innstillinger → "Slett kontoen min" sletter profilen, tilknyttede filer i Amazon S3, videoer i Cloudflare Stream og koblede consents/invitasjoner/audit-logger etter tjenestens slette- og oppbevaringsregler. Du må skrive <code>SLETT MIN PROFIL</code> for å bekrefte.</li>
         <li><strong>Trekk én partners tilgang</strong>: Partnere-siden → 3-prikker-meny → "Trekk all tilgang" (umiddelbart effektivt). Eller "Pause i 30 dager" som setter en utløpsdato.</li>
       </ul>
 

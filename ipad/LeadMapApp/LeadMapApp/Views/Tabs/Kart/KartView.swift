@@ -1414,32 +1414,24 @@ struct KartView: View {
             }
         }
         .sheet(isPresented: $addLeadOpen) {
-            AddLeadSheet { newLead in
+            AddLeadSheet { draft, result in
                 addLeadOpen = false
-                // 2026-08-16: kallet manglet helt — leaden ble aldri lagret
-                // noe sted (kun lukket sheeten). Ekte create-kall nå.
-                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
-                    showToast(DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget")
-                    return
-                }
-                Task {
-                    do {
-                        let newId = try await api.createLeadAtPin(
-                            name: newLead.companyName, company: newLead.companyName,
-                            phone: newLead.phone, email: newLead.email,
-                            industryId: nil, leadTemperature: nil,
-                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                            address: newLead.address
-                        )
-                        showToast("«\(newLead.companyName)» lagt til")
-                        // Vis hvor den faktisk havnet, ikke bare en toast (2026-08-19).
+                switch result {
+                case .sent(let response):
+                    showToast("«\(draft.name)» lagt til")
+                    if let lat = draft.latitude, let lon = draft.longitude {
                         appState.pendingMapFocus = AppState.PendingMapFocus(
-                            id: newId, name: newLead.companyName, address: newLead.address,
-                            lat: newLead.coord.latitude, lon: newLead.coord.longitude
+                            id: response.id,
+                            name: draft.name,
+                            address: draft.address ?? "",
+                            lat: lat,
+                            lon: lon
                         )
-                    } catch {
-                        showToast("Kunne ikke lagre lead — prøv igjen")
                     }
+                case .queued:
+                    showToast("«\(draft.name)» lagret offline og sendes automatisk")
+                case .duplicate, .rejected:
+                    break // Disse beholdes i skjemaet og sendes ikke hit.
                 }
             }
         }
@@ -2431,6 +2423,7 @@ struct KartView: View {
                     Button { addLeadOpen = true } label: {
                         Label("Legg til lead", systemImage: "person.crop.circle.badge.plus")
                     }
+                    .accessibilityIdentifier("lead-new-map")
                 }
                 // Feature-gated (superadmin-matrisen): default PÅ, kan
                 // låses per org — da forsvinner inngangen helt.
@@ -2453,6 +2446,7 @@ struct KartView: View {
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("lead-actions-menu")
     }
 
     /// Teller for «Filtre · N»-pillen: hver filter-dimensjon med et aktivt
@@ -4928,7 +4922,7 @@ struct KartView: View {
     }
 
     /// SF Symbol for en manøver ut fra instruksjons-teksten.
-    private func maneuverIcon(_ instr: String) -> String {
+    private nonisolated func maneuverIcon(_ instr: String) -> String {
         let s = instr.lowercased()
         if s.contains("høyre") || s.contains("right") { return "arrow.turn.up.right" }
         if s.contains("venstre") || s.contains("left") { return "arrow.turn.up.left" }
@@ -4938,7 +4932,7 @@ struct KartView: View {
     }
 
     /// Meters mellom to koordinater (Haversine).
-    private func metersBetween(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+    private nonisolated func metersBetween(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
         CLLocation(latitude: a.latitude, longitude: a.longitude)
             .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
     }
@@ -5077,11 +5071,11 @@ struct KartView: View {
         req.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
         req.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
         req.transportType = navTransport.mkType
-        let verb = navTransport.etaVerb
+        let fallbackSpeed = navTransport.fallbackSpeed
         MKDirections(request: req).calculate { resp, _ in
             var coords: [CLLocationCoordinate2D] = [from, to]
             var meters = self.metersBetween(from, to)
-            var seconds = meters / self.navTransport.fallbackSpeed
+            var seconds = meters / fallbackSpeed
             var steps: [NavStep] = []
             if let route = resp?.routes.first {
                 let poly = route.polyline
@@ -6363,41 +6357,89 @@ struct KartView: View {
                 .font(.appScaled(size: 9, weight: .bold))
                 .foregroundStyle(KrBrand.textTertiary)
 
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(KrBrand.purple.opacity(0.25))
-                    Text("AJ")
-                        .font(.appScaled(size: 12, weight: .bold))
-                        .foregroundStyle(KrBrand.purpleLight)
-                }
-                .frame(width: 34, height: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Anders Johansen")
-                        .font(.appScaled(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("Daglig leder")
-                        .font(.appScaled(size: 10))
-                        .foregroundStyle(KrBrand.textSecondary)
-                }
-                Spacer()
-                HStack(spacing: 6) {
-                    if let phone = selectedLead.phoneOrDemo {
-                        actionIcon("phone") { makeCall(phone) }
+            if DemoModeManager.isActiveNonisolated {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(KrBrand.purple.opacity(0.25))
+                        Text("AJ")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(KrBrand.purpleLight)
                     }
-                    if let mail = selectedLead.emailOrDemo {
-                        actionIcon("envelope") { sendEmail(mail) }
+                    .frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Anders Johansen")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("Daglig leder · demo")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(KrBrand.textSecondary)
+                    }
+                    Spacer()
+                    HStack(spacing: 6) {
+                        if let phone = selectedLead.phoneOrDemo {
+                            actionIcon("phone") { makeCall(phone) }
+                        }
+                        if let mail = selectedLead.emailOrDemo {
+                            actionIcon("envelope") { sendEmail(mail) }
+                        }
                     }
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("NOTAT")
-                    .font(.appScaled(size: 9, weight: .bold))
-                    .foregroundStyle(KrBrand.textTertiary)
-                Text("Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter.")
-                    .font(.appScaled(size: 11))
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("DEMONOTAT")
+                        .font(.appScaled(size: 9, weight: .bold))
+                        .foregroundStyle(KrBrand.textTertiary)
+                    Text("Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter.")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                if selectedLead.phone != nil || selectedLead.email != nil {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle().fill(KrBrand.purple.opacity(0.25))
+                            Text(String(selectedLead.name.prefix(2)).uppercased())
+                                .font(.appScaled(size: 12, weight: .bold))
+                                .foregroundStyle(KrBrand.purpleLight)
+                        }
+                        .frame(width: 34, height: 34)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(selectedLead.name)
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text("Registrert leadkontakt")
+                                .font(.appScaled(size: 10))
+                                .foregroundStyle(KrBrand.textSecondary)
+                        }
+                        Spacer()
+                        HStack(spacing: 6) {
+                            if let phone = selectedLead.phone {
+                                actionIcon("phone") { makeCall(phone) }
+                            }
+                            if let mail = selectedLead.email {
+                                actionIcon("envelope") { sendEmail(mail) }
+                            }
+                        }
+                    }
+                } else {
+                    detailTabEmptyState("Ingen kontaktperson registrert på leaden")
+                }
+
+                if let nextAction = selectedLead.nextAction,
+                   !nextAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("NESTE HANDLING")
+                            .font(.appScaled(size: 9, weight: .bold))
+                            .foregroundStyle(KrBrand.textTertiary)
+                        Text(nextAction)
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    detailTabEmptyState("Ingen verifisert kontaktmerknad registrert")
+                }
             }
 
             Button { openLeadFullSheet = true } label: {

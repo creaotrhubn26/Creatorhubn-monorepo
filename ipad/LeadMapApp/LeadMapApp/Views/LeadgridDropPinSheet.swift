@@ -52,6 +52,9 @@ struct LeadgridDropPinSheet: View {
     @State private var creating = false
     @State private var createError: String? = nil
     @State private var showUrlResearch = false
+    @State private var creationId = UUID()
+    @State private var duplicateCandidates: [LeadDuplicateCandidate] = []
+    @State private var pendingDuplicateDraft: LeadDraft?
 
     @FocusState private var nameFocused: Bool
 
@@ -94,6 +97,25 @@ struct LeadgridDropPinSheet: View {
                 await loadIndustries()
                 await reverseGeocode()
             }
+        }
+        .alert(
+            "Mulig duplikat",
+            isPresented: Binding(
+                get: { pendingDuplicateDraft != nil },
+                set: { if !$0 { pendingDuplicateDraft = nil } }
+            )
+        ) {
+            Button("Avbryt", role: .cancel) {
+                pendingDuplicateDraft = nil
+            }
+            Button("Opprett likevel", role: .destructive) {
+                guard var draft = pendingDuplicateDraft else { return }
+                draft.allowDuplicate = true
+                pendingDuplicateDraft = nil
+                Task { await createLead(draft) }
+            }
+        } message: {
+            Text(duplicateMessage)
         }
     }
 
@@ -223,6 +245,13 @@ struct LeadgridDropPinSheet: View {
         String(format: "%.6f, %.6f", coordinate.latitude, coordinate.longitude)
     }
 
+    private var duplicateMessage: String {
+        let names = duplicateCandidates.prefix(3).map(\.name).joined(separator: ", ")
+        return names.isEmpty
+            ? "En mulig duplikat finnes allerede i organisasjonen."
+            : "Fant mulig eksisterende lead: \(names). Opprett bare hvis dette faktisk er en ny lead."
+    }
+
     // MARK: - Async
 
     private func loadIndustries() async {
@@ -261,45 +290,94 @@ struct LeadgridDropPinSheet: View {
         }
     }
 
-    private func createLead() async {
+    private func createLead(_ suppliedDraft: LeadDraft? = nil) async {
         guard let api = appState.api else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
+        guard let organizationId = appState.activeOrganizationId else {
+            createError = "Velg en organisasjon før du oppretter lead."
+            return
+        }
         creating = true
         createError = nil
         defer { creating = false }
-        do {
-            let newId = try await api.createLeadAtPin(
-                name: trimmedName,
-                company: company,
-                phone: phone,
-                email: email,
-                industryId: industryId,
-                leadTemperature: temperature.rawValue,
-                latitude: coordinate.latitude,
-                longitude: coordinate.longitude,
-                address: resolvedAddress,
-                locationConfidence: "exact",
-                leadSource: "manual_pin_drop"
+
+        let classification: LeadDraftClassification
+        switch temperature {
+        case .hot:
+            classification = .init(
+                temperature: "hot", pipelineStage: "qualified", leadStatus: "interested"
             )
+        case .warm, .lukewarm:
+            classification = .init(
+                temperature: "warm", pipelineStage: "first_contact", leadStatus: "visited"
+            )
+        case .cold:
+            classification = .init(
+                temperature: "cold", pipelineStage: "new", leadStatus: "unvisited"
+            )
+        }
+        let selectedIndustry = industries.first(where: { $0.id == industryId })
+        let draft = suppliedDraft ?? LeadDraft(
+            creationId: creationId,
+            organizationId: organizationId,
+            name: trimmedName,
+            company: LeadDraft.optionalText(company),
+            organizationNumber: nil,
+            websiteUrl: nil,
+            contactName: nil,
+            contactRole: nil,
+            email: LeadDraft.optionalText(email),
+            phone: LeadDraft.optionalText(phone),
+            address: resolvedAddress,
+            postalCode: nil,
+            city: nil,
+            country: "NO",
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            googlePlaceId: nil,
+            industryId: industryId,
+            industry: selectedIndustry?.displayName,
+            employeeCountEstimate: nil,
+            annualRevenueNokEstimate: nil,
+            estimatedValue: nil,
+            notes: nil,
+            leadTemperature: classification.temperature,
+            pipelineStage: classification.pipelineStage,
+            leadStatus: classification.leadStatus,
+            nextFollowUpAt: nil,
+            nextAction: nil,
+            locationConfidence: "exact",
+            leadSource: "manual_pin_drop",
+            projectId: appState.activeProjectId,
+            rawText: nil,
+            allowDuplicate: false
+        )
+
+        let result = await OfflineResilientActions.createLead(api: api, draft: draft)
+        switch result {
+        case .sent(let response):
             // Success-haptic
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            // Fetch det ferskt opprettede leadet og append til AppState så
-            // pin dukker opp umiddelbart uten å vente på neste full refresh.
             do {
-                let lead = try await api.fetchLead(id: newId)
+                let lead = try await api.fetchLead(id: response.id)
                 if !appState.leads.contains(where: { $0.id == lead.id }) {
                     appState.leads.append(lead)
                 }
             } catch {
-                // Pinnen kommer på neste refresh — trigge en i bakgrunnen.
                 Task { await appState.refreshAll() }
             }
-            onCreated(newId)
+            onCreated(response.id)
             dismiss()
-        } catch {
-            createError = "Kunne ikke lage lead. Prøv igjen."
-            print("[DropPin] createLeadAtPin failed: \(error)")
+        case .queued:
+            createError = "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            dismiss()
+        case .duplicate(let candidates):
+            duplicateCandidates = candidates
+            pendingDuplicateDraft = draft
+        case .rejected(let message):
+            createError = message
         }
     }
 }

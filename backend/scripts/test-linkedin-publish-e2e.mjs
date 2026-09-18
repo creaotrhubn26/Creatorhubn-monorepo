@@ -4,15 +4,13 @@
  *
  * Per iteration:
  *   1. Compose en LinkedIn-draft fra en insight
- *   2. POST publish → forventer enten:
- *      - status 200 + ok=true + status='published' (hvis LinkedIn-connection finnes)
- *      - status 502 + ok=false + reason='connection_not_found' (graceful fall-back)
+ *   2. POST publish → krever status 200 + ok=true + status='published'
  *   3. GET drafts → verifiserer at status er oppdatert
  *   4. Cleanup: DELETE drafts
  */
 
 const BASE = process.env.BASE || 'https://creatorhub-backend-rtbl.onrender.com';
-const TOKEN = process.env.DEMO_TOKEN || 'LCIW3x7hRNeWoRw0lQYi9EJr8_xGhlzY';
+const TOKEN = (process.env.DEMO_TOKEN || '').trim();
 const N = parseInt(process.env.N || '1', 10);
 const DRY_RUN = process.env.DRY_RUN === '1';
 
@@ -75,16 +73,12 @@ async function runIteration(i) {
   // 2. Publish
   const p = await publish(draftId);
   const okPublished = p.status === 200 && p.body.ok === true && p.body.status === 'published';
-  const okConnectionMissing = p.status === 502 && p.body.ok === false &&
-    (p.body.reason === 'connection_not_found' || (p.body.error || '').includes('LinkedIn'));
-  check(okPublished || okConnectionMissing,
-    `publish returned valid state (status=${p.status}, ok=${p.body.ok}, body=${JSON.stringify(p.body).slice(0, 200)})`);
+  check(okPublished,
+    `publish completed on LinkedIn (status=${p.status}, ok=${p.body.ok}, body=${JSON.stringify(p.body).slice(0, 200)})`);
 
   if (okPublished) {
     note(`Published! externalPostId=${p.body.externalPostId}`);
     check(typeof p.body.permalink === 'string', `permalink present`);
-  } else if (okConnectionMissing) {
-    note(`Forventet failure-mode: LinkedIn-connection mangler i prod. Sjekket at koden ikke krasjer.`);
   }
 
   // 3. GET draft — verifiser status oppdatert
@@ -93,9 +87,6 @@ async function runIteration(i) {
     if (okPublished) {
       check(stored.status === 'published', `stored status === published (got ${stored.status})`);
       check(typeof stored.externalPostId === 'string', `externalPostId stored`);
-    } else {
-      check(stored.status === 'failed', `stored status === failed (got ${stored.status})`);
-      check(typeof stored.publishError === 'string' && stored.publishError.length > 0, `publishError stored`);
     }
   }
 
@@ -106,6 +97,9 @@ async function runIteration(i) {
 
 async function main() {
   console.log(`LinkedIn publish e2e — ${N} iterations against ${BASE}`);
+  if (!TOKEN) {
+    throw new Error('DEMO_TOKEN må settes eksplisitt; scriptet har ikke lenger et innebygd bypass-token.');
+  }
   if (DRY_RUN) console.log(`${YELLOW}DRY_RUN=1 — compose + cleanup only${RESET}`);
   const t0 = Date.now();
   for (let i = 0; i < N; i++) {

@@ -19,6 +19,11 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { captureLeadgridError } from "./sentry-init.js";
+import {
+  readCanvasRetentionWorkerConfig,
+  runCanvasRetentionSweep,
+  type CanvasRetentionSweepSummary,
+} from "./leadgrid-canvas-retention-worker.js";
 
 interface Deps {
   app: Express;
@@ -30,6 +35,31 @@ const RECOMMENDATIONS_DISMISSED_DAYS = 30;
 const RECOMMENDATIONS_EXPIRED_DAYS = 30;
 const WEBHOOK_QUEUE_EXHAUSTED_DAYS = 30;
 const TERRITORY_EVENTS_DAYS = 180;
+
+function addCanvasStats(
+  stats: Record<string, number>,
+  summary: CanvasRetentionSweepSummary | null,
+): void {
+  stats.canvas_retention_enabled = summary ? 1 : 0;
+  stats.canvas_retention_failed = summary?.status === "failed" ? 1 : 0;
+  stats.canvas_retention_lock_acquired = summary?.lockAcquired ? 1 : 0;
+  stats.canvas_trash_notes_scanned = summary?.trash.notesScanned ?? 0;
+  stats.canvas_trash_versions_scanned = summary?.trash.versionsScanned ?? 0;
+  stats.canvas_trash_documents_scanned = summary?.trash.documentsScanned ?? 0;
+  stats.canvas_trash_notes_deleted = summary?.trash.notesDeleted ?? 0;
+  stats.canvas_trash_versions_deleted = summary?.trash.versionsDeleted ?? 0;
+  stats.canvas_trash_documents_deleted = summary?.trash.documentsDeleted ?? 0;
+  stats.canvas_orphan_versions_scanned = summary?.orphans.versionsScanned ?? 0;
+  stats.canvas_orphan_documents_scanned =
+    summary?.orphans.documentsScanned ?? 0;
+  stats.canvas_orphan_documents_missing_parent_scanned =
+    summary?.orphans.documentsWithMissingParentScanned ?? 0;
+  stats.canvas_orphan_document_scope_mismatches_scanned =
+    summary?.orphans.documentScopeMismatchesScanned ?? 0;
+  stats.canvas_orphan_versions_deleted = summary?.orphans.versionsDeleted ?? 0;
+  stats.canvas_orphan_documents_deleted =
+    summary?.orphans.documentsDeleted ?? 0;
+}
 
 export function registerLeadgridRetentionCron(deps: Deps): void {
   const { app, pool } = deps;
@@ -56,6 +86,7 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
 
       const start = Date.now();
       const stats: Record<string, number> = {};
+      let canvasSummary: CanvasRetentionSweepSummary | null = null;
       try {
         // 1. lead_scores_history
         try {
@@ -78,7 +109,10 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
           );
           stats.dismissed_recommendations_deleted = r2.rowCount ?? 0;
         } catch (err) {
-          console.warn("[retention-cron] dismissed_recommendations feilet:", err);
+          console.warn(
+            "[retention-cron] dismissed_recommendations feilet:",
+            err,
+          );
           stats.dismissed_recommendations_deleted = -1;
         }
 
@@ -118,9 +152,60 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
           stats.territory_events_deleted = -1;
         }
 
+        // 6. Canvas retention readiness report. This is intentionally pinned
+        // to dry-run: the existing daily cron cannot permanently delete notes,
+        // PDFs, history or legacy orphans. A later apply rollout requires its
+        // own explicit production approval. The step is also default-off.
+        const canvasConfig = readCanvasRetentionWorkerConfig();
+        if (canvasConfig.enabled) {
+          canvasSummary = await runCanvasRetentionSweep(
+            pool,
+            {
+              enabled: canvasConfig.enabled,
+              mode: "dry-run",
+              destructiveConfirmed: false,
+              includeOrphans: canvasConfig.includeOrphans,
+              retentionDays: canvasConfig.retentionDays,
+              batchSize: canvasConfig.batchSize,
+            },
+            "cron",
+          );
+          const canvasLog = {
+            runId: canvasSummary.runId,
+            status: canvasSummary.status,
+            mode: canvasSummary.mode,
+            includeOrphans: canvasSummary.includeOrphans,
+            lockAcquired: canvasSummary.lockAcquired,
+            durationMs: canvasSummary.durationMs,
+            trash: canvasSummary.trash,
+            orphans: canvasSummary.orphans,
+          };
+          if (canvasSummary.status === "failed") {
+            captureLeadgridError(
+              "retention-cron.canvas",
+              new Error(canvasSummary.error ?? "canvas_retention_failed"),
+              canvasLog,
+            );
+          } else {
+            console.log("[retention-cron.canvas] dry-run:", canvasLog);
+          }
+        }
+        addCanvasStats(stats, canvasSummary);
+
         const durationMs = Date.now() - start;
         console.log(`[retention-cron] OK ${durationMs}ms:`, stats);
-        res.json({ ok: true, stats, duration_ms: durationMs });
+        res.json({
+          ok: true,
+          stats,
+          canvas: {
+            enabled: canvasConfig.enabled,
+            mode: "dry-run",
+            include_orphans: canvasConfig.includeOrphans,
+            apply_wired: false,
+            summary: canvasSummary,
+          },
+          duration_ms: durationMs,
+        });
       } catch (err) {
         captureLeadgridError("retention-cron", err, { stats });
         const durationMs = Date.now() - start;

@@ -13,6 +13,7 @@
  *   GET    /api/admin-room/lead-map/metrics
  */
 
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import {
@@ -41,6 +42,18 @@ import {
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
+import { idempotencyMiddleware, readIdempotencyKey } from "./_shared-idempotency.js";
+import {
+  createLeadFromDraft,
+  leadDraftInputSchema,
+  LeadDraftNormalizationError,
+  LeadDuplicateConflictError,
+  LeadIdempotencyConflictError,
+  LeadScopeValidationError,
+  normalizeLeadDraft,
+} from "./leadgrid-lead-creation-service.js";
+import { registerLeadgridLeadCreationRoutes } from "./leadgrid-lead-creation-routes.js";
+import { parseLeadgridFollowUpInput } from "./leadgrid-agent-skills.js";
 
 /** Bygger notes-feltet for crm_customers fra visittkort-payload */
 function buildNotes(body: {
@@ -55,6 +68,46 @@ function buildNotes(body: {
   return parts.join("\n");
 }
 import { notifyStatusChanged } from "./lead-map-notification-service.js";
+
+function legacyCreationId(req: Request): string {
+  const explicit = req.body?.creation_id;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  const key = readIdempotencyKey(req);
+  const uuid = key?.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+  )?.[0];
+  return uuid ?? randomUUID();
+}
+
+function sendLegacyLeadCreationError(error: unknown, res: Response): boolean {
+  if (error instanceof LeadDraftNormalizationError) {
+    res.status(400).json({
+      error: "validation_failed",
+      issues: [{ path: error.field, message: error.reason }],
+    });
+    return true;
+  }
+  if (error instanceof LeadDuplicateConflictError) {
+    res.status(409).json({
+      error: "duplicate_conflict",
+      candidates: error.candidates.map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        match_reasons: candidate.matchReasons,
+      })),
+    });
+    return true;
+  }
+  if (error instanceof LeadIdempotencyConflictError) {
+    res.status(409).json({ error: "idempotency_payload_conflict" });
+    return true;
+  }
+  if (error instanceof LeadScopeValidationError) {
+    res.status(error.code === "organization_mismatch" ? 403 : 400).json({ error: error.code });
+    return true;
+  }
+  return false;
+}
 import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -96,6 +149,14 @@ function getStripe(): Stripe | null {
 
 export function setupLeadMapRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
+  registerLeadgridLeadCreationRoutes(deps);
+  const nativeWriteIdempotency = idempotencyMiddleware({
+    pool,
+    scope: "leadgrid-native",
+    // Midlertidige serverfeil må kunne prøves igjen med samme action-ID.
+    shouldCacheResponse: (status) => status >= 200 && status < 300,
+    failClosedOnUnavailable: true,
+  });
 
   // Helper: krev aktiv entitlement (returnerer 402 hvis ikke)
   async function requireEntitlement(req: Request, res: Response, configId: string) {
@@ -198,6 +259,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   // PATCH /leads/:id/status
   app.patch("/api/admin-room/lead-map/leads/:id/status",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    nativeWriteIdempotency,
     async (req: Request, res: Response) => {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -339,6 +401,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   // POST /leads/:id/visits
   app.post("/api/admin-room/lead-map/leads/:id/visits",
     requireLeadMapPermission("visits.create", { pool, activeSessions }),
+    nativeWriteIdempotency,
     async (req: Request, res: Response) => {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
@@ -405,6 +468,61 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(500).json({ error: "visit_failed", detail: "internal_error" });
     }
   });
+
+  // PATCH /leads/:id/follow-up — canonical, tenant-scoped and idempotent.
+  // Used by confirmed Leadgrid Agent proposals and safe offline replay.
+  app.patch("/api/admin-room/lead-map/leads/:id/follow-up",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    nativeWriteIdempotency,
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const organizationId = typeof res.locals.leadMapOrganizationId === "string"
+        ? res.locals.leadMapOrganizationId
+        : null;
+      if (!organizationId) {
+        return res.status(400).json({ error: "organization_scope_required" });
+      }
+
+      const parsed = parseLeadgridFollowUpInput(req.body);
+      if (!parsed.ok) {
+        return res.status(400).json({ error: "validation_failed", issues: parsed.issues });
+      }
+
+      try {
+        const result = await pool.query<{
+          id: string;
+          next_follow_up_at: Date;
+          next_action: string;
+        }>(
+          `UPDATE crm_customers
+              SET next_follow_up_at = $3::timestamptz,
+                  next_action = $4,
+                  updated_at = NOW()
+            WHERE id::text = $1
+              AND organization_id::text = $2
+              AND archived_at IS NULL
+        RETURNING id::text, next_follow_up_at, next_action`,
+          [
+            req.params.id,
+            organizationId,
+            parsed.value.nextFollowUpAt,
+            parsed.value.nextAction,
+          ],
+        );
+        const row = result.rows[0];
+        if (!row) return res.status(404).json({ error: "not_found" });
+        return res.json({
+          ok: true,
+          lead_id: row.id,
+          next_follow_up_at: row.next_follow_up_at.toISOString(),
+          next_action: row.next_action,
+        });
+      } catch {
+        return res.status(500).json({ error: "follow_up_failed", detail: "internal_error" });
+      }
+    },
+  );
 
   // GET /leads/:id/visits
   app.get("/api/admin-room/lead-map/leads/:id/visits", async (req: Request, res: Response) => {
@@ -507,234 +625,171 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
   });
 
-  // POST /leads/from-card — opprett lead fra skannet visittkort (iPad #182)
-  app.post("/api/admin-room/lead-map/leads/from-card",
+
+  // Legacy-aliaser beholdes for eldre appversjoner, men oversettes til den
+  // samme kanoniske, tenant-sikre og idempotente tjenesten som ny klient.
+  app.post(
+    "/api/admin-room/lead-map/leads/from-card",
     requireLeadMapPermission("leads.create", { pool, activeSessions }),
+    nativeWriteIdempotency,
     async (req: Request, res: Response) => {
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const organizationId =
+        typeof res.locals.leadMapOrganizationId === "string"
+          ? res.locals.leadMapOrganizationId
+          : null;
+      if (!organizationId) return res.status(400).json({ error: "organization_required" });
 
-      const body = (req.body ?? {}) as {
-        name?: string;
-        title?: string;
-        company?: string;
-        email?: string;
-        phone?: string;
-        website?: string;
-        raw_text?: string;
-        project_id?: string | null;
-        lead_source?: string;
-      };
-      if (!body.name?.trim()) {
-        return res.status(400).json({ error: "mangler_navn" });
-      }
-      // Anbud-gjenbruk (2026-08-02): «Opprett lead fra anbud» på iPad
-      // sender org.nr i raw_text (→ sikker BRREG-kobling + full berikelse
-      // via samme løype) men skal spores som egen kilde.
-      const leadSource = ["business_card_scan", "doffin_anbud"].includes(body.lead_source ?? "")
-        ? (body.lead_source as string)
-        : "business_card_scan";
-
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const leadSource =
+        body.lead_source === "doffin_anbud" ? "doffin_anbud" : "business_card_scan";
       try {
-        // BRREG-kobling FØR insert: org.nr fra OCR-teksten (mod11-validert,
-        // sikrest) eller navnesøk på FIRMANAVNET m/ match-vakt. Person-
-        // navnet brukes aldri — enrichLeadWithBrreg søker på lead.name,
-        // som på kort-leads er kontaktpersonen, derfor må org.nr settes her.
-        const { resolveOrgNrForCard } = await import("./lead-brreg-service.js");
-        const brregLink = await resolveOrgNrForCard({
-          company: body.company ?? null,
-          rawText: body.raw_text ?? null,
-        }).catch(() => ({ status: "no_match" as const }));
+        const brregLink = await import("./lead-brreg-service.js").then(
+          ({ resolveOrgNrForCard }) =>
+            resolveOrgNrForCard({
+              company: typeof body.company === "string" ? body.company : null,
+              rawText: typeof body.raw_text === "string" ? body.raw_text : null,
+            }),
+        ).catch(() => ({ status: "no_match" as const }));
 
-        let notes = buildNotes(body);
+        const clientNotes = buildNotes({
+          title: typeof body.title === "string" ? body.title : undefined,
+          raw_text: typeof body.raw_text === "string" ? body.raw_text : undefined,
+        });
+        let notes = clientNotes;
         if (brregLink.status === "suggestion") {
-          // Vagt navnetreff kobles aldri automatisk — men forslaget er
-          // verdt å se for selgeren.
-          notes += `\n---\nBRREG-forslag (ikke koblet automatisk): ${brregLink.matchedName} (org.nr ${brregLink.orgNr}) — bekreft i lead-kortet.`;
+          notes +=
+            "\n---\nBRREG-forslag (ikke koblet automatisk): " +
+            brregLink.matchedName + " (org.nr " + brregLink.orgNr +
+            ") — bekreft i lead-kortet.";
         }
-
-        const r = await pool.query<{ id: string }>(
-          `INSERT INTO crm_customers (
-             id, name, company,
-             phone, email, website_url,
-             lead_status, lead_source,
-             owner_user_id, assigned_user_id,
-             assigned_at, assigned_by_user_id,
-             project_id, notes, enrichment_org_nr,
-             created_at, updated_at
-           ) VALUES (
-             gen_random_uuid(), $1, $2, $3, $4, $5,
-             'unvisited', $10,
-             $6::text, $6::text, NOW(), $6::text, $7, $8, $9,
-             NOW(), NOW()
-           ) RETURNING id::text`,
-          [
-            body.name.trim(),
-            body.company?.trim() ?? null,
-            body.phone?.trim() ?? null,
-            body.email?.trim() ?? null,
-            body.website?.trim() ?? null,
-            session.userId,
-            body.project_id ?? null,
-            notes,
-            brregLink.status === "linked" ? brregLink.orgNr : null,
-            leadSource,
-          ],
-        );
-        // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
-        // separat — på crm_customers er notes-feltet tilstrekkelig)
-        // Workflow-event (2026-07-04): visittkort-skannede leads skal
-        // også fyre lead.created (welcome/intro-workflows) — samme
-        // mønster som pin-drop-ruten. Fire-and-forget.
-        const cardLeadId = r.rows[0].id;
-        // Full berikelse (adresse, NACE, daglig leder, regnskap) i bakgrunnen
-        // når org.nr er sikkert koblet — pipeline hopper over navnesøket.
-        if (brregLink.status === "linked") {
-          // Via jobb-køen (0400): overlever deploy-restart, retry m/
-          // backoff, og feil blir synlige i /api/admin-room/jobs i stedet
-          // for en stille console.warn.
-          const { enqueueLeadBrregEnrich } = await import("./job-handlers.js");
-          await enqueueLeadBrregEnrich(pool, {
-            leadId: cardLeadId,
-            ownerUserId: session.userId,
-          }).catch((err) => {
-            console.warn("[from-card] kunne ikke køe BRREG-berikelse:", String(err).slice(0, 120));
+        const parsed = leadDraftInputSchema.safeParse({
+          creation_id: legacyCreationId(req),
+          organization_id: organizationId,
+          name: body.name,
+          company: body.company,
+          organization_number: null,
+          website_url: body.website,
+          contact_name: body.name,
+          contact_role: body.title,
+          email: body.email,
+          phone: body.phone,
+          notes: clientNotes,
+          lead_source: leadSource,
+          project_id: body.project_id,
+          raw_text: body.raw_text,
+          allow_duplicate: body.allow_duplicate === true,
+        });
+        if (!parsed.success) {
+          return res.status(400).json({
+            error: "validation_failed",
+            issues: parsed.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message,
+            })),
           });
         }
-        void (async () => {
-          try {
-            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
-            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            const orgId = await resolveOrgIdForUser(pool, session.userId);
-            await publishEvent({
-              pool,
-              organizationId: orgId,
-              type: "lead.created",
-              leadId: cardLeadId,
-              actorUserId: session.userId,
-              data: { source: "business_card_scan", occurred_at: new Date().toISOString() },
-            });
-          } catch (err) {
-            console.warn("[lead-map] from-card lead.created feilet:", (err as Error).message);
-          }
-        })();
+        const originalDraft = normalizeLeadDraft(parsed.data);
+        const draft = {
+          ...originalDraft,
+          organizationNumber:
+            brregLink.status === "linked" ? brregLink.orgNr : null,
+          notes: notes.trim() ? notes : null,
+        };
+        const result = await createLeadFromDraft(pool, {
+          organizationId,
+          userId: session.userId,
+          draft,
+          idempotencyDraft: originalDraft,
+        });
         return res.json({
           ok: true,
-          id: cardLeadId,
-          // iOS-appen kan vise koblingen med en gang («Fant: X AS, org.nr …»)
+          id: result.id,
+          created: result.created,
+          replayed: result.replayed,
+          duplicates_checked: result.duplicatesChecked,
           brreg: brregLink.status === "no_match" ? null : brregLink,
         });
-      } catch (err) {
+      } catch (error) {
+        if (sendLegacyLeadCreationError(error, res)) return;
+        console.warn("[lead-map] canonical from-card failed:", error);
         return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
 
-  // POST /leads/from-pin — manuell pin-drop fra kart (iPad #drop-pin)
-  //
-  // Brukes når salgsrep long-press'er på iPad-kartet og fyller inn et nytt
-  // lead direkte ("standard maps-UX": Apple Maps / Google Maps). I motsetning
-  // til /from-card setter dette lat/lng + (valgfri) industry_id og
-  // lead_temperature, og markerer lead_source='manual_pin_drop' for å
-  // skille det fra OCR-skannede visittkort i analytics.
-  app.post("/api/admin-room/lead-map/leads/from-pin",
+  app.post(
+    "/api/admin-room/lead-map/leads/from-pin",
     requireLeadMapPermission("leads.create", { pool, activeSessions }),
+    nativeWriteIdempotency,
     async (req: Request, res: Response) => {
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const organizationId =
+        typeof res.locals.leadMapOrganizationId === "string"
+          ? res.locals.leadMapOrganizationId
+          : null;
+      if (!organizationId) return res.status(400).json({ error: "organization_required" });
 
-      const body = (req.body ?? {}) as {
-        name?: string;
-        company?: string;
-        email?: string;
-        phone?: string;
-        industry_id?: string | null;
-        lead_temperature?: string | null;
-        latitude?: number;
-        longitude?: number;
-        address?: string | null;
-        location_confidence?: string | null;
-        lead_source?: string | null;
-        project_id?: string | null;
-      };
-      if (!body.name?.trim()) {
-        return res.status(400).json({ error: "mangler_navn" });
-      }
-      if (typeof body.latitude !== 'number' || typeof body.longitude !== 'number') {
-        return res.status(400).json({ error: "mangler_koordinat" });
-      }
-      // Whitelist speiler crm_customers_lead_temperature_check — alt utenfor
-      // constrainten (lukewarm/cool fra eldre klienter) mappes til 'warm'.
-      const validTemps = new Set(['hot', 'warm', 'cold', 'ready']);
-      const temperature = body.lead_temperature && validTemps.has(body.lead_temperature)
-        ? body.lead_temperature
-        : 'warm';
-      const validConfidences = new Set(['exact', 'geocoded', 'approximate', 'unknown']);
-      const locationConfidence = body.location_confidence && validConfidences.has(body.location_confidence)
-        ? body.location_confidence
-        : 'exact';
-      const leadSource = body.lead_source?.trim() || 'manual_pin_drop';
-
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const validTemperatures = new Set(["hot", "warm", "cold", "ready"]);
+      const validConfidences = new Set(["exact", "geocoded", "approximate", "unknown"]);
+      const temperature =
+        typeof body.lead_temperature === "string" &&
+        validTemperatures.has(body.lead_temperature)
+          ? body.lead_temperature
+          : "warm";
+      const locationConfidence =
+        typeof body.location_confidence === "string" &&
+        validConfidences.has(body.location_confidence)
+          ? body.location_confidence
+          : "exact";
       try {
-        const r = await pool.query<{ id: string }>(
-          `INSERT INTO crm_customers (
-             id, name, company,
-             phone, email,
-             latitude, longitude, address,
-             industry_id, lead_temperature, location_confidence,
-             lead_status, lead_source,
-             owner_user_id, assigned_user_id,
-             assigned_at, assigned_by_user_id,
-             project_id,
-             created_at, updated_at
-           ) VALUES (
-             gen_random_uuid(), $1, $2, $3, $4,
-             $5, $6, $7,
-             $8::uuid, $9, $10,
-             'unvisited', $11,
-             $12::text, $12::text, NOW(), $12::text,
-             $13,
-             NOW(), NOW()
-           ) RETURNING id::text`,
-          [
-            body.name.trim(),
-            body.company?.trim() ?? null,
-            body.phone?.trim() ?? null,
-            body.email?.trim() ?? null,
-            body.latitude,
-            body.longitude,
-            body.address?.trim() ?? null,
-            body.industry_id?.trim() ? body.industry_id.trim() : null,
-            temperature,
-            locationConfidence,
-            leadSource,
-            session.userId,
-            body.project_id ?? null,
-          ],
-        );
-        // Workflow-event (2026-07-04): manuelt opprettede leads skal også
-        // fyre lead.created (welcome-workflows). Org via felles resolver,
-        // dynamic import unngår import-sykel. Fire-and-forget.
-        const newLeadId = r.rows[0].id;
-        void (async () => {
-          try {
-            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
-            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            const orgId = await resolveOrgIdForUser(pool, session.userId);
-            await publishEvent({
-              pool,
-              organizationId: orgId,
-              type: "lead.created",
-              leadId: newLeadId,
-              actorUserId: session.userId,
-              data: { source: leadSource, occurred_at: new Date().toISOString() },
-            });
-          } catch (err) {
-            console.warn("[lead-map] lead.created-event feilet:", (err as Error).message);
-          }
-        })();
-        return res.json({ ok: true, id: newLeadId });
-      } catch (err) {
+        const parsed = leadDraftInputSchema.safeParse({
+          creation_id: legacyCreationId(req),
+          organization_id: organizationId,
+          name: body.name,
+          company: body.company,
+          email: body.email,
+          phone: body.phone,
+          address: body.address,
+          latitude: body.latitude,
+          longitude: body.longitude,
+          industry_id: body.industry_id,
+          lead_temperature: temperature,
+          location_confidence: locationConfidence,
+          lead_source:
+            typeof body.lead_source === "string" && body.lead_source.trim()
+              ? body.lead_source.trim()
+              : "manual_pin_drop",
+          project_id: body.project_id,
+          allow_duplicate: body.allow_duplicate === true,
+        });
+        if (!parsed.success) {
+          return res.status(400).json({
+            error: "validation_failed",
+            issues: parsed.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message,
+            })),
+          });
+        }
+        const result = await createLeadFromDraft(pool, {
+          organizationId,
+          userId: session.userId,
+          draft: normalizeLeadDraft(parsed.data),
+        });
+        return res.json({
+          ok: true,
+          id: result.id,
+          created: result.created,
+          replayed: result.replayed,
+          duplicates_checked: result.duplicatesChecked,
+        });
+      } catch (error) {
+        if (sendLegacyLeadCreationError(error, res)) return;
+        console.warn("[lead-map] canonical from-pin failed:", error);
         return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },

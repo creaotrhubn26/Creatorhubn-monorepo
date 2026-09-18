@@ -14,12 +14,15 @@ import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, Ic
 import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
 import OpenInFull from '@mui/icons-material/OpenInFull';
+import OpenInNew from '@mui/icons-material/OpenInNew';
 import GroupAdd from '@mui/icons-material/GroupAdd';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
+import { easeVerseWorkspaceUrl } from '@/lib/easeverse';
+import { openUserEventsWebSocket } from '@/lib/userEventsWebSocket';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
@@ -52,9 +55,15 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [copied, setCopied] = useState<string | null>(null);
   const [pt, setPt] = useState<any | null>(null); // Pro Tools companion-status
   const [ptCode, setPtCode] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [ptNow, setPtNow] = useState(() => Date.now());
   const [ptBusy, setPtBusy] = useState(false);
   const [ptDialog, setPtDialog] = useState(false);
   const [ptRelease, setPtRelease] = useState<any | null>(null);
+  useEffect(() => {
+    if (!ptCode) return;
+    const timer = setInterval(() => setPtNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ptCode]);
   const [release, setRelease] = useState<any | null>(null);      // audio_releases (utgivelse/distribusjon)
   const [validation, setValidation] = useState<any | null>(null); // pre-flight-sjekkliste
   const [relBusy, setRelBusy] = useState(false);
@@ -108,18 +117,46 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const makePtCode = async () => {
     if (ptBusy) return; setPtBusy(true);
-    try { const r: any = await apiRequest(`/api/protools/pair/start`, { method: 'POST' }); if (r?.code) setPtCode({ code: r.code, expiresAt: Date.now() + (r.expiresInSeconds || 600) * 1000 }); }
+    try {
+      const r: any = await apiRequest(`/api/protools/pair/start`, {
+        method: 'POST',
+        body: {
+          workspaceProjectId: projectId,
+          audioRoomId: roomIdRef.current,
+          easeverseTrackId: ev?.linkedTrackId || null,
+          projectName: summary?.project?.title || summary?.project?.name || 'Workspace-prosjekt',
+        },
+      });
+      if (r?.code) setPtCode({ code: r.code, expiresAt: Date.now() + (r.expiresInSeconds || 600) * 1000 });
+    }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke lage paringskode'); }
     finally { setPtBusy(false); }
   };
+  const ptSetupHandled = useRef(false);
+  useEffect(() => {
+    if (ptSetupHandled.current || !isReal || loading || !roomId || ev === null) return;
+    if (new URLSearchParams(window.location.search).get('setup') !== 'protools') return;
+    ptSetupHandled.current = true;
+    openPtDialog();
+    // Vent til Sound Room + track-kontekst er lastet, og håndter så deep-linken én gang.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReal, loading, roomId, ev, summary]);
   const unlinkPt = async () => {
     if (ptBusy || !window.confirm('Koble fra Pro Tools-companionen på denne maskinen?')) return; setPtBusy(true);
-    try { await apiRequest(`/api/protools/web/unlink-device`, { method: 'POST' }); setPtCode(null); loadPt(); }
+    try { await apiRequest(`/api/protools/web/unlink-device`, { method: 'POST', body: { deviceId: pt?.device?.id } }); setPtCode(null); loadPt(); }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke koble fra'); }
     finally { setPtBusy(false); }
   };
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
+  const retryPtSync = async () => {
+    if (ptBusy) return; setPtBusy(true);
+    try {
+      await apiRequest('/api/protools/web/retry-sync', { method: 'POST', body: { limit: 10 } });
+      loadPt();
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke prøve EaseVerse-synk på nytt'); }
+    finally { setPtBusy(false); }
+  };
   const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
   const copyInvite = (url: string) => {
     const full = url.startsWith('http') ? url : window.location.origin + url;
@@ -177,16 +214,14 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [srLive, setSrLive] = useState(false);
   useEffect(() => {
     if (!isReal) return;
-    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
-    if (!token) return;
     let alive = true;
     let sockEvt: WebSocket | null = null;
     let retry: any = null;
     let deb: any = null;
-    const connect = () => {
+    const connect = async () => {
       if (!alive) return;
       clearTimeout(retry);
-      try { sockEvt = new WebSocket(`${SOUND_ROOM_EVENTS_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      try { sockEvt = await openUserEventsWebSocket(SOUND_ROOM_EVENTS_WS_BASE); }
       catch { retry = setTimeout(connect, 8000); return; }
       sockEvt.onopen = () => { if (alive) setSrLive(true); };
       sockEvt.onclose = () => { if (alive) { setSrLive(false); retry = setTimeout(connect, 8000); } };
@@ -207,7 +242,12 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { sockEvt && sockEvt.close(); } catch { /* */ } };
   }, [projectId, isReal]);
 
-  const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
+  const openRoom = () => {
+    if (!roomId) return;
+    // /audio-review lastes lazy. Marker ruteskiftet som ikke-hastende, ellers kan
+    // React kaste #426 og erstatte hele Sound Room med en feilmelding.
+    React.startTransition(() => navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`));
+  };
   const linkTrack = async (trackId: string) => {
     if (linking) return; setLinking(trackId);
     try {
@@ -234,7 +274,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   return (
     <Box sx={{ maxWidth: 920, mx: 'auto' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={1.5} sx={{ mb: 2 }}>
         <Box>
           <Stack direction="row" spacing={1.25} alignItems="center">
             <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Sound Room</Typography>
@@ -247,7 +287,17 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lyd-review for prosjektet — versjoner, tidsstemplede tilbakemeldinger, A/B-compare og leveranse. Samme «Universal Showcase»-rom klienten/bandet får.</Typography>
         </Box>
-        {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button component="a" href={easeVerseWorkspaceUrl({
+              creatorhubProjectId: projectId,
+              audioReviewProjectId: roomId,
+              externalTrackId: ev?.linkedTrackId || null,
+              projectName: proj.title || 'CreatorHub song',
+              returnTo: typeof window !== 'undefined' ? window.location.href : undefined,
+            })} target="_blank" rel="noopener noreferrer" variant="outlined" startIcon={<OpenInNew sx={{ fontSize: 16 }} />}
+            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Åpne EaseVerse</Button>
+          {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}
+        </Stack>
       </Stack>
 
       {err && <WsCard sx={{ mb: 2, borderColor: ws.redSoft }}><Typography sx={{ fontSize: 13, color: ws.red }}>{err}</Typography></WsCard>}
@@ -418,7 +468,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Box sx={{ flex: 1 }} />
           {pt?.paired ? <WsTag label="Tilkoblet" tone="green" /> : <WsTag label="Ikke koblet" tone="neutral" />}
           <Button size="small" startIcon={<Download sx={{ fontSize: 15 }} />} onClick={openPtDialog} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, minWidth: 0 }}>Last ned appen</Button>
-          {pt?.paired && <Button size="small" onClick={unlinkPt} disabled={ptBusy} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600, minWidth: 0 }}>Koble fra</Button>}
+          {pt?.paired && pt?.device?.id && <Button size="small" onClick={unlinkPt} disabled={ptBusy} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600, minWidth: 0 }}>Koble fra denne enheten</Button>}
         </Stack>
 
         {!pt?.paired ? (
@@ -430,11 +480,11 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Button variant="contained" startIcon={<Download sx={{ fontSize: 17 }} />} onClick={openPtDialog} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned & koble til</Button>
               <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>macOS · Windows</Typography>
             </Stack>
-            {ptCode && (
+            {ptCode && ptCode.expiresAt > ptNow && (
               <Box sx={{ mt: 1.5, p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, textAlign: 'center' }}>
                 <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5 }}>Paringskode for companion-appen:</Typography>
                 <Typography sx={{ fontSize: 26, fontWeight: 800, letterSpacing: 7, color: ws.accent, fontVariantNumeric: 'tabular-nums' }}>{ptCode.code}</Typography>
-                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.round((ptCode.expiresAt - Date.now()) / 1000))} s · virker én gang</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.ceil((ptCode.expiresAt - ptNow) / 1000))} s · virker én gang</Typography>
               </Box>
             )}
           </Box>
@@ -444,6 +494,8 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {pt?.session?.name && <WsTag label={pt.session.name} tone="neutral" />}
               {pt?.playhead?.timecode && <WsTag label={`▶ ${pt.playhead.timecode}`} tone="amber" />}
               {(pt?.markers?.length || 0) > 0 && <WsTag label={`${pt.markers.length} markører`} tone="green" />}
+              {(pt?.sync?.pending_count || 0) > 0 && <WsTag label={`${pt.sync.pending_count} EaseVerse-synk i kø`} tone="amber" />}
+              {(pt?.sync?.pending_count || 0) > 0 && <Button size="small" onClick={retryPtSync} disabled={ptBusy} sx={{ color: ws.amber, textTransform: 'none', fontWeight: 700 }}>Prøv synk igjen</Button>}
             </Stack>
 
             {(pt?.markers?.length || 0) > 0 && (
@@ -590,10 +642,10 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             {/* Paringskode */}
             <Box sx={{ p: 1.75, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, textAlign: 'center' }}>
               <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5 }}>Paringskode</Typography>
-              {ptCode ? (
+              {ptCode && ptCode.expiresAt > ptNow ? (
                 <>
                   <Typography sx={{ fontSize: 30, fontWeight: 800, letterSpacing: 8, color: ws.accent, fontVariantNumeric: 'tabular-nums' }}>{ptCode.code}</Typography>
-                  <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.round((ptCode.expiresAt - Date.now()) / 1000))} s · virker én gang</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.ceil((ptCode.expiresAt - ptNow) / 1000))} s · virker én gang</Typography>
                 </>
               ) : (
                 <Button variant="text" onClick={makePtCode} disabled={ptBusy} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{ptBusy ? 'Lager kode…' : 'Lag paringskode'}</Button>

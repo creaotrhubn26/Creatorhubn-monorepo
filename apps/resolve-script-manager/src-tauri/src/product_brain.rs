@@ -13,7 +13,9 @@ pub async fn extract_pdf_text(path: String) -> Result<String, String> {
     let text = pdf_extract::extract_text(&p).map_err(|e| format!("Kunne ikke lese PDF: {e}"))?;
     let normalized: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.trim().is_empty() {
-        return Err("Fant ingen tekst i PDF-en (bildebasert/skannet?). Prøv en tekst-basert PDF.".into());
+        return Err(
+            "Fant ingen tekst i PDF-en (bildebasert/skannet?). Prøv en tekst-basert PDF.".into(),
+        );
     }
     Ok(normalized.chars().take(20_000).collect())
 }

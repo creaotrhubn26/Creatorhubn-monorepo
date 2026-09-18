@@ -11,105 +11,161 @@ import Vision
 
 struct LeadgridPencilCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
+    @Binding var pennValg: PennValg
+    let noteID: String?
     var redigerbar: Bool = true
-    var kunPencil: Bool = false
+    var inputMode: CanvasInputMode = .system
+    var toolSelectionRevision: Int = 0
     /// Shape recognition: hold pennen stille på slutten av strøket →
     /// strøket byttes ut med perfekt form (Apple Notes-oppførselen).
     var onFormGjenkjent: ((CanvasFigur) -> Void)? = nil
-    /// Penn-galleriet: preset/modus fra velgeren.
-    var pennValg: PennValg = .pen
-
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
         canvas.drawing = drawing
-        canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
+        canvas.drawingPolicy = inputMode.drawingPolicy
+        // Ytre SwiftUI-scroll er eneste eier av dokumentpanorering. Hvis
+        // PencilKits interne UIScrollView får flytte seg, desynkroniseres
+        // blekk fra papir, PDF-er og øvrige overlays.
+        canvas.isScrollEnabled = false
+        canvas.minimumZoomScale = 1
+        canvas.maximumZoomScale = 1
+        canvas.zoomScale = 1
+        canvas.contentOffset = .zero
         // Gjennomsiktig — papir-malen (SWOT/Kanban/…) ligger i laget bak.
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.overrideUserInterfaceStyle = .dark
         canvas.alwaysBounceVertical = false
         canvas.delegate = context.coordinator
+        canvas.isAccessibilityElement = true
+        canvas.accessibilityLabel = "Tegneflate"
+        canvas.accessibilityHint =
+            "Tegn med Apple Pencil. Velg Panorer for å flytte eller zoome dokumentet."
+        canvas.accessibilityTraits.insert(.allowsDirectInteraction)
         // Verktøylinja (penn/marker/viskelær/farger) — systemets egen.
         let picker = PKToolPicker()
+        picker.showsDrawingPolicyControls = inputMode == .system
         context.coordinator.toolPicker = picker
         picker.setVisible(true, forFirstResponder: canvas)
         picker.addObserver(canvas)
-        // Apple Pencil: dobbelt-tap bytter penn↔viskelær, squeeze (Pencil
-        // Pro) viser/skjuler verktøylinja. Pressure/tilt/prediction/lav
-        // latency er native i PencilKit — dette er «papirfølelsen»-pluss.
-        let pencil = UIPencilInteraction()
-        pencil.delegate = context.coordinator
-        canvas.addInteraction(pencil)
+        picker.addObserver(context.coordinator)
+        // PencilKit eier både dobbelt-tap og squeeze. Dermed respekteres
+        // brukerens valgte handling i Innstillinger uten en app-overstyring.
         context.coordinator.canvas = canvas
         DispatchQueue.main.async { canvas.becomeFirstResponder() }
         return canvas
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
+        context.coordinator.parent = self
+        if context.coordinator.noteID != noteID {
+            context.coordinator.begin(noteID: noteID, drawing: drawing, on: canvas)
+        }
         // Ekstern endring (notat-bytte) → oppdater uten delegat-løkke.
         if canvas.drawing != drawing && !context.coordinator.tegner {
             canvas.drawing = drawing
         }
         canvas.isUserInteractionEnabled = redigerbar
-        canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
+        canvas.drawingPolicy = inputMode.drawingPolicy
+        context.coordinator.toolPicker?.showsDrawingPolicyControls = inputMode == .system
+        canvas.isScrollEnabled = false
+        if canvas.zoomScale != 1 { canvas.zoomScale = 1 }
+        if canvas.contentOffset != .zero { canvas.contentOffset = .zero }
         // Penn-galleriet: bytt verktøy når valget endres (ikke ellers —
         // brukeren kan justere fritt i toolpickeren etterpå).
-        if context.coordinator.anvendtPenn != pennValg {
+        if context.coordinator.anvendtPenn != pennValg
+            || context.coordinator.anvendtToolRevision != toolSelectionRevision {
             context.coordinator.anvendtPenn = pennValg
+            context.coordinator.anvendtToolRevision = toolSelectionRevision
+            context.coordinator.suspenderToolSynk = true
             context.coordinator.toolPicker?.selectedTool = pennValg.verktoy
-            if pennValg == .laser {
-                context.coordinator.laserStartAntall = canvas.drawing.strokes.count
+            DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+                coordinator?.suspenderToolSynk = false
             }
         }
-        context.coordinator.parent = self
     }
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate,
-                             UIPencilInteractionDelegate {
+    static func dismantleUIView(_ canvas: PKCanvasView, coordinator: Coordinator) {
+        coordinator.cancelPendingWork()
+        coordinator.toolPicker?.removeObserver(coordinator)
+        coordinator.toolPicker?.removeObserver(canvas)
+    }
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate, PKToolPickerObserver {
         var parent: LeadgridPencilCanvas
         var toolPicker: PKToolPicker?
         weak var canvas: PKCanvasView?
         var tegner = false
-        /// Verktøyet før dobbelt-tap byttet til viskelær.
-        private var forrigeVerktoy: PKTool?
-
+        var noteID: String?
+        var suspenderToolSynk = false
+        var anvendtToolRevision = -1
+        private var mutererInternt = false
+        private var laserOppgaver: [DispatchWorkItem] = []
+        private var laserOverlays: [UIImageView] = []
         init(_ parent: LeadgridPencilCanvas) { self.parent = parent }
 
-        /// Dobbelt-tap på Pencil: penn ↔ viskelær (systeminnstillingen
-        /// «bytt til forrige verktøy» respekteres implisitt — vi husker).
-        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
-            guard let picker = toolPicker else { return }
-            if picker.selectedTool is PKEraserTool, let forrige = forrigeVerktoy {
-                picker.selectedTool = forrige
-                forrigeVerktoy = nil
-            } else {
-                forrigeVerktoy = picker.selectedTool
-                picker.selectedTool = PKEraserTool(.vector)
-            }
+        func begin(noteID: String?, drawing: PKDrawing, on canvas: PKCanvasView) {
+            cancelPendingWork()
+            self.noteID = noteID
+            tegner = false
+            canvas.drawing = drawing
+            forrigeAntallStrok = drawing.strokes.count
         }
 
-        /// Pencil Pro squeeze: vis/skjul verktøylinja (mer flate å tegne på).
-        @available(iOS 17.5, *)
-        func pencilInteraction(_ interaction: UIPencilInteraction,
-                               didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
-            guard squeeze.phase == .ended,
-                  let picker = toolPicker, let canvas else { return }
-            picker.setVisible(!picker.isVisible, forFirstResponder: canvas)
-            canvas.becomeFirstResponder()
+        func cancelPendingWork() {
+            laserOppgaver.forEach { $0.cancel() }
+            laserOppgaver.removeAll()
+            laserOverlays.forEach { $0.removeFromSuperview() }
+            laserOverlays.removeAll()
+        }
+
+        func toolPickerSelectedToolDidChange(_ toolPicker: PKToolPicker) {
+            synkroniserValgtVerktoy(toolPicker)
+        }
+
+        @available(iOS 18.0, *)
+        func toolPickerSelectedToolItemDidChange(_ toolPicker: PKToolPicker) {
+            synkroniserValgtVerktoy(toolPicker)
+        }
+
+        private func synkroniserValgtVerktoy(_ toolPicker: PKToolPicker) {
+            guard !suspenderToolSynk else { return }
+            let valgt: PennValg
+            if let ink = toolPicker.selectedTool as? PKInkingTool {
+                valgt = ink.inkType == .marker ? .marker : .pen
+            } else if toolPicker.selectedTool is PKEraserTool {
+                valgt = .viskelar
+            } else if toolPicker.selectedTool is PKLassoTool {
+                valgt = .lasso
+            } else {
+                return
+            }
+            anvendtPenn = valgt
+            if parent.pennValg != valgt { parent.pennValg = valgt }
         }
 
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) { tegner = true }
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) { tegner = false }
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            guard !mutererInternt else { return }
             // Penn-moduser: laser toner bort, pil-pennen snapper hvert strøk.
             if canvasView.drawing.strokes.count > forrigeAntallStrok,
                let siste = canvasView.drawing.strokes.last {
                 if anvendtPenn == .laser {
-                    forrigeAntallStrok = canvasView.drawing.strokes.count
-                    parent.drawing = canvasView.drawing
-                    planleggLaserFjerning(canvasView)
+                    // PencilKit kan sende mellomvarsler mens spissen fortsatt
+                    // er nede. Den endelige callbacken kommer etter didEnd;
+                    // først da flyttes strøket ut av den persistente modellen.
+                    guard !tegner else { return }
+                    var persistent = canvasView.drawing
+                    persistent.strokes.removeLast()
+                    visLaser(siste, on: canvasView)
+                    mutererInternt = true
+                    canvasView.drawing = persistent
+                    mutererInternt = false
+                    parent.drawing = persistent
+                    forrigeAntallStrok = persistent.strokes.count
                     return
                 }
                 if anvendtPenn == .pil, let onForm = parent.onFormGjenkjent {
@@ -152,20 +208,32 @@ struct LeadgridPencilCanvas: UIViewRepresentable {
         }
         var forrigeAntallStrok = 0
         var anvendtPenn: PennValg?
-        var laserStartAntall = 0
 
-        /// Laser: strøket toner bort etter 1,2 s (FIFO fra laser-start).
-        private func planleggLaserFjerning(_ canvasView: PKCanvasView) {
-            let posisjon = laserStartAntall
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self, weak canvasView] in
-                guard let self, let canvasView,
-                      canvasView.drawing.strokes.count > posisjon else { return }
-                var uten = canvasView.drawing
-                uten.strokes.remove(at: posisjon)
-                canvasView.drawing = uten
-                self.parent.drawing = uten
-                self.forrigeAntallStrok = uten.strokes.count
+        /// Laser rendres utenfor modellens PKDrawing og tones bort etter 1,2 s.
+        private func visLaser(_ stroke: PKStroke, on canvasView: PKCanvasView) {
+            let ramme = stroke.renderBounds.insetBy(dx: -12, dy: -12)
+            guard !ramme.isEmpty else { return }
+            let bilde = PKDrawing(strokes: [stroke]).image(from: ramme, scale: 2)
+            let overlay = UIImageView(image: bilde)
+            overlay.frame = ramme
+            overlay.contentMode = .scaleToFill
+            overlay.isUserInteractionEnabled = false
+            canvasView.addSubview(overlay)
+            laserOverlays.append(overlay)
+            let planlagtNoteID = noteID
+            let arbeid = DispatchWorkItem { [weak self, weak overlay] in
+                guard let self, let overlay,
+                      self.noteID == planlagtNoteID else { return }
+                UIView.animate(
+                    withDuration: 0.7,
+                    animations: { overlay.alpha = 0 },
+                    completion: { _ in
+                        overlay.removeFromSuperview()
+                        self.laserOverlays.removeAll { $0 === overlay }
+                    })
             }
+            laserOppgaver.append(arbeid)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: arbeid)
         }
     }
 }
@@ -200,6 +268,28 @@ struct StempelView: View {
                     onFlytt(ny)
                 } : nil)
             .onLongPressGesture(minimumDuration: 0.5) {
+                if redigerbar { onSlett() }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Stempel \(stempel.tegn)")
+            .accessibilityHint(redigerbar ? "Kan flyttes eller slettes" : "Kun visning")
+            .accessibilityAction(named: "Flytt til venstre") {
+                guard redigerbar else { return }
+                var ny = stempel; ny.x -= 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Flytt til høyre") {
+                guard redigerbar else { return }
+                var ny = stempel; ny.x += 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Flytt opp") {
+                guard redigerbar else { return }
+                var ny = stempel; ny.y -= 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Flytt ned") {
+                guard redigerbar else { return }
+                var ny = stempel; ny.y += 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Slett") {
                 if redigerbar { onSlett() }
             }
     }
@@ -308,6 +398,31 @@ struct TekstboksView: View {
             .onLongPressGesture(minimumDuration: 0.5) {
                 if redigerbar { onSlett() }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(boks.tekst.isEmpty ? "Tom tekstboks" : boks.tekst)
+            .accessibilityHint(redigerbar ? "Aktiver for å redigere" : "Kun visning")
+            .accessibilityAction(.default) {
+                if redigerbar { onRediger() }
+            }
+            .accessibilityAction(named: "Flytt til venstre") {
+                guard redigerbar else { return }
+                var ny = boks; ny.x -= 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Flytt til høyre") {
+                guard redigerbar else { return }
+                var ny = boks; ny.x += 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Flytt opp") {
+                guard redigerbar else { return }
+                var ny = boks; ny.y -= 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Flytt ned") {
+                guard redigerbar else { return }
+                var ny = boks; ny.y += 20; onFlytt(ny)
+            }
+            .accessibilityAction(named: "Slett") {
+                if redigerbar { onSlett() }
+            }
     }
 }
 
@@ -365,6 +480,23 @@ struct FigurView: View {
                     onEndre(ny)
                 } : nil)
             .onLongPressGesture(minimumDuration: 0.6) {
+                if redigerbar { onSlett() }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Figur, \(form.nokkel)")
+            .accessibilityValue("\(Int(figur.skala * 100)) prosent")
+            .accessibilityHint(redigerbar ? "Juster opp eller ned for å endre størrelse" : "Kun visning")
+            .accessibilityAdjustableAction { retning in
+                guard redigerbar else { return }
+                var ny = figur
+                switch retning {
+                case .increment: ny.skala = min(4, ny.skala + 0.1)
+                case .decrement: ny.skala = max(0.3, ny.skala - 0.1)
+                @unknown default: return
+                }
+                onEndre(ny)
+            }
+            .accessibilityAction(named: "Slett") {
                 if redigerbar { onSlett() }
             }
     }
@@ -471,11 +603,13 @@ struct NodeView: View {
                     Image(systemName: "plus")
                         .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 44, height: 44)
                         .background(farge, in: Circle())
                         .shadow(color: .black.opacity(0.4), radius: 3)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(
+                    "Legg til undernode til \(node.tekst.isEmpty ? "denne noden" : node.tekst)")
                 .offset(x: 8, y: 8)
             }
         }
@@ -492,6 +626,31 @@ struct NodeView: View {
                 onEndre(ny)
             } : nil)
         .onLongPressGesture(minimumDuration: 0.6) {
+            if redigerbar { onSlett() }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(node.tekst.isEmpty ? "Tom tankekartnode" : node.tekst)
+        .accessibilityHint(redigerbar ? "Aktiver for å redigere" : "Kun visning")
+        .accessibilityAction(.default) {
+            if redigerbar { onRediger() }
+        }
+        .accessibilityAction(named: "Flytt til venstre") {
+            guard redigerbar else { return }
+            var ny = node; ny.x -= 20; onEndre(ny)
+        }
+        .accessibilityAction(named: "Flytt til høyre") {
+            guard redigerbar else { return }
+            var ny = node; ny.x += 20; onEndre(ny)
+        }
+        .accessibilityAction(named: "Flytt opp") {
+            guard redigerbar else { return }
+            var ny = node; ny.y -= 20; onEndre(ny)
+        }
+        .accessibilityAction(named: "Flytt ned") {
+            guard redigerbar else { return }
+            var ny = node; ny.y += 20; onEndre(ny)
+        }
+        .accessibilityAction(named: "Slett") {
             if redigerbar { onSlett() }
         }
     }
@@ -602,6 +761,39 @@ struct ObjektView: View {
                 if redigerbar { onSlett() }
             }
             .allowsHitTesting(redigerbar)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                liveInnhold?.0 ?? objekt.tittel ?? objekt.type)
+            .accessibilityValue(
+                liveInnhold?.1 ?? objekt.detalj ?? "")
+            .accessibilityHint(
+                redigerbar ? "Aktiver for å velge. Juster for størrelse." : "Kun visning")
+            .accessibilityAction(.default) {
+                if redigerbar { onToggleValg?() }
+            }
+            .accessibilityAdjustableAction { retning in
+                justerTilgjengeligSkala(retning)
+            }
+            .accessibilityAction(named: "Slett") {
+                if redigerbar { onSlett() }
+            }
+    }
+
+    private func justerTilgjengeligSkala(
+        _ retning: AccessibilityAdjustmentDirection
+    ) {
+        guard redigerbar else { return }
+        var nyttObjekt = objekt
+        let steg = 0.1
+        switch retning {
+        case .increment:
+            nyttObjekt.skala = min(3.0, nyttObjekt.skala + steg)
+        case .decrement:
+            nyttObjekt.skala = max(0.25, nyttObjekt.skala - steg)
+        @unknown default:
+            return
+        }
+        onEndre(nyttObjekt)
     }
 
     @ViewBuilder

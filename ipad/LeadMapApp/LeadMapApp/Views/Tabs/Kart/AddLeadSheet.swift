@@ -30,8 +30,8 @@ private enum AlBrand {
     static let textTertiary = Color.white.opacity(0.45)
 }
 
-struct AddLeadSheet: View {
-    let onSave: (NewLeadData) -> Void
+struct LeadAddFormSheet: View {
+    let onSave: (LeadDraft, OfflineResilientActions.LeadCreateDisposition) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
 
@@ -75,20 +75,12 @@ struct AddLeadSheet: View {
     @State private var assignTo: String = "Meg"
 
     @State private var pinCoord = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
-
-    struct NewLeadData {
-        let companyName: String
-        let address: String
-        let status: MapLeadMock.PinStatus
-        let coord: CLLocationCoordinate2D
-        // 2026-08-16: phone/email persisteres nå reelt (from-pin støtter
-        // dem). org.nr/nettside/kontaktperson/notat/ansatte/omsetning
-        // samles fortsatt i skjemaet men har intet lagringssted i
-        // crm_customers via dette endepunktet ennå — kjent gap, ikke et
-        // stille datatap (se runScan()-kommentaren over).
-        let phone: String
-        let email: String
-    }
+    @State private var creationId = UUID()
+    @State private var saving = false
+    @State private var saveError: String?
+    @State private var duplicateCandidates: [LeadDuplicateCandidate] = []
+    @State private var pendingDuplicateDraft: LeadDraft?
+    @State private var fieldErrors: [LeadDraftValidationField: String] = [:]
 
     var body: some View {
         NavigationStack {
@@ -121,6 +113,36 @@ struct AddLeadSheet: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
+        .accessibilityIdentifier("lead-add-form")
+        .confirmationDialog(
+            "Mulig duplikat",
+            isPresented: Binding(
+                get: { pendingDuplicateDraft != nil },
+                set: { if !$0 { pendingDuplicateDraft = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Opprett likevel") {
+                guard var draft = pendingDuplicateDraft else { return }
+                draft.allowDuplicate = true
+                pendingDuplicateDraft = nil
+                Task { await submit(draft) }
+            }
+            Button("Avbryt", role: .cancel) { pendingDuplicateDraft = nil }
+        } message: {
+            Text(duplicateMessage)
+        }
+        .alert(
+            "Kunne ikke lagre lead",
+            isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     // MARK: Mode-veksler
@@ -292,15 +314,30 @@ struct AddLeadSheet: View {
     private var companySection: some View {
         sectionCard(title: "Bedrift", icon: "building.2.fill") {
             VStack(spacing: 12) {
-                field(label: "Bedriftsnavn",  placeholder: "F.eks. Nordic Elektro AS", text: $companyName)
+                field(
+                    label: "Bedriftsnavn",
+                    placeholder: "F.eks. Nordic Elektro AS",
+                    text: $companyName,
+                    validationFields: [.name, .company]
+                )
                 HStack(spacing: 10) {
-                    field(label: "Org.nr",   placeholder: "912 345 678",     text: $orgNumber)
-                    field(label: "Nettside", placeholder: "nordicelektro.no", text: $website)
+                    field(
+                        label: "Org.nr",
+                        placeholder: "912 345 678",
+                        text: $orgNumber,
+                        validationFields: [.organizationNumber]
+                    )
+                    field(
+                        label: "Nettside",
+                        placeholder: "nordicelektro.no",
+                        text: $website,
+                        validationFields: [.website]
+                    )
                 }
-                field(label: "Adresse", placeholder: "Storgata 12", text: $address)
+                field(label: "Adresse", placeholder: "Storgata 12", text: $address, validationFields: [.address])
                 HStack(spacing: 10) {
-                    field(label: "Postnr",   placeholder: "0184", text: $postalCode).frame(width: 100)
-                    field(label: "Sted",     placeholder: "Oslo", text: $city)
+                    field(label: "Postnr", placeholder: "0184", text: $postalCode, validationFields: [.postalCode]).frame(width: 100)
+                    field(label: "Sted", placeholder: "Oslo", text: $city, validationFields: [.city])
                 }
             }
         }
@@ -312,12 +349,34 @@ struct AddLeadSheet: View {
         sectionCard(title: "Primær kontaktperson", icon: "person.crop.circle.fill") {
             VStack(spacing: 12) {
                 HStack(spacing: 10) {
-                    field(label: "Navn", placeholder: "Anders Johansen", text: $contactName)
-                    field(label: "Rolle", placeholder: "Daglig leder",   text: $contactRole)
+                    field(
+                        label: "Navn",
+                        placeholder: "Anders Johansen",
+                        text: $contactName,
+                        validationFields: [.contactName]
+                    )
+                    field(
+                        label: "Rolle",
+                        placeholder: "Daglig leder",
+                        text: $contactRole,
+                        validationFields: [.contactRole]
+                    )
                 }
                 HStack(spacing: 10) {
-                    field(label: "Telefon", placeholder: "+47 22 33 44 55", text: $phone, keyboard: .phonePad)
-                    field(label: "E-post",  placeholder: "post@…",          text: $email, keyboard: .emailAddress)
+                    field(
+                        label: "Telefon",
+                        placeholder: "+47 22 33 44 55",
+                        text: $phone,
+                        keyboard: .phonePad,
+                        validationFields: [.phone]
+                    )
+                    field(
+                        label: "E-post",
+                        placeholder: "post@…",
+                        text: $email,
+                        keyboard: .emailAddress,
+                        validationFields: [.email]
+                    )
                 }
             }
         }
@@ -338,7 +397,12 @@ struct AddLeadSheet: View {
                 }
 
                 HStack(spacing: 10) {
-                    field(label: "Bransje",   placeholder: "Elektro",      text: $industry)
+                    field(
+                        label: "Bransje",
+                        placeholder: "Elektro",
+                        text: $industry,
+                        validationFields: [.industry]
+                    )
                     field(label: "Ansatt",    placeholder: "25-50",        text: $employees)
                     field(label: "Omsetning", placeholder: "10-20 mill.",  text: $revenue)
                 }
@@ -352,7 +416,10 @@ struct AddLeadSheet: View {
                         .frame(minHeight: 70)
                         .padding(10)
                         .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                            fieldErrors[.notes] == nil ? AlBrand.stroke : AlBrand.red,
+                            lineWidth: 1
+                        ))
                         .overlay(alignment: .topLeading) {
                             if notat.isEmpty {
                                 Text("Hvorfor er denne leaden interessant? Hva er neste steg?")
@@ -362,6 +429,10 @@ struct AddLeadSheet: View {
                                     .allowsHitTesting(false)
                             }
                         }
+                        .onChange(of: notat) { fieldErrors[.notes] = nil }
+                    if let error = fieldErrors[.notes] {
+                        validationMessage(error, field: .notes)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -463,6 +534,9 @@ struct AddLeadSheet: View {
                     Spacer()
                 }
             }
+            if let error = fieldErrors[.coordinates] {
+                validationMessage(error, field: .coordinates)
+            }
         }
     }
 
@@ -482,19 +556,12 @@ struct AddLeadSheet: View {
             .buttonStyle(.plain)
 
             Button {
-                onSave(NewLeadData(
-                    companyName: companyName.isEmpty ? "Ny lead" : companyName,
-                    address: "\(address), \(postalCode) \(city)",
-                    status: status,
-                    coord: pinCoord,
-                    phone: phone,
-                    email: email
-                ))
+                Task { await submit() }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
                         .font(.appScaled(size: 13, weight: .bold))
-                    Text("Legg til på kartet")
+                    Text(saving ? "Lagrer…" : "Legg til på kartet")
                         .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
@@ -509,8 +576,9 @@ struct AddLeadSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(companyName.isEmpty)
-            .opacity(companyName.isEmpty ? 0.55 : 1)
+            .accessibilityIdentifier("lead-submit")
+            .disabled(companyName.isEmpty || saving)
+            .opacity(companyName.isEmpty || saving ? 0.55 : 1)
         }
         .padding(.horizontal, 20).padding(.vertical, 14)
         .background(
@@ -518,6 +586,98 @@ struct AddLeadSheet: View {
                 .overlay(Rectangle().fill(AlBrand.stroke).frame(height: 1), alignment: .top)
         )
     }
+
+    private var duplicateMessage: String {
+        let names = duplicateCandidates.prefix(3).map(\.name).joined(separator: ", ")
+        return names.isEmpty
+            ? "En mulig duplikat finnes allerede i organisasjonen."
+            : "Fant mulig eksisterende lead: \(names). Opprett bare hvis dette faktisk er en ny lead."
+    }
+
+    private func makeDraft() -> LeadDraft? {
+        guard let organizationId = appState.activeOrganizationId else {
+            saveError = "Velg en organisasjon før du oppretter lead."
+            return nil
+        }
+        let classification = LeadDraftClassification.from(pinStatusRawValue: status.rawValue)
+        return LeadDraft(
+            creationId: creationId,
+            organizationId: organizationId,
+            name: companyName.trimmingCharacters(in: .whitespacesAndNewlines),
+            company: LeadDraft.optionalText(companyName),
+            organizationNumber: LeadDraft.optionalText(orgNumber),
+            websiteUrl: LeadDraft.optionalText(website),
+            contactName: LeadDraft.optionalText(contactName),
+            contactRole: LeadDraft.optionalText(contactRole),
+            email: LeadDraft.optionalText(email),
+            phone: LeadDraft.optionalText(phone),
+            address: LeadDraft.optionalText(address),
+            postalCode: LeadDraft.optionalText(postalCode),
+            city: LeadDraft.optionalText(city),
+            country: "NO",
+            latitude: pinCoord.latitude,
+            longitude: pinCoord.longitude,
+            googlePlaceId: nil,
+            industryId: nil,
+            industry: LeadDraft.optionalText(industry),
+            employeeCountEstimate: LeadDraft.employeeEstimate(from: employees),
+            annualRevenueNokEstimate: LeadDraft.nokEstimate(from: revenue),
+            estimatedValue: nil,
+            notes: LeadDraft.optionalText(notat),
+            leadTemperature: classification.temperature,
+            pipelineStage: classification.pipelineStage,
+            leadStatus: classification.leadStatus,
+            nextFollowUpAt: nil,
+            nextAction: nil,
+            locationConfidence: scanComplete ? "geocoded" : "approximate",
+            leadSource: scanComplete ? "company_lookup" : "manual",
+            projectId: appState.activeProjectId,
+            rawText: nil,
+            allowDuplicate: false
+        )
+    }
+
+    @MainActor
+    private func submit(_ suppliedDraft: LeadDraft? = nil) async {
+        guard !saving else { return }
+        guard let draft = suppliedDraft ?? makeDraft() else { return }
+        let validationDetails = draft.validationDetails()
+        guard validationDetails.isEmpty else {
+            fieldErrors = Dictionary(
+                validationDetails.map { ($0.field, $0.message) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            saveError = nil
+            return
+        }
+
+        guard !DemoModeManager.isActiveNonisolated else {
+            saveError = "Demo-modus — leaden blir ikke lagret."
+            return
+        }
+        guard let api = appState.api else {
+            saveError = "Du må være innlogget for å opprette lead."
+            return
+        }
+
+        fieldErrors = [:]
+        saving = true
+        saveError = nil
+        defer { saving = false }
+
+        let result = await OfflineResilientActions.createLead(api: api, draft: draft)
+        switch result {
+        case .sent, .queued:
+            onSave(draft, result)
+            dismiss()
+        case .duplicate(let candidates):
+            duplicateCandidates = candidates
+            pendingDuplicateDraft = draft
+        case .rejected(let message):
+            saveError = message
+        }
+    }
+
 
     // MARK: Helpers
 
@@ -549,17 +709,59 @@ struct AddLeadSheet: View {
 
     @ViewBuilder
     private func field(label: String, placeholder: String, text: Binding<String>,
-                       keyboard: UIKeyboardType = .default) -> some View {
+                       keyboard: UIKeyboardType = .default,
+                       validationFields: [LeadDraftValidationField] = []) -> some View {
+        let error = validationFields.compactMap { fieldErrors[$0] }.first
+        let fieldIdentifier = validationFields.first?.rawValue
         VStack(alignment: .leading, spacing: 6) {
             fieldLabel(label)
-            TextField("", text: text, prompt: Text(placeholder).foregroundColor(AlBrand.textTertiary))
+            TextField(
+                "",
+                text: Binding(
+                    get: { text.wrappedValue },
+                    set: { value in
+                        text.wrappedValue = value
+                        for field in validationFields {
+                            fieldErrors[field] = nil
+                        }
+                    }
+                ),
+                prompt: Text(placeholder).foregroundColor(AlBrand.textTertiary)
+            )
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
                 .font(.appScaled(size: 13))
                 .keyboardType(keyboard)
                 .padding(.horizontal, 12).padding(.vertical, 11)
                 .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                    error == nil ? AlBrand.stroke : AlBrand.red,
+                    lineWidth: 1
+                ))
+                .accessibilityIdentifier(
+                    fieldIdentifier.map { "lead-field-\($0)" } ?? "lead-field-unvalidated"
+                )
+            if let error, let validationField = validationFields.first {
+                validationMessage(error, field: validationField)
+            }
         }
+    }
+
+    private func validationMessage(
+        _ message: String,
+        field: LeadDraftValidationField
+    ) -> some View {
+        Label(message, systemImage: "exclamationmark.circle.fill")
+            .font(.appScaled(size: 10, weight: .semibold))
+            .foregroundStyle(AlBrand.red)
+            .accessibilityIdentifier("lead-error-\(field.rawValue)")
+    }
+}
+
+struct AddLeadSheet: View {
+    let onSave: (LeadDraft, OfflineResilientActions.LeadCreateDisposition) -> Void
+
+    var body: some View {
+        LeadAddFormSheet(onSave: onSave)
     }
 }

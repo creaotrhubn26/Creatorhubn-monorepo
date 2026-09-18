@@ -1435,13 +1435,12 @@ export function buildWebhookPayload(
 }
 
 /**
- * publishEvent: fire-and-forget event-bus.
+ * Kjerneimplementasjon for workflow-eventer.
  *
- * Caller bør void publishEvent(...) for å ikke blokkere request-løpet.
- * Vi henter matchende workflows, evaluerer + eksekverer hver i parallel.
+ * Infrastrukturfeil får boble opp slik at background_jobs kan retrye.
+ * Enkelt-workflows isoleres fortsatt fra hverandre nedenfor.
  */
-export async function publishEvent(event: WorkflowEvent): Promise<void> {
-  try {
+async function publishEventInternal(event: WorkflowEvent): Promise<void> {
     const workflows = await matchWorkflows(
       event.pool,
       event.organizationId,
@@ -1476,9 +1475,23 @@ export async function publishEvent(event: WorkflowEvent): Promise<void> {
         // best effort — logging skal aldri velte event-publisering
       }
     }
+}
+
+/** Bakoverkompatibel fire-and-forget-variant for eksisterende call-sites. */
+export async function publishEvent(event: WorkflowEvent): Promise<void> {
+  try {
+    await publishEventInternal(event);
   } catch (err) {
     console.warn("[workflow-engine] publishEvent failed:", err);
   }
+}
+
+/**
+ * Durable variant for background_jobs. Query-/oppstartsfeil kastes slik at
+ * køen kan retrye og til slutt gjøre feilen synlig som dead.
+ */
+export async function publishEventDurably(event: WorkflowEvent): Promise<void> {
+  await publishEventInternal(event);
 }
 
 // =====================================================================

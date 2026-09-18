@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
+import { pushApprovedReferenceMixToEaseVerse } from "./easeverse-protools-sync";
 import { broadcastUserEvent } from "./realtime-user-events";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
@@ -237,6 +238,17 @@ const htmlEsc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/<
 // avvises — de kan lekke bandmedlemmers IP via <audio> på delingssiden.
 const validMediaUrl = (u: any): boolean => typeof u === "string" && /^\/[^/]/.test(u) && u.length <= 800 && !/[\x00-\x20<>"'\\]/.test(u);
 
+function sharedAudioVersion(row: any, token: string): any {
+  if (!row?.storage_object_id) return row;
+  const root = `/api/audio-review-shared/${encodeURIComponent(token)}/versions/${row.id}`;
+  return {
+    ...row,
+    file_url: `${root}/media`,
+    preview_url: row.preview_storage_object_id ? `${root}/media?preview=1` : null,
+    waveform_json_url: row.waveform_peaks ? `${root}/waveform` : null,
+  };
+}
+
 // Saner produsentens steg-array før lagring: hvert steg må være et objekt med
 // gyldig type/durationSec, tekstfelter kappes, og audioUrl må være same-origin.
 // Ugyldige steg fjernes helt — ellers kan f.eks. [null] bricke medlemmets flyt.
@@ -294,8 +306,12 @@ function buildIcs(sess: any): string {
 
 const makeInviteToken = () => "inv_" + randomUUID().replace(/-/g, "");
 
-type AnyPool = {
+type AnyQueryable = {
   query: (text: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount: number }>;
+};
+
+type AnyPool = AnyQueryable & {
+  connect: () => Promise<AnyQueryable & { release: () => void }>;
 };
 
 export interface AudioShowcaseDeps {
@@ -324,10 +340,24 @@ const isMissingTable = (e: unknown) =>
   typeof e === "object" && e !== null && (e as { code?: string }).code === "42P01";
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const num = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+const isVersionedWorkspaceAgreement = (metadata: unknown): boolean =>
+  Number(
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>).agreementVersion
+      : undefined,
+  ) >= 1;
 
 // ── Ekstern EaseVerse-bro (stabil toveis tekst-synk) ───────────────────────
 const EV_URL = (process.env.EASEVERSE_API_URL || "").trim().replace(/\/+$/, "");
 const EV_KEY = (process.env.EASEVERSE_API_KEY || "").trim();
+
+function easeVerseServiceAuthorized(req: any): boolean {
+  const provided = typeof req.headers?.["x-api-key"] === "string" ? req.headers["x-api-key"].trim() : "";
+  if (!EV_KEY || !provided) return false;
+  const expectedBytes = Buffer.from(EV_KEY);
+  const providedBytes = Buffer.from(provided);
+  return expectedBytes.length === providedBytes.length && timingSafeEqual(expectedBytes, providedBytes);
+}
 
 type EvResult = { configured: boolean; reachable: boolean; status?: number; item?: any; latencyMs?: number; error?: string };
 
@@ -342,7 +372,12 @@ async function evFetch(path: string, init: RequestInit, timeoutMs = 6000): Promi
     const r = await fetch(`${EV_URL}${path}`, { ...init, headers, signal: ctrl.signal });
     const latencyMs = Date.now() - startedAt;
     const json = await r.json().catch(() => null);
-    return { configured: true, reachable: true, status: r.status, item: json?.item ?? null, latencyMs };
+    // `reachable` is consumed by the UI as "sync is available", so an HTTP
+    // error must not be reported as a successful EaseVerse connection. A 404
+    // is healthy only for GET: it means the endpoint works but the track is new.
+    const method = String(init.method || "GET").toUpperCase();
+    const reachable = r.ok || (method === "GET" && r.status === 404);
+    return { configured: true, reachable, status: r.status, item: json?.item ?? null, latencyMs };
   } catch (e: any) {
     return { configured: true, reachable: false, error: String(e?.message || e), latencyMs: Date.now() - startedAt };
   } finally {
@@ -680,39 +715,13 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // ── Versjon (bounce) ──────────────────────────────────────────────────────
   app.post("/api/audio-versions", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
-    const projectId = str(req.body?.projectId, 64);
-    const fileUrl = str(req.body?.fileUrl, 1000);
-    if (!projectId || !fileUrl) return res.status(400).json({ error: "projectId_and_fileUrl_required" });
-    try {
-      const owns = await pool.query(
-        `SELECT 1 FROM audio_review_projects WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`, [projectId, s.userId]);
-      if (!owns.rows.length) return res.status(404).json({ error: "project_not_found" });
-
-      // §14 — kun én current review-versjon: sett tidligere under_review → superseded.
-      await pool.query(
-        `UPDATE audio_review_versions SET status = 'superseded'
-          WHERE project_id = $1::uuid AND status = 'under_review'`, [projectId]);
-      const nextNo = await pool.query(
-        `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id = $1::uuid`, [projectId]);
-      const vn = nextNo.rows[0].n;
-      const r = await pool.query(
-        `INSERT INTO audio_review_versions
-           (project_id, version_label, version_number, file_name, file_url, preview_url, duration, sample_rate, bit_depth, channels, codec, file_size, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [projectId, str(req.body?.versionLabel, 80) || `Mix V${vn}`, vn, str(req.body?.fileName, 300) || null, fileUrl,
-         str(req.body?.previewUrl, 1000) || null, num(req.body?.duration), num(req.body?.sampleRate), num(req.body?.bitDepth),
-         num(req.body?.channels), str(req.body?.codec, 40) || null, num(req.body?.fileSize), s.userId],
-      );
-      await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
-      // Varsle bandet om at en ny versjon er klar å høre (best-effort).
-      void notifyBandNewVersion(projectId, r.rows[0]).catch(() => {});
-      void notifySoundRoomUpdated(projectId, s.userId, "version");
-      return res.status(201).json(r.rows[0]);
-    } catch (e) {
-      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
-      console.error("[audio-showcase] create version failed:", e);
-      return res.status(500).json({ error: "create_version_failed" });
-    }
+    // All new browser and Pro Tools versions must be backed by a verified
+    // role_room_storage_objects row. Keep legacy rows readable, but prevent
+    // clients from creating a second URL-only storage model.
+    return res.status(410).json({
+      error: "verified_storage_object_required",
+      uploadEndpoint: "/api/audio-showcases/:projectId/storage/initiate",
+    });
   });
 
   app.get("/api/audio-versions/:id", async (req, res) => {
@@ -833,7 +842,12 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(
         `UPDATE audio_review_projects SET status = $2, updated_at = NOW()
           WHERE id = (SELECT project_id FROM audio_review_versions WHERE id = $1::uuid)`, [versionId, pStatus]);
-      const vp = await pool.query(`SELECT project_id FROM audio_review_versions WHERE id = $1::uuid`, [versionId]).catch(() => ({ rows: [] }));
+      const vp = await pool.query(
+        `SELECT v.project_id,v.file_url,v.file_name,v.duration,p.owner_user_id,
+                COALESCE(p.external_track_id,p.easeverse_track_id::text) AS external_track_id
+           FROM audio_review_versions v JOIN audio_review_projects p ON p.id=v.project_id WHERE v.id=$1::uuid`,
+        [versionId],
+      ).catch(() => ({ rows: [] }));
       if (vp.rows[0]?.project_id) void notifySoundRoomUpdated(vp.rows[0].project_id, s.userId, "approval");
       // Synk koblet SongFlow/EaseVerse-track-status (mix_approved→mastering, delivery→completed, changes→mixing).
       const trackStatus = approvalType === "changes_requested" ? "mixing"
@@ -844,7 +858,17 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           WHERE id = (SELECT easeverse_track_id FROM audio_review_projects
                       WHERE id = (SELECT project_id FROM audio_review_versions WHERE id = $1::uuid))::uuid`,
         [versionId, trackStatus]).catch(() => { /* ikke koblet / annen DB-state */ });
-      return res.status(201).json(a.rows[0]);
+      const reference = vp.rows[0];
+      const easeverseReferenceSync = approvalType !== "changes_requested" && reference?.external_track_id && reference?.file_url
+        ? await pushApprovedReferenceMixToEaseVerse({
+            ownerUserId: String(reference.owner_user_id),
+            externalTrackId: String(reference.external_track_id),
+            url: String(reference.file_url),
+            name: reference.file_name ? String(reference.file_name) : null,
+            durationSec: Number.isFinite(Number(reference.duration)) ? Number(reference.duration) : null,
+          })
+        : undefined;
+      return res.status(201).json({ ...a.rows[0], ...(easeverseReferenceSync ? { easeverseReferenceSync } : {}) });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] approve failed:", e);
@@ -1452,36 +1476,77 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const id = str(req.params.id, 64);
     const splits: any[] = Array.isArray(req.body?.contributors) ? req.body.contributors : [];
     if (!splits.length) return res.status(400).json({ error: "contributors_required" });
+    const clean = splits.map((c) => ({
+      id: str(c.id, 64),
+      master: Math.max(0, Math.min(100, Number(c.masterPct ?? c.percentage) || 0)),
+      comp: Math.max(0, Math.min(100, Number(c.compositionPct) || 0)),
+      feeAmount: Number(c.feeAmount) > 0 ? Number(c.feeAmount) : null,
+      feeCurrency: str(c.feeCurrency, 8) || "NOK",
+      feeType: ["royalty", "session", "buyout", "hourly"].includes(c.feeType) ? c.feeType : "royalty",
+    }));
+    const masterTotal = Math.round(clean.reduce((a, c) => a + c.master, 0) * 100) / 100;
+    const compTotal = Math.round(clean.reduce((a, c) => a + c.comp, 0) * 100) / 100;
+    if (masterTotal > 100.01) return res.status(400).json({ error: "master_exceeds_100", total: masterTotal });
     try {
-      const ss = await pool.query(
-        `SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
-      if (!ss.rows.length) return res.status(404).json({ error: "not_found" });
-      const ssId = ss.rows[0].id;
-      // Lås: kan ikke endre vilkår etter at noen har signert (juridisk integritet).
-      const signed = await pool.query(`SELECT COUNT(*)::int AS n FROM split_sheet_contributors WHERE split_sheet_id=$1 AND signed_at IS NOT NULL`, [ssId]);
-      if (signed.rows[0].n > 0) return res.status(409).json({ error: "locked_signed", message: "Avtalen er signert av minst én part og er låst. Lås opp for å endre (krever ny signering)." });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const ss = await client.query(
+          `SELECT id, metadata
+             FROM split_sheets
+            WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2
+            LIMIT 1
+            FOR UPDATE`,
+          [s.userId, id],
+        );
+        if (!ss.rows.length) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ error: "not_found" });
+        }
+        const ssId = ss.rows[0].id;
+        // Fresh snapshot after the header lock: a concurrent personal signer
+        // either finishes first and is observed here, or waits for this edit.
+        const signed = await client.query(
+          `SELECT COUNT(*)::int AS n
+             FROM split_sheet_contributors
+            WHERE split_sheet_id=$1 AND signed_at IS NOT NULL`,
+          [ssId],
+        );
+        if (signed.rows[0].n > 0) {
+          await client.query("ROLLBACK");
+          if (isVersionedWorkspaceAgreement(ss.rows[0].metadata)) {
+            return res.status(409).json({
+              error: "signed_agreement_locked",
+              message: "Signed agreement terms cannot be changed. Create a new agreement for amendments.",
+            });
+          }
+          return res.status(409).json({
+            error: "locked_signed",
+            message: "Avtalen er signert av minst én part og er låst. Lås opp for å endre (krever ny signering).",
+          });
+        }
 
-      const clean = splits.map((c) => ({
-        id: str(c.id, 64),
-        master: Math.max(0, Math.min(100, Number(c.masterPct ?? c.percentage) || 0)),
-        comp: Math.max(0, Math.min(100, Number(c.compositionPct) || 0)),
-        feeAmount: Number(c.feeAmount) > 0 ? Number(c.feeAmount) : null,
-        feeCurrency: str(c.feeCurrency, 8) || "NOK",
-        feeType: ["royalty", "session", "buyout", "hourly"].includes(c.feeType) ? c.feeType : "royalty",
-      }));
-      const masterTotal = Math.round(clean.reduce((a, c) => a + c.master, 0) * 100) / 100;
-      const compTotal = Math.round(clean.reduce((a, c) => a + c.comp, 0) * 100) / 100;
-      if (masterTotal > 100.01) return res.status(400).json({ error: "master_exceeds_100", total: masterTotal });
-      await pool.query(`UPDATE split_sheet_contributors SET percentage=0 WHERE split_sheet_id=$1::uuid`, [ssId]);
-      for (const c of clean) {
-        await pool.query(
-          `UPDATE split_sheet_contributors
-             SET percentage=$2, updated_at=NOW(),
-                 custom_fields = COALESCE(custom_fields,'{}'::jsonb) || $4::jsonb
-           WHERE id=$1::uuid AND split_sheet_id=$3::uuid`,
-          [c.id, c.master, ssId, JSON.stringify({ compositionPct: c.comp, feeAmount: c.feeAmount, feeCurrency: c.feeCurrency, feeType: c.feeType })]);
+        await client.query(
+          `UPDATE split_sheet_contributors SET percentage=0 WHERE split_sheet_id=$1::uuid`,
+          [ssId],
+        );
+        for (const c of clean) {
+          await client.query(
+            `UPDATE split_sheet_contributors
+               SET percentage=$2, updated_at=NOW(),
+                   custom_fields = COALESCE(custom_fields,'{}'::jsonb) || $4::jsonb
+             WHERE id=$1::uuid AND split_sheet_id=$3::uuid`,
+            [c.id, c.master, ssId, JSON.stringify({ compositionPct: c.comp, feeAmount: c.feeAmount, feeCurrency: c.feeCurrency, feeType: c.feeType })],
+          );
+        }
+        await client.query("COMMIT");
+        return res.json({ ok: true, masterTotal, compTotal, masterBalanced: Math.abs(masterTotal - 100) < 0.01, compBalanced: Math.abs(compTotal - 100) < 0.01 });
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
       }
-      return res.json({ ok: true, masterTotal, compTotal, masterBalanced: Math.abs(masterTotal - 100) < 0.01, compBalanced: Math.abs(compTotal - 100) < 0.01 });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] split-sheet patch failed:", e);
@@ -1494,11 +1559,54 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
     try {
-      const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
-      if (ss.rowCount === 0) return res.status(404).json({ error: "not_found" });
-      await pool.query(`UPDATE split_sheet_contributors SET signed_at=NULL, signature_data=NULL, updated_at=NOW() WHERE split_sheet_id=$1`, [ss.rows[0].id]);
-      await pool.query(`UPDATE split_sheets SET status='draft', updated_at=NOW() WHERE id=$1`, [ss.rows[0].id]);
-      return res.json({ ok: true });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const ss = await client.query(
+          `SELECT id, metadata
+             FROM split_sheets
+            WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2
+            LIMIT 1
+            FOR UPDATE`,
+          [s.userId, id],
+        );
+        if (ss.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ error: "not_found" });
+        }
+        const signed = await client.query(
+          `SELECT EXISTS (
+             SELECT 1 FROM split_sheet_contributors
+              WHERE split_sheet_id=$1 AND signed_at IS NOT NULL
+           ) AS has_signed`,
+          [ss.rows[0].id],
+        );
+        if (isVersionedWorkspaceAgreement(ss.rows[0].metadata)
+          && Boolean(signed.rows[0]?.has_signed)) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            error: "signed_agreement_locked",
+            message: "Signed agreements must be archived. Signature evidence cannot be removed.",
+          });
+        }
+        await client.query(
+          `UPDATE split_sheet_contributors
+              SET signed_at=NULL, signature_data=NULL, updated_at=NOW()
+            WHERE split_sheet_id=$1`,
+          [ss.rows[0].id],
+        );
+        await client.query(
+          `UPDATE split_sheets SET status='draft', updated_at=NOW() WHERE id=$1`,
+          [ss.rows[0].id],
+        );
+        await client.query("COMMIT");
+        return res.json({ ok: true });
+      } catch (transactionError) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw transactionError;
+      } finally {
+        client.release();
+      }
     } catch (e) {
       return res.status(500).json({ error: "unlock_failed" });
     }
@@ -1507,30 +1615,97 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // Juridisk signering av en part: samtykke + revisjonslogg (IP/tid) + snapshot
   // av nøyaktig hva som ble signert. Setter status når alle har signert.
   async function signContributor(ssId: string, contributorId: string, signerName: string, ip: string, ua: string, opts?: { signatureImage?: string; method?: string }): Promise<any | null> {
-    const cur = await pool.query(`SELECT id, name, email, percentage, custom_fields, signed_at FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ssId]);
-    if (cur.rowCount === 0) return null;
-    const c = cur.rows[0];
-    // Allerede signert → idempotent: ikke overskriv, bare bekreft.
-    if (c.signed_at) {
-      const cnt = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
-      return { id: c.id, name: c.name, signed_at: c.signed_at, alreadySigned: true, allSigned: cnt.rows[0].signed >= cnt.rows[0].total };
+    const client = await pool.connect();
+    let receipt: { email: string; signature: any } | null = null;
+    let result: any | null = null;
+    try {
+      await client.query("BEGIN");
+      const sheet = await client.query(
+        `SELECT metadata FROM split_sheets WHERE id=$1::uuid FOR UPDATE`,
+        [ssId],
+      );
+      if (sheet.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      // Versioned Workspace agreements require the canonical personal token,
+      // consent contract and full agreement snapshot.
+      if (isVersionedWorkspaceAgreement(sheet.rows[0].metadata)) {
+        await client.query("ROLLBACK");
+        return { error: "personal_signing_required" };
+      }
+
+      const cur = await client.query(
+        `SELECT id, name, email, percentage, custom_fields, signed_at
+           FROM split_sheet_contributors
+          WHERE id=$1::uuid AND split_sheet_id=$2::uuid
+          LIMIT 1
+          FOR UPDATE`,
+        [contributorId, ssId],
+      );
+      if (cur.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const c = cur.rows[0];
+      // Allerede signert → idempotent: ikke overskriv, bare bekreft.
+      if (c.signed_at) {
+        const cnt = await client.query(
+          `SELECT COUNT(*)::int total, COUNT(signed_at)::int signed
+             FROM split_sheet_contributors WHERE split_sheet_id=$1`,
+          [ssId],
+        );
+        await client.query("COMMIT");
+        return {
+          id: c.id,
+          name: c.name,
+          signed_at: c.signed_at,
+          alreadySigned: true,
+          allSigned: cnt.rows[0].signed >= cnt.rows[0].total,
+        };
+      }
+
+      const snapshot = { contributorId: c.id, name: c.name, masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
+      const at = new Date().toISOString();
+      // Bare PNG data-URL aksepteres som signaturbilde (tegnet/typografert på klient), maks ~200KB.
+      const sigImg = typeof opts?.signatureImage === "string" && /^data:image\/png;base64,/.test(opts.signatureImage) && opts.signatureImage.length < 280_000 ? opts.signatureImage : null;
+      const method = opts?.method === "drawn" ? "drawn_electronic_signature" : opts?.method === "typed" ? "typed_electronic_signature" : "simple_electronic_signature";
+      // Integritets-hash (tamper-evidens): SHA-256 av nøyaktig signerte vilkår + signatar + tid.
+      const signatureHash = createHash("sha256").update(JSON.stringify({ snapshot, signerName, at })).digest("hex");
+      const sig = { name: signerName, consent: true, at, ip, userAgent: (ua || "").slice(0, 300), method, signatureImage: sigImg, signatureHash, snapshot };
+      const signedRow = await client.query(
+        `UPDATE split_sheet_contributors
+            SET signed_at=NOW(), signature_data=$3::jsonb, updated_at=NOW()
+          WHERE id=$1::uuid AND split_sheet_id=$2::uuid AND signed_at IS NULL
+          RETURNING id, name, signed_at`,
+        [contributorId, ssId, JSON.stringify(sig)],
+      );
+      const counts = await client.query(
+        `SELECT COUNT(*)::int total, COUNT(signed_at)::int signed
+           FROM split_sheet_contributors WHERE split_sheet_id=$1`,
+        [ssId],
+      );
+      const { total, signed } = counts.rows[0];
+      await client.query(
+        `UPDATE split_sheets SET status=$2, updated_at=NOW() WHERE id=$1`,
+        [ssId, signed >= total ? "completed" : "pending_signatures"],
+      );
+      await client.query("COMMIT");
+      result = { ...signedRow.rows[0], allSigned: signed >= total };
+      if (sendEmail && c.email) receipt = { email: c.email, signature: sig };
+    } catch (transactionError) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw transactionError;
+    } finally {
+      client.release();
     }
-    const snapshot = { contributorId: c.id, name: c.name, masterPct: Number(c.percentage), compositionPct: c.custom_fields?.compositionPct ?? null, feeAmount: c.custom_fields?.feeAmount ?? null, feeCurrency: c.custom_fields?.feeCurrency ?? null, feeType: c.custom_fields?.feeType ?? null, contributions: c.custom_fields?.contributions ?? [] };
-    const at = new Date().toISOString();
-    // Bare PNG data-URL aksepteres som signaturbilde (tegnet/typografert på klient), maks ~200KB.
-    const sigImg = typeof opts?.signatureImage === "string" && /^data:image\/png;base64,/.test(opts.signatureImage) && opts.signatureImage.length < 280_000 ? opts.signatureImage : null;
-    const method = opts?.method === "drawn" ? "drawn_electronic_signature" : opts?.method === "typed" ? "typed_electronic_signature" : "simple_electronic_signature";
-    // Integritets-hash (tamper-evidens): SHA-256 av nøyaktig signerte vilkår + signatar + tid.
-    const signatureHash = createHash("sha256").update(JSON.stringify({ snapshot, signerName, at })).digest("hex");
-    const sig = { name: signerName, consent: true, at, ip, userAgent: (ua || "").slice(0, 300), method, signatureImage: sigImg, signatureHash, snapshot };
-    const r = await pool.query(`UPDATE split_sheet_contributors SET signed_at=NOW(), signature_data=$3::jsonb, updated_at=NOW() WHERE id=$1::uuid AND split_sheet_id=$2::uuid RETURNING id, name, signed_at`, [contributorId, ssId, JSON.stringify(sig)]);
-    // Sett status når alle har signert.
-    const counts = await pool.query(`SELECT COUNT(*)::int total, COUNT(signed_at)::int signed FROM split_sheet_contributors WHERE split_sheet_id=$1`, [ssId]);
-    const { total, signed } = counts.rows[0];
-    await pool.query(`UPDATE split_sheets SET status=$2, updated_at=NOW() WHERE id=$1`, [ssId, signed >= total ? "completed" : "pending_signatures"]);
-    // Kvittering til signataren (fire-and-forget) — etterprøvbart bevis på signaturen.
-    if (sendEmail && c.email) void sendSignatureReceipt(ssId, c.email, signerName, sig).catch(() => {});
-    return { ...r.rows[0], allSigned: signed >= total };
+
+    // Kvitteringen sendes først etter commit, så e-posten aldri kan bekrefte en
+    // signatur som senere ble rullet tilbake.
+    if (receipt) {
+      void sendSignatureReceipt(ssId, receipt.email, signerName, receipt.signature).catch(() => {});
+    }
+    return result;
   }
 
   // Send signatur-kvittering med nøyaktig signerte vilkår + integritetshash.
@@ -1582,6 +1757,12 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (!tgt.rows.length) return res.status(404).json({ error: "contributor_not_found" });
       if (!ownerName || tgt.rows[0].name !== ownerName) return res.status(403).json({ error: "can_only_sign_own_share" });
       const out = await signContributor(ss.rows[0].id, contributorId, signature, clientIp(req), String(req.headers["user-agent"] || ""), { signatureImage: req.body?.signatureImage, method: str(req.body?.signatureMethod, 12) });
+      if (out?.error === "personal_signing_required") {
+        return res.status(409).json({
+          error: "personal_signing_required",
+          message: "Bruk den personlige signeringslenken for denne Workspace-avtalen.",
+        });
+      }
       if (!out) return res.status(404).json({ error: "contributor_not_found" });
       return res.json({ ok: true, signed: out });
     } catch (e) {
@@ -1762,7 +1943,70 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] pull-takes failed:", e);
+
       return res.status(500).json({ error: "pull_takes_failed" });
+    }
+  });
+  // EaseVerse keeper → idempotent review-kandidat i samme Sound Room.
+  app.post("/api/audio-showcases/easeverse/keeper", async (req, res) => {
+    if (!easeVerseServiceAuthorized(req)) return res.status(401).json({ error: "unauthorized" });
+    const ownerUserId = str(req.body?.ownerUserId, 160);
+    const externalTrackId = str(req.body?.externalTrackId, 160);
+    const takeId = str(req.body?.takeId, 200);
+    const fileUrl = str(req.body?.url, 2000);
+    const fileName = str(req.body?.filename, 300) || "EaseVerse keeper.wav";
+    if (!ownerUserId || !externalTrackId || !takeId || !fileUrl) return res.status(400).json({ error: "invalid_keeper_payload" });
+    try {
+      const parsedUrl = new URL(fileUrl);
+      if (parsedUrl.protocol !== "https:" && process.env.NODE_ENV === "production") return res.status(400).json({ error: "secure_url_required" });
+    } catch { return res.status(400).json({ error: "invalid_url" }); }
+    const project = await pool.query(
+      `SELECT id FROM audio_review_projects
+        WHERE owner_user_id=$1 AND COALESCE(external_track_id,easeverse_track_id::text)=$2 AND status<>'archived'
+        ORDER BY created_at DESC LIMIT 1`, [ownerUserId, externalTrackId],
+    );
+    if (!project.rows[0]) return res.status(404).json({ error: "linked_sound_room_not_found" });
+    const projectId = String(project.rows[0].id);
+    const existing = await pool.query(
+      `SELECT id,version_number FROM audio_review_versions WHERE project_id=$1::uuid AND file_url=$2 LIMIT 1`,
+      [projectId, fileUrl],
+    );
+    if (existing.rows[0]) return res.json({
+      created: false, idempotent: true, reviewVersionId: existing.rows[0].id,
+      versionNumber: existing.rows[0].version_number,
+    });
+    const client = typeof pool.connect === "function" ? await pool.connect() : pool;
+    try {
+      await client.query("BEGIN");
+      await client.query(`SELECT id FROM audio_review_projects WHERE id=$1::uuid FOR UPDATE`, [projectId]);
+      const duplicate = await client.query(
+        `SELECT id,version_number FROM audio_review_versions WHERE project_id=$1::uuid AND file_url=$2 LIMIT 1`,
+        [projectId, fileUrl],
+      );
+      if (duplicate.rows[0]) {
+        await client.query("COMMIT");
+        return res.json({ created: false, idempotent: true, reviewVersionId: duplicate.rows[0].id, versionNumber: duplicate.rows[0].version_number });
+      }
+      await client.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [projectId]);
+      const next = await client.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [projectId]);
+      const versionNumber = Number(next.rows[0]?.n || 1);
+      const inserted = await client.query(
+        `INSERT INTO audio_review_versions
+           (project_id,version_label,version_number,file_name,file_url,duration,uploaded_by)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,'EaseVerse') RETURNING id`,
+        [projectId, `Vokal-keeper ${versionNumber}`, versionNumber, fileName, fileUrl,
+         Number.isFinite(Number(req.body?.durationSec)) ? Number(req.body.durationSec) : null],
+      );
+      await client.query(`UPDATE audio_review_projects SET status='under_review',updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
+      await client.query("COMMIT");
+      void notifySoundRoomUpdated(projectId, ownerUserId, "version");
+      return res.status(201).json({ created: true, reviewVersionId: inserted.rows[0].id, versionNumber, takeId });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[audio-showcase] EaseVerse keeper sync failed:", error);
+      return res.status(503).json({ error: "keeper_sync_failed" });
+    } finally {
+      if ("release" in client && typeof client.release === "function") client.release();
     }
   });
 
@@ -1794,7 +2038,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         easeverseTrack = t.rows[0] || null;
       }
       const project = { id: ctx.id, title: ctx.title, band_name: ctx.band_name, artist_name: ctx.artist_name, genre: ctx.genre, bpm: ctx.bpm, musical_key: ctx.musical_key, status: ctx.status, cover_url: ctx.cover_url, created_at: ctx.created_at, easeverse_track_id: ctx.easeverse_track_id };
-      return res.json({ project, versions: v.rows, members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
+      return res.json({ project, versions: v.rows.map((row) => sharedAudioVersion(row, token)), members: members.rows, tasks: tasks.rows, easeverseTrack, viewer: { memberId: ctx.member_id, name: ctx.name, role: ctx.role }, readonly: true });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "shared_get_failed" });
@@ -1813,7 +2057,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         pool.query(`SELECT * FROM audio_review_comments WHERE version_id = $1::uuid ORDER BY timecode_seconds ASC, created_at ASC`, [vid]),
         pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [vid]),
       ]);
-      return res.json({ version: v.rows[0], comments: comments.rows, sections: sections.rows });
+      return res.json({ version: sharedAudioVersion(v.rows[0], token), comments: comments.rows, sections: sections.rows });
     } catch (e) {
       if (isMissingTable(e)) return res.status(404).json({ error: "not_found" });
       return res.status(500).json({ error: "shared_version_failed" });
@@ -1898,6 +2142,13 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const c = await pool.query(`SELECT id FROM split_sheet_contributors WHERE split_sheet_id=$1 AND name=$2 LIMIT 1`, [ss.rows[0].id, ctx.name]);
       if (!c.rows.length) return res.status(404).json({ error: "not_a_party" });
       const out = await signContributor(ss.rows[0].id, c.rows[0].id, signature, clientIp(req), String(req.headers["user-agent"] || ""), { signatureImage: req.body?.signatureImage, method: str(req.body?.signatureMethod, 12) });
+      if (out?.error === "personal_signing_required") {
+        return res.status(409).json({
+          error: "personal_signing_required",
+          message: "Bruk den personlige signeringslenken for denne Workspace-avtalen.",
+        });
+      }
+      if (!out) return res.status(404).json({ error: "not_a_party" });
       return res.json({ ok: true, signed: out });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });

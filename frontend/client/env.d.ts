@@ -13,6 +13,9 @@ declare global {
     readonly VITE_CREATORHUB_TIKTOK_PIXEL_ID?: string;
     readonly VITE_ROLE_ROOM_TIKTOK_PIXEL_ID?: string;
     readonly VITE_RECAPTCHA_SITE_KEY: string;
+    readonly VITE_ROLE_ROOM_TURNSTILE_SITE_KEY?: string;
+    readonly VITE_TURNSTILE_SITE_KEY?: string;
+    readonly VITE_ENABLE_LOCAL_ADMIN_SESSION?: string;
     readonly VITE_LINKEDIN_CLIENT_ID?: string;
     readonly VITE_LINKEDIN_REDIRECT_URI?: string;
     readonly VITE_LINKEDIN_CLIENT_SECRET?: string;

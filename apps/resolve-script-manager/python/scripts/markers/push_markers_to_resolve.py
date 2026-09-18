@@ -53,7 +53,8 @@ def _resolve_color(name_or_hex: str) -> str:
 
 def run(params: dict[str, Any], dry_run: bool) -> None:
     markers_in = params.get("markers") or []
-    if not isinstance(markers_in, list) or len(markers_in) == 0:
+    remove_missing_creatorhub = bool(params.get("removeMissingCreatorHub"))
+    if not isinstance(markers_in, list) or (len(markers_in) == 0 and not remove_missing_creatorhub):
         bridge.error("Ingen markører i input")
         sys.exit(1)
 
@@ -91,11 +92,16 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     # Eksisterende markører — vi bruker dette til dedup + cleanup av outdated
     # CE-pushes (samme ID, annet frame).
     existing_markers = {}
+    existing_by_custom = {}
     try:
         raw = timeline.GetMarkers() or {}
         for frame, info in raw.items():
             try:
-                existing_markers[int(frame)] = info
+                frame_number = int(frame)
+                existing_markers[frame_number] = info
+                custom_data = (info.get("customData") or "").strip()
+                if custom_data:
+                    existing_by_custom[custom_data] = (frame_number, info)
             except (TypeError, ValueError):
                 continue
     except Exception:
@@ -105,6 +111,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
     updated = 0
     skipped = 0
     failed = 0
+    removed = 0
+    conflicts = 0
+    desired_custom_ids = {f"ce:{m.get('id', '')}" for m in markers_in if m.get("id")}
 
     for m in markers_in:
         try:
@@ -131,38 +140,110 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
 
             # Marker-ID lagres i customData så vi kan re-finne den
             custom_id = f"ce:{m.get('id', '')}"
+            marker_updated = False
 
-            # Hvis det allerede er en markør på denne frame med samme customData
-            # → AddMarker vil feile (Resolve tillater ikke duplikater på exact frame).
-            # Vi sletter den først hvis den er vår.
+            # Finn samme ID uavhengig av frame. Dette gjør flytting og tekst-
+            # endringer idempotente, ikke bare oppdateringer på identisk frame.
+            previous = existing_by_custom.get(custom_id)
+            if previous:
+                previous_frame, previous_info = previous
+                same_payload = (
+                    previous_frame == frame
+                    and (previous_info.get("name") or "") == label
+                    and (previous_info.get("note") or "") == note
+                    and (previous_info.get("color") or "Blue") == color
+                )
+                if same_payload:
+                    skipped += 1
+                    continue
+                deleted = False
+                try:
+                    if hasattr(timeline, "DeleteMarkerByCustomData"):
+                        deleted = bool(timeline.DeleteMarkerByCustomData(custom_id))
+                    if not deleted:
+                        deleted = bool(timeline.DeleteMarkerAtFrame(previous_frame))
+                except Exception:
+                    deleted = False
+                if not deleted:
+                    failed += 1
+                    continue
+                existing_markers.pop(previous_frame, None)
+                existing_by_custom.pop(custom_id, None)
+                updated += 1
+                marker_updated = True
+
+            # Resolve tillater én timeline-markør per frame. En umanaged
+            # markør med nøyaktig samme innhold er en Resolve-opprettet review-
+            # markør som nettopp kom tilbake fra backend: adopter den ved å
+            # erstatte den med samme markør + vår stabile customData. En annen
+            # markør på framen røres aldri.
             if frame in existing_markers:
                 ex = existing_markers[frame]
-                ex_custom = (ex.get("customData") or "")
-                if ex_custom.startswith("ce:"):
-                    # Vår tidligere push — slett + add på nytt for å oppdatere
+                ex_custom = (ex.get("customData") or "").strip()
+                exact_unmanaged_match = (
+                    not ex_custom
+                    and (ex.get("name") or "") == label
+                    and (ex.get("note") or "") == note
+                    and (ex.get("color") or "Blue") == color
+                )
+                if exact_unmanaged_match:
                     try:
-                        timeline.DeleteMarkerAtFrame(frame)
+                        if not timeline.DeleteMarkerAtFrame(frame):
+                            failed += 1
+                            continue
+                        existing_markers.pop(frame, None)
                         updated += 1
+                        marker_updated = True
                     except Exception:
-                        pass
-                else:
+                        failed += 1
+                        continue
+                elif ex_custom != custom_id:
                     skipped += 1
+                    conflicts += 1
                     continue
 
             ok = timeline.AddMarker(frame, color, label, note, 1, custom_id)
             if ok:
-                if frame not in existing_markers: added += 1
+                if not marker_updated: added += 1
+                existing_markers[frame] = {
+                    "name": label,
+                    "note": note,
+                    "color": color,
+                    "customData": custom_id,
+                }
+                existing_by_custom[custom_id] = (frame, existing_markers[frame])
             else:
                 failed += 1
         except Exception as exc:
             bridge.warn(f"Push av markør {m.get('id')} feilet: {exc}")
             failed += 1
 
+    # Cloud-side deletion may remove a review comment. Propagate that only for
+    # IDs owned by this Video Room bridge; other CE/AP markers are untouched.
+    if remove_missing_creatorhub:
+        for custom_id, (marker_frame, _info) in list(existing_by_custom.items()):
+            managed = custom_id.startswith("ce:creatorhub:") or custom_id.startswith("ce:resolve-native:")
+            if not managed or custom_id in desired_custom_ids:
+                continue
+            try:
+                deleted = False
+                if hasattr(timeline, "DeleteMarkerByCustomData"):
+                    deleted = bool(timeline.DeleteMarkerByCustomData(custom_id))
+                if not deleted:
+                    deleted = bool(timeline.DeleteMarkerAtFrame(marker_frame))
+                if deleted:
+                    removed += 1
+            except Exception as exc:
+                bridge.warn(f"Sletting av utgått Video Room-markør feilet: {exc}")
+                failed += 1
+
     bridge.result({
         "added": added,
         "updated": updated,
         "skipped": skipped,
         "failed": failed,
+        "removed": removed,
+        "conflicts": conflicts,
         "totalSent": len(markers_in),
         "timelineFrames": duration,
         "fps": fps,

@@ -36,6 +36,26 @@ async function jsonFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function blobFetch(path: string, init: RequestInit = {}): Promise<Blob> {
+  const token = getAuthToken();
+  const headers: HeadersInit = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((init.headers as Record<string, string>) ?? {}),
+  };
+  const response = await fetch(`${BASE}${path}`, { ...init, headers });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json();
+      detail = body?.error || body?.detail || '';
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
+  return response.blob();
+}
+
 // ─────────────────────────────────────────────────────────
 // Funding apps (IN-støtteordninger)
 // ─────────────────────────────────────────────────────────
@@ -2033,6 +2053,1357 @@ export const workspaceCasesApi = {
   },
 };
 
+// ─────────────────────────────────────────────────────────
+// Workspace documents — interne adminarbeidsdokumenter
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceDocumentStatus =
+  | 'draft'
+  | 'in_review'
+  | 'approved'
+  | 'sent'
+  | 'signed'
+  | 'archived';
+
+export type WorkspaceDocumentType =
+  | 'funding_application'
+  | 'strategy_memo'
+  | 'decision_note'
+  | 'meeting_note'
+  | 'market_analysis'
+  | 'sales_proposal'
+  | 'partnership_proposal'
+  | 'agreement'
+  | 'report'
+  | 'playbook'
+  | 'cv'
+  | 'other';
+
+export type WorkspaceDocumentSource = 'workspace' | 'google_drive' | 'external';
+export type WorkspaceDocumentFileSource = 'upload' | 'google_drive' | 'external';
+export type WorkspaceDocumentFileExtractionStatus =
+  | 'pending'
+  | 'processing'
+  | 'ready'
+  | 'failed'
+  | 'unsupported'
+  | 'external';
+export type WorkspaceDocumentLinkType =
+  | 'workspace_project'
+  | 'workspace_case'
+  | 'funding_app'
+  | 'industry_target'
+  | 'leadgrid_lead'
+  | 'investor'
+  | 'partner';
+
+export interface WorkspaceDocument {
+  id: string;
+  user_id: string;
+  product_key: AdminProductKey | null;
+  title: string;
+  summary: string | null;
+  content: string;
+  document_type: WorkspaceDocumentType;
+  status: WorkspaceDocumentStatus;
+  due_date: string | null;
+  next_action: string | null;
+  version_no: number;
+  tags: string[];
+  source_kind: WorkspaceDocumentSource;
+  external_url: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+  deleted_at: string | null;
+  link_count: number;
+  file_count: number;
+}
+
+export interface WorkspaceDocumentTemplate {
+  id: string;
+  product_key: AdminProductKey | null;
+  document_type: WorkspaceDocumentType;
+  name: string;
+  description: string | null;
+  title_template: string;
+  content_template: string;
+  tags: string[];
+  sort_order: number;
+}
+
+export interface WorkspaceDocumentVersion {
+  id: string;
+  version_number: number;
+  change_note: string | null;
+  created_by: string | null;
+  created_at: string;
+  title: string;
+  status: WorkspaceDocumentStatus;
+}
+
+export interface WorkspaceDocumentVersionDetail extends WorkspaceDocumentVersion {
+  summary: string | null;
+  content: string;
+  document_type: WorkspaceDocumentType;
+  product_key: AdminProductKey | null;
+  due_date: string | null;
+  next_action: string | null;
+  tags: string[];
+}
+
+export interface WorkspaceDocumentFile {
+  id: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number | string | null;
+  source_kind: WorkspaceDocumentFileSource;
+  external_url: string | null;
+  sha256: string | null;
+  context_enabled: boolean;
+  extraction_status: WorkspaceDocumentFileExtractionStatus;
+  extraction_method: string | null;
+  extraction_error: string | null;
+  extraction_metadata: Record<string, unknown>;
+  extracted_at: string | null;
+  created_at: string;
+}
+
+export type WorkspaceDocumentContextSourceType = 'workspace_document' | 'file' | 'project_file';
+
+export interface WorkspaceDocumentContextSource {
+  source_type: WorkspaceDocumentContextSourceType;
+  source_id: string;
+  source_document_id: string | null;
+  source_file_id: string | null;
+  source_project_file_id: string | null;
+  project_id: string | null;
+  project_title: string | null;
+  scope: 'document' | 'project';
+  title: string;
+  subtitle: string | null;
+  mime_type: string | null;
+  extraction_status: WorkspaceDocumentFileExtractionStatus | 'ready';
+  extraction_error: string | null;
+  context_enabled: boolean;
+  character_count: number;
+  product_key: AdminProductKey | null;
+  updated_at: string;
+  connection_id: string | null;
+  connected: boolean;
+  intrinsic: boolean;
+}
+
+export interface WorkspaceDocumentContextSuggestion {
+  id: string;
+  sourceType: WorkspaceDocumentContextSourceType;
+  sourceDocumentId: string | null;
+  sourceFileId: string | null;
+  sourceProjectFileId: string | null;
+  sourceTitle: string;
+  originDocumentTitle: string;
+  sectionLabel: string | null;
+  pageNumber: number | null;
+  chunkIndex: number;
+  excerpt: string;
+  suggestedText: string;
+  matchedTerms: string[];
+  relevance: number;
+  reason: string;
+}
+
+export interface WorkspaceDocumentContextResponse {
+  items: WorkspaceDocumentContextSuggestion[];
+  context: {
+    sectionHeading: string | null;
+    cursorPosition: number;
+    sourceCount: number;
+    candidateCount: number;
+  };
+}
+
+export interface WorkspaceDocumentContextPreview {
+  title: string;
+  originDocumentTitle?: string;
+  sourceType: WorkspaceDocumentContextSourceType;
+  segments: Array<{
+    chunkIndex?: number;
+    chunk_index?: number;
+    sectionLabel?: string | null;
+    section_label?: string | null;
+    pageNumber?: number | null;
+    page_number?: number | null;
+    content: string;
+  }>;
+}
+
+export type WorkspaceDocumentCommentKind = 'comment' | 'suggestion';
+export type WorkspaceDocumentCommentStatus = 'open' | 'resolved';
+
+export interface WorkspaceDocumentComment {
+  id: string;
+  kind: WorkspaceDocumentCommentKind;
+  body: string;
+  selected_text: string | null;
+  anchor_from: number | null;
+  anchor_to: number | null;
+  suggested_text: string | null;
+  assignee: string | null;
+  status: WorkspaceDocumentCommentStatus;
+  created_by: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceDocumentCommentInput {
+  kind?: WorkspaceDocumentCommentKind;
+  body: string;
+  selectedText?: string | null;
+  anchorFrom?: number | null;
+  anchorTo?: number | null;
+  suggestedText?: string | null;
+  assignee?: string | null;
+}
+
+export interface WorkspaceDocumentLink {
+  link_id: string;
+  entity_type: WorkspaceDocumentLinkType;
+  entity_id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  due_date: string | null;
+  last_activity_at: string | null;
+  created_at: string;
+  missing?: boolean;
+}
+
+export interface WorkspaceDocumentLinkOption {
+  entity_type: WorkspaceDocumentLinkType;
+  entity_id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  due_date: string | null;
+  last_activity_at: string | null;
+  linked: boolean;
+}
+
+export interface WorkspaceDocumentDetail {
+  item: WorkspaceDocument;
+  links: WorkspaceDocumentLink[];
+  files: WorkspaceDocumentFile[];
+  versions: WorkspaceDocumentVersion[];
+  comments: WorkspaceDocumentComment[];
+}
+
+export type WorkspaceDocumentInput = {
+  templateId?: string;
+  productKey?: AdminProductKey | null;
+  title?: string;
+  summary?: string | null;
+  content?: string;
+  documentType?: WorkspaceDocumentType;
+  status?: WorkspaceDocumentStatus;
+  dueDate?: string | null;
+  nextAction?: string | null;
+  tags?: string[];
+  sourceKind?: WorkspaceDocumentSource;
+  externalUrl?: string | null;
+  expectedUpdatedAt?: string;
+};
+
+export type WorkspaceDocumentListFilter = {
+  product?: AdminProductKey | 'internal';
+  status?: WorkspaceDocumentStatus;
+  documentType?: WorkspaceDocumentType;
+  q?: string;
+  trash?: boolean;
+};
+
+export const WORKSPACE_DOCUMENT_STATUS_LABELS: Record<WorkspaceDocumentStatus, string> = {
+  draft: 'Utkast',
+  in_review: 'Til gjennomgang',
+  approved: 'Godkjent',
+  sent: 'Sendt',
+  signed: 'Signert',
+  archived: 'Arkivert',
+};
+
+export const WORKSPACE_DOCUMENT_TYPE_LABELS: Record<WorkspaceDocumentType, string> = {
+  funding_application: 'Støttesøknad',
+  strategy_memo: 'Strateginotat',
+  decision_note: 'Beslutningsnotat',
+  meeting_note: 'Møtenotat',
+  market_analysis: 'Markedsanalyse',
+  sales_proposal: 'Salgsforslag',
+  partnership_proposal: 'Partnerforslag',
+  agreement: 'Avtale',
+  report: 'Rapport',
+  playbook: 'Playbook',
+  cv: 'CV',
+  other: 'Annet',
+};
+
+export const WORKSPACE_DOCUMENT_LINK_LABELS: Record<WorkspaceDocumentLinkType, string> = {
+  workspace_project: 'Adminprosjekt',
+  workspace_case: 'Sak',
+  funding_app: 'Støttesøknad',
+  industry_target: 'Bransjekontakt',
+  leadgrid_lead: 'Leadgrid-lead / kunde',
+  investor: 'Investor',
+  partner: 'Partner',
+};
+
+export const workspaceDocumentsApi = {
+  list: async (filter?: WorkspaceDocumentListFilter): Promise<WorkspaceDocument[]> => {
+    const params = new URLSearchParams();
+    if (filter?.product) params.set('product', filter.product);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.documentType) params.set('documentType', filter.documentType);
+    if (filter?.q) params.set('q', filter.q);
+    if (filter?.trash) params.set('trash', 'true');
+    const query = params.toString();
+    const data = await jsonFetch<{ items: WorkspaceDocument[] }>(
+      `/workspace/documents${query ? `?${query}` : ''}`,
+    );
+    return data.items;
+  },
+  templates: async (product?: AdminProductKey | 'internal'): Promise<WorkspaceDocumentTemplate[]> => {
+    const query = product ? `?product=${encodeURIComponent(product)}` : '';
+    const data = await jsonFetch<{ items: WorkspaceDocumentTemplate[] }>(
+      `/workspace/documents/templates${query}`,
+    );
+    return data.items;
+  },
+  get: async (id: string, includeDeleted = false): Promise<WorkspaceDocumentDetail> => {
+    return jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}${includeDeleted ? '?includeDeleted=true' : ''}`,
+    );
+  },
+  create: async (input: WorkspaceDocumentInput): Promise<WorkspaceDocument> => {
+    const data = await jsonFetch<{ item: WorkspaceDocument }>('/workspace/documents', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceDocumentInput): Promise<WorkspaceDocument> => {
+    const data = await jsonFetch<{ item: WorkspaceDocument }>(
+      `/workspace/documents/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  moveToTrash: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  restoreFromTrash: async (id: string): Promise<WorkspaceDocument> => {
+    const data = await jsonFetch<{ item: WorkspaceDocument }>(
+      `/workspace/documents/${encodeURIComponent(id)}/restore`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+    return data.item;
+  },
+  createVersion: async (id: string, changeNote?: string): Promise<number> => {
+    const data = await jsonFetch<{ versionNumber: number }>(
+      `/workspace/documents/${encodeURIComponent(id)}/versions`,
+      { method: 'POST', body: JSON.stringify({ changeNote }) },
+    );
+    return data.versionNumber;
+  },
+  restoreVersion: async (id: string, versionId: string): Promise<number> => {
+    const data = await jsonFetch<{ versionNumber: number }>(
+      `/workspace/documents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+    return data.versionNumber;
+  },
+  getVersion: async (id: string, versionId: string): Promise<WorkspaceDocumentVersionDetail> => {
+    const data = await jsonFetch<{ item: WorkspaceDocumentVersionDetail }>(
+      `/workspace/documents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+    );
+    return data.item;
+  },
+  linkOptions: async (id: string): Promise<WorkspaceDocumentLinkOption[]> => {
+    const data = await jsonFetch<{ items: WorkspaceDocumentLinkOption[] }>(
+      `/workspace/documents/${encodeURIComponent(id)}/link-options`,
+    );
+    return data.items;
+  },
+  addLink: async (
+    id: string,
+    entityType: WorkspaceDocumentLinkType,
+    entityId: string,
+  ): Promise<void> => {
+    await jsonFetch(`/workspace/documents/${encodeURIComponent(id)}/links`, {
+      method: 'POST',
+      body: JSON.stringify({ entityType, entityId }),
+    });
+  },
+  removeLink: async (id: string, linkId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/links/${encodeURIComponent(linkId)}`,
+      { method: 'DELETE' },
+    );
+  },
+  createComment: async (
+    id: string,
+    input: WorkspaceDocumentCommentInput,
+  ): Promise<WorkspaceDocumentComment> => {
+    const data = await jsonFetch<{ item: WorkspaceDocumentComment }>(
+      `/workspace/documents/${encodeURIComponent(id)}/comments`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  updateComment: async (
+    id: string,
+    commentId: string,
+    input: Partial<Pick<WorkspaceDocumentCommentInput, 'body' | 'suggestedText' | 'assignee'>> & {
+      status?: WorkspaceDocumentCommentStatus;
+    },
+  ): Promise<WorkspaceDocumentComment> => {
+    const data = await jsonFetch<{ item: WorkspaceDocumentComment }>(
+      `/workspace/documents/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  removeComment: async (id: string, commentId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`,
+      { method: 'DELETE' },
+    );
+  },
+  uploadFile: async (id: string, file: File): Promise<WorkspaceDocumentFile> => {
+    const form = new FormData();
+    form.append('file', file);
+    const token = getAuthToken();
+    const response = await fetch(`${BASE}/workspace/documents/${encodeURIComponent(id)}/files`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(`HTTP ${response.status}${body?.error ? `: ${body.error}` : ''}`);
+    }
+    const data = await response.json() as { item: WorkspaceDocumentFile };
+    return data.item;
+  },
+  addExternalFile: async (
+    id: string,
+    input: { fileName: string; externalUrl: string; sourceKind: 'google_drive' | 'external' },
+  ): Promise<WorkspaceDocumentFile> => {
+    const data = await jsonFetch<{ item: WorkspaceDocumentFile }>(
+      `/workspace/documents/${encodeURIComponent(id)}/files/external`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  downloadFile: async (id: string, fileId: string): Promise<Blob> => {
+    return blobFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/download`,
+    );
+  },
+  removeFile: async (id: string, fileId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`,
+      { method: 'DELETE' },
+    );
+  },
+  contextLibrary: async (id: string): Promise<WorkspaceDocumentContextSource[]> => {
+    const data = await jsonFetch<{ items: WorkspaceDocumentContextSource[] }>(
+      `/workspace/documents/${encodeURIComponent(id)}/context/library`,
+    );
+    return data.items;
+  },
+  addContextSource: async (
+    id: string,
+    sourceType: WorkspaceDocumentContextSourceType,
+    sourceId: string,
+  ): Promise<void> => {
+    await jsonFetch(`/workspace/documents/${encodeURIComponent(id)}/context/sources`, {
+      method: 'POST',
+      body: JSON.stringify({ sourceType, sourceId }),
+    });
+  },
+  removeContextSource: async (id: string, connectionId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/context/sources/${encodeURIComponent(connectionId)}`,
+      { method: 'DELETE' },
+    );
+  },
+  contextSuggestions: async (
+    id: string,
+    input: {
+      cursorPosition: number;
+      sectionHeading?: string | null;
+      selectedText?: string | null;
+      nearbyText?: string | null;
+      limit?: number;
+    },
+  ): Promise<WorkspaceDocumentContextResponse> => {
+    return jsonFetch(`/workspace/documents/${encodeURIComponent(id)}/context/suggestions`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  contextPreview: async (
+    id: string,
+    sourceType: WorkspaceDocumentContextSourceType,
+    sourceId: string,
+  ): Promise<WorkspaceDocumentContextPreview> => {
+    const data = await jsonFetch<{ item: WorkspaceDocumentContextPreview }>(
+      `/workspace/documents/${encodeURIComponent(id)}/context/preview/${encodeURIComponent(sourceType)}/${encodeURIComponent(sourceId)}`,
+    );
+    return data.item;
+  },
+  setFileContextEnabled: async (
+    id: string,
+    fileId: string,
+    enabled: boolean,
+  ): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/context`,
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    );
+  },
+  setProjectFileContextEnabled: async (
+    id: string,
+    fileId: string,
+    enabled: boolean,
+  ): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/context/project-files/${encodeURIComponent(fileId)}`,
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    );
+  },
+  reindexFile: async (id: string, fileId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/documents/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/reindex`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+  },
+  recordContextUsage: async (
+    id: string,
+    input: {
+      sourceType: WorkspaceDocumentContextSourceType;
+      sourceId: string;
+      suggestionId: string;
+      insertMode: 'text' | 'bullets' | 'source_card';
+      insertedText: string;
+    },
+  ): Promise<void> => {
+    await jsonFetch(`/workspace/documents/${encodeURIComponent(id)}/context/usage`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  exportPdf: async (id: string): Promise<Blob> => {
+    return blobFetch(`/workspace/documents/${encodeURIComponent(id)}/export.pdf`);
+  },
+  exportDocx: async (id: string): Promise<Blob> => {
+    return blobFetch(`/workspace/documents/${encodeURIComponent(id)}/export.docx`);
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Workspace projects — interne admininitiativer
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceProjectStatus =
+  | 'planned'
+  | 'active'
+  | 'blocked'
+  | 'on_hold'
+  | 'completed'
+  | 'archived';
+export type WorkspaceProjectPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type WorkspaceProjectCategory =
+  | 'funding'
+  | 'market_outreach'
+  | 'partnership'
+  | 'investor'
+  | 'go_to_market'
+  | 'internal'
+  | 'other';
+export type WorkspaceProjectLinkType =
+  | 'funding_app'
+  | 'industry_target'
+  | 'leadgrid_lead'
+  | 'investor'
+  | 'partner'
+  | 'workspace_case';
+
+export interface WorkspaceProject {
+  id: string;
+  user_id: string;
+  product_key: AdminProductKey | null;
+  title: string;
+  summary: string | null;
+  objective: string | null;
+  category: WorkspaceProjectCategory;
+  status: WorkspaceProjectStatus;
+  priority: WorkspaceProjectPriority;
+  progress_percent: number;
+  start_date: string | null;
+  target_date: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+  linked_count: number;
+  contact_count: number;
+  lead_count: number;
+  case_count: number;
+  file_count: number;
+}
+
+export interface WorkspaceProjectFile {
+  id: string;
+  project_id: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number | string;
+  sha256: string;
+  version_no: number;
+  context_enabled: boolean;
+  extraction_status: WorkspaceDocumentFileExtractionStatus;
+  extraction_method: string | null;
+  extraction_error: string | null;
+  extraction_metadata: Record<string, unknown>;
+  extracted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  character_count: number;
+  linked_document_count: number;
+}
+
+export type WorkspaceCvCategory =
+  | 'identity'
+  | 'experience'
+  | 'education'
+  | 'certification'
+  | 'project'
+  | 'skill'
+  | 'language'
+  | 'award'
+  | 'other';
+
+export type WorkspaceCvVerificationStatus =
+  | 'source_supported'
+  | 'user_confirmed'
+  | 'needs_confirmation'
+  | 'rejected';
+
+export type WorkspaceCvImportStatus = 'draft' | 'review' | 'verified';
+
+export interface WorkspaceCvProfile {
+  id: string;
+  project_id: string;
+  source_project_file_id: string;
+  person_name: string;
+  headline: string | null;
+  professional_summary: string | null;
+  source_url: string | null;
+  import_status: WorkspaceCvImportStatus;
+  source_checked_at: string;
+  generated_document_id: string | null;
+  generated_document_title?: string | null;
+  source_file_name: string;
+  source_file_version?: number;
+  source_file_status?: WorkspaceDocumentFileExtractionStatus;
+  claim_count?: number;
+  open_question_count?: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceCvClaim {
+  id: string;
+  profile_id: string;
+  category: WorkspaceCvCategory;
+  label: string;
+  organization: string | null;
+  role_title: string | null;
+  start_value: string | null;
+  end_value: string | null;
+  description: string | null;
+  evidence_text: string;
+  source_url: string | null;
+  confidence: number;
+  verification_status: WorkspaceCvVerificationStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceCvQuestion {
+  id: string;
+  profile_id: string;
+  field_key: string;
+  question: string;
+  answer: string | null;
+  status: 'open' | 'answered';
+  required: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceCvDetail {
+  profile: WorkspaceCvProfile;
+  claims: WorkspaceCvClaim[];
+  questions: WorkspaceCvQuestion[];
+  preview_markdown: string;
+  counts: Record<WorkspaceCvVerificationStatus, number> & {
+    open_questions: number;
+    required_open_questions: number;
+  };
+  generated_document_id?: string;
+  connected_document_count?: number;
+}
+
+export interface WorkspaceProjectLink {
+  link_id: string;
+  entity_type: WorkspaceProjectLinkType;
+  entity_id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  due_date: string | null;
+  last_activity_at: string | null;
+  created_at: string;
+  missing?: boolean;
+}
+
+export interface WorkspaceProjectLinkOption {
+  entity_type: WorkspaceProjectLinkType;
+  entity_id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  due_date: string | null;
+  last_activity_at: string | null;
+  linked: boolean;
+}
+
+export type WorkspaceProjectInput = {
+  title?: string;
+  summary?: string | null;
+  objective?: string | null;
+  category?: WorkspaceProjectCategory;
+  status?: WorkspaceProjectStatus;
+  priority?: WorkspaceProjectPriority;
+  progressPercent?: number;
+  startDate?: string | null;
+  targetDate?: string | null;
+  productKey?: AdminProductKey | null;
+  tags?: string[];
+};
+
+export type WorkspaceProjectListFilter = {
+  product?: AdminProductKey | 'internal';
+  status?: WorkspaceProjectStatus;
+  category?: WorkspaceProjectCategory;
+  q?: string;
+};
+
+export const WORKSPACE_PROJECT_STATUS_LABELS: Record<WorkspaceProjectStatus, string> = {
+  planned: 'Planlagt',
+  active: 'Aktiv',
+  blocked: 'Blokkert',
+  on_hold: 'På vent',
+  completed: 'Fullført',
+  archived: 'Arkivert',
+};
+
+export const WORKSPACE_PROJECT_CATEGORY_LABELS: Record<WorkspaceProjectCategory, string> = {
+  funding: 'Finansiering og støtte',
+  market_outreach: 'Markedskontakt',
+  partnership: 'Partnerskap',
+  investor: 'Investorarbeid',
+  go_to_market: 'Go-to-market',
+  internal: 'Internt',
+  other: 'Annet',
+};
+
+export const WORKSPACE_PROJECT_LINK_LABELS: Record<WorkspaceProjectLinkType, string> = {
+  funding_app: 'Støttesøknad',
+  industry_target: 'Bransjekontakt',
+  leadgrid_lead: 'Leadgrid-lead / kunde',
+  investor: 'Investor',
+  partner: 'Partner',
+  workspace_case: 'Sak',
+};
+
+export const workspaceProjectsApi = {
+  list: async (filter?: WorkspaceProjectListFilter): Promise<WorkspaceProject[]> => {
+    const params = new URLSearchParams();
+    if (filter?.product) params.set('product', filter.product);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.category) params.set('category', filter.category);
+    if (filter?.q) params.set('q', filter.q);
+    const query = params.toString();
+    const data = await jsonFetch<{ items: WorkspaceProject[] }>(
+      `/workspace/projects${query ? `?${query}` : ''}`,
+    );
+    return data.items;
+  },
+  get: async (id: string): Promise<{ item: WorkspaceProject; links: WorkspaceProjectLink[] }> => {
+    return jsonFetch(`/workspace/projects/${encodeURIComponent(id)}`);
+  },
+  create: async (input: WorkspaceProjectInput): Promise<WorkspaceProject> => {
+    const data = await jsonFetch<{ item: WorkspaceProject }>('/workspace/projects', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceProjectInput): Promise<WorkspaceProject> => {
+    const data = await jsonFetch<{ item: WorkspaceProject }>(`/workspace/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  files: async (id: string): Promise<WorkspaceProjectFile[]> => {
+    const data = await jsonFetch<{ items: WorkspaceProjectFile[] }>(
+      `/workspace/projects/${encodeURIComponent(id)}/files`,
+    );
+    return data.items;
+  },
+  uploadFile: async (id: string, file: File): Promise<WorkspaceProjectFile> => {
+    const form = new FormData();
+    form.append('file', file);
+    const token = getAuthToken();
+    const response = await fetch(`${BASE}/workspace/projects/${encodeURIComponent(id)}/files`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(`HTTP ${response.status}${body?.error ? `: ${body.error}` : ''}`);
+    }
+    const data = await response.json() as { item: WorkspaceProjectFile };
+    return data.item;
+  },
+  replaceFile: async (id: string, fileId: string, file: File): Promise<void> => {
+    const form = new FormData();
+    form.append('file', file);
+    const token = getAuthToken();
+    const response = await fetch(
+      `${BASE}/workspace/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/replace`,
+      {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(`HTTP ${response.status}${body?.error ? `: ${body.error}` : ''}`);
+    }
+  },
+  setFileContextEnabled: async (id: string, fileId: string, enabled: boolean): Promise<void> => {
+    await jsonFetch(
+      `/workspace/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/context`,
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    );
+  },
+  reindexFile: async (id: string, fileId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/reindex`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+  },
+  downloadFile: async (id: string, fileId: string): Promise<Blob> => {
+    return blobFetch(
+      `/workspace/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}/download`,
+    );
+  },
+  removeFile: async (id: string, fileId: string): Promise<void> => {
+    await jsonFetch(
+      `/workspace/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`,
+      { method: 'DELETE' },
+    );
+  },
+  linkOptions: async (id: string): Promise<WorkspaceProjectLinkOption[]> => {
+    const data = await jsonFetch<{ items: WorkspaceProjectLinkOption[] }>(
+      `/workspace/projects/${encodeURIComponent(id)}/link-options`,
+    );
+    return data.items;
+  },
+  addLink: async (id: string, entityType: WorkspaceProjectLinkType, entityId: string): Promise<void> => {
+    await jsonFetch(`/workspace/projects/${encodeURIComponent(id)}/links`, {
+      method: 'POST',
+      body: JSON.stringify({ entityType, entityId }),
+    });
+  },
+  removeLink: async (id: string, linkId: string): Promise<void> => {
+    await jsonFetch(`/workspace/projects/${encodeURIComponent(id)}/links/${encodeURIComponent(linkId)}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+export const workspaceCvApi = {
+  list: async (projectId: string): Promise<WorkspaceCvProfile[]> => {
+    const data = await jsonFetch<{ items: WorkspaceCvProfile[] }>(
+      `/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles`,
+    );
+    return data.items;
+  },
+  get: async (projectId: string, profileId: string): Promise<WorkspaceCvDetail> => {
+    return jsonFetch(
+      `/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles/${encodeURIComponent(profileId)}`,
+    );
+  },
+  importFromProjectFile: async (
+    projectId: string,
+    input: { personName: string; sourceProjectFileId: string; sourceUrl?: string | null },
+  ): Promise<WorkspaceCvDetail> => {
+    return jsonFetch(`/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles/import`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  updateProfile: async (
+    projectId: string,
+    profileId: string,
+    input: {
+      personName?: string;
+      headline?: string | null;
+      professionalSummary?: string | null;
+      importStatus?: WorkspaceCvImportStatus;
+    },
+  ): Promise<WorkspaceCvDetail> => {
+    return jsonFetch(
+      `/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles/${encodeURIComponent(profileId)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+  },
+  updateClaim: async (
+    projectId: string,
+    profileId: string,
+    claimId: string,
+    input: {
+      category?: WorkspaceCvCategory;
+      label?: string;
+      organization?: string | null;
+      roleTitle?: string | null;
+      startValue?: string | null;
+      endValue?: string | null;
+      description?: string | null;
+      verificationStatus?: WorkspaceCvVerificationStatus;
+    },
+  ): Promise<WorkspaceCvDetail> => {
+    return jsonFetch(
+      `/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles/${encodeURIComponent(profileId)}/claims/${encodeURIComponent(claimId)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+  },
+  answerQuestion: async (
+    projectId: string,
+    profileId: string,
+    questionId: string,
+    answer: string | null,
+  ): Promise<WorkspaceCvDetail> => {
+    return jsonFetch(
+      `/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles/${encodeURIComponent(profileId)}/questions/${encodeURIComponent(questionId)}`,
+      { method: 'PATCH', body: JSON.stringify({ answer }) },
+    );
+  },
+  generateDocument: async (projectId: string, profileId: string): Promise<WorkspaceCvDetail> => {
+    return jsonFetch(
+      `/workspace/projects/${encodeURIComponent(projectId)}/cv-profiles/${encodeURIComponent(profileId)}/generate`,
+      { method: 'POST', body: JSON.stringify({}) },
+    );
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Workspace tasks — adminens operative arbeidskø
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceTaskStatus =
+  | 'inbox'
+  | 'todo'
+  | 'in_progress'
+  | 'waiting'
+  | 'done'
+  | 'cancelled';
+export type WorkspaceTaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface WorkspaceTask {
+  id: string;
+  user_id: string;
+  product_key: AdminProductKey | null;
+  title: string;
+  description: string | null;
+  status: WorkspaceTaskStatus;
+  priority: WorkspaceTaskPriority;
+  due_date: string | null;
+  assignee: string | null;
+  project_id: string | null;
+  case_id: string | null;
+  project_title: string | null;
+  case_title: string | null;
+  tags: string[];
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface WorkspaceTaskContextOption {
+  id: string;
+  title: string;
+  product_key: AdminProductKey | null;
+  status: string;
+}
+
+export interface WorkspaceTaskOptions {
+  projects: WorkspaceTaskContextOption[];
+  cases: WorkspaceTaskContextOption[];
+}
+
+export type WorkspaceTaskInput = {
+  title?: string;
+  description?: string | null;
+  status?: WorkspaceTaskStatus;
+  priority?: WorkspaceTaskPriority;
+  dueDate?: string | null;
+  assignee?: string | null;
+  productKey?: AdminProductKey | null;
+  projectId?: string | null;
+  caseId?: string | null;
+  tags?: string[];
+};
+
+export type WorkspaceTaskListFilter = {
+  product?: AdminProductKey | 'internal';
+  status?: WorkspaceTaskStatus;
+  priority?: WorkspaceTaskPriority;
+  projectId?: string;
+  q?: string;
+  openOnly?: boolean;
+};
+
+export const WORKSPACE_TASK_STATUS_LABELS: Record<WorkspaceTaskStatus, string> = {
+  inbox: 'Innboks',
+  todo: 'Å gjøre',
+  in_progress: 'Pågår',
+  waiting: 'Venter',
+  done: 'Fullført',
+  cancelled: 'Avbrutt',
+};
+
+export const WORKSPACE_TASK_PRIORITY_LABELS: Record<WorkspaceTaskPriority, string> = {
+  low: 'Lav',
+  normal: 'Normal',
+  high: 'Høy',
+  urgent: 'Haster',
+};
+
+export const workspaceTasksApi = {
+  list: async (filter?: WorkspaceTaskListFilter): Promise<WorkspaceTask[]> => {
+    const params = new URLSearchParams();
+    if (filter?.product) params.set('product', filter.product);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.priority) params.set('priority', filter.priority);
+    if (filter?.projectId) params.set('projectId', filter.projectId);
+    if (filter?.q) params.set('q', filter.q);
+    if (filter?.openOnly) params.set('openOnly', 'true');
+    const query = params.toString();
+    const data = await jsonFetch<{ items: WorkspaceTask[] }>(
+      `/workspace/tasks${query ? `?${query}` : ''}`,
+    );
+    return data.items;
+  },
+  get: async (id: string): Promise<WorkspaceTask> => {
+    const data = await jsonFetch<{ item: WorkspaceTask }>(
+      `/workspace/tasks/${encodeURIComponent(id)}`,
+    );
+    return data.item;
+  },
+  options: async (product?: AdminProductKey | 'internal'): Promise<WorkspaceTaskOptions> => {
+    const query = product ? `?product=${encodeURIComponent(product)}` : '';
+    return jsonFetch(`/workspace/tasks/options${query}`);
+  },
+  create: async (input: WorkspaceTaskInput): Promise<WorkspaceTask> => {
+    const data = await jsonFetch<{ item: WorkspaceTask }>('/workspace/tasks', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceTaskInput): Promise<WorkspaceTask> => {
+    const data = await jsonFetch<{ item: WorkspaceTask }>(
+      `/workspace/tasks/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Workspace calendar — egne adminhendelser + normalisert feed
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceCalendarSource =
+  | 'calendar_event'
+  | 'task'
+  | 'case'
+  | 'project'
+  | 'funding_app'
+  | 'funding_opportunity'
+  | 'industry_follow_up'
+  | 'leadgrid_follow_up'
+  | 'partner_follow_up'
+  | 'investor_follow_up';
+export type WorkspaceCalendarEventType =
+  | 'meeting'
+  | 'focus'
+  | 'reminder'
+  | 'deadline'
+  | 'follow_up'
+  | 'other';
+export type WorkspaceCalendarStatus = 'confirmed' | 'tentative' | 'cancelled';
+
+export interface WorkspaceCalendarItem {
+  id: string;
+  entity_id: string;
+  source: WorkspaceCalendarSource;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  product_key: AdminProductKey | null;
+  event_type: WorkspaceCalendarEventType;
+  status: string | null;
+  priority: string | null;
+  location: string | null;
+  meeting_url: string | null;
+  assignee: string | null;
+  project_id: string | null;
+  project_title: string | null;
+  case_id: string | null;
+  case_title: string | null;
+  tags: string[];
+  editable: boolean;
+  link_path: string | null;
+  external_url?: string | null;
+  time_zone: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceCalendarOptions {
+  projects: WorkspaceTaskContextOption[];
+  cases: WorkspaceTaskContextOption[];
+}
+
+export type WorkspaceCalendarInput = {
+  title?: string;
+  description?: string | null;
+  eventType?: WorkspaceCalendarEventType;
+  status?: WorkspaceCalendarStatus;
+  startsAt?: string;
+  endsAt?: string;
+  allDay?: boolean;
+  productKey?: AdminProductKey | null;
+  location?: string | null;
+  meetingUrl?: string | null;
+  assignee?: string | null;
+  projectId?: string | null;
+  caseId?: string | null;
+  tags?: string[];
+};
+
+export type WorkspaceCalendarListFilter = {
+  from: string;
+  to: string;
+  product?: AdminProductKey | 'internal' | 'all';
+  sources?: WorkspaceCalendarSource[];
+};
+
+export const WORKSPACE_CALENDAR_SOURCE_LABELS: Record<WorkspaceCalendarSource, string> = {
+  calendar_event: 'Egen hendelse',
+  task: 'Oppgave',
+  case: 'Sak',
+  project: 'Adminprosjekt',
+  funding_app: 'Støttefrist',
+  funding_opportunity: 'Støtteordning',
+  industry_follow_up: 'Markedskontakt',
+  leadgrid_follow_up: 'Leadgrid-oppfølging',
+  partner_follow_up: 'Partner',
+  investor_follow_up: 'Investor',
+};
+
+export const WORKSPACE_CALENDAR_EVENT_TYPE_LABELS: Record<WorkspaceCalendarEventType, string> = {
+  meeting: 'Møte',
+  focus: 'Fokusblokk',
+  reminder: 'Påminnelse',
+  deadline: 'Frist',
+  follow_up: 'Oppfølging',
+  other: 'Annet',
+};
+
+export type WorkspaceFundingOpportunityStatus =
+  | 'watching'
+  | 'planned'
+  | 'applying'
+  | 'submitted'
+  | 'not_relevant'
+  | 'closed';
+
+export interface WorkspaceFundingOpportunity {
+  id: string;
+  user_id: string;
+  product_key: AdminProductKey | null;
+  catalog_key: string | null;
+  provider: string;
+  scheme_name: string;
+  description: string | null;
+  deadline: string | null;
+  is_rolling: boolean;
+  deadline_note: string | null;
+  status: WorkspaceFundingOpportunityStatus;
+  source_url: string;
+  application_url: string | null;
+  last_verified_at: string | null;
+  next_check_date: string | null;
+  assignee: string | null;
+  fit_notes: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkspaceFundingOpportunityInput = {
+  provider?: string;
+  schemeName?: string;
+  productKey?: AdminProductKey | null;
+  description?: string | null;
+  deadline?: string | null;
+  isRolling?: boolean;
+  deadlineNote?: string | null;
+  status?: WorkspaceFundingOpportunityStatus;
+  sourceUrl?: string;
+  applicationUrl?: string | null;
+  lastVerifiedAt?: string | null;
+  nextCheckDate?: string | null;
+  assignee?: string | null;
+  fitNotes?: string | null;
+  tags?: string[];
+};
+
+export interface WorkspaceFundingApplicationPlan {
+  projectId: string;
+  fundingAppId: string;
+  documentId: string;
+  taskIds: string[];
+  targetDate: string;
+  createdAt: string;
+}
+
+export const workspaceFundingOpportunitiesApi = {
+  list: async (product?: AdminProductKey | 'internal' | 'all'): Promise<WorkspaceFundingOpportunity[]> => {
+    const query = product && product !== 'all' ? `?product=${encodeURIComponent(product)}` : '';
+    const data = await jsonFetch<{ items: WorkspaceFundingOpportunity[] }>(`/workspace/funding-opportunities${query}`);
+    return data.items;
+  },
+  seed: async (): Promise<WorkspaceFundingOpportunity[]> => {
+    const data = await jsonFetch<{ items: WorkspaceFundingOpportunity[] }>('/workspace/funding-opportunities/seed', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return data.items;
+  },
+  create: async (input: WorkspaceFundingOpportunityInput): Promise<WorkspaceFundingOpportunity> => {
+    const data = await jsonFetch<{ item: WorkspaceFundingOpportunity }>('/workspace/funding-opportunities', {
+      method: 'POST', body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceFundingOpportunityInput): Promise<WorkspaceFundingOpportunity> => {
+    const data = await jsonFetch<{ item: WorkspaceFundingOpportunity }>(`/workspace/funding-opportunities/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  startPlan: async (
+    id: string,
+    input: { productKey?: AdminProductKey | null; projectTitle?: string; targetDate?: string } = {},
+  ): Promise<{ plan: WorkspaceFundingApplicationPlan; existing: boolean }> => {
+    return jsonFetch(`/workspace/funding-opportunities/${encodeURIComponent(id)}/start-plan`, {
+      method: 'POST', body: JSON.stringify(input),
+    });
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/funding-opportunities/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+export const workspaceCalendarApi = {
+  list: async (
+    filter: WorkspaceCalendarListFilter,
+  ): Promise<{ items: WorkspaceCalendarItem[]; range: { from: string; to: string } }> => {
+    const params = new URLSearchParams({ from: filter.from, to: filter.to });
+    if (filter.product && filter.product !== 'all') params.set('product', filter.product);
+    if (filter.sources?.length) params.set('sources', filter.sources.join(','));
+    return jsonFetch(`/workspace/calendar?${params.toString()}`);
+  },
+  options: async (): Promise<WorkspaceCalendarOptions> => {
+    return jsonFetch('/workspace/calendar/options');
+  },
+  get: async (id: string): Promise<WorkspaceCalendarItem> => {
+    const data = await jsonFetch<{ item: WorkspaceCalendarItem }>(
+      `/workspace/calendar/events/${encodeURIComponent(id)}`,
+    );
+    return data.item;
+  },
+  create: async (input: WorkspaceCalendarInput): Promise<WorkspaceCalendarItem> => {
+    const data = await jsonFetch<{ item: WorkspaceCalendarItem }>('/workspace/calendar/events', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (
+    id: string,
+    input: WorkspaceCalendarInput,
+  ): Promise<WorkspaceCalendarItem> => {
+    const data = await jsonFetch<{ item: WorkspaceCalendarItem }>(
+      `/workspace/calendar/events/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/calendar/events/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 export const marketingPostersApi = {
   list: async (templateId?: string): Promise<MarketingPoster[]> => {
     const q = templateId ? `?templateId=${encodeURIComponent(templateId)}` : '';
@@ -2100,7 +3471,7 @@ export interface AgendaItem {
   status: string;
 }
 
-export type DeadlineSource = 'funding_app' | 'case' | 'meeting';
+export type DeadlineSource = 'funding_app' | 'case' | 'task' | 'meeting';
 
 export interface DeadlineItem {
   id: string;
@@ -2116,6 +3487,7 @@ export interface DeadlineItem {
 export const DEADLINE_SOURCE_LABEL: Record<DeadlineSource, string> = {
   funding_app: 'Søknad',
   case: 'Sak',
+  task: 'Oppgave',
   meeting: 'Møte',
 };
 

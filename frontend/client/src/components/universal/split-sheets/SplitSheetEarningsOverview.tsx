@@ -64,6 +64,9 @@ export interface SplitSheetEntry {
     roleLabel?: string;
     sharePct: number;
     shareKr: number;
+    compensationType?: 'share' | 'hourly' | 'fixed';
+    hourlyRate?: number | null;
+    estimatedHours?: number | null;
   }>;
 }
 
@@ -91,6 +94,7 @@ const monthLabel = (key: string) => {
 
 const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }) => {
   const [period, setPeriod] = useState<'3m' | '6m' | '12m' | 'all'>('6m');
+  const hasTimeBasedFees = sheets.some((sheet) => sheet.participants.some((participant) => participant.compensationType === 'hourly'));
 
   // ─── Filter på periode ─────────────────────────────────────────
   const filteredSheets = useMemo(() => {
@@ -141,25 +145,25 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
 
   const stats = [
     {
-      label: 'Total honorar',
+      label: hasTimeBasedFees ? 'Estimert honorar' : 'Total honorar',
       value: formatKr(totalAcrossPeriod),
       icon: <WalletIcon />,
       color: '#ff8c00',
     },
     {
-      label: 'Split sheets',
+      label: hasTimeBasedFees ? 'Avtaler' : 'Split sheets',
       value: String(totalSheets),
       icon: <CalendarIcon />,
       color: '#4cc9f0',
     },
     {
-      label: 'Snitt per sheet',
+      label: hasTimeBasedFees ? 'Snitt per avtale' : 'Snitt per sheet',
       value: formatKr(avgPerSheet),
       icon: <TrendingUpIcon />,
       color: '#9b87f5',
     },
     {
-      label: 'Topp-tjener',
+      label: hasTimeBasedFees ? 'Høyeste estimat' : 'Topp-tjener',
       value: topEarner ? topEarner.name : '—',
       sub: topEarner ? formatKr(topEarner.total) : undefined,
       icon: <StarIcon />,
@@ -194,7 +198,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
             Honorar-statistikk
           </Typography>
           <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, color: '#fff5e8' }}>
-            Hvem har tjent hva
+            {hasTimeBasedFees ? 'Honorarestimat per person' : 'Hvem har tjent hva'}
           </Typography>
         </Box>
         <ToggleButtonGroup
@@ -272,10 +276,10 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
           boxShadow: 'none',
         }}>
           <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.14em' }}>
-            Total andel
+            {hasTimeBasedFees ? 'Estimert honorar' : 'Total andel'}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)', display: 'block', mb: 1 }}>
-            Hvem har tjent mest i perioden
+            {hasTimeBasedFees ? 'Beregnet fra timesats, estimerte timer og andeler' : 'Hvem har tjent mest i perioden'}
           </Typography>
           <Box sx={{ width: '100%', height: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -322,7 +326,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
             Over tid
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)', display: 'block', mb: 1 }}>
-            Honorar per måned, fordelt per person
+            {hasTimeBasedFees ? 'Estimert honorar per måned, fordelt per person' : 'Honorar per måned, fordelt per person'}
           </Typography>
           <Box sx={{ width: '100%', height: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -387,7 +391,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
               <TableCell>Roller</TableCell>
               <TableCell align="right">Sheets</TableCell>
               <TableCell align="right">Snitt</TableCell>
-              <TableCell align="right">Total</TableCell>
+              <TableCell align="right">{hasTimeBasedFees ? 'Estimert total' : 'Total'}</TableCell>
               <TableCell align="right">Andel</TableCell>
             </TableRow>
           </TableHead>

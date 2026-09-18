@@ -9,11 +9,34 @@ import CoreLocation
 
 struct WatchLead: Codable, Identifiable, Hashable, Sendable {
     let id: String
+    /// Organisasjonen lead-snapshotet ble hentet for. Optional gjør at vi
+    /// fortsatt kan vise et eldre, persistert snapshot, men slike leads kan
+    /// ikke sende handlinger før telefonen har levert et nytt org-scopet
+    /// snapshot.
+    let organizationId: String?
     let name: String
     let address: String?
     let latitude: Double
     let longitude: Double
     let leadStatus: String
+
+    init(
+        id: String,
+        organizationId: String? = nil,
+        name: String,
+        address: String?,
+        latitude: Double,
+        longitude: Double,
+        leadStatus: String
+    ) {
+        self.id = id
+        self.organizationId = organizationId
+        self.name = name
+        self.address = address
+        self.latitude = latitude
+        self.longitude = longitude
+        self.leadStatus = leadStatus
+    }
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)

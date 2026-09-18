@@ -22,6 +22,7 @@ import {
 import { emitWebhook } from "./webhook-emitter.js";
 import {
   parseOr400,
+  decodeLeadgridAudioBase64,
   fromTextBody,
   uploadAudioBody,
 } from "./leadgrid-validators.js";
@@ -115,7 +116,11 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
       if (!b) return;
       const leadId = req.params.id;
       try {
-        const buf = Buffer.from(b.audio_base64, "base64");
+        const buf = decodeLeadgridAudioBase64(b.audio_base64);
+        if (!buf) {
+          res.status(413).json({ error: "audio_for_stor" });
+          return;
+        }
         const insert = await pool.query<{ id: string }>(
           `INSERT INTO lead_meeting_notes
              (lead_id, organization_id, user_id, source,

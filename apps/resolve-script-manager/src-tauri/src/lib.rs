@@ -2,18 +2,18 @@
 //!
 //! Exposes commands consumed by the React frontend via `invoke()`.
 
-mod card_watcher;
-mod creations;
-mod cull;
-mod folder_watcher;
-mod history;
 mod autonomous_demo;
 mod blender;
 mod broll;
 mod capture_sources;
+mod card_watcher;
+mod creations;
+mod cull;
 mod demo_capture;
 mod demo_export;
 mod demo_recording;
+mod folder_watcher;
+mod history;
 mod media_probe;
 mod mockup_render;
 mod photoshop_bridge;
@@ -21,12 +21,17 @@ mod playwright_render;
 mod product_brain;
 mod psd_indexer;
 mod python;
+mod resolve_mcp;
+mod resolve_mcp_bridge;
+mod resolve_mcp_gateway;
 mod role_room_api;
 
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 use uuid::Uuid;
@@ -39,7 +44,7 @@ use photoshop_bridge::PhotoshopBridgeState;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use python::{python_root, spawn_python, AppSettings, RunSummary, RunningScriptsState};
+use python::{AppSettings, RunSummary, RunningScriptsState, python_root, spawn_python};
 
 fn persist_run(app: &AppHandle, summary: &RunSummary) {
     if let Err(err) = history::append(app, summary) {
@@ -55,6 +60,169 @@ fn read_json(path: std::path::PathBuf) -> Result<Value, String> {
 #[tauri::command]
 async fn list_scripts(app: AppHandle) -> Result<Value, String> {
     read_json(python_root(&app)?.join("registry.json"))
+}
+
+#[tauri::command]
+async fn get_resolve_mcp_status() -> resolve_mcp::ResolveMcpStatus {
+    resolve_mcp::status().await
+}
+
+#[tauri::command]
+async fn list_resolve_mcp_skills() -> Vec<resolve_mcp::ResolveMcpSkillDefinition> {
+    resolve_mcp::skills()
+}
+
+async fn execute_resolve_mcp_skill(
+    app: &AppHandle,
+    skill_id: &str,
+    history_script_id: &str,
+) -> RunSummary {
+    let run_id = Uuid::new_v4().to_string();
+    let started_at = chrono::Utc::now().to_rfc3339();
+    let outcome = resolve_mcp::run_skill(skill_id.to_string()).await;
+    let finished_at = chrono::Utc::now().to_rfc3339();
+    let succeeded = outcome.is_ok();
+    let events = match outcome {
+        Ok(value) => vec![serde_json::json!({
+            "type": "result",
+            "runId": run_id,
+            "scriptId": history_script_id,
+            "value": value,
+            "readOnly": true,
+        })],
+        Err(message) => vec![serde_json::json!({
+            "type": "error",
+            "runId": run_id,
+            "scriptId": history_script_id,
+            "message": message,
+            "readOnly": true,
+        })],
+    };
+    let summary = RunSummary {
+        run_id,
+        script_id: history_script_id.to_string(),
+        exit_code: Some(if succeeded { 0 } else { 1 }),
+        succeeded,
+        events,
+        started_at,
+        finished_at,
+        dry_run: true,
+    };
+    persist_run(app, &summary);
+    summary
+}
+
+#[tauri::command]
+async fn run_resolve_mcp_skill(app: AppHandle, skill_id: String) -> Result<RunSummary, String> {
+    let definition = resolve_mcp::skills()
+        .into_iter()
+        .find(|skill| skill.id == skill_id)
+        .ok_or_else(|| format!("Ukjent Resolve-skill: {skill_id}"))?;
+    if definition.status != "available" {
+        return Err(format!(
+            "Resolve-skillen {skill_id} er ikke aktivert før godkjenningslaget er på plass"
+        ));
+    }
+    if !definition.read_only {
+        return Err(format!(
+            "Resolve-skillen {skill_id} må kjøres via plan → godkjenning → utførelse"
+        ));
+    }
+    Ok(execute_resolve_mcp_skill(&app, &skill_id, &skill_id).await)
+}
+
+#[tauri::command]
+async fn get_resolve_mcp_intelligence()
+-> Result<resolve_mcp_gateway::ResolveMcpIntelligence, String> {
+    resolve_mcp_gateway::intelligence().await
+}
+
+#[tauri::command]
+async fn create_resolve_mcp_plan(
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    skill_id: String,
+    input: Option<Value>,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    resolve_mcp_gateway::create_plan(
+        &state,
+        skill_id,
+        input.unwrap_or_else(|| serde_json::json!({})),
+    )
+    .await
+}
+
+fn persist_mcp_plan_event(
+    app: &AppHandle,
+    event_name: &str,
+    plan: &resolve_mcp_gateway::ResolveMcpWorkflowPlan,
+) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let summary = RunSummary {
+        run_id: Uuid::new_v4().to_string(),
+        script_id: format!("resolve_mcp_{}_{}", event_name, plan.skill_id),
+        exit_code: Some(0),
+        succeeded: true,
+        events: vec![serde_json::json!({
+            "type": "result",
+            "event": event_name,
+            "planId": plan.plan_id,
+            "skillId": plan.skill_id,
+            "target": plan.target,
+            "state": plan.state,
+            "verification": plan.verification,
+        })],
+        started_at: now.clone(),
+        finished_at: now,
+        dry_run: false,
+    };
+    persist_run(app, &summary);
+}
+
+#[tauri::command]
+async fn apply_resolve_mcp_plan(
+    app: AppHandle,
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    plan_id: String,
+    confirmation_token: String,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    let plan = resolve_mcp_gateway::apply_plan(&state, plan_id, confirmation_token).await?;
+    persist_mcp_plan_event(&app, "apply", &plan);
+    Ok(plan)
+}
+
+#[tauri::command]
+async fn rollback_resolve_mcp_plan(
+    app: AppHandle,
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    plan_id: String,
+    confirmation_token: String,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    let plan = resolve_mcp_gateway::rollback_plan(&state, plan_id, confirmation_token).await?;
+    persist_mcp_plan_event(&app, "rollback", &plan);
+    Ok(plan)
+}
+
+#[tauri::command]
+fn get_resolve_mcp_plan(
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    plan_id: String,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    resolve_mcp_gateway::get_plan(&state, &plan_id)
+}
+
+#[tauri::command]
+fn get_latest_resolve_mcp_plan(
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+) -> Option<resolve_mcp_gateway::ResolveMcpWorkflowPlan> {
+    resolve_mcp_gateway::latest_plan(&state)
+}
+
+#[tauri::command]
+async fn run_resolve_mcp_project_doctor(app: AppHandle) -> Result<RunSummary, String> {
+    Ok(
+        execute_resolve_mcp_skill(&app, "resolve-project-doctor", "resolve_mcp_project_doctor")
+            .await,
+    )
 }
 
 /// Claude chat — proxies via The Role Room backend (/api/post-agent/anthropic/messages).
@@ -85,7 +253,11 @@ async fn claude_chat(
             snap.get("ANTHROPIC_API_KEY").cloned().unwrap_or_default(),
         )
     } else {
-        (String::new(), "https://creatorhubn.com/api/post-agent".to_string(), String::new())
+        (
+            String::new(),
+            "https://creatorhubn.com/api/post-agent".to_string(),
+            String::new(),
+        )
     };
 
     if bearer.is_empty() && api_key.is_empty() {
@@ -99,8 +271,12 @@ async fn claude_chat(
         "max_tokens": max_tokens,
         "messages": messages,
     });
-    if let Some(sys) = system { body["system"] = Value::String(sys); }
-    if let Some(t) = tools { body["tools"] = Value::Array(t); }
+    if let Some(sys) = system {
+        body["system"] = Value::String(sys);
+    }
+    if let Some(t) = tools {
+        body["tools"] = Value::Array(t);
+    }
 
     let client = reqwest::Client::new();
     let resp = if !bearer.is_empty() {
@@ -145,7 +321,11 @@ async fn list_workflows(app: AppHandle) -> Result<Value, String> {
 
 #[tauri::command]
 async fn read_wedding_template(app: AppHandle) -> Result<Value, String> {
-    read_json(python_root(&app)?.join("templates").join("wedding_bins.json"))
+    read_json(
+        python_root(&app)?
+            .join("templates")
+            .join("wedding_bins.json"),
+    )
 }
 
 #[tauri::command]
@@ -186,7 +366,11 @@ async fn read_project_template(app: AppHandle, template_id: String) -> Result<Va
 
 #[tauri::command]
 async fn list_look_packs(app: AppHandle) -> Result<Value, String> {
-    read_json(python_root(&app)?.join("templates").join("look_packs_index.json"))
+    read_json(
+        python_root(&app)?
+            .join("templates")
+            .join("look_packs_index.json"),
+    )
 }
 
 /// Launch DaVinci Resolve.app via `open -a`.
@@ -277,7 +461,8 @@ fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
             .join("../../post-agent-photoshop-plugin/manifest.json"),
         // Alternative dev-paths
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..").join("apps/post-agent-photoshop-plugin/manifest.json"),
+            .join("../..")
+            .join("apps/post-agent-photoshop-plugin/manifest.json"),
     ];
     let plugin_manifest_path = manifest_candidates
         .iter()
@@ -305,7 +490,8 @@ async fn open_udt() -> Result<String, String> {
         .iter()
         .find(|p| std::path::Path::new(p).exists())
         .ok_or_else(|| {
-            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først.".to_string()
+            "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først."
+                .to_string()
         })?;
     let output = std::process::Command::new("open")
         .arg("-a")
@@ -373,7 +559,10 @@ async fn ai_generate_image(
                 .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
         )
     } else {
-        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
+        (
+            String::new(),
+            "https://creatorhubn.com/api/post-agent".to_string(),
+        )
     };
     if bearer.is_empty() {
         return Err(
@@ -401,12 +590,15 @@ async fn ai_generate_image(
         .await
         .map_err(|e| format!("Backend request failed: {}", e))?;
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Read response: {}", e))?;
     if !status.is_success() {
         return Err(format!("Backend {} — {}", status, text));
     }
-    let data: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("Parse response: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Parse response: {}", e))?;
     let image_url = data
         .get("image_url")
         .and_then(|v| v.as_str())
@@ -419,7 +611,10 @@ async fn ai_generate_image(
         .to_string();
     let seed_out = data.get("seed").and_then(|v| v.as_i64());
     let width = data.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
-    let height = data.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
+    let height = data
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
 
     // Last ned bildet og lagre det lokalt
     let img_resp = client
@@ -537,7 +732,10 @@ async fn ad_film_regenerate_shot(
         .ok_or("image_path mangler i resultat")?
         .to_string();
     let attempt = data.get("attempt").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
-    Ok(ShotVariant { image_path, attempt })
+    Ok(ShotVariant {
+        image_path,
+        attempt,
+    })
 }
 
 /// Activate Resolve and send cmd+, via osascript to open the Preferences dialog.
@@ -699,15 +897,8 @@ async fn execute_script(
     }
 
     let run_id = Uuid::new_v4().to_string();
-    let summary = spawn_python(
-        app.clone(),
-        run_id,
-        script_id,
-        script_path,
-        params,
-        dry_run,
-    )
-    .await?;
+    let summary =
+        spawn_python(app.clone(), run_id, script_id, script_path, params, dry_run).await?;
     persist_run(&app, &summary);
     Ok(summary)
 }
@@ -748,7 +939,10 @@ async fn save_cull_session(app: AppHandle, session: CullSession) -> Result<Strin
 }
 
 #[tauri::command]
-async fn load_cull_session(app: AppHandle, session_id: String) -> Result<Option<CullSession>, String> {
+async fn load_cull_session(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Option<CullSession>, String> {
     cull::load_session(&app, &session_id)
 }
 
@@ -789,8 +983,7 @@ async fn read_learning_profile() -> Result<Value, String> {
         serde_json::from_slice::<Value>(&bytes).ok()
     };
 
-    let global = read_json(&base.join("profile.json"))
-        .unwrap_or_else(|| serde_json::json!({}));
+    let global = read_json(&base.join("profile.json")).unwrap_or_else(|| serde_json::json!({}));
 
     // Per-project profiles
     let mut projects: HashMap<String, Value> = HashMap::new();
@@ -824,10 +1017,7 @@ async fn read_learning_profile() -> Result<Value, String> {
         for path in paths.into_iter().take(10) {
             if let Some(mut v) = read_json(&path) {
                 if let Some(obj) = v.as_object_mut() {
-                    obj.insert(
-                        "_path".into(),
-                        Value::String(path.display().to_string()),
-                    );
+                    obj.insert("_path".into(), Value::String(path.display().to_string()));
                     obj.insert(
                         "_filename".into(),
                         Value::String(
@@ -857,7 +1047,11 @@ async fn read_learning_profile() -> Result<Value, String> {
 /// invokes the actual workflow.
 fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::Error> {
     let app_submenu = SubmenuBuilder::new(app, "The Role Room Post Agent")
-        .item(&PredefinedMenuItem::about(app, Some("About"), Some(AboutMetadata::default()))?)
+        .item(&PredefinedMenuItem::about(
+            app,
+            Some("About"),
+            Some(AboutMetadata::default()),
+        )?)
         .separator()
         .item(&PredefinedMenuItem::hide(app, None)?)
         .item(&PredefinedMenuItem::hide_others(app, None)?)
@@ -872,8 +1066,8 @@ fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::E
     let new_workflow_item = MenuItemBuilder::with_id("menu_new_workflow", "New workflow…")
         .accelerator("CmdOrCtrl+N")
         .build(app)?;
-    let check_updates_item = MenuItemBuilder::with_id("menu_check_updates", "Check for updates…")
-        .build(app)?;
+    let check_updates_item =
+        MenuItemBuilder::with_id("menu_check_updates", "Check for updates…").build(app)?;
     let file_submenu = SubmenuBuilder::new(app, "File")
         .item(&new_workflow_item)
         .item(&rerun_item)
@@ -906,7 +1100,11 @@ fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::E
 
     MenuBuilder::new(app)
         .items(&[
-            &app_submenu, &file_submenu, &edit_submenu, &view_submenu, &window_submenu,
+            &app_submenu,
+            &file_submenu,
+            &edit_submenu,
+            &view_submenu,
+            &window_submenu,
         ])
         .build()
 }
@@ -923,6 +1121,7 @@ pub fn run() {
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
+        .manage(resolve_mcp_gateway::ResolveMcpGatewayState::default())
         .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
@@ -957,7 +1156,10 @@ pub fn run() {
                 // Frontend lytter på bindestrek-navn (menu://check-updates); meny-
                 // id-ene bruker understrek (menu_check_updates) → konverter, ellers
                 // matcher ikke event-navnet og meny-klikk gjør ingenting.
-                let event_name = format!("menu://{}", id.trim_start_matches("menu_").replace('_', "-"));
+                let event_name = format!(
+                    "menu://{}",
+                    id.trim_start_matches("menu_").replace('_', "-")
+                );
                 if let Err(err) = app_handle.emit(&event_name, ()) {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
                 }
@@ -985,15 +1187,26 @@ pub fn run() {
                 eprintln!("Failed to start card watcher: {}", err);
             }
             // Start lokal WS-server for Photoshop UXP-plugin (port 1733).
-            let bridge_state = app
-                .state::<Arc<PhotoshopBridgeState>>()
-                .inner()
-                .clone();
+            let bridge_state = app.state::<Arc<PhotoshopBridgeState>>().inner().clone();
             photoshop_bridge::spawn_server(handle, bridge_state);
+            // Authenticated, read/plan-only loopback bridge for Claude and
+            // future ChatGPT Secure MCP Tunnel clients. Resolve writes remain
+            // exclusive to the visible Post Agent approval UI.
+            resolve_mcp_bridge::spawn_server(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_scripts,
+            get_resolve_mcp_status,
+            list_resolve_mcp_skills,
+            run_resolve_mcp_skill,
+            run_resolve_mcp_project_doctor,
+            get_resolve_mcp_intelligence,
+            create_resolve_mcp_plan,
+            apply_resolve_mcp_plan,
+            rollback_resolve_mcp_plan,
+            get_resolve_mcp_plan,
+            get_latest_resolve_mcp_plan,
             list_workflows,
             claude_chat,
             read_wedding_template,
@@ -1030,6 +1243,9 @@ pub fn run() {
             role_room_api::role_room_fetch_live_set_state,
             role_room_api::role_room_my_productions,
             role_room_api::role_room_my_seats,
+            role_room_api::role_room_video_nle_projects,
+            role_room_api::role_room_video_resolve_markers,
+            role_room_api::role_room_push_video_resolve_markers,
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,

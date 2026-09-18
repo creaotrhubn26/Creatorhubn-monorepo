@@ -137,7 +137,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   const [contract, setContract] = useState<any | null>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [deliverables, setDeliverables] = useState<any[]>([]);
-  const [splitShares, setSplitShares] = useState<{ shares: any[]; total: number } | null>(null);
+  const [splitShares, setSplitShares] = useState<{ shares: any[]; total: number; status?: string; compensationModel?: string } | null>(null);
   const isRealP = projectId && projectId !== 'sample';
   useEffect(() => {
     if (!isRealP) return;
@@ -147,7 +147,29 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract`).then((r: any) => setContract(r || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/quotes`).then((r: any) => setQuotes(Array.isArray(r?.quotes) ? r.quotes : [])).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`).then((r: any) => setDeliverables(Array.isArray(r?.deliverables) ? r.deliverables : [])).catch(() => {});
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`).then((r: any) => setSplitShares(r && Array.isArray(r.shares) ? r : null)).catch(() => {});
+    const loadSplitSummary = async () => {
+      try {
+        const canonical: any = await apiRequest(`/api/split-sheets?project_id=${encodeURIComponent(projectId)}&limit=1`);
+        const sheet = Array.isArray(canonical?.data) ? canonical.data[0] : null;
+        if (sheet) {
+          let metadata: any = sheet.metadata || {};
+          if (typeof metadata === 'string') { try { metadata = JSON.parse(metadata); } catch { metadata = {}; } }
+          const contributorCount = Number(sheet.contributor_count) || 0;
+          setSplitShares({
+            shares: Array.from({ length: contributorCount }),
+            total: Number(sheet.total_percentage) || 0,
+            status: sheet.status,
+            compensationModel: metadata.compensationModel,
+          });
+          return;
+        }
+      } catch { /* prøv eldre prosjekt-tabell under */ }
+      try {
+        const legacy: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`);
+        setSplitShares(legacy && Array.isArray(legacy.shares) ? legacy : null);
+      } catch { setSplitShares(null); }
+    };
+    void loadSplitSummary();
   }, [projectId, isRealP]);
 
   const load = async () => {
@@ -229,8 +251,10 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
           '–',
         ]] : []),
         ...(splitShares && splitShares.shares.length ? [[
-          'Split sheet',
-          <WsTag label={splitTotal === 100 ? t('completePct') : t('incompletePct').replace('{n}', String(splitTotal))} tone={splitTotal === 100 ? 'green' : 'amber'} />,
+          splitShares.compensationModel && splitShares.compensationModel !== 'share' ? 'Honoraravtale' : 'Split sheet',
+          splitShares.compensationModel && splitShares.compensationModel !== 'share'
+            ? <WsTag label={splitShares.status === 'completed' ? t('Signert') : t('Venter på signering')} tone={splitShares.status === 'completed' ? 'green' : 'amber'} />
+            : <WsTag label={splitTotal === 100 ? t('completePct') : t('incompletePct').replace('{n}', String(splitTotal))} tone={splitTotal === 100 ? 'green' : 'amber'} />,
           `${splitShares.shares.length} ${t('participants')}`,
           '–',
         ]] : []),

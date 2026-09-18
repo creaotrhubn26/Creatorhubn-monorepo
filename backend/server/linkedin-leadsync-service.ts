@@ -14,6 +14,7 @@ import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { composeEmail } from "./email-design-system.js";
 import { resolveDefaultLinkedInOrg } from "./linkedin-oauth-routes.js";
 import { fireAgencyLeadConversion } from "./linkedin-conversions-service.js";
+import { LINKEDIN_API_VERSION } from './linkedin-api-version.js';
 
 interface LeadFormResponseField {
   questionId?: string;
@@ -84,7 +85,7 @@ export async function pollLeadFormsDue(pool: Pool): Promise<{
           headers: {
             Authorization: `Bearer ${resolved.accessToken}`,
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": "202410",
+            "LinkedIn-Version": LINKEDIN_API_VERSION,
           },
           signal: AbortSignal.timeout(10_000),
         },

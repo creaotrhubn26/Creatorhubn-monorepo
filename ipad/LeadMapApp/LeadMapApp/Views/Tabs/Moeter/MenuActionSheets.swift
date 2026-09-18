@@ -26,6 +26,20 @@ private enum MABrand {
     static let textTertiary = Color.white.opacity(0.45)
 }
 
+private extension View {
+    func unavailableMeetingWriteAlert(
+        isPresented: Binding<Bool>,
+        title: String,
+        message: String
+    ) -> some View {
+        alert(title, isPresented: isPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(message)
+        }
+    }
+}
+
 // MARK: - RescheduleSheet
 
 struct RescheduleSheet: View {
@@ -33,7 +47,7 @@ struct RescheduleSheet: View {
     /// Kalles med nytt starttidspunkt + varighet (min) når selgeren lagrer —
     /// eieren (MeetingsView) persisterer (backend i ekte modus, in-memory i
     /// demo) så agendaen/uka flytter blokka umiddelbart.
-    var onSave: ((Date, Int) -> Void)? = nil
+    var onSave: ((Date, Int) async throws -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var newDate = Date().addingTimeInterval(86_400)  // i morgen
     @State private var startHour = 10
@@ -41,6 +55,9 @@ struct RescheduleSheet: View {
     @State private var duration = 60
     @State private var notify = true
     @State private var reason = ""
+    @State private var showWriteUnavailable = false
+    @State private var isSaving = false
+    @State private var saveError: String? = nil
 
     /// Nytt starttidspunkt: valgt dato + valgt klokkeslett.
     private var nyStart: Date {
@@ -113,6 +130,19 @@ struct RescheduleSheet: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
         }
         .task { lastInnNaavaerende() }
+        .unavailableMeetingWriteAlert(
+            isPresented: $showWriteUnavailable,
+            title: "Tidsendring er ikke koblet til her",
+            message: "Møtet ble ikke flyttet. Åpne tidsendring fra kalenderoversikten, der en verifisert lagringscallback er tilgjengelig."
+        )
+        .alert("Kunne ikke flytte møtet", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "Endringen ble ikke lagret. Prøv igjen.")
+        }
     }
 
     private var currentCard: some View {
@@ -128,7 +158,7 @@ struct RescheduleSheet: View {
                 Text(meeting.company)
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Nåværende: Tir 20. mai · \(meeting.startTime)–\(meeting.endTime)")
+                Text("Nåværende tid: \(meeting.startTime)–\(meeting.endTime)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
@@ -220,7 +250,7 @@ struct RescheduleSheet: View {
                     Text("Varsle kontakten")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("Sender e-post + invitt-oppdatering til \(meeting.contactName)")
+                    Text("Åpner e-postutkast etter en bekreftet tidsendring")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(MABrand.textSecondary)
                 }
@@ -269,16 +299,36 @@ struct RescheduleSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .disabled(isSaving)
             Button {
-                // Var toast-fasade (dismiss uten effekt) — nå ekte lagring.
-                onSave?(nyStart, duration)
-                if notify { aapneVarsleUtkast() }
-                dismiss()
+                guard let onSave else {
+                    showWriteUnavailable = true
+                    return
+                }
+                let requestedStart = nyStart
+                let requestedDuration = duration
+                Task { @MainActor in
+                    isSaving = true
+                    defer { isSaving = false }
+                    do {
+                        try await onSave(requestedStart, requestedDuration)
+                        if notify { aapneVarsleUtkast() }
+                        dismiss()
+                    } catch {
+                        print("[Møter] tidsendring feilet: \(error)")
+                        saveError = "Møtet ble ikke flyttet. Kontroller nettet og prøv igjen; valgene dine er beholdt."
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "calendar.badge.checkmark")
-                        .font(.appScaled(size: 13, weight: .bold))
-                    Text("Lagre ny tid")
+                    if isSaving {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "calendar.badge.checkmark")
+                            .font(.appScaled(size: 13, weight: .bold))
+                    }
+                    Text(isSaving ? "Lagrer …" : "Lagre ny tid")
                         .font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
@@ -291,6 +341,7 @@ struct RescheduleSheet: View {
                 )
             }
             .buttonStyle(.plain)
+            .disabled(isSaving)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(MABrand.bg.opacity(0.95).overlay(Rectangle().fill(MABrand.stroke).frame(height: 1), alignment: .top))
@@ -304,6 +355,7 @@ struct StatusPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var status: Meeting.Status
     @State private var note: String = ""
+    @State private var showWriteUnavailable = false
 
     init(meeting: Meeting) {
         self.meeting = meeting
@@ -340,6 +392,11 @@ struct StatusPickerSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { confirmBar }
         }
+        .unavailableMeetingWriteAlert(
+            isPresented: $showWriteUnavailable,
+            title: "Statusendring er ikke koblet til ennå",
+            message: "Møtestatusen og notatet ble ikke lagret. Valgene beholdes i arket."
+        )
     }
 
     private var contextHeader: some View {
@@ -449,7 +506,7 @@ struct StatusPickerSheet: View {
     }
 
     private var confirmBar: some View {
-        Button { dismiss() } label: {
+        Button { showWriteUnavailable = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.appScaled(size: 14, weight: .bold))
@@ -480,6 +537,7 @@ struct CancelMeetingSheet: View {
     @State private var customReason: String = ""
     @State private var notify: Bool = true
     @State private var suggestNew: Bool = true
+    @State private var showWriteUnavailable = false
 
     enum CancelReason: String, CaseIterable, Hashable {
         case conflict = "Konflikt med annet møte"
@@ -524,6 +582,11 @@ struct CancelMeetingSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { confirmBar }
         }
+        .unavailableMeetingWriteAlert(
+            isPresented: $showWriteUnavailable,
+            title: "Avlysning er ikke koblet til ennå",
+            message: "Møtet ble ikke avlyst, kontakten ble ikke varslet og ingen ny tid ble foreslått."
+        )
     }
 
     private var warningBanner: some View {
@@ -532,10 +595,10 @@ struct CancelMeetingSheet: View {
                 .font(.appScaled(size: 16, weight: .bold))
                 .foregroundStyle(MABrand.red)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Dette kan ikke angres")
+                Text("Avlysning er foreløpig utilgjengelig")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Møtet flyttes til avlyste og prep-status nullstilles")
+                Text("Skjemaet er en forhåndsvisning; ingen endring lagres eller sendes")
                     .font(.appScaled(size: 10))
                     .foregroundStyle(MABrand.textSecondary)
             }
@@ -559,7 +622,7 @@ struct CancelMeetingSheet: View {
                 Text(meeting.company)
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Tir 20. mai · \(meeting.startTime)–\(meeting.endTime) · \(meeting.contactName)")
+                Text("\(meeting.startTime)–\(meeting.endTime) · \(meeting.contactName)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
@@ -634,7 +697,7 @@ struct CancelMeetingSheet: View {
                     Image(systemName: "envelope.fill")
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.blue)
-                    Text("Varsle \(meeting.contactName)")
+                    Text("Varsle \(meeting.contactName) når avlysning er koblet")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -646,7 +709,7 @@ struct CancelMeetingSheet: View {
                     Image(systemName: "calendar.badge.plus")
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.green)
-                    Text("Foreslå nytt tidspunkt automatisk")
+                    Text("Foreslå nytt tidspunkt når avlysning er koblet")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -659,7 +722,7 @@ struct CancelMeetingSheet: View {
     }
 
     private var confirmBar: some View {
-        Button { dismiss() } label: {
+        Button { showWriteUnavailable = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "xmark.octagon.fill")
                     .font(.appScaled(size: 14, weight: .bold))
@@ -688,16 +751,37 @@ struct AssignSellerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var search: String = ""
     @State private var selectedID: UUID?
+    @State private var showWriteUnavailable = false
 
     struct Seller: Identifiable, Hashable {
-        let id = UUID()
+        let id: UUID
         let name: String
         let role: String
         let initials: String
         let color: Color
         let load: Int        // antall aktive møter
-        let winRate: Int     // %
-        let online: Bool
+        let winRate: Int?    // nil når live-kilden ikke leverer dette
+        let online: Bool?    // nil når presence ikke er koblet
+
+        init(
+            id: UUID = UUID(),
+            name: String,
+            role: String,
+            initials: String,
+            color: Color,
+            load: Int,
+            winRate: Int?,
+            online: Bool?
+        ) {
+            self.id = id
+            self.name = name
+            self.role = role
+            self.initials = initials
+            self.color = color
+            self.load = load
+            self.winRate = winRate
+            self.online = online
+        }
     }
 
     /// Demo → mock; ellers ekte team-medlemmer fra TeamLiveStore
@@ -706,8 +790,8 @@ struct AssignSellerSheet: View {
     private var sellers: [Seller] {
         if DemoModeManager.isActiveNonisolated { return Self.mockSellers }
         return TeamLiveStore.shared.members.map { m in
-            Seller(name: m.name, role: "Selger", initials: m.initials,
-                   color: m.color, load: m.meetings, winRate: 0, online: false)
+            Seller(id: m.id, name: m.name, role: "Selger", initials: m.initials,
+                   color: m.color, load: m.meetings, winRate: nil, online: nil)
         }
     }
 
@@ -759,6 +843,11 @@ struct AssignSellerSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { assignBar }
         }
+        .unavailableMeetingWriteAlert(
+            isPresented: $showWriteUnavailable,
+            title: "Møtetildeling er ikke koblet til ennå",
+            message: "Valgt selger ble ikke tilordnet møtet. Teamlisten er kun brukt til forhåndsvisning av valget."
+        )
     }
 
     private var contextHeader: some View {
@@ -818,11 +907,13 @@ struct AssignSellerSheet: View {
                     Text(s.initials)
                         .font(.appScaled(size: 12, weight: .black))
                         .foregroundStyle(.white)
-                    Circle()
-                        .fill(s.online ? MABrand.green : MABrand.textTertiary)
-                        .overlay(Circle().stroke(MABrand.card, lineWidth: 2))
-                        .frame(width: 11, height: 11)
-                        .offset(x: 14, y: 14)
+                    if let online = s.online {
+                        Circle()
+                            .fill(online ? MABrand.green : MABrand.textTertiary)
+                            .overlay(Circle().stroke(MABrand.card, lineWidth: 2))
+                            .frame(width: 11, height: 11)
+                            .offset(x: 14, y: 14)
+                    }
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
@@ -842,13 +933,19 @@ struct AssignSellerSheet: View {
                     }
                 }
                 Spacer()
-                // Win-rate-pill
-                Text("\(s.winRate) %")
-                    .font(.appScaled(size: 11, weight: .black, design: .rounded))
-                    .foregroundStyle(s.winRate >= 70 ? MABrand.green : s.winRate >= 60 ? MABrand.yellow : MABrand.orange)
-                    .monospacedDigit()
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background((s.winRate >= 70 ? MABrand.green : s.winRate >= 60 ? MABrand.yellow : MABrand.orange).opacity(0.18), in: Capsule())
+                if let winRate = s.winRate {
+                    let tint = winRate >= 70 ? MABrand.green : winRate >= 60 ? MABrand.yellow : MABrand.orange
+                    Text("\(winRate) %")
+                        .font(.appScaled(size: 11, weight: .black, design: .rounded))
+                        .foregroundStyle(tint)
+                        .monospacedDigit()
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(tint.opacity(0.18), in: Capsule())
+                } else {
+                    Text("Win-rate —")
+                        .font(.appScaled(size: 10, weight: .semibold))
+                        .foregroundStyle(MABrand.textTertiary)
+                }
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                     .font(.appScaled(size: 17))
                     .foregroundStyle(isSelected ? MABrand.purple : MABrand.stroke)
@@ -865,7 +962,7 @@ struct AssignSellerSheet: View {
     }
 
     private var assignBar: some View {
-        Button { dismiss() } label: {
+        Button { showWriteUnavailable = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "person.badge.plus.fill")
                     .font(.appScaled(size: 13, weight: .bold))
@@ -899,6 +996,7 @@ struct AddToCampaignSheet: View {
     @State private var search: String = ""
     @State private var selectedIDs: Set<UUID> = []
     @State private var showCreateSheet: Bool = false
+    @State private var showWriteUnavailable = false
 
     struct Campaign: Identifiable, Hashable {
         let id = UUID()
@@ -942,13 +1040,19 @@ struct AddToCampaignSheet: View {
         }
     }
 
-    private let campaigns: [Campaign] = [
+    private static let mockCampaigns: [Campaign] = [
         Campaign(name: "Q2-løft: SMB-elektroentreprenører", kind: .nurture,       status: .active, leadsCount: 142, valueNok: 4_200_000, endDate: "30. juni"),
         Campaign(name: "Webinar: ERP-migrering 2026",        kind: .event,         status: .active, leadsCount: 87,  valueNok: 1_800_000, endDate: "12. juni"),
         Campaign(name: "AI-modulen 2.0 — early access",      kind: .productLaunch, status: .active, leadsCount: 56,  valueNok: 2_500_000, endDate: "5. juli"),
         Campaign(name: "Re-engasjer kalde leads >90 dager",   kind: .email,         status: .active, leadsCount: 234, valueNok: 0,          endDate: "Løpende"),
         Campaign(name: "Pilot: Bygg-bransjen (vinter 2026)",  kind: .nurture,       status: .paused, leadsCount: 41,  valueNok: 980_000,    endDate: "Pauset"),
     ]
+
+    /// Kampanjelisten har ingen live-kontrakt i denne flaten. Syntetiske
+    /// kampanjer vises derfor kun i eksplisitt demo-modus.
+    private var campaigns: [Campaign] {
+        DemoModeManager.isActiveNonisolated ? Self.mockCampaigns : []
+    }
 
     private var filtered: [Campaign] {
         if search.isEmpty { return campaigns }
@@ -960,28 +1064,43 @@ struct AddToCampaignSheet: View {
             ScrollView {
                 VStack(spacing: 14) {
                     contextHeader
-                    searchBar
-                    Button { showCreateSheet = true } label: {
-                        HStack(spacing: 7) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.appScaled(size: 13, weight: .bold))
-                            Text("Opprett ny kampanje")
-                                .font(.appScaled(size: 12, weight: .bold))
+                    if DemoModeManager.isActiveNonisolated {
+                        searchBar
+                        Button { showCreateSheet = true } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.appScaled(size: 13, weight: .bold))
+                                Text("Opprett demo-kampanje")
+                                    .font(.appScaled(size: 12, weight: .bold))
+                            }
+                            .foregroundStyle(MABrand.purpleLight)
+                            .padding(.vertical, 11)
+                            .frame(maxWidth: .infinity)
+                            .background(MABrand.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11)
+                                    .stroke(MABrand.purple.opacity(0.40), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            )
                         }
-                        .foregroundStyle(MABrand.purpleLight)
-                        .padding(.vertical, 11)
-                        .frame(maxWidth: .infinity)
-                        .background(MABrand.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 11)
-                                .stroke(MABrand.purple.opacity(0.40), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    VStack(spacing: 7) {
-                        ForEach(filtered) { c in
-                            campaignRow(c)
+                        .buttonStyle(.plain)
+                        VStack(spacing: 7) {
+                            ForEach(filtered) { c in
+                                campaignRow(c)
+                            }
                         }
+                    } else {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "megaphone")
+                                .foregroundStyle(MABrand.purpleLight)
+                            Text("Ingen kampanjeintegrasjon er koblet til denne møteflaten ennå. Ingen eksempeldata vises i live modus.")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(MABrand.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+                        }
+                        .padding(14)
+                        .background(MABrand.card, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(MABrand.stroke, lineWidth: 1))
                     }
                     Color.clear.frame(height: 90)
                 }
@@ -1003,6 +1122,11 @@ struct AddToCampaignSheet: View {
                 CreateCampaignSheet(seedLeadCompany: meeting.company)
             }
         }
+        .unavailableMeetingWriteAlert(
+            isPresented: $showWriteUnavailable,
+            title: "Kampanjetilknytning er kun en demo",
+            message: "Leadet ble ikke lagt til i noen kampanje. En serverkontrakt må kobles før handlingen kan aktiveres."
+        )
     }
 
     private var contextHeader: some View {
@@ -1122,7 +1246,7 @@ struct AddToCampaignSheet: View {
     }
 
     private var addBar: some View {
-        Button { dismiss() } label: {
+        Button { showWriteUnavailable = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "megaphone.fill")
                     .font(.appScaled(size: 13, weight: .bold))
@@ -1169,6 +1293,7 @@ struct CreateCampaignSheet: View {
     @State private var expectedValueK: Double = 500   // i tusen NOK
     @State private var addCurrentLead: Bool = true
     @State private var templateChosen: Template?
+    @State private var showWriteUnavailable = false
 
     enum SegmentMode: String, CaseIterable, Hashable {
         case auto = "AI-segment"
@@ -1240,7 +1365,7 @@ struct CreateCampaignSheet: View {
                 .padding(20)
             }
             .background(MABrand.bg.ignoresSafeArea())
-            .navigationTitle("Ny kampanje")
+            .navigationTitle("Ny demo-kampanje")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1252,6 +1377,11 @@ struct CreateCampaignSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
         }
+        .unavailableMeetingWriteAlert(
+            isPresented: $showWriteUnavailable,
+            title: "Kampanjen er ikke opprettet",
+            message: "Dette er en demo av kampanjebyggeren. Ingen kampanje, segment eller leadtilknytning ble lagret."
+        )
     }
 
     // MARK: Template-picker
@@ -1677,7 +1807,7 @@ struct CreateCampaignSheet: View {
                     Text("Legg til \(seedLeadCompany) i kampanjen")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("Auto-aktiverer kampanjen for dette leadet")
+                    Text("Demoforhåndsvisning — ingen aktivering eller lagring")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(MABrand.textSecondary)
                 }
@@ -1692,11 +1822,11 @@ struct CreateCampaignSheet: View {
     // MARK: Save bar
 
     private var saveBar: some View {
-        Button { dismiss() } label: {
+        Button { showWriteUnavailable = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.appScaled(size: 14, weight: .bold))
-                Text(canSave ? "Opprett kampanje" : "Skriv inn navn først")
+                Text(canSave ? "Opprett demo-kampanje" : "Skriv inn navn først")
                     .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)

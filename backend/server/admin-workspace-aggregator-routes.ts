@@ -49,7 +49,7 @@ interface AgendaItem {
 
 interface DeadlineItem {
   id: string;
-  source: "funding_app" | "case" | "meeting";
+  source: "funding_app" | "case" | "task" | "meeting";
   title: string;
   due_date: string;       // ISO date eller datetime
   product_key: string | null;  // role_room | leadgrid | null=intern
@@ -65,7 +65,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
 
   // ─── Dagens agenda ─────────────────────────────────────────────
   // Møter i dag (Europe/Oslo) på tvers av alle prosjekter brukeren
-  // eier eller har tilgang til via casting_projects.
+  // eier eller har tilgang til via casting_projects/casting_user_roles.
   app.get("/api/admin-room/workspace/today-agenda", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
@@ -92,10 +92,12 @@ export function setupAdminWorkspaceAggregatorRoutes(
             AND (m.starts_at AT TIME ZONE 'Europe/Oslo')::date
                 = (NOW() AT TIME ZONE 'Europe/Oslo')::date
             AND (
-              p.user_id = $1
+              p.created_by = $1
               OR EXISTS (
-                SELECT 1 FROM casting_project_collaborators c
-                 WHERE c.project_id = m.project_id AND c.user_id = $1
+                SELECT 1 FROM casting_user_roles c
+                 WHERE c.project_id = m.project_id
+                   AND c.user_id = $1
+                   AND c.deactivated_at IS NULL
               )
             )
           ORDER BY m.starts_at ASC
@@ -104,10 +106,10 @@ export function setupAdminWorkspaceAggregatorRoutes(
       );
       res.json({ items: result.rows });
     } catch (err) {
-      // Hvis casting_project_collaborators ikke finnes (avhengig av
-      // mig-rekkefølge), fallback til kun project-eier-filter.
+      // Hvis casting_user_roles ikke finnes i en eldre installasjon, fall
+      // tilbake til eierkolonnen som faktisk finnes på casting_projects.
       const msg = (err as Error).message;
-      if (msg.includes("casting_project_collaborators")) {
+      if (msg.includes("casting_user_roles")) {
         try {
           const fallback = await pool.query<AgendaItem>(
             `SELECT
@@ -120,7 +122,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
                 AND m.status = 'upcoming'
                 AND (m.starts_at AT TIME ZONE 'Europe/Oslo')::date
                     = (NOW() AT TIME ZONE 'Europe/Oslo')::date
-                AND p.user_id = $1
+                AND p.created_by = $1
               ORDER BY m.starts_at ASC
               LIMIT 50`,
             [session.userId],
@@ -137,10 +139,11 @@ export function setupAdminWorkspaceAggregatorRoutes(
   });
 
   // ─── Kommende frister ──────────────────────────────────────────
-  // Aggregert deadline-feed fra 3 kilder, sortert chronologisk:
+  // Aggregert deadline-feed fra 4 kilder, sortert chronologisk:
   //   1. admin_funding_apps.deadline (kun ikke-completed)
   //   2. admin_workspace_cases.due_date (kun open/in_progress/blocked)
-  //   3. role_room_meetings.starts_at (kun upcoming, neste 14 dager)
+  //   3. admin_workspace_tasks.due_date (kun åpne oppgaver)
+  //   4. role_room_meetings.starts_at (kun upcoming, neste 14 dager)
   app.get("/api/admin-room/workspace/upcoming-deadlines", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
@@ -177,7 +180,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
           product_key: null,
           priority: null,
           status: r.status,
-          link_path: `/admin-room?tab=funding&id=${r.id}`,
+          link_path: `/admin-workspace?view=funding&fundingId=${r.id}`,
         });
       }
 
@@ -204,7 +207,7 @@ export function setupAdminWorkspaceAggregatorRoutes(
             product_key: r.product_key ?? null,
             priority: r.priority,
             status: r.status,
-            link_path: `/admin-workspace?sidebar=cases&caseId=${r.id}`,
+            link_path: `/admin-workspace?view=cases&caseId=${r.id}`,
           });
         }
       } catch (caseErr) {
@@ -214,20 +217,80 @@ export function setupAdminWorkspaceAggregatorRoutes(
         }
       }
 
-      // 3. Kommende møter
-      const meetingResult = await pool.query(
-        `SELECT m.id::text, m.title, m.starts_at, m.status
-           FROM role_room_meetings m
-           JOIN casting_projects p ON p.id = m.project_id
-          WHERE p.user_id = $1
-            AND m.starts_at IS NOT NULL
-            AND m.status = 'upcoming'
-            AND m.starts_at <= (NOW() + ($2::int || ' days')::interval)
-            AND m.starts_at >= NOW()
-          ORDER BY m.starts_at ASC
-          LIMIT 30`,
-        [session.userId, days],
-      );
+      // 3. Adminoppgaver (kun hvis tabellen finnes)
+      try {
+        const taskResult = await pool.query(
+          `SELECT id::text, title, due_date, status, priority, product_key
+             FROM admin_workspace_tasks
+            WHERE user_id = $1
+              AND due_date IS NOT NULL
+              AND status NOT IN ('done', 'cancelled')
+              AND due_date <= (CURRENT_DATE + ($2::int || ' days')::interval)
+              AND due_date >= CURRENT_DATE
+            ORDER BY due_date ASC,
+              CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END
+            LIMIT 50`,
+          [session.userId, days],
+        );
+        for (const r of taskResult.rows) {
+          items.push({
+            id: `task:${r.id}`,
+            source: "task",
+            title: r.title,
+            due_date: typeof r.due_date === "string" ? r.due_date : r.due_date.toISOString().slice(0, 10),
+            product_key: r.product_key ?? null,
+            priority: r.priority,
+            status: r.status,
+            link_path: `/admin-workspace?view=tasks&taskId=${r.id}`,
+          });
+        }
+      } catch (taskErr) {
+        const msg = (taskErr as Error).message;
+        if (!msg.includes("admin_workspace_tasks")) {
+          console.warn("[workspace/upcoming-deadlines] tasks-query failed", msg);
+        }
+      }
+
+      // 4. Kommende møter
+      let meetingResult;
+      try {
+        meetingResult = await pool.query(
+          `SELECT m.id::text, m.title, m.starts_at, m.status
+             FROM role_room_meetings m
+             JOIN casting_projects p ON p.id = m.project_id
+            WHERE (
+                    p.created_by = $1
+                    OR EXISTS (
+                      SELECT 1 FROM casting_user_roles c
+                       WHERE c.project_id = m.project_id
+                         AND c.user_id = $1
+                         AND c.deactivated_at IS NULL
+                    )
+                  )
+              AND m.starts_at IS NOT NULL
+              AND m.status = 'upcoming'
+              AND m.starts_at <= (NOW() + ($2::int || ' days')::interval)
+              AND m.starts_at >= NOW()
+            ORDER BY m.starts_at ASC
+            LIMIT 30`,
+          [session.userId, days],
+        );
+      } catch (meetingErr) {
+        if (!(meetingErr as Error).message.includes("casting_user_roles")) throw meetingErr;
+        meetingResult = await pool.query(
+          `SELECT m.id::text, m.title, m.starts_at, m.status
+             FROM role_room_meetings m
+             JOIN casting_projects p ON p.id = m.project_id
+            WHERE p.created_by = $1
+              AND m.starts_at IS NOT NULL
+              AND m.status = 'upcoming'
+              AND m.starts_at <= (NOW() + ($2::int || ' days')::interval)
+              AND m.starts_at >= NOW()
+            ORDER BY m.starts_at ASC
+            LIMIT 30`,
+          [session.userId, days],
+        );
+      }
       for (const r of meetingResult.rows) {
         items.push({
           id: `meeting:${r.id}`,

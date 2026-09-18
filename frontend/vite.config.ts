@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, statSync } from 'fs';
 import { Buffer } from 'buffer';
 import { execSync } from 'node:child_process';
+import { resolveDevServerSecurity } from './shared/devServerSecurity';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +20,10 @@ const backendProxyTarget =
   process.env.VITE_API_PROXY_TARGET ||
   process.env.API_PROXY_TARGET ||
   'http://localhost:3003';
+const devServerSecurity = resolveDevServerSecurity({
+  frontendFeatureFlag: process.env.VITE_ENABLE_LOCAL_ADMIN_SESSION,
+  backendFeatureFlag: process.env.CREATORHUB_ENABLE_LOCAL_ADMIN_SESSION,
+});
 
 const readGitValue = (command: string): string | null => {
   try {
@@ -289,28 +294,31 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
+    host: devServerSecurity.host,
     port: 5001,
-    allowedHosts: true,
+    allowedHosts: devServerSecurity.allowedHosts,
     hmr: {
       overlay: true,
     },
     proxy: {
       '/api': {
         target: backendProxyTarget,
-        changeOrigin: true,
+        changeOrigin: devServerSecurity.proxyChangeOrigin,
         secure: false,
       },
       '/ws': {
         target: backendProxyTarget,
         ws: true,
-        changeOrigin: true,
+        changeOrigin: devServerSecurity.proxyChangeOrigin,
       },
-      '/auth': { target: backendProxyTarget, changeOrigin: true },
+      '/auth': {
+        target: backendProxyTarget,
+        changeOrigin: devServerSecurity.proxyChangeOrigin,
+      },
       '/socket': {
         target: backendProxyTarget,
         ws: true,
-        changeOrigin: true,
+        changeOrigin: devServerSecurity.proxyChangeOrigin,
       },
     },
     watch: {
@@ -325,9 +333,15 @@ export default defineConfig({
       ],
     },
     fs: {
-      // Allow serving files from external drives, but don't scan them
-      allow: ['..'],
-      strict: false,
+      // Appen trenger bare klientkilde, frontend-shared og installerte pakker.
+      // Ikke eksponer backend-, E2E-, iPad- eller andre repo-filer via /@fs/.
+      strict: true,
+      allow: [
+        path.resolve(__dirname, 'client'),
+        path.resolve(__dirname, 'shared'),
+        path.resolve(__dirname, 'node_modules'),
+        path.resolve(__dirname, '../node_modules'),
+      ],
     },
   },
   preview: {

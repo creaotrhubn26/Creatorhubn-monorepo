@@ -42,6 +42,8 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADBOOK_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { registerPondusTemplateRoutesV2 } from "./pondus-template-routes-v2.js";
+import { registerPondusUsageRoutesV2 } from "./pondus-usage-routes-v2.js";
 
 // Speil den globale SessionUser-typen i backend/server/index.ts. Denne
 // modulen bruker kun feltene som eksisterer i alle callsteder. isPlatformAdmin
@@ -179,6 +181,8 @@ function buildSnapshot(row: Record<string, unknown>): Record<string, unknown> {
 // Route registration
 // ─────────────────────────────────────────────────────────────────
 export function registerPondusRoutes(deps: PondusRoutesDeps): void {
+  registerPondusTemplateRoutesV2(deps);
+  return;
   const { app, pool, requireUserSession } = deps;
 
   // ───────────────────────────────────────────────────────────────
@@ -877,6 +881,8 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
 // å flytte eksisterende ruter.
 
 export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
+  registerPondusUsageRoutesV2(deps);
+  return;
   const { app, pool, requireUserSession } = deps;
 
   const VALID_OUTCOMES = new Set([
