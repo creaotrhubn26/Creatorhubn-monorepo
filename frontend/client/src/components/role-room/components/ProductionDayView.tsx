@@ -110,6 +110,9 @@ import { RichTextEditor } from './RichTextEditor';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import calenderPng from './icons/Keep/roleroom_calender.png';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { manuscriptService } from '../services/manuscriptService';
+import { mergeSceneOptions, type SceneOption } from './production/sceneOptions';
+import type { SceneBreakdown } from '../models/casting';
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -747,7 +750,32 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     });
   };
 
-  const availableScenes = castingService.getAvailableScenes(projectId);
+  // Manuset er fasiten på hvilke scener som finnes. Det lokale prosjektet
+  // kjenner bare dem som har fått en shotliste eller et breakdown, og en
+  // produsent som skulle planlegge dagen fant derfor ikke scenene sine.
+  const [manuscriptScenes, setManuscriptScenes] = useState<SceneBreakdown[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const manuscripts = await manuscriptService.getManuscripts(projectId);
+        const lists = await Promise.all(
+          manuscripts.map((manuscript) => manuscriptService.getScenes(manuscript.id)),
+        );
+        if (!cancelled) setManuscriptScenes(lists.flat());
+      } catch {
+        // Velgeren faller tilbake på prosjektets egne scener. Å svare med en
+        // tom liste hadde vært å skjule dem som faktisk finnes.
+        if (!cancelled) setManuscriptScenes([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const availableScenes: SceneOption[] = useMemo(
+    () => mergeSceneOptions(manuscriptScenes, castingService.getAvailableScenes(projectId)),
+    [manuscriptScenes, projectId],
+  );
 
   const openLocationInMaps = useCallback((locationId?: string) => {
     const location = locations.find((entry) => entry.id === locationId);
