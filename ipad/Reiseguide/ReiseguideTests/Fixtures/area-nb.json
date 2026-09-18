@@ -1,0 +1,507 @@
+{
+    "area": {
+        "id": "area_oslo_kvadraturen",
+        "slug": "oslo-kvadraturen-festningen-operaen",
+        "name": "Kvadraturen, Akershus festning og Operaen",
+        "defaultLang": "nb",
+        "center": {
+            "lat": 59.9095,
+            "lng": 10.7425
+        },
+        "bbox": {
+            "south": 59.9035,
+            "west": 10.728,
+            "north": 59.9145,
+            "east": 10.76
+        },
+        "priceNok": 59,
+        "languages": [
+            "en",
+            "nb"
+        ],
+        "poiCount": 6
+    },
+    "requestedLang": "nb",
+    "categories": [
+        {
+            "id": "museum",
+            "label": "Museum",
+            "labels": {
+                "en": "Museum",
+                "nb": "Museum"
+            },
+            "sortOrder": 1
+        },
+        {
+            "id": "historisk",
+            "label": "Historiske",
+            "labels": {
+                "en": "Historic",
+                "nb": "Historiske"
+            },
+            "sortOrder": 2
+        },
+        {
+            "id": "arkitektur",
+            "label": "Arkitektur",
+            "labels": {
+                "en": "Architecture",
+                "nb": "Arkitektur"
+            },
+            "sortOrder": 4
+        }
+    ],
+    "pois": [
+        {
+            "id": "poi_akershus_festning",
+            "slug": "akershus-festning",
+            "areaId": "area_oslo_kvadraturen",
+            "categoryId": "historisk",
+            "lat": 59.9075,
+            "lng": 10.7364,
+            "triggerRadiusM": 120,
+            "priority": 10,
+            "sortOrder": 1,
+            "freePreview": true,
+            "heroImageUrl": null,
+            "heroImageAlt": null,
+            "title": "Akershus festning",
+            "subtitle": "En borg i endring",
+            "summary": "Middelalderborgen fra rundt år 1300 ble bygget om til renessanseslott på 1600-tallet og har aldri blitt inntatt ved beleiring. I dag er festningsområdet åpent for alle.",
+            "locationLabel": "Oslo, Norge",
+            "practicalInfo": [
+                {
+                    "label": "Åpningstider",
+                    "value": "Festningsområdet er åpent daglig, sjekk tider for slottet og museene"
+                },
+                {
+                    "label": "Adkomst",
+                    "value": "Til fots fra Rådhusplassen eller Kongens gate"
+                },
+                {
+                    "label": "Trinnfri tilgang",
+                    "value": "Delvis; brostein og bratte partier innenfor murene"
+                },
+                {
+                    "label": "Toalett",
+                    "value": "Ved besøkssenteret"
+                }
+            ],
+            "lang": {
+                "requested": "nb",
+                "resolved": "nb",
+                "fallbackUsed": false,
+                "autoTranslated": false,
+                "editorialStatus": "draft",
+                "available": [
+                    "en",
+                    "nb"
+                ]
+            },
+            "variants": {
+                "narration": {
+                    "kind": "narration",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 35,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "En borg i endring",
+                            "scriptText": "Du står ved Akershus festning. Borgen ble reist rundt år 1300 under kong Håkon den femte for å verne byen fra sjøsiden. På 1600-tallet lot Christian den fjerde bygge den om til et renessanseslott, og siden har festningen skiftet rolle mange ganger: fra kongebolig til fengsel, og i dag til et åpent parkområde midt i hovedstaden.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 35,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                },
+                "audioDescription": {
+                    "kind": "audio_description",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 30,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Slik ser det ut",
+                            "scriptText": "Foran deg, på en høyde mot fjorden, reiser det seg tykke murer i grå naturstein. Over murene ser du slottets lyse tårn med spisse, mørke tak. Til venstre går en brosteinsvei skrått oppover mot porten. Til høyre, mellom trærne, glitrer fjorden. Trærne langs muren er høye og gir skygge over stien.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 30,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "poi_christiania_torv",
+            "slug": "christiania-torv",
+            "areaId": "area_oslo_kvadraturen",
+            "categoryId": "historisk",
+            "lat": 59.9107,
+            "lng": 10.7397,
+            "triggerRadiusM": 40,
+            "priority": 6,
+            "sortOrder": 2,
+            "freePreview": false,
+            "heroImageUrl": null,
+            "heroImageAlt": null,
+            "title": "Christiania torv",
+            "subtitle": "Her skal byen ligge",
+            "summary": "Torget markerer sentrum i byen Christian den fjerde grunnla i 1624, etter at det gamle Oslo brant. Skulpturen av en hanske som peker mot bakken minner om kongens ord.",
+            "locationLabel": "Oslo, Norge",
+            "practicalInfo": [
+                {
+                    "label": "Adkomst",
+                    "value": "Åpent torg, tilgjengelig hele døgnet"
+                },
+                {
+                    "label": "Trinnfri tilgang",
+                    "value": "Ja, men brostein"
+                }
+            ],
+            "lang": {
+                "requested": "nb",
+                "resolved": "nb",
+                "fallbackUsed": false,
+                "autoTranslated": false,
+                "editorialStatus": "draft",
+                "available": [
+                    "en",
+                    "nb"
+                ]
+            },
+            "variants": {
+                "narration": {
+                    "kind": "narration",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 25,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Her skal byen ligge",
+                            "scriptText": "Da Oslo brant i 1624, bestemte Christian den fjerde at byen skulle bygges opp igjen her, i ly av festningen, med rette gater i et rutenett. Det er derfor bydelen heter Kvadraturen. Torget du står på var den nye byens midtpunkt.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 25,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                },
+                "audioDescription": {
+                    "kind": "audio_description",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 20,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Slik ser det ut",
+                            "scriptText": "Du står på et lite, brosteinsbelagt torg omgitt av lave bygårder i to og tre etasjer. Midt på torget står en høy, mørk skulptur av en hanske som peker ned mot bakken. Gatene går rett ut fra torget i fire retninger.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 20,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "poi_gamle_radhus",
+            "slug": "gamle-radhus",
+            "areaId": "area_oslo_kvadraturen",
+            "categoryId": "historisk",
+            "lat": 59.9103,
+            "lng": 10.7403,
+            "triggerRadiusM": 30,
+            "priority": 3,
+            "sortOrder": 3,
+            "freePreview": false,
+            "heroImageUrl": null,
+            "heroImageAlt": null,
+            "title": "Gamle rådhus",
+            "subtitle": "Byens første rådhus",
+            "summary": "Bygningen fra 1641 var Christianias første rådhus og er i dag restaurant.",
+            "locationLabel": "Oslo, Norge",
+            "practicalInfo": [
+                {
+                    "label": "Adkomst",
+                    "value": "Sees fra Christiania torv"
+                }
+            ],
+            "lang": {
+                "requested": "nb",
+                "resolved": "nb",
+                "fallbackUsed": false,
+                "autoTranslated": false,
+                "editorialStatus": "draft",
+                "available": [
+                    "en",
+                    "nb"
+                ]
+            },
+            "variants": {
+                "narration": {
+                    "kind": "narration",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 15,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Byens første rådhus",
+                            "scriptText": "Det lave, gule huset på hjørnet er byens eldste rådhus, bygget i 1641. Her møttes byens styre i over hundre år.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 15,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                },
+                "audioDescription": null
+            }
+        },
+        {
+            "id": "poi_oslo_bors",
+            "slug": "oslo-bors",
+            "areaId": "area_oslo_kvadraturen",
+            "categoryId": "historisk",
+            "lat": 59.9108,
+            "lng": 10.743,
+            "triggerRadiusM": 40,
+            "priority": 4,
+            "sortOrder": 4,
+            "freePreview": false,
+            "heroImageUrl": null,
+            "heroImageAlt": null,
+            "title": "Oslo Børs",
+            "subtitle": "Handelens hus",
+            "summary": "Børsbygningen fra 1828, tegnet av Christian Heinrich Grosch, er blant de eldste offentlige bygningene i byen.",
+            "locationLabel": "Oslo, Norge",
+            "practicalInfo": [
+                {
+                    "label": "Adkomst",
+                    "value": "Sees fra Tollbugata; hagen foran er åpen"
+                }
+            ],
+            "lang": {
+                "requested": "nb",
+                "resolved": "nb",
+                "fallbackUsed": false,
+                "autoTranslated": false,
+                "editorialStatus": "draft",
+                "available": [
+                    "en",
+                    "nb"
+                ]
+            },
+            "variants": {
+                "narration": {
+                    "kind": "narration",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 18,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Handelens hus",
+                            "scriptText": "Bygningen foran deg ble tegnet av arkitekten Christian Heinrich Grosch og sto ferdig i 1828, som et av de første store offentlige byggene i den unge hovedstaden.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 18,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                },
+                "audioDescription": null
+            }
+        },
+        {
+            "id": "poi_bankplassen",
+            "slug": "bankplassen",
+            "areaId": "area_oslo_kvadraturen",
+            "categoryId": "museum",
+            "lat": 59.9097,
+            "lng": 10.7414,
+            "triggerRadiusM": 40,
+            "priority": 5,
+            "sortOrder": 5,
+            "freePreview": false,
+            "heroImageUrl": null,
+            "heroImageAlt": null,
+            "title": "Bankplassen",
+            "subtitle": "Fra seddelpresse til arkitektur",
+            "summary": "Plassen har navn etter Norges Banks gamle bygning fra 1830, som i dag huser Nasjonalmuseet – Arkitektur.",
+            "locationLabel": "Oslo, Norge",
+            "practicalInfo": [
+                {
+                    "label": "Åpningstider",
+                    "value": "Museet: sjekk nasjonalmuseet.no"
+                },
+                {
+                    "label": "Trinnfri tilgang",
+                    "value": "Museet har trinnfri inngang"
+                }
+            ],
+            "lang": {
+                "requested": "nb",
+                "resolved": "nb",
+                "fallbackUsed": false,
+                "autoTranslated": false,
+                "editorialStatus": "draft",
+                "available": [
+                    "en",
+                    "nb"
+                ]
+            },
+            "variants": {
+                "narration": {
+                    "kind": "narration",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 18,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Fra seddelpresse til arkitektur",
+                            "scriptText": "Den lyse, klassisistiske bygningen på plassen var Norges Banks hovedsete fra 1830. I dag er den arkitekturmuseum, med en glasspaviljong av Sverre Fehn i bakgården.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 18,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                },
+                "audioDescription": null
+            }
+        },
+        {
+            "id": "poi_operaen",
+            "slug": "operaen",
+            "areaId": "area_oslo_kvadraturen",
+            "categoryId": "arkitektur",
+            "lat": 59.9074,
+            "lng": 10.7529,
+            "triggerRadiusM": 200,
+            "priority": 8,
+            "sortOrder": 6,
+            "freePreview": false,
+            "heroImageUrl": null,
+            "heroImageAlt": null,
+            "title": "Operaen",
+            "subtitle": "Et tak du kan gå på",
+            "summary": "Operahuset i Bjørvika åpnet i 2008, tegnet av Snøhetta. Taket av hvit marmor skråner ned i fjorden og er åpent for alle.",
+            "locationLabel": "Oslo, Norge",
+            "practicalInfo": [
+                {
+                    "label": "Åpningstider",
+                    "value": "Taket er åpent hele døgnet; foajeen har egne tider"
+                },
+                {
+                    "label": "Trinnfri tilgang",
+                    "value": "Slake ramper opp på taket; foajeen er trinnfri"
+                },
+                {
+                    "label": "Toalett",
+                    "value": "I foajeen"
+                }
+            ],
+            "lang": {
+                "requested": "nb",
+                "resolved": "nb",
+                "fallbackUsed": false,
+                "autoTranslated": false,
+                "editorialStatus": "draft",
+                "available": [
+                    "en",
+                    "nb"
+                ]
+            },
+            "variants": {
+                "narration": {
+                    "kind": "narration",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 22,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Et tak du kan gå på",
+                            "scriptText": "Operahuset åpnet i 2008 og er tegnet av arkitektkontoret Snøhetta. Ideen var et hus som reiser seg fra fjorden som et isflak, med et tak alle kan gå på, uansett om de har billett eller ikke.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 22,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                },
+                "audioDescription": {
+                    "kind": "audio_description",
+                    "lang": "nb",
+                    "autoTranslated": false,
+                    "durationS": 22,
+                    "hasAudio": false,
+                    "hasCaptions": false,
+                    "chapters": [
+                        {
+                            "no": 1,
+                            "title": "Slik ser det ut",
+                            "scriptText": "Foran deg skråner en enorm flate av hvit marmor jevnt opp fra vannkanten. Flaten er brutt av en høy vegg i glass, og bak glasset skimter du et lyst treverk i eik. Til høyre ligger fjorden, til venstre nyere bygårder i glass og stål.",
+                            "imageUrl": null,
+                            "imageAlt": null,
+                            "version": 1,
+                            "editorialStatus": "draft",
+                            "estimatedDurationS": 22,
+                            "audio": null,
+                            "captions": null
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
