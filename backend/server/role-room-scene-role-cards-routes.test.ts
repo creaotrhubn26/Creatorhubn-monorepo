@@ -181,6 +181,10 @@ describe("statistens side", () => {
         int_ext: "INT",
         blocking: { planUrl: "https://eksempel.test/plan.png", camera: { x: 0.9, y: 0.5 } },
         project_name: "Pizza – kampanje",
+        day_date: "2026-10-01",
+        location_name: "Pizzeria Roma",
+        location_address: "Storgata 1, Oslo",
+        location_access: "Inngang gjennom bakgården.",
       },
     };
   });
@@ -195,7 +199,8 @@ describe("statistens side", () => {
   it("gir BARE denne personens kort — ingen andre, ingen kontaktliste", async () => {
     const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
     const nøkler = Object.keys(res.body);
-    expect(nøkler.sort()).toEqual(["card", "project", "scene"]);
+    // Strengt med vilje: hver nye toppnøkkel skal måtte forsvares her.
+    expect(nøkler.sort()).toEqual(["card", "meeting", "project", "scene"]);
     // Hele poenget: statisten skal ikke lete etter seg selv i scenen.
     expect(JSON.stringify(res.body)).not.toContain("cards");
     expect(res.body.card.id).toBeUndefined();
@@ -227,6 +232,36 @@ describe("statistens side", () => {
     const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
     // opened_at hører produksjonen til, ikke kortet personen leser.
     expect(JSON.stringify(res.body)).not.toContain("opened_at");
+  });
+
+  it("sier hvor personen skal møte, ikke bare når", async () => {
+    const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
+    expect(res.body.meeting).toEqual({
+      name: "Pizzeria Roma",
+      address: "Storgata 1, Oslo",
+      access_notes: "Inngang gjennom bakgården.",
+      date: "2026-10-01",
+    });
+  });
+
+  it("finner dagen via scenen når kortet ikke peker på en dag", async () => {
+    const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
+    const spørring = t.spørringer.find((q) => q.sql.includes("casting_production_days"));
+    // Stedet henger på dagen. Uten dette leddet mister kortene som ble laget
+    // rett i scenebyggeren oppmøtestedet sitt.
+    expect(spørring?.sql).toContain("d.scene_ids @> to_jsonb(c.scene_id)");
+  });
+
+  it("gir ingen meeting når dagen mangler sted", async () => {
+    const utenSted = { ...t.offentligRad, location_name: null, location_address: null, location_access: null };
+    const res = await request(byggApp({ ...t, offentligRad: utenSted }, false)).get("/api/role-room/role-cards/r/et-token");
+    // Tom boks med overskriften «Sted» ser ut som noe som ikke lastet.
+    expect(res.body.meeting).toBeNull();
+  });
+
+  it("gir ikke ut kontaktinfo til stedet", async () => {
+    const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
+    expect(JSON.stringify(res.body)).not.toContain("contact_info");
   });
 
   it("svarer likt for tilbaketrukket og ukjent lenke", async () => {
