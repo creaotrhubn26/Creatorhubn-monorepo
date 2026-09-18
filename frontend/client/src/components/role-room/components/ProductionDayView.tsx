@@ -5746,12 +5746,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       </Dialog>
 
       {/* Rollekort for dagens scener. availableScenes gir navnene; dialogen
-          lar deg velge scene når dagen har flere. */}
+          lar deg velge scene når dagen har flere. date er valgfri på
+          ProductionDay — uten dato står dagen uten navn, ikke «Invalid Date». */}
       <SceneRoleCardsDialog
         open={Boolean(rollekortDag)}
         onClose={() => setRollekortDag(null)}
         projectId={projectId}
-        dayLabel={rollekortDag ? new Date(rollekortDag.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' }) : undefined}
+        dayLabel={rollekortDag?.date ? new Date(rollekortDag.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' }) : undefined}
         scenes={(rollekortDag?.scenes ?? []).map((sceneId) => ({
           id: sceneId,
           title: availableScenes.find((scene) => scene.id === sceneId)?.name ?? sceneId,
