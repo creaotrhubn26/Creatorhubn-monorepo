@@ -24,6 +24,7 @@
 import React, { lazy, Suspense, useEffect } from 'react';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { Box, CircularProgress, Container, Typography } from '@mui/material';
+import { RoleRoomMark } from '../../shared/RoleRoomMark';
 
 import { useSuperAdminGate, SUPER_ADMIN_OWNER_EMAIL } from './useSuperAdminGate';
 import { SUPER_ADMIN_TARGET_TAB_KEY } from './SuperAdminOverlay';
@@ -89,6 +90,19 @@ const SuperAdminAdminRoomShell: React.FC = () => {
         </Box>
       }
     >
+      {/* Admin Room hadde ingen logo. Flaten ser ut som et eget produkt
+          uten den — og det er den ene flaten der en feil handling er dyrest,
+          så det skal ikke være tvil om hvor du er. */}
+      <Box
+        sx={{
+          px: 2,
+          py: 1.2,
+          bgcolor: 'rgba(10,5,21,0.95)',
+          borderBottom: '1px solid rgba(136, 117, 235, 0.18)',
+        }}
+      >
+        <RoleRoomMark markSize={26} surface="Admin Room" />
+      </Box>
       <AdminRoom />
     </Suspense>
     </ErrorBoundary>
