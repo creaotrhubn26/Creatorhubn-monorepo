@@ -25783,7 +25783,7 @@ setupRoleRoomSceneRoleCardsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
-// Produksjonsfase og «produksjoner på vei» (migrasjon 0633): overgangen fra
+// Produksjonsfase og «produksjoner på vei» (migrasjon 0646): overgangen fra
 // utvikling til pre-produksjon er den skuespillere vil vite om, og den varsles
 // bare for produksjoner som er annonsert.
 setupRoleRoomProductionPhaseRoutes({
