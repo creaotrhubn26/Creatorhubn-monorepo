@@ -207,7 +207,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                       <Chip
                         size="small"
                         label={`Rolle: ${p.role_name}`}
-                        sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', fontWeight: 600, fontSize: '0.7rem', height: 22 }}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', fontWeight: 600, fontSize: '0.7rem', height: 22 }}
                       />
                     ) : null}
                   </Stack>
@@ -230,7 +230,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
                 </Typography>
               ) : null}
               {p.production_notes ? (
-                <Typography sx={{ color: '#c6bdf4', fontSize: '0.78rem', mt: 0.6, pl: 7 }}>
+                <Typography sx={{ color: '#c3cbe6', fontSize: '0.78rem', mt: 0.6, pl: 7 }}>
                   Din tilbakemelding: «{p.production_notes}»
                 </Typography>
               ) : null}

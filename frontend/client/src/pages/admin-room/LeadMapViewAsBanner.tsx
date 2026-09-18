@@ -28,7 +28,7 @@ const ROLE_OPTIONS: Array<{ key: string; label: string; description: string; col
   { key: 'teamleder', label: 'Teamleder', description: 'Leder et salgs-team', color: '#fbbf24' },
   { key: 'salgskonsulent', label: 'Salgskonsulent', description: 'Selger leads, tilhører ett team', color: '#34d399' },
   { key: 'promotor', label: 'Promotør', description: 'Promoterer på event/feltarbeid', color: '#60a5fa' },
-  { key: 'member', label: 'Medlem', description: 'Generisk skrive-tilgang', color: '#9e8cf8' },
+  { key: 'member', label: 'Medlem', description: 'Generisk skrive-tilgang', color: '#93a4dc' },
   { key: 'viewer', label: 'Leser', description: 'Kun lese-tilgang', color: '#9ca3af' },
 ];
 
@@ -142,8 +142,8 @@ export default function LeadMapViewAsBanner() {
             size="small"
             variant="outlined"
             sx={{
-              color: 'rgba(158, 140, 248,0.85)',
-              borderColor: 'rgba(158, 140, 248,0.4)',
+              color: 'rgba(147, 164, 220,0.85)',
+              borderColor: 'rgba(147, 164, 220,0.4)',
               fontSize: '0.72rem',
               textTransform: 'none',
             }}

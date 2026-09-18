@@ -54,7 +54,7 @@ const ROLE_OPTIONS = [
   { key: 'teamleder', label: 'Teamleder', color: '#fbbf24', description: 'Leder ett salgs-team' },
   { key: 'salgskonsulent', label: 'Salgskonsulent', color: '#34d399', description: 'Selger leads i ditt team' },
   { key: 'promotor', label: 'Promotør', color: '#60a5fa', description: 'Promoterer på event/feltarbeid' },
-  { key: 'member', label: 'Medlem', color: '#9e8cf8', description: 'Standard skrive-tilgang' },
+  { key: 'member', label: 'Medlem', color: '#93a4dc', description: 'Standard skrive-tilgang' },
   { key: 'viewer', label: 'Leser', color: '#9ca3af', description: 'Kun lese-tilgang' },
 ];
 

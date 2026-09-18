@@ -493,7 +493,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           </IconButton>
         )}
 
-        <Box sx={{ p: 3, pb: 1, background: 'linear-gradient(135deg, #18122b, #261763)' }}>
+        <Box sx={{ p: 3, pb: 1, background: 'linear-gradient(135deg, #2a3d56, #2b2553)' }}>
           <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>
             Steg {step + 1} av {totalSteps}
           </Typography>
@@ -504,7 +504,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
             variant="determinate"
             value={((step + 1) / totalSteps) * 100}
             sx={{ mt: 2, height: 4, borderRadius: 2,
-                   '& .MuiLinearProgress-bar': { backgroundColor: '#472bd4' } }}
+                   '& .MuiLinearProgress-bar': { backgroundColor: '#3e3180' } }}
           />
         </Box>
 
@@ -611,7 +611,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 />
               ) : (
                 <Avatar sx={{ width: 120, height: 120, fontSize: 48,
-                              bgcolor: 'rgba(71, 43, 212, 0.2)' }}>
+                              bgcolor: 'rgba(62, 49, 128, 0.2)' }}>
                   <Person sx={{ fontSize: 60 }} />
                 </Avatar>
               )}
@@ -1038,13 +1038,13 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
               <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
                 Du kan endre dette når som helst senere i Innstillinger.
               </Typography>
-              <Box sx={{ background: 'rgba(71, 43, 212, 0.08)', p: 2, borderRadius: 2, mt: 2 }}>
+              <Box sx={{ background: 'rgba(62, 49, 128, 0.08)', p: 2, borderRadius: 2, mt: 2 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
                   <Avatar
                     src={profileImage ?? undefined}
                     imgProps={{ style: { objectPosition: focalToObjectPosition(
                       form.profileImageFocalX, form.profileImageFocalY) } }}
-                    sx={{ width: 44, height: 44, bgcolor: 'rgba(71, 43, 212, 0.2)' }}
+                    sx={{ width: 44, height: 44, bgcolor: 'rgba(62, 49, 128, 0.2)' }}
                   >
                     {profileImage ? null : <Person />}
                   </Avatar>

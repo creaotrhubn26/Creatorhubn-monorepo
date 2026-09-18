@@ -490,21 +490,21 @@ export function WarehouseInventoryDialog({
               display: grid;
               place-items: center;
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: #100b1e;
+              background: #2a3152;
               color: #fff;
             }
             .label {
               width: 420px;
-              border: 2px solid #6249df;
+              border: 2px solid #4b3d8f;
               border-radius: 16px;
-              background: #18122b;
+              background: #2a3d56;
               padding: 20px;
               box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
             }
             h2 {
               margin: 0 0 8px 0;
               font-size: 24px;
-              color: #9e8cf8;
+              color: #93a4dc;
             }
             .meta {
               margin: 0 0 12px 0;
@@ -515,7 +515,7 @@ export function WarehouseInventoryDialog({
               padding: 12px;
               border-radius: 12px;
               border: 1px solid rgba(255,255,255,0.15);
-              background: #100b1e;
+              background: #2a3152;
               display: grid;
               place-items: center;
             }
@@ -604,7 +604,7 @@ export function WarehouseInventoryDialog({
           py: 1.75,
           px: { xs: 2, md: 2.5 },
           background:
-            'linear-gradient(120deg, rgba(98, 73, 223,0.18) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.2) 100%)',
+            'linear-gradient(120deg, rgba(75, 61, 143,0.18) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.2) 100%)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -613,7 +613,7 @@ export function WarehouseInventoryDialog({
               width: 36,
               height: 36,
               borderRadius: 1.5,
-              background: 'linear-gradient(135deg, #8875eb, #472bd4)',
+              background: 'linear-gradient(135deg, #5d76cb, #3e3180)',
               border: '1px solid rgba(224, 219, 250,0.36)',
               display: 'flex',
               alignItems: 'center',
@@ -670,10 +670,10 @@ export function WarehouseInventoryDialog({
               bgcolor: 'rgba(15,23,42,0.6)',
               mr: 1,
               '&.Mui-selected': {
-                color: '#e0dbfa',
-                borderColor: 'rgba(158, 140, 248,0.46)',
-                bgcolor: 'rgba(98, 73, 223,0.24)',
-                boxShadow: '0 8px 20px rgba(98, 73, 223,0.26)',
+                color: '#dfe4f3',
+                borderColor: 'rgba(147, 164, 220,0.46)',
+                bgcolor: 'rgba(75, 61, 143,0.24)',
+                boxShadow: '0 8px 20px rgba(75, 61, 143,0.26)',
               },
             },
           }}
@@ -702,7 +702,7 @@ export function WarehouseInventoryDialog({
                 { label: 'Tilgjengelig', value: totals.totalAvailable, color: '#81c784' },
                 { label: 'Reservert', value: totals.totalReserved, color: '#ffb74d' },
                 { label: 'Totalt', value: totals.totalQuantity, color: '#64b5f6' },
-                { label: 'Lagernoder', value: totals.locations, color: '#9e8cf8' },
+                { label: 'Lagernoder', value: totals.locations, color: '#93a4dc' },
                 { label: 'Lav beholdning', value: totals.lowStock, color: '#ef5350' },
                 { label: 'Avvik', value: totals.issues, color: '#fbc02d' },
               ].map((metric) => (
@@ -757,8 +757,8 @@ export function WarehouseInventoryDialog({
                           bgcolor:
                             row.itemType === 'equipment'
                               ? 'rgba(33,150,243,0.2)'
-                              : 'rgba(158, 140, 248,0.2)',
-                          color: row.itemType === 'equipment' ? '#64b5f6' : '#9e8cf8',
+                              : 'rgba(147, 164, 220,0.2)',
+                          color: row.itemType === 'equipment' ? '#64b5f6' : '#93a4dc',
                         }}
                       />
                     </TableCell>
@@ -839,7 +839,7 @@ export function WarehouseInventoryDialog({
                   ))}
                 </Select>
               </FormControl>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateNode} sx={{ background: 'linear-gradient(135deg, #8875eb, #6249df)', color: '#0a0515', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #9e8cf8, #6249df)' } }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateNode} sx={{ background: 'linear-gradient(135deg, #5d76cb, #4b3d8f)', color: '#1b122c', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #93a4dc, #4b3d8f)' } }}>
                 Opprett
               </Button>
             </Box>
@@ -920,7 +920,7 @@ export function WarehouseInventoryDialog({
                     setQrScanError(null);
                     setQrScanOpen(true);
                   }}
-                  sx={{ borderColor: 'rgba(158, 140, 248,0.5)', color: '#c6bdf4', '&:hover': { borderColor: '#c6bdf4', bgcolor: 'rgba(98, 73, 223,0.12)' } }}
+                  sx={{ borderColor: 'rgba(147, 164, 220,0.5)', color: '#c3cbe6', '&:hover': { borderColor: '#c3cbe6', bgcolor: 'rgba(75, 61, 143,0.12)' } }}
                 >
                   Skann QR
                 </Button>
@@ -1046,7 +1046,7 @@ export function WarehouseInventoryDialog({
             </Box>
 
             <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
-              <Button variant="contained" onClick={handleSubmitOperation} sx={{ background: 'linear-gradient(135deg, #8875eb, #6249df)', color: '#0a0515', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #9e8cf8, #6249df)' } }}>
+              <Button variant="contained" onClick={handleSubmitOperation} sx={{ background: 'linear-gradient(135deg, #5d76cb, #4b3d8f)', color: '#1b122c', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #93a4dc, #4b3d8f)' } }}>
                 Lagre operasjon
               </Button>
             </Stack>
@@ -1281,7 +1281,7 @@ export function WarehouseInventoryDialog({
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Chip
                   label={`ID: ${qrItem.id}`}
-                  sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#9e8cf8' }}
+                  sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#93a4dc' }}
                 />
                 <Chip
                   label={`Type: ${qrItem.itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt'}`}
@@ -1305,7 +1305,7 @@ export function WarehouseInventoryDialog({
             variant="outlined"
             startIcon={<CopyIcon />}
             onClick={() => qrItem && handleCopyQrValue(qrItem)}
-            sx={{ borderColor: '#9e8cf8', color: '#9e8cf8' }}
+            sx={{ borderColor: '#93a4dc', color: '#93a4dc' }}
           >
             Kopier data
           </Button>
@@ -1318,7 +1318,7 @@ export function WarehouseInventoryDialog({
               setQrScanError(null);
               setQrScanOpen(true);
             }}
-            sx={{ borderColor: '#9e8cf8', color: '#9e8cf8', '&:hover': { borderColor: '#c6bdf4', bgcolor: 'rgba(98, 73, 223,0.12)' } }}
+            sx={{ borderColor: '#93a4dc', color: '#93a4dc', '&:hover': { borderColor: '#c3cbe6', bgcolor: 'rgba(75, 61, 143,0.12)' } }}
           >
             Skann
           </Button>
@@ -1326,7 +1326,7 @@ export function WarehouseInventoryDialog({
             variant="contained"
             startIcon={<PrintIcon />}
             onClick={() => qrItem && handlePrintQrLabel(qrItem)}
-            sx={{ bgcolor: '#6249df', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#8875eb' } }}
+            sx={{ bgcolor: '#4b3d8f', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#5d76cb' } }}
           >
             Skriv ut etikett
           </Button>
@@ -1358,7 +1358,7 @@ export function WarehouseInventoryDialog({
           }}
         >
           <Stack direction="row" spacing={1} alignItems="center">
-            <QrCodeScannerIcon sx={{ color: '#9e8cf8' }} />
+            <QrCodeScannerIcon sx={{ color: '#93a4dc' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Skann lager-QR
             </Typography>
@@ -1396,8 +1396,8 @@ export function WarehouseInventoryDialog({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(158, 140, 248,0.45)' },
-                '&.Mui-focused fieldset': { borderColor: '#9e8cf8' },
+                '&:hover fieldset': { borderColor: 'rgba(147, 164, 220,0.45)' },
+                '&.Mui-focused fieldset': { borderColor: '#93a4dc' },
               },
             }}
           />
@@ -1428,7 +1428,7 @@ export function WarehouseInventoryDialog({
                 setQrScanError('Kunne ikke lese fra utklippstavle.');
               }
             }}
-            sx={{ borderColor: '#9e8cf8', color: '#9e8cf8' }}
+            sx={{ borderColor: '#93a4dc', color: '#93a4dc' }}
           >
             Lim inn
           </Button>
@@ -1436,7 +1436,7 @@ export function WarehouseInventoryDialog({
             variant="contained"
             startIcon={<QrCodeScannerIcon />}
             onClick={() => handleResolveScannedQr(qrScanInput)}
-            sx={{ background: 'linear-gradient(135deg, #8875eb, #6249df)', color: '#000', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #9e8cf8, #6249df)' } }}
+            sx={{ background: 'linear-gradient(135deg, #5d76cb, #4b3d8f)', color: '#000', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #93a4dc, #4b3d8f)' } }}
           >
             Tolk QR
           </Button>

@@ -156,7 +156,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
       sx={{
         p: 1.6,
         borderRadius: 3,
-        border: '1px solid rgba(136, 117, 235,0.24)',
+        border: '1px solid rgba(93, 118, 203,0.24)',
         bgcolor: 'rgba(33, 28, 59,0.36)',
         mb: 2,
       }}
@@ -191,18 +191,18 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
               sx={{
                 p: 1.6,
                 height: '100%',
-                bgcolor: ready ? 'rgba(136, 117, 235,0.22)' : 'rgba(148,163,184,0.1)',
-                border: ready ? '1px solid rgba(136, 117, 235,0.5)' : '1px solid rgba(148,163,184,0.2)',
+                bgcolor: ready ? 'rgba(93, 118, 203,0.22)' : 'rgba(148,163,184,0.1)',
+                border: ready ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid rgba(148,163,184,0.2)',
                 color: ready ? '#e0e7ff' : 'rgba(226,232,240,0.5)',
                 textTransform: 'none',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
                 gap: 0.6,
-                '&:hover': ready ? { bgcolor: 'rgba(136, 117, 235,0.32)' } : {},
+                '&:hover': ready ? { bgcolor: 'rgba(93, 118, 203,0.32)' } : {},
               }}
             >
-              <MarketingPlanIcon sx={{ color: ready ? '#c6bdf4' : 'rgba(226,232,240,0.4)' }} />
+              <MarketingPlanIcon sx={{ color: ready ? '#c3cbe6' : 'rgba(226,232,240,0.4)' }} />
               <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', textAlign: 'left' }}>
                 Generer Marketing Plan
               </Typography>
@@ -220,8 +220,8 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
                       sx={{
                         height: 18,
                         fontSize: '0.66rem',
-                        bgcolor: 'rgba(136, 117, 235,0.16)',
-                        color: '#e0dbfa',
+                        bgcolor: 'rgba(93, 118, 203,0.16)',
+                        color: '#dfe4f3',
                         fontFamily: 'monospace',
                       }}
                     />

@@ -709,7 +709,7 @@ export default function ProducerMeetingWorkspace({
                 <Chip
                   size="small"
                   label={PRODUCER_PLANNING_PHASE_LABELS[meetingWorkspace.phase]}
-                  sx={{ bgcolor: 'rgba(158, 140, 248,0.16)', color: '#e0dbfa' }}
+                  sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#dfe4f3' }}
                 />
               ) : null}
               {meetingWorkspace.meetingMode ? (
@@ -744,7 +744,7 @@ export default function ProducerMeetingWorkspace({
                 <Chip
                   size="small"
                   label={`${assetCount} assets`}
-                  sx={{ bgcolor: 'rgba(158, 140, 248,0.16)', color: '#ebe7fd' }}
+                  sx={{ bgcolor: 'rgba(147, 164, 220,0.16)', color: '#eef1fb' }}
                 />
               ) : null}
             </Stack>
@@ -1225,7 +1225,7 @@ export default function ProducerMeetingWorkspace({
                           <Chip
                             size="small"
                             label={PRODUCER_PLANNING_PHASE_LABELS[item.phase]}
-                            sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }}
                           />
                         ) : null}
                         <Chip
@@ -1462,7 +1462,7 @@ export default function ProducerMeetingWorkspace({
                           <Chip
                             size="small"
                             label={PRODUCER_PLANNING_PHASE_LABELS[item.phase]}
-                            sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }}
+                            sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }}
                           />
                         ) : null}
                         {syncedTimelineItem ? (

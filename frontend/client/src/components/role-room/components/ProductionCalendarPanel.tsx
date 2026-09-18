@@ -110,7 +110,7 @@ const EVENT_TYPES = [
   { value: 'audition', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
   { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
   { value: 'fitting', label: 'Kostyme/Fitting', icon: <CheckroomIcon />, color: '#ec4899' },
-  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: 'var(--role-violet, #8875eb)' },
+  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: 'var(--role-violet, #5d76cb)' },
   { value: 'shooting', label: 'Opptak', icon: <MovieIcon />, color: '#10b981' },
   { value: 'general', label: 'Generelt', icon: <EventIcon />, color: '#6b7280' },
 ];
@@ -216,7 +216,7 @@ const modalFieldSx = {
   '& .MuiInputLabel-root': {
     color: 'rgba(226,232,240,0.82)',
     '&.Mui-focused': {
-      color: '#9e8cf8',
+      color: '#93a4dc',
     },
   },
   '& .MuiOutlinedInput-root': {
@@ -227,10 +227,10 @@ const modalFieldSx = {
       borderColor: 'rgba(148,163,184,0.34)',
     },
     '&:hover fieldset': {
-      borderColor: 'rgba(158, 140, 248,0.58)',
+      borderColor: 'rgba(147, 164, 220,0.58)',
     },
     '&.Mui-focused fieldset': {
-      borderColor: '#8875eb',
+      borderColor: '#5d76cb',
     },
   },
 } as const;
@@ -888,7 +888,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           py: { xs: 1.25, sm: 1.5 },
           borderRadius: 2.5,
           border: '1px solid rgba(148,163,184,0.28)',
-          background: 'linear-gradient(120deg, rgba(98, 73, 223,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.24) 100%)',
+          background: 'linear-gradient(120deg, rgba(75, 61, 143,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.24) 100%)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -897,12 +897,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               width: 36,
               height: 36,
               borderRadius: 1.5,
-              background: 'linear-gradient(135deg, #8875eb, #6249df)',
+              background: 'linear-gradient(135deg, #5d76cb, #4b3d8f)',
               border: '1px solid rgba(224, 219, 250,0.34)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 8px 20px rgba(98, 73, 223,0.3)',
+              boxShadow: '0 8px 20px rgba(75, 61, 143,0.3)',
             }}
           >
             <CalendarMonthIcon sx={{ color: '#fff', fontSize: 18 }} />
@@ -920,9 +920,9 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           size="small"
           label="PRO"
           sx={{
-            bgcolor: 'rgba(158, 140, 248,0.2)',
-            color: '#e0dbfa',
-            border: '1px solid rgba(158, 140, 248,0.45)',
+            bgcolor: 'rgba(147, 164, 220,0.2)',
+            color: '#dfe4f3',
+            border: '1px solid rgba(147, 164, 220,0.45)',
             fontWeight: 700,
             letterSpacing: 0.4,
           }}
@@ -979,15 +979,15 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             px: 1.5,
             py: 0.75,
             borderRadius: 1.5,
-            border: viewMode === 'crew' ? '1px solid rgba(136, 117, 235,0.5)' : '1px solid rgba(255,255,255,0.15)',
-            bgcolor: viewMode === 'crew' ? 'rgba(136, 117, 235,0.22)' : 'transparent',
-            color: viewMode === 'crew' ? '#c6bdf4' : 'rgba(255,255,255,0.7)',
+            border: viewMode === 'crew' ? '1px solid rgba(93, 118, 203,0.5)' : '1px solid rgba(255,255,255,0.15)',
+            bgcolor: viewMode === 'crew' ? 'rgba(93, 118, 203,0.22)' : 'transparent',
+            color: viewMode === 'crew' ? '#c3cbe6' : 'rgba(255,255,255,0.7)',
             cursor: 'pointer',
             fontFamily: 'inherit',
             fontSize: '0.78rem',
             fontWeight: 600,
             transition: 'background-color 160ms ease-out',
-            '&:hover': { bgcolor: viewMode === 'crew' ? 'rgba(136, 117, 235,0.32)' : 'rgba(255,255,255,0.05)' },
+            '&:hover': { bgcolor: viewMode === 'crew' ? 'rgba(93, 118, 203,0.32)' : 'rgba(255,255,255,0.05)' },
           }}
         >
           <PersonIcon sx={{ fontSize: 16 }} />
@@ -1074,7 +1074,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
               selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
               fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-              rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8875eb)', icon: <GroupsIcon /> },
+              rehearsal: { label: 'Prøve', color: 'var(--role-violet, #5d76cb)', icon: <GroupsIcon /> },
               shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
               general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
             }}
@@ -1095,7 +1095,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
             selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
             fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-            rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8875eb)', icon: <GroupsIcon /> },
+            rehearsal: { label: 'Prøve', color: 'var(--role-violet, #5d76cb)', icon: <GroupsIcon /> },
             shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
             general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
           }}
@@ -1219,7 +1219,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
 
                         {eventCandidates.length > 0 && (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <PersonIcon sx={{ fontSize: 14, color: 'var(--role-violet, #8875eb)' }} />
+                            <PersonIcon sx={{ fontSize: 14, color: 'var(--role-violet, #5d76cb)' }} />
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                               {eventCandidates.map(c => c.name).join(', ')}
                             </Typography>
@@ -1261,12 +1261,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           paper: {
             sx: {
               color: '#fff',
-              border: '1px solid rgba(136, 117, 235,0.45)',
+              border: '1px solid rgba(93, 118, 203,0.45)',
               borderRadius: 3,
               background:
                 'radial-gradient(120% 150% at 0% 0%, rgba(34,211,238,0.14) 0%, rgba(15,23,42,0) 44%), linear-gradient(165deg, rgba(16, 11, 30,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
               boxShadow:
-                '0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(136, 117, 235,0.25)',
+                '0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(34,211,238,0.14) inset, 0 0 32px rgba(93, 118, 203,0.25)',
               overflow: 'hidden',
             },
           },
@@ -1277,14 +1277,14 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: 1.25,
-            borderBottom: '1px solid rgba(136, 117, 235,0.35)',
-            background: 'linear-gradient(120deg, rgba(98, 73, 223,0.42) 0%, rgba(15,23,42,0.9) 55%, rgba(34,211,238,0.24) 100%)',
+            borderBottom: '1px solid rgba(93, 118, 203,0.35)',
+            background: 'linear-gradient(120deg, rgba(75, 61, 143,0.42) 0%, rgba(15,23,42,0.9) 55%, rgba(34,211,238,0.24) 100%)',
           }}
         >
           <Box sx={{ color: eventTypeConfig.color, display: 'inline-flex', alignItems: 'center' }}>
             {eventTypeConfig.icon}
           </Box>
-          <CalendarMonthIcon sx={{ color: '#9e8cf8' }} />
+          <CalendarMonthIcon sx={{ color: '#93a4dc' }} />
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Typography sx={{ fontWeight: 700, lineHeight: 1.2 }}>
               {editingEvent ? 'Rediger hendelse' : 'Ny hendelse'}
@@ -1642,7 +1642,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(136, 117, 235,0.25)',
+            borderTop: '1px solid rgba(93, 118, 203,0.25)',
             bgcolor: 'rgba(10, 5, 21,0.84)',
             backdropFilter: 'blur(8px)',
             px: 3,
@@ -1656,7 +1656,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               color: 'rgba(226,232,240,0.92)',
               border: '1px solid rgba(148,163,184,0.38)',
               bgcolor: 'rgba(15,23,42,0.55)',
-              '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(136, 117, 235,0.5)' },
+              '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(93, 118, 203,0.5)' },
             }}
           >
             Avbryt

@@ -307,8 +307,8 @@ export const ContactProjectInfoSummary: React.FC<ContactProjectInfoSummaryProps>
               flex: 1,
               p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
               borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
-              bgcolor: 'rgba(60, 39, 165, 0.04)',
-              border: '1px solid rgba(60, 39, 165, 0.1)'
+              bgcolor: 'rgba(50, 18, 122, 0.04)',
+              border: '1px solid rgba(50, 18, 122, 0.1)'
             }}
           >
             <Typography 

@@ -65,10 +65,10 @@ export default function CarouselWeekOverview({ draft, posts, onSelectPost }: Pro
                 bgcolor: 'rgba(15,23,42,0.72)',
                 borderColor: isApproved
                   ? 'rgba(52,211,153,0.45)'
-                  : 'rgba(136, 117, 235,0.22)',
+                  : 'rgba(93, 118, 203,0.22)',
                 transition: 'border-color 120ms ease, transform 120ms ease',
                 '&:hover': {
-                  borderColor: '#8875eb',
+                  borderColor: '#5d76cb',
                   transform: 'translateY(-2px)',
                 },
               }}
@@ -103,8 +103,8 @@ export default function CarouselWeekOverview({ draft, posts, onSelectPost }: Pro
                     size="small"
                     label={meta.label}
                     sx={{
-                      bgcolor: 'rgba(136, 117, 235,0.16)',
-                      color: '#9e8cf8',
+                      bgcolor: 'rgba(93, 118, 203,0.16)',
+                      color: '#93a4dc',
                       fontSize: 11,
                       height: 20,
                     }}
@@ -121,7 +121,7 @@ export default function CarouselWeekOverview({ draft, posts, onSelectPost }: Pro
                   />
                 </Stack>
                 <Stack direction="row" justifyContent="flex-end">
-                  <IconButton size="small" sx={{ color: '#9e8cf8' }}>
+                  <IconButton size="small" sx={{ color: '#93a4dc' }}>
                     <EditIcon fontSize="small" />
                   </IconButton>
                 </Stack>

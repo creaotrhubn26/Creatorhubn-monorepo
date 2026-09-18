@@ -117,18 +117,18 @@ import RoleRoomBrandMark from '../shared/RoleRoomBrandMark';
 
 // TROLL area configuration matching CastingPlannerPanel navigation colors/icons
 const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: string }> = {
-  project: { Icon: DashboardIcon, color: 'var(--role-violet, #8875eb)', label: 'Prosjekt' },
+  project: { Icon: DashboardIcon, color: 'var(--role-violet, #5d76cb)', label: 'Prosjekt' },
   roles: { Icon: TheaterComedyIcon, color: '#f48fb1', label: 'Roller' },
   candidates: { Icon: RecentActorsIcon, color: '#10b981', label: 'Kandidater' },
   crew: { Icon: GroupsIcon, color: 'var(--role-cyan, #00d4ff)', label: 'Team' },
   locations: { Icon: LocationIcon, color: '#4caf50', label: 'Lokasjoner' },
-  equipment: { Icon: PropIcon, color: '#6249df', label: 'Utstyr' },
-  production_days: { Icon: CalendarIcon, color: '#3c27a5', label: 'Prod.dager' },
+  equipment: { Icon: PropIcon, color: '#4b3d8f', label: 'Utstyr' },
+  production_days: { Icon: CalendarIcon, color: '#32127a', label: 'Prod.dager' },
   scenes: { Icon: ShotListIcon, color: '#e91e63', label: 'Scener' },
   shot_lists: { Icon: ShotListIcon, color: '#e91e63', label: 'Shot Lists' },
   split_sheets: { Icon: ShareIcon, color: '#06b6d4', label: 'Deling' },
   offers: { Icon: HandshakeIcon, color: '#ffb800', label: 'Tilbud' },
-  contracts: { Icon: ContractsIcon, color: '#6249df', label: 'Kontrakter' },
+  contracts: { Icon: ContractsIcon, color: '#4b3d8f', label: 'Kontrakter' },
   consents: { Icon: ConsentIcon, color: '#00bcd4', label: 'Samtykker' },
 };
 
@@ -2418,13 +2418,13 @@ export default function NewProjectCreationModal({
     <Box sx={{ mt: { xs: 1, sm: 2 } }}>
       {/* TROLL Demo Button - Only show when creating new project (not editing) */}
       {!initialData?.id && isCastingPlanner && (
-        <Card sx={{ mb: { xs: 2, sm: 2.5, md: 3 }, borderRadius: 2, bgcolor: 'rgba(60, 39, 165, 0.08)', border: '1px solid rgba(60, 39, 165, 0.3)' }}>
+        <Card sx={{ mb: { xs: 2, sm: 2.5, md: 3 }, borderRadius: 2, bgcolor: 'rgba(50, 18, 122, 0.08)', border: '1px solid rgba(50, 18, 122, 0.3)' }}>
           <CardContent sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <MovieFilterIcon sx={{ color: '#8875eb', fontSize: 28 }} />
+                <MovieFilterIcon sx={{ color: '#5d76cb', fontSize: 28 }} />
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#8875eb', fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ color: '#5d76cb', fontWeight: 600 }}>
                     {demoProjectTitle}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.8rem' }}>
@@ -2443,11 +2443,11 @@ export default function NewProjectCreationModal({
                   <PlayCircleIcon />
                 }
                 sx={{
-                  borderColor: trollInitStatus === 'complete' ? '#4caf50' : '#3c27a5',
-                  color: trollInitStatus === 'complete' ? '#81c784' : '#8875eb',
+                  borderColor: trollInitStatus === 'complete' ? '#4caf50' : '#32127a',
+                  color: trollInitStatus === 'complete' ? '#81c784' : '#5d76cb',
                   '&:hover': { 
-                    borderColor: trollInitStatus === 'complete' ? '#66bb6a' : '#6249df', 
-                    bgcolor: trollInitStatus === 'complete' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(60, 39, 165, 0.1)' 
+                    borderColor: trollInitStatus === 'complete' ? '#66bb6a' : '#4b3d8f', 
+                    bgcolor: trollInitStatus === 'complete' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(50, 18, 122, 0.1)' 
                   },
                   minWidth: 160,
                 }}
@@ -2458,7 +2458,7 @@ export default function NewProjectCreationModal({
             
             {/* Show status when loading or complete */}
             {(trollInitStatus === 'loading' || trollInitStatus === 'complete') && Object.keys(trollInitAreas).length > 0 && (
-              <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(60, 39, 165, 0.2)' }}>
+              <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(50, 18, 122, 0.2)' }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: 1 }}>
                   Data lastet fra database:
                 </Typography>
@@ -2907,7 +2907,7 @@ export default function NewProjectCreationModal({
         <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }, mb: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
             <Typography variant="h6" gutterBottom={false} sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-              <SplitSheetIcon sx={{ color: '#8875eb', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
+              <SplitSheetIcon sx={{ color: '#5d76cb', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
               Økonomi og teamavtaler
             </Typography>
             <Chip
@@ -2938,7 +2938,7 @@ export default function NewProjectCreationModal({
                 <Chip
                   size="small"
                   label={`${projectData.splitSheetData.contributors.length} bidragsytere klargjort i økonomi`}
-                  sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4' }}
+                  sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }}
                 />
               ) : null}
             </Stack>
@@ -3109,7 +3109,7 @@ export default function NewProjectCreationModal({
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                     <Chip size="small" label="1. Grunndata" sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
                     <Chip size="small" label="2. Team og økonomi" sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
-                    <Chip size="small" label="3. Oppsummering" sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }} />
+                    <Chip size="small" label="3. Oppsummering" sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }} />
                   </Stack>
                 </Stack>
                 <Stack
@@ -3980,13 +3980,13 @@ export default function NewProjectCreationModal({
             </CardContent>
           </Card>
 
-          {/* Tilgjengelighet Card - synced with CrewManagementPanel, uses Kalender tab colors (#3c27a5) */}
+          {/* Tilgjengelighet Card - synced with CrewManagementPanel, uses Kalender tab colors (#32127a) */}
           <Card sx={{ 
             mb: 0, 
             borderRadius: 3, 
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            bgcolor: 'rgba(60, 39, 165,0.05)',
-            border: '1px solid rgba(60, 39, 165,0.2)',
+            bgcolor: 'rgba(50, 18, 122,0.05)',
+            border: '1px solid rgba(50, 18, 122,0.2)',
           }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom sx={{ 
@@ -3997,10 +3997,10 @@ export default function NewProjectCreationModal({
                 gap: 1,
                 color: '#fff',
               }}>
-                <CalendarIcon sx={{ color: '#3c27a5' }} />
+                <CalendarIcon sx={{ color: '#32127a' }} />
                 Tilgjengelighet
               </Typography>
-              <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(60, 39, 165,0.3)' }} />
+              <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(50, 18, 122,0.3)' }} />
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2, fontSize: '0.875rem' }}>
                 Angi når teammedlemmet er tilgjengelig for prosjektet.
               </Typography>
@@ -4019,12 +4019,12 @@ export default function NewProjectCreationModal({
                     '& .MuiOutlinedInput-root': {
                       color: '#fff',
                       minHeight: TOUCH_TARGET_SIZE,
-                      '& fieldset': { borderColor: 'rgba(60, 39, 165,0.4)' },
-                      '&:hover fieldset': { borderColor: 'rgba(60, 39, 165,0.6)' },
-                      '&.Mui-focused fieldset': { borderColor: '#3c27a5', borderWidth: 2 },
+                      '& fieldset': { borderColor: 'rgba(50, 18, 122,0.4)' },
+                      '&:hover fieldset': { borderColor: 'rgba(50, 18, 122,0.6)' },
+                      '&.Mui-focused fieldset': { borderColor: '#32127a', borderWidth: 2 },
                     },
                     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiInputLabel-root.Mui-focused': { color: '#3c27a5' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#32127a' },
                     '& input[type="date"]::-webkit-calendar-picker-indicator': {
                       filter: 'invert(1)',
                     },
@@ -4044,12 +4044,12 @@ export default function NewProjectCreationModal({
                     '& .MuiOutlinedInput-root': {
                       color: '#fff',
                       minHeight: TOUCH_TARGET_SIZE,
-                      '& fieldset': { borderColor: 'rgba(60, 39, 165,0.4)' },
-                      '&:hover fieldset': { borderColor: 'rgba(60, 39, 165,0.6)' },
-                      '&.Mui-focused fieldset': { borderColor: '#3c27a5', borderWidth: 2 },
+                      '& fieldset': { borderColor: 'rgba(50, 18, 122,0.4)' },
+                      '&:hover fieldset': { borderColor: 'rgba(50, 18, 122,0.6)' },
+                      '&.Mui-focused fieldset': { borderColor: '#32127a', borderWidth: 2 },
                     },
                     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiInputLabel-root.Mui-focused': { color: '#3c27a5' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#32127a' },
                     '& input[type="date"]::-webkit-calendar-picker-indicator': {
                       filter: 'invert(1)',
                     },
@@ -4328,7 +4328,7 @@ export default function NewProjectCreationModal({
                         if (!role) return '#6b7280';
                         if (['second_shooter', 'photo_editor', 'retoucher'].includes(role)) return '#10b981';
                         if (['assistant', 'stylist', 'makeup_artist'].includes(role)) return '#3b82f6';
-                        if (['video_editor', 'cinematographer', 'colorist'].includes(role)) return '#8875eb';
+                        if (['video_editor', 'cinematographer', 'colorist'].includes(role)) return '#5d76cb';
                         if (['sound_engineer', 'grip', 'gaffer'].includes(role)) return '#3b82f6';
                         if (['producer', 'artist'].includes(role)) return '#10b981';
                         if (['songwriter', 'composer', 'mix_engineer'].includes(role)) return '#f59e0b';
@@ -4420,7 +4420,7 @@ export default function NewProjectCreationModal({
             <Card sx={{ borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-                  <SplitSheetIcon sx={{ color: '#8875eb', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
+                  <SplitSheetIcon sx={{ color: '#5d76cb', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
                   Økonomi og teamavtaler
                 </Typography>
                 <Stack spacing={1.5}>
@@ -4431,7 +4431,7 @@ export default function NewProjectCreationModal({
                     <Chip
                       size="small"
                       label={projectData.splitSheetData ? 'Avtaler klargjort i økonomi' : 'Avtaler opprettes i økonomi'}
-                      sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4' }}
+                      sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }}
                     />
                     <Chip
                       size="small"
@@ -4876,7 +4876,7 @@ export default function NewProjectCreationModal({
       {/* Demo Init Status Dialog */}
       <Dialog open={trollInitDialogOpen} onClose={() => setTrollInitDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SvgIcon sx={{ color: '#3c27a5' }}><InterpreterModeIcon /></SvgIcon>
+          <SvgIcon sx={{ color: '#32127a' }}><InterpreterModeIcon /></SvgIcon>
           {isContentProducerSession ? 'Innholdsprodusent-initialisering' : 'TROLL Initialisering'}
         </DialogTitle>
         <DialogContent>

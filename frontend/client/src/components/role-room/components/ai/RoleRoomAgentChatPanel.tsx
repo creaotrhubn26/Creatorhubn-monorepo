@@ -307,8 +307,8 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
                 p: 1.4,
                 borderRadius: 2.2,
                 border: '1px solid',
-                borderColor: isUser ? 'rgba(136, 117, 235,0.32)' : 'rgba(148,163,184,0.16)',
-                bgcolor: isUser ? 'rgba(136, 117, 235,0.16)' : 'rgba(15,23,42,0.56)',
+                borderColor: isUser ? 'rgba(93, 118, 203,0.32)' : 'rgba(148,163,184,0.16)',
+                bgcolor: isUser ? 'rgba(93, 118, 203,0.16)' : 'rgba(15,23,42,0.56)',
                 // Leaves breathing room on iPad so message bubbles don't
                 // stretch across the whole dialog width and look like a
                 // wall of text.
@@ -319,7 +319,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             >
               <Typography
                 sx={{
-                  color: isUser ? '#e0dbfa' : '#a5f3fc',
+                  color: isUser ? '#dfe4f3' : '#a5f3fc',
                   fontSize: '0.68rem',
                   fontWeight: 700,
                   textTransform: 'uppercase',

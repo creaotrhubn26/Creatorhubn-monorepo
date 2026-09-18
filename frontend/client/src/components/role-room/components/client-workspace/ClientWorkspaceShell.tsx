@@ -160,7 +160,7 @@ export default function ClientWorkspaceShell({
         minHeight: '100vh',
         bgcolor: 'var(--role-chrome-bg, rgba(7,13,26,0.96))',
         background:
-          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(136, 117, 235,0.10) 0%, transparent 35%), var(--role-chrome-bg, #07101e)',
+          'radial-gradient(circle at top left, rgba(34,211,238,0.10) 0%, transparent 40%), radial-gradient(circle at bottom right, rgba(93, 118, 203,0.10) 0%, transparent 35%), var(--role-chrome-bg, #07101e)',
         color: 'var(--role-chrome-text, #e2e8f0)',
       }}
     >
@@ -197,7 +197,7 @@ export default function ClientWorkspaceShell({
               Godta invitasjon
             </Typography>
           ) : undefined}
-          sx={{ borderRadius: 0, bgcolor: 'rgba(98, 73, 223,0.16)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}
+          sx={{ borderRadius: 0, bgcolor: 'rgba(75, 61, 143,0.16)', color: '#e2e8f0', '& .MuiAlert-message': { width: '100%' } }}
         >
           <Typography component="span" sx={{ fontWeight: 700 }}>
             {myAccess?.status === 'invited' ? 'Du er invitert som assistent. Tilgang: ' : 'Din tilgang som assistent: '}

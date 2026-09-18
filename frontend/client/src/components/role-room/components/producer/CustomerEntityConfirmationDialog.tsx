@@ -237,11 +237,11 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                       borderRadius: 2,
                       cursor: 'pointer',
                       border: isSelected
-                        ? '2px solid rgba(136, 117, 235,0.7)'
+                        ? '2px solid rgba(93, 118, 203,0.7)'
                         : '1px solid rgba(148,163,184,0.2)',
                       bgcolor: isSelected ? 'rgba(33, 28, 59,0.5)' : 'rgba(15,23,42,0.5)',
                       transition: 'all 0.15s',
-                      '&:hover': { borderColor: 'rgba(136, 117, 235,0.5)' },
+                      '&:hover': { borderColor: 'rgba(93, 118, 203,0.5)' },
                     }}
                   >
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
@@ -364,9 +364,9 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                     size="small"
                     sx={{
                       cursor: 'pointer',
-                      bgcolor: bydel === b ? 'rgba(136, 117, 235,0.32)' : 'rgba(15,23,42,0.6)',
+                      bgcolor: bydel === b ? 'rgba(93, 118, 203,0.32)' : 'rgba(15,23,42,0.6)',
                       color: bydel === b ? '#e0e7ff' : 'text.primary',
-                      border: bydel === b ? '1px solid rgba(136, 117, 235,0.6)' : '1px solid rgba(148,163,184,0.2)',
+                      border: bydel === b ? '1px solid rgba(93, 118, 203,0.6)' : '1px solid rgba(148,163,184,0.2)',
                     }}
                   />
                 ))}
@@ -448,7 +448,7 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <BusinessIcon sx={{ color: '#c6bdf4' }} />
+        <BusinessIcon sx={{ color: '#c3cbe6' }} />
         Bekreft kunde-data
         <IconButton
           onClick={onClose}

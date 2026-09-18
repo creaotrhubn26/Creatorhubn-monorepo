@@ -127,7 +127,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   const body = (
     <Stack spacing={2} sx={{ p: 2 }}>
       <Stack direction="row" spacing={2} alignItems="center">
-        <Avatar src={profileImageUrl ?? undefined} sx={{ width: 56, height: 56, bgcolor: '#8875eb', fontSize: '1rem' }}>
+        <Avatar src={profileImageUrl ?? undefined} sx={{ width: 56, height: 56, bgcolor: '#5d76cb', fontSize: '1rem' }}>
           {profileImageUrl ? null : initialsOf(memberProfile?.displayName ?? displayName, email) || <PersonIcon />}
         </Avatar>
         <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -158,7 +158,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             <Stack direction="row" flexWrap="wrap" gap={0.5}>
               {topProfessions.map((p) => (
                 <Chip key={p} label={p} size="small"
-                      sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: '#472bd4', fontWeight: 600 }} />
+                      sx={{ bgcolor: 'rgba(93, 118, 203,0.12)', color: '#3e3180', fontWeight: 600 }} />
               ))}
             </Stack>
           )}
@@ -174,8 +174,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           sx={{
             minHeight: 'var(--rr-touch-target-min, 44px)',
             justifyContent: 'flex-start',
-            borderColor: 'rgba(98, 73, 223,0.35)',
-            color: '#472bd4',
+            borderColor: 'rgba(75, 61, 143,0.35)',
+            color: '#3e3180',
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -190,8 +190,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           sx={{
             minHeight: 'var(--rr-touch-target-min, 44px)',
             justifyContent: 'flex-start',
-            borderColor: 'rgba(98, 73, 223,0.35)',
-            color: '#472bd4',
+            borderColor: 'rgba(75, 61, 143,0.35)',
+            color: '#3e3180',
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -206,8 +206,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           sx={{
             minHeight: 'var(--rr-touch-target-min, 44px)',
             justifyContent: 'flex-start',
-            borderColor: 'rgba(98, 73, 223,0.35)',
-            color: '#472bd4',
+            borderColor: 'rgba(75, 61, 143,0.35)',
+            color: '#3e3180',
             textTransform: 'none',
             fontWeight: 600,
           }}
@@ -255,8 +255,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
               sx={{
                 minHeight: 'var(--rr-touch-target-min, 44px)',
                 justifyContent: 'flex-start',
-                borderColor: 'rgba(98, 73, 223,0.35)',
-                color: '#472bd4',
+                borderColor: 'rgba(75, 61, 143,0.35)',
+                color: '#3e3180',
                 textTransform: 'none',
                 fontWeight: 600,
               }}
@@ -276,8 +276,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         sx={{
           minHeight: 'var(--rr-touch-target-min, 44px)',
           justifyContent: 'flex-start',
-          borderColor: 'rgba(136, 117, 235,0.35)',
-          color: '#8875eb',
+          borderColor: 'rgba(93, 118, 203,0.35)',
+          color: '#5d76cb',
           textTransform: 'none',
           fontWeight: 600,
         }}
@@ -351,11 +351,11 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       onClose={() => setAvailabilityOpen(false)}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0515', color: '#f6f5ff' } }}
+      PaperProps={{ sx: { bgcolor: '#1b122c', color: '#f7f9ff' } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Min tilgjengelighet
-        <MuiIconButton onClick={() => setAvailabilityOpen(false)} sx={{ color: '#c6bdf4' }}>
+        <MuiIconButton onClick={() => setAvailabilityOpen(false)} sx={{ color: '#c3cbe6' }}>
           <CloseIcon />
         </MuiIconButton>
       </DialogTitle>
@@ -375,11 +375,11 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       onClose={() => setStorageOpen(false)}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0515', color: '#f6f5ff' } }}
+      PaperProps={{ sx: { bgcolor: '#1b122c', color: '#f7f9ff' } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Lagring
-        <MuiIconButton onClick={() => setStorageOpen(false)} sx={{ color: '#c6bdf4' }}>
+        <MuiIconButton onClick={() => setStorageOpen(false)} sx={{ color: '#c3cbe6' }}>
           <CloseIcon />
         </MuiIconButton>
       </DialogTitle>

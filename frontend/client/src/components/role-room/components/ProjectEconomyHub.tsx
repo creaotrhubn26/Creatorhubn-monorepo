@@ -3020,7 +3020,7 @@ export default function ProjectEconomyHub({
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={1} flexWrap="wrap">
-                        <Chip size="small" label={splitSheetStatusLabel} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4' }} />
+                        <Chip size="small" label={splitSheetStatusLabel} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }} />
                         <Chip size="small" label={`${splitSheetContributorCount} bidragsytere`} sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
                       </Stack>
                     </Stack>
@@ -3352,7 +3352,7 @@ export default function ProjectEconomyHub({
                       <Chip
                         size="small"
                         label={`Signatur ${agreementSignatureSummary.inFlight} ute`}
-                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
+                        sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                       />
                     </Stack>
                   </Stack>
@@ -3988,7 +3988,7 @@ export default function ProjectEconomyHub({
                                       <Chip
                                         size="small"
                                         label={`Avtale ${linkedAgreement.title}`}
-                                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
+                                        sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                                       />
                                       <Chip
                                         size="small"

@@ -179,7 +179,7 @@ export default function MentionsPanel() {
                         size="small" clickable icon={<AiIcon sx={{ fontSize: 14 }} />}
                         label={drafting === m.id ? 'Skriver…' : 'AI-svar'}
                         onClick={() => draftReply(m)}
-                        sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', '& .MuiChip-icon': { color: '#c6bdf4' } }}
+                        sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', '& .MuiChip-icon': { color: '#c3cbe6' } }}
                       />
                     </Stack>
                     {drafts[m.id] !== undefined ? (

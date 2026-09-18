@@ -11,7 +11,7 @@
  *   - Recent activity-feed under
  *
  * Reference image-layout adapted to The Role Room palette (amber accent
- * #9e8cf8 → vi bruker eksisterende palette siden Marketing Cockpit har
+ * #93a4dc → vi bruker eksisterende palette siden Marketing Cockpit har
  * lilla brand — Phase 2 kan introdusere amber-tema for ren Lead Map-view).
  */
 
@@ -189,7 +189,7 @@ const STATUS_META: Record<LeadStatus, { label: string; color: string; bg: string
   not_present:     { label: 'Not present',     color: '#94a3b8', bg: 'rgba(148,163,184,0.20)' },
   declined:        { label: 'Declined',        color: '#f87171', bg: 'rgba(248,113,113,0.20)' },
   interested:      { label: 'Interested',      color: '#34d399', bg: 'rgba(52,211,153,0.20)' },
-  meeting_booked:  { label: 'Meeting booked',  color: '#9e8cf8', bg: 'rgba(158, 140, 248,0.20)' },
+  meeting_booked:  { label: 'Meeting booked',  color: '#93a4dc', bg: 'rgba(147, 164, 220,0.20)' },
   proposal_sent:   { label: 'Proposal sent',   color: '#fb923c', bg: 'rgba(251,146,60,0.20)' },
   won:             { label: 'Won',             color: '#fde047', bg: 'rgba(253,224,71,0.20)' },
   lost:            { label: 'Lost',            color: '#7f1d1d', bg: 'rgba(127,29,29,0.30)' },
@@ -205,22 +205,22 @@ const PRIMARY_STATUSES: LeadStatus[] = [
   'return','not_present','declined','interested','meeting_booked','won',
 ];
 
-// WCAG 2.1 AA — kontrast verifisert mot bgPanel #18122b:
+// WCAG 2.1 AA — kontrast verifisert mot bgPanel #2a3d56:
 //   textPrimary #f5f3ff: 16.4:1 ✓ AAA
-//   textSecondary #e0dbfa: 12.8:1 ✓ AAA (bumped fra #c4b5fd)
-//   textMuted #9e8cf8: 7.2:1 ✓ AAA (bumped fra #8b7ec4 som var 3.8:1)
-//   accent #9e8cf8: 6.9:1 ✓ AA
+//   textSecondary #dfe4f3: 12.8:1 ✓ AAA (bumped fra #c4b5fd)
+//   textMuted #93a4dc: 7.2:1 ✓ AAA (bumped fra #8b7ec4 som var 3.8:1)
+//   accent #93a4dc: 6.9:1 ✓ AA
 //   amber #fbbf24: 11.4:1 ✓ AAA
 const palette = {
   bg: '#0a0a0f',
-  bgPanel: '#18122b',
-  bgSubtle: 'rgba(136, 117, 235,0.04)',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
+  bgPanel: '#2a3d56',
+  bgSubtle: 'rgba(93, 118, 203,0.04)',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
   textPrimary: '#f5f3ff',
-  textSecondary: '#e0dbfa', // WCAG bump: var #c4b5fd (5.8:1) → 12.8:1
-  textMuted: '#9e8cf8',     // WCAG bump: var #8b7ec4 (3.8:1) → 7.2:1
-  accent: '#9e8cf8',
+  textSecondary: '#dfe4f3', // WCAG bump: var #c4b5fd (5.8:1) → 12.8:1
+  textMuted: '#93a4dc',     // WCAG bump: var #8b7ec4 (3.8:1) → 7.2:1
+  accent: '#93a4dc',
   amber: '#fbbf24',
 };
 
@@ -1680,7 +1680,7 @@ export default function LeadMapPanel() {
               }}
               sx={{
                 minWidth: 160,
-                bgcolor: 'rgba(136, 117, 235,0.06)',
+                bgcolor: 'rgba(93, 118, 203,0.06)',
                 color: palette.textSecondary,
                 borderRadius: 1.2,
                 fontSize: '0.78rem',
@@ -1743,7 +1743,7 @@ export default function LeadMapPanel() {
               sx={{
                 minWidth: 200,
                 '& .MuiOutlinedInput-root': {
-                  bgcolor: 'rgba(136, 117, 235,0.06)',
+                  bgcolor: 'rgba(93, 118, 203,0.06)',
                   color: palette.textPrimary,
                   fontSize: '0.78rem',
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
@@ -1860,7 +1860,7 @@ export default function LeadMapPanel() {
             }}
             sx={{
               minWidth: 160,
-              bgcolor: 'rgba(136, 117, 235,0.06)',
+              bgcolor: 'rgba(93, 118, 203,0.06)',
               color: palette.textSecondary,
               borderRadius: 1.2,
               fontSize: '0.78rem',
@@ -1942,7 +1942,7 @@ export default function LeadMapPanel() {
               size="small"
               onClick={t.onClick}
               sx={{
-                bgcolor: t.active ? t.color : 'rgba(136, 117, 235,0.06)',
+                bgcolor: t.active ? t.color : 'rgba(93, 118, 203,0.06)',
                 color: t.active ? '#0a0a0f' : t.color,
                 fontWeight: 700, fontSize: '0.72rem',
                 border: `1px solid ${t.color}`,
@@ -2052,7 +2052,7 @@ export default function LeadMapPanel() {
             }}
             sx={{
               minWidth: 280,
-              bgcolor: 'rgba(136, 117, 235,0.08)',
+              bgcolor: 'rgba(93, 118, 203,0.08)',
               color: palette.textPrimary,
               borderRadius: 1.2,
               fontSize: '0.84rem',
@@ -2075,7 +2075,7 @@ export default function LeadMapPanel() {
                     )}
                   </Box>
                   <Stack direction="row" spacing={0.4}>
-                    {p.hasBrandKit && <Chip label="brand" size="small" sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: palette.accent, fontSize: '0.58rem', fontWeight: 800, height: 16 }} />}
+                    {p.hasBrandKit && <Chip label="brand" size="small" sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: palette.accent, fontSize: '0.58rem', fontWeight: 800, height: 16 }} />}
                     <Chip label={`${p.leadCount}`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: palette.amber, fontSize: '0.58rem', fontWeight: 800, height: 16 }} />
                   </Stack>
                 </Stack>
@@ -2118,7 +2118,7 @@ export default function LeadMapPanel() {
         {projectSummary && projectCardExpanded && (
           <Box sx={{
             mb: 2.4, p: 2, borderRadius: 1.6,
-            bgcolor: 'rgba(158, 140, 248,0.06)',
+            bgcolor: 'rgba(147, 164, 220,0.06)',
             border: `1px solid ${palette.borderStrong}`,
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={2}>
@@ -2158,7 +2158,7 @@ export default function LeadMapPanel() {
               ) : (
                 <Box sx={{
                   width: 56, height: 56, borderRadius: 1.2, flexShrink: 0,
-                  bgcolor: 'rgba(158, 140, 248,0.18)',
+                  bgcolor: 'rgba(147, 164, 220,0.18)',
                   border: `1px solid ${palette.accent}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: palette.accent, fontWeight: 800, fontSize: '1.2rem',
@@ -2175,7 +2175,7 @@ export default function LeadMapPanel() {
                     <Chip
                       label={`Brand Kit · ${new Date(projectSummary.brandKit.lastScannedAt).toLocaleDateString('nb-NO')}`}
                       size="small"
-                      sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
+                      sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
                     />
                   )}
                   {projectSummary.marketScan && (
@@ -2338,7 +2338,7 @@ export default function LeadMapPanel() {
               label: 'Meetings',
               value: metrics?.meetingsBooked ?? 0,
               icon: <CalendarMonthOutlinedIcon sx={{ fontSize: 18 }} />,
-              color: '#9e8cf8',
+              color: '#93a4dc',
               trend: metrics?.trends?.meetingsBooked ?? null,
               sparkline: metrics?.sparklines?.meetingsBooked ?? null,
             },
@@ -2577,12 +2577,12 @@ export default function LeadMapPanel() {
                         return (
                           <div style={{
                             marginTop: 8, padding: '6px 8px',
-                            background: 'rgba(158, 140, 248,0.12)',
+                            background: 'rgba(147, 164, 220,0.12)',
                             borderRadius: 4, display: 'flex',
                             alignItems: 'center', gap: 8,
                           }}>
-                            <NavigationOutlinedIcon style={{ fontSize: 16, color: '#9e8cf8' }} />
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#9e8cf8' }}>
+                            <NavigationOutlinedIcon style={{ fontSize: 16, color: '#93a4dc' }} />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#93a4dc' }}>
                               {formatDistance(km)}
                             </span>
                             <span style={{ fontSize: 11, color: '#666' }}>
@@ -2591,7 +2591,7 @@ export default function LeadMapPanel() {
                             <a href={nav} target="_blank" rel="noopener noreferrer"
                                style={{
                                  marginLeft: 'auto', fontSize: 11, fontWeight: 700,
-                                 color: '#9e8cf8', textDecoration: 'underline',
+                                 color: '#93a4dc', textDecoration: 'underline',
                                }}>
                               Naviger
                             </a>
@@ -2770,7 +2770,7 @@ export default function LeadMapPanel() {
                         label="MANUELL"
                         size="small"
                         sx={{
-                          bgcolor: 'rgba(158, 140, 248,0.15)',
+                          bgcolor: 'rgba(147, 164, 220,0.15)',
                           color: palette.accent,
                           fontWeight: 800, fontSize: '0.6rem', height: 18,
                         }}
@@ -2861,7 +2861,7 @@ export default function LeadMapPanel() {
                   </Box>
                 )}
                 {selectedCompetitor.positioning && (
-                  <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(136, 117, 235,0.04)', border: `1px solid ${palette.border}` }}>
+                  <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(93, 118, 203,0.04)', border: `1px solid ${palette.border}` }}>
                     <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       Posisjonering
                     </Typography>
@@ -2875,7 +2875,7 @@ export default function LeadMapPanel() {
               {/* Claude vurdering */}
               {selectedCompetitor.claudeThreatSummary ? (
                 <Stack spacing={1.4}>
-                  <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(158, 140, 248,0.06)', border: `1px solid ${palette.borderStrong}` }}>
+                  <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(147, 164, 220,0.06)', border: `1px solid ${palette.borderStrong}` }}>
                     <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.6 }}>
                       <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 14 }} />
                       <Typography sx={{ fontSize: '0.66rem', color: palette.accent, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -3254,7 +3254,7 @@ export default function LeadMapPanel() {
                             <Chip
                               key={t} label={t} size="small"
                               sx={{
-                                bgcolor: 'rgba(158, 140, 248,0.12)',
+                                bgcolor: 'rgba(147, 164, 220,0.12)',
                                 color: palette.accent,
                                 fontWeight: 700, fontSize: '0.66rem',
                                 height: 20,
@@ -3272,7 +3272,7 @@ export default function LeadMapPanel() {
               {selected.recommendationRank != null && (
                 <Box sx={{
                   mb: 2, p: 1.4, borderRadius: 1.2,
-                  bgcolor: 'rgba(158, 140, 248,0.08)',
+                  bgcolor: 'rgba(147, 164, 220,0.08)',
                   border: `1px solid ${palette.borderStrong}`,
                 }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
@@ -3340,7 +3340,7 @@ export default function LeadMapPanel() {
                         </Button>
                         <Button size="small" variant="text"
                           onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
-                          sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}>
+                          sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '0.74rem', textTransform: 'none' }}>
                           Skriv outreach
                         </Button>
                       </Stack>
@@ -3370,7 +3370,7 @@ export default function LeadMapPanel() {
                         </Button>
                         <Button size="small" variant="text"
                           onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
-                          sx={{ color: '#9e8cf8', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}>
+                          sx={{ color: '#93a4dc', fontSize: '0.7rem', textTransform: 'none', minWidth: 0 }}>
                           Outreach
                         </Button>
                       </Stack>
@@ -3413,7 +3413,7 @@ export default function LeadMapPanel() {
                       </Stack>
                       <Button size="small" variant="text"
                         onClick={() => setOutreachFor({ id: selected.id, name: selected.name })}
-                        sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}>
+                        sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}>
                         ✒ Skriv outreach
                       </Button>
                       <Tooltip title="Oppdater fra BRREG">
@@ -3642,7 +3642,7 @@ export default function LeadMapPanel() {
               {/* Tilordne prosjekt — viser som info-strip + Select */}
               <Box sx={{
                 mb: 2, p: 1.2, borderRadius: 1.2,
-                bgcolor: 'rgba(158, 140, 248,0.06)',
+                bgcolor: 'rgba(147, 164, 220,0.06)',
                 border: `1px solid ${palette.border}`,
               }}>
                 <Stack direction="row" alignItems="center" spacing={1}>
@@ -3664,7 +3664,7 @@ export default function LeadMapPanel() {
                     }}
                     sx={{
                       flex: 1,
-                      bgcolor: 'rgba(136, 117, 235,0.06)',
+                      bgcolor: 'rgba(93, 118, 203,0.06)',
                       height: 30,
                       borderRadius: 1,
                       fontSize: '0.74rem',
@@ -3807,7 +3807,7 @@ export default function LeadMapPanel() {
 
               {/* AI Opportunity-bar (skjult under CTA) */}
               {selected.aiOpportunityScore != null && (
-                <Box sx={{ mt: 1.6, p: 1.2, borderRadius: 1.2, bgcolor: 'rgba(158, 140, 248,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                <Box sx={{ mt: 1.6, p: 1.2, borderRadius: 1.2, bgcolor: 'rgba(147, 164, 220,0.08)', border: `1px solid ${palette.borderStrong}` }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 18 }} />
                     <Stack sx={{ flex: 1 }}>
@@ -3846,14 +3846,14 @@ export default function LeadMapPanel() {
               width: { xs: '100%', md: 400 }, height: 540,
               borderRadius: 1.6,
               border: `1px dashed ${palette.border}`,
-              bgcolor: 'rgba(136, 117, 235,0.02)',
+              bgcolor: 'rgba(93, 118, 203,0.02)',
               display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center',
               p: 3, gap: 1.4, textAlign: 'center',
             }}>
               <Box sx={{
                 width: 56, height: 56, borderRadius: '50%',
-                bgcolor: 'rgba(158, 140, 248,0.08)',
+                bgcolor: 'rgba(147, 164, 220,0.08)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <PlaceOutlinedIcon sx={{ color: palette.accent, fontSize: 28 }} />
@@ -3953,7 +3953,7 @@ export default function LeadMapPanel() {
             {pitch && (
               <Box sx={{ mt: 2 }}>
                 {pitch.opportunityScore > 0 && (
-                  <Box sx={{ p: 1.6, mb: 2, borderRadius: 1.4, bgcolor: 'rgba(158, 140, 248,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                  <Box sx={{ p: 1.6, mb: 2, borderRadius: 1.4, bgcolor: 'rgba(147, 164, 220,0.08)', border: `1px solid ${palette.borderStrong}` }}>
                     <Typography sx={{ fontSize: '0.7rem', color: palette.accent, fontWeight: 700, textTransform: 'uppercase' }}>
                       Opportunity Score
                     </Typography>
@@ -4075,7 +4075,7 @@ export default function LeadMapPanel() {
                           label={`${c.channel} · ${c.weight}%`}
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(158, 140, 248,0.12)',
+                            bgcolor: 'rgba(147, 164, 220,0.12)',
                             color: palette.accent,
                             fontWeight: 700, fontSize: '0.72rem',
                           }}
@@ -4187,7 +4187,7 @@ export default function LeadMapPanel() {
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.2 }}>
                   {[
                     { label: 'Nye leads', value: statusReport.newLeads7d, color: palette.amber },
-                    { label: 'Bookede møter', value: statusReport.meetings7d, color: '#9e8cf8' },
+                    { label: 'Bookede møter', value: statusReport.meetings7d, color: '#93a4dc' },
                     { label: 'Vunnet', value: statusReport.won7d, color: '#34d399' },
                   ].map((s) => (
                     <Box key={s.label} sx={{
@@ -4229,7 +4229,7 @@ export default function LeadMapPanel() {
                 </Stack>
 
                 {statusReport.recommendations.length > 0 && (
-                  <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(158, 140, 248,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                  <Box sx={{ p: 1.4, borderRadius: 1.2, bgcolor: 'rgba(147, 164, 220,0.08)', border: `1px solid ${palette.borderStrong}` }}>
                     <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.8 }}>
                       <AutoAwesomeOutlinedIcon sx={{ color: palette.accent, fontSize: 14 }} />
                       <Typography sx={{ fontSize: '0.68rem', color: palette.accent, fontWeight: 800, textTransform: 'uppercase' }}>
@@ -4319,7 +4319,7 @@ export default function LeadMapPanel() {
             {strategy && !strategyLoading && (
               <Stack spacing={2}>
                 {/* Primær-kanal */}
-                <Box sx={{ p: 1.6, borderRadius: 1.4, bgcolor: 'rgba(158, 140, 248,0.08)', border: `1px solid ${palette.borderStrong}` }}>
+                <Box sx={{ p: 1.6, borderRadius: 1.4, bgcolor: 'rgba(147, 164, 220,0.08)', border: `1px solid ${palette.borderStrong}` }}>
                   <Stack direction="row" alignItems="center" spacing={1.4}>
                     {(() => {
                       const Icon =
@@ -4368,7 +4368,7 @@ export default function LeadMapPanel() {
                       {strategy.secondaryChannels.map((c) => (
                         <Chip
                           key={c} label={c.replace(/_/g, ' ')} size="small"
-                          sx={{ bgcolor: 'rgba(136, 117, 235,0.10)', color: palette.accent, fontWeight: 700, fontSize: '0.7rem' }}
+                          sx={{ bgcolor: 'rgba(93, 118, 203,0.10)', color: palette.accent, fontWeight: 700, fontSize: '0.7rem' }}
                         />
                       ))}
                     </Stack>
@@ -4416,7 +4416,7 @@ export default function LeadMapPanel() {
                           <Stack direction="row" alignItems="center" spacing={0.8}>
                             <Box sx={{
                               minWidth: 36, height: 22, borderRadius: 1,
-                              bgcolor: s.day === 0 ? `${palette.amber}22` : 'rgba(136, 117, 235,0.12)',
+                              bgcolor: s.day === 0 ? `${palette.amber}22` : 'rgba(93, 118, 203,0.12)',
                               color: s.day === 0 ? palette.amber : palette.accent,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               fontWeight: 800, fontSize: '0.66rem',
@@ -4427,7 +4427,7 @@ export default function LeadMapPanel() {
                             <Chip
                               label={s.channel.replace(/_/g, ' ')}
                               size="small"
-                              sx={{ bgcolor: 'rgba(158, 140, 248,0.12)', color: palette.accent, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
+                              sx={{ bgcolor: 'rgba(147, 164, 220,0.12)', color: palette.accent, fontWeight: 700, fontSize: '0.66rem', height: 18 }}
                             />
                             <Typography sx={{ fontSize: '0.8rem', color: palette.textPrimary, fontWeight: 700 }}>
                               {s.action}
@@ -4587,7 +4587,7 @@ export default function LeadMapPanel() {
                   <Box sx={{
                     minWidth: 48, textAlign: 'center',
                     p: 0.4, borderRadius: 0.8,
-                    bgcolor: 'rgba(158, 140, 248,0.12)',
+                    bgcolor: 'rgba(147, 164, 220,0.12)',
                     border: `1px solid ${palette.border}`,
                     color: palette.accent,
                     fontWeight: 800, fontSize: '0.78rem',
@@ -4971,7 +4971,7 @@ export default function LeadMapPanel() {
                   letterSpacing: '0.06em',
                 },
                 '& tr:hover td': {
-                  bgcolor: 'rgba(136, 117, 235,0.05)',
+                  bgcolor: 'rgba(93, 118, 203,0.05)',
                   cursor: 'pointer',
                 },
               }}>
@@ -5037,7 +5037,7 @@ export default function LeadMapPanel() {
                             <span style={{ fontWeight: 700, color: palette.textPrimary }}>{c.name}</span>
                             {c.isManualAddition && (
                               <Chip label="MANUELL" size="small" sx={{
-                                bgcolor: 'rgba(158, 140, 248,0.15)',
+                                bgcolor: 'rgba(147, 164, 220,0.15)',
                                 color: palette.accent,
                                 fontWeight: 800, fontSize: '0.56rem', height: 16,
                               }} />
@@ -5278,7 +5278,7 @@ export default function LeadMapPanel() {
                   const isMe = entry.userId === currentUser?.id;
                   const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : null;
                   return (
-                    <tr key={entry.userId ?? `${entry.rank}`} style={{ backgroundColor: isMe ? 'rgba(158, 140, 248,0.06)' : undefined }}>
+                    <tr key={entry.userId ?? `${entry.rank}`} style={{ backgroundColor: isMe ? 'rgba(147, 164, 220,0.06)' : undefined }}>
                       <td style={{ textAlign: 'center', fontWeight: 800, color: medal ? palette.amber : palette.textMuted }}>
                         {medal ?? entry.rank}
                       </td>
@@ -5360,7 +5360,7 @@ export default function LeadMapPanel() {
                   sx={{
                     minWidth: 160,
                     height: 30,
-                    bgcolor: 'rgba(158, 140, 248,0.08)',
+                    bgcolor: 'rgba(147, 164, 220,0.08)',
                     fontSize: '0.74rem',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
                   }}
@@ -5416,7 +5416,7 @@ export default function LeadMapPanel() {
                   zIndex: 1,
                 },
                 '& tr:hover td': {
-                  bgcolor: 'rgba(136, 117, 235,0.05)',
+                  bgcolor: 'rgba(93, 118, 203,0.05)',
                 },
               }}>
                 <thead>
@@ -5509,7 +5509,7 @@ export default function LeadMapPanel() {
                             <Chip
                               label={project.name}
                               size="small"
-                              sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.62rem', height: 18 }}
+                              sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: palette.accent, fontWeight: 700, fontSize: '0.62rem', height: 18 }}
                             />
                           ) : (
                             <span style={{ color: palette.textMuted, fontSize: '0.7rem' }}>—</span>

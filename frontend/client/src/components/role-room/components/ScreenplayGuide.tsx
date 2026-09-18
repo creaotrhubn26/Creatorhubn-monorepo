@@ -225,7 +225,7 @@ const STEPS: Step[] = [
               Table Read, Script Analysis, Story Structure, Grammar Check, and Storyboard
               integration — all without leaving the editor.
             </Typography>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               💡 Your script is auto-saved continuously. A status badge in the top-right
               of the editor shows <em>Saved</em>, <em>Saving…</em>, or <em>Unsaved</em>
               so you always know the sync state.
@@ -294,7 +294,7 @@ const STEPS: Step[] = [
             <Paper
               elevation={0}
               sx={{
-                bgcolor: '#100b1e',
+                bgcolor: '#2a3152',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 1.5,
                 px: 2,
@@ -323,7 +323,7 @@ const STEPS: Step[] = [
                 ['Action', 'Light grey #e5e5e5', 'Any prose description line (default)'],
                 ['Character', '#60a5fa (blue)', 'All-caps name on its own line followed by dialogue'],
                 ['Dialogue', 'Off-white #f5f5f5', 'Lines following a character line'],
-                ['Parenthetical', '#9e8cf8 (lavender)', 'Lines wrapped in (parentheses) inside a dialogue block'],
+                ['Parenthetical', '#93a4dc (lavender)', 'Lines wrapped in (parentheses) inside a dialogue block'],
                 ['Transition', '#f472b6 (pink)', 'All-caps lines ending with a colon e.g. CUT TO:'],
                 ['Centered', '#34d399 (green)', 'Lines wrapped in >angle brackets<'],
                 ['Section', '#f97316 (orange)', 'Lines starting with # or ## for acts'],
@@ -405,7 +405,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               The Tab cycle mirrors Final Draft's behaviour so muscle memory from
               professional industry tools transfers directly.
             </Callout>
@@ -497,7 +497,7 @@ const STEPS: Step[] = [
               corresponding line in the editor is briefly highlighted in amber so you can
               see where you landed.
             </Typography>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               On mobile the sidebar is hidden by default and accessible via the
               <strong> ☰ hamburger</strong> icon in the toolbar, which opens it as a
               slide-in drawer without losing your place in the script.
@@ -540,7 +540,7 @@ const STEPS: Step[] = [
               the script. Cards can be colour-tagged, annotated with notes, reordered by
               drag-and-drop, duplicated, locked, or deleted.
             </Typography>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               The Beat Board is ideal during outlining — use it to visualise story
               structure before filling in all the dialogue.
             </Callout>
@@ -573,7 +573,7 @@ const STEPS: Step[] = [
               High-weight types (Climax, Midpoint, Reversal) render with a coloured
               glow and bolder typography so they stand out at a glance.
             </Typography>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               💡 Assign beat types consistently — the Dramaturgical Analysis panel reads
               them to flag structural issues.
             </Callout>
@@ -628,7 +628,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               A balanced three-act script typically aims for roughly 25 % / 50 % / 25 %.
             </Callout>
           </>
@@ -668,7 +668,7 @@ const STEPS: Step[] = [
               This is useful for tracing a single character's journey across all three
               acts without reading every scene description.
             </Typography>
-            <Callout color="#8875eb">
+            <Callout color="#5d76cb">
               Characters are pulled automatically from the Fountain parser. If a
               character name is missing, check that the scene uses proper Fountain
               CHARACTER formatting.
@@ -916,8 +916,8 @@ const STEPS: Step[] = [
               Press <Key>Escape</Key> or click the fullscreen-exit icon to return to the
               normal layout.
             </Typography>
-            <Callout color="#8875eb">
-              In fullscreen the background changes to a dark navy (<code>#18122b</code>)
+            <Callout color="#5d76cb">
+              In fullscreen the background changes to a dark navy (<code>#2a3d56</code>)
               for reduced eye strain during long writing sessions.
             </Callout>
           </>
@@ -1051,7 +1051,7 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
       fullScreen
       PaperProps={{
         sx: {
-          bgcolor: '#100b1e',
+          bgcolor: '#2a3152',
           color: 'text.primary',
         },
       }}
@@ -1068,14 +1068,14 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DescriptionIcon sx={{ color: '#8875eb' }} />
+          <DescriptionIcon sx={{ color: '#5d76cb' }} />
           <Typography variant="h6" fontWeight={700}>
             Screenplay Editor Guide
           </Typography>
           <Chip
             label={`${activeStep + 1} / ${visibleSteps.length}`}
             size="small"
-            sx={{ ml: 1, bgcolor: 'rgba(136, 117, 235,0.2)', color: '#c6bdf4' }}
+            sx={{ ml: 1, bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }}
           />
         </Box>
         <Tooltip title="Close guide">
@@ -1087,8 +1087,8 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
 
       {/* ── Admin intro banner ────────────────────────────────────────── */}
       {guideConfig.introBanner && (
-        <Box sx={{ px: 2.5, py: 1, bgcolor: `${guideConfig.introBannerColor ?? '#8875eb'}20`, borderBottom: `1px solid ${guideConfig.introBannerColor ?? '#8875eb'}40` }}>
-          <Typography variant="body2" sx={{ color: guideConfig.introBannerColor ?? '#c6bdf4' }}>
+        <Box sx={{ px: 2.5, py: 1, bgcolor: `${guideConfig.introBannerColor ?? '#5d76cb'}20`, borderBottom: `1px solid ${guideConfig.introBannerColor ?? '#5d76cb'}40` }}>
+          <Typography variant="body2" sx={{ color: guideConfig.introBannerColor ?? '#c3cbe6' }}>
             {guideConfig.introBanner}
           </Typography>
         </Box>
@@ -1139,12 +1139,12 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
                       borderRadius: 1,
                       mx: 0.5,
                       '&.Mui-selected': {
-                        bgcolor: 'rgba(136, 117, 235,0.15)',
-                        '&:hover': { bgcolor: 'rgba(136, 117, 235,0.2)' },
+                        bgcolor: 'rgba(93, 118, 203,0.15)',
+                        '&:hover': { bgcolor: 'rgba(93, 118, 203,0.2)' },
                       },
                     }}
                   >
-                    <Box sx={{ color: idx === activeStep ? '#c6bdf4' : 'text.secondary', display: 'flex' }}>
+                    <Box sx={{ color: idx === activeStep ? '#c3cbe6' : 'text.secondary', display: 'flex' }}>
                       {s.icon}
                     </Box>
                     <ListItemText
@@ -1152,7 +1152,7 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                           <span>{ov.labelOverride ?? s.label}</span>
                           {ov.badge && (
-                            <Chip label={ov.badge} size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }} />
+                            <Chip label={ov.badge} size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: 'rgba(93, 118, 203,0.3)', color: '#dfe4f3' }} />
                           )}
                         </Box>
                       }
@@ -1212,11 +1212,11 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
                 width: 36,
                 height: 36,
                 borderRadius: '50%',
-                bgcolor: 'rgba(136, 117, 235,0.2)',
+                bgcolor: 'rgba(93, 118, 203,0.2)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#c6bdf4',
+                color: '#c3cbe6',
                 flexShrink: 0,
               }}
             >
@@ -1233,7 +1233,7 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
               <Typography
                 variant="subtitle1"
                 fontWeight={600}
-                sx={{ mb: 1.5, color: guideConfig.accentColorOverride ?? '#c6bdf4' }}
+                sx={{ mb: 1.5, color: guideConfig.accentColorOverride ?? '#c3cbe6' }}
               >
                 {section.heading}
               </Typography>
@@ -1271,8 +1271,8 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
             </Box>
           ))}
           {stepOverride.adminNote && (
-            <Box sx={{ mt: 3, p: 2, borderRadius: 2, border: `1px solid ${stepOverride.adminNoteColor ?? '#8875eb'}40`, bgcolor: `${stepOverride.adminNoteColor ?? '#8875eb'}15` }}>
-              <Typography variant="caption" sx={{ color: stepOverride.adminNoteColor ?? '#c6bdf4', fontWeight: 600, display: 'block', mb: 0.5 }}>
+            <Box sx={{ mt: 3, p: 2, borderRadius: 2, border: `1px solid ${stepOverride.adminNoteColor ?? '#5d76cb'}40`, bgcolor: `${stepOverride.adminNoteColor ?? '#5d76cb'}15` }}>
+              <Typography variant="caption" sx={{ color: stepOverride.adminNoteColor ?? '#c3cbe6', fontWeight: 600, display: 'block', mb: 0.5 }}>
                 Admin Note
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>{stepOverride.adminNote}</Typography>
@@ -1303,9 +1303,9 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
                 height: 8,
                 borderRadius: 4,
                 bgcolor: idx === activeStep
-                  ? '#8875eb'
+                  ? '#5d76cb'
                   : idx < activeStep
-                  ? 'rgba(136, 117, 235,0.4)'
+                  ? 'rgba(93, 118, 203,0.4)'
                   : 'rgba(255,255,255,0.12)',
                 cursor: 'pointer',
                 transition: 'width 0.2s ease, background-color 0.2s ease',
@@ -1330,7 +1330,7 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
             size="small"
             onClick={onClose}
             startIcon={<DoneIcon />}
-            sx={{ minWidth: 90, bgcolor: '#8875eb', '&:hover': { bgcolor: '#6249df' } }}
+            sx={{ minWidth: 90, bgcolor: '#5d76cb', '&:hover': { bgcolor: '#4b3d8f' } }}
           >
             Done
           </Button>
@@ -1339,7 +1339,7 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
             variant="contained"
             size="small"
             onClick={handleNext}
-            sx={{ minWidth: 80, bgcolor: '#8875eb', '&:hover': { bgcolor: '#6249df' } }}
+            sx={{ minWidth: 80, bgcolor: '#5d76cb', '&:hover': { bgcolor: '#4b3d8f' } }}
           >
             Next →
           </Button>

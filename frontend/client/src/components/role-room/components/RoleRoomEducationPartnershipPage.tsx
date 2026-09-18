@@ -66,7 +66,7 @@ export default function RoleRoomEducationPartnershipPage(
 
   if (cmsBlocks) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0515', color: '#e2e8f0' }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#1b122c', color: '#e2e8f0' }}>
         <BlockRenderer blocks={cmsBlocks} locale={locale} />
       </Box>
     );
@@ -78,7 +78,7 @@ export default function RoleRoomEducationPartnershipPage(
         position: 'relative',
         minHeight: '100vh',
         overflowX: 'hidden',
-        bgcolor: '#0a0515',
+        bgcolor: '#1b122c',
         color: '#f8f5ef',
       }}
     >

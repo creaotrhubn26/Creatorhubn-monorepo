@@ -124,7 +124,7 @@ export const AgentThreadList: React.FC<AgentThreadListProps> = ({
                     display: 'flex',
                     alignItems: 'stretch',
                     border: '1px solid',
-                    borderColor: isActive ? '#8875eb' : 'divider',
+                    borderColor: isActive ? '#5d76cb' : 'divider',
                     borderRadius: 1,
                     mb: 0.5,
                   }}
@@ -136,7 +136,7 @@ export const AgentThreadList: React.FC<AgentThreadListProps> = ({
                     }}
                     sx={{ flex: 1, minWidth: 0 }}
                   >
-                    <ChatIcon fontSize="small" sx={{ mr: 1, color: isActive ? '#8875eb' : 'text.secondary' }} />
+                    <ChatIcon fontSize="small" sx={{ mr: 1, color: isActive ? '#5d76cb' : 'text.secondary' }} />
                     <ListItemText
                       primary={thread.title || 'Uten tittel'}
                       primaryTypographyProps={{ noWrap: true, fontWeight: isActive ? 700 : 500 }}

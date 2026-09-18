@@ -351,14 +351,14 @@ const TemplateCard = styled(Paper, {
   background: selected
     ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.18) 0%, rgba(37, 99, 235, 0.16) 100%)'
     : 'linear-gradient(145deg, rgba(18, 24, 40, 0.95) 0%, rgba(11, 16, 30, 0.95) 100%)',
-  border: selected ? '1px solid rgba(56, 189, 248, 0.7)' : '1px solid rgba(136, 117, 235, 0.22)',
+  border: selected ? '1px solid rgba(56, 189, 248, 0.7)' : '1px solid rgba(93, 118, 203, 0.22)',
   transition: 'all 0.2s ease',
   minHeight: 128,
   boxShadow: selected
     ? '0 14px 30px rgba(14, 165, 233, 0.25)'
     : '0 10px 24px rgba(4, 8, 22, 0.55)',
   '&:hover': {
-    borderColor: selected ? 'rgba(56, 189, 248, 0.85)' : 'rgba(136, 117, 235, 0.38)',
+    borderColor: selected ? 'rgba(56, 189, 248, 0.85)' : 'rgba(93, 118, 203, 0.38)',
     transform: 'translateY(-2px) scale(1.01)',
   },
 }));
@@ -389,7 +389,7 @@ const CategoryChip = styled(Chip, {
 const TemplateSection = styled(Paper)({
   padding: 14,
   borderRadius: 12,
-  border: '1px solid rgba(136, 117, 235, 0.22)',
+  border: '1px solid rgba(93, 118, 203, 0.22)',
   background: 'linear-gradient(145deg, rgba(8, 14, 28, 0.95) 0%, rgba(8, 12, 24, 0.95) 100%)',
   boxShadow: '0 12px 26px rgba(10, 5, 21, 0.45)',
 });
@@ -586,7 +586,7 @@ export const createTemplateFromPreset = (
     frameWidth: Math.round(width),
     frameHeight: Math.round(height),
     guides: guideDefaults,
-    backgroundColor: '#18122b',
+    backgroundColor: '#2a3d56',
     borderColor: '#333344',
     borderWidth: 2,
     showFrameNumber: true,
@@ -796,7 +796,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       width: safeCustomWidth,
       height: safeCustomHeight,
       description: `Custom ${safeCustomWidth}:${safeCustomHeight}`,
-      color: 'var(--role-violet, #8875eb)',
+      color: 'var(--role-violet, #5d76cb)',
     };
     
     const template = createTemplateFromPreset(customPreset, canvasWidth, canvasHeight);
@@ -867,7 +867,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <IconButton
                 size="small"
                 onClick={() => setShowCustomDialog(true)}
-                sx={{ color: 'var(--role-violet, #8875eb)' }}
+                sx={{ color: 'var(--role-violet, #5d76cb)' }}
               >
                 <Add />
               </IconButton>
@@ -1019,7 +1019,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                           top: -8,
                           right: -8,
                           bgcolor: 'rgba(10, 5, 21, 0.72)',
-                          border: '1px solid rgba(136, 117, 235, 0.35)',
+                          border: '1px solid rgba(93, 118, 203, 0.35)',
                         }}
                       >
                         {isFavorite
@@ -1091,7 +1091,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                             top: -8,
                             right: -8,
                             bgcolor: 'rgba(10, 5, 21, 0.72)',
-                            border: '1px solid rgba(136, 117, 235, 0.35)',
+                            border: '1px solid rgba(93, 118, 203, 0.35)',
                           }}
                         >
                           {isFavorite

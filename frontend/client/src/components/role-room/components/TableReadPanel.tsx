@@ -137,8 +137,8 @@ function getCharacters(dialogueLines: DialogueLine[]): string[] {
 // Generate consistent colors for characters
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8875eb',
-    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#8875eb',
+    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#5d76cb',
+    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#5d76cb',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
@@ -339,7 +339,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#18122b',
+        bgcolor: '#2a3d56',
         overflow: 'hidden',
       }}
     >

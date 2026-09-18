@@ -62,7 +62,7 @@ const LOGOS: Array<{ name: string; src: string; alt: string; download: string }>
 
 const BRAND_COLORS: Array<{ name: string; hex: string; usage: string }> = [
   { name: 'Bakgrunn', hex: '#121218', usage: 'Hoved-bakgrunn (mørk)' },
-  { name: 'Aksent lilla', hex: '#9e8cf8', usage: 'CTA-er, fremhevet tekst' },
+  { name: 'Aksent lilla', hex: '#93a4dc', usage: 'CTA-er, fremhevet tekst' },
   { name: 'Tekst primær', hex: '#f8fafc', usage: 'Brødtekst på mørk bakgrunn' },
   { name: 'Tekst sekundær', hex: 'rgba(203,213,225,0.78)', usage: 'Støttetekst' },
 ];
@@ -146,8 +146,8 @@ export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPagePr
             size="small"
             sx={{
               alignSelf: 'flex-start',
-              bgcolor: 'rgba(158, 140, 248,0.16)',
-              color: '#e0dbfa',
+              bgcolor: 'rgba(147, 164, 220,0.16)',
+              color: '#dfe4f3',
               fontWeight: 600,
             }}
           />
@@ -262,9 +262,9 @@ export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPagePr
                       size="small"
                       startIcon={<DownloadIcon />}
                       sx={{
-                        color: '#e0dbfa',
-                        borderColor: 'rgba(158, 140, 248,0.4)',
-                        '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(158, 140, 248,0.08)' },
+                        color: '#dfe4f3',
+                        borderColor: 'rgba(147, 164, 220,0.4)',
+                        '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(147, 164, 220,0.08)' },
                       }}
                     >
                       Last ned
@@ -306,8 +306,8 @@ export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPagePr
         {/* Kontakt */}
         <Card
           sx={{
-            bgcolor: 'rgba(158, 140, 248,0.08)',
-            border: '1px solid rgba(158, 140, 248,0.24)',
+            bgcolor: 'rgba(147, 164, 220,0.08)',
+            border: '1px solid rgba(147, 164, 220,0.24)',
           }}
         >
           <CardContent>
@@ -325,10 +325,10 @@ export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPagePr
                   variant="contained"
                   startIcon={<EmailIcon />}
                   sx={{
-                    bgcolor: '#9e8cf8',
+                    bgcolor: '#93a4dc',
                     color: '#121218',
                     fontWeight: 600,
-                    '&:hover': { bgcolor: 'var(--role-violet, #8875eb)' },
+                    '&:hover': { bgcolor: 'var(--role-violet, #5d76cb)' },
                   }}
                 >
                   {PRESS_CONTACT_EMAIL}
@@ -341,9 +341,9 @@ export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPagePr
                   variant="outlined"
                   endIcon={<OpenInNewIcon />}
                   sx={{
-                    color: '#e0dbfa',
-                    borderColor: 'rgba(158, 140, 248,0.4)',
-                    '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(158, 140, 248,0.08)' },
+                    color: '#dfe4f3',
+                    borderColor: 'rgba(147, 164, 220,0.4)',
+                    '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(147, 164, 220,0.08)' },
                   }}
                 >
                   Besøk theroleroom.com

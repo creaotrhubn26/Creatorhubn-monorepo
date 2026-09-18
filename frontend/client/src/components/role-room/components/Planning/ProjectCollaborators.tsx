@@ -36,7 +36,7 @@ const ProjectCollaborators: React.FC<ProjectCollaboratorsProps> = ({
     
     // Videographer roles - leadership
     if (['director', 'producer'].includes(role)) return '#ef4444'; // Red for leadership
-    if (['cinematographer', 'camera_operator', 'drone_pilot'].includes(role)) return '#8875eb'; // Purple for camera
+    if (['cinematographer', 'camera_operator', 'drone_pilot'].includes(role)) return '#5d76cb'; // Purple for camera
     if (['video_editor', 'colorist', 'vfx_artist', 'motion_graphics'].includes(role)) return '#f59e0b'; // Orange for post-production
     if (['sound_engineer', 'audio_mixer'].includes(role)) return '#06b6d4'; // Cyan for audio
     if (['grip', 'gaffer'].includes(role)) return '#3b82f6'; // Blue for lighting/grip

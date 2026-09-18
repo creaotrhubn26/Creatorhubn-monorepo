@@ -41,11 +41,11 @@ import * as svc from './danceTeamService';
 import type { InvitePublicInfo } from './danceTeamService';
 
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
-const PURPLE_DEEP   = '#301f84';
+const PURPLE_DEEP   = '#302a83';
 const PURPLE_LIGHT  = danceFlowColors.lavender;
 const TEXT_DIM      = 'rgba(229,231,235,0.78)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.55)';
-const PANEL_BORDER  = 'rgba(158, 140, 248,0.18)';
+const PANEL_BORDER  = 'rgba(147, 164, 220,0.18)';
 
 interface Props {
   token: string;
@@ -202,7 +202,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
             som <Box component="span" sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>{info.invitedRoleLabel}</Box> i et dansestudio på CreatorHub.
           </Typography>
 
-          <Box sx={{ width: '100%', mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(136, 117, 235,0.06)', border: `1px solid ${PANEL_BORDER}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{ width: '100%', mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(93, 118, 203,0.06)', border: `1px solid ${PANEL_BORDER}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <MailIcon sx={{ color: PURPLE_LIGHT, fontSize: 22 }} />
             <Box sx={{ textAlign: 'left' }}>
               <Typography sx={{ fontSize: 12, color: TEXT_MUTED, letterSpacing: 0.5 }}>SENDES TIL</Typography>
@@ -285,7 +285,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
         />
 
         {/* GDPR consent */}
-        <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(136, 117, 235,0.04)', border: `1px solid ${PANEL_BORDER}` }}>
+        <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(93, 118, 203,0.04)', border: `1px solid ${PANEL_BORDER}` }}>
           <FormControlLabel
             control={
               <Checkbox

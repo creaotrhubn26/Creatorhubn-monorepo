@@ -54,7 +54,7 @@ function dueLabel(iso: string | null, now: number): string {
 
 const COLUMN_ACCENT: Record<DeliverableStatus, string> = {
   draft: 'rgba(148,163,184,0.7)',
-  internal_review: '#c6bdf4',
+  internal_review: '#c3cbe6',
   client_review: '#fbbf24',
   delivered: '#86efac',
 };
@@ -157,7 +157,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
               <IconButton
                 size="small" onClick={() => setAdding((a) => !a)}
                 aria-label="Ny leveranse"
-                sx={{ width: 44, height: 44, color: '#c6bdf4', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+                sx={{ width: 44, height: 44, color: '#c3cbe6', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
               >
                 <AddIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -173,13 +173,13 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
               onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); if (e.key === 'Escape') { setAdding(false); setNewTitle(''); } }}
               placeholder="F.eks. Hovedfilm 30s"
               size="small" autoFocus fullWidth
-              InputProps={{ sx: { fontSize: '13px', color: '#f6f5ff', background: 'rgba(15,23,42,0.55)' } }}
+              InputProps={{ sx: { fontSize: '13px', color: '#f7f9ff', background: 'rgba(15,23,42,0.55)' } }}
             />
             <Stack direction="row" spacing={0.8}>
               <Button
                 onClick={() => void handleCreate()} disabled={creating || !newTitle.trim()}
                 size="small"
-                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
+                sx={{ textTransform: 'none', fontWeight: 700, fontSize: '12px', minHeight: 36, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
               >
                 {creating ? 'Legger til…' : 'Legg til'}
               </Button>
@@ -211,14 +211,14 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
     <Box
       sx={{
         borderRadius: '16px', border: '1px solid rgba(148,163,184,0.14)',
-        background: 'linear-gradient(180deg,#100b1e,#0a0515)',
+        background: 'linear-gradient(180deg,#2a3152,#1b122c)',
         p: { xs: 2, md: 2.5 }, mb: 2.5, boxShadow: '0 18px 44px rgba(0,0,0,0.4)',
       }}
     >
       {/* Header + sammendrag */}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '16px' }}>Leveranser</Typography>
+          <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '16px' }}>Leveranser</Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>
             {loading ? 'Laster…' : `${summary.total} leveranser · ${summary.overdue} forsinket · ${summary.awaitingClient} venter på klient · ${summary.delivered} levert`}
           </Typography>
@@ -231,7 +231,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
 
       {loading && items.length === 0 ? (
         <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
-          <CircularProgress size={24} sx={{ color: '#8875eb' }} />
+          <CircularProgress size={24} sx={{ color: '#5d76cb' }} />
         </Box>
       ) : isMobile ? (
         // Mobil: status-faner (én kolonne om gangen) i stedet for 4 stablede.
@@ -299,14 +299,14 @@ function DeliverableCard({
 
   return (
     <Box sx={{ borderRadius: '10px', border: '1px solid rgba(148,163,184,0.12)', borderLeft: `3px solid ${accent}`, background: 'rgba(10, 5, 21,0.4)', p: 1.1, opacity: busy ? 0.6 : 1 }}>
-      <Typography sx={{ color: '#f6f5ff', fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
+      <Typography sx={{ color: '#f7f9ff', fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
         {item.title}
       </Typography>
       <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" sx={{ mt: 0.4, rowGap: 0.3 }}>
         {item.format ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '11px' }}>{item.format}</Typography>
         ) : null}
-        <Typography sx={{ color: 'rgba(198, 189, 244,0.9)', fontSize: '10.5px', fontWeight: 700, px: 0.6, py: 0.1, borderRadius: '5px', background: 'rgba(136, 117, 235,0.14)', fontVariantNumeric: 'tabular-nums' }}>
+        <Typography sx={{ color: 'rgba(195, 203, 230,0.9)', fontSize: '10.5px', fontWeight: 700, px: 0.6, py: 0.1, borderRadius: '5px', background: 'rgba(93, 118, 203,0.14)', fontVariantNumeric: 'tabular-nums' }}>
           v{item.version}
         </Typography>
       </Stack>
@@ -346,7 +346,7 @@ function DeliverableCard({
           <Tooltip title={nextLabel}>
             <span>
               <IconButton size="small" disabled={!onNext || busy} onClick={onNext} aria-label={nextLabel}
-                sx={{ width: 44, height: 44, color: nextPublishes ? '#6ee7b7' : '#c6bdf4', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
+                sx={{ width: 44, height: 44, color: nextPublishes ? '#6ee7b7' : '#c3cbe6', '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}>
                 <NextActionIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </span>

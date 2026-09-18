@@ -163,7 +163,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         <Chip
           size="small"
           label={`${data.totalAnnotations} annotasjoner · ${data.formationsCount} formasjoner · ${data.rehearsalsCount} prøver`}
-          sx={{ ml: 1, height: 22, fontSize: 11, bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight }}
+          sx={{ ml: 1, height: 22, fontSize: 11, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
 
@@ -175,7 +175,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         }}
       >
         {/* ─── Annotations per kategori ───────────────────────────── */}
-        <Card data-testid="analysis-annotations-by-category" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(136, 117, 235,0.18)' }}>
+        <Card data-testid="analysis-annotations-by-category" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(93, 118, 203,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
               <TagIcon sx={{ fontSize: 16, color: danceFlowColors.lavender }} />
@@ -225,7 +225,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Card>
 
         {/* ─── Rehearsal-outcomes ─────────────────────────────────── */}
-        <Card data-testid="analysis-rehearsal-outcomes" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(136, 117, 235,0.18)' }}>
+        <Card data-testid="analysis-rehearsal-outcomes" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(93, 118, 203,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
               <CheckIcon sx={{ fontSize: 16, color: danceFlowColors.successPrimary }} />
@@ -248,7 +248,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Card>
 
         {/* ─── Top-5 dansere ──────────────────────────────────────── */}
-        <Card data-testid="analysis-top-dancers" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(136, 117, 235,0.18)' }}>
+        <Card data-testid="analysis-top-dancers" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(93, 118, 203,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
               <PeopleIcon sx={{ fontSize: 16, color: danceFlowColors.infoLight }} />
@@ -289,7 +289,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Card>
 
         {/* ─── Formasjons-tagger ──────────────────────────────────── */}
-        <Card data-testid="analysis-formation-tags" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(136, 117, 235,0.18)' }}>
+        <Card data-testid="analysis-formation-tags" sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid rgba(93, 118, 203,0.18)' }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
               <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
@@ -309,7 +309,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
                       key={tag}
                       size="small"
                       label={`${tag} · ${count}`}
-                      sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(158, 140, 248,0.18)', color: danceFlowColors.lavenderLight }}
+                      sx={{ height: 20, fontSize: 10.5, bgcolor: 'rgba(147, 164, 220,0.18)', color: danceFlowColors.lavenderLight }}
                     />
                   ))}
               </Stack>

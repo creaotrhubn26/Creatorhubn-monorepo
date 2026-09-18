@@ -169,7 +169,7 @@ const TAKE_STATUS_META: Record<string, { label: string; color: string; bg: strin
 
 const NOTE_TAG_META: Record<NoteTag, { label: string; color: string }> = {
   focus:      { label: 'Focus',      color: '#3b82f6' },
-  continuity: { label: 'Continuity', color: '#8875eb' },
+  continuity: { label: 'Continuity', color: '#5d76cb' },
   sound:      { label: 'Sound',      color: '#10b981' },
   action:     { label: 'Action',     color: '#f59e0b' },
   general:    { label: 'General',    color: 'rgba(255,255,255,0.5)' },
@@ -179,7 +179,7 @@ const QUICK_ACTIONS: { type: QuickActionType; label: string; emoji: string; Icon
   { type: 'good_take',      label: 'Good Take',       emoji: '👍', Icon: GoodTakeIcon,      color: '#10b981' },
   { type: 'pickup_shot',    label: 'Pickup Shot',      emoji: '🎯', Icon: PickupIcon,        color: '#3b82f6' },
   { type: 'action_safe',    label: 'Action Safe',      emoji: '⚠️', Icon: ActionSafeIcon,    color: '#f59e0b' },
-  { type: 'check_focus',    label: 'Check Focus',      emoji: '🎥', Icon: CheckFocusIcon,    color: '#8875eb' },
+  { type: 'check_focus',    label: 'Check Focus',      emoji: '🎥', Icon: CheckFocusIcon,    color: '#5d76cb' },
   { type: 'setup_complete', label: 'Setup Complete',   emoji: '✔',  Icon: SetupCompleteIcon, color: '#10b981' },
 ];
 
@@ -565,7 +565,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             displayEmpty
             disabled={normalizedSceneOptions.length === 0}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
+              PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
               MenuListProps: { sx: { py: touchUi ? 0.5 : 0 } },
             }}
             sx={{
@@ -599,7 +599,7 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
           </Select>
         </FormControl>
         <FormControl size={controlSize} sx={{ minWidth: touchUi ? 200 : 170 }}>
-          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#8875eb' } }}>Fase</InputLabel>
+          <InputLabel sx={{ color: 'rgba(255,255,255,0.45)', '&.Mui-focused': { color: '#5d76cb' } }}>Fase</InputLabel>
           <Select
             label="Fase"
             value={status.phase}
@@ -607,14 +607,14 @@ const LiveSetStatusBar: FC<LiveSetStatusBarProps> = ({
             sx={{
               height: controlHeight,
               color: '#fff',
-              bgcolor: 'rgba(136, 117, 235,0.12)',
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.35)' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(136, 117, 235,0.55)' },
+              bgcolor: 'rgba(93, 118, 203,0.12)',
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.35)' },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(93, 118, 203,0.55)' },
               '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.55)' },
               '& .MuiSelect-select': { py: touchUi ? 1.25 : 0.6, fontSize: touchUi ? 14 : 13 },
             }}
             MenuProps={{
-              PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
+              PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } },
               MenuListProps: { sx: { py: touchUi ? 0.5 : 0 } },
             }}
           >
@@ -1400,7 +1400,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               label="Shot"
               value={normalizedShotId}
               onChange={(event) => onCaptureChange({ shotId: event.target.value })}
-              MenuProps={{ PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
+              MenuProps={{ PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
               sx={{
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
@@ -1427,7 +1427,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               label="Kvalitet"
               value={takeCapture.quality}
               onChange={(event) => onCaptureChange({ quality: event.target.value as TakeStatus })}
-              MenuProps={{ PaperProps: { sx: { bgcolor: '#18122b', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
+              MenuProps={{ PaperProps: { sx: { bgcolor: '#2a3d56', color: '#fff', maxHeight: touchUi ? 420 : 320 } } }}
               sx={{
                 color: '#fff',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
@@ -1456,7 +1456,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
               '& .MuiOutlinedInput-root': {
                 color: '#fff',
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
-                '&.Mui-focused fieldset': { borderColor: '#8875eb' },
+                '&.Mui-focused fieldset': { borderColor: '#5d76cb' },
               },
               '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.45)' },
             }}
@@ -1482,9 +1482,9 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                   sx={{
                     fontSize: touchUi ? 12 : 10,
                     cursor: 'pointer',
-                    color: selected ? '#8875eb' : 'rgba(255,255,255,0.55)',
-                    bgcolor: selected ? 'rgba(136, 117, 235,0.18)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${selected ? 'rgba(136, 117, 235,0.45)' : 'rgba(255,255,255,0.15)'}`,
+                    color: selected ? '#5d76cb' : 'rgba(255,255,255,0.55)',
+                    bgcolor: selected ? 'rgba(93, 118, 203,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${selected ? 'rgba(93, 118, 203,0.45)' : 'rgba(255,255,255,0.15)'}`,
                     minHeight: touchUi ? 34 : undefined,
                   }}
                 />
@@ -1519,7 +1519,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
       {/* ── Script + Storyboard ── */}
       <Paper sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 2 }}>
         <Box sx={{ px: 2, py: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <ScriptIcon sx={{ fontSize: 16, color: '#9e8cf8' }} />
+          <ScriptIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: 10, fontWeight: 700 }}>
             Script og tilknyttede storyboards
           </Typography>
@@ -1665,8 +1665,8 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                         sx={{
                           height: 18,
                           fontSize: 10,
-                          color: '#c6bdf4',
-                          border: '1px solid rgba(158, 140, 248,0.42)',
+                          color: '#c3cbe6',
+                          border: '1px solid rgba(147, 164, 220,0.42)',
                           bgcolor: 'rgba(48, 31, 132,0.3)',
                         }}
                       />
@@ -1717,7 +1717,7 @@ const LiveSetContextPanel: FC<LiveSetContextPanelProps> = ({
                     {frame.title}
                   </Typography>
                   {storyboardScope === 'project' && frame.sourceSceneId ? (
-                    <Typography variant="caption" sx={{ color: 'rgba(198, 189, 244,0.88)', display: 'block', mt: 0.1 }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(195, 203, 230,0.88)', display: 'block', mt: 0.1 }}>
                       {sceneLabelById[frame.sourceSceneId] || frame.sourceSceneId}
                     </Typography>
                   ) : null}
@@ -3191,7 +3191,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
       sx={{
         display: 'flex', flexDirection: 'column',
         width: '100%', height: '100%', minHeight: '100%',
-        bgcolor: '#0a0515', position: 'relative', overflow: 'hidden',
+        bgcolor: '#1b122c', position: 'relative', overflow: 'hidden',
       }}
     >
       {/* ── CUT flash overlay ── */}
@@ -3269,7 +3269,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           >
             {(['live', 'edit', 'review'] as const).map((m) => {
               const isActive = liveSetMode === m;
-              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#9e8cf8' : '#22d3ee';
+              const accentColor = m === 'live' ? '#ef4444' : m === 'edit' ? '#93a4dc' : '#22d3ee';
               return (
                 <Box
                   key={m}
@@ -3401,9 +3401,9 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
             mx: 'auto',
             px: { xs: 1.5, sm: 2.5 },
             py: 1.2,
-            bgcolor: liveSetMode === 'edit' ? 'rgba(158, 140, 248,0.08)' : 'rgba(34,211,238,0.08)',
+            bgcolor: liveSetMode === 'edit' ? 'rgba(147, 164, 220,0.08)' : 'rgba(34,211,238,0.08)',
             borderBottom: '1px solid',
-            borderColor: liveSetMode === 'edit' ? 'rgba(158, 140, 248,0.24)' : 'rgba(34,211,238,0.24)',
+            borderColor: liveSetMode === 'edit' ? 'rgba(147, 164, 220,0.24)' : 'rgba(34,211,238,0.24)',
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
@@ -3412,7 +3412,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
           <Box
             sx={{
               fontSize: 18,
-              color: liveSetMode === 'edit' ? '#9e8cf8' : '#22d3ee',
+              color: liveSetMode === 'edit' ? '#93a4dc' : '#22d3ee',
             }}
           >
             {liveSetMode === 'edit' ? '✎' : '👁'}

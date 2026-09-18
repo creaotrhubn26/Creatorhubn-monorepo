@@ -981,7 +981,7 @@ export default function FeedPostDetailPanel({
         }}
       >
         <Stack direction="row" spacing={0.8} alignItems="center">
-          <GridViewIcon sx={{ fontSize: 16, color: "#9e8cf8" }} />
+          <GridViewIcon sx={{ fontSize: 16, color: "#93a4dc" }} />
           <Typography
             sx={{ color: "#e2e8f0", fontSize: "0.78rem", fontWeight: 700 }}
           >
@@ -1013,9 +1013,9 @@ export default function FeedPostDetailPanel({
                     fontWeight: 700,
                     fontSize: "0.74rem",
                     color: active ? "#0b1220" : "rgba(226,232,240,0.82)",
-                    bgcolor: active ? "#9e8cf8" : "transparent",
+                    bgcolor: active ? "#93a4dc" : "transparent",
                     border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.3)'}`,
-                    '&:hover': { bgcolor: active ? '#9e8cf8' : 'rgba(158, 140, 248,0.12)' },
+                    '&:hover': { bgcolor: active ? '#93a4dc' : 'rgba(147, 164, 220,0.12)' },
                   }}
                 >
                   {option.label}
@@ -1066,9 +1066,9 @@ export default function FeedPostDetailPanel({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                color: '#9e8cf8',
-                borderColor: 'rgba(158, 140, 248,0.5)',
-                '&:hover': { borderColor: '#9e8cf8', bgcolor: 'rgba(158, 140, 248,0.08)' },
+                color: '#93a4dc',
+                borderColor: 'rgba(147, 164, 220,0.5)',
+                '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(147, 164, 220,0.08)' },
               }}
             >
               {post.coverImageUrl ? 'Bytt cover' : 'Last opp'}
@@ -1151,7 +1151,7 @@ export default function FeedPostDetailPanel({
         }}
       >
         <Stack direction="row" alignItems="center" spacing={0.6}>
-          <BookmarkIcon fontSize="small" sx={{ color: '#9e8cf8' }} />
+          <BookmarkIcon fontSize="small" sx={{ color: '#93a4dc' }} />
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
             Maler
           </Typography>
@@ -1165,8 +1165,8 @@ export default function FeedPostDetailPanel({
               textTransform: 'none',
               fontWeight: 700,
               fontSize: '0.72rem',
-              color: '#9e8cf8',
-              '&:hover': { bgcolor: 'rgba(158, 140, 248,0.08)' },
+              color: '#93a4dc',
+              '&:hover': { bgcolor: 'rgba(147, 164, 220,0.08)' },
             }}
           >
             {savingTemplate ? 'Lagrer…' : 'Lagre som mal'}
@@ -1190,9 +1190,9 @@ export default function FeedPostDetailPanel({
                   fontWeight: 600,
                   fontSize: '0.7rem',
                   color: 'rgba(226,232,240,0.88)',
-                  borderColor: 'rgba(158, 140, 248,0.4)',
-                  bgcolor: 'rgba(158, 140, 248,0.08)',
-                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.16)' },
+                  borderColor: 'rgba(147, 164, 220,0.4)',
+                  bgcolor: 'rgba(147, 164, 220,0.08)',
+                  '&:hover': { bgcolor: 'rgba(147, 164, 220,0.16)' },
                   '& .MuiChip-deleteIcon': { color: 'rgba(248,113,113,0.7)' },
                 }}
                 variant="outlined"
@@ -1318,7 +1318,7 @@ export default function FeedPostDetailPanel({
               setHashtagSuggesting(false);
             }
           }}
-          startIcon={hashtagSuggesting ? <CircularProgress size={12} sx={{ color: '#9e8cf8' }} /> : <AutoAwesomeIcon fontSize="small" sx={{ color: '#9e8cf8' }} />}
+          startIcon={hashtagSuggesting ? <CircularProgress size={12} sx={{ color: '#93a4dc' }} /> : <AutoAwesomeIcon fontSize="small" sx={{ color: '#93a4dc' }} />}
           sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
           data-testid="feedpost-hashtag-suggest"
         >
@@ -1403,12 +1403,12 @@ export default function FeedPostDetailPanel({
         sx={{
           p: 1.2,
           borderRadius: 1.8,
-          background: 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(136, 117, 235,0.08) 100%)',
-          border: '1px solid rgba(136, 117, 235,0.2)',
+          background: 'linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(93, 118, 203,0.08) 100%)',
+          border: '1px solid rgba(93, 118, 203,0.2)',
         }}
       >
         <Stack direction="row" alignItems="center" spacing={0.8}>
-          <AutoAwesomeIcon fontSize="small" sx={{ color: '#9e8cf8' }} />
+          <AutoAwesomeIcon fontSize="small" sx={{ color: '#93a4dc' }} />
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>
             AI-anbefaling
           </Typography>
@@ -1448,9 +1448,9 @@ export default function FeedPostDetailPanel({
               textTransform: 'none',
               fontWeight: 700,
               color: '#0b1220',
-              background: 'linear-gradient(135deg, #22d3ee 0%, #8875eb 100%)',
+              background: 'linear-gradient(135deg, #22d3ee 0%, #5d76cb 100%)',
               boxShadow: 'none',
-              '&:hover': { boxShadow: '0 4px 16px rgba(136, 117, 235,0.3)' },
+              '&:hover': { boxShadow: '0 4px 16px rgba(93, 118, 203,0.3)' },
             }}
           >
             {aiLoading ? 'Henter anbefaling…' : 'Anbefal med AI'}
@@ -1496,7 +1496,7 @@ export default function FeedPostDetailPanel({
           sx={{
             p: 1.2,
             borderRadius: 1.8,
-            background: 'linear-gradient(135deg, rgba(245,133,41,0.06) 0%, rgba(98, 73, 223,0.06) 100%)',
+            background: 'linear-gradient(135deg, rgba(245,133,41,0.06) 0%, rgba(75, 61, 143,0.06) 100%)',
             border: '1px solid rgba(221,42,123,0.25)',
           }}
         >
@@ -1532,7 +1532,7 @@ export default function FeedPostDetailPanel({
               textTransform: 'none',
               fontWeight: 700,
               color: '#fff',
-              background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #6249df 100%)',
+              background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #4b3d8f 100%)',
               boxShadow: 'none',
               '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
             }}

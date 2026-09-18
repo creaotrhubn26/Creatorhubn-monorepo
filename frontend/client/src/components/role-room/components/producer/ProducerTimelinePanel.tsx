@@ -1481,9 +1481,9 @@ export default function ProducerTimelinePanel({
                             label="Prosjektstatus"
                             sx={{
                               height: 22,
-                              bgcolor: 'rgba(158, 140, 248,0.16)',
-                              color: '#e0dbfa',
-                              border: '1px solid rgba(158, 140, 248,0.35)',
+                              bgcolor: 'rgba(147, 164, 220,0.16)',
+                              color: '#dfe4f3',
+                              border: '1px solid rgba(147, 164, 220,0.35)',
                             }}
                           />
                         )}
@@ -1541,9 +1541,9 @@ export default function ProducerTimelinePanel({
                             label="Klientgrunnlag"
                             sx={{
                               height: 22,
-                              bgcolor: 'rgba(158, 140, 248,0.16)',
-                              color: '#e0dbfa',
-                              border: '1px solid rgba(158, 140, 248,0.35)',
+                              bgcolor: 'rgba(147, 164, 220,0.16)',
+                              color: '#dfe4f3',
+                              border: '1px solid rgba(147, 164, 220,0.35)',
                             }}
                           />
                         )}

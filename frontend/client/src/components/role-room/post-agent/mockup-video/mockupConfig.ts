@@ -77,10 +77,10 @@ export interface MockupConfig {
 export const BACKGROUND_PRESETS: Record<string, { from?: string; to?: string; direction?: 'vertical' | 'horizontal' | 'diagonal'; solid?: boolean; transparent?: boolean }> = {
   transparent: { transparent: true },
   midnight: { from: '#1e293b', to: '#0b1120', direction: 'vertical' },
-  brand: { from: '#301f84', to: '#0b1120', direction: 'diagonal' },
-  sunset: { from: '#7c2d12', to: '#211c3b', direction: 'diagonal' },
+  brand: { from: '#302a83', to: '#0b1120', direction: 'diagonal' },
+  sunset: { from: '#7c2d12', to: '#3c4e6d', direction: 'diagonal' },
   ocean: { from: '#0e7490', to: '#0b1120', direction: 'vertical' },
-  plum: { from: '#472bd4', to: '#0a0515', direction: 'diagonal' },
+  plum: { from: '#3e3180', to: '#1b122c', direction: 'diagonal' },
   light: { from: '#f1f5f9', to: '#cbd5e1', direction: 'vertical' },
   black: { from: '#000000', solid: true },
 };

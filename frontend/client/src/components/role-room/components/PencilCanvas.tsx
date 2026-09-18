@@ -91,7 +91,7 @@ export interface PencilCanvasHandle {
 
 const CanvasContainer = styled(Box)({
   position: 'relative',
-  backgroundColor: '#18122b',
+  backgroundColor: '#2a3d56',
   borderRadius: 8,
   overflow: 'hidden',
 });
@@ -188,7 +188,7 @@ const ColorSwatch = styled(Box, {
 // =============================================================================
 
 const COLORS = [
-  '#000000','#FFFFFF','#FF5252','#FF9800','#FFEB3B','#4CAF50','#2196F3','#3c27a5','#795548', '#607D8B',
+  '#000000','#FFFFFF','#FF5252','#FF9800','#FFEB3B','#4CAF50','#2196F3','#32127a','#795548', '#607D8B',
 ];
 
 const DEFAULT_BRUSH: BrushSettings = {

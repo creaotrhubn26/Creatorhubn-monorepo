@@ -125,7 +125,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
         mt: 2,
         p: 2,
         borderRadius: 2,
-        border: "1px solid rgba(198, 189, 244,0.24)",
+        border: "1px solid rgba(195, 203, 230,0.24)",
         bgcolor: "rgba(48, 31, 132,0.16)",
       }}
     >
@@ -137,7 +137,7 @@ export const RoleRoomAffiliateConnectCard: React.FC<
           justifyContent="space-between"
         >
           <Stack direction="row" spacing={1} alignItems="center">
-            <AccountBalanceOutlinedIcon sx={{ color: "#c6bdf4" }} />
+            <AccountBalanceOutlinedIcon sx={{ color: "#c3cbe6" }} />
             <Typography variant="subtitle2" fontWeight={800}>
               Affiliate-utbetalinger
             </Typography>

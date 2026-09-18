@@ -242,7 +242,7 @@ export function setupPagesCtaRoutes(deps: SetupPagesCtaRoutesDeps): void {
   button.secondary:hover{background:#64748b}
   pre{background:#0f1729;border:1px solid #334155;padding:14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.55;color:#bfdbfe;margin-top:8px}
   .status-ok{color:#22c55e} .status-err{color:#f87171}
-  .badge{display:inline-block;background:rgba(136, 117, 235,.18);color:#c4b5fd;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .badge{display:inline-block;background:rgba(93, 118, 203,.18);color:#c4b5fd;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .step-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .hint{color:#94a3b8;font-size:12px;margin-top:6px}
 </style></head>

@@ -40,15 +40,15 @@ import HealthAndSafetyOutlinedIcon from '@mui/icons-material/HealthAndSafetyOutl
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 
 const palette = {
-  bgCard: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  borderSubtle: 'rgba(136, 117, 235,0.08)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bgCard: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  borderSubtle: 'rgba(93, 118, 203,0.08)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
-  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+  accent: '#93a4dc',
+  accentGradient: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
 };
 
 interface DiagnoseCheck {
@@ -107,7 +107,7 @@ export default function ClientGoogleSuitePanel({
         <Box sx={{
           mb: 2,
           p: 1.4,
-          bgcolor: 'rgba(136, 117, 235,0.04)',
+          bgcolor: 'rgba(93, 118, 203,0.04)',
           border: `1px solid ${palette.border}`,
           borderRadius: 1.4,
         }}>
@@ -119,7 +119,7 @@ export default function ClientGoogleSuitePanel({
               sx={{
                 background: palette.accentGradient,
                 color: '#fff', textTransform: 'none', fontWeight: 700,
-                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
               }}
             >
               {diagnosing ? 'Skanner klient-siten…' : checks ? 'Kjør på nytt' : 'Sjekk klient-status'}
@@ -272,7 +272,7 @@ function Ga4Section({
             background: palette.accentGradient,
             color: '#fff', textTransform: 'none', fontWeight: 700,
             alignSelf: 'flex-start',
-            '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
           }}
         >
           {provisioning ? 'Oppretter…' : `Opprett GA4-property for ${clientName}`}
@@ -395,7 +395,7 @@ function GscSection({
                 Lim følgende inn i <code style={{ color: palette.accent }}>&lt;head&gt;</code> på {clientWebsiteUrl}, så trykk "Verifiser nå":
               </Typography>
               <Box sx={{
-                bgcolor: '#100b1e',
+                bgcolor: '#2a3152',
                 border: `1px solid ${palette.borderStrong}`,
                 borderRadius: 1,
                 p: 1.2,
@@ -419,7 +419,7 @@ function GscSection({
                   sx={{
                     background: palette.accentGradient,
                     color: '#fff', textTransform: 'none', fontWeight: 700,
-                    '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                    '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
                   }}
                 >
                   {verifying ? 'Verifiserer…' : 'Verifiser nå'}
@@ -444,7 +444,7 @@ function GscSection({
             startIcon={submittingSitemap ? <CircularProgress size={14} /> : <SearchOutlinedIcon fontSize="small" />}
             sx={{
               background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
-              color: '#100b1e', textTransform: 'none', fontWeight: 800,
+              color: '#2a3152', textTransform: 'none', fontWeight: 800,
             }}
           >
             {submittingSitemap ? 'Submitter…' : 'Auto-submit sitemap + prioriter conversion-URL-er'}
@@ -661,7 +661,7 @@ function GtmSection({
             background: palette.accentGradient,
             color: '#fff', textTransform: 'none', fontWeight: 700,
             alignSelf: 'flex-start',
-            '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
           }}
         >
           {provisioning ? 'Oppretter…' : `Opprett GTM-container for ${clientName}`}
@@ -686,7 +686,7 @@ function GtmSection({
               startIcon={importingTags ? <CircularProgress size={14} /> : <LocalOfferOutlinedIcon fontSize="small" />}
               sx={{
                 background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
-                color: '#100b1e', textTransform: 'none', fontWeight: 800,
+                color: '#2a3152', textTransform: 'none', fontWeight: 800,
               }}
             >
               {importingTags ? 'Importerer…' : 'Importer Google Ads-tags til GTM'}
@@ -734,7 +734,7 @@ function SectionFrame({
     <Box sx={{
       border: `1px solid ${palette.border}`,
       borderRadius: 1.4,
-      bgcolor: expanded ? 'rgba(136, 117, 235,0.04)' : 'transparent',
+      bgcolor: expanded ? 'rgba(93, 118, 203,0.04)' : 'transparent',
     }}>
       <Box
         onClick={onToggle}
@@ -742,7 +742,7 @@ function SectionFrame({
       >
         <Box sx={{
           width: 32, height: 32, borderRadius: 1,
-          bgcolor: 'rgba(136, 117, 235,0.08)',
+          bgcolor: 'rgba(93, 118, 203,0.08)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{icon}</Box>
         <Box sx={{ flex: 1 }}>

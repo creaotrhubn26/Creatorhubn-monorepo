@@ -304,7 +304,7 @@ type BoardPolishPersistedState = StoryboardDocumentBoardPolishState;
 // =============================================================================
 
 const EditorContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: '#18122b',
+  backgroundColor: '#2a3d56',
   borderRadius: theme.spacing(2),
   overflow: 'hidden',
   display: 'flex',
@@ -336,7 +336,7 @@ const CanvasWrapper = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: '#100b1e',
+  backgroundColor: '#2a3152',
   position: 'relative',
   padding: theme.spacing(0.5),
   overflow: 'hidden',
@@ -9364,7 +9364,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Brush sx={{ color: 'var(--role-violet, #8875eb)' }} />
+                <Brush sx={{ color: 'var(--role-violet, #5d76cb)' }} />
                 <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                   {editorTitle}
                 </Typography>
@@ -9380,7 +9380,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 <Chip
                   label={`Frame: ${frameId.slice(-6)}`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(136, 117, 235,0.2)', color: 'var(--role-violet, #8875eb)' }}
+                  sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: 'var(--role-violet, #5d76cb)' }}
                 />
               )}
 
@@ -10682,8 +10682,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                           sx={{
                             height: 24,
                             borderRadius: 999,
-                            bgcolor: 'rgba(136, 117, 235,0.14)',
-                            color: '#e0dbfa',
+                            bgcolor: 'rgba(93, 118, 203,0.14)',
+                            color: '#dfe4f3',
                             '& .MuiChip-label': { px: 0.85, fontSize: '0.6rem', fontWeight: 700, letterSpacing: 0.3 },
                           }}
                         />
@@ -10701,7 +10701,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       >
                         {[
                           { label: 'Drawing Assist', value: autoEnhance ? 82 : 46, accent: '#86efac' },
-                          { label: 'StreamLine', value: stabilizeValue, accent: '#c6bdf4' },
+                          { label: 'StreamLine', value: stabilizeValue, accent: '#c3cbe6' },
                         ].map((meter) => (
                           <Stack key={meter.label} spacing={0.2}>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
@@ -12021,8 +12021,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                         sx={{
                           height: 22,
                           borderRadius: 999,
-                          bgcolor: 'rgba(136, 117, 235,0.14)',
-                          color: '#e0dbfa',
+                          bgcolor: 'rgba(93, 118, 203,0.14)',
+                          color: '#dfe4f3',
                           '& .MuiChip-label': { px: 0.85, fontSize: '0.62rem', fontWeight: 700, letterSpacing: 0.35 },
                         }}
                       />
@@ -12144,8 +12144,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                               sx={{
                                 height: 18,
                                 borderRadius: 999,
-                                bgcolor: 'rgba(136, 117, 235,0.14)',
-                                color: '#e0dbfa',
+                                bgcolor: 'rgba(93, 118, 203,0.14)',
+                                color: '#dfe4f3',
                                 '& .MuiChip-label': { px: 0.68, fontSize: '0.54rem', fontWeight: 700, letterSpacing: 0.28 },
                               }}
                             />
@@ -12335,11 +12335,11 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                             handleOnionSkinFramesChange(value);
                           }}
                           sx={{
-                            color: '#8875eb',
+                            color: '#5d76cb',
                             '& .MuiSlider-thumb': {
                               width: 12,
                               height: 12,
-                              boxShadow: '0 0 0 4px rgba(136, 117, 235,0.18)',
+                              boxShadow: '0 0 0 4px rgba(93, 118, 203,0.18)',
                             },
                           }}
                         />
@@ -12472,7 +12472,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                       <Chip
                         label="Linked"
                         size="small"
-                        sx={{ height: 26, borderRadius: 999, bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }}
+                        sx={{ height: 26, borderRadius: 999, bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
                       />
                     )}
                   </Stack>
@@ -15083,7 +15083,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                   data-testid="frame-editor-shape-intent-variant-pack"
                                   onClick={handleApplyShapeIntentVariantPack}
                                   startIcon={<ContentCopy fontSize="small" />}
-                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.05)', color: '#c6bdf4' }}
+                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.05)', color: '#c3cbe6' }}
                                 >
                                   Add 3 Variants
                                 </Button>
@@ -15092,7 +15092,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                   data-testid="frame-editor-shape-intent-study-pack"
                                   onClick={handleStartShapeIntentVariantStudy}
                                   startIcon={<Shuffle fontSize="small" />}
-                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
+                                  sx={{ minHeight: tabletTouchSecondaryButtonHeight, borderRadius: 999, bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                                 >
                                   Study 3 Variants
                                 </Button>
@@ -16552,8 +16552,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                         sx={{
                                           height: 20,
                                           borderRadius: 999,
-                                          bgcolor: 'rgba(158, 140, 248,0.14)',
-                                          color: '#e0dbfa',
+                                          bgcolor: 'rgba(147, 164, 220,0.14)',
+                                          color: '#dfe4f3',
                                           '& .MuiChip-label': { px: 0.75, fontSize: '0.56rem', fontWeight: 700, letterSpacing: 0.25 },
                                         }}
                                       />
@@ -16603,9 +16603,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                         minHeight: tabletTouchSecondaryButtonHeight,
                                         borderRadius: 999,
                                         px: 1,
-                                        color: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#111827' : '#e0dbfa',
-                                        bgcolor: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#e0dbfa' : 'rgba(158, 140, 248,0.12)',
-                                        border: `1px solid ${selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? 'rgba(224, 219, 250,0.45)' : 'rgba(158, 140, 248,0.18)'}`,
+                                        color: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#111827' : '#dfe4f3',
+                                        bgcolor: selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? '#dfe4f3' : 'rgba(147, 164, 220,0.12)',
+                                        border: `1px solid ${selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? 'rgba(224, 219, 250,0.45)' : 'rgba(147, 164, 220,0.18)'}`,
                                       }}
                                     >
                                       {selectedReferenceStudyAttempt?.id === referenceStudySessionLead.attempt.id ? 'Lead Active' : 'Use Session Lead'}
@@ -16915,8 +16915,8 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                                                 sx={{
                                                   height: 18,
                                                   borderRadius: 999,
-                                                  bgcolor: 'rgba(158, 140, 248,0.12)',
-                                                  color: '#e0dbfa',
+                                                  bgcolor: 'rgba(147, 164, 220,0.12)',
+                                                  color: '#dfe4f3',
                                                   '& .MuiChip-label': { px: 0.7, fontSize: '0.54rem', fontWeight: 700, letterSpacing: 0.25 },
                                                 }}
                                               />
@@ -18297,7 +18297,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         open={Boolean(shapeScaffoldLibraryRenameEntryId)}
         onClose={handleCloseShapeScaffoldLibraryRename}
         PaperProps={{
-          sx: { bgcolor: '#18122b', backgroundImage: 'none', minWidth: 360 },
+          sx: { bgcolor: '#2a3d56', backgroundImage: 'none', minWidth: 360 },
         }}
       >
         <DialogTitle sx={{ color: '#fff' }}>Rename Preset</DialogTitle>
@@ -18331,7 +18331,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         open={showDiscardDialog}
         onClose={() => setShowDiscardDialog(false)}
         PaperProps={{
-          sx: { bgcolor: '#18122b', backgroundImage: 'none' },
+          sx: { bgcolor: '#2a3d56', backgroundImage: 'none' },
         }}
       >
         <DialogTitle sx={{ color: '#fff' }}>Discard Changes?</DialogTitle>
@@ -18409,11 +18409,11 @@ export const QuickDrawButton: FC<QuickDrawButtonProps> = ({
         <IconButton
           onClick={() => setIsOpen(true)}
           sx={{
-            bgcolor: 'rgba(136, 117, 235,0.1)',
-            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.2)' },
+            bgcolor: 'rgba(93, 118, 203,0.1)',
+            '&:hover': { bgcolor: 'rgba(93, 118, 203,0.2)' },
           }}
         >
-          <Brush sx={{ color: 'var(--role-violet, #8875eb)' }} />
+          <Brush sx={{ color: 'var(--role-violet, #5d76cb)' }} />
         </IconButton>
       </Tooltip>
 

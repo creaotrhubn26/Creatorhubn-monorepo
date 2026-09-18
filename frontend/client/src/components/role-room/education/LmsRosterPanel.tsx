@@ -18,14 +18,14 @@ import {
 } from '@mui/icons-material';
 import educationLtiService, { type LtiRosterMember } from './educationLtiService';
 
-const ACCENT = '#8875eb';
+const ACCENT = '#5d76cb';
 
 function roleLabel(roles: string[]): { label: string; color: string } {
   const joined = roles.join(' ');
   if (/Instructor|TeachingAssistant|ContentDeveloper|Mentor|Administrator/i.test(joined)) {
     return { label: 'Faglærer', color: '#38bdf8' };
   }
-  if (/Learner|Student/i.test(joined)) return { label: 'Student', color: '#9e8cf8' };
+  if (/Learner|Student/i.test(joined)) return { label: 'Student', color: '#93a4dc' };
   return { label: 'Medlem', color: 'rgba(255,255,255,0.72)' };
 }
 

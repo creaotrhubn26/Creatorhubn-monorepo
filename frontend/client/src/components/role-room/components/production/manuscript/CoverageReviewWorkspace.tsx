@@ -71,7 +71,7 @@ const STATUS_META = {
   missing: { label: 'missing', color: '#f87171', bg: 'rgba(248,113,113,0.14)', border: 'rgba(248,113,113,0.35)' },
   planned: { label: 'planned', color: '#fbbf24', bg: 'rgba(251,191,36,0.14)', border: 'rgba(251,191,36,0.35)' },
   recorded: { label: 'recorded', color: '#60a5fa', bg: 'rgba(96,165,250,0.14)', border: 'rgba(96,165,250,0.35)' },
-  reviewed: { label: 'reviewed', color: '#9e8cf8', bg: 'rgba(158, 140, 248,0.14)', border: 'rgba(158, 140, 248,0.35)' },
+  reviewed: { label: 'reviewed', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.14)', border: 'rgba(147, 164, 220,0.35)' },
   selected: { label: 'selected', color: '#34d399', bg: 'rgba(52,211,153,0.14)', border: 'rgba(52,211,153,0.35)' },
 } as const;
 
@@ -93,7 +93,7 @@ const SYNC_STATUS_META: Record<CoverageReviewSyncStatus, { label: string; color:
   synced: { label: 'Server synket', color: '#86efac', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)' },
   local_only: { label: 'Lokal backup', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)' },
   error: { label: 'Sync-feil', color: '#fca5a5', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)' },
-  conflict: { label: 'Konflikt løses', color: '#c6bdf4', bg: 'rgba(98, 73, 223,0.12)', border: 'rgba(98, 73, 223,0.3)' },
+  conflict: { label: 'Konflikt løses', color: '#c3cbe6', bg: 'rgba(75, 61, 143,0.12)', border: 'rgba(75, 61, 143,0.3)' },
 };
 
 export const CoverageReviewWorkspace = ({
@@ -211,7 +211,7 @@ export const CoverageReviewWorkspace = ({
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Chip label={`${sceneTakes.length} takes`} sx={{ bgcolor: 'rgba(96,165,250,0.12)', color: '#93c5fd' }} />
-            <Chip label={`${reviewedTakeCount} reviewed`} sx={{ bgcolor: 'rgba(158, 140, 248,0.12)', color: '#c6bdf4' }} />
+            <Chip label={`${reviewedTakeCount} reviewed`} sx={{ bgcolor: 'rgba(147, 164, 220,0.12)', color: '#c3cbe6' }} />
             <Chip label={`${selectedTakeCount} selected`} sx={{ bgcolor: 'rgba(52,211,153,0.12)', color: '#86efac' }} />
             <Chip
               label={sceneReadyForPost ? 'Post-ready' : 'Mangler coverage'}
@@ -369,8 +369,8 @@ export const CoverageReviewWorkspace = ({
                           height: 28,
                           fontSize: 10,
                           color: compared ? '#fff' : '#9ca3af',
-                          bgcolor: compared ? 'rgba(136, 117, 235,0.22)' : 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(136, 117, 235,0.24)',
+                          bgcolor: compared ? 'rgba(93, 118, 203,0.22)' : 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(93, 118, 203,0.24)',
                         }}
                       >
                         Compare
@@ -431,13 +431,13 @@ export const CoverageReviewWorkspace = ({
             </Stack>
 
             {comparedTakes.length > 0 && (
-              <Box data-testid="pmv-take-compare-panel" sx={{ mt: 2, p: 1.5, borderRadius: '12px', bgcolor: 'rgba(136, 117, 235,0.08)', border: '1px solid rgba(136, 117, 235,0.24)' }}>
-                <Typography sx={{ color: '#c6bdf4', fontSize: 11, fontWeight: 800, mb: 1 }}>
+              <Box data-testid="pmv-take-compare-panel" sx={{ mt: 2, p: 1.5, borderRadius: '12px', bgcolor: 'rgba(93, 118, 203,0.08)', border: '1px solid rgba(93, 118, 203,0.24)' }}>
+                <Typography sx={{ color: '#c3cbe6', fontSize: 11, fontWeight: 800, mb: 1 }}>
                   TAKE COMPARE
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   {comparedTakes.map((take) => (
-                    <Chip key={take.id} size="small" label={`${formatTakeLabel(take)} · ${take.status} · ${take.duration}s`} sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }} />
+                    <Chip key={take.id} size="small" label={`${formatTakeLabel(take)} · ${take.status} · ${take.duration}s`} sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }} />
                   ))}
                 </Stack>
               </Box>

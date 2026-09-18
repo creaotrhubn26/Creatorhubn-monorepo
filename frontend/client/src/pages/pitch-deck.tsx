@@ -32,20 +32,20 @@ import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
 import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 const palette = {
-  bgRoot: '#0a0515',
-  bgShell: '#100b1e',
-  bgCard: '#18122b',
-  bgElevated: '#18122b',
-  border: 'rgba(136, 117, 235, 0.18)',
-  borderStrong: 'rgba(136, 117, 235, 0.32)',
-  borderSubtle: 'rgba(136, 117, 235, 0.08)',
+  bgRoot: '#1b122c',
+  bgShell: '#2a3152',
+  bgCard: '#2a3d56',
+  bgElevated: '#2a3d56',
+  border: 'rgba(93, 118, 203, 0.18)',
+  borderStrong: 'rgba(93, 118, 203, 0.32)',
+  borderSubtle: 'rgba(93, 118, 203, 0.08)',
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
-  accent: '#8875eb',
-  accentBright: '#9e8cf8',
-  accentDeep: '#6249df',
-  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+  accent: '#5d76cb',
+  accentBright: '#93a4dc',
+  accentDeep: '#4b3d8f',
+  accentGradient: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -163,8 +163,8 @@ export default function PitchDeckPage() {
           position: 'absolute',
           inset: 0,
           background: `
-            radial-gradient(ellipse at top left, rgba(136, 117, 235, 0.16), transparent 60%),
-            radial-gradient(ellipse at bottom right, rgba(98, 73, 223, 0.10), transparent 50%),
+            radial-gradient(ellipse at top left, rgba(93, 118, 203, 0.16), transparent 60%),
+            radial-gradient(ellipse at bottom right, rgba(75, 61, 143, 0.10), transparent 50%),
             ${palette.bgRoot}
           `,
           pointerEvents: 'none',
@@ -292,7 +292,7 @@ export default function PitchDeckPage() {
             fontWeight: 700,
             px: 2.4,
             '&.Mui-disabled': { background: 'transparent', color: palette.textMuted, opacity: 0.4 },
-            '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+            '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
           }}
         >
           Neste
@@ -313,7 +313,7 @@ function CoverSlide() {
       <Box
         sx={{
           display: 'inline-block',
-          background: 'rgba(136, 117, 235,0.14)',
+          background: 'rgba(93, 118, 203,0.14)',
           border: `1px solid ${palette.borderStrong}`,
           color: palette.accentBright,
           fontWeight: 700,
@@ -414,7 +414,7 @@ function ProblemSlide() {
       <Box
         sx={{
           borderLeft: `3px solid ${palette.accentBright}`,
-          bgcolor: 'rgba(136, 117, 235,0.08)',
+          bgcolor: 'rgba(93, 118, 203,0.08)',
           p: 2.4,
           borderRadius: '0 8px 8px 0',
           maxWidth: 900,
@@ -482,7 +482,7 @@ function SolutionSlide() {
             <Box
               sx={{
                 width: 48, height: 48, borderRadius: 2,
-                bgcolor: 'rgba(136, 117, 235,0.18)',
+                bgcolor: 'rgba(93, 118, 203,0.18)',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 mb: 2,
               }}
@@ -618,7 +618,7 @@ function ProductSlide() {
             borderRadius: 3,
             p: 2,
             background: `
-              radial-gradient(ellipse at center, rgba(136, 117, 235,0.18), transparent 60%),
+              radial-gradient(ellipse at center, rgba(93, 118, 203,0.18), transparent 60%),
               ${palette.bgCard}
             `,
             display: 'flex',
@@ -626,7 +626,7 @@ function ProductSlide() {
             justifyContent: 'center',
             position: 'relative',
             overflow: 'hidden',
-            boxShadow: '0 24px 80px rgba(136, 117, 235,0.28)',
+            boxShadow: '0 24px 80px rgba(93, 118, 203,0.28)',
           }}
         >
           <Stack alignItems="center" spacing={2}>
@@ -693,7 +693,7 @@ function DifferentiatorSlide() {
             Spotlight / Backstage
           </Typography>
         </Box>
-        <Box sx={{ p: 2, bgcolor: 'rgba(136, 117, 235,0.10)', borderBottom: `1px solid ${palette.borderSubtle}` }}>
+        <Box sx={{ p: 2, bgcolor: 'rgba(93, 118, 203,0.10)', borderBottom: `1px solid ${palette.borderSubtle}` }}>
           <Typography sx={{ color: palette.accentBright, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
             The Role Room
           </Typography>
@@ -718,7 +718,7 @@ function DifferentiatorSlide() {
                 {row[1]}
               </Typography>
             </Box>
-            <Box sx={{ p: 2, bgcolor: 'rgba(136, 117, 235,0.06)', borderBottom: `1px solid ${palette.borderSubtle}` }}>
+            <Box sx={{ p: 2, bgcolor: 'rgba(93, 118, 203,0.06)', borderBottom: `1px solid ${palette.borderSubtle}` }}>
               <Stack direction="row" alignItems="center" spacing={0.8}>
                 {row[2].startsWith('Ja') || row[2] === 'Du' || row[2] === 'Claude Opus 4.7' ? (
                   <CheckCircleOutlineIcon sx={{ color: '#34d399', fontSize: 18 }} />
@@ -770,7 +770,7 @@ function BusinessSlide() {
           <Box
             key={t.name}
             sx={{
-              bgcolor: t.highlighted ? 'rgba(136, 117, 235,0.10)' : palette.bgCard,
+              bgcolor: t.highlighted ? 'rgba(93, 118, 203,0.10)' : palette.bgCard,
               border: `1px solid ${t.highlighted ? palette.accentBright : palette.borderSubtle}`,
               borderRadius: 3,
               p: 2.6,
@@ -868,7 +868,7 @@ function GTMSlide() {
                 fontWeight: 800,
                 fontSize: '1.4rem',
                 flexShrink: 0,
-                boxShadow: '0 8px 24px rgba(136, 117, 235,0.32)',
+                boxShadow: '0 8px 24px rgba(93, 118, 203,0.32)',
               }}
             >
               {s.stage}
@@ -1171,7 +1171,7 @@ function SlideShell({
               sx={{
                 width: 28, height: 28,
                 borderRadius: 1,
-                bgcolor: 'rgba(136, 117, 235,0.18)',
+                bgcolor: 'rgba(93, 118, 203,0.18)',
                 display: 'inline-flex',
                 alignItems: 'center', justifyContent: 'center',
               }}

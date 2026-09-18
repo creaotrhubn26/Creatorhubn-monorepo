@@ -33,7 +33,7 @@ const STEPS = [
     body: 'Alt krypteres i hvile (AES-256-GCM) og sendes over TLS. Vi dekrypterer kun i minnet i det øyeblikket et godkjent innsyn vises — aldri logget, aldri bufret i nettleseren. Vi lover ikke mer enn det vi faktisk gjør.',
   },
   {
-    icon: <MfaIcon sx={{ fontSize: 40, color: '#c6bdf4' }} />,
+    icon: <MfaIcon sx={{ fontSize: 40, color: '#c3cbe6' }} />,
     title: 'Ingen stille uttak',
     body: 'Produsenten kan ikke bare «hente» et passord. De må be om innsyn med en begrunnelse og bekrefte med 2FA — og du kan kreve at du godkjenner hver gang. Innsyn er tidsbegrenset og låses automatisk.',
   },
@@ -57,15 +57,15 @@ export default function VaultTrustCeremony({ open, onClose }: { open: boolean; o
   return (
     <Dialog
       open={open} onClose={finish} maxWidth="xs" fullWidth
-      slotProps={{ paper: { sx: { background: 'linear-gradient(180deg,#100b1e,#0a0515)', border: '1px solid rgba(136, 117, 235,0.35)', color: '#e2e8f0', borderRadius: 3 } } }}
+      slotProps={{ paper: { sx: { background: 'linear-gradient(180deg,#2a3152,#1b122c)', border: '1px solid rgba(93, 118, 203,0.35)', color: '#e2e8f0', borderRadius: 3 } } }}
     >
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Stack spacing={0.5} alignItems="center" sx={{ mb: 1 }}>
-          <KeyIcon sx={{ fontSize: 18, color: '#8875eb' }} />
+          <KeyIcon sx={{ fontSize: 18, color: '#5d76cb' }} />
           <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 1 }}>ACCESS VAULT</Typography>
         </Stack>
         <Box sx={{ my: 2.5, display: 'flex', justifyContent: 'center' }}>
-          <Box sx={{ width: 80, height: 80, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(136, 117, 235,0.1)', border: '1px solid rgba(136, 117, 235,0.25)' }}>
+          <Box sx={{ width: 80, height: 80, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(93, 118, 203,0.1)', border: '1px solid rgba(93, 118, 203,0.25)' }}>
             {s.icon}
           </Box>
         </Box>
@@ -74,7 +74,7 @@ export default function VaultTrustCeremony({ open, onClose }: { open: boolean; o
 
         <MobileStepper
           variant="dots" steps={STEPS.length} position="static" activeStep={step}
-          sx={{ background: 'transparent', justifyContent: 'center', mt: 1.5, '& .MuiMobileStepper-dot': { background: 'rgba(148,163,184,0.3)' }, '& .MuiMobileStepper-dotActive': { background: '#8875eb' } }}
+          sx={{ background: 'transparent', justifyContent: 'center', mt: 1.5, '& .MuiMobileStepper-dot': { background: 'rgba(148,163,184,0.3)' }, '& .MuiMobileStepper-dotActive': { background: '#5d76cb' } }}
           nextButton={<span />} backButton={<span />}
         />
 
@@ -86,11 +86,11 @@ export default function VaultTrustCeremony({ open, onClose }: { open: boolean; o
           )}
           <Box sx={{ flex: 1 }} />
           {last ? (
-            <Button onClick={finish} variant="contained" startIcon={<ShieldIcon />} sx={{ textTransform: 'none', fontWeight: 800, minHeight: 44, px: 3, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}>
+            <Button onClick={finish} variant="contained" startIcon={<ShieldIcon />} sx={{ textTransform: 'none', fontWeight: 800, minHeight: 44, px: 3, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}>
               Legg inn første tilgang
             </Button>
           ) : (
-            <Button onClick={() => setStep((v) => v + 1)} variant="contained" endIcon={<NextIcon />} sx={{ textTransform: 'none', fontWeight: 800, minHeight: 44, px: 3, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}>
+            <Button onClick={() => setStep((v) => v + 1)} variant="contained" endIcon={<NextIcon />} sx={{ textTransform: 'none', fontWeight: 800, minHeight: 44, px: 3, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}>
               Videre
             </Button>
           )}

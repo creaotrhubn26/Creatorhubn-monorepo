@@ -59,8 +59,8 @@ interface ValidationResult {
 }
 
 const METHOD_META: Record<TrackingMethod, { label: string; description: string; color: string }> = {
-  pending: { label: 'Ikke valgt', description: 'Velg en metode først', color: '#6249df' },
-  gtag_snippets: { label: 'gtag-snippets', description: 'Lim-inn-koden er enkelest for de fleste', color: '#9e8cf8' },
+  pending: { label: 'Ikke valgt', description: 'Velg en metode først', color: '#4b3d8f' },
+  gtag_snippets: { label: 'gtag-snippets', description: 'Lim-inn-koden er enkelest for de fleste', color: '#93a4dc' },
   gtm_api: { label: 'GTM API', description: 'Vi sender tags via API til klientens GTM', color: '#60a5fa' },
   proxy: { label: 'Server-side proxy', description: 'Mest sikkert — token aldri i browser', color: '#34d399' },
   wordpress_plugin: { label: 'WordPress-plugin', description: 'Vår plugin pull-er config automatisk', color: '#fbbf24' },
@@ -68,14 +68,14 @@ const METHOD_META: Record<TrackingMethod, { label: string; description: string; 
 };
 
 const palette = {
-  bg: '#18122b',
-  bgSubtle: 'rgba(136, 117, 235,0.04)',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
-  textMuted: '#6249df',
-  accent: '#9e8cf8',
+  bg: '#2a3d56',
+  bgSubtle: 'rgba(93, 118, 203,0.04)',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
+  textMuted: '#4b3d8f',
+  accent: '#93a4dc',
 };
 
 export default function ClientAdsDeploymentPanel({
@@ -159,7 +159,7 @@ export default function ClientAdsDeploymentPanel({
         <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 2.4 }}>
           <Box sx={{
             width: 40, height: 40, borderRadius: 1.4,
-            bgcolor: 'rgba(136, 117, 235,0.12)',
+            bgcolor: 'rgba(93, 118, 203,0.12)',
             border: `1px solid ${palette.borderStrong}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
@@ -269,7 +269,7 @@ export default function ClientAdsDeploymentPanel({
                   <Box sx={{
                     flex: 1, p: 0.8, borderRadius: 0.8,
                     bgcolor: 'rgba(0,0,0,0.3)', fontFamily: 'monospace', fontSize: '0.76rem',
-                    color: '#f6f5ff', overflow: 'hidden', textOverflow: 'ellipsis',
+                    color: '#f7f9ff', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>
                     {payload.proxyConfig.proxyToken}
                   </Box>
@@ -295,7 +295,7 @@ export default function ClientAdsDeploymentPanel({
                   <Stack direction="row" spacing={0.8} alignItems="center">
                     <Chip
                       size="small" label={s.location}
-                      sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: palette.accent, fontSize: '0.66rem', fontWeight: 700, height: 18 }}
+                      sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: palette.accent, fontSize: '0.66rem', fontWeight: 700, height: 18 }}
                     />
                     <Typography sx={{ fontWeight: 600, fontSize: '0.82rem', color: palette.textPrimary }}>
                       {s.description}
@@ -310,7 +310,7 @@ export default function ClientAdsDeploymentPanel({
                 <Box sx={{
                   p: 1, borderRadius: 0.8,
                   bgcolor: 'rgba(0,0,0,0.4)', fontFamily: 'monospace', fontSize: '0.7rem',
-                  color: '#f6f5ff', overflowX: 'auto', whiteSpace: 'pre',
+                  color: '#f7f9ff', overflowX: 'auto', whiteSpace: 'pre',
                   maxHeight: 200,
                 }}>
                   {s.code}
@@ -338,7 +338,7 @@ export default function ClientAdsDeploymentPanel({
                 sx={{
                   color: palette.accent, borderColor: palette.borderStrong,
                   fontWeight: 700, fontSize: '0.82rem',
-                  '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(136, 117, 235,0.06)' },
+                  '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(93, 118, 203,0.06)' },
                 }}
               >
                 Verifiser

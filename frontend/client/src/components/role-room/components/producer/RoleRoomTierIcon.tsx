@@ -68,15 +68,15 @@ function HeadlinerIcon({ size, style, title }: { size: number; style?: CSSProper
     <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label={title} style={style}>
       <title>{title}</title>
       {/* Marquee frame */}
-      <rect x="8" y="22" width="48" height="26" rx="4" fill="#0f172a" stroke="#8875eb" strokeWidth="2" />
+      <rect x="8" y="22" width="48" height="26" rx="4" fill="#0f172a" stroke="#5d76cb" strokeWidth="2" />
       {/* Inner frame */}
-      <rect x="11" y="25" width="42" height="20" rx="2" fill="none" stroke="#8875eb" strokeWidth="1" opacity="0.5" />
+      <rect x="11" y="25" width="42" height="20" rx="2" fill="none" stroke="#5d76cb" strokeWidth="1" opacity="0.5" />
       {/* Bottom stand */}
-      <rect x="28" y="48" width="8" height="8" fill="#8875eb" opacity="0.75" />
-      <rect x="22" y="56" width="20" height="3" rx="1" fill="#8875eb" />
+      <rect x="28" y="48" width="8" height="8" fill="#5d76cb" opacity="0.75" />
+      <rect x="22" y="56" width="20" height="3" rx="1" fill="#5d76cb" />
       {/* Headline text proxy */}
-      <rect x="16" y="31" width="32" height="3" rx="1" fill="#8875eb" opacity="0.9" />
-      <rect x="18" y="37" width="28" height="2.5" rx="1" fill="#8875eb" opacity="0.55" />
+      <rect x="16" y="31" width="32" height="3" rx="1" fill="#5d76cb" opacity="0.9" />
+      <rect x="18" y="37" width="28" height="2.5" rx="1" fill="#5d76cb" opacity="0.55" />
       {/* Top bulbs with glow */}
       {bulbs.map(([cx, cy], index) => (
         <g key={`bulb-${index}`}>
@@ -158,7 +158,7 @@ export const ROLE_ROOM_TIERS: Record<
     name: 'Role Room Headliner',
     shortName: 'Headliner',
     tagline: 'Full tilgang til alle AI-anbefalinger og planleggingsverktøy.',
-    accentHex: '#8875eb',
+    accentHex: '#5d76cb',
     level: 2,
   },
   showrunner: {

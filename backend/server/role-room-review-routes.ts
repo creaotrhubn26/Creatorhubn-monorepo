@@ -24,7 +24,7 @@ import { buildInfographicUrl, ogImageTags } from "./infographic-share.js";
 // Backend-base for absolutte OG-URL-er (crawlere trenger absolutt).
 const BACKEND_BASE = (process.env.BACKEND_BASE_URL || "https://creatorhub-backend-rtbl.onrender.com").replace(/\/+$/, "");
 // Role Room-lilla → cover-bildet matcher merkevaren.
-const ROLE_ROOM_ACCENT = "#472bd4";
+const ROLE_ROOM_ACCENT = "#3e3180";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -176,21 +176,21 @@ export function buildReviewHtml(data: {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: linear-gradient(180deg, #0a0515 0%, #100b1e 100%);
-      color: #e0dbfa;
+      background: linear-gradient(180deg, #1b122c 0%, #2a3152 100%);
+      color: #dfe4f3;
       font-family: system-ui, -apple-system, sans-serif;
       min-height: 100vh;
       padding: 20px;
     }
     .header {
       background: linear-gradient(135deg, rgba(24, 18, 43,0.95), rgba(10, 5, 21,0.95));
-      border: 1px solid rgba(71, 43, 212,0.30);
+      border: 1px solid rgba(62, 49, 128,0.30);
       border-radius: 10px; padding: 20px;
       max-width: 1200px; margin: 0 auto 20px auto;
     }
     .header h1 {
       font-size: 22px; margin-bottom: 6px;
-      background: linear-gradient(135deg, #472bd4, #3c27a5);
+      background: linear-gradient(135deg, #3e3180, #32127a);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -198,13 +198,13 @@ export function buildReviewHtml(data: {
     .powered-by {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 3px 10px; border-radius: 999px;
-      background: rgba(71, 43, 212,0.18); color: #9e8cf8;
+      background: rgba(62, 49, 128,0.18); color: #93a4dc;
       font-size: 11px; font-weight: 600;
       margin-top: 10px;
     }
     .powered-by .dot {
       width: 6px; height: 6px; border-radius: 3px;
-      background: #472bd4;
+      background: #3e3180;
     }
     .cuts-grid {
       display: grid;
@@ -214,7 +214,7 @@ export function buildReviewHtml(data: {
     }
     .cut-card {
       background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(71, 43, 212,0.18);
+      border: 1px solid rgba(62, 49, 128,0.18);
       border-radius: 8px; overflow: hidden;
     }
     .cut-thumb {
@@ -224,7 +224,7 @@ export function buildReviewHtml(data: {
     }
     .thumb-placeholder {
       display: flex; align-items: center; justify-content: center;
-      height: 100%; color: rgba(71, 43, 212,0.4); font-size: 18px; font-weight: 700;
+      height: 100%; color: rgba(62, 49, 128,0.4); font-size: 18px; font-weight: 700;
     }
     .cut-badge, .score-badge {
       position: absolute;
@@ -235,18 +235,18 @@ export function buildReviewHtml(data: {
     .cut-badge { bottom: 8px; right: 8px; }
     .score-badge {
       top: 8px; left: 8px;
-      background: linear-gradient(135deg, #472bd4, #3c27a5);
+      background: linear-gradient(135deg, #3e3180, #32127a);
     }
     .cut-body { padding: 14px; }
     .cut-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-    .cut-snippet { font-size: 12px; color: #9e8cf8; line-height: 1.4;
+    .cut-snippet { font-size: 12px; color: #93a4dc; line-height: 1.4;
       margin-bottom: 8px; font-style: italic; }
     .cut-status {
       display: inline-block; padding: 2px 8px; border-radius: 3px;
       font-size: 10px; font-weight: 600; text-transform: uppercase;
       margin-bottom: 10px;
     }
-    .status-extracted { background: rgba(71, 43, 212,0.20); color: #9e8cf8; }
+    .status-extracted { background: rgba(62, 49, 128,0.20); color: #93a4dc; }
     .status-reviewed { background: rgba(240,165,0,0.20); color: #f0a500; }
     .status-approved { background: rgba(74,212,138,0.20); color: #4ad48a; }
     .status-rejected { background: rgba(239,79,111,0.20); color: #ef4f6f; }
@@ -266,7 +266,7 @@ export function buildReviewHtml(data: {
       border: 1px solid rgba(239,79,111,0.40);
     }
     .btn-primary {
-      background: linear-gradient(135deg, #472bd4, #3c27a5); color: #fff;
+      background: linear-gradient(135deg, #3e3180, #32127a); color: #fff;
     }
     .cut-comments {
       border-top: 1px solid rgba(255,255,255,0.06);
@@ -277,7 +277,7 @@ export function buildReviewHtml(data: {
       border-radius: 4px; padding: 8px;
       margin-bottom: 6px; font-size: 12px;
     }
-    .comment-author { font-weight: 600; color: #472bd4; margin-bottom: 3px; font-size: 11px; }
+    .comment-author { font-weight: 600; color: #3e3180; margin-bottom: 3px; font-size: 11px; }
     .comment-form {
       display: flex; flex-direction: column; gap: 6px;
       margin-top: 8px;
@@ -285,16 +285,16 @@ export function buildReviewHtml(data: {
     .comment-form input,
     .comment-form textarea {
       background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(71, 43, 212,0.18);
+      border: 1px solid rgba(62, 49, 128,0.18);
       border-radius: 3px; padding: 6px 8px;
-      color: #e0dbfa; font-size: 12px;
+      color: #dfe4f3; font-size: 12px;
       font-family: inherit;
     }
     .comment-form textarea { min-height: 50px; resize: vertical; }
     .toast {
       position: fixed; bottom: 20px; left: 50%;
       transform: translateX(-50%);
-      background: linear-gradient(135deg, #472bd4, #3c27a5); color: #fff;
+      background: linear-gradient(135deg, #3e3180, #32127a); color: #fff;
       padding: 10px 18px; border-radius: 6px;
       font-size: 12px; font-weight: 600;
       box-shadow: 0 8px 30px rgba(0,0,0,0.55);
@@ -767,14 +767,14 @@ export function registerRoleRoomReviewRoutes(
             .send(`<!DOCTYPE html><html><head><meta charset="UTF-8" />
               <title>Role Room — Review</title>
               <style>
-                body { background: #0a0515; color: #e0dbfa;
+                body { background: #1b122c; color: #dfe4f3;
                   font-family: system-ui, sans-serif;
                   display: flex; align-items: center; justify-content: center;
                   min-height: 100vh; margin: 0; padding: 20px; }
                 .box { background: rgba(255,255,255,0.04); padding: 30px;
                   border-radius: 10px; max-width: 400px; text-align: center;
-                  border: 1px solid rgba(71, 43, 212,0.30); }
-                h1 { background: linear-gradient(135deg, #472bd4, #3c27a5);
+                  border: 1px solid rgba(62, 49, 128,0.30); }
+                h1 { background: linear-gradient(135deg, #3e3180, #32127a);
                   -webkit-background-clip: text;
                   -webkit-text-fill-color: transparent;
                   margin-bottom: 10px; }

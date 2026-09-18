@@ -106,7 +106,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#18122b',
+        bgcolor: '#2a3d56',
         overflow: 'hidden',
         // WCAG 2.2 - 2.5.5: 44x44 min touch target for alle IconButtons
         '& .MuiIconButton-root': {

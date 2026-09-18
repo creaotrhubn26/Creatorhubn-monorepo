@@ -209,7 +209,7 @@ import { RoleStatPillRow } from './primitives';
 // Shared focus styles for WCAG 2.4.7 Focus Visible
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #8875eb',
+    outline: '3px solid #5d76cb',
     outlineOffset: '2px',
   },
 };
@@ -246,12 +246,12 @@ const DEPT_LABELS: Record<DeptKey, string> = {
 
 const DEPT_COLORS: Record<DeptKey, string> = {
   production: '#ef4444',
-  camera: '#8875eb',
+  camera: '#5d76cb',
   lighting: '#3b82f6',
   sound: '#06b6d4',
   post: '#f59e0b',
   art: '#ec4899',
-  wardrobe: '#9e8cf8',
+  wardrobe: '#93a4dc',
   makeup_hair: '#fb7185',
   transport: 'var(--role-cyan, #22d3ee)',
   other: '#64748b',
@@ -353,7 +353,7 @@ function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; has
         <Tooltip title="Tilgjengelighet synket fra medlemmets egen kalender" arrow>
           <Box sx={{
             width: 6, height: 6, borderRadius: '50%', ml: 0.3, flexShrink: 0,
-            bgcolor: '#472bd4', boxShadow: '0 0 4px rgba(71, 43, 212,0.9)',
+            bgcolor: '#3e3180', boxShadow: '0 0 4px rgba(62, 49, 128,0.9)',
           }} />
         </Tooltip>
       )}
@@ -390,7 +390,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
       overflowY: 'auto',
       display: 'flex',
       flexDirection: 'column',
-      border: '1px solid rgba(136, 117, 235,0.32)',
+      border: '1px solid rgba(93, 118, 203,0.32)',
       borderRadius: 2,
       bgcolor: 'rgba(24, 18, 43,0.84)',
       backdropFilter: 'blur(6px)',
@@ -406,7 +406,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
           px: 2,
           pt: 1.5,
           pb: 1,
-          borderBottom: '1px solid rgba(136, 117, 235,0.18)',
+          borderBottom: '1px solid rgba(93, 118, 203,0.18)',
         }}
       >
         <Typography
@@ -431,9 +431,9 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
               px: 1,
               py: 0.4,
               borderRadius: 1,
-              border: '1px solid rgba(136, 117, 235,0.42)',
-              bgcolor: 'rgba(136, 117, 235,0.14)',
-              color: '#c6bdf4',
+              border: '1px solid rgba(93, 118, 203,0.42)',
+              bgcolor: 'rgba(93, 118, 203,0.14)',
+              color: '#c3cbe6',
               cursor: 'pointer',
               fontFamily: 'inherit',
               fontSize: '0.68rem',
@@ -441,7 +441,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
               textTransform: 'uppercase',
               letterSpacing: 0.3,
               transition: 'background-color 160ms ease-out',
-              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.24)', color: '#fff' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.24)', color: '#fff' },
             }}
           >
             + Legg til rolle
@@ -455,10 +455,10 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
         sx={{
           px: 2.5, py: 1.45, cursor: 'pointer', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between',
-          bgcolor: filterDept === 'all' ? 'rgba(136, 117, 235,0.18)' : 'transparent',
-          borderLeft: filterDept === 'all' ? '3px solid #8875eb' : '3px solid transparent',
+          bgcolor: filterDept === 'all' ? 'rgba(93, 118, 203,0.18)' : 'transparent',
+          borderLeft: filterDept === 'all' ? '3px solid #5d76cb' : '3px solid transparent',
           borderBottom: '1px solid rgba(255,255,255,0.08)',
-          '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)' },
+          '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' },
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -467,9 +467,9 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
             Alle
           </Typography>
         </Box>
-        <Chip label={crewMembers.length} size="small" sx={{ height: 28, fontSize: 14, fontWeight: 700, color: '#ffffff', bgcolor: 'rgba(136, 117, 235,0.36)', border: '1px solid rgba(255,255,255,0.26)' }} />
+        <Chip label={crewMembers.length} size="small" sx={{ height: 28, fontSize: 14, fontWeight: 700, color: '#ffffff', bgcolor: 'rgba(93, 118, 203,0.36)', border: '1px solid rgba(255,255,255,0.26)' }} />
       </Box>
-      <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.2)' }} />
+      <Divider sx={{ borderColor: 'rgba(93, 118, 203,0.2)' }} />
       {/* Vis ALLE 10 avdelinger med count (også 0) — designet ber om
           komplett oversikt slik at brukeren ser hele rolle-spekteret */}
       {DEPT_ORDER.map(dept => {
@@ -491,7 +491,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
               borderBottom: '1px solid rgba(255,255,255,0.06)',
               opacity: isEmpty && !active ? 0.55 : 1,
               transition: 'opacity 160ms ease-out',
-              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)', opacity: 1 },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)', opacity: 1 },
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -519,7 +519,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
           </Box>
         );
       })}
-      <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.2)', mt: 1 }} />
+      <Divider sx={{ borderColor: 'rgba(93, 118, 203,0.2)', mt: 1 }} />
       {/* Favorites */}
       {favorites.size > 0 && (
         <Box sx={{ px: 2, py: 1 }}>
@@ -553,7 +553,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
     <Slide direction="up" in mountOnEnter unmountOnExit>
       <Box sx={{
         position: 'sticky', bottom: 0, left: 0, right: 0, zIndex: 50,
-        bgcolor: '#18122b', borderTop: '1px solid rgba(136, 117, 235,0.32)',
+        bgcolor: '#2a3d56', borderTop: '1px solid rgba(93, 118, 203,0.32)',
         display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
         px: { xs: 1.5, sm: 3 }, py: 1.25,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
@@ -564,7 +564,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             checked={isAllSelected}
             indeterminate={selectedIds.size > 0 && !isAllSelected}
             onChange={onSelectAll}
-            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: 'var(--role-accent, #8875eb)' }, p: 0.5 }}
+            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: 'var(--role-accent, #5d76cb)' }, p: 0.5 }}
           />
           <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Velg alle</Typography>
         </Box>
@@ -573,8 +573,8 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           size="small" variant="outlined"
           startIcon={<AssignIcon sx={{ fontSize: 15 }} />}
           onClick={onAssignDay}
-          sx={{ borderColor: 'rgba(136, 117, 235,0.45)', color: 'var(--role-accent, #8875eb)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
-            '&:hover': { bgcolor: 'rgba(136, 117, 235,0.12)' } }}
+          sx={{ borderColor: 'rgba(93, 118, 203,0.45)', color: 'var(--role-accent, #5d76cb)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+            '&:hover': { bgcolor: 'rgba(93, 118, 203,0.12)' } }}
         >
           Tilordne dag
         </Button>
@@ -622,7 +622,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             label={selectedIds.size}
             size="small"
             onDelete={onDeselect}
-            sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: 'var(--role-accent, #8875eb)', fontWeight: 700, height: 22, fontSize: 12 }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: 'var(--role-accent, #5d76cb)', fontWeight: 700, height: 22, fontSize: 12 }}
           />
           <Tooltip title="Synkroniser">
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><SyncIcon sx={{ fontSize: 18 }} /></IconButton>
@@ -666,8 +666,8 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
-      PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(136, 117, 235,0.32)' } }}>
-      <DialogTitle sx={{ color: 'var(--role-accent, #8875eb)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+      PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(93, 118, 203,0.32)' } }}>
+      <DialogTitle sx={{ color: 'var(--role-accent, #5d76cb)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
         <PersonAddIcon /> Inviter crewmedlem
       </DialogTitle>
       <DialogContent>
@@ -690,7 +690,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Avbryt</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!name.trim()}
-          sx={{ bgcolor: 'var(--role-accent, #8875eb)', color: '#100b1e', fontWeight: 700, '&:hover': { bgcolor: '#8875eb' } }}>
+          sx={{ bgcolor: 'var(--role-accent, #5d76cb)', color: '#2a3152', fontWeight: 700, '&:hover': { bgcolor: '#5d76cb' } }}>
           Send invitasjon
         </Button>
       </DialogActions>
@@ -1155,12 +1155,12 @@ export function CrewManagementPanel({
     return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
   }, [user]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
-  const roleTabAccent = 'var(--role-accent, #8875eb)';
-  const roleTabAccentHover = '#8875eb';
-  const roleTabAccentSoft = 'rgba(136, 117, 235,0.18)';
+  const roleTabAccent = 'var(--role-accent, #5d76cb)';
+  const roleTabAccentHover = '#5d76cb';
+  const roleTabAccentSoft = 'rgba(93, 118, 203,0.18)';
   const roleSurface = 'rgba(24, 18, 43,0.84)';
   const roleSurfaceMuted = 'rgba(33, 28, 59,0.72)';
-  const roleBorder = 'var(--role-border, rgba(136, 117, 235,0.32))';
+  const roleBorder = 'var(--role-border, rgba(93, 118, 203,0.32))';
   const roleText = '#ffffff';
   const roleTextMuted = 'rgba(255,255,255,0.92)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
@@ -2386,13 +2386,13 @@ export function CrewManagementPanel({
     const colors: Record<CrewRole, string> = {
       director: '#ef4444', // Red for leadership
       producer: '#ef4444', // Red for leadership
-      casting_director: '#472bd4',
-      production_manager: '#472bd4',
+      casting_director: '#3e3180',
+      production_manager: '#3e3180',
       production_coordinator: '#0284c7',
-      cinematographer: '#8875eb', // Purple for camera
-      camera_operator: '#8875eb', // Purple for camera
-      camera_assistant: '#9e8cf8',
-      drone_pilot: '#8875eb', // Purple for camera
+      cinematographer: '#5d76cb', // Purple for camera
+      camera_operator: '#5d76cb', // Purple for camera
+      camera_assistant: '#93a4dc',
+      drone_pilot: '#5d76cb', // Purple for camera
       video_editor: '#f59e0b', // Orange for post-production
       colorist: '#f59e0b', // Orange for post-production
       gaffer: '#3b82f6', // Blue for lighting
@@ -3041,7 +3041,7 @@ export function CrewManagementPanel({
       >
         {/* Title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{ width: 44, height: 44, borderRadius: 2, background: `linear-gradient(135deg,${roleTabAccentSoft},rgba(136, 117, 235,0.08))`, border: `2px solid ${roleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box sx={{ width: 44, height: 44, borderRadius: 2, background: `linear-gradient(135deg,${roleTabAccentSoft},rgba(93, 118, 203,0.08))`, border: `2px solid ${roleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <GroupsIcon sx={{ color: roleTabAccent, fontSize: 26 }} />
           </Box>
           <Box>
@@ -3089,7 +3089,7 @@ export function CrewManagementPanel({
               bgcolor: workspaceView === 'standard' ? roleTabAccentSoft : 'transparent',
               color: '#ffffff',
               borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
-              '&:hover': { bgcolor: workspaceView === 'standard' ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.06)' },
+              '&:hover': { bgcolor: workspaceView === 'standard' ? 'rgba(93, 118, 203,0.28)' : 'rgba(255,255,255,0.06)' },
             }}
           >
             Standard
@@ -3103,7 +3103,7 @@ export function CrewManagementPanel({
               bgcolor: workspaceView === 'pro' ? roleTabAccentSoft : 'transparent',
               color: '#ffffff',
               borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
-              '&:hover': { bgcolor: workspaceView === 'pro' ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.06)' },
+              '&:hover': { bgcolor: workspaceView === 'pro' ? 'rgba(93, 118, 203,0.28)' : 'rgba(255,255,255,0.06)' },
             }}
           >
             Pro view
@@ -3117,7 +3117,7 @@ export function CrewManagementPanel({
               bgcolor: compactMode ? roleTabAccentSoft : 'transparent',
               color: '#ffffff',
               borderColor: compactMode ? roleTabAccent : roleBorder,
-              '&:hover': { bgcolor: compactMode ? 'rgba(136, 117, 235,0.28)' : 'rgba(255,255,255,0.06)' },
+              '&:hover': { bgcolor: compactMode ? 'rgba(93, 118, 203,0.28)' : 'rgba(255,255,255,0.06)' },
             }}
           >
             Kompakt
@@ -3348,7 +3348,7 @@ export function CrewManagementPanel({
             label="Nullstill"
             size="small"
             onDelete={() => { setFilterStatus('all'); setFilterAvailable(false); setFilterAssignedToday(false); setFilterDept('all'); setFilterRole('all'); setSearchQuery(''); }}
-            sx={{ bgcolor: 'rgba(98, 73, 223,0.15)', color: '#6249df', border: '1px solid rgba(98, 73, 223,0.3)' }}
+            sx={{ bgcolor: 'rgba(75, 61, 143,0.15)', color: '#4b3d8f', border: '1px solid rgba(75, 61, 143,0.3)' }}
           />
         )}
         {/* Filter panel toggle */}
@@ -3378,7 +3378,7 @@ export function CrewManagementPanel({
               label={`${stats.assignedToday} tilordnet i dag`}
               size="small"
               onDelete={() => setFilterAssignedToday(false)}
-              sx={{ bgcolor: 'rgba(98, 73, 223,0.2)', color: '#ffb800', border: '1px solid rgba(98, 73, 223,0.4)', fontWeight: 700, fontSize: 12 }}
+              sx={{ bgcolor: 'rgba(75, 61, 143,0.2)', color: '#ffb800', border: '1px solid rgba(75, 61, 143,0.4)', fontWeight: 700, fontSize: 12 }}
             />
           )}
           {filterDept !== 'all' && (
@@ -3543,7 +3543,7 @@ export function CrewManagementPanel({
 
       {/* ── LOADING INDICATOR ── */}
       {isLoading && (
-        <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(136, 117, 235,0.1)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }} />
+        <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(93, 118, 203,0.1)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }} />
       )}
 
       {/* ── STATS BAR (6 fargekodete kort matcher team-fane-design) ── */}
@@ -3551,10 +3551,10 @@ export function CrewManagementPanel({
         <Box sx={{ mx: 2, mb: 1.5 }}>
           <RoleStatPillRow
             pills={[
-              { icon: <PeopleIcon />, count: stats.total, label: 'Totalt medlemmer', color: '#9e8cf8' },
+              { icon: <PeopleIcon />, count: stats.total, label: 'Totalt medlemmer', color: '#93a4dc' },
               { icon: <CheckCircleIcon />, count: stats.availableNow, label: 'Tilgjengelige nå', color: '#10b981' },
               { icon: <ScheduleIcon />, count: stats.busyCount, label: 'Opptatt', color: '#f59e0b' },
-              { icon: <HourglassIcon />, count: stats.pendingCount, label: 'Venter på svar', color: '#9e8cf8' },
+              { icon: <HourglassIcon />, count: stats.pendingCount, label: 'Venter på svar', color: '#93a4dc' },
               { icon: <PersonAddIcon />, count: stats.invitedCount, label: 'Invitert', color: '#60a5fa' },
               { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: 'var(--role-cyan, #22d3ee)' },
             ]}
@@ -3732,7 +3732,7 @@ export function CrewManagementPanel({
                 <Chip label={`Dobbelbooking: ${stats.totalConflicts}`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }} />
                 <Chip label={`Utenfor tilgjengelighet: ${riskInsights.availabilityConflicts.length}`} size="small" sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', border: '1px solid rgba(255,184,0,0.4)' }} />
                 <Chip label={`Overtidsrisiko: ${riskInsights.overtimeRisk.length}`} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }} />
-                <Chip label={`Manglende kontaktinfo: ${riskInsights.missingContact.length}`} size="small" sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#9e8cf8', border: '1px solid rgba(136, 117, 235,0.4)' }} />
+                <Chip label={`Manglende kontaktinfo: ${riskInsights.missingContact.length}`} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc', border: '1px solid rgba(93, 118, 203,0.4)' }} />
               </Box>
             </Box>
           )}
@@ -3836,7 +3836,7 @@ export function CrewManagementPanel({
                       label={`${member.name} (${plannerAssignmentCountByMember.get(member.id) ?? 0})`}
                       sx={{
                         cursor: 'grab',
-                        bgcolor: plannerSourceMemberId === member.id ? 'rgba(136, 117, 235,0.34)' : 'rgba(255,255,255,0.07)',
+                        bgcolor: plannerSourceMemberId === member.id ? 'rgba(93, 118, 203,0.34)' : 'rgba(255,255,255,0.07)',
                         color: '#ffffff',
                         border: `1px solid ${roleBorder}`,
                       }}
@@ -3867,7 +3867,7 @@ export function CrewManagementPanel({
                         p: 1,
                         borderRadius: 1.25,
                         border: `1px dashed ${plannerDragOverDayId === day.id ? roleTabAccent : 'rgba(255,255,255,0.24)'}`,
-                        bgcolor: plannerDragOverDayId === day.id ? 'rgba(136, 117, 235,0.24)' : 'rgba(255,255,255,0.03)',
+                        bgcolor: plannerDragOverDayId === day.id ? 'rgba(93, 118, 203,0.24)' : 'rgba(255,255,255,0.03)',
                         minHeight: 134,
                       }}
                     >
@@ -3908,7 +3908,7 @@ export function CrewManagementPanel({
                                 : status === 'release'
                                 ? '#94a3b8'
                                 : status === 'unknown'
-                                ? '#9e8cf8'
+                                ? '#93a4dc'
                                 : '#34d399';
                             return (
                               <Box
@@ -4152,7 +4152,7 @@ export function CrewManagementPanel({
                     selected={selectedIds.has(member.id)}
                     sx={{
                       '&:hover': { bgcolor: roleTabAccentSoft },
-                      '&.Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.22)' },
+                      '&.Mui-selected': { bgcolor: 'rgba(93, 118, 203,0.22)' },
                     }}
                   >
                   <TableCell padding="checkbox">
@@ -4255,7 +4255,7 @@ export function CrewManagementPanel({
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     {member.availability?.startDate && member.availability?.endDate ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
-                        <CalendarTodayIcon sx={{ fontSize: { xs: 11, sm: 12, md: 12, lg: 13, xl: 14 }, color: isAvailableNow(member) ? '#4caf50' : '#6249df' }} />
+                        <CalendarTodayIcon sx={{ fontSize: { xs: 11, sm: 12, md: 12, lg: 13, xl: 14 }, color: isAvailableNow(member) ? '#4caf50' : '#4b3d8f' }} />
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
                           {member.availability.startDate} - {member.availability.endDate}
                         </Typography>
@@ -4585,8 +4585,8 @@ export function CrewManagementPanel({
                           gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                           p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                           borderRadius: 2,
-                          bgcolor: 'rgba(136, 117, 235,0.1)',
-                          border: '1px solid rgba(136, 117, 235,0.25)',
+                          bgcolor: 'rgba(93, 118, 203,0.1)',
+                          border: '1px solid rgba(93, 118, 203,0.25)',
                         }}
                       >
                         <Box
@@ -4594,13 +4594,13 @@ export function CrewManagementPanel({
                             width: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                             height: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                             borderRadius: 1.5,
-                            bgcolor: 'rgba(136, 117, 235,0.25)',
+                            bgcolor: 'rgba(93, 118, 203,0.25)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          <PhoneIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#9e8cf8' }} />
+                          <PhoneIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#93a4dc' }} />
                         </Box>
                         <Box sx={{ flex: 1 }}>
                           <Typography
@@ -4623,7 +4623,7 @@ export function CrewManagementPanel({
                               fontWeight: 700,
                               display: 'block',
                               textDecoration: 'none',
-                              '&:hover': { color: '#9e8cf8' },
+                              '&:hover': { color: '#93a4dc' },
                             }}
                           >
                             {member.contactInfo.phone}
@@ -4730,14 +4730,14 @@ export function CrewManagementPanel({
                             mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             borderRadius: 2,
-                            bgcolor: 'rgba(136, 117, 235,0.08)',
-                            border: '1px solid rgba(136, 117, 235,0.2)',
+                            bgcolor: 'rgba(93, 118, 203,0.08)',
+                            border: '1px solid rgba(93, 118, 203,0.2)',
                           }}
                         >
                           <Typography
                             variant="subtitle2"
                             sx={{
-                              color: '#9e8cf8',
+                              color: '#93a4dc',
                               fontWeight: 700,
                               mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 },
                               fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
@@ -5067,7 +5067,7 @@ export function CrewManagementPanel({
         anchor="right"
         open={activityOpen}
         onClose={() => setActivityOpen(false)}
-        PaperProps={{ sx: { width: { xs: '100vw', sm: 420 }, bgcolor: '#13181e', color: '#fff', borderLeft: '1px solid rgba(136, 117, 235,0.32)' } }}
+        PaperProps={{ sx: { width: { xs: '100vw', sm: 420 }, bgcolor: '#13181e', color: '#fff', borderLeft: '1px solid rgba(93, 118, 203,0.32)' } }}
       >
         <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>Aktivitetslogg</Typography>
@@ -5112,7 +5112,7 @@ export function CrewManagementPanel({
         onClose={() => setCommandPaletteOpen(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { bgcolor: '#13181e', border: '1px solid rgba(136, 117, 235,0.3)' } }}
+        PaperProps={{ sx: { bgcolor: '#13181e', border: '1px solid rgba(93, 118, 203,0.3)' } }}
       >
         <DialogTitle sx={{ color: '#fff', fontWeight: 700, pb: 1 }}>
           Command palette
@@ -5219,7 +5219,7 @@ export function CrewManagementPanel({
               m: { xs: 0, sm: 2, md: 2.5, lg: 3, xl: 4 },
               borderRadius: { xs: 0, sm: 2.5 },
               maxWidth: { xs: '95vw', sm: '90vw', md: '85vw', lg: '80vw', xl: '75vw' },
-              border: '1px solid rgba(136, 117, 235,0.34)',
+              border: '1px solid rgba(93, 118, 203,0.34)',
               boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
               willChange: 'transform, opacity',
               transformOrigin: 'center center',
@@ -5248,7 +5248,7 @@ export function CrewManagementPanel({
           id={dialogTitleId}
           sx={{
             color: '#fff',
-            borderBottom: '1px solid rgba(136, 117, 235,0.34)',
+            borderBottom: '1px solid rgba(93, 118, 203,0.34)',
             fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.2rem', lg: '1.375rem', xl: '1.75rem' },
             display: 'flex',
             justifyContent: 'space-between',
@@ -5256,7 +5256,7 @@ export function CrewManagementPanel({
             py: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-            background: 'linear-gradient(180deg, rgba(136, 117, 235,0.16) 0%, rgba(136, 117, 235,0.04) 100%)',
+            background: 'linear-gradient(180deg, rgba(93, 118, 203,0.16) 0%, rgba(93, 118, 203,0.04) 100%)',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -5265,14 +5265,14 @@ export function CrewManagementPanel({
                 width: 34,
                 height: 34,
                 borderRadius: 1.5,
-                border: '1px solid rgba(136, 117, 235,0.42)',
-                background: 'linear-gradient(135deg, rgba(136, 117, 235,0.28), rgba(48, 31, 132,0.2))',
+                border: '1px solid rgba(93, 118, 203,0.42)',
+                background: 'linear-gradient(135deg, rgba(93, 118, 203,0.28), rgba(48, 31, 132,0.2))',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <GroupsIcon sx={{ color: '#e0dbfa', fontSize: 18 }} />
+              <GroupsIcon sx={{ color: '#dfe4f3', fontSize: 18 }} />
             </Box>
             <Typography sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 700 }}>
               {editingCrewMember ? 'Rediger teammedlem' : 'Nytt teammedlem'}
@@ -5283,9 +5283,9 @@ export function CrewManagementPanel({
             aria-label="Lukk dialog"
             sx={{
               color: 'rgba(255,255,255,0.87)',
-              border: '1px solid rgba(136, 117, 235,0.34)',
+              border: '1px solid rgba(93, 118, 203,0.34)',
               bgcolor: 'rgba(255,255,255,0.02)',
-              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.14)' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.14)' },
             }}
           >
             <CloseIcon />
@@ -5376,8 +5376,8 @@ export function CrewManagementPanel({
                         color: '#fff',
                         maxHeight: 300,
                         '& .MuiMenuItem-root': {
-                          '&:hover': { bgcolor: 'rgba(136, 117, 235,0.12)' },
-                          '&.Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.2)' },
+                          '&:hover': { bgcolor: 'rgba(93, 118, 203,0.12)' },
+                          '&.Mui-selected': { bgcolor: 'rgba(93, 118, 203,0.2)' },
                         },
                       },
                     },
@@ -5403,7 +5403,7 @@ export function CrewManagementPanel({
                       minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
-                      '&:focus-visible': { bgcolor: 'rgba(136, 117, 235,0.2)' },
+                      '&:focus-visible': { bgcolor: 'rgba(93, 118, 203,0.2)' },
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
@@ -5742,8 +5742,8 @@ export function CrewManagementPanel({
                             bgcolor: '#1c2128',
                             color: '#fff',
                             '& .MuiMenuItem-root': {
-                              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.12)' },
-                              '&.Mui-selected': { bgcolor: 'rgba(136, 117, 235,0.2)' },
+                              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.12)' },
+                              '&.Mui-selected': { bgcolor: 'rgba(93, 118, 203,0.2)' },
                             },
                           },
                         },
@@ -5986,7 +5986,7 @@ export function CrewManagementPanel({
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(136, 117, 235,0.28)',
+            borderTop: '1px solid rgba(93, 118, 203,0.28)',
             p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
             flexDirection: { xs: 'column-reverse', sm: 'row' },
@@ -6009,10 +6009,10 @@ export function CrewManagementPanel({
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-              border: '1px solid rgba(136, 117, 235,0.34)',
+              border: '1px solid rgba(93, 118, 203,0.34)',
               bgcolor: 'rgba(255,255,255,0.02)',
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: 'rgba(136, 117, 235,0.14)' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.14)' },
             }}
           >
             Avbryt

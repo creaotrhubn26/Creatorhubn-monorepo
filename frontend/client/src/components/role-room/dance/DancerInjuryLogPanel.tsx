@@ -55,7 +55,7 @@ import {
 const PURPLE = danceFlowColors.lavenderDark;
 const BG_DARK = danceFlowColors.bgBase;
 const CARD_BG = danceFlowColors.bgCard;
-const BORDER = 'rgba(136, 117, 235,0.25)';
+const BORDER = 'rgba(93, 118, 203,0.25)';
 
 const BODY_PART_LABEL: Record<InjuryBodyPart, string> = {
   ankle: 'Ankel',
@@ -264,7 +264,7 @@ export function DancerInjuryLogPanel({
               width: 44,
               height: 44,
               borderRadius: 2,
-              bgcolor: 'rgba(136, 117, 235,0.18)',
+              bgcolor: 'rgba(93, 118, 203,0.18)',
               color: danceFlowColors.lavender,
               display: 'flex',
               alignItems: 'center',

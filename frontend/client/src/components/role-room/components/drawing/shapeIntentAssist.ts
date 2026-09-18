@@ -543,7 +543,7 @@ const ellipseSuggestions: ShapeIntentSuggestion[] = [
     category: 'Prop',
     description: 'Build a clean prop read with rim control and optional dish content.',
     learningFocus: 'Good for practicing nested ellipses and prop readability in close-up shots.',
-    accentColor: '#9e8cf8',
+    accentColor: '#93a4dc',
     parameters: [
       {
         id: 'rim',
@@ -1448,7 +1448,7 @@ const rectangleSuggestions: ShapeIntentSuggestion[] = [
     category: 'Prop',
     description: 'Turn the rectangle into a screen with bezel and stand choices.',
     learningFocus: 'Useful for modern prop design and clean tech silhouettes.',
-    accentColor: '#9e8cf8',
+    accentColor: '#93a4dc',
     parameters: [
       {
         id: 'bezel',
@@ -2225,7 +2225,7 @@ const blobSuggestions: ShapeIntentSuggestion[] = [
     category: 'Environment',
     description: 'Turn the organic shape into a smoke curl with directional flow.',
     learningFocus: 'Good for gesture-to-form transitions and rhythmic tapering.',
-    accentColor: '#c6bdf4',
+    accentColor: '#c3cbe6',
     parameters: [
       {
         id: 'direction',
@@ -3655,7 +3655,7 @@ const buildSmokeStrokes = (bounds: ShapeIntentBounds, suggestion: ShapeIntentSug
     { x: bounds.centerX + (driftX * 0.55), y: bounds.centerY - (bounds.height * 0.12) },
     { x: bounds.centerX + driftX, y: bounds.minY },
   ], '#e2e8f0', density === 'dense' ? 4 : 2.8, density === 'dense' ? 0.86 : 0.66, timestampSeed);
-  const curl = createEllipseStroke(bounds.centerX + driftX, bounds.centerY - (bounds.height * 0.12), bounds.width * 0.14, bounds.height * 0.16, '#c6bdf4', 2.2, 0.66, timestampSeed + 120, 18);
+  const curl = createEllipseStroke(bounds.centerX + driftX, bounds.centerY - (bounds.height * 0.12), bounds.width * 0.14, bounds.height * 0.16, '#c3cbe6', 2.2, 0.66, timestampSeed + 120, 18);
   const originStroke = origin === 'ground'
     ? [createLobeStroke(bounds.centerX, bounds.maxY + 12, bounds.width * 0.12, bounds.height * 0.06, 0.14, '#94a3b8', 2, 0.56, timestampSeed + 210)]
     : [createLineStroke(bounds.centerX, bounds.maxY + 18, bounds.centerX, bounds.maxY - 4, '#94a3b8', 2, 0.56, timestampSeed + 210, 3)];

@@ -352,7 +352,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ pr: 6, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <HandshakeIcon sx={{ color: '#c6bdf4' }} />
+        <HandshakeIcon sx={{ color: '#c3cbe6' }} />
         Samarbeidsforslag {customerName ? `· ${customerName}` : ''}
         <IconButton
           onClick={onClose}
@@ -434,7 +434,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               <Chip
                 size="small"
                 label={`Tiltenkt leverandør: ${supplier.name}`}
-                sx={{ mt: 1, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0e7ff' }}
+                sx={{ mt: 1, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#e0e7ff' }}
               />
             ) : null}
 
@@ -482,11 +482,11 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                             maxWidth: 280,
                             flex: '1 1 240px',
                             border: isSelected
-                              ? '2px solid rgba(136, 117, 235,0.7)'
+                              ? '2px solid rgba(93, 118, 203,0.7)'
                               : '1px solid rgba(148,163,184,0.2)',
                             bgcolor: isSelected ? 'rgba(33, 28, 59,0.5)' : 'rgba(15,23,42,0.5)',
                             transition: 'all 0.15s',
-                            '&:hover': { borderColor: 'rgba(136, 117, 235,0.5)' },
+                            '&:hover': { borderColor: 'rgba(93, 118, 203,0.5)' },
                           }}
                         >
                           <Stack spacing={0.4}>
@@ -667,9 +667,9 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                 <SectionCard
                   title={`${partnerName} tilbyr oss`}
                   items={draft.theyOffer}
-                  accentColor="rgba(136, 117, 235,0.4)"
+                  accentColor="rgba(93, 118, 203,0.4)"
                   bgColor="rgba(33, 28, 59,0.32)"
-                  textColor="#e0dbfa"
+                  textColor="#dfe4f3"
                 />
                 <SectionCard
                   title="Kommersiell ramme"
@@ -711,7 +711,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                             minWidth: 28,
                             height: 28,
                             borderRadius: '50%',
-                            bgcolor: 'rgba(136, 117, 235,0.4)',
+                            bgcolor: 'rgba(93, 118, 203,0.4)',
                             color: '#e0e7ff',
                             display: 'flex',
                             alignItems: 'center',

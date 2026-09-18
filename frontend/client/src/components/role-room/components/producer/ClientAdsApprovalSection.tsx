@@ -131,7 +131,7 @@ export default function ClientAdsApprovalSection({
   if (loading) {
     return (
       <Box sx={{ textAlign: 'center', py: 3 }}>
-        <CircularProgress size={22} sx={{ color: '#9e8cf8' }} />
+        <CircularProgress size={22} sx={{ color: '#93a4dc' }} />
       </Box>
     );
   }
@@ -142,16 +142,16 @@ export default function ClientAdsApprovalSection({
 
   return (
     <Card sx={{
-      bgcolor: '#18122b',
-      border: '1px solid rgba(136, 117, 235,0.32)',
-      color: '#f6f5ff',
+      bgcolor: '#2a3d56',
+      border: '1px solid rgba(93, 118, 203,0.32)',
+      color: '#f7f9ff',
       mb: 2,
     }}>
       <CardContent>
         <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 1.6 }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: 1.4,
-            background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+            background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <AutoAwesomeIcon sx={{ color: '#fff', fontSize: 20 }} />
@@ -160,7 +160,7 @@ export default function ClientAdsApprovalSection({
             <Typography sx={{ fontWeight: 800, fontSize: '1.04rem' }}>
               Ads-anbefalinger venter på din godkjenning
             </Typography>
-            <Typography sx={{ color: 'rgba(198, 189, 244,0.85)', fontSize: '0.82rem' }}>
+            <Typography sx={{ color: 'rgba(195, 203, 230,0.85)', fontSize: '0.82rem' }}>
               {pending.length} {pending.length === 1 ? 'forslag' : 'forslag'} fra innholdsprodusenten
             </Typography>
           </Box>
@@ -176,8 +176,8 @@ export default function ClientAdsApprovalSection({
               <Box
                 key={config.id}
                 sx={{
-                  bgcolor: 'rgba(136, 117, 235,0.06)',
-                  border: '1px solid rgba(136, 117, 235,0.18)',
+                  bgcolor: 'rgba(93, 118, 203,0.06)',
+                  border: '1px solid rgba(93, 118, 203,0.18)',
                   borderRadius: 1.6,
                   p: 2,
                 }}
@@ -187,7 +187,7 @@ export default function ClientAdsApprovalSection({
                     <Typography sx={{ fontWeight: 800, fontSize: '0.98rem', mb: 0.4 }}>
                       {config.client_name}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(198, 189, 244,0.75)', fontSize: '0.82rem' }}>
+                    <Typography sx={{ color: 'rgba(195, 203, 230,0.75)', fontSize: '0.82rem' }}>
                       {config.client_website_url} · Bransje: {config.business_type}
                     </Typography>
                   </Box>
@@ -205,7 +205,7 @@ export default function ClientAdsApprovalSection({
                 </Stack>
 
                 {config.approval_message ? (
-                  <Typography sx={{ color: 'rgba(198, 189, 244,0.9)', fontStyle: 'italic', fontSize: '0.86rem', mb: 1.6, p: 1.2, bgcolor: 'rgba(136, 117, 235,0.10)', borderRadius: 1 }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.9)', fontStyle: 'italic', fontSize: '0.86rem', mb: 1.6, p: 1.2, bgcolor: 'rgba(93, 118, 203,0.10)', borderRadius: 1 }}>
                     Beskjed fra innholdsprodusenten: «{config.approval_message}»
                   </Typography>
                 ) : null}
@@ -222,7 +222,7 @@ export default function ClientAdsApprovalSection({
                     💰 Management fee: {Number(config.management_fee_pct).toFixed(0)}% av ads-spend
                     {config.management_fee_negotiated ? ' (forhandlet)' : ' (standard)'}
                   </Typography>
-                  <Typography sx={{ color: 'rgba(198, 189, 244,0.85)', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                  <Typography sx={{ color: 'rgba(195, 203, 230,0.85)', fontSize: '0.78rem', lineHeight: 1.5 }}>
                     Google Ads-kontoen står på dere som klient. Spend (annonse-kostnad) trekkes
                     direkte fra deres betalingsmetode til Google — innholdsprodusenten håndterer
                     aldri pengene. Innholdsprodusenten har kun OAuth-tilgang for å sette opp og
@@ -253,7 +253,7 @@ export default function ClientAdsApprovalSection({
                       borderBottom: '1px solid rgba(148,163,184,0.18)',
                     },
                     '& td': {
-                      color: '#f6f5ff',
+                      color: '#f7f9ff',
                       fontSize: '0.84rem',
                       py: 1,
                       borderBottom: '1px solid rgba(148,163,184,0.08)',
@@ -276,12 +276,12 @@ export default function ClientAdsApprovalSection({
                         <td>
                           <Box>
                             <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>{a.display_name}</Typography>
-                            <Typography sx={{ color: 'rgba(198, 189, 244,0.7)', fontSize: '0.74rem', fontStyle: 'italic', mt: 0.2 }}>
+                            <Typography sx={{ color: 'rgba(195, 203, 230,0.7)', fontSize: '0.74rem', fontStyle: 'italic', mt: 0.2 }}>
                               {a.claude_reasoning}
                             </Typography>
                           </Box>
                         </td>
-                        <td style={{ color: 'rgba(198, 189, 244,0.85)' }}>
+                        <td style={{ color: 'rgba(195, 203, 230,0.85)' }}>
                           {CATEGORY_LABELS[a.goal_category] ?? a.goal_category}
                         </td>
                         <td style={{ color: 'rgba(96,165,250,0.85)' }}>
@@ -293,7 +293,7 @@ export default function ClientAdsApprovalSection({
                   </tbody>
                 </Box>
 
-                <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.18)', my: 1.6 }} />
+                <Divider sx={{ borderColor: 'rgba(93, 118, 203,0.18)', my: 1.6 }} />
 
                 <TextField
                   multiline
@@ -304,7 +304,7 @@ export default function ClientAdsApprovalSection({
                   value={feedbackDrafts[config.id] ?? ''}
                   onChange={(e) => setFeedbackDrafts({ ...feedbackDrafts, [config.id]: e.target.value })}
                   sx={{ mb: 1.4 }}
-                  InputProps={{ sx: { color: '#f6f5ff' } }}
+                  InputProps={{ sx: { color: '#f7f9ff' } }}
                   InputLabelProps={{ sx: { color: 'rgba(148,163,184,0.85)' } }}
                 />
 

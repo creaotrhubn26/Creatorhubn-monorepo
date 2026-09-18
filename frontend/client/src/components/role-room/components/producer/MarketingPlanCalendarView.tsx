@@ -23,7 +23,7 @@ const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
   image: 'var(--role-cyan, #22d3ee)',
-  story: '#8875eb',
+  story: '#5d76cb',
   tiktok: '#ec4899',
   linkedin_post: '#3b82f6',
   youtube_short: '#ef4444',

@@ -667,7 +667,7 @@ const CLIENT_MATERIAL_TEMPLATES: ClientMaterialTemplate[] = [
   },
 ];
 
-const WORKSPACE_COLOR_OPTIONS = ['#38bdf8', '#fbbf24', '#8875eb', '#22c55e', '#fb7185', '#f97316', '#14b8a6', '#94a3b8'];
+const WORKSPACE_COLOR_OPTIONS = ['#38bdf8', '#fbbf24', '#5d76cb', '#22c55e', '#fb7185', '#f97316', '#14b8a6', '#94a3b8'];
 const ACCOUNT_ACCESS_PLATFORM_ORDER: ProducerAccountAccessPlatform[] = ['google', 'meta', 'linkedin', 'youtube', 'tiktok'];
 const PRODUCER_WORKSPACE_SURFACE_VALUES: ProducerWorkspaceSurfaceKey[] = [
   'brief',
@@ -5956,9 +5956,9 @@ export default function ProducerMediaPanel({
       detail: primaryManuscript?.title
         ? `${primaryManuscript.title}${primaryManuscript.version ? ` · ${primaryManuscript.version}` : ''}`
         : 'Ingen manus er koblet til prosjektet ennå.',
-      accent: 'rgba(158, 140, 248,0.16)',
-      textColor: '#e0dbfa',
-      icon: <ArticleOutlinedIcon sx={{ color: '#c6bdf4' }} />,
+      accent: 'rgba(147, 164, 220,0.16)',
+      textColor: '#dfe4f3',
+      icon: <ArticleOutlinedIcon sx={{ color: '#c3cbe6' }} />,
     },
     {
       key: 'shotlist' as const,
@@ -5986,9 +5986,9 @@ export default function ProducerMediaPanel({
       detail: hasText(planningDraft.brandGuide.visualStyle)
         ? planningDraft.brandGuide.visualStyle ?? ''
         : 'Visuell stil og tone of voice bør defineres tydelig.',
-      accent: 'rgba(136, 117, 235,0.16)',
-      textColor: '#e0dbfa',
-      icon: <PaletteOutlinedIcon sx={{ color: '#c6bdf4' }} />,
+      accent: 'rgba(93, 118, 203,0.16)',
+      textColor: '#dfe4f3',
+      icon: <PaletteOutlinedIcon sx={{ color: '#c3cbe6' }} />,
     },
     {
       key: 'accounts' as const,
@@ -10030,7 +10030,7 @@ export default function ProducerMediaPanel({
                 </Box>
                 <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                   <Chip size="small" label={`${storyboardScenes.length} scener`} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
-                  <Chip size="small" label={`${storyboardFrameCount} frames`} sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }} />
+                  <Chip size="small" label={`${storyboardFrameCount} frames`} sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }} />
                   <Chip size="small" label={`${storyboardInspirations.length} inspirasjoner`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
                 </Stack>
               </Stack>
@@ -10260,7 +10260,7 @@ export default function ProducerMediaPanel({
                                   <Chip size="small" label={getSceneDisplayLabel(sceneLabel)} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
                                 ) : null}
                                 {frameLabel ? (
-                                  <Chip size="small" label={readFirstNonEmptyString(frameLabel.title, frameLabel.description, 'Frame')} sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }} />
+                                  <Chip size="small" label={readFirstNonEmptyString(frameLabel.title, frameLabel.description, 'Frame')} sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }} />
                                 ) : null}
                               </Stack>
                               <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.86rem' }}>
@@ -10320,7 +10320,7 @@ export default function ProducerMediaPanel({
               data-testid="producer-media-manuscript-workspace"
               sx={{
                 borderRadius: 3,
-                border: '1px solid rgba(158, 140, 248,0.18)',
+                border: '1px solid rgba(147, 164, 220,0.18)',
                 bgcolor: 'rgba(15,23,42,0.62)',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
                 p: { xs: 1.25, md: 1.5 },
@@ -10333,7 +10333,7 @@ export default function ProducerMediaPanel({
                   color: 'rgba(226,232,240,0.62)',
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(158, 140, 248,0.16)',
+                  borderColor: 'rgba(147, 164, 220,0.16)',
                 },
               }}
             >
@@ -10347,7 +10347,7 @@ export default function ProducerMediaPanel({
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
-                  <Chip size="small" label={primaryManuscript ? (primaryManuscript.version ? `Versjon ${primaryManuscript.version}` : 'Manus koblet') : 'Ingen manus'} sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }} />
+                  <Chip size="small" label={primaryManuscript ? (primaryManuscript.version ? `Versjon ${primaryManuscript.version}` : 'Manus koblet') : 'Ingen manus'} sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }} />
                   <Chip size="small" label={`${manuscriptSuggestions.length} forslag`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
                 </Stack>
               </Stack>
@@ -10384,7 +10384,7 @@ export default function ProducerMediaPanel({
                           mt: 0.9,
                           p: 0.95,
                           borderRadius: 1.4,
-                          border: '1px solid rgba(158, 140, 248,0.14)',
+                          border: '1px solid rgba(147, 164, 220,0.14)',
                           bgcolor: 'rgba(15,23,42,0.52)',
                         }}
                       >
@@ -10516,7 +10516,7 @@ export default function ProducerMediaPanel({
                           void handleSubmitManuscriptSuggestion();
                         }}
                         disabled={savingMaterial}
-                        sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, bgcolor: '#9e8cf8', '&:hover': { bgcolor: '#8875eb' } }}
+                        sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, bgcolor: '#93a4dc', '&:hover': { bgcolor: '#5d76cb' } }}
                       >
                         {savingMaterial ? 'Lagrer forslag...' : 'Lagre forslag'}
                       </Button>
@@ -10558,7 +10558,7 @@ export default function ProducerMediaPanel({
                             <Box sx={{ minWidth: 0 }}>
                               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
                                 {sceneLabel ? (
-                                  <Chip size="small" label={getSceneDisplayLabel(sceneLabel)} sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }} />
+                                  <Chip size="small" label={getSceneDisplayLabel(sceneLabel)} sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }} />
                                 ) : (
                                   <Chip size="small" label="Hele manuset" sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
                                 )}
@@ -10587,7 +10587,7 @@ export default function ProducerMediaPanel({
                                   void handleDeleteMaterial(material.id);
                                 }}
                                 disabled={deletingMaterialId === material.id}
-                                sx={{ textTransform: 'none', fontWeight: 700, color: '#e0dbfa', alignSelf: { md: 'flex-start' } }}
+                                sx={{ textTransform: 'none', fontWeight: 700, color: '#dfe4f3', alignSelf: { md: 'flex-start' } }}
                               >
                                 {deletingMaterialId === material.id ? 'Sletter...' : 'Fjern'}
                               </Button>
@@ -11028,7 +11028,7 @@ export default function ProducerMediaPanel({
                                     <Chip
                                       size="small"
                                       label="Auto i 9:16 / 1:1"
-                                      sx={{ bgcolor: 'rgba(136, 117, 235,0.12)', color: '#e0dbfa', fontWeight: 700 }}
+                                      sx={{ bgcolor: 'rgba(93, 118, 203,0.12)', color: '#dfe4f3', fontWeight: 700 }}
                                     />
                                   ) : null}
                                   {isAutoPreviewVariant ? (
@@ -11215,7 +11215,7 @@ export default function ProducerMediaPanel({
                                   <Chip
                                     size="small"
                                     label={brandLogoDetectionSummary?.markTypeLabel ?? 'Ukjent'}
-                                    sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }}
+                                    sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
                                   />
                                   <Chip
                                     size="small"
@@ -11337,9 +11337,9 @@ export default function ProducerMediaPanel({
                               color: 'rgba(226,232,240,0.82)',
                             },
                             '& .Mui-selected': {
-                              bgcolor: 'rgba(136, 117, 235,0.16) !important',
-                              borderColor: 'rgba(136, 117, 235,0.32) !important',
-                              color: '#e0dbfa !important',
+                              bgcolor: 'rgba(93, 118, 203,0.16) !important',
+                              borderColor: 'rgba(93, 118, 203,0.32) !important',
+                              color: '#dfe4f3 !important',
                             },
                           }}
                         >
@@ -12168,9 +12168,9 @@ export default function ProducerMediaPanel({
                       px: 1.2,
                       textTransform: 'none',
                       fontWeight: 700,
-                      bgcolor: '#8875eb',
-                      color: '#f6f5ff',
-                      '&:hover': { bgcolor: '#6249df' },
+                      bgcolor: '#5d76cb',
+                      color: '#f7f9ff',
+                      '&:hover': { bgcolor: '#4b3d8f' },
                     }}
                   >
                     {savingPlanning ? 'Lagrer merkevareguide...' : 'Lagre og bruk i produksjon'}
@@ -12595,7 +12595,7 @@ export default function ProducerMediaPanel({
                     size="small"
                     variant="text"
                     onClick={() => setAccountAccessAdvanced((v) => !v)}
-                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28, color: accountAccessAdvanced ? '#9e8cf8' : 'rgba(148,163,184,0.8)' }}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28, color: accountAccessAdvanced ? '#93a4dc' : 'rgba(148,163,184,0.8)' }}
                   >
                     {accountAccessAdvanced ? 'Avansert ✓' : 'Vis avansert'}
                   </Button>
@@ -13265,9 +13265,9 @@ export default function ProducerMediaPanel({
                               color: 'rgba(226,232,240,0.78)',
                             },
                             '& .Mui-selected': {
-                              bgcolor: 'rgba(136, 117, 235,0.18) !important',
-                              borderColor: 'rgba(136, 117, 235,0.28) !important',
-                              color: '#e0dbfa !important',
+                              bgcolor: 'rgba(93, 118, 203,0.18) !important',
+                              borderColor: 'rgba(93, 118, 203,0.28) !important',
+                              color: '#dfe4f3 !important',
                             },
                           }}
                         >
@@ -13339,7 +13339,7 @@ export default function ProducerMediaPanel({
                             bgcolor: 'rgba(48, 31, 132,0.16)',
                           }}
                         >
-                          <Typography sx={{ color: '#e0dbfa', fontWeight: 700, fontSize: '0.82rem', mb: 0.15 }}>
+                          <Typography sx={{ color: '#dfe4f3', fontWeight: 700, fontSize: '0.82rem', mb: 0.15 }}>
                             Sikker deling
                           </Typography>
                           <Typography sx={{ color: 'rgba(224, 219, 250,0.8)', fontSize: '0.73rem', lineHeight: 1.45, mb: 0.7 }}>
@@ -13439,9 +13439,9 @@ export default function ProducerMediaPanel({
                                   color: 'rgba(226,232,240,0.78)',
                                 },
                                 '& .Mui-selected': {
-                                  bgcolor: 'rgba(136, 117, 235,0.18) !important',
-                                  borderColor: 'rgba(136, 117, 235,0.28) !important',
-                                  color: '#e0dbfa !important',
+                                  bgcolor: 'rgba(93, 118, 203,0.18) !important',
+                                  borderColor: 'rgba(93, 118, 203,0.28) !important',
+                                  color: '#dfe4f3 !important',
                                 },
                               }}
                             >
@@ -13702,7 +13702,7 @@ export default function ProducerMediaPanel({
                                   void handleRevealAccessVaultSecret(request);
                                 }}
                                 disabled={Boolean(accessVaultActionKey)}
-                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8875eb)', '&:hover': { bgcolor: '#6249df' } }}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #5d76cb)', '&:hover': { bgcolor: '#4b3d8f' } }}
                               >
                                 {accessVaultActionKey === `${request.id}:reveal` ? 'Åpner...' : 'Åpne én gang'}
                               </Button>
@@ -13818,7 +13818,7 @@ export default function ProducerMediaPanel({
                               <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
                                 <AccountProviderLogo platform={entry.platform} size={34} />
                                 <Box sx={{ minWidth: 0 }}>
-                                  <Typography sx={{ color: '#e0dbfa', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
+                                  <Typography sx={{ color: '#dfe4f3', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
                                     {PRODUCER_ACCOUNT_ACCESS_SECRET_STATUS_LABELS[(serverSecret?.status as ProducerAccountAccessSecretStatus | undefined) ?? entry.secretStatus ?? 'not_shared']}
                                   </Typography>
                                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
@@ -13977,7 +13977,7 @@ export default function ProducerMediaPanel({
                                     void handleSaveAccessVaultSecret(entry);
                                   }}
                                   disabled={Boolean(accessVaultActionKey)}
-                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8875eb)', '&:hover': { bgcolor: '#6249df' } }}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #5d76cb)', '&:hover': { bgcolor: '#4b3d8f' } }}
                                 >
                                   {accessVaultActionKey === `${entry.platform}:save` ? 'Lagrer sikkert...' : 'Lagre sikkert'}
                                 </Button>
@@ -14003,7 +14003,7 @@ export default function ProducerMediaPanel({
                                     void handleRevealAccessVaultSecret(activeRevealRequest);
                                   }}
                                   disabled={Boolean(accessVaultActionKey)}
-                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(158, 140, 248,0.28)', color: '#e0dbfa' }}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(147, 164, 220,0.28)', color: '#dfe4f3' }}
                                 >
                                   {accessVaultActionKey === `${activeRevealRequest.id}:reveal` ? 'Åpner...' : 'Åpne godkjent innsyn'}
                                 </Button>
@@ -14053,7 +14053,7 @@ export default function ProducerMediaPanel({
                             {/* Multi-secret: flere kontoer på samme plattform */}
                             {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).length > 0 ? (
                               <Box sx={{ mt: 0.6, pt: 0.6, borderTop: '1px dashed rgba(148,163,184,0.18)' }}>
-                                <Typography sx={{ color: 'rgba(198, 189, 244,0.92)', fontSize: '0.72rem', fontWeight: 700, mb: 0.5 }}>
+                                <Typography sx={{ color: 'rgba(195, 203, 230,0.92)', fontSize: '0.72rem', fontWeight: 700, mb: 0.5 }}>
                                   Flere kontoer på denne plattformen
                                 </Typography>
                                 <Stack spacing={0.6}>
@@ -14067,7 +14067,7 @@ export default function ProducerMediaPanel({
                                           <Typography sx={{ color: '#fff', fontSize: '0.82rem', fontWeight: 700 }}>
                                             {extra.accountLabel || extra.label || 'Konto'}
                                           </Typography>
-                                          <Chip size="small" label={extra.ownerSide === 'client' ? 'Klient-eid' : 'Produsent'} sx={{ height: 17, fontSize: '0.58rem', fontWeight: 700, color: extra.ownerSide === 'client' ? '#6ee7b7' : '#c6bdf4', bgcolor: extra.ownerSide === 'client' ? 'rgba(16,185,129,0.12)' : 'rgba(136, 117, 235,0.14)' }} />
+                                          <Chip size="small" label={extra.ownerSide === 'client' ? 'Klient-eid' : 'Produsent'} sx={{ height: 17, fontSize: '0.58rem', fontWeight: 700, color: extra.ownerSide === 'client' ? '#6ee7b7' : '#c3cbe6', bgcolor: extra.ownerSide === 'client' ? 'rgba(16,185,129,0.12)' : 'rgba(93, 118, 203,0.14)' }} />
                                           {extra.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{extra.maskedReference}</Typography> : null}
                                         </Stack>
                                         <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" rowGap={0.4}>
@@ -14087,7 +14087,7 @@ export default function ProducerMediaPanel({
                                             <Typography sx={{ color: 'rgba(251,191,36,0.9)', fontSize: '0.74rem', fontWeight: 600, alignSelf: 'center' }}>Venter på godkjenning</Typography>
                                           ) : null}
                                           {canRevealApprovedSecret && exReq && exReq.status === 'approved' && !exRevealed ? (
-                                            <Button size="small" variant="contained" onClick={() => { void handleRevealAccessVaultSecret(exReq); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#6249df' }}>
+                                            <Button size="small" variant="contained" onClick={() => { void handleRevealAccessVaultSecret(exReq); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#4b3d8f' }}>
                                               {accessVaultActionKey === `${exReq.id}:reveal` ? 'Åpner…' : 'Åpne godkjent innsyn'}
                                             </Button>
                                           ) : null}
@@ -14687,7 +14687,7 @@ export default function ProducerMediaPanel({
                   <Chip
                     size="small"
                     label={`${deliveryWorkspaceAssets.legalAgreements.length} avtaler`}
-                    sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }}
+                    sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }}
                   />
                 </Stack>
                 {deliveryWorkspaceAssets.legalAgreements.length > 0 ? (

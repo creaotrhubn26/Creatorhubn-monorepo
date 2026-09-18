@@ -998,7 +998,7 @@ export default function RoleRoomAgentDialog({
                       label="Innholdsprodusent"
                       size="small"
                       aria-label="Rolle: innholdsprodusent"
-                      sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: '#c6bdf4', display: { xs: 'none', sm: 'inline-flex' } }}
+                      sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#c3cbe6', display: { xs: 'none', sm: 'inline-flex' } }}
                     />
                   </Tooltip>
                 </>
@@ -1846,7 +1846,7 @@ export default function RoleRoomAgentDialog({
                     <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                   ) : null}
                   {competitorAnalysis?.competitors?.length ? (
-                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4' }} />
+                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }} />
                   ) : null}
                 </Stack>
                 {(() => {
@@ -2312,7 +2312,7 @@ export default function RoleRoomAgentDialog({
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                           <Button size="small" variant="outlined" disabled={pixelSetupBusy}
                             onClick={() => void runMetaPixelApiSetup(result.siteSetupAudit!.url)}
-                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#c6bdf4', borderColor: 'rgba(136, 117, 235,0.4)' }}>
+                            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,0.4)' }}>
                             {pixelSetupBusy ? 'Setter opp pixel…' : 'Opprett Meta Pixel (via Meta-koblingen)'}
                           </Button>
                           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>

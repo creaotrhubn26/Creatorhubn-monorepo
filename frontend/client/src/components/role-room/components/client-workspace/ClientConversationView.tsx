@@ -75,8 +75,8 @@ const ICON_MAP = {
   approval: ApprovalIcon, delivery: DeliveryIcon, meeting: MeetingIcon, activity: ActivityIcon,
 } as const;
 const ICON_COLOR = {
-  message: '#c6bdf4', request: '#fbbf24', upload: 'var(--role-cyan, #7dd3fc)',
-  approval: '#86efac', delivery: '#c6bdf4', meeting: '#c6bdf4', activity: 'rgba(226,232,240,0.7)',
+  message: '#c3cbe6', request: '#fbbf24', upload: 'var(--role-cyan, #7dd3fc)',
+  approval: '#86efac', delivery: '#c3cbe6', meeting: '#c3cbe6', activity: 'rgba(226,232,240,0.7)',
 } as const;
 
 function fmtTime(ts: number): string {
@@ -429,22 +429,22 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
       {/* Status-chips */}
       <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
         <StatChip icon={<UnansweredIcon sx={{ fontSize: 15 }} />} label={`${stats.openRequests} ubesvart`} tone="#fbbf24" />
-        <StatChip icon={<PendingIcon sx={{ fontSize: 15 }} />} label={`${stats.pendingApproval} venter godkjenning`} tone="#c6bdf4" />
+        <StatChip icon={<PendingIcon sx={{ fontSize: 15 }} />} label={`${stats.pendingApproval} venter godkjenning`} tone="#c3cbe6" />
         <StatChip icon={<UploadIcon sx={{ fontSize: 15 }} />} label={`${stats.uploads} opplastinger`} tone="#7dd3fc" />
       </Stack>
 
       {/* Tidslinje */}
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={24} sx={{ color: '#8875eb' }} /></Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={24} sx={{ color: '#5d76cb' }} /></Box>
       ) : feed.length === 0 ? (
         <Stack spacing={1.5} alignItems="center" sx={{ py: 3 }}>
           <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.85rem', textAlign: 'center' }}>
-            Ingen aktivitet ennå. Skriv en melding, eller prøv en <strong style={{ color: '#c6bdf4' }}>Action</strong>:
+            Ingen aktivitet ennå. Skriv en melding, eller prøv en <strong style={{ color: '#c3cbe6' }}>Action</strong>:
           </Typography>
           <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75, justifyContent: 'center' }}>
-            <Chip clickable onClick={() => { setProposeOpen(true); }} icon={<ScheduleIcon sx={{ fontSize: 15, color: '#c6bdf4 !important' }} />} label="Book møte" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(98, 73, 223,0.18)', border: '1px solid rgba(136, 117, 235,0.35)' }} />
+            <Chip clickable onClick={() => { setProposeOpen(true); }} icon={<ScheduleIcon sx={{ fontSize: 15, color: '#c3cbe6 !important' }} />} label="Book møte" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(75, 61, 143,0.18)', border: '1px solid rgba(93, 118, 203,0.35)' }} />
             <Chip clickable onClick={() => void requestUpload('brand_logo')} icon={<UploadIcon sx={{ fontSize: 15, color: '#7dd3fc !important' }} />} label="Be om logo" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.32)' }} />
-            <Chip clickable onClick={() => void sendToApproval()} icon={<ApprovalIcon sx={{ fontSize: 15, color: '#c6bdf4 !important' }} />} label="Send til godkjenning" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(198, 189, 244,0.14)', border: '1px solid rgba(198, 189, 244,0.32)' }} />
+            <Chip clickable onClick={() => void sendToApproval()} icon={<ApprovalIcon sx={{ fontSize: 15, color: '#c3cbe6 !important' }} />} label="Send til godkjenning" sx={{ height: 32, fontWeight: 700, color: '#e2e8f0', background: 'rgba(195, 203, 230,0.14)', border: '1px solid rgba(195, 203, 230,0.32)' }} />
           </Stack>
         </Stack>
       ) : (
@@ -465,14 +465,14 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
         <ToggleButtonGroup
           value={kind} exclusive size="small"
           onChange={(_, v) => { if (v) setKind(v); }}
-          sx={{ mb: 0.75, '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', color: 'rgba(226,232,240,0.7)', borderColor: 'rgba(148,163,184,0.25)', minHeight: 36, '&.Mui-selected': { color: '#fff', background: 'rgba(136, 117, 235,0.25)' } } }}
+          sx={{ mb: 0.75, '& .MuiToggleButton-root': { textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', color: 'rgba(226,232,240,0.7)', borderColor: 'rgba(148,163,184,0.25)', minHeight: 36, '&.Mui-selected': { color: '#fff', background: 'rgba(93, 118, 203,0.25)' } } }}
         >
           <ToggleButton value="message">Melding</ToggleButton>
           <ToggleButton value="request">Forespørsel</ToggleButton>
         </ToggleButtonGroup>
         {proposeOpen ? (
-          <Box sx={{ mb: 1, p: 1.25, borderRadius: 2, border: '1px solid rgba(136, 117, 235,0.3)', background: 'rgba(98, 73, 223,0.06)' }}>
-            <Typography sx={{ color: '#f6f5ff', fontWeight: 700, fontSize: '0.84rem', mb: 0.75 }}>Foreslå &amp; book møte</Typography>
+          <Box sx={{ mb: 1, p: 1.25, borderRadius: 2, border: '1px solid rgba(93, 118, 203,0.3)', background: 'rgba(75, 61, 143,0.06)' }}>
+            <Typography sx={{ color: '#f7f9ff', fontWeight: 700, fontSize: '0.84rem', mb: 0.75 }}>Foreslå &amp; book møte</Typography>
             <Stack spacing={0.75}>
               <TextField placeholder="Tittel (f.eks. Konseptgjennomgang)" value={proposeTitle} onChange={(e) => setProposeTitle(e.target.value)} size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' } }} />
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.75}>
@@ -480,7 +480,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
                 <TextField type="time" value={proposeTime} onChange={(e) => setProposeTime(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} sx={{ '& .MuiOutlinedInput-root': { color: '#f1f5f9', background: 'rgba(15,23,42,0.6)' } }} />
               </Stack>
               <Stack direction="row" spacing={0.75}>
-                <Button onClick={() => void bookProposedMeeting()} disabled={busyAction} startIcon={busyAction ? <CircularProgress size={14} color="inherit" /> : <ScheduleIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)' }}>Book &amp; del Google Meet</Button>
+                <Button onClick={() => void bookProposedMeeting()} disabled={busyAction} startIcon={busyAction ? <CircularProgress size={14} color="inherit" /> : <ScheduleIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)' }}>Book &amp; del Google Meet</Button>
                 <Button onClick={() => setProposeOpen(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 40, color: 'rgba(226,232,240,0.7)' }}>Avbryt</Button>
               </Stack>
             </Stack>
@@ -488,10 +488,10 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
         ) : null}
         {/* Første-gangs spotlight: «Prøv Action» */}
         {actionSpotlight ? (
-          <Box sx={{ mb: 1, p: 1.25, borderRadius: 2, border: '1px solid rgba(136, 117, 235,0.45)', background: 'linear-gradient(135deg, rgba(98, 73, 223,0.22), rgba(136, 117, 235,0.1))', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ mb: 1, p: 1.25, borderRadius: 2, border: '1px solid rgba(93, 118, 203,0.45)', background: 'linear-gradient(135deg, rgba(75, 61, 143,0.22), rgba(93, 118, 203,0.1))', display: 'flex', alignItems: 'center', gap: 1 }}>
             <InstantMeetIcon sx={{ color: '#fcd34d', fontSize: 22 }} />
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '0.86rem' }}>Prøv Action</Typography>
+              <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '0.86rem' }}>Prøv Action</Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem' }}>
                 Gjør alt rett fra chatten — book Google Meet, be om opplasting, send til godkjenning. Trykk <strong>+</strong> eller skriv <strong>/</strong>.
               </Typography>
@@ -514,7 +514,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           <IconButton
             ref={actionBtnRef}
             aria-label="Åpne Action (Cmd+K)" onClick={(e) => openActionLauncher(e.currentTarget)} disabled={busyAction}
-            sx={{ width: 46, height: 46, color: '#fff', borderRadius: 2, background: 'linear-gradient(135deg,#6249df,#8875eb)', boxShadow: actionSpotlight ? '0 0 0 3px rgba(136, 117, 235,0.4)' : 'none', '&:hover': { background: 'linear-gradient(135deg,#472bd4,#6249df)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
+            sx={{ width: 46, height: 46, color: '#fff', borderRadius: 2, background: 'linear-gradient(135deg,#4b3d8f,#5d76cb)', boxShadow: actionSpotlight ? '0 0 0 3px rgba(93, 118, 203,0.4)' : 'none', '&:hover': { background: 'linear-gradient(135deg,#3e3180,#4b3d8f)' }, '&:focus-visible': { outline: '2px solid #22d3ee', outlineOffset: 2 } }}
           >
             {busyAction ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ActionIcon />}
           </IconButton>
@@ -533,7 +533,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           />
           <Button
             onClick={() => void handleSend()} disabled={sending || !draft.trim()}
-            sx={{ minWidth: 0, minHeight: 46, px: 2, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
+            sx={{ minWidth: 0, minHeight: 46, px: 2, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' }, '&.Mui-disabled': { opacity: 0.5, color: '#fff' } }}
             aria-label="Send"
           >
             {sending ? <CircularProgress size={18} color="inherit" /> : <SendIcon sx={{ fontSize: 20 }} />}
@@ -541,10 +541,10 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
         </Stack>
         <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={() => setActionAnchor(null)}
           anchorOrigin={{ vertical: 'top', horizontal: 'left' }} transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-          slotProps={{ paper: { sx: { background: '#100b1e', border: '1px solid rgba(136, 117, 235,0.3)', minWidth: 280 } } }}>
+          slotProps={{ paper: { sx: { background: '#2a3152', border: '1px solid rgba(93, 118, 203,0.3)', minWidth: 280 } } }}>
           <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <InstantMeetIcon sx={{ color: '#fcd34d', fontSize: 18 }} />
-            <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '0.82rem' }}>Action</Typography>
+            <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '0.82rem' }}>Action</Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', ml: 'auto' }}>⌘K · gjør det fra chatten</Typography>
           </Box>
           <Box sx={{ px: 1.5, pb: 0.75 }}>
@@ -556,10 +556,10 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
           </Box>
           {[
             { q: 'start google meet nå instant video', icon: <InstantMeetIcon sx={{ color: '#86efac' }} />, primary: 'Start Google Meet nå', secondary: 'Instant videomøte + del lenke', run: () => void startInstantMeet() },
-            { q: 'foreslå book møte tid kalender', icon: <ScheduleIcon sx={{ color: '#c6bdf4' }} />, primary: 'Foreslå & book møte', secondary: 'Velg tid → Google Meet', run: () => { setActionAnchor(null); setProposeOpen(true); } },
+            { q: 'foreslå book møte tid kalender', icon: <ScheduleIcon sx={{ color: '#c3cbe6' }} />, primary: 'Foreslå & book møte', secondary: 'Velg tid → Google Meet', run: () => { setActionAnchor(null); setProposeOpen(true); } },
             { q: 'be om logo opplasting merkevare', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />, primary: 'Be om logo-opplasting', secondary: 'Lander i Merkevare på begge flater', run: () => void requestUpload('brand_logo') },
             { q: 'be om fil opplasting materiale', icon: <UploadIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />, primary: 'Be om fil-opplasting', secondary: 'Hvilken som helst fil → Materiale', run: () => void requestUpload('other') },
-            { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#c6bdf4' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
+            { q: 'send til godkjenning approval review', icon: <ApprovalIcon sx={{ color: '#c3cbe6' }} />, primary: 'Send til godkjenning', secondary: 'Lander i Godkjenning-flaten', run: () => void sendToApproval() },
             { q: 'referer til leveranse fil møte video godkjenn', icon: <ReferenceIcon sx={{ color: '#fcd34d' }} />, primary: 'Referer til …', secondary: 'Leveranse, fil eller møte → klikkbart kort', run: () => void openReferencePicker() },
             // Produsent-only handlinger (vises kun når canUseInternal).
             { q: 'ai utkast svar forslag claude', icon: <AiIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />, primary: 'AI: foreslå svar', secondary: 'Claude skriver et utkast i feltet', run: () => void runAiAssist('draft') },
@@ -567,8 +567,8 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
             // Produsent-only handlinger (vises kun når canUseInternal).
             ...(canUseInternal ? [
               { q: 'del budsjett økonomi publiser klient', icon: <BudgetIcon sx={{ color: '#86efac' }} />, primary: 'Del budsjett med klient', secondary: 'Publiser budsjettlinjer → klientens Økonomi', run: () => void shareBudget() },
-              { q: 'be om brief svar intake', icon: <BriefIcon sx={{ color: '#c6bdf4' }} />, primary: 'Be om brief-svar', secondary: 'Forespørsel → klientens Brief-fane', run: () => void requestBriefInput() },
-              { q: 'legg i content planner post planlegg publiser', icon: <ContentPlanActionIcon sx={{ color: '#c6bdf4' }} />, primary: 'Legg i Content Planner', secondary: 'Gjør idé → planlagt post (sett dato der)', run: () => void addToContentPlanner() },
+              { q: 'be om brief svar intake', icon: <BriefIcon sx={{ color: '#c3cbe6' }} />, primary: 'Be om brief-svar', secondary: 'Forespørsel → klientens Brief-fane', run: () => void requestBriefInput() },
+              { q: 'legg i content planner post planlegg publiser', icon: <ContentPlanActionIcon sx={{ color: '#c3cbe6' }} />, primary: 'Legg i Content Planner', secondary: 'Gjør idé → planlagt post (sett dato der)', run: () => void addToContentPlanner() },
             ] : []),
           ].filter((a) => !actionQuery || `${a.primary} ${a.q}`.toLowerCase().includes(actionQuery.toLowerCase())).map((a) => (
             <MenuItem key={a.primary} onClick={a.run}>
@@ -592,22 +592,22 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
 
       {/* Referanse-picker */}
       <Dialog open={refOpen} onClose={() => setRefOpen(false)} fullWidth maxWidth="sm"
-        slotProps={{ paper: { sx: { background: '#100b1e', border: '1px solid rgba(136, 117, 235,0.3)', color: '#e2e8f0' } } }}>
-        <DialogTitle sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '1rem' }}>Referer til …</DialogTitle>
+        slotProps={{ paper: { sx: { background: '#2a3152', border: '1px solid rgba(93, 118, 203,0.3)', color: '#e2e8f0' } } }}>
+        <DialogTitle sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '1rem' }}>Referer til …</DialogTitle>
         <DialogContent>
           <Tabs value={refTab} onChange={(_, v) => setRefTab(v)} variant="fullWidth"
-            sx={{ mb: 1, '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.6)' }, '& .Mui-selected': { color: '#c6bdf4 !important' }, '& .MuiTabs-indicator': { background: '#8875eb' } }}>
+            sx={{ mb: 1, '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.6)' }, '& .Mui-selected': { color: '#c3cbe6 !important' }, '& .MuiTabs-indicator': { background: '#5d76cb' } }}>
             <Tab label={`Leveranser (${refDeliverables.length})`} />
             <Tab label={`Filer (${refMaterials.length})`} />
             <Tab label={`Møter (${refMeetings.length})`} />
           </Tabs>
           {refLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#8875eb' }} /></Box>
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#5d76cb' }} /></Box>
           ) : (
             <Stack spacing={0.5} sx={{ maxHeight: 320, overflowY: 'auto' }}>
               {refTab === 0 && refDeliverables.map((d) => (
                 <ListItemButton key={d.id} onClick={() => void pickReference('deliverable', d.id, d.title, { status: d.status })} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon><DeliveryIcon sx={{ color: '#c6bdf4' }} /></ListItemIcon>
+                  <ListItemIcon><DeliveryIcon sx={{ color: '#c3cbe6' }} /></ListItemIcon>
                   <ListItemText primary={d.title} secondary={d.format ?? d.status} />
                 </ListItemButton>
               ))}
@@ -619,7 +619,7 @@ export default function ClientConversationView({ projectId, canUseInternal = fal
               ))}
               {refTab === 2 && refMeetings.map((mt) => (
                 <ListItemButton key={mt.id} onClick={() => void pickReference('meeting', mt.id, mt.title, { meetLink: mt.meetLink })} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon><MeetingIcon sx={{ color: '#c6bdf4' }} /></ListItemIcon>
+                  <ListItemIcon><MeetingIcon sx={{ color: '#c3cbe6' }} /></ListItemIcon>
                   <ListItemText primary={mt.title} secondary={mt.startsAt ? new Date(mt.startsAt).toLocaleString('nb-NO') : 'Ikke planlagt'} />
                 </ListItemButton>
               ))}
@@ -646,14 +646,14 @@ function ReferenceDeliverableCard({ projectId, id, label, onChanged }: { project
     finally { setBusy(false); }
   }, [projectId, id, onChanged]);
   return (
-    <Box sx={{ mt: 0.7, p: 1, borderRadius: 1.5, border: '1px solid rgba(198, 189, 244,0.3)', background: 'rgba(198, 189, 244,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
-      <DeliveryIcon sx={{ fontSize: 18, color: '#c6bdf4', flexShrink: 0 }} />
+    <Box sx={{ mt: 0.7, p: 1, borderRadius: 1.5, border: '1px solid rgba(195, 203, 230,0.3)', background: 'rgba(195, 203, 230,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
+      <DeliveryIcon sx={{ fontSize: 18, color: '#c3cbe6', flexShrink: 0 }} />
       <Typography sx={{ color: '#f1f5f9', fontSize: '0.82rem', fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</Typography>
       {approved ? (
         <Stack direction="row" spacing={0.4} alignItems="center"><DoneIcon sx={{ fontSize: 15, color: '#6ee7b7' }} /><Typography sx={{ color: '#6ee7b7', fontSize: '0.74rem', fontWeight: 700 }}>Godkjent</Typography></Stack>
       ) : (
         <Button onClick={() => void approve()} disabled={busy} startIcon={busy ? <CircularProgress size={13} color="inherit" /> : <ApprovalIcon sx={{ fontSize: 16 }} />} size="small"
-          sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '0.76rem', minHeight: 38, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)' }}>
+          sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '0.76rem', minHeight: 38, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)' }}>
           Godkjenn
         </Button>
       )}
@@ -750,7 +750,7 @@ function FeedRow({ it, projectId, onCloseRequest, onChanged }: { it: FeedItem; p
         {/* Handlings-kort: Google Meet «Bli med» */}
         {isMeeting && meetLink ? (
           <Button href={meetLink} target="_blank" rel="noopener" startIcon={<MeetingIcon />} size="small"
-            sx={{ mt: 0.7, textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}>
+            sx={{ mt: 0.7, textTransform: 'none', fontWeight: 800, minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}>
             Bli med (Google Meet)
           </Button>
         ) : null}

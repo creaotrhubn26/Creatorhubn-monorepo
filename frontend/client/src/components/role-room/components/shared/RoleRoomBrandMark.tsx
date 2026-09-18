@@ -68,7 +68,7 @@ const RoleRoomBrandMark: FC<RoleRoomBrandMarkProps> = ({
           border: '1px solid rgba(186,230,253,0.6)',
           bgcolor: 'rgba(10, 5, 21,0.66)',
           p: 0.2,
-          boxShadow: '0 0 14px rgba(136, 117, 235,0.28)',
+          boxShadow: '0 0 14px rgba(93, 118, 203,0.28)',
           flexShrink: 0,
         }}
       />

@@ -116,7 +116,7 @@ export function FirstAssistantDirectorWorkspace({
       sx={{
         minHeight: '100%',
         overflowY: 'auto',
-        bgcolor: '#0a0515',
+        bgcolor: '#1b122c',
         color: roleTokens.text,
         p: { xs: 1.5, sm: 2, lg: 3 },
       }}

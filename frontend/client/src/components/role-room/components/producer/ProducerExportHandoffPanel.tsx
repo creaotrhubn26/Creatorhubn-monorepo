@@ -1025,9 +1025,9 @@ export default function ProducerExportHandoffPanel({
               sx={{
                 textTransform: 'none', fontWeight: 800, fontSize: '1.02rem',
                 px: 2.6, py: 1.1, borderRadius: 2.5, minHeight: 52,
-                background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
-                color: '#fff', boxShadow: '0 8px 24px rgba(136, 117, 235,0.35)',
-                '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+                background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
+                color: '#fff', boxShadow: '0 8px 24px rgba(93, 118, 203,0.35)',
+                '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
                 '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
               }}
             >
@@ -1269,7 +1269,7 @@ export default function ProducerExportHandoffPanel({
                       p: 1,
                       borderRadius: 1.25,
                       border: isContentLogicMoment
-                        ? '1px solid rgba(158, 140, 248,0.26)'
+                        ? '1px solid rgba(147, 164, 220,0.26)'
                         : isAccountAccessMoment
                           ? '1px solid rgba(45,212,191,0.24)'
                         : '1px solid rgba(148,163,184,0.14)',
@@ -1288,7 +1288,7 @@ export default function ProducerExportHandoffPanel({
                               <Chip
                                 size="small"
                                 label="Innholdsplan"
-                                sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#ebe7fd' }}
+                                sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: '#eef1fb' }}
                               />
                               <Chip
                                 size="small"
@@ -1523,7 +1523,7 @@ export default function ProducerExportHandoffPanel({
           <CollapsibleSection
             title="Juridiske dokumenter"
             summary={`${legalAgreements.agreements.length} avtaler`}
-            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa', fontSize: '0.68rem' }} />}
+            badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3', fontSize: '0.68rem' }} />}
           >
             {legalAgreements.agreements.length > 0 ? (
               <Stack spacing={0.85}>
@@ -1742,7 +1742,7 @@ export default function ProducerExportHandoffPanel({
                       <Chip
                         size="small"
                         label={item.statusLabel}
-                        sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
+                        sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                       />
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
                         {item.publishDateLabel ?? 'Publiseringsdato ikke satt'}

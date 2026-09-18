@@ -136,9 +136,9 @@ export function DirectorWorkspace({
                 size="small"
                 sx={{
                   height: 24,
-                  color: '#c6bdf4',
-                  bgcolor: 'rgba(136, 117, 235, 0.13)',
-                  border: '1px solid rgba(136, 117, 235, 0.28)',
+                  color: '#c3cbe6',
+                  bgcolor: 'rgba(93, 118, 203, 0.13)',
+                  border: '1px solid rgba(93, 118, 203, 0.28)',
                   fontWeight: 800,
                   letterSpacing: 0.7,
                 }}
@@ -198,9 +198,9 @@ export function DirectorWorkspace({
                   justifyContent: 'flex-start',
                   px: 1.5,
                   color: selected ? '#fff' : roleTokens.textMuted,
-                  bgcolor: selected ? 'rgba(136, 117, 235, 0.18)' : 'transparent',
-                  border: selected ? '1px solid rgba(136, 117, 235, 0.36)' : '1px solid transparent',
-                  '&:hover': { bgcolor: selected ? 'rgba(136, 117, 235, 0.24)' : 'rgba(255,255,255,0.05)' },
+                  bgcolor: selected ? 'rgba(93, 118, 203, 0.18)' : 'transparent',
+                  border: selected ? '1px solid rgba(93, 118, 203, 0.36)' : '1px solid transparent',
+                  '&:hover': { bgcolor: selected ? 'rgba(93, 118, 203, 0.24)' : 'rgba(255,255,255,0.05)' },
                   ...focusVisibleStyles,
                 }}
               >

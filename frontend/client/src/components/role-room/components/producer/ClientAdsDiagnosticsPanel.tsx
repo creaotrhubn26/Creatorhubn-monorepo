@@ -63,18 +63,18 @@ const HEALTH_META = {
   green: { color: '#34d399', bg: 'rgba(52,211,153,0.18)', icon: CheckCircleOutlineIcon, label: 'OK' },
   yellow: { color: '#fbbf24', bg: 'rgba(251,191,36,0.18)', icon: WarningAmberOutlinedIcon, label: 'ADVARSEL' },
   red: { color: '#f87171', bg: 'rgba(248,113,113,0.18)', icon: ErrorOutlineOutlinedIcon, label: 'KRITISK' },
-  inactive: { color: '#6249df', bg: 'rgba(98, 73, 223,0.18)', icon: CancelOutlinedIcon, label: 'INAKTIV' },
+  inactive: { color: '#4b3d8f', bg: 'rgba(75, 61, 143,0.18)', icon: CancelOutlinedIcon, label: 'INAKTIV' },
 };
 
 const palette = {
-  bg: '#18122b',
-  bgSubtle: 'rgba(136, 117, 235,0.04)',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
-  textMuted: '#6249df',
-  accent: '#9e8cf8',
+  bg: '#2a3d56',
+  bgSubtle: 'rgba(93, 118, 203,0.04)',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
+  textMuted: '#4b3d8f',
+  accent: '#93a4dc',
 };
 
 function formatRelative(iso: string): string {
@@ -185,7 +185,7 @@ export default function ClientAdsDiagnosticsPanel({
         {/* Window-counts */}
         <Stack direction="row" spacing={1.4} sx={{ mb: 2 }}>
           {[
-            { label: 'Siste 24t', value: data.windowCounts.last_24h, color: '#9e8cf8' },
+            { label: 'Siste 24t', value: data.windowCounts.last_24h, color: '#93a4dc' },
             { label: 'Siste 7 dager', value: data.windowCounts.last_7d, color: '#60a5fa' },
             { label: 'Siste 30 dager', value: data.windowCounts.last_30d, color: '#34d399' },
             {

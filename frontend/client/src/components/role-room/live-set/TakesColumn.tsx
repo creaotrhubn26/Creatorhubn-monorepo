@@ -84,7 +84,7 @@ function TakeCard({
     <Box
       onClick={onClick}
       sx={{
-        bgcolor: selected ? 'rgba(136, 117, 235,0.1)' : 'rgba(255,255,255,0.02)',
+        bgcolor: selected ? 'rgba(93, 118, 203,0.1)' : 'rgba(255,255,255,0.02)',
         border: '1px solid',
         borderColor: selected ? '#dc2626' : 'rgba(255,255,255,0.06)',
         borderRadius: 1,
@@ -92,7 +92,7 @@ function TakeCard({
         cursor: 'pointer',
         transition: 'all 120ms',
         '&:hover': {
-          bgcolor: selected ? 'rgba(136, 117, 235,0.15)' : 'rgba(255,255,255,0.04)',
+          bgcolor: selected ? 'rgba(93, 118, 203,0.15)' : 'rgba(255,255,255,0.04)',
           borderColor: selected ? '#dc2626' : 'rgba(255,255,255,0.12)',
         },
       }}

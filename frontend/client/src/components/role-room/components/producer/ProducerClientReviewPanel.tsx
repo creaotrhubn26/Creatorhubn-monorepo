@@ -1973,7 +1973,7 @@ export default function ProducerClientReviewPanel({
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ lg: 'center' }}>
           <Stack spacing={0.35}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <RateReviewIcon sx={{ color: '#9e8cf8' }} />
+              <RateReviewIcon sx={{ color: '#93a4dc' }} />
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
                 Klientgodkjenning
               </Typography>
@@ -2424,7 +2424,7 @@ export default function ProducerClientReviewPanel({
             minHeight: 44,
           },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#9e8cf8', height: 3 },
+          '& .MuiTabs-indicator': { backgroundColor: '#93a4dc', height: 3 },
         }}
       >
         <Tab value="grunnlag" label="Grunnlag & blokkeringer" />
@@ -2474,7 +2474,7 @@ export default function ProducerClientReviewPanel({
           <Stack spacing={1.1} sx={{ mt: 1.1 }}>
             <Stack direction="row" spacing={0.75} flexWrap="wrap">
               <Chip size="small" label={`Brieffelter ${clientBriefReadyCount}/6`} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#dbeafe' }} />
-              <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa' }} />
+              <Chip size="small" label={`Materiale ${clientMaterials.length}`} sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: '#dfe4f3' }} />
               {Object.entries(clientMaterialsByType).slice(0, 3).map(([type, count]) => (
                 <Chip
                   key={type}
@@ -2619,7 +2619,7 @@ export default function ProducerClientReviewPanel({
                     key={item.label}
                     size="small"
                     label={`${item.label}: ${item.value}`}
-                    sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa' }}
+                    sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3' }}
                   />
                 ))}
               </Stack>
@@ -2651,7 +2651,7 @@ export default function ProducerClientReviewPanel({
                         p: 0.95,
                         borderRadius: 1.2,
                         border: isContentLogicMoment
-                          ? '1px solid rgba(158, 140, 248,0.26)'
+                          ? '1px solid rgba(147, 164, 220,0.26)'
                           : isAccountAccessMoment
                             ? '1px solid rgba(45,212,191,0.26)'
                           : '1px solid rgba(148,163,184,0.14)',
@@ -2669,8 +2669,8 @@ export default function ProducerClientReviewPanel({
                               size="small"
                               label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                               sx={{
-                                bgcolor: isContentLogicMoment ? 'rgba(158, 140, 248,0.18)' : 'rgba(59,130,246,0.14)',
-                                color: isContentLogicMoment ? '#ebe7fd' : '#bfdbfe',
+                                bgcolor: isContentLogicMoment ? 'rgba(147, 164, 220,0.18)' : 'rgba(59,130,246,0.14)',
+                                color: isContentLogicMoment ? '#eef1fb' : '#bfdbfe',
                               }}
                             />
                             {isContentLogicMoment ? (
@@ -2850,7 +2850,7 @@ export default function ProducerClientReviewPanel({
                 <Chip
                   size="small"
                   label="Klientsamarbeid brukes til kommentarer og beslutning"
-                  sx={{ bgcolor: 'rgba(158, 140, 248,0.14)', color: '#e0dbfa' }}
+                  sx={{ bgcolor: 'rgba(147, 164, 220,0.14)', color: '#dfe4f3' }}
                 />
               </Stack>
               {onOpenEconomy ? (
@@ -3099,7 +3099,7 @@ export default function ProducerClientReviewPanel({
                   border: highlightedReviewId === review.id
                     ? '1px solid rgba(251,191,36,0.52)'
                     : isContentLogicReview
-                      ? '1px solid rgba(158, 140, 248,0.32)'
+                      ? '1px solid rgba(147, 164, 220,0.32)'
                       : isAccountAccessReview
                         ? '1px solid rgba(45,212,191,0.28)'
                       : '1px solid rgba(148,163,184,0.22)',
@@ -3124,7 +3124,7 @@ export default function ProducerClientReviewPanel({
                         <Chip
                           size="small"
                           label="Innholdsplan"
-                          sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: '#ebe7fd' }}
+                          sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: '#eef1fb' }}
                         />
                         <Chip
                           size="small"

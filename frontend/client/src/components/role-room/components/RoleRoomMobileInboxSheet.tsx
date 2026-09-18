@@ -89,7 +89,7 @@ export const RoleRoomMobileInboxSheet: React.FC<RoleRoomMobileInboxSheetProps> =
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1}>
-          <InboxIcon fontSize="small" sx={{ color: '#8875eb' }} />
+          <InboxIcon fontSize="small" sx={{ color: '#5d76cb' }} />
           <Typography variant="h6" fontWeight={700}>
             Innboks
           </Typography>
@@ -138,7 +138,7 @@ export const RoleRoomMobileInboxSheet: React.FC<RoleRoomMobileInboxSheetProps> =
                   px: 2,
                   py: 1.25,
                   borderLeft: `3px solid ${item.read ? 'transparent' : category.color}`,
-                  bgcolor: item.read ? 'transparent' : 'rgba(136, 117, 235,0.06)',
+                  bgcolor: item.read ? 'transparent' : 'rgba(93, 118, 203,0.06)',
                 }}
               >
                 <Box sx={{ position: 'relative', mt: 0.4, mr: 1.5, flexShrink: 0 }}>
@@ -148,7 +148,7 @@ export const RoleRoomMobileInboxSheet: React.FC<RoleRoomMobileInboxSheetProps> =
                       aria-hidden
                       sx={{
                         position: 'absolute', top: -3, right: -3, width: 8, height: 8,
-                        borderRadius: '50%', bgcolor: '#8875eb', border: '2px solid #fff',
+                        borderRadius: '50%', bgcolor: '#5d76cb', border: '2px solid #fff',
                       }}
                     />
                   ) : null}

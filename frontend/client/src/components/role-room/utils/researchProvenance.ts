@@ -53,7 +53,7 @@ const SOURCE_LABELS: Record<ProvenanceSource, string> = {
 };
 
 const SOURCE_COLORS: Record<ProvenanceSource, string> = {
-  user_input: '#9e8cf8',
+  user_input: '#93a4dc',
   brreg: '#34d399',
   website: '#60a5fa',
   google_places: '#fbbf24',

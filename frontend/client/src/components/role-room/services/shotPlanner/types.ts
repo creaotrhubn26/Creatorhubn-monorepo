@@ -638,7 +638,7 @@ export const CAMERA_COLORS = [
   { name: 'Yellow', hex: '#FFD54F' },
   { name: 'Orange', hex: '#FFB74D' },
   { name: 'Red', hex: '#E57373' },
-  { name: 'Purple', hex: '#6249df' },
+  { name: 'Purple', hex: '#4b3d8f' },
   { name: 'Cyan', hex: '#4DD0E1' },
   { name: 'Pink', hex: '#F06292' },
 ];

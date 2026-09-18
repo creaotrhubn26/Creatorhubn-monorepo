@@ -426,8 +426,8 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                bgcolor: 'rgba(136, 117, 235,0.4)',
-                '&:hover': { bgcolor: 'rgba(136, 117, 235,0.6)' },
+                bgcolor: 'rgba(93, 118, 203,0.4)',
+                '&:hover': { bgcolor: 'rgba(93, 118, 203,0.6)' },
               }}
             >
               Lag samarbeidsforslag
@@ -571,13 +571,13 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                 borderRadius: 2.4,
                 cursor: 'pointer',
                 border: isSelected
-                  ? '2px solid rgba(136, 117, 235,0.7)'
+                  ? '2px solid rgba(93, 118, 203,0.7)'
                   : supplier.status === 'verified'
                     ? '1px solid rgba(16,185,129,0.26)'
                     : '1px solid rgba(148,163,184,0.16)',
                 bgcolor: isSelected ? 'rgba(33, 28, 59,0.5)' : 'rgba(15,23,42,0.48)',
                 transition: 'border-color 0.15s, background-color 0.15s',
-                '&:hover': { borderColor: isSelected ? 'rgba(136, 117, 235,0.9)' : 'rgba(136, 117, 235,0.4)' },
+                '&:hover': { borderColor: isSelected ? 'rgba(93, 118, 203,0.9)' : 'rgba(93, 118, 203,0.4)' },
               }}
             >
               <Stack spacing={0.7}>
@@ -590,7 +590,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                       <Chip
                         size="small"
                         label="Valgt"
-                        sx={{ bgcolor: 'rgba(136, 117, 235,0.22)', color: '#e0e7ff', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.22)', color: '#e0e7ff', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
                       />
                     ) : null}
                     <Chip
@@ -748,8 +748,8 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     sx={{
                       textTransform: 'none',
                       fontWeight: 700,
-                      bgcolor: 'rgba(136, 117, 235,0.4)',
-                      '&:hover': { bgcolor: 'rgba(136, 117, 235,0.6)' },
+                      bgcolor: 'rgba(93, 118, 203,0.4)',
+                      '&:hover': { bgcolor: 'rgba(93, 118, 203,0.6)' },
                     }}
                   >
                     Send tilbudsforespørsel
@@ -761,7 +761,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     <Chip
                       size="small"
                       label={`Sendt ${sentCount} ${sentCount === 1 ? 'gang' : 'ganger'}`}
-                      sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa', fontSize: '0.7rem', height: 22 }}
+                      sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3', fontSize: '0.7rem', height: 22 }}
                     />
                     {latestReply ? (
                       <Chip
@@ -877,7 +877,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     p: 1.1,
                     borderRadius: 2,
                     border: selected
-                      ? '1px solid rgba(136, 117, 235,0.7)'
+                      ? '1px solid rgba(93, 118, 203,0.7)'
                       : '1px solid rgba(148,163,184,0.16)',
                     bgcolor: selected ? 'rgba(48, 31, 132,0.3)' : 'rgba(15,23,42,0.62)',
                   }}
@@ -988,7 +988,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
               flex: 1,
               p: 1.2,
               borderRadius: 3,
-              border: '1px solid rgba(136, 117, 235,0.22)',
+              border: '1px solid rgba(93, 118, 203,0.22)',
               bgcolor: 'rgba(33, 28, 59,0.36)',
             }}
           >
@@ -998,7 +998,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             <Stack spacing={0.5}>
               {merch.cooperationAngles.map((angle) => (
                 <Stack key={angle} direction="row" spacing={0.6} alignItems="flex-start">
-                  <CheckIcon sx={{ color: '#c6bdf4', fontSize: 14, mt: 0.3 }} />
+                  <CheckIcon sx={{ color: '#c3cbe6', fontSize: 14, mt: 0.3 }} />
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', lineHeight: 1.5 }}>{angle}</Typography>
                 </Stack>
               ))}

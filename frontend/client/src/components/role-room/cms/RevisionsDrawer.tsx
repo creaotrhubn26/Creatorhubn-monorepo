@@ -111,7 +111,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
     >
       <Stack sx={{ height: '100%' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
-          <HistoryIcon sx={{ color: '#9e8cf8' }} />
+          <HistoryIcon sx={{ color: '#93a4dc' }} />
           <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1rem', flex: 1 }}>
             Versjonshistorikk · /{slug}
           </Typography>
@@ -153,10 +153,10 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                       p: 1.2,
                       borderRadius: 1,
                       cursor: 'pointer',
-                      border: isSelected ? '1px solid rgba(158, 140, 248,0.5)' : '1px solid rgba(148,163,184,0.14)',
-                      bgcolor: isSelected ? 'rgba(158, 140, 248,0.10)' : 'rgba(10, 5, 21,0.34)',
-                      '&:hover': { bgcolor: 'rgba(158, 140, 248,0.06)' },
-                      '&:focus-visible': { outline: '2px solid #9e8cf8', outlineOffset: -2 },
+                      border: isSelected ? '1px solid rgba(147, 164, 220,0.5)' : '1px solid rgba(148,163,184,0.14)',
+                      bgcolor: isSelected ? 'rgba(147, 164, 220,0.10)' : 'rgba(10, 5, 21,0.34)',
+                      '&:hover': { bgcolor: 'rgba(147, 164, 220,0.06)' },
+                      '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: -2 },
                     }}
                   >
                     <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.4 }}>
@@ -215,11 +215,11 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                       onClick={handleRevert}
                       disabled={reverting}
                       sx={{
-                        bgcolor: '#9e8cf8',
+                        bgcolor: '#93a4dc',
                         color: '#0b1120',
                         textTransform: 'none',
                         fontWeight: 700,
-                        '&:hover': { bgcolor: '#c6bdf4' },
+                        '&:hover': { bgcolor: '#c3cbe6' },
                       }}
                     >
                       {reverting ? 'Rullerer ...' : 'Revert til denne'}

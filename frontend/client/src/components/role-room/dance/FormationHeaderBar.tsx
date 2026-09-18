@@ -230,7 +230,7 @@ export default function FormationHeaderBar({
               borderColor: danceFlowColors.borderStrong,
               minHeight: 30,
               '&:hover': {
-                bgcolor: 'rgba(158, 140, 248,0.08)',
+                bgcolor: 'rgba(147, 164, 220,0.08)',
                 color: danceFlowColors.lavender,
               },
             }}
@@ -255,7 +255,7 @@ export default function FormationHeaderBar({
             borderColor: danceFlowColors.borderStrong,
             minHeight: 30,
             '&:hover': {
-              bgcolor: 'rgba(158, 140, 248,0.08)',
+              bgcolor: 'rgba(147, 164, 220,0.08)',
               color: danceFlowColors.lavender,
             },
             '&.Mui-disabled': {
@@ -357,7 +357,7 @@ export default function FormationHeaderBar({
               size="small"
               data-testid={`${testId}-save-pill`}
               sx={{
-                bgcolor: 'rgba(158, 140, 248,0.18)',
+                bgcolor: 'rgba(147, 164, 220,0.18)',
                 color: danceFlowColors.lavender,
                 fontWeight: 600,
               }}

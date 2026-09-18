@@ -28,7 +28,7 @@ import { danceFlowColors } from './danceFlowTheme';
 
 const COLOR_PRESETS = [
   danceFlowColors.lavender, danceFlowColors.successPrimary, danceFlowColors.gold, danceFlowColors.infoLight, danceFlowColors.pinkAccentLight,
-  '#06b6d4', '#84cc16', '#fb7185', '#9e8cf8', '#fcd34d',
+  '#06b6d4', '#84cc16', '#fb7185', '#93a4dc', '#fcd34d',
 ] as const;
 
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
@@ -194,7 +194,7 @@ export default function AnnotateCategoryDialog({
               value={color}
               onChange={(e) => setColor(e.target.value)}
               data-testid="annotate-category-dialog-color-hex"
-              placeholder="#9e8cf8"
+              placeholder="#93a4dc"
               sx={{ mt: 1, width: 140 }}
               inputProps={{ maxLength: 9 }}
             />

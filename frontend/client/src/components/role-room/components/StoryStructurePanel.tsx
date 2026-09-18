@@ -115,7 +115,7 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
   conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
   rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
   climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
-  falling_action: { color: 'var(--role-violet, #8875eb)', label: 'Fallende handling', Icon: FallingActionIcon },
+  falling_action: { color: 'var(--role-violet, #5d76cb)', label: 'Fallende handling', Icon: FallingActionIcon },
   resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
   transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
   character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
@@ -125,8 +125,8 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
 // Generate character color
 function getCharacterColor(name: string): string {
   const colors = [
-    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8875eb',
-    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#8875eb',
+    '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#5d76cb',
+    '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#5d76cb',
   ];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
@@ -192,7 +192,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#18122b',
+        bgcolor: '#2a3d56',
         overflow: 'hidden',
       }}
     >
@@ -838,8 +838,8 @@ const PacingPanel: FC<PacingPanelProps> = ({
             sx={{
               height: 16,
               borderRadius: 2,
-              bgcolor: 'rgba(136, 117, 235,0.2)',
-              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #8875eb)' },
+              bgcolor: 'rgba(93, 118, 203,0.2)',
+              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #5d76cb)' },
             }}
           />
         </Box>

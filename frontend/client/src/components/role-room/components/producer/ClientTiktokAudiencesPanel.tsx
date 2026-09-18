@@ -25,13 +25,13 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 
 const palette = {
-  bg: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bg: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
   tiktok: '#ff0050',
 };
 
@@ -190,14 +190,14 @@ export default function ClientTiktokAudiencesPanel({
               onClick={() => setStep('upload')}
               startIcon={<UploadFileOutlinedIcon />}
               sx={{
-                background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
+                background: 'linear-gradient(135deg, #ff0050 0%, #4b3d8f 100%)',
                 color: '#fff',
                 textTransform: 'none',
                 fontWeight: 700,
                 fontSize: '1rem',
                 px: 4, py: 1.4,
                 borderRadius: 1.6,
-                '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
+                '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #3e3180 100%)' },
               }}
             >
               Last opp ny mottakerliste
@@ -218,7 +218,7 @@ export default function ClientTiktokAudiencesPanel({
                 <Stack spacing={1}>
                   {audiences.map((a) => (
                     <Box key={a.audienceId} sx={{
-                      bgcolor: 'rgba(136, 117, 235,0.04)',
+                      bgcolor: 'rgba(93, 118, 203,0.04)',
                       border: `1px solid ${palette.border}`,
                       borderRadius: 1.4,
                       p: 1.6,
@@ -299,14 +299,14 @@ export default function ClientTiktokAudiencesPanel({
                 disabled={!audienceName || !csvText || creating}
                 startIcon={creating ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <UploadFileOutlinedIcon />}
                 sx={{
-                  background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
+                  background: 'linear-gradient(135deg, #ff0050 0%, #4b3d8f 100%)',
                   color: '#fff',
                   textTransform: 'none',
                   fontWeight: 700,
                   fontSize: '1rem',
                   px: 4, py: 1.4,
                   borderRadius: 1.6,
-                  '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
+                  '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #3e3180 100%)' },
                 }}
               >
                 {creating ? 'Sender til TikTok…' : 'Send listen til TikTok'}

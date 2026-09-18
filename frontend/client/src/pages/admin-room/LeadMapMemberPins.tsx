@@ -19,12 +19,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 
 const ROLE_COLOR: Record<string, string> = {
-  admin: '#9e8cf8',
+  admin: '#93a4dc',
   salgssjef: '#f97316',
   teamleder: '#fbbf24',
   salgskonsulent: '#34d399',
   promotor: '#60a5fa',
-  member: '#9e8cf8',
+  member: '#93a4dc',
   viewer: '#9ca3af',
 };
 
@@ -51,7 +51,7 @@ interface Props {
 
 /** Bygger en Leaflet DivIcon med profilbilde + rolle-farget ring */
 function buildMemberIcon(loc: MemberLocation): L.DivIcon {
-  const color = ROLE_COLOR[loc.role] ?? '#9e8cf8';
+  const color = ROLE_COLOR[loc.role] ?? '#93a4dc';
   const sinceMs = Date.now() - new Date(loc.updated_at).getTime();
   const isFresh = sinceMs < 5 * 60 * 1000;
   const initial = (loc.display_name ?? '?')[0]?.toUpperCase() ?? '?';
@@ -148,8 +148,8 @@ export default function LeadMapMemberPins({ organizationId, authToken }: Props) 
                   size="small"
                   label={ACTIVITY_LABEL[loc.activity] ?? loc.activity}
                   sx={{
-                    bgcolor: `${ROLE_COLOR[loc.role] ?? '#9e8cf8'}22`,
-                    color: ROLE_COLOR[loc.role] ?? '#9e8cf8',
+                    bgcolor: `${ROLE_COLOR[loc.role] ?? '#93a4dc'}22`,
+                    color: ROLE_COLOR[loc.role] ?? '#93a4dc',
                     alignSelf: 'flex-start',
                   }}
                 />

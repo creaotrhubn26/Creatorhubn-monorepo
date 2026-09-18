@@ -216,13 +216,13 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 onClick={() => dispatch({ type: 'CHOOSE_SEARCH' })}
                 sx={{
                   flex: 1, p: 4, borderRadius: '12px',
-                  bgcolor: 'rgba(136, 117, 235,0.1)', border: '2px dashed #8875eb',
+                  bgcolor: 'rgba(93, 118, 203,0.1)', border: '2px dashed #5d76cb',
                   cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
-                  '&:hover': { bgcolor: 'rgba(136, 117, 235,0.2)', borderStyle: 'solid' },
+                  '&:hover': { bgcolor: 'rgba(93, 118, 203,0.2)', borderStyle: 'solid' },
                 }}
               >
-                <Box sx={{ width: 64, height: 64, borderRadius: '16px', bgcolor: 'rgba(136, 117, 235,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8875eb" strokeWidth="2">
+                <Box sx={{ width: 64, height: 64, borderRadius: '16px', bgcolor: 'rgba(93, 118, 203,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5d76cb" strokeWidth="2">
                     <circle cx="11" cy="11" r="8"/>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
@@ -330,8 +330,8 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                   '& .MuiOutlinedInput-root': {
                     bgcolor: '#0d1117', color: '#fff',
                     '& fieldset': { borderColor: '#374151' },
-                    '&:hover fieldset': { borderColor: 'var(--role-violet, #8875eb)' },
-                    '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8875eb)' },
+                    '&:hover fieldset': { borderColor: 'var(--role-violet, #5d76cb)' },
+                    '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #5d76cb)' },
                   },
                 }}
               />
@@ -340,7 +340,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 onClick={handleSearch}
                 disabled={loading || !query.trim()}
                 data-testid="pmv-add-shot-search-submit"
-                sx={{ bgcolor: 'var(--role-violet, #8875eb)', px: 3, '&:hover': { bgcolor: '#6249df' } }}
+                sx={{ bgcolor: 'var(--role-violet, #5d76cb)', px: 3, '&:hover': { bgcolor: '#4b3d8f' } }}
               >
                 {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Søk'}
               </Button>
@@ -354,7 +354,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                   label={tag}
                   size="small"
                   onClick={() => dispatch({ type: 'SET_QUERY', query: tag })}
-                  sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: '#9e8cf8', '&:hover': { bgcolor: 'rgba(136, 117, 235,0.3)' } }}
+                  sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#93a4dc', '&:hover': { bgcolor: 'rgba(93, 118, 203,0.3)' } }}
                 />
               ))}
             </Stack>
@@ -369,9 +369,9 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                     data-testid="pmv-add-shot-search-result"
                     sx={{
                       position: 'relative', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden',
-                      cursor: 'pointer', border: selectedImage === r.url ? '3px solid #8875eb' : '2px solid transparent',
+                      cursor: 'pointer', border: selectedImage === r.url ? '3px solid #5d76cb' : '2px solid transparent',
                       transition: 'all 0.2s',
-                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 20px rgba(136, 117, 235,0.3)' },
+                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 20px rgba(93, 118, 203,0.3)' },
                     }}
                   >
                     <Box component="img" src={r.thumbnailUrl || r.url} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -381,7 +381,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                       </Box>
                     )}
                     {selectedImage === r.url && (
-                      <Box sx={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', bgcolor: 'var(--role-violet, #8875eb)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Box sx={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', bgcolor: 'var(--role-violet, #5d76cb)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <CheckIcon sx={{ fontSize: 14, color: '#fff' }} />
                       </Box>
                     )}
@@ -392,7 +392,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
 
             {loading && (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress sx={{ color: 'var(--role-violet, #8875eb)' }} />
+                <CircularProgress sx={{ color: 'var(--role-violet, #5d76cb)' }} />
               </Box>
             )}
           </Stack>
@@ -411,8 +411,8 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
               || (step === 'storyboard' && !selectedStoryboardCandidate)
             }
             sx={{
-              bgcolor: step === 'upload' ? '#3b82f6' : step === 'storyboard' ? '#10b981' : '#8875eb',
-              '&:hover': { bgcolor: step === 'upload' ? '#2563eb' : step === 'storyboard' ? '#059669' : '#6249df' },
+              bgcolor: step === 'upload' ? '#3b82f6' : step === 'storyboard' ? '#10b981' : '#5d76cb',
+              '&:hover': { bgcolor: step === 'upload' ? '#2563eb' : step === 'storyboard' ? '#059669' : '#4b3d8f' },
               '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' },
             }}
           >

@@ -851,9 +851,9 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   }, [currentScene]);
 
   // Colors and styling
-  const bgColor = '#18122b';
+  const bgColor = '#2a3d56';
   const textColor = '#e0e0e0';
-  const accentColor = '#9e8cf8';
+  const accentColor = '#93a4dc';
   const intColor = '#60a5fa';
   const extColor = '#34d399';
 
@@ -1159,8 +1159,8 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                 <Typography variant="caption" sx={{ color: '#fbbf24', fontWeight: 700, fontSize: '0.7rem', display: 'block' }}>DAG</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>~{pageDayNightStats.day.toFixed(1)}</Typography>
               </Box>
-              <Box sx={{ flex: Math.max(pageDayNightStats.night, 0.1), bgcolor: alpha('#9e8cf8', 0.15), border: `1px solid ${alpha('#9e8cf8', 0.35)}`, borderRadius: 1, p: 0.75, textAlign: 'center', minWidth: 40 }}>
-                <Typography variant="caption" sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '0.7rem', display: 'block' }}>NATT</Typography>
+              <Box sx={{ flex: Math.max(pageDayNightStats.night, 0.1), bgcolor: alpha('#93a4dc', 0.15), border: `1px solid ${alpha('#93a4dc', 0.35)}`, borderRadius: 1, p: 0.75, textAlign: 'center', minWidth: 40 }}>
+                <Typography variant="caption" sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '0.7rem', display: 'block' }}>NATT</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>~{pageDayNightStats.night.toFixed(1)}</Typography>
               </Box>
             </Stack>

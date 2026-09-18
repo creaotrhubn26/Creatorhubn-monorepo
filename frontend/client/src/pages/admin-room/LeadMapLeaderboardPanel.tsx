@@ -101,7 +101,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 const ROLE_COLOR: Record<string, string> = {
-  admin: '#9e8cf8',
+  admin: '#93a4dc',
   salgssjef: '#f97316',
   teamleder: '#fbbf24',
   salgskonsulent: '#34d399',
@@ -336,7 +336,7 @@ export default function LeadMapLeaderboardPanel() {
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid size={{ xs: 6, md: 3 }}>
             <SummaryTile
-              icon={<TrendingUpIcon sx={{ color: '#9e8cf8' }} />}
+              icon={<TrendingUpIcon sx={{ color: '#93a4dc' }} />}
               label="Omsetning"
               value={formatNok(summary.totalAchievedNok)}
               sub={summary.totalTargetNok > 0
@@ -429,8 +429,8 @@ export default function LeadMapLeaderboardPanel() {
                                 size="small"
                                 sx={{
                                   height: 18, fontSize: '0.65rem',
-                                  bgcolor: `${ROLE_COLOR[entry.role] ?? '#9e8cf8'}22`,
-                                  color: ROLE_COLOR[entry.role] ?? '#9e8cf8',
+                                  bgcolor: `${ROLE_COLOR[entry.role] ?? '#93a4dc'}22`,
+                                  color: ROLE_COLOR[entry.role] ?? '#93a4dc',
                                 }}
                               />
                             </Stack>
@@ -458,12 +458,12 @@ export default function LeadMapLeaderboardPanel() {
                             value={Math.min(100, entry.progressPct ?? 0)}
                             sx={{
                               height: 6, borderRadius: 3,
-                              bgcolor: 'rgba(158, 140, 248,0.15)',
+                              bgcolor: 'rgba(147, 164, 220,0.15)',
                               '& .MuiLinearProgress-bar': {
                                 bgcolor: (entry.progressPct ?? 0) >= 100
                                   ? '#34d399'
                                   : (entry.progressPct ?? 0) >= 70
-                                    ? '#9e8cf8'
+                                    ? '#93a4dc'
                                     : '#fbbf24',
                               },
                             }}

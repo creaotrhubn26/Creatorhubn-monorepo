@@ -94,12 +94,12 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
       </Box>
 
       {!adding ? (
-        <Button onClick={() => setAdding(true)} startIcon={<InviteIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}>
+        <Button onClick={() => setAdding(true)} startIcon={<InviteIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}>
           Inviter assistent
         </Button>
       ) : (
-        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(136, 117, 235,0.3)', background: 'rgba(98, 73, 223,0.06)' }}>
-          <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Inviter assistent</Typography>
+        <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(93, 118, 203,0.3)', background: 'rgba(75, 61, 143,0.06)' }}>
+          <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '0.95rem', mb: 1 }}>Inviter assistent</Typography>
           <Stack spacing={1.25}>
             <TextField label="E-post" value={email} onChange={(e) => setEmail(e.target.value)} size="small" fullWidth sx={fieldSx} />
             <TextField label="Navn (valgfritt)" value={name} onChange={(e) => setName(e.target.value)} size="small" fullWidth sx={fieldSx} />
@@ -113,7 +113,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
               Rollen setter fornuftig tilgang automatisk — du finjusterer etterpå. Sensitive områder forblir av.
             </Typography>
             <Stack direction="row" spacing={1}>
-              <Button onClick={() => void invite()} disabled={busyId === 'invite'} startIcon={busyId === 'invite' ? <CircularProgress size={15} color="inherit" /> : <InviteIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)' }}>Send invitasjon</Button>
+              <Button onClick={() => void invite()} disabled={busyId === 'invite'} startIcon={busyId === 'invite' ? <CircularProgress size={15} color="inherit" /> : <InviteIcon />} sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)' }}>Send invitasjon</Button>
               <Button onClick={() => setAdding(false)} sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.8)' }}>Avbryt</Button>
             </Stack>
           </Stack>
@@ -125,7 +125,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
           Aktive assistenter {loading ? '' : `· ${items.length}`}
         </Typography>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#8875eb' }} /></Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: '#5d76cb' }} /></Box>
         ) : items.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.82rem', py: 2, textAlign: 'center' }}>Ingen assistenter ennå.</Typography>
         ) : (
@@ -137,7 +137,7 @@ export default function ProducerAssistantsPanel({ projectId }: { projectId: stri
 
       {/* Sensitiv-bekreftelse (fiks #1) */}
       <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)} maxWidth="xs" fullWidth
-        slotProps={{ paper: { sx: { background: '#100b1e', border: '1px solid rgba(245,158,11,0.4)', color: '#e2e8f0' } } }}>
+        slotProps={{ paper: { sx: { background: '#2a3152', border: '1px solid rgba(245,158,11,0.4)', color: '#e2e8f0' } } }}>
         <DialogTitle sx={{ color: '#fcd34d', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
           <SensitiveIcon /> Gi sensitiv tilgang?
         </DialogTitle>
@@ -176,7 +176,7 @@ function AssistantCard({ a, busy, onToggle, onRevoke }: {
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography sx={{ color: '#f1f5f9', fontSize: '0.92rem', fontWeight: 700 }}>{a.assistantName || a.assistantEmail}</Typography>
           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2 }}>
-            <Chip label={PRESET_LABEL[a.rolePreset] ?? a.rolePreset} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#c6bdf4', bgcolor: 'rgba(136, 117, 235,0.14)' }} />
+            <Chip label={PRESET_LABEL[a.rolePreset] ?? a.rolePreset} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: '#c3cbe6', bgcolor: 'rgba(93, 118, 203,0.14)' }} />
             <Chip label={a.status === 'active' ? 'Aktiv' : 'Invitert'} size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: a.status === 'active' ? '#6ee7b7' : '#fcd34d', bgcolor: a.status === 'active' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)' }} />
             {a.assistantName ? <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '0.72rem' }}>{a.assistantEmail}</Typography> : null}
           </Stack>

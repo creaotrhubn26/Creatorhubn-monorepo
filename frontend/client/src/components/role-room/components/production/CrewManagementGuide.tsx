@@ -890,7 +890,7 @@ export function CrewManagementGuide({ open, onClose, initialStepId }: CrewManage
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#100b1e',
+          bgcolor: '#2a3152',
           backgroundImage: 'none',
           border: '1px solid rgba(255,255,255,0.1)',
           borderRadius: isNarrow ? 0 : 2,

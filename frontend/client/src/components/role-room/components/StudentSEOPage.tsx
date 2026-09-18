@@ -426,15 +426,15 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* Hero */}
         <Stack spacing={2} sx={{ maxWidth: 820 }}>
           <Chip
-            icon={<SchoolIcon sx={{ color: '#e0dbfa !important' }} />}
+            icon={<SchoolIcon sx={{ color: '#dfe4f3 !important' }} />}
             label={config.audience}
             size="small"
             sx={{
               alignSelf: 'flex-start',
-              bgcolor: 'rgba(158, 140, 248,0.16)',
-              color: '#e0dbfa',
+              bgcolor: 'rgba(147, 164, 220,0.16)',
+              color: '#dfe4f3',
               fontWeight: 600,
-              '& .MuiChip-icon': { color: '#e0dbfa' },
+              '& .MuiChip-icon': { color: '#dfe4f3' },
             }}
           />
           <Typography
@@ -457,11 +457,11 @@ function PageView({ config }: { config: StudentPageConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9e8cf8',
+                bgcolor: '#93a4dc',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
-                '&:hover': { bgcolor: '#c6bdf4' },
+                '&:hover': { bgcolor: '#c3cbe6' },
               }}
             >
               {config.ctaLabel}
@@ -528,7 +528,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* Relevante features */}
         <Box>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <AssignmentIcon sx={{ color: '#9e8cf8' }} />
+            <AssignmentIcon sx={{ color: '#93a4dc' }} />
             <Typography
               component="h2"
               sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1.4rem', md: '1.8rem' } }}
@@ -542,9 +542,9 @@ function PageView({ config }: { config: StudentPageConfig }) {
                 key={f}
                 label={f}
                 sx={{
-                  bgcolor: 'rgba(158, 140, 248,0.10)',
-                  color: '#e0dbfa',
-                  border: '1px solid rgba(158, 140, 248,0.32)',
+                  bgcolor: 'rgba(147, 164, 220,0.10)',
+                  color: '#dfe4f3',
+                  border: '1px solid rgba(147, 164, 220,0.32)',
                   fontWeight: 500,
                 }}
               />
@@ -613,8 +613,8 @@ function PageView({ config }: { config: StudentPageConfig }) {
         {/* CTA */}
         <Card
           sx={{
-            bgcolor: 'rgba(158, 140, 248,0.10)',
-            border: '1px solid rgba(158, 140, 248,0.32)',
+            bgcolor: 'rgba(147, 164, 220,0.10)',
+            border: '1px solid rgba(147, 164, 220,0.32)',
             mt: 2,
           }}
         >
@@ -633,12 +633,12 @@ function PageView({ config }: { config: StudentPageConfig }) {
               variant="contained"
               size="large"
               sx={{
-                bgcolor: '#9e8cf8',
+                bgcolor: '#93a4dc',
                 color: '#0b1120',
                 textTransform: 'none',
                 fontWeight: 700,
                 px: 4,
-                '&:hover': { bgcolor: '#c6bdf4' },
+                '&:hover': { bgcolor: '#c3cbe6' },
               }}
             >
               {config.ctaLabel}
@@ -667,7 +667,7 @@ function PageView({ config }: { config: StudentPageConfig }) {
                     textTransform: 'none',
                     fontWeight: 500,
                     fontSize: '0.82rem',
-                    '&:hover': { borderColor: 'rgba(158, 140, 248,0.48)', bgcolor: 'rgba(158, 140, 248,0.06)' },
+                    '&:hover': { borderColor: 'rgba(147, 164, 220,0.48)', bgcolor: 'rgba(147, 164, 220,0.06)' },
                   }}
                 >
                   {c.h1}

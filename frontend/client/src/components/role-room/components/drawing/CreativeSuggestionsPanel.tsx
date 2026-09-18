@@ -53,7 +53,7 @@ export interface CreativeSuggestionsPanelProps {
 const PRIORITY_COLOR: Record<ShotSuggestion['priority'], string> = {
   critical: '#ef4444',
   recommended: '#3b82f6',
-  try: '#9e8cf8',
+  try: '#93a4dc',
 };
 
 const PRIORITY_LABEL: Record<ShotSuggestion['priority'], string> = {
@@ -176,7 +176,7 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
                 <Typography
                   variant="caption"
                   sx={{
-                    color: 'rgba(158, 140, 248,0.85)',
+                    color: 'rgba(147, 164, 220,0.85)',
                     fontSize: 11,
                     display: 'block',
                     mt: 0.5,
@@ -271,8 +271,8 @@ export const CreativeSuggestionsPanel: React.FC<CreativeSuggestionsPanelProps> =
             sx={{
               p: 1,
               borderRadius: 1,
-              bgcolor: 'rgba(158, 140, 248,0.06)',
-              border: '1px solid rgba(158, 140, 248,0.18)',
+              bgcolor: 'rgba(147, 164, 220,0.06)',
+              border: '1px solid rgba(147, 164, 220,0.18)',
             }}
           >
             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12.5 }}>

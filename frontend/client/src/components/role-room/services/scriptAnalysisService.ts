@@ -421,7 +421,7 @@ function createBeatCard(scene: {
     characters: Array.from(scene.characters),
     lineNumber: scene.startLine,
     pageNumber: Math.ceil(scene.startLine / 55),
-    color: '#9e8cf8',
+    color: '#93a4dc',
     notes: undefined,
   };
 }

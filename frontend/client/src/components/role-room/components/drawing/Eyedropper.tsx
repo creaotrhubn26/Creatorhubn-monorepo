@@ -233,7 +233,7 @@ const EyedropperMagnifier: React.FC<EyedropperCursorProps> = ({
     const sourceSize = size / zoom;
     
     // Clear
-    ctx.fillStyle = '#18122b';
+    ctx.fillStyle = '#2a3d56';
     ctx.fillRect(0, 0, size, size);
     
     // Draw zoomed portion of canvas

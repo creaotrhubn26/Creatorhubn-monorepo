@@ -75,11 +75,11 @@ export default function ProducerReceivedMaterialsPanel({ projectId }: { projectI
   if (!loading && items.length === 0) return null;
 
   return (
-    <Box sx={{ borderRadius: 2, border: '1px solid rgba(136, 117, 235,0.28)', background: 'rgba(98, 73, 223,0.06)', p: { xs: 1.25, md: 1.5 }, mb: 1.5 }}>
+    <Box sx={{ borderRadius: 2, border: '1px solid rgba(93, 118, 203,0.28)', background: 'rgba(75, 61, 143,0.06)', p: { xs: 1.25, md: 1.5 }, mb: 1.5 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-        <ReceivedIcon sx={{ fontSize: 20, color: '#c6bdf4' }} />
+        <ReceivedIcon sx={{ fontSize: 20, color: '#c3cbe6' }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ color: '#f6f5ff', fontWeight: 800, fontSize: '0.95rem' }}>Mottatt fra klient</Typography>
+          <Typography sx={{ color: '#f7f9ff', fontWeight: 800, fontSize: '0.95rem' }}>Mottatt fra klient</Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem' }}>
             {loading ? 'Laster…' : `${items.length} fil${items.length === 1 ? '' : 'er'} delt av klienten — klare til å tas inn.`}
           </Typography>
@@ -87,7 +87,7 @@ export default function ProducerReceivedMaterialsPanel({ projectId }: { projectI
         {downloadable.length > 0 ? (
           <Button
             size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => void downloadAll()}
-            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#c6bdf4', borderColor: 'rgba(136, 117, 235,0.4)' }}
+            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,0.4)' }}
           >
             Last ned alle
           </Button>
@@ -95,7 +95,7 @@ export default function ProducerReceivedMaterialsPanel({ projectId }: { projectI
       </Stack>
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={20} sx={{ color: '#8875eb' }} /></Box>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={20} sx={{ color: '#5d76cb' }} /></Box>
       ) : (
         <Stack spacing={0.8}>
           {items.map((m) => {
@@ -103,14 +103,14 @@ export default function ProducerReceivedMaterialsPanel({ projectId }: { projectI
             return (
               <Box key={m.id} sx={{ borderRadius: '9px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(10, 5, 21,0.4)', p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 34, height: 34, flexShrink: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(148,163,184,0.1)' }}>
-                  <FileIcon sx={{ fontSize: 18, color: '#c6bdf4' }} />
+                  <FileIcon sx={{ fontSize: 18, color: '#c3cbe6' }} />
                 </Box>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <Typography sx={{ color: '#f1f5f9', fontSize: '0.84rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.title}>
                     {m.originalName ?? m.title}
                   </Typography>
                   <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.15 }}>
-                    <Chip label={CATEGORY_LABEL[m.entryType] ?? 'Annet'} size="small" sx={{ height: 17, fontSize: '0.6rem', fontWeight: 700, color: 'rgba(198, 189, 244,0.95)', background: 'rgba(136, 117, 235,0.14)' }} />
+                    <Chip label={CATEGORY_LABEL[m.entryType] ?? 'Annet'} size="small" sx={{ height: 17, fontSize: '0.6rem', fontWeight: 700, color: 'rgba(195, 203, 230,0.95)', background: 'rgba(93, 118, 203,0.14)' }} />
                     {m.fileSize ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>{fmtSize(m.fileSize)}</Typography> : null}
                   </Stack>
                 </Box>
@@ -124,7 +124,7 @@ export default function ProducerReceivedMaterialsPanel({ projectId }: { projectI
                     size="small" variant="contained" disabled={busyId === m.id}
                     startIcon={busyId === m.id ? <CircularProgress size={13} color="inherit" /> : <UseIcon sx={{ fontSize: 16 }} />}
                     onClick={() => void useInProject(m)}
-                    sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '0.76rem', minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#8875eb,#6249df)', '&:hover': { background: 'linear-gradient(135deg,#6249df,#472bd4)' } }}
+                    sx={{ flexShrink: 0, textTransform: 'none', fontWeight: 700, fontSize: '0.76rem', minHeight: 40, color: '#fff', background: 'linear-gradient(135deg,#5d76cb,#4b3d8f)', '&:hover': { background: 'linear-gradient(135deg,#4b3d8f,#3e3180)' } }}
                   >
                     Bruk i prosjekt
                   </Button>

@@ -87,7 +87,7 @@ function DraggablePersonRow({ person, shotCount }: { person: Person; shotCount: 
           width: 28,
           height: 28,
           fontSize: '0.7rem',
-          bgcolor: person.personType === 'cast' ? '#8875eb' : '#3b82f6',
+          bgcolor: person.personType === 'cast' ? '#5d76cb' : '#3b82f6',
           flexShrink: 0,
         }}
       >

@@ -35,11 +35,11 @@ import * as svc from './danceTeamService';
 import type { DanceTeamMembershipDetail } from './danceTeamService';
 
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
-const PURPLE_DEEP   = '#301f84';
-const PURPLE_LIGHT  = '#9e8cf8';
+const PURPLE_DEEP   = '#302a83';
+const PURPLE_LIGHT  = '#93a4dc';
 const TEXT_DIM      = 'rgba(229,231,235,0.78)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.50)';
-const PANEL_BORDER  = 'rgba(158, 140, 248,0.18)';
+const PANEL_BORDER  = 'rgba(147, 164, 220,0.18)';
 
 interface Props {
   membership: DanceTeamMembershipDetail;
@@ -97,7 +97,7 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
       maxWidth="md"
       PaperProps={{
         sx: {
-          bgcolor: '#100b1e',
+          bgcolor: '#2a3152',
           border: `1px solid ${PANEL_BORDER}`,
           borderRadius: 3,
           backgroundImage: `radial-gradient(ellipse at 50% 0%, rgba(48, 31, 132,0.18) 0%, transparent 60%)`,
@@ -121,7 +121,7 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
           <Chip
             label={`Du er en del av ${membership.role?.label ?? 'teamet'}`}
             size="small"
-            sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }}
           />
           <Typography sx={{ fontSize: { xs: 22, md: 28 }, fontWeight: 700, color: 'rgba(235, 231, 253,0.95)', lineHeight: 1.2, maxWidth: 540 }}>
             Vil du også jobbe som frilanser?
@@ -141,8 +141,8 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
             sx={{
               p: { xs: 2.5, md: 3 },
               borderRadius: 2.5,
-              background: `linear-gradient(135deg, rgba(136, 117, 235,0.10), rgba(48, 31, 132,0.06))`,
-              border: `1px solid rgba(158, 140, 248,0.32)`,
+              background: `linear-gradient(135deg, rgba(93, 118, 203,0.10), rgba(48, 31, 132,0.06))`,
+              border: `1px solid rgba(147, 164, 220,0.32)`,
               position: 'relative',
             }}
           >
@@ -226,7 +226,7 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
               sx={{
                 color: 'rgba(235, 231, 253,0.85)',
                 borderColor: PANEL_BORDER,
-                '&:hover': { borderColor: PURPLE_LIGHT, bgcolor: 'rgba(136, 117, 235,0.06)' },
+                '&:hover': { borderColor: PURPLE_LIGHT, bgcolor: 'rgba(93, 118, 203,0.06)' },
                 textTransform: 'none',
                 fontWeight: 600,
                 py: 1.25,

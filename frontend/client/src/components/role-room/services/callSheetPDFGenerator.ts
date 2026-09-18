@@ -718,7 +718,7 @@ export function generateCallSheetHTML(callSheet: CallSheet, options: CallSheetPD
     }
     
     .confidential {
-      background: #6249df;
+      background: #4b3d8f;
       color: white;
       padding: 4px 10px;
       border-radius: 3px;

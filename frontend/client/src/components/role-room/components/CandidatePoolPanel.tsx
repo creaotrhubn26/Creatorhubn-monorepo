@@ -251,8 +251,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                         sx={{
                           height: 20,
                           fontSize: '0.7rem',
-                          bgcolor: 'rgba(136, 117, 235,0.2)',
-                          color: '#9e8cf8',
+                          bgcolor: 'rgba(93, 118, 203,0.2)',
+                          color: '#93a4dc',
                         }}
                       />
                     ))}
@@ -321,7 +321,7 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
         onClose={() => setImportDialogOpen(false)}
         PaperProps={{
           sx: {
-            bgcolor: '#18122b',
+            bgcolor: '#2a3d56',
             border: '1px solid rgba(255,255,255,0.1)',
             minWidth: { xs: '90vw', sm: 400 },
           },

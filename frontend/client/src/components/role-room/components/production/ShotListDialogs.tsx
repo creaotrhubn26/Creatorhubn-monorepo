@@ -9,7 +9,7 @@ import type { StoryboardSeedCandidate } from "../../services/storyboardLibrarySe
 
 // ─── Shared dialog paper styles ───────────────────────────────────────────────
 const PAPER_SX = {
-  bgcolor: '#18122b',
+  bgcolor: '#2a3d56',
   backgroundImage: 'none',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: 2,
@@ -570,7 +570,7 @@ export function ExportDialog({
           variant="outlined"
           startIcon={<ExportIcon />}
           onClick={() => { onExportCleanStills(shotListId); onClose(); }}
-          sx={{ justifyContent: 'flex-start', textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#c6bdf4' }}
+          sx={{ justifyContent: 'flex-start', textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#c3cbe6' }}
         >
           Clean Stills (.zip)
         </Button>

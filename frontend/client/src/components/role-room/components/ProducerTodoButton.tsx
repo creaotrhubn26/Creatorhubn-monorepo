@@ -33,7 +33,7 @@ const TONE_ICON: Record<NextPointTone, ReactElement> = {
   action: <ActionIcon sx={{ color: '#fbbf24' }} />,
   waiting: <WaitingIcon sx={{ color: '#60a5fa' }} />,
   done: <DoneIcon sx={{ color: '#34d399' }} />,
-  info: <InfoIcon sx={{ color: '#9e8cf8' }} />,
+  info: <InfoIcon sx={{ color: '#93a4dc' }} />,
 };
 
 interface ProducerTodoButtonProps {
@@ -65,9 +65,9 @@ export function ProducerTodoButton({
   const ac = deriveAccessPoints(access);
 
   const sections: TodoSection[] = [
-    { key: 'client', title: 'Klient', icon: <ClientIcon sx={{ color: '#9e8cf8' }} />, openCount: client.openCount, points: client.points },
-    { key: 'content-logic', title: 'Content Logic', icon: <ContentLogicIcon sx={{ color: '#9e8cf8' }} />, openCount: cl.openCount, points: cl.points },
-    { key: 'access', title: 'Kontotilgang', icon: <AccessIcon sx={{ color: '#9e8cf8' }} />, openCount: ac.openCount, points: ac.points },
+    { key: 'client', title: 'Klient', icon: <ClientIcon sx={{ color: '#93a4dc' }} />, openCount: client.openCount, points: client.points },
+    { key: 'content-logic', title: 'Content Logic', icon: <ContentLogicIcon sx={{ color: '#93a4dc' }} />, openCount: cl.openCount, points: cl.points },
+    { key: 'access', title: 'Kontotilgang', icon: <AccessIcon sx={{ color: '#93a4dc' }} />, openCount: ac.openCount, points: ac.points },
   ];
 
   const totalOpen = sections.reduce((sum, s) => sum + s.openCount, 0);
@@ -138,7 +138,7 @@ export function ProducerTodoButton({
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TodoIcon sx={{ color: '#9e8cf8' }} />
+          <TodoIcon sx={{ color: '#93a4dc' }} />
           Å gjøre
           <Chip size="small" color={totalOpen > 0 ? 'warning' : 'success'} label={totalOpen > 0 ? `${totalOpen} totalt` : 'Alt i orden'} sx={{ ml: 'auto' }} />
         </DialogTitle>

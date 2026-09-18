@@ -4,12 +4,12 @@
  * Mørk indigo palett, utledet av logoen.
  *
  * Fargene er ikke hentet fra et bibliotek. Logoen har sin egen hue-akse:
- * den mørke grunnen ligger på 258–265 (#0a0515), den dype fioletten på 268
- * (#261763) og den lyse magentaen på 290 (#a830c0). Paletten legger seg i
+ * den mørke grunnen ligger på 258–265 (#1b122c), den dype fioletten på 268
+ * (#2b2553) og den lyse magentaen på 290 (#a830c0). Paletten legger seg i
  * den kjølige enden av nettopp den aksen — indigo som fortsatt tilhører
  * merket, i stedet for en indigo som tilfeldigvis står i en fargeskala.
  *
- * Bakgrunnen ytterst (#0a0515) er logoens egen mørke grunn.
+ * Bakgrunnen ytterst (#1b122c) er logoens egen mørke grunn.
  *
  * Kontrast mot kortbakgrunnen: primærtekst 15,9:1, sekundærtekst 9,7:1,
  * dempet tekst 6,9:1, lys aksent 6,5:1. Den dempede teksten lå tidligere
@@ -23,27 +23,33 @@
 
 export const palette = {
   // Bakgrunner — fra ytterst (deep navy-black) til innerst (kort)
-  bgRoot: '#0a0515',
-  bgShell: '#100b1e',
-  bgCard: '#18122b',
-  bgCardElevated: '#211c3b',
+  bgRoot: '#1b122c',
+  bgShell: '#2a3152',
+  bgCard: '#2a3d56',
+  bgCardElevated: '#3c4e6d',
 
   // Borders — CreatorHub Design (Fase C): aksent-avledet, CSS-var-drevet fra
   // design-tokens (ws=theroleroom). Uten override = literalene her (identisk).
-  border: 'var(--rr-border, rgba(98, 73, 223, 0.18))',
-  borderStrong: 'var(--rr-border-strong, rgba(98, 73, 223, 0.32))',
-  borderSubtle: 'var(--rr-border-subtle, rgba(98, 73, 223, 0.08))',
+  border: 'var(--rr-border, rgba(75, 61, 143, 0.18))',
+  borderStrong: 'var(--rr-border-strong, rgba(75, 61, 143, 0.32))',
+  borderSubtle: 'var(--rr-border-subtle, rgba(75, 61, 143, 0.08))',
 
   // Tekst
-  textPrimary: '#ebe7fd',
-  textSecondary: '#c6bdf4',
-  textMuted: '#8875eb',
+  textPrimary: '#eef1fb',
+  textSecondary: '#c3cbe6',
+  textMuted: '#95a3b2',   // Faded Indigo Denim, lysnet til 4,3:1 mot kort
 
-  // Accent — indigo, fra dyp til lys (token-drevet, literal-fallback)
-  accent: 'var(--rr-accent, #6249df)',
-  accentBright: '#9e8cf8',
-  accentMuted: '#3c27a5',
-  accentGradient: 'linear-gradient(135deg, #472bd4 0%, #8875eb 100%)',
+  // Accent — fiolett-enden: merket (token-drevet, literal-fallback)
+  accent: 'var(--rr-accent, #4b3d8f)',
+  accentBright: '#93a4dc',
+  accentMuted: '#32127a',
+  accentGradient: 'linear-gradient(135deg, #3e3180 0%, #5d76cb 100%)',
+
+  // Veifinning — denim-enden. Brukes der noe skal skilles fra merket:
+  // faner, sekundærknapper, kanter i produksjonsflaten.
+  secondary: '#3f51b5',        // Earth Indigo
+  secondarySoft: '#4a5f89',    // Indigo Pebble
+  secondaryEdge: '#51668b',    // Tumbled Indigo
 
   // Status
   success: '#22c55e',
@@ -55,7 +61,7 @@ export const palette = {
   info: '#38bdf8',
 
   // Filmstrip-shimmer på sidebaren (aksent-avledet)
-  filmstrip: 'var(--rr-filmstrip, rgba(98, 73, 223, 0.06))',
+  filmstrip: 'var(--rr-filmstrip, rgba(75, 61, 143, 0.06))',
 } as const;
 
 export const radius = {
@@ -68,9 +74,9 @@ export const radius = {
 } as const;
 
 export const shadow = {
-  card: '0 8px 32px rgba(98, 73, 223, 0.08)',
-  cardHover: '0 12px 40px rgba(98, 73, 223, 0.16)',
-  glow: '0 0 24px rgba(98, 73, 223, 0.32)',
+  card: '0 8px 32px rgba(75, 61, 143, 0.08)',
+  cardHover: '0 12px 40px rgba(75, 61, 143, 0.16)',
+  glow: '0 0 24px rgba(75, 61, 143, 0.32)',
 } as const;
 
 export const space = {

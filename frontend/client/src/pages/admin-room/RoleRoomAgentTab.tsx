@@ -176,7 +176,7 @@ function PlatformPanel({
             <Stack direction="row" flexWrap="wrap" gap={0.5}>
               {safeHashtags.map((h) => (
                 <Chip key={h} label={h} size="small"
-                  sx={{ background: 'rgba(136, 117, 235,0.15)', color: '#c4b5fd', fontSize: '0.7rem', height: 18 }} />
+                  sx={{ background: 'rgba(93, 118, 203,0.15)', color: '#c4b5fd', fontSize: '0.7rem', height: 18 }} />
               ))}
               <CopyButton value={safeHashtags.join(' ')} testid={`${platform}-hashtags-copy`} />
             </Stack>
@@ -319,7 +319,7 @@ export default function RoleRoomAgentTab() {
           Var tidligere mountet globalt i App.tsx og lekket inn på alle
           CreatorHub-sider (bl.a. UniversalDashboard). */}
       <WelcomeWizard />
-      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8875eb" />
+      <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#5d76cb" />
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>🤖 Role Room Agent — Bio + Profil-pakke</Typography>
         <Button
@@ -327,7 +327,7 @@ export default function RoleRoomAgentTab() {
           onClick={() => void generate(false)}
           disabled={loading}
           data-testid="agent-generate"
-          sx={{ background: 'rgba(136, 117, 235,0.25)', color: '#c4b5fd', '&:hover': { background: 'rgba(136, 117, 235,0.4)' } }}
+          sx={{ background: 'rgba(93, 118, 203,0.25)', color: '#c4b5fd', '&:hover': { background: 'rgba(93, 118, 203,0.4)' } }}
         >
           {loading ? 'Genererer…' : 'Generer ny pakke'}
         </Button>
@@ -344,7 +344,7 @@ export default function RoleRoomAgentTab() {
           size="small" variant="outlined" startIcon={<InstagramIcon />}
           onClick={() => setShowIgInbox(true)}
           data-testid="agent-ig-inbox"
-          sx={{ borderColor: 'rgba(136, 117, 235,0.4)', color: '#c4b5fd' }}
+          sx={{ borderColor: 'rgba(93, 118, 203,0.4)', color: '#c4b5fd' }}
         >
           Instagram-innboks
         </Button>
@@ -553,7 +553,7 @@ export default function RoleRoomAgentTab() {
       )}
 
       {/* Ads & conversion-tracking (B0-B6 multi-tenant) — for klient-oppsett */}
-      <Divider sx={{ borderColor: 'rgba(136, 117, 235,0.18)', my: 1.4 }} />
+      <Divider sx={{ borderColor: 'rgba(93, 118, 203,0.18)', my: 1.4 }} />
       <AgentAdsPanel
         clientProjectId={undefined}
         defaultClientName=""

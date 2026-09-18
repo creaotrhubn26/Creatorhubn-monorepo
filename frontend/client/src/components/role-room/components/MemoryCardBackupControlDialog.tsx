@@ -456,11 +456,11 @@ export function MemoryCardBackupControlDialog({
   const textPrimary = color.textPrimary || '#ffffff';
   const textSecondary = color.textSecondary || 'rgba(255,255,255,0.8)';
   const accent = color.accent || 'var(--role-cyan, #00d4ff)';
-  const primary = color.primary || '#8875eb';
+  const primary = color.primary || '#5d76cb';
   const success = color.success || '#10b981';
   const warning = color.warning || '#f59e0b';
   const danger = color.error || '#ef4444';
-  const borderColor = color.border || 'rgba(136, 117, 235,0.3)';
+  const borderColor = color.border || 'rgba(93, 118, 203,0.3)';
   const cardRadius = branding.layout.cardRadius || 12;
 
   const [controlState, setControlState] = useState<MemoryCardControlState>(createDefaultState());

@@ -34,7 +34,7 @@ interface Props {
   projectId: string;
 }
 
-const ACCENT = '#472bd4';
+const ACCENT = '#3e3180';
 
 function useScenesCount(projectId: string) {
   return useQuery<{ count: number }>({
@@ -134,7 +134,7 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
         sx={{
           fontWeight: 700,
           minWidth: 44,
-          bgcolor: ok ? 'rgba(74, 212, 138, 0.15)' : 'rgba(158, 140, 248, 0.12)',
+          bgcolor: ok ? 'rgba(74, 212, 138, 0.15)' : 'rgba(147, 164, 220, 0.12)',
           color: ok ? '#4ad48a' : 'text.secondary',
         }}
       />
@@ -145,7 +145,7 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
     <Card
       sx={{
         mt: 2,
-        background: `linear-gradient(135deg, rgba(71, 43, 212, 0.08) 0%, rgba(71, 43, 212, 0.03) 100%)`,
+        background: `linear-gradient(135deg, rgba(62, 49, 128, 0.08) 0%, rgba(62, 49, 128, 0.03) 100%)`,
         border: '1px solid',
         borderColor: 'divider',
       }}
@@ -239,7 +239,7 @@ export const PostAgentReadyCard: React.FC<Props> = ({ projectId }) => {
             href={`/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}`}
             sx={{
               bgcolor: ACCENT,
-              '&:hover': { bgcolor: '#6249df' },
+              '&:hover': { bgcolor: '#4b3d8f' },
               flex: 1,
             }}
           >

@@ -80,7 +80,7 @@ const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
 const BG = danceFlowColors.bgBase;
 const CARD = danceFlowColors.bgCard;
-const BORDER = 'rgba(136, 117, 235,0.25)';
+const BORDER = 'rgba(93, 118, 203,0.25)';
 
 export interface VideoReviewRoomProps {
   clip: VideoClip;
@@ -100,7 +100,7 @@ interface AuthorInfo {
   color: string;
 }
 
-const AUTHOR_PALETTE = [danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, '#8875eb', danceFlowColors.pinkAccent, '#06b6d4', '#f97316'];
+const AUTHOR_PALETTE = [danceFlowColors.info, danceFlowColors.amber, danceFlowColors.successDark, '#5d76cb', danceFlowColors.pinkAccent, '#06b6d4', '#f97316'];
 
 function authorInfoFor(
   userId: string,
@@ -503,7 +503,7 @@ export function VideoReviewRoom({
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', flex: 1 }} noWrap>
             {clip.title}
           </Typography>
-          <Chip label={clip.kind} size="small" sx={{ bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }} />
+          <Chip label={clip.kind} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }} />
           {onDeleteClip ? (
             <Tooltip title="Slett klippet">
               <IconButton size="small" onClick={onDeleteClip} sx={{ color: 'rgba(229,231,235,0.5)' }}>
@@ -639,7 +639,7 @@ export function VideoReviewRoom({
                   fontSize: 11,
                   textTransform: 'none',
                   color: playbackRate === r ? '#fff' : 'rgba(229,231,235,0.6)',
-                  bgcolor: playbackRate === r ? 'rgba(136, 117, 235,0.25)' : 'transparent',
+                  bgcolor: playbackRate === r ? 'rgba(93, 118, 203,0.25)' : 'transparent',
                 }}
                 data-testid={`review-rate-${r}`}
               >
@@ -674,7 +674,7 @@ export function VideoReviewRoom({
               p: 1,
               borderRadius: 1,
               bgcolor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(136, 117, 235,0.12)',
+              border: '1px solid rgba(93, 118, 203,0.12)',
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
               gap: 0.5,
@@ -790,7 +790,7 @@ export function VideoReviewRoom({
               icon={<ReplyIcon sx={{ fontSize: 14 }} />}
               label={`Svar til "${replyTo.body.slice(0, 40)}"`}
               onDelete={() => setReplyTo(null)}
-              sx={{ mb: 1, bgcolor: 'rgba(136, 117, 235,0.18)', color: PURPLE_LIGHT }}
+              sx={{ mb: 1, bgcolor: 'rgba(93, 118, 203,0.18)', color: PURPLE_LIGHT }}
             />
           ) : (
             <Typography sx={{ fontSize: 10, color: 'rgba(229,231,235,0.55)', mb: 0.5 }}>
@@ -829,7 +829,7 @@ export function VideoReviewRoom({
                       next.delete(id);
                       setMentionedDancerIds(next);
                     }}
-                    sx={{ bgcolor: 'rgba(158, 140, 248,0.18)', color: PURPLE_LIGHT, height: 22 }}
+                    sx={{ bgcolor: 'rgba(147, 164, 220,0.18)', color: PURPLE_LIGHT, height: 22 }}
                   />
                 );
               })}
@@ -886,7 +886,7 @@ export function VideoReviewRoom({
                 cursor: 'pointer',
                 bgcolor: 'transparent',
                 color: PURPLE_LIGHT,
-                border: '1px dashed rgba(158, 140, 248,0.45)',
+                border: '1px dashed rgba(147, 164, 220,0.45)',
               }}
             />
           </Stack>
@@ -911,7 +911,7 @@ export function VideoReviewRoom({
                 style={{
                   flexBasis: 100, minWidth: 80,
                   padding: '2px 6px', fontSize: 10, borderRadius: 3,
-                  border: '1px solid rgba(158, 140, 248,0.25)',
+                  border: '1px solid rgba(147, 164, 220,0.25)',
                   background: 'transparent', color: danceFlowColors.textSecondary, outline: 'none',
                 }}
               />
@@ -928,10 +928,10 @@ export function VideoReviewRoom({
                     height: 20,
                     fontSize: 10,
                     cursor: 'pointer',
-                    bgcolor: 'rgba(158, 140, 248,0.08)',
-                    color: '#c6bdf4',
-                    border: '1px solid rgba(158, 140, 248,0.25)',
-                    '&:hover': { bgcolor: 'rgba(158, 140, 248,0.18)' },
+                    bgcolor: 'rgba(147, 164, 220,0.08)',
+                    color: '#c3cbe6',
+                    border: '1px solid rgba(147, 164, 220,0.25)',
+                    '&:hover': { bgcolor: 'rgba(147, 164, 220,0.18)' },
                   }}
                 />
               ))}
@@ -954,8 +954,8 @@ export function VideoReviewRoom({
                   cursor: 'pointer',
                   bgcolor: 'transparent',
                   color: PURPLE_LIGHT,
-                  border: '1px dashed rgba(158, 140, 248,0.45)',
-                  '&:hover': { bgcolor: 'rgba(158, 140, 248,0.08)' },
+                  border: '1px dashed rgba(147, 164, 220,0.45)',
+                  '&:hover': { bgcolor: 'rgba(147, 164, 220,0.08)' },
                 }}
               />
             </Stack>
@@ -1017,7 +1017,7 @@ export function VideoReviewRoom({
                 sx={{
                   color: drawingMode && drawingAllowed ? '#fff' : PURPLE_LIGHT,
                   borderColor: BORDER,
-                  bgcolor: drawingMode && drawingAllowed ? 'rgba(158, 140, 248,0.18)' : 'transparent',
+                  bgcolor: drawingMode && drawingAllowed ? 'rgba(147, 164, 220,0.18)' : 'transparent',
                   fontSize: 11,
                   px: 1, py: 0.25,
                   opacity: drawingAllowed ? 1 : 0.55,
@@ -1050,7 +1050,7 @@ export function VideoReviewRoom({
               onClick={() => void submitComposer()}
               sx={{
                 bgcolor: PURPLE,
-                '&:hover': { bgcolor: '#6249df' },
+                '&:hover': { bgcolor: '#4b3d8f' },
                 textTransform: 'none',
                 fontWeight: 600,
                 fontSize: 12,
@@ -1094,7 +1094,7 @@ export function VideoReviewRoom({
       <Dialog
         open={upgradeDrawingOpen}
         onClose={() => setUpgradeDrawingOpen(false)}
-        PaperProps={{ sx: { bgcolor: '#100b1e', border: `1px solid ${BORDER}`, color: danceFlowColors.textSecondary } }}
+        PaperProps={{ sx: { bgcolor: '#2a3152', border: `1px solid ${BORDER}`, color: danceFlowColors.textSecondary } }}
         data-testid="drawing-upgrade-dialog"
       >
         <DialogTitle sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>Oppgrader for å tegne</DialogTitle>
@@ -1119,7 +1119,7 @@ export function VideoReviewRoom({
                 window.dispatchEvent(new PopStateEvent('popstate'));
               }
             }}
-            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700 }}
+            sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700 }}
             data-testid="drawing-upgrade-cta"
           >
             Se planer
@@ -1221,7 +1221,7 @@ const CommentNode: React.FC<CommentNodeProps> = ({
               {annotation.targetDancerIds.map((id) => {
                 const p = dancersByDancerId.get(id);
                 return (
-                  <Chip key={id} size="small" label={`@${p?.displayName ?? id}`} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(158, 140, 248,0.12)', color: PURPLE_LIGHT }} />
+                  <Chip key={id} size="small" label={`@${p?.displayName ?? id}`} sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(147, 164, 220,0.12)', color: PURPLE_LIGHT }} />
                 );
               })}
             </Stack>

@@ -224,8 +224,8 @@ export default function ClientEconomyPanel({
         <Box
           sx={{
             borderRadius: '16px',
-            border: '1px solid rgba(136, 117, 235,0.3)',
-            background: 'linear-gradient(135deg, rgba(98, 73, 223,0.18) 0%, rgba(98, 73, 223,0.1) 60%, rgba(10, 5, 21,0.6) 100%)',
+            border: '1px solid rgba(93, 118, 203,0.3)',
+            background: 'linear-gradient(135deg, rgba(75, 61, 143,0.18) 0%, rgba(75, 61, 143,0.1) 60%, rgba(10, 5, 21,0.6) 100%)',
             p: { xs: 2, sm: 2.5 },
             boxShadow: '0 14px 36px rgba(0,0,0,0.4)',
           }}
@@ -235,7 +235,7 @@ export default function ClientEconomyPanel({
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Samlet avkastning (ROAS)
               </Typography>
-              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c6bdf4,#9e8cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
+              <Typography sx={{ fontSize: { xs: '40px', sm: '48px' }, fontWeight: 800, lineHeight: 1, background: 'linear-gradient(135deg,#c3cbe6,#93a4dc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums', mt: 0.4 }}>
                 {results.totals.roas.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '13px', mt: 0.6, maxWidth: 360 }}>
@@ -245,12 +245,12 @@ export default function ClientEconomyPanel({
             <Stack spacing={1} sx={{ minWidth: { sm: 200 } }}>
               <Box sx={{ p: 1.2, borderRadius: '12px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(255,255,255,0.03)' }}>
                 <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tilskrevet omsetning</Typography>
-                <Typography sx={{ color: '#f6f5ff', fontSize: '18px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{nok(results.totals.conversionValueNok)}</Typography>
+                <Typography sx={{ color: '#f7f9ff', fontSize: '18px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{nok(results.totals.conversionValueNok)}</Typography>
               </Box>
               {summary ? (
                 <Box sx={{ p: 1.2, borderRadius: '12px', border: '1px solid rgba(148,163,184,0.14)', background: 'rgba(255,255,255,0.03)' }}>
                   <Typography sx={{ color: 'rgba(226,232,240,0.8)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Annonsekostnad</Typography>
-                  <Typography sx={{ color: '#f6f5ff', fontSize: '18px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{nok(summary.spendNok)}</Typography>
+                  <Typography sx={{ color: '#f7f9ff', fontSize: '18px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{nok(summary.spendNok)}</Typography>
                 </Box>
               ) : null}
             </Stack>
@@ -328,7 +328,7 @@ export default function ClientEconomyPanel({
       {results && results.perChannel.length > 0 && (
         <Stack spacing={1.1} sx={CARD_SX}>
           <Stack direction="row" alignItems="center" spacing={1}>
-            <InsightsIcon sx={{ fontSize: 20, color: '#c6bdf4' }} />
+            <InsightsIcon sx={{ fontSize: 20, color: '#c3cbe6' }} />
             <Typography sx={LABEL}>Resultater per kanal</Typography>
           </Stack>
           <Typography sx={SUBTLE}>
@@ -349,7 +349,7 @@ export default function ClientEconomyPanel({
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.85rem' }}>
                   {PLATFORM_LABEL[ch.platform] ?? ch.platform}
                 </Typography>
-                <Typography sx={{ color: '#c6bdf4', fontWeight: 800, fontSize: '0.85rem' }}>
+                <Typography sx={{ color: '#c3cbe6', fontWeight: 800, fontSize: '0.85rem' }}>
                   {ch.roas != null ? `ROAS ${ch.roas}×` : 'ROAS —'}
                 </Typography>
               </Stack>
@@ -366,7 +366,7 @@ export default function ClientEconomyPanel({
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)', my: 0.3 }} />
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.85rem' }}>Totalt</Typography>
-            <Typography sx={{ color: '#c6bdf4', fontWeight: 800, fontSize: '0.85rem' }}>
+            <Typography sx={{ color: '#c3cbe6', fontWeight: 800, fontSize: '0.85rem' }}>
               {results.totals.roas != null ? `ROAS ${results.totals.roas}×` : 'ROAS —'}
             </Typography>
           </Stack>

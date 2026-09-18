@@ -165,7 +165,7 @@ export default function TimelineItemModal({
                 borderColor: danceFlowColors.borderStrong,
                 '&.Mui-selected': {
                   color: danceFlowColors.lavender,
-                  bgcolor: 'rgba(158, 140, 248,0.12)',
+                  bgcolor: 'rgba(147, 164, 220,0.12)',
                 },
               },
             }}

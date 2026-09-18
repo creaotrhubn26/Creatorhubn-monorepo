@@ -76,17 +76,17 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
       maxWidth="sm"
       PaperProps={{
         sx: {
-          bgcolor: '#100b1e',
+          bgcolor: '#2a3152',
           color: '#e2e8f0',
           borderRadius: 3,
-          border: '1px solid rgba(136, 117, 235,0.25)',
+          border: '1px solid rgba(93, 118, 203,0.25)',
           backgroundImage:
-            'radial-gradient(1200px 400px at 80% -10%, rgba(136, 117, 235,0.12), transparent)',
+            'radial-gradient(1200px 400px at 80% -10%, rgba(93, 118, 203,0.12), transparent)',
         },
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pr: 7 }}>
-        <StorefrontIcon sx={{ color: '#9e8cf8' }} />
+        <StorefrontIcon sx={{ color: '#93a4dc' }} />
         <Box>
           <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.2 }}>
             Markedsplass
@@ -104,7 +104,7 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
         </IconButton>
       </DialogTitle>
 
-      <DialogContent dividers sx={{ borderColor: 'rgba(136, 117, 235,0.15)', bgcolor: 'transparent' }}>
+      <DialogContent dividers sx={{ borderColor: 'rgba(93, 118, 203,0.15)', bgcolor: 'transparent' }}>
         {appsQuery.isLoading ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <CircularProgress size={28} />
@@ -133,7 +133,7 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
                     p: 2.5,
                     borderRadius: 2.5,
                     border: installed
-                      ? '1px solid rgba(136, 117, 235,0.5)'
+                      ? '1px solid rgba(93, 118, 203,0.5)'
                       : '1px solid rgba(148,163,184,0.2)',
                     bgcolor: 'rgba(255,255,255,0.03)',
                   }}
@@ -147,8 +147,8 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        bgcolor: 'rgba(136, 117, 235,0.15)',
-                        color: '#9e8cf8',
+                        bgcolor: 'rgba(93, 118, 203,0.15)',
+                        color: '#93a4dc',
                         flexShrink: 0,
                       }}
                     >
@@ -166,8 +166,8 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
                             sx={{
                               height: 20,
                               fontSize: 11,
-                              bgcolor: 'rgba(136, 117, 235,0.12)',
-                              color: '#c6bdf4',
+                              bgcolor: 'rgba(93, 118, 203,0.12)',
+                              color: '#c3cbe6',
                             }}
                           />
                         ) : null}
@@ -195,8 +195,8 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
                             disabled={busy}
                             onClick={() => handleInstall(app.id)}
                             sx={{
-                              bgcolor: '#8875eb',
-                              '&:hover': { bgcolor: '#6249df' },
+                              bgcolor: '#5d76cb',
+                              '&:hover': { bgcolor: '#4b3d8f' },
                               textTransform: 'none',
                             }}
                           >
@@ -211,8 +211,8 @@ export const RoleRoomMarketplaceModal: React.FC<RoleRoomMarketplaceModalProps> =
                               href="/leadgrid"
                               endIcon={<OpenInNewIcon fontSize="small" />}
                               sx={{
-                                bgcolor: '#8875eb',
-                                '&:hover': { bgcolor: '#6249df' },
+                                bgcolor: '#5d76cb',
+                                '&:hover': { bgcolor: '#4b3d8f' },
                                 textTransform: 'none',
                               }}
                             >

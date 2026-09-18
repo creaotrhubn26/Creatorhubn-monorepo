@@ -89,7 +89,7 @@ const TEXT_PRIMARY = 'rgba(241, 245, 249, 0.96)';
 const TEXT_SECONDARY = 'rgba(191, 219, 254, 0.74)';
 const TEXT_MUTED = 'rgba(148, 163, 184, 0.78)';
 const ACCENT = 'var(--role-portal-accent, #7dd3fc)';
-const ACCENT_ALT = '#8875eb';
+const ACCENT_ALT = '#5d76cb';
 const SUCCESS = '#34d399';
 const WARNING = '#fbbf24';
 
@@ -206,7 +206,7 @@ const getActivityTone = (entryType?: string | null): { fg: string; bg: string; b
     return { fg: WARNING, bg: 'rgba(120, 53, 15, 0.26)', border: 'rgba(251, 191, 36, 0.26)' };
   }
   if (normalized.includes('message')) {
-    return { fg: ACCENT_ALT, bg: 'rgba(48, 31, 132, 0.24)', border: 'rgba(136, 117, 235, 0.26)' };
+    return { fg: ACCENT_ALT, bg: 'rgba(48, 31, 132, 0.24)', border: 'rgba(93, 118, 203, 0.26)' };
   }
   return { fg: SUCCESS, bg: 'rgba(6, 78, 59, 0.24)', border: 'rgba(52, 211, 153, 0.24)' };
 };
@@ -717,7 +717,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
           minHeight: '100vh',
           display: 'grid',
           placeItems: 'center',
-          bgcolor: '#0a0515',
+          bgcolor: '#1b122c',
           color: TEXT_PRIMARY,
         }}
       >
@@ -738,7 +738,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
           py: { xs: 3, md: 4 },
           color: TEXT_PRIMARY,
           background:
-            'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 28%), radial-gradient(circle at top right, rgba(136, 117, 235,0.15), transparent 26%), linear-gradient(180deg, #0a0515 0%, #0a0515 46%, #100b1e 100%)',
+            'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 28%), radial-gradient(circle at top right, rgba(93, 118, 203,0.15), transparent 26%), linear-gradient(180deg, #1b122c 0%, #1b122c 46%, #2a3152 100%)',
         }}
       >
         <Box sx={{ ...cardSx, maxWidth: 820, mx: 'auto', p: { xs: 3, md: 4 } }}>
@@ -806,7 +806,7 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
         py: { xs: 2.25, md: 3.5 },
         color: TEXT_PRIMARY,
         background:
-          'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 24%), radial-gradient(circle at top right, rgba(136, 117, 235,0.16), transparent 26%), radial-gradient(circle at bottom left, rgba(52,211,153,0.12), transparent 22%), linear-gradient(180deg, #0a0515 0%, #0a0515 42%, #100b1e 100%)',
+          'radial-gradient(circle at top left, rgba(125,211,252,0.16), transparent 24%), radial-gradient(circle at top right, rgba(93, 118, 203,0.16), transparent 26%), radial-gradient(circle at bottom left, rgba(52,211,153,0.12), transparent 22%), linear-gradient(180deg, #1b122c 0%, #1b122c 42%, #2a3152 100%)',
       }}
     >
       <Box

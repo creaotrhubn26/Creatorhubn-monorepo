@@ -153,7 +153,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
         {[
           { label: 'Estimat', value: totals.estimate, tone: 'rgba(148,163,184,0.18)', fg: '#e2e8f0' },
           { label: 'Godkjent', value: totals.approved, tone: 'rgba(59,130,246,0.18)', fg: '#bfdbfe' },
-          { label: 'Faktisk', value: totals.actual, tone: 'rgba(136, 117, 235,0.18)', fg: '#e0dbfa' },
+          { label: 'Faktisk', value: totals.actual, tone: 'rgba(93, 118, 203,0.18)', fg: '#dfe4f3' },
           {
             label: 'Avvik',
             value: totals.approved > 0 ? ((totals.actual - totals.approved) / totals.approved) * 100 : 0,
@@ -223,7 +223,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
               <Legend />
               <Area type="monotone" dataKey="estimate" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.18} name="Estimat" />
               <Area type="monotone" dataKey="approved" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.22} name="Godkjent" />
-              <Area type="monotone" dataKey="actual" stroke="#8875eb" fill="#8875eb" fillOpacity={0.32} name="Faktisk" />
+              <Area type="monotone" dataKey="actual" stroke="#5d76cb" fill="#5d76cb" fillOpacity={0.32} name="Faktisk" />
             </AreaChart>
           </ResponsiveContainer>
         </Box>
@@ -275,7 +275,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
                   </Typography>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap">
                     <Chip size="small" label={`Est ${formatCurrency(p.estimate)} NOK`} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
-                    <Chip size="small" label={`Faktisk ${formatCurrency(p.actual)} NOK`} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }} />
+                    <Chip size="small" label={`Faktisk ${formatCurrency(p.actual)} NOK`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }} />
                     <Chip
                       size="small"
                       label={`Avvik ${variance === null ? '—' : `${variance > 0 ? '+' : ''}${variance.toFixed(1)}%`}`}

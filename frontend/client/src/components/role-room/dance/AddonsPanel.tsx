@@ -31,11 +31,11 @@ import { useDancePlanGate } from './useDancePlanGate';
 import type { DanceAddon, DanceAddonSubscription } from './danceAddonService';
 
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
-const PURPLE_DEEP   = '#301f84';
+const PURPLE_DEEP   = '#302a83';
 const PURPLE_LIGHT  = danceFlowColors.lavender;
 const TEXT_DIM      = 'rgba(229,231,235,0.78)';
 const TEXT_MUTED    = 'rgba(229,231,235,0.50)';
-const PANEL_BORDER  = 'rgba(158, 140, 248,0.18)';
+const PANEL_BORDER  = 'rgba(147, 164, 220,0.18)';
 
 export const AddonsPanel: React.FC = () => {
   const gate = useDancePlanGate();
@@ -130,7 +130,7 @@ export const AddonsPanel: React.FC = () => {
       {error ? <Alert severity="error">{error}</Alert> : null}
 
       {!eligible ? (
-        <Alert severity="info" sx={{ bgcolor: 'rgba(136, 117, 235,0.10)', color: 'rgba(235, 231, 253,0.92)' }}>
+        <Alert severity="info" sx={{ bgcolor: 'rgba(93, 118, 203,0.10)', color: 'rgba(235, 231, 253,0.92)' }}>
           For å aktivere moduler trenger du <strong>Frilansdanser Pro</strong>-planen.
           Oppgrader fra <Box component="a" href="?tab=pricing" sx={{ color: PURPLE_LIGHT, textDecoration: 'underline' }}>prisingsiden</Box>.
         </Alert>
@@ -146,8 +146,8 @@ export const AddonsPanel: React.FC = () => {
             <Card
               key={a.slug}
               sx={{
-                bgcolor: isActiveStatus ? 'rgba(136, 117, 235,0.10)' : 'rgba(16, 11, 30,0.62)',
-                border: `1px solid ${isActiveStatus ? 'rgba(158, 140, 248,0.36)' : PANEL_BORDER}`,
+                bgcolor: isActiveStatus ? 'rgba(93, 118, 203,0.10)' : 'rgba(16, 11, 30,0.62)',
+                border: `1px solid ${isActiveStatus ? 'rgba(147, 164, 220,0.36)' : PANEL_BORDER}`,
                 borderRadius: 2,
                 position: 'relative',
               }}

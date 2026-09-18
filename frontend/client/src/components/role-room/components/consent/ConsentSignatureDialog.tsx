@@ -34,8 +34,8 @@ interface ConsentSignatureDialogProps {
 }
 
 // ── Merkevare (matcher logoen / ConsentPortalView) ──
-const BRAND = '#472bd4';
-const BRAND_DARK = '#3c27a5';
+const BRAND = '#3e3180';
+const BRAND_DARK = '#32127a';
 const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DARK} 100%)`;
 
 const lightFieldSx = {
@@ -300,7 +300,7 @@ export default function ConsentSignatureDialog({
             textTransform: 'none',
             boxShadow: `0 10px 24px ${alpha(BRAND, 0.35)}`,
             background: BRAND_GRADIENT,
-            '&:hover': { background: `linear-gradient(135deg, ${BRAND_DARK} 0%, #301f84 100%)` },
+            '&:hover': { background: `linear-gradient(135deg, ${BRAND_DARK} 0%, #302a83 100%)` },
             '&.Mui-disabled': { background: alpha(BRAND, 0.35), color: 'rgba(255,255,255,0.85)' },
           }}
         >

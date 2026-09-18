@@ -25,15 +25,15 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
 const palette = {
-  bgCard: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bgCard: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
   meta: '#1877f2',
-  accentGradient: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+  accentGradient: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
 };
 
 interface MetaAdAccount {
@@ -297,7 +297,7 @@ export default function ClientMetaSuitePanel({
               mt: 1,
               background: palette.accentGradient,
               color: '#fff', textTransform: 'none', fontWeight: 700,
-              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+              '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
             }}
           >
             {provisioning ? 'Klargjør…' : pixelMode === 'existing' ? 'Bruk valgt pixel' : `Opprett pixel for ${clientName}`}
@@ -312,7 +312,7 @@ export default function ClientMetaSuitePanel({
                 <>
                   <Box sx={{
                     mt: 1.2,
-                    bgcolor: '#100b1e',
+                    bgcolor: '#2a3152',
                     border: `1px solid ${palette.borderStrong}`,
                     borderRadius: 1,
                     p: 1.2,
@@ -356,7 +356,7 @@ export default function ClientMetaSuitePanel({
             startIcon={syncing ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
             sx={{
               background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
-              color: '#100b1e', textTransform: 'none', fontWeight: 800,
+              color: '#2a3152', textTransform: 'none', fontWeight: 800,
             }}
           >
             {syncing ? 'Synker…' : 'Sync til Meta'}
@@ -412,7 +412,7 @@ export default function ClientMetaSuitePanel({
                 '&:hover': {
                   background: capiSaved
                     ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)',
+                    : 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)',
                 },
               }}
             >

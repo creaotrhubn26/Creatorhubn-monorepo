@@ -31,16 +31,16 @@ export const adminTokens = {
   border: {
     subtle: 'rgba(148,163,184,0.10)',     // dividers between rows
     nominal: 'rgba(148,163,184,0.18)',    // standard panel border
-    accent: 'rgba(136, 117, 235,0.32)',      // primary action highlight
+    accent: 'rgba(93, 118, 203,0.32)',      // primary action highlight
   },
   // Primary brand-purple (matcher AdminRoom inline-styles)
   primary: {
-    base: '#6249df',
-    soft: 'rgba(136, 117, 235,0.16)',
-    softer: 'rgba(136, 117, 235,0.08)',
+    base: '#4b3d8f',
+    soft: 'rgba(93, 118, 203,0.16)',
+    softer: 'rgba(93, 118, 203,0.08)',
     text: '#ddd6fe',
     textLight: '#c4b5fd',
-    textBright: '#9e8cf8',
+    textBright: '#93a4dc',
   },
   // Status palette (konsistent på tvers av panel-typer)
   status: {
@@ -79,7 +79,7 @@ export const adminSx = {
     color: '#fff',
     textTransform: 'none' as const,
     fontWeight: 700,
-    '&:hover': { background: '#472bd4' },
+    '&:hover': { background: '#3e3180' },
   },
   // Sekundær knapp (text-stil)
   secondaryButton: {
