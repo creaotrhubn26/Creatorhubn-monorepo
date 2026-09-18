@@ -333,6 +333,53 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   };
   const nextSceneCode = () => { let max = 0; for (const sc of scenes) { const mm = /^S(\d+)$/.exec(String(sc.code)); if (mm) max = Math.max(max, Number(mm[1])); } return `S${max + 1}`; };
   const comments: Rec[] = [];
+  // Fase 8d — manusvakt: KI-forslag (story.guardian-issue) over AI Suggestion-endepunktene.
+  // Generate lager deterministiske funn fra mock-tilstanden; accept speiler applier-en (åpent spørsmål AI-<id>).
+  const aiSuggestions: Rec[] = [];
+  const suggestionJson = (data: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(data) });
+  await page.route('**/api/role-room/projects/*/ai-suggestions**', async (route: Route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    if (req.method() === 'GET') {
+      const agent = url.searchParams.get('agentName');
+      const status = (url.searchParams.get('status') ?? 'pending').split(',');
+      const min = Number(url.searchParams.get('minConfidence') ?? 0);
+      return route.fulfill(suggestionJson(aiSuggestions.filter((x) => (!agent || x.agentName === agent) && status.includes(String(x.status)) && Number(x.confidence) >= min)));
+    }
+    if (req.method() === 'POST' && /\/ai-suggestions\/generate$/.test(url.pathname)) {
+      const b = (() => { try { return (req.postDataJSON() as Rec | null) ?? {}; } catch { return {}; } })();
+      if (b.agentName !== 'script-guardian-agent') return route.fulfill(suggestionJson([], 201));
+      const mode = String((b.payload as Rec | undefined)?.mode ?? 'deterministic');
+      const first = scenes[0];
+      const issues: Rec[] = [{
+        issueType: 'era_mismatch', severity: 'high', title: `Epoke-brudd i ${first?.code ?? 'P01'}`,
+        description: `Scenen har epoke «${first?.era ?? '1797'}», men undertittelen nevner 1817.`, sceneIds: first ? [first.id] : [], sceneCodes: first ? [first.code] : [],
+        evidence: [{ ref: String(first?.code ?? 'P01'), quote: String(first?.subtitle ?? '') }], suggestedQuestion: `Hvilken epoke gjelder for ${first?.code ?? 'P01'} — feltet eller undertittelen?`, origin: 'rule',
+      }];
+      if (mode === 'full') issues.push({
+        issueType: 'knowledge_leak', severity: 'medium', title: 'Nora nevner lykten før den er vist', description: 'Replikken forutsetter kunnskap spilleren ikke har fått ennå.',
+        sceneIds: first ? [first.id] : [], sceneCodes: first ? [first.code] : [], evidence: [{ ref: 'W04.03', quote: 'The lantern…' }], suggestedQuestion: 'Kan Nora vite om lykten her?', origin: 'llm',
+      });
+      const created = issues.map((payload) => ({ id: nextId('sug'), projectId, suggestionType: 'story.guardian-issue', payload, sourceType: 'project', sourceId: projectId, agentName: 'script-guardian-agent', modelVersion: (payload.origin === 'llm' ? 'claude-opus-5' : 'rules-v1'), confidence: payload.origin === 'llm' ? 0.8 : 0.95, status: 'pending', createdAt: now(), updatedAt: now() }));
+      aiSuggestions.push(...created);
+      return route.fulfill(suggestionJson(created, 201));
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+  });
+  await page.route('**/api/role-room/ai-suggestions/*/{accept,reject}', async (route: Route) => {
+    const url = new URL(route.request().url());
+    const [, id, action] = url.pathname.match(/\/ai-suggestions\/([^/]+)\/(accept|reject)$/) ?? [];
+    const sug = aiSuggestions.find((x) => x.id === id);
+    if (!sug) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+    sug.status = action === 'accept' ? 'accepted' : 'rejected'; sug.reviewedAt = now(); sug.reviewedBy = 'u-e2e';
+    if (action === 'accept') {
+      const p = sug.payload as Rec;
+      const code = `AI-${String(id).replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}`;
+      openQuestions.push({ id: nextId('noq'), projectId, code, kind: 'question', question: p.suggestedQuestion, context: `${p.title}\n\n${p.description}`, status: 'open', decision: '', decidedBy: null, decidedAt: null, sourceRefs: [{ tag: 'A', ref: 'script-guardian', note: (p.sceneCodes as string[] | undefined)?.join(', ') ?? '' }], sortOrder: openQuestions.length, createdAt: now(), updatedAt: now() });
+      sug.appliedResult = { openQuestionCode: code };
+    }
+    return route.fulfill(suggestionJson(sug));
+  });
   await page.route('**/api/role-room/editor-comments**', async (route: Route) => {
     const req = route.request();
     const method = req.method();
@@ -934,6 +981,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
         activity,
         unreadInbox: inbox.filter((n) => !n.readAt).length,
+        guardian: { pending: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending').length, high: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending' && (x.payload as Rec).severity === 'high').length },
       }));
     }
     if (m(/\/projects\/[^/]+\/inbox$/) && method === 'GET') return route.fulfill(ok(inbox));
