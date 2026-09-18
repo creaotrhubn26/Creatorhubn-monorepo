@@ -228,7 +228,14 @@ const PrivacyPolicy: React.FC = () => {
   const socialLinks = getPublicSocialProfiles(brandKey);
 
   const isRoleRoom = brandKey === 'roleRoom';
+  // getThemedCardSx() er en dark-theme-helper som hardkoder
+  // color: rgba(255,255,255,0.95). Spredt SIST overstyrte den merkefargen
+  // under, slik at hver ListItemText-primary ble hvit på den lyse flaten —
+  // ~30 underoverskrifter var i praksis usynlige på creatorhubn.com.
+  // Spredt FØRST beholder vi hover-oppførselen, mens de eksplisitte
+  // merkefargene vinner.
   const surfaceSx = {
+    ...theming.getThemedCardSx(),
     p: 4,
     borderRadius: '18px',
     background: isRoleRoom ? 'rgba(8, 15, 28, 0.84)' : 'rgba(255,255,255,0.94)',
@@ -236,7 +243,6 @@ const PrivacyPolicy: React.FC = () => {
     border: `1px solid ${brand.accentBorder}`,
     boxShadow: isRoleRoom ? '0 28px 80px rgba(4, 10, 24, 0.44)' : undefined,
     backdropFilter: 'blur(20px)',
-    ...theming.getThemedCardSx(),
   } as const;
   const bodyColor = isRoleRoom ? 'rgba(226,232,240,0.9)' : '#374151';
   const mutedColor = isRoleRoom ? 'rgba(148,163,184,0.86)' : '#6b7280';
