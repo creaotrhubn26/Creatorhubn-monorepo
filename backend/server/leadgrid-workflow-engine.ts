@@ -817,41 +817,83 @@ async function runAction(
 
     case "create_task": {
       if (!lead) return { status: "skipped", message: "no_lead" };
-      // Lagre som crm_lead_activities-rad type="task"
+      // Handlingen skrev tidligere en rad i crm_lead_activities med
+      // activity_type='task'. Ingen kode leste den raden, så en bruker kunne
+      // slå på en mal og tro at oppgaven havnet et sted. Nå skrives den til
+      // leadgrid_oppgaver, som er lista brukeren faktisk ser.
       try {
         const due = action.due_in_days
-          ? new Date(Date.now() + action.due_in_days * 86400000).toISOString()
+          ? new Date(Date.now() + action.due_in_days * 86400000)
           : null;
-        await pool.query(
-          `INSERT INTO crm_lead_activities
-             (customer_id, user_id, activity_type, description, metadata, created_at)
-           SELECT c.id, $2, 'task', $3, $4::jsonb, NOW()
+
+        // «manager» betyr salgsledelsen på prosjektet. Finnes ingen slik
+        // rolle, faller vi tilbake til eieren og SIER det — en oppgave som
+        // havner hos feil person er bedre enn en som forsvinner.
+        let assignee = lead.owner_user_id;
+        let assigneeNote = "";
+        if (action.assignee_role === "manager") {
+          const mgr = await pool.query<{ user_id: string }>(
+            `SELECT user_id
+               FROM leadgrid_project_members
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND role IN ('salgssjef', 'teamleder', 'admin', 'owner')
+              ORDER BY CASE role
+                         WHEN 'salgssjef' THEN 1
+                         WHEN 'teamleder' THEN 2
+                         WHEN 'admin' THEN 3
+                         ELSE 4
+                       END
+              LIMIT 1`,
+            [event.organizationId, event.projectId],
+          );
+          const found = mgr.rows[0]?.user_id;
+          if (found) assignee = found;
+          else assigneeNote = ":no_manager_fell_back_to_owner";
+        }
+
+        const inserted = await pool.query<{ id: string }>(
+          `INSERT INTO leadgrid_oppgaver
+             (id, organization_id, project_id, user_id, selskap, lead_id,
+              deal_id, tittel, due_at, assigned_user_id, kilde, workflow_id)
+           SELECT gen_random_uuid(), c.organization_id::text, c.project_id,
+                  $2, COALESCE(NULLIF(TRIM(c.name), ''), 'Ukjent selskap'),
+                  c.id::text, d.id, $3, $4::timestamptz, $5, 'workflow', $6::uuid
              FROM crm_customers c
+             LEFT JOIN leadgrid_deals d
+               ON d.customer_id = c.id AND d.is_primary AND d.archived_at IS NULL
             WHERE c.id = $1::uuid
-              AND c.organization_id = $5::uuid
-              AND c.project_id = $6`,
+              AND c.organization_id = $7::uuid
+              AND c.project_id = $8
+           RETURNING id::text`,
           [
             lead.id,
-            event.actorUserId ?? lead.owner_user_id ?? "workflow_engine",
+            event.actorUserId ?? assignee ?? "workflow_engine",
             action.title,
-            JSON.stringify({
-              kind: "workflow_task",
-              due_at: due,
-              assignee_role: action.assignee_role ?? "owner",
-            }),
+            due ? due.toISOString() : null,
+            assignee,
+            workflowId,
             event.organizationId,
             event.projectId,
           ],
         );
+        if (!inserted.rowCount) {
+          return { status: "skipped", message: "lead_out_of_scope" };
+        }
         return {
           status: "ok",
-          message: `task_created`,
-          data: { title: action.title, due_at: due },
+          message: `task_created${assigneeNote}`,
+          data: {
+            task_id: inserted.rows[0]?.id,
+            title: action.title,
+            due_at: due ? due.toISOString() : null,
+            assigned_user_id: assignee,
+          },
         };
       } catch (err) {
         return {
-          status: "skipped",
-          message: `task_skip:${String((err as Error)?.message ?? "").slice(0, 100)}`,
+          status: "error",
+          message: `task_failed:${String((err as Error)?.message ?? "").slice(0, 100)}`,
         };
       }
     }

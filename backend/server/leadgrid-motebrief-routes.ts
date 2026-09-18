@@ -283,6 +283,10 @@ export function registerLeadgridMotebriefRoutes(deps: {
 }): void {
   const { app, pool, requireUserSession } = deps;
 
+  // Fall gjennom til 400 i stedet for en Postgres-feil på ugyldig uuid.
+  const OPPGAVE_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   async function selectedProject(
     req: Request,
     res: Response,
@@ -1007,6 +1011,15 @@ ${tekst}`;
    * Oppgavelista (UGATED — kjernefunksjon, ingen AI): åpne oppgaver fra
    * møtelogging, bruker-scopet. Vises i Oversikt/Neste handlinger.
    */
+  /**
+   * Oppgaver ligger her fordi møte-etterarbeidet var det som opprettet dem
+   * først. Etter mig 0636 er de like mye lead- og salgs-oppgaver: filtrene
+   * lead_id og deal_id gir «hva skylder vi denne kunden» og «hva gjenstår på
+   * dette salget», ikke bare «hva skrev jeg ned etter møtet».
+   *
+   * Sorteringen går på frist, ikke på når oppgaven ble laget — en liste som
+   * ikke setter det som haster øverst blir ikke brukt.
+   */
   app.get("/api/leadgrid/oppgaver", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
@@ -1014,29 +1027,163 @@ ${tekst}`;
       const project = await selectedProject(req, res, session.userId);
       if (!project) return;
       const status = req.query.status === "done" ? "done" : "open";
+      const params: unknown[] = [project.organizationId, project.id, status];
+      const filters: string[] = [];
+
+      const leadId = typeof req.query.lead_id === "string" ? req.query.lead_id : null;
+      if (leadId) {
+        if (!OPPGAVE_UUID_RE.test(leadId)) {
+          res.status(400).json({ error: "lead_id_invalid" });
+          return;
+        }
+        params.push(leadId);
+        filters.push(`lead_id = $${params.length}`);
+      }
+      const dealId = typeof req.query.deal_id === "string" ? req.query.deal_id : null;
+      if (dealId) {
+        if (!OPPGAVE_UUID_RE.test(dealId)) {
+          res.status(400).json({ error: "deal_id_invalid" });
+          return;
+        }
+        params.push(dealId);
+        filters.push(`deal_id = $${params.length}::uuid`);
+      }
+      // Uten lead- eller salgsfilter er dette «mine oppgaver». Med filter er
+      // det kundens oppgaver, uavhengig av hvem på teamet som eier dem.
+      if (!leadId && !dealId) {
+        params.push(session.userId);
+        filters.push(`assigned_user_id = $${params.length}`);
+      }
+
       const r = await pool.query(
-        `SELECT id, selskap, lead_id, tittel, frist, status, created_at
+        `SELECT id, selskap, lead_id, deal_id::text AS deal_id, tittel,
+                description, frist, due_at, priority, task_type, status,
+                assigned_user_id, kilde, created_at, done_at
            FROM leadgrid_oppgaver
           WHERE organization_id = $1
             AND project_id = $2
-            AND user_id = $3
-            AND status = $4
-          ORDER BY created_at DESC LIMIT 100`,
-        [project.organizationId, project.id, session.userId, status]);
+            AND status = $3
+            ${filters.length ? `AND ${filters.join(" AND ")}` : ""}
+          ORDER BY due_at ASC NULLS LAST, created_at DESC LIMIT 200`,
+        params);
+      const iso = (v: unknown): string | null =>
+        v instanceof Date ? v.toISOString() : v == null ? null : String(v);
       res.json({
         oppgaver: r.rows.map((row) => ({
           id: row.id,
           selskap: row.selskap,
           lead_id: row.lead_id,
+          deal_id: row.deal_id,
           tittel: row.tittel,
+          description: row.description,
           frist: row.frist,
+          due_at: iso(row.due_at),
+          priority: row.priority,
+          task_type: row.task_type,
           status: row.status,
-          created_at: row.created_at instanceof Date
-            ? row.created_at.toISOString() : String(row.created_at),
+          assigned_user_id: row.assigned_user_id,
+          kilde: row.kilde,
+          created_at: iso(row.created_at),
+          done_at: iso(row.done_at),
         })),
       });
     } catch (e) {
       console.error("[motebrief] oppgave-liste failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Ny oppgave på en kunde, eventuelt på ett bestemt salg. */
+  app.post("/api/leadgrid/oppgaver", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const project = await selectedProject(req, res, session.userId);
+      if (!project) return;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      const tittel = typeof body.tittel === "string" ? body.tittel.trim() : "";
+      if (!tittel || tittel.length > 300) {
+        res.status(400).json({ error: "tittel_required" });
+        return;
+      }
+      const leadId = typeof body.lead_id === "string" ? body.lead_id : null;
+      if (leadId && !OPPGAVE_UUID_RE.test(leadId)) {
+        res.status(400).json({ error: "lead_id_invalid" });
+        return;
+      }
+      const dealId = typeof body.deal_id === "string" ? body.deal_id : null;
+      if (dealId && !OPPGAVE_UUID_RE.test(dealId)) {
+        res.status(400).json({ error: "deal_id_invalid" });
+        return;
+      }
+      const priority =
+        typeof body.priority === "string" ? body.priority : "normal";
+      if (!["low", "normal", "high"].includes(priority)) {
+        res.status(400).json({ error: "priority_invalid" });
+        return;
+      }
+      const taskType =
+        typeof body.task_type === "string" ? body.task_type : "todo";
+      if (!["todo", "call", "email", "meeting"].includes(taskType)) {
+        res.status(400).json({ error: "task_type_invalid" });
+        return;
+      }
+      let dueAt: string | null = null;
+      if (typeof body.due_at === "string" && body.due_at.trim()) {
+        const parsed = new Date(body.due_at);
+        if (Number.isNaN(parsed.getTime())) {
+          res.status(400).json({ error: "due_at_invalid" });
+          return;
+        }
+        dueAt = parsed.toISOString();
+      }
+      const assignee =
+        typeof body.assigned_user_id === "string" && body.assigned_user_id.trim()
+          ? body.assigned_user_id.trim()
+          : session.userId;
+
+      // Kunden og salget må høre til prosjektet brukeren står i. Uten dette
+      // kunne en oppgave festes på en kunde i et annet prosjekt.
+      let selskap = typeof body.selskap === "string" ? body.selskap.trim() : "";
+      if (leadId) {
+        const lead = await pool.query<{ name: string | null }>(
+          `SELECT name FROM crm_customers
+            WHERE id = $1::uuid AND organization_id = $2::uuid AND project_id = $3`,
+          [leadId, project.organizationId, project.id]);
+        if (!lead.rowCount) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
+        selskap = selskap || (lead.rows[0]?.name ?? "").trim();
+      }
+      if (dealId) {
+        const deal = await pool.query(
+          `SELECT 1 FROM leadgrid_deals
+            WHERE id = $1::uuid AND organization_id = $2::uuid AND project_id = $3
+              AND ($4::uuid IS NULL OR customer_id = $4::uuid)`,
+          [dealId, project.organizationId, project.id, leadId]);
+        if (!deal.rowCount) {
+          res.status(404).json({ error: "salg_ikke_funnet" });
+          return;
+        }
+      }
+      if (!selskap) selskap = "Uten kunde";
+
+      const r = await pool.query<{ id: string }>(
+        `INSERT INTO leadgrid_oppgaver
+           (id, organization_id, project_id, user_id, selskap, lead_id, deal_id,
+            tittel, description, due_at, priority, task_type, assigned_user_id, kilde)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::uuid, $7, $8,
+                 $9::timestamptz, $10, $11, $12, 'manuell')
+         RETURNING id::text`,
+        [project.organizationId, project.id, session.userId, selskap, leadId,
+         dealId, tittel,
+         typeof body.description === "string" ? body.description : null,
+         dueAt, priority, taskType, assignee]);
+      res.status(201).json({ id: r.rows[0]?.id, status: "open" });
+    } catch (e) {
+      console.error("[motebrief] oppgave-opprett failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
@@ -1050,10 +1197,14 @@ ${tekst}`;
       if (!project) return;
       const status = (req.body ?? {}).status === "done" ? "done" : "open";
       const r = await pool.query(
+        // Den oppgaven er tildelt skal kunne huke den av, ikke bare den som
+        // skrev den ned. Ellers blir delegerte oppgaver stående åpne.
         `UPDATE leadgrid_oppgaver
-            SET status = $1, done_at = CASE WHEN $1 = 'done' THEN now() ELSE NULL END
+            SET status = $1,
+                done_at = CASE WHEN $1 = 'done' THEN now() ELSE NULL END,
+                done_by = CASE WHEN $1 = 'done' THEN $3 ELSE NULL END
           WHERE id = $2
-            AND user_id = $3
+            AND (assigned_user_id = $3 OR user_id = $3)
             AND organization_id = $4
             AND project_id = $5`,
         [status, req.params.id, session.userId, project.organizationId, project.id]);
