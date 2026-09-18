@@ -24,6 +24,7 @@ const SYSTEM_VERTICALS: Array<{ key: string; name: string; description: string }
   { key: "dance_studio", name: "Dansestudio", description: "Studioeier: audition, ensemble, prøveplan og forestillinger." },
   { key: "dance_freelance", name: "Dans — frilanser", description: "Frilans danser: tilgjengelighet, portfolio og oppdrag." },
   { key: "education", name: "Utdanning", description: "Film-/medieutdanning: kull, studentproduksjoner, LMS (Feide/LTI) og faglærer-oversikt." },
+  { key: "game_studio", name: "Spillstudio", description: "Story Graph — forgrenet narrativ design for spill: brett, elementer, komponenter, variabler og spillmodus (Arcweave-kompatibel eksport)." },
 ];
 
 export type CatalogSource = "system_vertical" | "custom" | "url_import";

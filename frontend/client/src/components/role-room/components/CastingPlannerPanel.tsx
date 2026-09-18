@@ -7,7 +7,7 @@ import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/access
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
+import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck, isGameMode as isGameModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
@@ -195,6 +195,7 @@ import {
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
   matchesLensProjectRole,
+  isLensDecisionPending,
   resolveLensUrlState,
   resolveWorkspaceLens,
   type RoleWorkspaceLens,
@@ -287,6 +288,8 @@ const AdminRoomWorkspace = lazy(() => import('../../../pages/AdminRoom'));
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
 const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
+// Spillstudio (Story Graph) — parallelt workspace når professionMode = game_studio.
+const NarrativeWorkspace = lazy(() => import('../narrative/NarrativeWorkspace').then(m => ({ default: m.NarrativeWorkspace })));
 // Student-ankomststripe i produksjons-modus (edu=1 + assignment=<id>) — se
 // EduAssignmentArrivalStripe.tsx for detaljer. Lazy som søsknene over.
 const EduAssignmentArrivalStripe = lazy(() => import('../education/EduAssignmentArrivalStripe').then(m => ({ default: m.EduAssignmentArrivalStripe })));
@@ -752,6 +755,17 @@ export function CastingPlannerPanel({
       <ErrorBoundary>
       <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster dans-modus…</Box>}>
         <DanceWorkspace />
+      </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Spillstudio-modus (Story Graph) — samme parallell-workspace-mønster som
+  // dans: render NarrativeWorkspace og avslutt før produksjons-hooks kjører.
+  if (isGameModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster spillstudio…</Box>}>
+        <NarrativeWorkspace />
       </Suspense>
       </ErrorBoundary>
     );
@@ -3361,7 +3375,11 @@ type RoleRoomProjectWorkspaceState = {
     || ['director', 'producer', 'first_ad', 'second_ad'].includes(normalizedCurrentProjectRole);
   // Admin-linsen er den eneste som ikke følger av prosjektrollen. Klientporten
   // skjuler UI; hver Admin Room-rute er e-postlåst på serveren i tillegg.
-  const { isSuperAdmin: isSuperAdminSession } = useSuperAdminGate();
+  const { isSuperAdmin: isSuperAdminSession, ready: superAdminGateReady } = useSuperAdminGate();
+  // Serveren avgjør admin-linsen, og svaret kommer etter første render. Uten
+  // denne ventetilstanden rakk URL-synkroniseringen å slette ?lens=admin, og
+  // flaten under viste produksjonsarbeidsflaten i mellomtiden.
+  const adminLensPending = isLensDecisionPending(workspaceLensPreference, superAdminGateReady);
   // Rene oppslag, ikke hooks: de leses av både lenseoppløsningen og
   // URL-synkroniseringen, som fortsatt lister de underliggende
   // boolean-verdiene i sin dependency-array.
@@ -5388,6 +5406,9 @@ type RoleRoomProjectWorkspaceState = {
     // følger det alltid et state-bytte (currentProject/tab/view) som
     // re-trigger denne effekten, så URL-en skrives korrekt straks etter.
     if (deepLinkProjectId && !deepLinkResolvedRef.current) return;
+    // Ikke skriv URL-en mens admin-linsen venter på serveren: den ville
+    // strippe ?lens=admin ut fra et svar vi ennå ikke har.
+    if (adminLensPending) return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
@@ -5443,6 +5464,7 @@ type RoleRoomProjectWorkspaceState = {
   }, [
     bootstrapComplete,
     activeTab,
+    adminLensPending,
     currentProject?.id,
     storyArcView,
     contentProducerPlannerSurface,
@@ -11064,7 +11086,14 @@ type RoleRoomProjectWorkspaceState = {
           <ErrorBoundary key={displayedActiveTab}>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
-          {effectiveWorkspaceLens === 'admin' ? (
+          {adminLensPending ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
+              <CircularProgress size={40} sx={{ color: 'var(--role-violet, #8875eb)' }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
+                Bekrefter tilgang til Admin Room …
+              </Typography>
+            </Box>
+          ) : effectiveWorkspaceLens === 'admin' ? (
             <AdminRoomWorkspace />
           ) : !currentProject && projects.length === 0 ? (
             <EmptyProjectsHero

@@ -72,6 +72,7 @@ const VALID_SEGMENTS = new Set([
   "dance_studio",
   "affiliate_partner",
   "education_institution",
+  "game_studio",
   "other",
 ]);
 const VALID_STATUSES = new Set([

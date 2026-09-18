@@ -59,6 +59,18 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
     expect(names).not.toContain("rr_list_cohorts");
     expect(names).not.toContain("rr_list_assignments");
     expect(names).not.toContain("rr_list_dance_pieces");
+    expect(names).not.toContain("rr_get_story_graph");
+  });
+  it("modus-filter «game_studio» → Story Graph-verktøy + globale, ikke casting/dans", () => {
+    const names = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_game_scenes", "rr_game_scene_review_status", "rr_get_scene_card", "rr_project_overview", "rr_list_projects"]));
+    expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_list_game_scenes");
+    expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_project_overview");
+    expect(names).not.toContain("rr_list_auditions");
+    expect(names).not.toContain("rr_list_dance_pieces");
+    expect(names).not.toContain("rr_list_cohorts");
+    expect(names).not.toContain("rr_draft_element"); // krever projects.write
+    expect(listCapabilitiesFor(["projects.write"], "game_studio").map((c) => c.name)).toContain("rr_draft_element");
   });
   it("modus-filter «dance_studio» → dans-verktøy, ikke casting/utdanning", () => {
     const names = listCapabilitiesFor(["projects.read"], "dance_studio").map((c) => c.name);
@@ -160,5 +172,103 @@ describe("rr_search_talents (byrå-scopet, samtykke-gated PII)", () => {
     expect(out.talents[0].display_name).toBe("Kari");
     expect(out.talents[0].has_showreel).toBeUndefined();
     expect(out.talents[0].availability_visible).toBe(false);
+  });
+});
+
+describe("Fase 3 Story Graph-verktøy (eksport + utkast-element)", () => {
+  const WRITE_CTX: McpCallContext = { userId: "u1", scopes: ["projects.write"], apiKeyId: "k1" };
+  const access = { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] };
+  const graphRows = [
+    { match: /FROM narrative_settings WHERE project_id/, rows: [{ project_id: "p1", title: "Demo", starting_element_id: "nel_1", cover_asset_id: null, schema_version: 1, updated_at: null }] },
+    { match: /FROM narrative_boards WHERE project_id/, rows: [{ id: "nbd_1", project_id: "p1", name: "Akt 1", custom_id: null, folder_path: "", sort_order: 0, viewport: {}, created_at: new Date(), updated_at: new Date() }] },
+    { match: /FROM narrative_elements WHERE project_id/, rows: [{ id: "nel_1", project_id: "p1", board_id: "nbd_1", kind: "element", title_html: "<p>Start</p>", content_html: "<p>Hei</p>", x: 0, y: 0, width: 260, height: 120, theme: "default", cover_asset_id: null, custom_id: "start", jumper_target_id: null, branch_conditions: [], version: 1, sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+  ];
+  it("rr_export_story_graph → Arcweave project.json med strippede ider", async () => {
+    const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1" }) as { format: string; project: { name: string; startingElement: string; elements: Record<string, { title: string }> } };
+    expect(out.format).toBe("arcweave");
+    expect(out.project.name).toBe("Demo");
+    const [eid] = Object.keys(out.project.elements);
+    expect(out.project.startingElement).toBe(eid);
+    expect(out.project.elements[eid].title).toBe("<p>Start</p>");
+  });
+  it("rr_export_story_graph format=csv", async () => {
+    const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1", format: "csv" }) as { format: string; csv: string };
+    expect(out.format).toBe("csv");
+    expect(out.csv.startsWith("\uFEFFBrett;")).toBe(true);
+  });
+
+  it("rr_export_story_graph format=markdown", async () => {
+    const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1", format: "markdown" }) as { format: string; markdown: string };
+    expect(out.format).toBe("markdown");
+    expect(out.markdown).toContain("# Demo");
+    expect(out.markdown).toContain("### Start `start` ▶");
+  });
+  it("rr_draft_element er mutates og oppretter brettet «KI-utkast» ved behov + ukoblet element", async () => {
+    const cap = findCapability("rr_draft_element")!;
+    expect(cap.mutates).toBe(true);
+    expect(cap.modes).toEqual(["game_studio"]);
+    const pool = makePool([
+      access,
+      { match: /SELECT id FROM narrative_boards WHERE project_id = \$1 AND name = 'KI-utkast'/, rows: [] },
+      { match: /INSERT INTO narrative_boards/, rows: [{ id: "nbd_draft", project_id: "p1", name: "KI-utkast", custom_id: null, folder_path: "Utkast", sort_order: 0, viewport: {}, created_at: new Date(), updated_at: new Date() }] },
+      { match: /SELECT COUNT\(\*\)::int AS n FROM narrative_elements/, rows: [{ n: 2 }] },
+      { match: /INSERT INTO narrative_elements/, rows: [{ id: "nel_new", project_id: "p1", board_id: "nbd_draft", kind: "element", title_html: "<p>Utkast</p>", content_html: "<p>Tekst</p>", x: 680, y: 40, width: 260, height: 120, theme: "amber", cover_asset_id: null, custom_id: null, jumper_target_id: null, branch_conditions: [], version: 1, sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const out = await cap.handler(pool, WRITE_CTX, { projectId: "p1", title: "Utkast", content: "Tekst\n\n> gold += 1" }) as { ok: boolean; id: string; boardId: string; status: string };
+    expect(out).toMatchObject({ ok: true, id: "nel_new", boardId: "nbd_draft", status: "draft" });
+    const insertCall = (pool.query as any).mock.calls.find((c: unknown[]) => /INSERT INTO narrative_elements/.test(String(c[0])));
+    expect(insertCall[1][2]).toBe("nbd_draft");
+    expect(insertCall[1][5]).toBe("<p>Tekst</p><pre><code>gold += 1</code></pre>");
+  });
+  it("rr_draft_element uten title → -32602", async () => {
+    await expect(findCapability("rr_draft_element")!.handler(makePool([access]), WRITE_CTX, { projectId: "p1" })).rejects.toMatchObject({ code: -32602 });
+  });
+});
+
+describe("Fase 6: scene-verktøy (game_studio)", () => {
+  const access = { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] };
+  const sceneRow = { id: "nsc_1", project_id: "p1", code: "S1", title: "Skogpassasjen", subtitle: "", location: "Skogen", challenge: "", gameplay_mechanic: "", environment: "", status: "in_review", assignee_user_id: "u2", due_at: null, hero_asset_id: null, sort_order: 0, created_by: "u1", created_at: new Date(), updated_at: new Date() };
+  it("rr_list_game_scenes → kode/status/siste runde, filtrerbar på status", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE project_id = \$1 ORDER BY/, rows: [sceneRow, { ...sceneRow, id: "nsc_2", code: "S2", status: "idea" }] },
+      { match: /DISTINCT ON \(scene_id\)/, rows: [{ id: "nsr_1", scene_id: "nsc_1", round: 1, status: "in_review", requested_at: new Date(), decided_at: null }] },
+    ]);
+    const all = await findCapability("rr_list_game_scenes")!.handler(pool, CTX, { projectId: "p1" }) as { scenes: Array<{ code: string; latestReview: { round: number } | null }> };
+    expect(all.scenes.map((s) => s.code)).toEqual(["S1", "S2"]);
+    expect(all.scenes[0].latestReview).toMatchObject({ round: 1 });
+    const filtered = await findCapability("rr_list_game_scenes")!.handler(pool, CTX, { projectId: "p1", status: "idea" }) as { scenes: unknown[] };
+    expect(filtered.scenes).toHaveLength(1);
+  });
+  it("rr_game_scene_review_status → åpen runde markeres stale når hash avviker", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow] },
+      { match: /FROM narrative_scene_reviews WHERE scene_id/, rows: [{ id: "nsr_1", scene_id: "nsc_1", project_id: "p1", round: 1, status: "in_review", requested_by: "u1", requested_at: new Date(), request_note: null, decided_by_user_id: null, decided_by_label: null, decided_at: null, decision_note: null, snapshot_hash: "f".repeat(64) }] },
+    ]);
+    const out = await findCapability("rr_game_scene_review_status")!.handler(pool, CTX, { projectId: "p1", sceneId: "nsc_1" }) as { openRound: { round: number; stale: boolean } | null; rounds: unknown[] };
+    expect(out.openRound).toMatchObject({ round: 1, stale: true });
+    expect(out.rounds).toHaveLength(1);
+  });
+  it("rr_get_scene_card → manusfelt, replikker og alle seks gater (manglende = not_started)", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [{ ...sceneRow, code: "P01", working_id: "P01", era: "1797", before_state: "Skoleveien", action: "Bok og skolisse" }] },
+      { match: /FROM narrative_scene_lines WHERE scene_id/, rows: [{ id: "nsl_1", scene_id: "nsc_1", project_id: "p1", cue_id: "W01.01", speaker_component_id: null, speaker_label: "NORA", perspective: "", text_en: "Must you read all the way home?", text_nb: "", source_type: "E", recording_status: "none", note: "", sort_order: 0, created_by: "u1", created_at: new Date(), updated_at: new Date() }] },
+      { match: /FROM narrative_scene_gates WHERE scene_id/, rows: [{ scene_id: "nsc_1", project_id: "p1", gate_key: "greybox", status: "passed", evidence: "68 bestått", evidence_refs: [], checked_by: "u1", checked_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const out = await findCapability("rr_get_scene_card")!.handler(pool, CTX, { projectId: "p1", sceneId: "nsc_1" }) as { scene: { code: string; era: string; beforeState: string }; lines: Array<{ cueId: string }>; gates: Array<{ gateKey: string; status: string }> };
+    expect(out.scene).toMatchObject({ code: "P01", era: "1797", beforeState: "Skoleveien" });
+    expect(out.lines.map((l) => l.cueId)).toEqual(["W01.01"]);
+    expect(out.gates).toHaveLength(6);
+    expect(out.gates.find((g) => g.gateKey === "greybox")).toMatchObject({ status: "passed" });
+    expect(out.gates.find((g) => g.gateKey === "audio")).toMatchObject({ status: "not_started" });
+  });
+  it("rr_project_overview → aggregat med scener per status og gater", async () => {
+    const pool = makePool([access,
+      { match: /SELECT status, era, start_at, due_at FROM narrative_scenes/, rows: [{ status: "idea", era: "1797", start_at: null, due_at: null }, { status: "approved", era: "1817", start_at: null, due_at: null }] },
+      { match: /FROM narrative_scene_gates WHERE project_id = \$1 GROUP BY/, rows: [{ gate_key: "greybox", status: "passed", n: 1 }] },
+    ]);
+    const out = await findCapability("rr_project_overview")!.handler(pool, CTX, { projectId: "p1" }) as { scenes: { total: number; byStatus: Record<string, number> }; gates: { passed: number; total: number } };
+    expect(out.scenes.total).toBe(2);
+    expect(out.scenes.byStatus.approved).toBe(1);
+    expect(out.gates).toMatchObject({ passed: 1, total: 12 });
   });
 });

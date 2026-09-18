@@ -1,0 +1,38 @@
+@ start | Torget
+  Du finner en pung på torget.
+  1) Gå til markedet
+  2) Gå hjem
+  vars: brave=true gold=10
+> choose 1
+@ market | Markedet
+  Kjøpmannen smiler.
+  1) Handle
+  2) Gå videre uten å handle
+  vars: brave=true gold=10
+> choose 1
+@ poor | Fattig
+  Tomme lommer.
+  1) Tilbake til torget
+  vars: brave=true gold=0
+> choose 1
+@ start | Torget
+  Du finner en pung på torget. / Pungen er lettere denne gangen.
+  1) Gå til markedet
+  2) Gå hjem
+  vars: brave=true gold=5
+> choose 1
+@ market | Markedet
+  Kjøpmannen nikker.
+  1) Handle
+  2) Gå videre uten å handle
+  vars: brave=true gold=5
+> choose 1
+@ poor | Fattig
+  Tomme lommer.
+  1) Tilbake til torget
+  vars: brave=true gold=-5
+> choose 1
+@ end | Slutt
+  Historien er over.
+  (end)
+  vars: brave=true gold=-5
