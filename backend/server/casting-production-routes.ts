@@ -45,6 +45,7 @@ import {
   collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
+import { syncProductionDayEquipmentBookings } from './production-day-equipment-bookings.js';
 import {
   resolveCastingProjectAccess,
   userOwnsCastingProject,
@@ -2115,7 +2116,25 @@ export function createCastingProductionRouter(
         res.status(404).json({ error: 'not_found' });
         return;
       }
-      res.status(201).json({ productionDay: mapDayRow(result.rows[0]) });
+      // Riggen dagen bærer er en booking. Tabellen og hele maskineriet rundt
+      // den — tilgjengelighet, konfliktsjekk — har ligget ubrukt fordi
+      // ingenting skrev til den. Dette er skriveren.
+      const savedDay = mapDayRow(result.rows[0]) as Record<string, unknown>;
+      try {
+        await syncProductionDayEquipmentBookings(pool, {
+          projectId,
+          dayId: id,
+          date: toDateString(b.date),
+          equipmentIds: asArray(savedDay.equipment).map((itemId) => String(itemId)),
+          bookedBy: (req as AuthedRequest).userId,
+        });
+      } catch {
+        // Dagen er lagret. En feilet bookingsynk skal ikke rulle den tilbake,
+        // men den skal heller ikke se ut som om riggen er sikret.
+        res.status(201).json({ productionDay: savedDay, equipmentBookingsSynced: false });
+        return;
+      }
+      res.status(201).json({ productionDay: savedDay, equipmentBookingsSynced: true });
     } catch (err) {
       res.status(500).json({ error: 'Kunne ikke lagre produksjonsdag', detail: "internal_error" });
     }
