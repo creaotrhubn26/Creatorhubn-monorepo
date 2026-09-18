@@ -24,6 +24,8 @@ export interface RoleCard {
   sort_order: number | null;
   token: string;
   revoked_at: string | null;
+  contact_email: string | null;
+  sent_at: string | null;
 }
 
 export interface SceneBlocking {
@@ -50,6 +52,13 @@ export interface RoleCardDraft {
   frame_image_url?: string | null;
   scene_id?: string | null;
   sort_order?: number | null;
+  contact_email?: string | null;
+}
+
+export interface SendResultat {
+  sent: number;
+  sentIds: string[];
+  skipped: Array<{ id: string; grunn: string }>;
 }
 
 const base = (projectId: string) => `/api/role-room/projects/${encodeURIComponent(projectId)}`;
@@ -105,6 +114,18 @@ export const roleCardService = {
   },
 
   /** Rammene i scenen — uten bildene, som kan være store data-URL-er. */
+  /** Sender lenken til alle i scenen som har adresse og ikke alt har fått den. */
+  async send(projectId: string, sceneId: string, resend = false): Promise<SendResultat | { error: string }> {
+    const r = await authFetch(`${base(projectId)}/role-cards/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scene_id: sceneId, resend }),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error ?? 'Klarte ikke å sende lenkene' };
+    return payload as SendResultat;
+  },
+
   async listFrames(projectId: string, sceneId: string): Promise<StoryboardFrame[]> {
     const r = await authFetch(`${base(projectId)}/scenes/${encodeURIComponent(sceneId)}/frames`);
     if (!r.ok) return [];

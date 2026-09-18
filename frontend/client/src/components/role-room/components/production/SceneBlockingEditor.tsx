@@ -25,6 +25,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import ImageIcon from '@mui/icons-material/ImageOutlined';
+import SendIcon from '@mui/icons-material/SendOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VideocamIcon from '@mui/icons-material/VideocamOutlined';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircleOutlined';
@@ -68,6 +69,9 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
   const [rammer, setRammer] = useState<StoryboardFrame[]>([]);
   // Hvilket kort velger ramme akkurat nå. Null = ingen.
   const [velgerRamme, setVelgerRamme] = useState<string | null>(null);
+  const [epost, setEpost] = useState('');
+  const [sender, setSender] = useState(false);
+  const [sendtMelding, setSendtMelding] = useState<string | null>(null);
   const planRef = useRef<HTMLDivElement>(null);
 
   const last = useCallback(async () => {
@@ -123,13 +127,14 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
       action: handling.trim(),
       cue: signal.trim() || null,
       person_kind: rolle,
+      contact_email: epost.trim() || null,
       position: utkast,
       scene_id: sceneId,
       sort_order: kort.length,
     });
     if ('error' in r) { setFeil(r.error); return; }
     setKort((prev) => [...prev, r]);
-    setUtkast(null); setNavn(''); setHandling(''); setSignal(''); setFeil(null);
+    setUtkast(null); setNavn(''); setHandling(''); setSignal(''); setEpost(''); setFeil(null);
   };
 
   const slett = async (id: string) => {
@@ -167,6 +172,26 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
     setKort((prev) => prev.map((k) => (k.id === kortId ? r : k)));
   };
 
+  /**
+   * Send lenkene. Uten adresse blir folk hoppet over, og det SKAL stå i
+   * kvitteringen — ellers tror avsenderen at alle fikk beskjed.
+   */
+  const sendLenker = async (resend = false) => {
+    setSender(true);
+    setSendtMelding(null);
+    const r = await roleCardService.send(projectId, sceneId, resend);
+    setSender(false);
+    if ('error' in r) { setFeil(r.error); return; }
+
+    const uten = r.skipped.filter((s) => s.grunn === 'mangler_epost').length;
+    const alt = r.skipped.filter((s) => s.grunn === 'alt_sendt').length;
+    const deler = [`${r.sent} sendt`];
+    if (alt) deler.push(`${alt} hadde fått den før`);
+    if (uten) deler.push(`${uten} mangler e-post`);
+    setSendtMelding(deler.join(' · '));
+    void last();
+  };
+
   const plassert = useMemo(() => kort.filter((k) => k.position), [kort]);
 
   return (
@@ -180,13 +205,38 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
             Plasser kamera og folk. Hver person får et kort med sin egen lenke — de ser bare sitt eget.
           </Typography>
         </Box>
-        <Chip
-          label={`${kort.length} kort`}
-          sx={{ bgcolor: 'rgba(75, 61, 143, 0.18)', color: palette.accentBright, fontWeight: 700 }}
-        />
+        <Stack direction="row" spacing={1.2} alignItems="center">
+          <Chip
+            label={`${kort.length} kort`}
+            sx={{ bgcolor: 'rgba(75, 61, 143, 0.18)', color: palette.accentBright, fontWeight: 700 }}
+          />
+          <Button
+            size="small"
+            startIcon={<SendIcon />}
+            disabled={sender || kort.length === 0}
+            onClick={() => void sendLenker()}
+            sx={{ textTransform: 'none', fontWeight: 700, px: 1.8, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff' }}
+          >
+            {sender ? 'Sender…' : 'Send lenkene'}
+          </Button>
+        </Stack>
       </Stack>
 
       {feil && <Alert severity="error" sx={{ mt: 2 }} onClose={() => setFeil(null)}>{feil}</Alert>}
+      {sendtMelding && (
+        <Alert
+          severity="info"
+          sx={{ mt: 2, bgcolor: 'rgba(75, 61, 143, 0.14)', color: palette.textSecondary, border: `1px solid ${palette.border}` }}
+          onClose={() => setSendtMelding(null)}
+          action={
+            <Button size="small" onClick={() => void sendLenker(true)} sx={{ textTransform: 'none', color: palette.accentBright }}>
+              Send på nytt til alle
+            </Button>
+          }
+        >
+          {sendtMelding}
+        </Alert>
+      )}
 
       <Box sx={{ display: 'grid', gap: 2.4, gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, mt: 2.4, alignItems: 'start' }}>
         <Box sx={kortSx}>
@@ -324,6 +374,11 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle }: 
                 <TextField
                   size="small" label="Signalet" value={signal} onChange={(e) => setSignal(e.target.value)} sx={feltSx} fullWidth
                   placeholder="Etter at hovedrollen tar første bit."
+                />
+                <TextField
+                  size="small" label="E-post (valgfritt)" value={epost} onChange={(e) => setEpost(e.target.value)}
+                  sx={feltSx} fullWidth type="email"
+                  helperText="Uten adresse må lenken deles manuelt."
                 />
                 <Stack direction="row" spacing={1.2}>
                   <Button

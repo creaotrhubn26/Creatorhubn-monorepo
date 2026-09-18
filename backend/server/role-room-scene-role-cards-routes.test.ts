@@ -21,6 +21,11 @@ vi.mock("./casting-project-ownership.js", () => ({
   userCanAccessCastingProject: async (_pool: unknown, projectId: string) => projectId === PROSJEKT,
 }));
 
+const sendtEpost = vi.fn(async () => ({ sent: true, provider: "resend" }));
+vi.mock("./transactional-email-service.js", () => ({
+  sendTransactionalEmail: (...a: unknown[]) => sendtEpost(...(a as [])),
+}));
+
 vi.mock("./storyboard-service.js", () => ({
   listStoryboards: async () => ([
     { id: "ramme-1", frameId: "f1", title: "Bord 3, vidt", imageData: "data:image/png;base64,AAAA", updatedAt: "2026-09-18T10:00:00Z" },
@@ -32,6 +37,7 @@ interface Tilstand {
   spørringer: { sql: string; params: unknown[] }[];
   offentligRad: Record<string, unknown> | null;
   oppdaterteRader: number;
+  utsending?: Record<string, unknown>[];
 }
 
 function byggApp(t: Tilstand, innlogget = true) {
@@ -41,11 +47,17 @@ function byggApp(t: Tilstand, innlogget = true) {
   const pool = {
     query: async (sql: string, params?: unknown[]) => {
       t.spørringer.push({ sql, params: params ?? [] });
-      if (sql.includes("FROM scene_role_cards c")) {
-        return { rows: t.offentligRad ? [t.offentligRad] : [], rowCount: t.offentligRad ? 1 : 0 };
-      }
+
       if (sql.includes("INSERT INTO scene_role_cards")) {
         return { rows: [{ id: KORT_ID, token: "hemmelig-token" }], rowCount: 1 };
+      }
+      // Rekkefølgen betyr noe: begge spørringene inneholder
+      // «FROM scene_role_cards c», så den mest spesifikke må sjekkes først.
+      if (sql.includes("COALESCE(t.email, c.contact_email)")) {
+        return { rows: t.utsending ?? [], rowCount: (t.utsending ?? []).length };
+      }
+      if (sql.includes("FROM scene_role_cards c")) {
+        return { rows: t.offentligRad ? [t.offentligRad] : [], rowCount: t.offentligRad ? 1 : 0 };
       }
       if (sql.includes("image_data FROM casting_storyboards")) {
         return { rows: [{ image_data: "data:image/png;base64,AAAA" }], rowCount: 1 };
@@ -255,5 +267,75 @@ describe("storyboard-rammer", () => {
   it("krever prosjekt-tilgang for rammene", async () => {
     const res = await request(byggApp(t)).get("/api/role-room/projects/annet-prosjekt/scenes/scene-1/frames");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("utsending av lenker", () => {
+  let t: Tilstand;
+  const rad = (over: Record<string, unknown> = {}) => ({
+    id: KORT_ID, person_name: "Statist 3", action: "Du sitter ved bord 3.",
+    cue: "Etter første bit.", call_time: null, token: "token-abc", sent_at: null,
+    epost: "statist@eksempel.test", scene_title: "Pizzarestauranten", project_name: "Pizza", ...over,
+  });
+
+  beforeEach(() => {
+    sendtEpost.mockClear();
+    sendtEpost.mockResolvedValue({ sent: true, provider: "resend" } as never);
+    t = { spørringer: [], offentligRad: null, oppdaterteRader: 1, utsending: [rad()] };
+  });
+
+  it("sender lenken og merker kortet som sendt", async () => {
+    const res = await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`)
+      .send({ scene_id: "scene-1" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sent).toBe(1);
+    expect(sendtEpost).toHaveBeenCalledTimes(1);
+    const arg = sendtEpost.mock.calls[0][0] as { to: string; html: string };
+    expect(arg.to).toBe("statist@eksempel.test");
+    expect(arg.html).toContain("/statist/token-abc");
+    expect(t.spørringer.some((q) => q.sql.includes("SET sent_at = now()"))).toBe(true);
+  });
+
+  it("hopper over dem som alt har fått lenken", async () => {
+    t.utsending = [rad({ sent_at: "2026-09-18T09:00:00Z" })];
+    const res = await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`).send({});
+
+    expect(res.body.sent).toBe(0);
+    expect(res.body.skipped[0].grunn).toBe("alt_sendt");
+    // «Send til alle» skal ikke spamme dem som fikk lenken i går.
+    expect(sendtEpost).not.toHaveBeenCalled();
+  });
+
+  it("sender likevel når kallet sier resend", async () => {
+    t.utsending = [rad({ sent_at: "2026-09-18T09:00:00Z" })];
+    const res = await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`).send({ resend: true });
+
+    expect(res.body.sent).toBe(1);
+  });
+
+  it("sender ikke kort uten handling eller uten adresse", async () => {
+    t.utsending = [rad({ id: "a", action: null }), rad({ id: "b", epost: null })];
+    const res = await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`).send({});
+
+    expect(res.body.sent).toBe(0);
+    expect(res.body.skipped.map((s: { grunn: string }) => s.grunn).sort())
+      .toEqual(["mangler_epost", "mangler_handling"]);
+    expect(sendtEpost).not.toHaveBeenCalled();
+  });
+
+  it("rapporterer feil fra e-posttjenesten uten å merke kortet sendt", async () => {
+    sendtEpost.mockResolvedValue({ sent: false, reason: "resend_domain_not_verified" } as never);
+    const res = await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`).send({});
+
+    expect(res.body.sent).toBe(0);
+    expect(res.body.skipped[0].grunn).toBe("resend_domain_not_verified");
+    // Ikke merket sendt: ellers ville «send til alle» hoppet over den neste gang.
+    expect(t.spørringer.some((q) => q.sql.includes("SET sent_at = now()"))).toBe(false);
   });
 });

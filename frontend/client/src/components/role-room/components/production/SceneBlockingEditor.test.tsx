@@ -164,3 +164,46 @@ describe('storyboard-ramme på et kort', () => {
     expect(knapp).toHaveTextContent('ikke tegnet ennå');
   });
 });
+
+describe('sende lenkene', () => {
+  beforeEach(() => {
+    vi.spyOn(roleCardService, 'getBlocking').mockResolvedValue({ planUrl: PLAN, camera: null });
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([kort() as never]);
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([]);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sier hvor mange som IKKE fikk lenken', async () => {
+    vi.spyOn(roleCardService, 'send').mockResolvedValue({
+      sent: 4,
+      sentIds: [],
+      skipped: [
+        { id: 'a', grunn: 'mangler_epost' },
+        { id: 'b', grunn: 'mangler_epost' },
+        { id: 'c', grunn: 'alt_sendt' },
+      ],
+    });
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Send lenkene/ }));
+
+    // Uten dette tror avsenderen at alle fikk beskjed.
+    expect(await screen.findByText(/4 sendt · 1 hadde fått den før · 2 mangler e-post/)).toBeInTheDocument();
+  });
+
+  it('kan sende på nytt bevisst, ikke ved et uhell', async () => {
+    const send = vi.spyOn(roleCardService, 'send').mockResolvedValue({ sent: 1, sentIds: [], skipped: [] });
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Send lenkene/ }));
+    await screen.findByText(/1 sendt/);
+
+    expect(send).toHaveBeenCalledWith('p1', 's1', false);
+    fireEvent.click(screen.getByRole('button', { name: 'Send på nytt til alle' }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith('p1', 's1', true));
+  });
+
+  it('kan ikke sende når det ikke finnes kort', async () => {
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    expect(await screen.findByRole('button', { name: /Send lenkene/ })).toBeDisabled();
+  });
+});
