@@ -1,4 +1,4 @@
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -277,6 +277,47 @@ function formatMoney(value: number, currency: string): string {
   }
 }
 
+export interface ObservationDraft {
+  category: LocationScoutObservationCategory;
+  status: LocationScoutEvidenceStatus;
+  value: string;
+}
+
+/**
+ * Inntasting av en observasjon, med sitt eget utkast.
+ *
+ * Utkastet lå tidligere i arbeidsflaten, så hvert tastetrykk tegnet hele
+ * lokasjonsflaten på nytt — målt til 1,9 s per tegn i jsdom. En scout som
+ * skriver «62 dBA ved nordport» i felt betalte den prisen 18 ganger.
+ * Utkastet hører hjemme her; arbeidsflaten trenger bare den ferdige
+ * observasjonen.
+ */
+const ObservationEntryRow = memo(function ObservationEntryRow({
+  readOnly,
+  onAdd,
+}: {
+  readOnly: boolean;
+  onAdd: (draft: ObservationDraft) => void;
+}) {
+  const [category, setCategory] = useState<LocationScoutObservationCategory>('access');
+  const [status, setStatus] = useState<LocationScoutEvidenceStatus>('observed');
+  const [value, setValue] = useState('');
+  const submit = () => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onAdd({ category, status, value: trimmed });
+    setValue('');
+  };
+  return (
+    <>
+      <FormControl size="small" sx={fieldSx}><InputLabel>Kategori</InputLabel><Select label="Kategori" inputProps={{ 'aria-label': 'Observasjonskategori' }} value={category} disabled={readOnly} onChange={(event) => setCategory(event.target.value as LocationScoutObservationCategory)}>{Object.entries(OBSERVATION_CATEGORY_LABELS).map(([item, label]) => <MenuItem key={item} value={item}>{label}</MenuItem>)}</Select></FormControl>
+      <FormControl size="small" sx={fieldSx}><InputLabel>Evidensstatus</InputLabel><Select label="Evidensstatus" inputProps={{ 'aria-label': 'Evidensstatus' }} value={status} disabled={readOnly} onChange={(event) => setStatus(event.target.value as LocationScoutEvidenceStatus)}><MenuItem value="unknown">Ukjent</MenuItem><MenuItem value="observed">Observert</MenuItem><MenuItem value="verified">Verifisert</MenuItem></Select></FormControl>
+      <TextField size="small" label="Hva ble observert eller målt?" value={value} disabled={readOnly} onChange={(event) => setValue(event.target.value)} sx={fieldSx} />
+      <Button variant="outlined" onClick={submit} disabled={readOnly || !value.trim()} sx={{ minHeight: 48, color: '#99f6e4', borderColor: 'rgba(94,234,212,.3)' }}>Legg til</Button>
+    </>
+  );
+});
+
 export function LocationManagerWorkspace({
   project,
   readOnly = false,
@@ -317,9 +358,6 @@ export function LocationManagerWorkspace({
   const [captureDevice, setCaptureDevice] = useState('');
   const [linkedCheckId, setLinkedCheckId] = useState('');
   const [pinLabel, setPinLabel] = useState('');
-  const [observationValue, setObservationValue] = useState('');
-  const [observationCategory, setObservationCategory] = useState<LocationScoutObservationCategory>('access');
-  const [observationStatus, setObservationStatus] = useState<LocationScoutEvidenceStatus>('observed');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const { confirmIfDirty } = useBeforeUnloadIfDirty({
     isDirty: dirty,
@@ -506,7 +544,7 @@ export function LocationManagerWorkspace({
     setDirty(false);
   }, [project, selectedLocation]);
 
-  const updateOperations = (updater: (current: LocationManagerOperations) => LocationManagerOperations) => {
+  const updateOperations = useCallback((updater: (current: LocationManagerOperations) => LocationManagerOperations) => {
     if (readOnly) return;
     if (operations?.decisionReview.lockedAt) {
       setFeedback({ type: 'warning', text: 'Beslutningen er låst. Gjenåpne den før feltgrunnlaget endres.' });
@@ -515,7 +553,7 @@ export function LocationManagerWorkspace({
     setOperations((current) => current ? updater(current) : current);
     setDirty(true);
     setFeedback(null);
-  };
+  }, [readOnly, operations?.decisionReview.lockedAt]);
 
   const selectLocation = (locationId: string) => {
     if (locationId === selectedLocationId || !confirmIfDirty()) return;
@@ -761,17 +799,17 @@ export function LocationManagerWorkspace({
     if (selectedMediaUrl) window.open(selectedMediaUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const addObservation = () => {
-    if (!observationValue.trim() || !operations || readOnly) return;
+  const addObservation = useCallback((draft: ObservationDraft) => {
+    if (!draft.value || !operations || readOnly) return;
     updateOperations((current) => ({
       ...current,
       scoutCapture: {
         ...current.scoutCapture,
         observations: [{
           id: scoutId('observation'),
-          category: observationCategory,
-          status: observationStatus,
-          value: observationValue.trim(),
+          category: draft.category,
+          status: draft.status,
+          value: draft.value,
           source: 'field_observation',
           observedAt: new Date().toISOString(),
           coordinates: current.scoutCapture.coordinates,
@@ -781,8 +819,7 @@ export function LocationManagerWorkspace({
         }, ...current.scoutCapture.observations],
       },
     }));
-    setObservationValue('');
-  };
+  }, [operations, readOnly, updateOperations, selectedMediaId, mediaSceneRefs, linkedCheckId]);
 
   const addPinAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!selectedMediaId || readOnly || event.currentTarget !== event.target) return;
@@ -1168,10 +1205,7 @@ export function LocationManagerWorkspace({
                     <Typography sx={{ fontWeight: 800 }}>Strukturerte observasjoner</Typography>
                     <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.75rem', mb: 1 }}>Bare eksplisitt verifisert evidens kan behandles som fakta i videre analyse.</Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '150px 150px minmax(0,1fr) auto' }, gap: .8, alignItems: 'center' }}>
-                      <FormControl size="small" sx={fieldSx}><InputLabel>Kategori</InputLabel><Select label="Kategori" inputProps={{ 'aria-label': 'Observasjonskategori' }} value={observationCategory} disabled={readOnly} onChange={(event) => setObservationCategory(event.target.value as LocationScoutObservationCategory)}>{Object.entries(OBSERVATION_CATEGORY_LABELS).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</Select></FormControl>
-                      <FormControl size="small" sx={fieldSx}><InputLabel>Evidensstatus</InputLabel><Select label="Evidensstatus" inputProps={{ 'aria-label': 'Evidensstatus' }} value={observationStatus} disabled={readOnly} onChange={(event) => setObservationStatus(event.target.value as LocationScoutEvidenceStatus)}><MenuItem value="unknown">Ukjent</MenuItem><MenuItem value="observed">Observert</MenuItem><MenuItem value="verified">Verifisert</MenuItem></Select></FormControl>
-                      <TextField size="small" label="Hva ble observert eller målt?" value={observationValue} disabled={readOnly} onChange={(event) => setObservationValue(event.target.value)} sx={fieldSx} />
-                      <Button variant="outlined" onClick={addObservation} disabled={readOnly || !observationValue.trim()} sx={{ minHeight: 48, color: '#99f6e4', borderColor: 'rgba(94,234,212,.3)' }}>Legg til</Button>
+                      <ObservationEntryRow readOnly={readOnly} onAdd={addObservation} />
                     </Box>
                     <Stack spacing={.6} sx={{ mt: operations.scoutCapture.observations.length ? 1 : 0 }}>
                       {operations.scoutCapture.observations.map((observation) => <Box key={observation.id} sx={{ display: 'flex', gap: .75, alignItems: 'center', minHeight: 44, p: .65, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.025)' }}><Chip size="small" label={observation.status === 'verified' ? 'Verifisert' : observation.status === 'observed' ? 'Observert' : 'Ukjent'} sx={{ bgcolor: observation.status === 'verified' ? 'rgba(52,211,153,.12)' : observation.status === 'observed' ? 'rgba(93, 118, 203,.12)' : 'rgba(148,163,184,.1)', color: observation.status === 'verified' ? '#6ee7b7' : '#c3cbe6' }} /><Typography sx={{ flex: 1, fontSize: '.78rem' }}><strong>{OBSERVATION_CATEGORY_LABELS[observation.category]}:</strong> {observation.value}</Typography><IconButton aria-label={`Slett observasjon ${observation.value}`} disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, observations: current.scoutCapture.observations.filter((entry) => entry.id !== observation.id) } }))} sx={{ minWidth: 44, minHeight: 44, color: '#fda4af' }}><DeleteIcon /></IconButton></Box>)}

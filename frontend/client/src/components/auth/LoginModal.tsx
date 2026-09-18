@@ -24,8 +24,8 @@ import {
   Close,
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
-import { startCreatorHubGoogleLogin, consumeCreatorHubGoogleLoginError, dismissCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
-import { fetchCreatorHubLinkedInLoginEnabled, startCreatorHubLinkedInLogin } from '@/lib/creatorhubLinkedInAuth';
+import { startCreatorHubGoogleLogin, dismissCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
+import { fetchCreatorHubLinkedInLoginEnabled, isLeadgridLoginSurface, startCreatorHubLinkedInLogin } from '@/lib/creatorhubLinkedInAuth';
 import { useAuth } from '@/hooks/useAuth';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 
@@ -76,8 +76,10 @@ export function LoginModal({
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  // «Fortsett med LinkedIn» vises bare når backend sier flyten er tilgjengelig
-  // (LinkedIn-app konfigurert og LINKEDIN_LOGIN_ENABLED ikke «off»).
+  // «Fortsett med LinkedIn» hører til Leadgrid. Samme modal brukes av CreatorHub,
+  // admin-hosten og Role Room; der skal knappen ikke vises. På Leadgrid vises den
+  // først når backend bekrefter at flyten er tilgjengelig (LinkedIn-app
+  // konfigurert og LINKEDIN_LOGIN_ENABLED ikke «off»).
   const [linkedInEnabled, setLinkedInEnabled] = useState(false);
 
   // Get contextual title
@@ -129,6 +131,10 @@ export function LoginModal({
 
   useEffect(() => {
     if (!open) {
+      return;
+    }
+    if (!isLeadgridLoginSurface()) {
+      setLinkedInEnabled(false);
       return;
     }
     let cancelled = false;

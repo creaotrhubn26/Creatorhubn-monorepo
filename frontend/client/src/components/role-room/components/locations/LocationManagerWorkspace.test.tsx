@@ -121,10 +121,11 @@ describe('LocationManagerWorkspace', () => {
     expect(screen.getByText(/62 dBA ved nordport/)).toBeInTheDocument();
     expect(screen.getAllByText('Verifisert').length).toBeGreaterThan(0);
     expect(screen.getByText('Ulagrede endringer')).toBeInTheDocument();
-  // Fire interaksjoner mot hele feltarbeidsflaten koster ~9 s i jsdom, og den
-  // gamle grensen på 10 s lot testen falle på maskinlast alene. Grensen er her
-  // for å fange en hengende test, ikke for å måle ytelse.
-  }, 30_000);
+  // Testen brukte 11 s så lenge utkastet lå i arbeidsflaten og hvert tastetrykk
+  // tegnet hele lokasjonsflaten på nytt. Etter at inntastingen fikk sin egen
+  // memoiserte komponent tar den ~6 s. Grensen står med rom for maskinlast,
+  // men lavt nok til at den smeller hvis utkastet løftes opp igjen.
+  }, 15_000);
 
   it('submits a signer decision through the role-derived decision endpoint', async () => {
     const initial = buildLocationManagerOperations(project.locations![0], project);

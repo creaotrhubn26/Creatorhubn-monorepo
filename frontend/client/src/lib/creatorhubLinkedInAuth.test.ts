@@ -4,6 +4,7 @@ import {
   buildCreatorHubLinkedInReturnPath,
   fetchCreatorHubLinkedInLoginEnabled,
   hasCreatorHubLinkedInCallbackState,
+  isLeadgridLoginSurface,
   readCreatorHubLinkedInCallbackIntent,
 } from './creatorhubLinkedInAuth';
 import {
@@ -100,5 +101,36 @@ describe('fetchCreatorHubLinkedInLoginEnabled', () => {
     expect(await fetchCreatorHubLinkedInLoginEnabled()).toBe(false);
     globalThis.fetch = vi.fn(async () => jsonResponse(200, { enabled: true })) as unknown as typeof fetch;
     expect(await fetchCreatorHubLinkedInLoginEnabled()).toBe(true);
+  });
+});
+
+describe('isLeadgridLoginSurface', () => {
+  it('is true on the Leadgrid hosts', () => {
+    for (const hostname of ['leadgrid.no', 'www.leadgrid.no', 'LEADGRID.NO', 'leadgrid.theroleroom.com']) {
+      expect(isLeadgridLoginSurface({ hostname, pathname: '/login' })).toBe(true);
+    }
+  });
+
+  it('is true on /leadgrid paths when Leadgrid is served from a shared host', () => {
+    expect(isLeadgridLoginSurface({ hostname: 'creatorhubn.com', pathname: '/leadgrid/login' })).toBe(true);
+    expect(isLeadgridLoginSurface({ hostname: 'creatorhubn.com', pathname: '/leadgrid' })).toBe(true);
+  });
+
+  it('is false on CreatorHub, admin and Role Room login', () => {
+    expect(isLeadgridLoginSurface({ hostname: 'creatorhubn.com', pathname: '/login' })).toBe(false);
+    expect(isLeadgridLoginSurface({ hostname: 'www.creatorhubn.com', pathname: '/login' })).toBe(false);
+    expect(isLeadgridLoginSurface({ hostname: 'admin.creatorhubn.com', pathname: '/login' })).toBe(false);
+    expect(isLeadgridLoginSurface({ hostname: 'theroleroom.com', pathname: '/login' })).toBe(false);
+  });
+
+  it('does not match a path that merely starts with the same letters', () => {
+    expect(isLeadgridLoginSurface({ hostname: 'creatorhubn.com', pathname: '/leadgridding' })).toBe(false);
+  });
+
+  it('falls back to the current window location', () => {
+    window.history.replaceState({}, '', '/leadgrid/login');
+    expect(isLeadgridLoginSurface()).toBe(true);
+    window.history.replaceState({}, '', '/login');
+    expect(isLeadgridLoginSurface()).toBe(false);
   });
 });
