@@ -26,6 +26,8 @@ export interface RoleCard {
   revoked_at: string | null;
   contact_email: string | null;
   sent_at: string | null;
+  /** Første gang kortet ble åpnet av personen selv. Null = ikke sett ennå. */
+  opened_at: string | null;
 }
 
 export interface SceneBlocking {

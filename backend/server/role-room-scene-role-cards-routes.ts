@@ -104,7 +104,7 @@ export function setupRoleRoomSceneRoleCardsRoutes(
       const r = await pool.query(
         `SELECT id, project_id, scene_id, production_day_id, person_name, person_kind,
                 talent_id, action, cue, position, wardrobe, frame_image_url, call_time,
-                sort_order, token, revoked_at, contact_email, sent_at, created_at, updated_at
+                sort_order, token, revoked_at, contact_email, sent_at, opened_at, created_at, updated_at
            FROM scene_role_cards
           WHERE project_id = $1
             AND ($2::text IS NULL OR scene_id = $2)
@@ -470,6 +470,19 @@ export function setupRoleRoomSceneRoleCardsRoutes(
       if (!card || card.revoked_at) {
         return res.status(404).json({ error: "Lenken gjelder ikke lenger" });
       }
+
+      // Første åpning markeres, senere lar raden stå: spørsmålet er «har hen
+      // sett kortet?», ikke hvor mange ganger. `opened_at IS NULL` gjør det til
+      // et no-op etter første gang.
+      // Feiler skrivingen, vises kortet likevel — kvitteringen er mindre viktig
+      // enn at personen får se hva hen skal gjøre.
+      pool
+        .query(
+          `UPDATE scene_role_cards SET opened_at = NOW()
+            WHERE id = $1 AND opened_at IS NULL`,
+          [card.id],
+        )
+        .catch((err) => console.error("[role-cards public] kunne ikke markere åpnet", err));
 
       // Bare det personen trenger for å utføre oppgaven. Ingen andre kort,
       // ingen kontaktliste, ingen budsjettall.
