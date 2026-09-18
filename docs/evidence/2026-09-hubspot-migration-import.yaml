@@ -47,18 +47,52 @@ project_impact: >
   import_source, import_batch_id og import_raw_data, så rå HubSpot-objekter kan
   lagres for senere re-mapping uten nytt API-uttak. Prosjektavgrensning finnes
   i project_id/organization_id/owner_user_id. Deals og pipeline-stadier er den
-  kostbare delen: Leadgrid har ingen pipeline-modell som speiler HubSpot-stadier,
-  og connector-siden lover i dag "Pipeline-mapping".
+  kostbare delen, men ikke fordi modellen mangler: vi HAR pipeline_stage,
+  deal_amount, expected_close_date og crm_deal_stage_history. Formen er en
+  annen — vår stage er en fast CHECK og dealen ligger på kunde-raden, mens
+  HubSpot har egendefinerte pipelines og deals som egne objekter. Se model_gap.
+model_gap:
+  hard_failures:
+    - "pipeline_stage er CHECK IN (new, first_contact, qualified, meeting, proposal, negotiation, won, lost) (migrasjon 313:41). HubSpot-kunder definerer egne pipelines og stagenavn; ukjent verdi bryter constrainten."
+    - "leadgrid_customer_contacts.customer_id er NOT NULL med FK til crm_customers (migrasjon 0564). En HubSpot-kontakt uten company-association har ingen lovlig plass."
+    - "crm_customers.owner_user_id og crm_lead_activities.user_id peker på users(id). HubSpot-eieren er en HubSpot-bruker som ikke finnes hos oss; uten eier-mapping blir det FK-brudd eller tapt eierskap."
+  silent_data_loss:
+    - "leadgrid_customer_contacts har name, role, organization_number — ingen e-post og ingen telefon. E-post er det definerende feltet på en HubSpot-kontakt."
+    - "Deal-felter (deal_amount, expected_close_date, deal_probability, deal_stage_changed_at) ligger PÅ crm_customers-raden (migrasjon 0349). HubSpot har deals som egne objekter; et selskap med flere åpne deals får plass til én."
+    - "HubSpot-kontakt kan tilhøre flere selskaper (mange-til-mange), og koblingen kan bære flere association labels samtidig (HUBSPOT_DEFINED + USER_DEFINED, inntil 50 labels per objektpar). Vår role er én tekststreng mot ett selskap."
+    - "crm_lead_activities.activity_type er CHECK med ti verdier (migrasjon 271); verken e-post eller telefonsamtale er blant dem. HubSpot-engasjementer kan ikke migreres uten å utvide listen."
+  decisions_required:
+    - "crm_customers.project_id er påkrevd. HubSpot har ikke prosjektbegrep, så migreringen må velge målprosjekt."
+    - "HubSpots beregnede og skrivebeskyttede properties bør ikke migreres; de er avledet av HubSpot-logikk vi ikke har."
+  not_a_problem:
+    - "Custom properties: lead_custom_field_definitions har tolv felttyper (text, long_text, number, dropdown, multi_select, boolean, date, datetime, url, email, phone, currency) og lead_custom_field_values lagrer per lead. HubSpot enumeration mapper til dropdown/multi_select."
+
 confidence: strong_evidence
 decision: >
-  GO for engangs-migrering HubSpot -> Leadgrid på Private App-token, med
-  kontakter og selskaper først. Pipeline-mapping avklares separat før det
-  loves. Ingen toveis sync i denne fasen. Følg opp: den datostemplede
-  API-stien (2026-03) må bumpes når HubSpot ruller ny versjon; sjekk
-  usage-guidelines på nytt før lansering fordi rate-grensene varierer med
-  kundens HubSpot-nivå.
+  GO for engangs-migrering HubSpot -> Leadgrid på Private App-token. Første
+  steg er en ren klassifiserings-funksjon (hubspot-migration-plan.ts) som
+  avgjør hva som skjer med hver record mot våre constraints, testet mot
+  fikstur uten HubSpot-tilgang. Validering mot et gratis HubSpot developer
+  test account (hs test-account create) kommer før noen ekte kunde kobles på.
+  Ingen toveis sync i denne fasen.
+  Retningsvalg: gapene over skal IKKE lukkes ved å kaste data som ikke
+  passer. Der HubSpot er rikere enn oss (flere deals per kunde, e-post på
+  kontakt, mange-til-mange med labels, e-post/samtale som aktivitet) er
+  paritet minimumskravet, ikke et strekkmål — ellers blir en migrering et
+  tap for kunden. Det vi har som de ikke har (prosjekt-avgrensning,
+  AI-score, import_raw_data-sporbarhet) er det som skal gjøre oss bedre,
+  og det forutsetter at grunnmuren først er på høyde.
+  Følg opp: den datostemplede API-stien (2026-03) må bumpes når HubSpot
+  ruller ny versjon; sjekk usage-guidelines på nytt før lansering fordi
+  rate-grensene varierer med kundens HubSpot-nivå.
 affected:
+  - backend/server/hubspot-migration-plan.ts
+  - backend/server/hubspot-migration-fixtures.ts
   - backend/server/leadgrid-import-routes.ts
+  - backend/migrations/313_leadgrid_intelligence.sql
+  - backend/migrations/0349_leadgrid_deals_and_workflows.sql
+  - backend/migrations/0564_leadgrid_discovery_clinic_grouping.sql
+  - backend/migrations/271_lead_map.sql
   - backend/migrations/328_leadgrid_lead_import.sql
   - backend/server/integrations/integration-registry.ts
   - frontend/client/src/pages/leadgrid-connectors.tsx
