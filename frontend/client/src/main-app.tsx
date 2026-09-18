@@ -7,6 +7,7 @@ import ReactDOM from 'react-dom/client';
 import { initSentry } from './utils/sentry';
 import { runLegacyStorageMigration } from './components/role-room/utils/legacyStorageMigrator';
 import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
+import { bootstrapCreatorHubLinkedInLoginRedirect } from './lib/creatorhubLinkedInAuth';
 import { getStoredAuthToken } from './lib/queryClient';
 
 // Stabilitetsaudit § 7.2 — kjør idempotent migrasjon av sårbare
@@ -297,6 +298,12 @@ if (!rootElement) {
     : Promise.resolve())
     .catch((error) => {
       console.error('[main.tsx] Google login bootstrap failed:', error);
+    })
+    .then(() => (shouldBootstrapCreatorHubGoogleRedirect
+      ? bootstrapCreatorHubLinkedInLoginRedirect()
+      : Promise.resolve()))
+    .catch((error) => {
+      console.error('[main.tsx] LinkedIn login bootstrap failed:', error);
     })
     .then(() => resolveRootComponent())
     .then((RootComponent) => {

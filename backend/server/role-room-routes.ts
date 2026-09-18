@@ -29,6 +29,7 @@ import {
 } from './role-room-native-google-oauth.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
 import { buildRoleRoomLinkedInOauthScopes } from './role-room-linkedin-oauth-scopes.js';
+import { resolveLinkedInOauthClient, resolveLinkedInRedirectUri } from './linkedin-oauth-config.js';
 import { resolveOrgIdForUser, invalidateOrgCache } from './leadgrid-org-resolver.js';
 import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
 import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
@@ -1486,21 +1487,9 @@ function getRoleRoomGoogleRedirectUri(req?: Request): string | null {
 }
 
 function getRoleRoomLinkedInRedirectUri(req?: Request): string | null {
-  const configured = readStringValue(process.env.ROLE_ROOM_LINKEDIN_REDIRECT_URI);
-  if (configured) {
-    return configured;
-  }
-
-  if (!req) {
-    return null;
-  }
-  const host = req.get('host');
-  if (!host) {
-    return null;
-  }
-  const forwardedProto = readStringValue(req.headers['x-forwarded-proto']);
-  const protocol = forwardedProto ?? req.protocol ?? 'http';
-  return `${protocol}://${host}/api/auth/linkedin/callback`;
+  // Delt med LinkedIn-innloggingen (linkedin-login-routes.ts): samme app,
+  // samme registrerte callback-URL.
+  return resolveLinkedInRedirectUri(req);
 }
 
 function getRoleRoomRequestOrigin(req?: Request): string | null {
@@ -1545,8 +1534,7 @@ function getRoleRoomGoogleConfig(
 }
 
 function getRoleRoomLinkedInConfig(req?: Request) {
-  const clientId = readStringValue(process.env.ROLE_ROOM_LINKEDIN_CLIENT_ID ?? process.env.LINKEDIN_CLIENT_ID);
-  const clientSecret = readStringValue(process.env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET ?? process.env.LINKEDIN_CLIENT_SECRET);
+  const { clientId, clientSecret } = resolveLinkedInOauthClient();
   const redirectUri = getRoleRoomLinkedInRedirectUri(req);
   const encryptionKey = deriveRoleRoomLinkedInEncryptionKey();
   return {

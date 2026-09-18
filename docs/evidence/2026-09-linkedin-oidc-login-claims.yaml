@@ -1,0 +1,60 @@
+claim: >
+  «Sign In with LinkedIn using OpenID Connect» (scopes openid profile email) gir
+  via GET https://api.linkedin.com/v2/userinfo claims sub, name, given_name,
+  family_name, picture, email, email_verified og locale. Headline, tittel,
+  selskap og stillinger er ikke tilgjengelig for selvbetjente apper: det krever
+  r_basicprofile (partnerprogram). r_liteprofile/r_emailaddress er den gamle
+  v2-veien; OIDC er den anbefalte for innlogging.
+source_type: api_reference
+source: >
+  LinkedIn Sign In with LinkedIn v2 / OpenID Connect (learn.microsoft.com —
+  domenet er egress-blokkert fra agent-miljøet, verifisert via søketreff):
+  https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2
+  https://www.linkedin.com/developers/news/featured-updates/openid-connect-authentication
+  https://learn.microsoft.com/en-us/linkedin/shared/integrations/people/profile-api
+  Sekundært: dev.to (nicolasai, fardinabir 2026), logto.io oauth-providers-explorer/linkedin.
+authority_tier: 2
+vendor: LinkedIn (Microsoft)
+product: Sign In with LinkedIn (OpenID Connect)
+version_scope: "OAuth 2.0 + OIDC userinfo (uversjonert endepunkt /v2/userinfo)"
+publication_date: "2026-09-18"
+valid_from: "2026-09-18"
+valid_to: "2027-09-18"
+evidence_summary: >
+  Repo-inventar (18.09.2026): innlogging var e-post/passord + Google; LinkedIn
+  fantes bare som tilkobling etter innlogging. Role Room-callbacken kalte
+  allerede /v2/userinfo og fikk picture, men lagret det bare rått. users har
+  ingen provider-id-kolonne (google_id/auth_provider droppet i migrasjon 0001).
+  Tier 2 fordi de offisielle sidene ikke kunne leses direkte; claim-listen er
+  konsistent på tvers av søketreff fra learn.microsoft.com, LinkedIns egen
+  utviklernyhet og to uavhengige sekundærkilder.
+interpretation: >
+  «Profilen fylles fra LinkedIn» betyr navn, bilde og e-post. Profesjon og
+  selskap kan ikke fylles automatisk uten partnerprogram; brukeren fyller dem
+  selv. Bilde-URL-ene fra LinkedIn utløper, så bildet må lastes ned og lagres
+  hos oss (R2) i stedet for å lenkes.
+project_impact: >
+  Ny innloggingsmetode (web LoginModal + Leadgrid iOS PairingView) bak
+  LINKEDIN_LOGIN_ENABLED. Ny tabell user_auth_identities (0618) for
+  (provider, subject). Oppslag: identitet → publiserings-tilkobling → verifisert
+  e-post → opprett member + solo_free-org. Profilfelt fylles bare når tomme.
+  Samme LinkedIn-app og callback-URL som tilkoblingen; state-prefiks lgn_
+  ruter callbacken.
+confidence: moderate_evidence
+decision: >
+  GO — OIDC-innlogging med minimale scopes; ingen r_basicprofile-søknad.
+  Følg opp: hvis LinkedIn åpner r_basicprofile for appen (partner), kan
+  profession/company_name fylles i samme resolver uten ny flyt.
+affected:
+  - backend/server/linkedin-login.ts
+  - backend/server/linkedin-login-routes.ts
+  - backend/server/linkedin-oauth-config.ts
+  - backend/migrations/0618_user_auth_identities.sql
+  - frontend/client/src/lib/creatorhubLinkedInAuth.ts
+  - frontend/client/src/components/auth/LoginModal.tsx
+  - ipad/LeadMapApp/LeadMapApp/Core/LinkedInSignInService.swift
+  - ipad/LeadMapApp/LeadMapApp/App/PairingFlow.swift
+lesson: >
+  Avklar hvilke claims en OIDC-leverandør faktisk gir FØR «fyll profilen»
+  loves: for LinkedIn er det identitet + bilde, ikke CV. Sjekk også om
+  bilde-URL-er er stabile — LinkedIns er ikke det.

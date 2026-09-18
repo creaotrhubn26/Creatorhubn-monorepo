@@ -178,7 +178,11 @@ function readStoredJson<T>(key: string): T | null {
 // brukere som refresher dashbordet etter feil mistet meldingen.
 const ERROR_TTL_MS = 10 * 60_000;
 
-function writeGoogleLoginError(message: string): void {
+/**
+ * Skriver en innloggingsfeil (Google eller LinkedIn) til sessionStorage. Én
+ * nøkkel for begge så LoginPageSimple/LoginModal viser feilen uansett leverandør.
+ */
+export function writeCreatorHubLoginError(message: string): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -242,7 +246,7 @@ function hasPermission(
   return user.permissions.some((entry) => entry.trim().toLowerCase() === permission);
 }
 
-function normalizeCreatorHubAuthUser(
+export function normalizeCreatorHubAuthUser(
   rawUser: Record<string, unknown>,
   fallbackEmail?: string | null,
 ): CreatorHubAuthUser | null {
@@ -311,7 +315,7 @@ async function readResponsePayload(response: Response): Promise<unknown> {
   }
 }
 
-async function fetchCreatorHubJson<T>(
+export async function fetchCreatorHubJson<T>(
   url: string,
   options?: Omit<RequestInit, 'body'> & { body?: Record<string, unknown> | string },
 ): Promise<T> {
@@ -859,7 +863,7 @@ export async function bootstrapCreatorHubGoogleLoginRedirect(): Promise<void> {
 
     await completeCreatorHubGoogleLoginTransfer(googleTransferId);
   } catch (error) {
-    writeGoogleLoginError(
+    writeCreatorHubLoginError(
       error instanceof Error ? error.message : 'Google-innloggingen feilet.',
     );
   } finally {
