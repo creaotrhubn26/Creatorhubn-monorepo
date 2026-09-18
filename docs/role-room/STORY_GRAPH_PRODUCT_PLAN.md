@@ -229,6 +229,28 @@ kildene registreres med SHA-256.
   kildene; evidens i `docs/evidence/2026-09-what-follows-us-source-registry.yaml`.
 
 
+### Fase 8 — «Next level»: fra manus til spill, KI-manusvakt, salg og drift (PÅGÅR)
+
+Verdikt 2026-09-18: Story Graph var et register — alt skrevet inn for hånd, gater satt manuelt,
+ingenting flyter tilbake fra spillbygget eller manusdokumentene. Fase 8 lukker tre løkker
+(manus → Story Graph, spillbygg → gater, Story Graph → spill) med WFU som første bruker, og gjør
+vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis → 8d manusvakt →
+8e Swift-runtime + spilltest → 8f lesning/referansebilder → 8g salgsklar. Én PR per del.
+
+- **8a Drift-fundament (LEVERT):** server-side av-bryter `ROLE_ROOM_GAME_STUDIO_ENABLED`
+  (`backend/server/game-studio-kill-switch.ts`; alt under `/api/role-room/narrative` og `/api/game`
+  svarer 503 `game_studio_disabled`, frontend viser helsidebanner); Sentry-fangst i narrative-rutenes
+  `wrap()` via `captureBackendException` (no-op uten DSN); alle `req.params` gjennom `param()`
+  (backend-tsc 877 → 842 feil, 0 i narrative-rutene); per-token rate-limit på `/public/:token`
+  (`narrative-rate-limit.ts`, 120/min — ikke IP, som er lik for alle bak Renders proxy);
+  Neon-branch-tørrkjøring av migrasjoner før prod i `auto-migrate-on-push.yml`
+  (`backend/scripts/neon-branch-dry-run.sh`; hoppes over til `NEON_API_KEY`/`NEON_PROJECT_ID` er lagt inn;
+  evidens `docs/evidence/2026-09-neon-branch-migration-dry-run.yaml`); perf-vakt
+  `shared/narrative-runtime/perf.test.ts` (2 000 elementer / ~3 000 koblinger: validering og 300 valg
+  under 1,5 s).
+- **8b–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
+
+
 ## Researchprogram
 
 - Månedlig: sjekk `github.com/arcweave/*` releases (plugin-versjoner, JSON-skjema) og

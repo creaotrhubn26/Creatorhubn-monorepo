@@ -287,6 +287,7 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Historie, karakterer, lokasjoner, plattform | Episoder med «hva spillerne lærer», tidslinje med låste beslutninger, åpne spørsmål/sjekklister, kilderegister med SHA-256; scenekort v2 (Før/Handling/Kontroll/Etter/Lyd, epoke, kildemerker, replikker med cue-ID og opptaksstatus, seks leveransegater med bevis-krav); karakter-/lokasjonsgalleri med typet profil; målplattform med budsjett, krav m/ bevis og visuell retning; MCP `rr_get_scene_card`; seed av det ekte prosjektet «What Follows Us» | ✅ Fase 7 (alle planer) |
 | Produksjonsplan | Milepæler per bane i Gantt (i-dag, zoom, popover) og liste, scener med datoer, «uten dato» | ✅ Fase 7 (Pro/Studio) |
 | Team & gjester | Roller med spill-kapabiliteter, seter fra plan, PIN-invitasjon (`/game/invite/:token`), kapabilitetssjekk på sletting/beslutning/plan; gjeste-reviewere uten konto via `/story-review/:token` (se/kommentere/beslutte, stale-vern, varsel) | ✅ Fase 7 (Studio) |
+| Drift & robusthet | Server-side av-bryter (`ROLE_ROOM_GAME_STUDIO_ENABLED`, 503 + helsidebanner), Sentry-fangst i narrative-rutene, per-token rate-limit på delingslenker, Neon-branch-tørrkjøring av migrasjoner før prod, perf-vakt for store grafer | ✅ Fase 8a (alle planer) |
 
 **Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
 login-persona. Priser er plassholdere satt i migrasjon 0621 og redigeres i «Admin · Planer».
