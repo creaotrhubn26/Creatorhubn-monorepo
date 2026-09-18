@@ -55,7 +55,7 @@ export function sortNextUp(items: readonly NextUpItem[]): NextUpItem[] {
 }
 
 export interface HomeKpi {
-  key: 'scenes' | 'gates' | 'tasks' | 'reviews' | 'lines' | 'platform';
+  key: 'scenes' | 'gates' | 'tasks' | 'reviews' | 'lines' | 'platform' | 'guardian';
   label: string;
   value: string;
   sub: string;
@@ -86,6 +86,8 @@ export function homeKpis(o: NarrativeProjectOverview): HomeKpi[] {
     { key: 'tasks', label: 'Oppgaver', value: String(o.tasks.open), sub: o.tasks.overdue ? `${o.tasks.overdue} forfalt · ${o.tasks.done} ferdig` : `${o.tasks.done} ferdig`, pct: pct(o.tasks.done, o.tasks.open + o.tasks.done), tab: 'scenes', tone: o.tasks.overdue ? 'error' : 'neutral' },
     { key: 'reviews', label: 'Åpne runder', value: String(o.reviews.open), sub: o.reviews.open ? 'venter på beslutning' : 'ingen runder åpne', pct: null, tab: 'scenes', tone: o.reviews.open ? 'warning' : 'neutral' },
     { key: 'lines', label: 'Replikker', value: String(o.lines.total), sub: `${o.lines.approved} godkjente opptak`, pct: pct(o.lines.approved, o.lines.total), tab: 'characters', tone: 'neutral' },
+    // Fase 8d: manusvakt — ventende funn (høye teller mest).
+    { key: 'guardian', label: 'Manusvakt', value: o.guardian ? String(o.guardian.pending) : '–', sub: o.guardian ? (o.guardian.pending ? `${o.guardian.high} høye · godta = åpent spørsmål` : 'ingen ventende funn') : 'ikke kjørt', pct: null, tab: 'story', tone: o.guardian?.high ? 'error' : o.guardian?.pending ? 'warning' : 'neutral' },
     { key: 'platform', label: 'Plattformkrav', value: o.platform.requirements ? `${o.platform.verified}/${o.platform.requirements}` : '–', sub: o.platform.primaryName ? `verifisert · ${o.platform.primaryName}` : 'ingen målplattform satt', pct: o.platform.requirements ? pct(o.platform.verified, o.platform.requirements) : null, tab: 'platform', tone: 'neutral' },
   ];
 }

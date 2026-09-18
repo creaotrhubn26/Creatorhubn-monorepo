@@ -262,7 +262,17 @@ vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis �
   gjenbrukbar workflow `story-graph-gate-evidence.yml` for spill-repoet. Handlere montert i `index.ts`
   FØR `express.json()` (rå body). Migrasjon `0643_narrative_ci_hooks.sql`. Docs
   `docs/role-room/STORY_GRAPH_CI_EVIDENCE.md`, evidens `2026-09-story-graph-ci-evidence-webhook.yaml`.
-- **8d–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
+- **8d KI-manusvakt (LEVERT):** `script-guardian-agent` (`backend/server/ai-script-guardian-agent.ts`)
+  kjører først et deterministisk regelpass uten modell (epoke-brudd mot undertittel, scene uten episode,
+  taler som ikke matcher karakter, replikk uten kildetype, ufullstendig kunnskapsmodell, bilde-/lydgate
+  «bestått» uten bevis-ref, åpne spørsmål eldre enn 30 dager), deretter et KI-pass (`claude-opus-5`,
+  effort medium, `cache_control`, strikt verktøy `report_issues`) som bare leser scener endret siden
+  forrige kjøring (maks 20). Funnene er forslag (`story.guardian-issue`) i AI Suggestion-systemet;
+  «Godta» oppretter et åpent spørsmål `AI-<id>` med kildemerke `A/script-guardian` — manuset endres
+  aldri automatisk. UI: Historie → «Manusvakt» (kjør regler / regler + KI), hjem-KPI «Manusvakt»
+  (ventende/høye). MCP: `rr_script_guardian_check` (kun regler, lesetilgang). e2e
+  `game-script-guardian.spec.ts`. Ingen migrasjon. Akseptanse: ren WFU-seed gir null funn.
+- **8e–8g:** se planen i sesjonsloggen; oppdateres her etter hvert som delene leveres.
 
 
 ## Researchprogram

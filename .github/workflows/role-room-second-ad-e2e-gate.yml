@@ -25,6 +25,8 @@ on:
       - 'frontend/e2e/game-team.spec.ts'
       - 'frontend/e2e/game-scene-import.spec.ts'
       - 'frontend/e2e/game-integrations.spec.ts'
+      - 'frontend/e2e/game-script-guardian.spec.ts'
+      - 'backend/server/ai-script-guardian-agent.ts'
       - 'frontend/e2e/game-guest-review.spec.ts'
       - 'frontend/e2e/helpers/gameTeamMocks.ts'
       - 'frontend/client/src/components/role-room/game/**'

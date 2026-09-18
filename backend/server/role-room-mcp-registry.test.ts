@@ -63,7 +63,7 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   });
   it("modus-filter «game_studio» → Story Graph-verktøy + globale, ikke casting/dans", () => {
     const names = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
-    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_game_scenes", "rr_game_scene_review_status", "rr_get_scene_card", "rr_project_overview", "rr_list_projects"]));
+    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_game_scenes", "rr_game_scene_review_status", "rr_get_scene_card", "rr_project_overview", "rr_script_guardian_check", "rr_list_projects"]));
     expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_list_game_scenes");
     expect(listCapabilitiesFor(["projects.read"], "production").map((c) => c.name)).not.toContain("rr_project_overview");
     expect(names).not.toContain("rr_list_auditions");
