@@ -20,9 +20,19 @@
  *     ROLE_ROOM_META_PIXEL_ID
  *     ROLE_ROOM_META_CAPI_ACCESS_TOKEN
  *     ROLE_ROOM_META_CAPI_TEST_EVENT_CODE (valgfritt)
+ *   leadgrid.no:
+ *     LEADGRID_META_PIXEL_ID
+ *     LEADGRID_META_CAPI_ACCESS_TOKEN
+ *     LEADGRID_META_CAPI_TEST_EVENT_CODE  (valgfritt)
  *
  * Site avgjøres av Origin-header (eller eventSourceUrl-feltet i body
  * som fallback). Hvis ingen match → bruker CreatorHub-credentials.
+ *
+ * leadgrid.no manglet her fram til 18.09.2026. SiteKey hadde bare
+ * 'creatorhub' og 'role-room', og alt som ikke var theroleroom.com falt til
+ * CreatorHub. Leadgrids server-side-konverteringer ble derfor sendt til
+ * CreatorHubs pixel, mens Leadgrids egen pixel (som nettleseren bruker) aldri
+ * fikk dem. Feilen var usynlig: begge kall svarte 200.
  *
  * Endepunkt:
  *   POST /api/marketing/meta-capi-event
@@ -142,7 +152,7 @@ interface SendResult {
 
 // Bestemmer hvilket pixel+token-sett som skal brukes basert på site.
 // 'creatorhub' og 'role-room' har hver sine env-vars.
-type SiteKey = "creatorhub" | "role-room";
+type SiteKey = "creatorhub" | "role-room" | "leadgrid";
 
 function resolveSiteCredentials(siteKey: SiteKey): {
   pixelId: string | undefined;
@@ -156,6 +166,13 @@ function resolveSiteCredentials(siteKey: SiteKey): {
       testCode: process.env.ROLE_ROOM_META_CAPI_TEST_EVENT_CODE,
     };
   }
+  if (siteKey === "leadgrid") {
+    return {
+      pixelId: process.env.LEADGRID_META_PIXEL_ID,
+      accessToken: process.env.LEADGRID_META_CAPI_ACCESS_TOKEN,
+      testCode: process.env.LEADGRID_META_CAPI_TEST_EVENT_CODE,
+    };
+  }
   return {
     pixelId: process.env.META_PIXEL_ID,
     accessToken: process.env.META_CAPI_ACCESS_TOKEN,
@@ -166,6 +183,15 @@ function resolveSiteCredentials(siteKey: SiteKey): {
 const ROLE_ROOM_HOSTS = new Set([
   "theroleroom.com",
   "www.theroleroom.com",
+]);
+
+// Samme liste som LEADGRID_ANALYTICS_HOSTS i frontend/client/index.html.
+// Står de fra hverandre, sender nettleseren til én pixel og serveren til en
+// annen — og da stemmer ingen av tallene.
+const LEADGRID_HOSTS = new Set([
+  "leadgrid.no",
+  "www.leadgrid.no",
+  "leadgrid.theroleroom.com",
 ]);
 
 function resolveSiteFromContext(opts: {
@@ -181,9 +207,11 @@ function resolveSiteFromContext(opts: {
       const url = c.includes("://") ? new URL(c) : new URL(`https://${c}`);
       const host = url.hostname.toLowerCase();
       if (ROLE_ROOM_HOSTS.has(host)) return "role-room";
+      if (LEADGRID_HOSTS.has(host)) return "leadgrid";
     } catch {
       const lower = c.toLowerCase();
       if (ROLE_ROOM_HOSTS.has(lower)) return "role-room";
+      if (LEADGRID_HOSTS.has(lower)) return "leadgrid";
     }
   }
   return "creatorhub";
