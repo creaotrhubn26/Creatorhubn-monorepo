@@ -75,3 +75,27 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
+
+      # Reiseguide (lydguide-POC, iPhone) har egen XcodeGen-konfig i
+      # ipad/Reiseguide. build-for-testing kompilerer app- og unit-testmålet
+      # på samme måte som StoryboardStudio, uten navngitt simulator.
+      - name: SwiftLint Reiseguide
+        working-directory: ipad/Reiseguide
+        run: swiftlint --strict
+
+      - name: Generate Reiseguide Xcode project
+        working-directory: ipad/Reiseguide
+        run: xcodegen generate
+
+      - name: Compile Reiseguide and test bundle
+        working-directory: ipad/Reiseguide
+        run: |
+          xcodebuild \
+            -project Reiseguide.xcodeproj \
+            -scheme Reiseguide \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            build-for-testing \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO

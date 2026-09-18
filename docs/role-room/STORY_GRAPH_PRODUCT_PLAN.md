@@ -229,6 +229,81 @@ kildene registreres med SHA-256.
   kildene; evidens i `docs/evidence/2026-09-what-follows-us-source-registry.yaml`.
 
 
+### Fase 8 — «Next level»: fra manus til spill, KI-manusvakt, salg og drift (PÅGÅR)
+
+Verdikt 2026-09-18: Story Graph var et register — alt skrevet inn for hånd, gater satt manuelt,
+ingenting flyter tilbake fra spillbygget eller manusdokumentene. Fase 8 lukker tre løkker
+(manus → Story Graph, spillbygg → gater, Story Graph → spill) med WFU som første bruker, og gjør
+vertikalen salgsklar. Rekkefølge: 8a drift → 8b manusimport → 8c CI-bevis → 8d manusvakt →
+8e Swift-runtime + spilltest → 8f lesning/referansebilder → 8g salgsklar. Én PR per del.
+
+- **8a Drift-fundament (LEVERT):** server-side av-bryter `ROLE_ROOM_GAME_STUDIO_ENABLED`
+  (`backend/server/game-studio-kill-switch.ts`; alt under `/api/role-room/narrative` og `/api/game`
+  svarer 503 `game_studio_disabled`, frontend viser helsidebanner); Sentry-fangst i narrative-rutenes
+  `wrap()` via `captureBackendException` (no-op uten DSN); alle `req.params` gjennom `param()`
+  (backend-tsc 877 → 842 feil, 0 i narrative-rutene); per-token rate-limit på `/public/:token`
+  (`narrative-rate-limit.ts`, 120/min — ikke IP, som er lik for alle bak Renders proxy);
+  Neon-branch-tørrkjøring av migrasjoner før prod i `auto-migrate-on-push.yml`
+  (`backend/scripts/neon-branch-dry-run.sh`; hoppes over til `NEON_API_KEY`/`NEON_PROJECT_ID` er lagt inn;
+  evidens `docs/evidence/2026-09-neon-branch-migration-dry-run.yaml`); perf-vakt
+  `shared/narrative-runtime/perf.test.ts` (2 000 elementer / ~3 000 koblinger: validering og 300 valg
+  under 1,5 s).
+- **8b Manusimport (LEVERT):** Word/PDF/Markdown/tekst → scener og replikker med dry-run-diff
+  (ny / endret / uendret / mangler i dokumentet); ingenting slettes — det som mangler blir åpne
+  spørsmål (`kind = check`); kilderegisteret får SHA-256 og verifisert-stempel; taler matches mot
+  karakterer. Parser + diff er ren TS (`narrative-document-import.ts`), skriving i én transaksjon
+  gjennom service-funksjonene. Formatkrav i `docs/role-room/STORY_GRAPH_MANUSCRIPT_IMPORT.md`.
+  UI: «Importer» i Scener-fanen (`ImportDocumentDialog.tsx`). e2e: `game-scene-import.spec.ts`.
+- **8c CI-bevis-webhook (LEVERT):** spillbygget setter leveransegater med bevis via HMAC-signert
+  webhook (`X-StoryGraph-Signature-256`) + bevis-artefakter (xcresult-zip) til S3 via
+  `narrative_assets.storage_key` (ny kind `file`); «bestått» uten bevis avvises også fra CI
+  (`setSceneGate`, `checked_by = 'ci:<hookId>'`); Integrasjoner-fane (hooks, hemmelighet vist én gang,
+  leveringslogg); «Satt av CI» + «Last ned bevis» på gate-fanen; `post-gate-evidence.sh` og
+  gjenbrukbar workflow `story-graph-gate-evidence.yml` for spill-repoet. Handlere montert i `index.ts`
+  FØR `express.json()` (rå body). Migrasjon `0643_narrative_ci_hooks.sql`. Docs
+  `docs/role-room/STORY_GRAPH_CI_EVIDENCE.md`, evidens `2026-09-story-graph-ci-evidence-webhook.yaml`.
+- **8d KI-manusvakt (LEVERT):** `script-guardian-agent` (`backend/server/ai-script-guardian-agent.ts`)
+  kjører først et deterministisk regelpass uten modell (epoke-brudd mot undertittel, scene uten episode,
+  taler som ikke matcher karakter, replikk uten kildetype, ufullstendig kunnskapsmodell, bilde-/lydgate
+  «bestått» uten bevis-ref, åpne spørsmål eldre enn 30 dager), deretter et KI-pass (`claude-opus-5`,
+  effort medium, `cache_control`, strikt verktøy `report_issues`) som bare leser scener endret siden
+  forrige kjøring (maks 20). Funnene er forslag (`story.guardian-issue`) i AI Suggestion-systemet;
+  «Godta» oppretter et åpent spørsmål `AI-<id>` med kildemerke `A/script-guardian` — manuset endres
+  aldri automatisk. UI: Historie → «Manusvakt» (kjør regler / regler + KI), hjem-KPI «Manusvakt»
+  (ventende/høye). MCP: `rr_script_guardian_check` (kun regler, lesetilgang). e2e
+  `game-script-guardian.spec.ts`. Ingen migrasjon. Akseptanse: ren WFU-seed gir null funn.
+- **8e Swift-runtime + spilltest-telemetri (LEVERT):** `packages/story-graph-runtime/swift/` (Swift Package,
+  iOS 17/macOS 14; `StoryGraphProject`/`StoryGraphSession`/`MiniScript` — samme arcscript-delsett som
+  C#/GDScript, paritetstest mot `fixtures/sample-project.json`; kompileres IKKE i vår CI — se
+  `CHECKLIST.md`). Motoren fikk `createPlaySession(graph, { onEvent })` (enter/choose/branch/jumper/
+  restart/set/back med koblings- og mål-id) — JS-pakken er bygget om. Telemetri: migrasjon
+  `0644_narrative_playtest.sql` (tokens som sha256-hash + hendelser uten PII), inntak
+  `POST /api/role-room/narrative/playtest/events` (bearer-token, alltid 204, ≤ 500 per batch,
+  600/min per token), aggregat `GET …/playtest/summary` (økter, drop-off, median tid, dødsfall,
+  valgfordeling per scene, SQL). UI: Spilltest-fane på scenekortet, tokens i Integrasjoner-fanen
+  (råtoken vist én gang), hjem-KPI «Spilltest». Docs `docs/role-room/STORY_GRAPH_PLAYTEST_TELEMETRY.md`
+  (Swift-snutt), eksempel `js/examples/playtest-telemetry.mjs`. e2e `game-playtest.spec.ts`.
+- **8f Lesning + referansebilde (LEVERT):** Replikker-fanen har «Les opp scenen»
+  (`scenes/SceneTableRead.tsx`): én stemme per taler, nettleser-TTS som standard, KI-stemmer
+  (`/api/ai/tts`) bak `ai_assist` i UI (endepunktet selv er ugatet — dokumentert hull), EN/NB fra
+  replikk-kolonnene, stemmecast fra karakterprofilen (barn/voksen etter epoke) som hint. Storyboard-fanen
+  har «Generer referansebilde»: prompt bygges deterministisk av `scenePrompt.ts` (scenekort, lokasjonsprofil,
+  plattformens visuelle retning — aldri forfatterfasit), bildet fra `POST /api/storyboards/generate-frame`
+  (DALL·E, persisterer ingenting) lagres av `POST …/scenes/:id/frames/from-base64`
+  (`role-room-narrative-frames-ai.ts`): objektlager → `narrative_assets.storage_key` → ramme «KI-referanse»;
+  `ai_assist`-gate + daglig tak 10 per prosjekt (generate-frame mangler kostnadskontroll). Rammer i objektlager
+  vises via kortlevd signert URL. Ingen migrasjon. e2e `game-scene-ai.spec.ts`.
+- **8g Salgsklar (LEVERT):** migrasjon `0645_game_plan_fase8_features.sql` gir Studio `ci_evidence`
+  og `playtest_telemetry` (opprettelse av hooks/tokens gates; eksisterende fortsetter). Prosjektmaler
+  `POST /projects/:id/apply-template` (`blank` / `demo-adventure` uten IP / `wfu-sample` = tre WFU-scener
+  uten replikker) gjennom `seedStoryGraphFixture` — revisjon «Før mal» først; Hjem-hero har «Start fra mal».
+  Hardening: 300 mutasjoner/min per bruker (429), `maxProjects` håndheves ved første Story Graph-skriving
+  i et nytt prosjekt (402 `plan_limit`), revisjons-retensjon (siste 50 + én per dag i 90 dager).
+  Docs: `STORY_GRAPH_STUDIO_GUIDE.md` (onboarding), `STORY_GRAPH_API.md` (ruter, MCP, webhook, telemetri,
+  eksport); landingskortet «Spillstudio» nevner manusimport, CI-bevis, telemetri og manusvakt. Evidens
+  `docs/evidence/2026-09-story-graph-fase8-decisions.yaml`.
+
+
 ## Researchprogram
 
 - Månedlig: sjekk `github.com/arcweave/*` releases (plugin-versjoner, JSON-skjema) og

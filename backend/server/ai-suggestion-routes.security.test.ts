@@ -4,7 +4,7 @@ import { setupAISuggestionRoutes } from './ai-suggestion-routes.js';
 
 type Handler = (req: any, res: any) => Promise<void> | void;
 
-function createHarness(options: { authenticated?: boolean; access?: boolean } = {}) {
+function createHarness(options: { authenticated?: boolean; access?: boolean; planSlug?: string } = {}) {
   const routes = new Map<string, Handler>();
   const app = {
     get(path: string, handler: Handler) { routes.set(`GET ${path}`, handler); },
@@ -54,6 +54,9 @@ function createHarness(options: { authenticated?: boolean; access?: boolean } = 
     requireUserSession,
     aiSuggestionService: service,
     canAccessProject,
+    resolveProjectPlan: options.planSlug
+      ? async () => ({ subscription: null, active: false, plan: { slug: options.planSlug, features: options.planSlug === 'solo' ? [] : ['ai_assist'] } } as any)
+      : undefined,
   });
   return { routes, response, service, requireUserSession, canAccessProject };
 }
@@ -124,5 +127,25 @@ describe('generic AI suggestion route security', () => {
       'storyboard.plan-scene-coverage',
       expect.objectContaining({ userId: 'session-user' }),
     );
+  });
+
+  it('Fase 8d: manusvaktens KI-pass krever ai_assist (402 på solo), regelpasset er ugatet', async () => {
+    const generate = async (planSlug: string, mode: string) => {
+      const api = createHarness({ planSlug });
+      const res = api.response();
+      await api.routes.get('POST /api/role-room/projects/:projectId/ai-suggestions/generate')?.(
+        { params: { projectId: 'project-1' }, headers: {}, body: { agentName: 'script-guardian-agent', sourceType: 'project', sourceId: 'project-1', payload: { mode } } },
+        res,
+      );
+      return { res, api };
+    };
+    const solo = await generate('solo', 'full');
+    expect(solo.res.statusCode).toBe(402);
+    expect((solo.res.body as { feature?: string }).feature).toBe('ai_assist');
+    expect(solo.api.service.generate).not.toHaveBeenCalled();
+    const rules = await generate('solo', 'deterministic');
+    expect(rules.res.statusCode).toBe(201);
+    const pro = await generate('pro', 'full');
+    expect(pro.res.statusCode).toBe(201);
   });
 });

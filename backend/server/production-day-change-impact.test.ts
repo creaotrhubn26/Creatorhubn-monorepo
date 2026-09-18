@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   collectProductionDayChangeImpact,
   collectProductionDayLocationImpact,
+  collectProductionDayEquipmentImpact,
+  collectProductionDayPropImpact,
   collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
@@ -47,7 +49,7 @@ describe('collectProductionDayChangeImpact', () => {
   it('warns without blocking on equipment, location and collisions', async () => {
     const impacts = await collectProductionDayChangeImpact(
       poolWith({
-        equipment_bookings: 2,
+        casting_production_days: 2,
         role_room_location_operations: 1,
         casting_schedules: 3,
       }),
@@ -59,14 +61,28 @@ describe('collectProductionDayChangeImpact', () => {
     expect(hasBlockingImpact(impacts)).toBe(false);
   });
 
-  it('names the target date for a collision and the old date for a booking', async () => {
+  it('reads equipment from the days themselves, not from the empty booking table', async () => {
+    // equipment_bookings har null rader i produksjon. Advarselen kunne aldri
+    // slå ut, og så dermed ut som «ingen utstyr berørt» uansett hva dagen
+    // hadde rigget.
+    const pool = poolWith({ casting_production_days: 1 });
+    await collectProductionDayChangeImpact(pool, INPUT);
+
+    const spørringer = (pool.query.mock.calls as unknown[][]).map(([text]) => String(text));
+    expect(spørringer.some((text) => text.includes('equipment_bookings'))).toBe(false);
+    expect(spørringer.some((text) => text.includes("data -> 'equipment'"))).toBe(true);
+  });
+
+  it('names the target date, which is where the collision happens', async () => {
     const impacts = await collectProductionDayChangeImpact(
-      poolWith({ casting_schedules: 1, equipment_bookings: 1 }), INPUT,
+      poolWith({ casting_schedules: 1, casting_production_days: 1 }), INPUT,
     );
     const byArea = Object.fromEntries(impacts.map((i) => [i.area, i]));
 
     expect(byArea.schedule.summary).toContain('2026-09-24');
-    expect(byArea.equipment.summary).toContain('2026-09-20');
+    // Riggen kolliderer med det som allerede står oppsatt på den nye datoen,
+    // ikke med noe på den gamle.
+    expect(byArea.equipment.summary).toContain('2026-09-24');
   });
 
   it('reports continuity as information with no action to take', async () => {
@@ -81,20 +97,20 @@ describe('collectProductionDayChangeImpact', () => {
 
   it('gets singular and plural right so the sentence reads like Norwegian', async () => {
     const one = await collectProductionDayChangeImpact(
-      poolWith({ equipment_bookings: 1 }), INPUT,
+      poolWith({ casting_production_continuity_media: 1 }), INPUT,
     );
     const many = await collectProductionDayChangeImpact(
-      poolWith({ equipment_bookings: 2 }), INPUT,
+      poolWith({ casting_production_continuity_media: 2 }), INPUT,
     );
 
-    expect(one[0].summary).toContain('1 utstyrsbooking dekker');
-    expect(many[0].summary).toContain('2 utstyrsbookinger dekker');
+    expect(one[0].summary).toContain('1 kontinuitetsfil følger');
+    expect(many[0].summary).toContain('2 kontinuitetsfiler følger');
   });
 
   it('lets a failing query surface instead of returning a short list', async () => {
     const pool = {
       query: vi.fn(async (text: string) => {
-        if (text.includes('equipment_bookings')) throw new Error('timeout');
+        if (text.includes('casting_schedules')) throw new Error('timeout');
         return { rows: [{ count: 0 }] };
       }),
     };
@@ -285,5 +301,146 @@ describe('collectProductionDaySceneImpact', () => {
     expect(impacts).toHaveLength(1);
     expect(impacts[0]).toMatchObject({ area: 'scene_material', severity: 'info', count: 12 });
     expect(impacts[0].action).toBeUndefined();
+  });
+});
+
+describe('collectProductionDayPropImpact', () => {
+  const PROP_INPUT = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    fromPropIds: ['prop-1'],
+    toPropIds: ['prop-1'],
+  };
+
+  it('says nothing when the props are the same', async () => {
+    const pool = poolWith({ casting_props: 5 });
+    const impacts = await collectProductionDayPropImpact(pool, PROP_INPUT);
+
+    expect(impacts).toEqual([]);
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('blocks on a published call sheet, which lists the props', async () => {
+    const impacts = await collectProductionDayPropImpact(
+      poolWith({ role_room_call_sheet_deliveries: 1 }),
+      { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2'] },
+    );
+
+    expect(impacts[0]).toMatchObject({ area: 'call_sheet', severity: 'blocking' });
+    expect(hasBlockingImpact(impacts)).toBe(true);
+  });
+
+  it('counts a prop as secured when it is in storage or rented in', async () => {
+    // Troll fører ingen rekvisitter som «available»: fem står in_storage, to
+    // er rented og én er in_production. Den første versjonen advarte på alt
+    // som ikke var «available», og slo dermed ut på samtlige åtte.
+    const pool = poolWith({ casting_props: 0 });
+    const impacts = await collectProductionDayPropImpact(pool, {
+      ...PROP_INPUT,
+      toPropIds: ['prop-1', 'prop-lager', 'prop-leid'],
+    });
+
+    expect(impacts.map((impact) => impact.area)).not.toContain('prop_availability');
+    const [, params] = (pool.query.mock.calls as unknown[][])
+      .find(([text]) => String(text).includes('casting_props')) as [string, unknown[]];
+    expect(params[2]).toEqual(['available', 'in_storage', 'rented']);
+  });
+
+  it('warns about a prop that is not ready to use', async () => {
+    const impacts = await collectProductionDayPropImpact(
+      poolWith({ casting_props: 2 }),
+      { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2', 'prop-3'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'prop_availability', severity: 'warning', count: 2 });
+    expect(impacts[0].summary).toContain('ikke klare til bruk');
+    expect(impacts[0].action).toBeTruthy();
+  });
+
+  it('warns when another day on the same date already uses them', async () => {
+    const impacts = await collectProductionDayPropImpact(
+      poolWith({ casting_production_days: 1 }),
+      { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'prop_load', severity: 'warning', count: 1 });
+  });
+
+  it('asks nothing about availability when props are only removed', async () => {
+    // Å ta bort en rekvisitt kan ikke gjøre den mindre tilgjengelig.
+    const pool = poolWith({ casting_props: 3 });
+    const impacts = await collectProductionDayPropImpact(pool, {
+      ...PROP_INPUT,
+      fromPropIds: ['prop-1', 'prop-2'],
+      toPropIds: ['prop-1'],
+    });
+
+    expect(impacts.map((impact) => impact.area)).not.toContain('prop_availability');
+  });
+});
+
+describe('collectProductionDayEquipmentImpact', () => {
+  const GEAR_INPUT = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    fromEquipmentIds: ['kamera-1'],
+    toEquipmentIds: ['kamera-1'],
+  };
+
+  it('says nothing when the rig is unchanged', async () => {
+    const pool = poolWith({ casting_equipment: 3 });
+    const impacts = await collectProductionDayEquipmentImpact(pool, GEAR_INPUT);
+
+    expect(impacts).toEqual([]);
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('blocks on a published call sheet, which lists the rig', async () => {
+    const impacts = await collectProductionDayEquipmentImpact(
+      poolWith({ role_room_call_sheet_deliveries: 1 }),
+      { ...GEAR_INPUT, toEquipmentIds: ['kamera-1', 'optikk-2'] },
+    );
+
+    expect(impacts[0]).toMatchObject({ area: 'call_sheet', severity: 'blocking' });
+    expect(hasBlockingImpact(impacts)).toBe(true);
+  });
+
+  it('warns about gear that is checked out, on the bench or retired', async () => {
+    const pool = poolWith({ casting_equipment: 2 });
+    const impacts = await collectProductionDayEquipmentImpact(pool, {
+      ...GEAR_INPUT,
+      toEquipmentIds: ['kamera-1', 'optikk-2', 'lampe-3'],
+    });
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'equipment_status', severity: 'warning', count: 2 });
+    const [, params] = (pool.query.mock.calls as unknown[][])
+      .find(([text]) => String(text).includes('casting_equipment')) as [string, unknown[]];
+    // Vokabularet er låst av CHECK-constraint i migrasjon 097.
+    expect(params[2]).toEqual(['available']);
+  });
+
+  it('warns when another day on the same date already has the rig', async () => {
+    const impacts = await collectProductionDayEquipmentImpact(
+      poolWith({ casting_production_days: 1 }),
+      { ...GEAR_INPUT, toEquipmentIds: ['kamera-1', 'optikk-2'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'equipment_load', severity: 'warning', count: 1 });
+    expect(impacts[0].action).toContain('to steder samtidig');
+  });
+
+  it('asks nothing about status when gear is only removed', async () => {
+    const pool = poolWith({ casting_equipment: 5 });
+    const impacts = await collectProductionDayEquipmentImpact(pool, {
+      ...GEAR_INPUT,
+      fromEquipmentIds: ['kamera-1', 'optikk-2'],
+      toEquipmentIds: ['kamera-1'],
+    });
+
+    expect(impacts.map((impact) => impact.area)).not.toContain('equipment_status');
   });
 });

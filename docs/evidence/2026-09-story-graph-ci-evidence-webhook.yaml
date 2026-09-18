@@ -1,0 +1,43 @@
+claim: >
+  Story Graph accepts delivery-gate evidence from the game's CI through an HMAC-SHA256
+  signed webhook (X-StoryGraph-Signature-256 over the raw JSON body) plus a
+  secret-header multipart upload for evidence artefacts, with the handlers mounted in
+  backend/server/index.ts before the global express.json() so the raw body is available.
+source_type: code_analysis
+source: "backend/server/role-room-instagram-webhook.ts:30-53 (verifyMetaWebhookSignature template), backend/server/index.ts:1760-1780 (Stripe/Post Agent webhooks mounted before express.json), node_modules/body-parser/lib/read.js (skips when req._body is set), backend/server/leadgrid-workflow-webhooks-routes.ts (per-destination plaintext secrets), backend/server/role-room-narrative-service.ts setSceneGate (evidence rule)"
+authority_tier: 3
+vendor: internal
+product: Story Graph (game_studio) CI evidence webhook
+version_scope: "Story Graph Fase 8c, migration 0643_narrative_ci_hooks.sql"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "until the global body parser or webhook mount order in index.ts changes"
+evidence_summary: >
+  A Plan-agent verification (2026-09-18) showed that express.raw() inside a router mounted
+  after app.use(express.json()) receives an already-parsed object, so an HMAC over the body
+  can never verify there; every working Stripe HMAC route in the repo is mounted before the
+  global parser. The CI hook handlers are therefore exported from
+  role-room-narrative-ci-hooks.ts and mounted in index.ts ahead of express.json(). The
+  secret is stored in plaintext because HMAC needs the raw secret (Leadgrid precedent);
+  revocation is immediate. Gate writes go through setSceneGate so the DB CHECK
+  "passed requires evidence" applies to CI as well; checked_by = 'ci:<hookId>' (TEXT, no FK).
+  Evidence artefacts use narrative_assets.storage_key (first real use since 0618) with the
+  new kind 'file'. Side finding: the Instagram and WhatsApp webhooks are mounted after the
+  global parser and likely never verify — tracked as a separate task.
+interpretation: >
+  Gates set by CI with evidence close the "build → gate" loop for What Follows Us without a
+  human clicking "passed"; the same rule that blocks evidence-less passes by hand blocks them
+  from CI.
+project_impact: >
+  backend/migrations/0643_narrative_ci_hooks.sql; backend/server/role-room-narrative-ci-hooks.ts;
+  backend/server/index.ts (mount before express.json); role-room-narrative-routes.ts (hook CRUD,
+  deliveries, asset download); frontend narrative/integrations/IntegrationsPanel.tsx and
+  scenes/SceneGatesTab.tsx; packages/story-graph-runtime/ci/post-gate-evidence.sh;
+  .github/workflows/story-graph-gate-evidence.yml (reusable template for the game repo).
+affected:
+  - backend/server/role-room-narrative-ci-hooks.ts
+  - backend/server/index.ts
+  - backend/migrations/0643_narrative_ci_hooks.sql
+  - packages/story-graph-runtime/ci/post-gate-evidence.sh
+confidence: verified
+decided_by: "Story Graph Fase 8c (2026-09-18)"

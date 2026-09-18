@@ -147,3 +147,25 @@ describe('validateScripts / validateStoryGraph', () => {
     expect(issues.filter((i) => i.level === 'error')).toHaveLength(0);
   });
 });
+
+describe('createPlaySession — onEvent (Fase 8e)', () => {
+  it('sender enter/choose/back/restart med koblings- og mål-id, og svelger feil i callbacken', () => {
+    const events: Array<{ kind: string; elementId: string | null; connectionId?: string; targetId?: string }> = [];
+    let calls = 0;
+    const session = createPlaySession(graph(), {
+      onEvent: (e) => { calls += 1; events.push({ kind: e.kind, elementId: e.elementId, connectionId: e.connectionId, targetId: e.targetId }); if (calls === 1) throw new Error('boom'); },
+    });
+    const start = session.start()!;
+    const option = start.options[0];
+    session.choose(option.connectionId);
+    session.back();
+    session.restart();
+    expect(events[0]).toMatchObject({ kind: 'enter', elementId: start.elementId });
+    const choose = events.find((e) => e.kind === 'choose')!;
+    expect(choose).toMatchObject({ elementId: start.elementId, connectionId: option.connectionId, targetId: option.targetId });
+    expect(events.some((e) => e.kind === 'back' && e.elementId === start.elementId)).toBe(true);
+    expect(events.some((e) => e.kind === 'restart')).toBe(true);
+    // Uten onEvent: ingen feil.
+    expect(() => createPlaySession(graph()).start()).not.toThrow();
+  });
+});

@@ -22,9 +22,10 @@ import { SceneReviewTab } from './SceneReviewTab';
 import { SceneScriptTab } from './SceneScriptTab';
 import { SceneLinesTab } from './SceneLinesTab';
 import { SceneGatesTab, GATE_STATUS_COLOR } from './SceneGatesTab';
+import { ScenePlaytestTab } from './ScenePlaytestTab';
 import { NARRATIVE_GATE_KEYS, NARRATIVE_GATE_LABELS, NARRATIVE_SCENE_ERA_LABELS } from '../narrativeTypes';
 
-export type SceneTabId = 'overview' | 'script' | 'lines' | 'gates' | 'storyboard' | 'gameplay' | 'assets' | 'tasks' | 'review';
+export type SceneTabId = 'overview' | 'script' | 'lines' | 'gates' | 'storyboard' | 'gameplay' | 'assets' | 'tasks' | 'review' | 'playtest';
 const SCENE_TABS: Array<{ id: SceneTabId; label: string }> = [
   { id: 'overview', label: 'Oversikt' },
   { id: 'script', label: 'Manus' },
@@ -34,6 +35,7 @@ const SCENE_TABS: Array<{ id: SceneTabId; label: string }> = [
   { id: 'gameplay', label: 'Gameplay' },
   { id: 'assets', label: 'Assets' },
   { id: 'tasks', label: 'Oppgaver' },
+  { id: 'playtest', label: 'Spilltest' },
   { id: 'review', label: 'Review' },
 ];
 
@@ -184,6 +186,8 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
         return <SceneLinesTab projectId={projectId} graph={graph} detail={detail} scenes={scenes} onNotice={onNotice} />;
       case 'gates':
         return <SceneGatesTab projectId={projectId} detail={detail} scenes={scenes} onNotice={onNotice} />;
+      case 'playtest':
+        return <ScenePlaytestTab projectId={projectId} detail={detail} graph={graph} />;
       case 'storyboard':
         return <SceneStoryboardTab projectId={projectId} graph={graph} detail={detail} scenes={scenes} onNotice={onNotice} />;
       case 'assets': {

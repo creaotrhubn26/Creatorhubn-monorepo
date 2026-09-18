@@ -104,6 +104,7 @@ import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
 import { SakerTab } from './admin-workspace/SakerTab';
 import { LeadgridAppWaitlistTab } from './admin-workspace/LeadgridAppWaitlistTab';
+import { FundingDeadlineRadar } from './admin-workspace/FundingDeadlineRadar';
 
 import {
   activityLogApi,
@@ -192,6 +193,7 @@ type WorkspaceItemId =
   // Sub-items mountet i Teamspaces / Overview
   | 'business-plan'
   | 'funding'
+  | 'funding-radar'
   | 'investors'
   | 'partners'
   | 'industry-crm'
@@ -1770,6 +1772,14 @@ function resolveContent(
         breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Søknader'],
         render: () => <FundingAppsTab />,
       };
+    case 'funding-radar':
+      return {
+        title: 'Finansieringsradar',
+        breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Finansieringsradar'],
+        // Eksterne ordninger vi FØLGER (Innovasjon Norge, Forskningsrådet, EU)
+        // — egne søknader ligger fortsatt under «Søknader».
+        render: () => <FundingDeadlineRadar parentProduct={product} />,
+      };
     case 'investors':
       return {
         title: 'Investor-pipeline',
@@ -1888,6 +1898,7 @@ function resolveContent(
             cards={[
               { id: 'business-plan', label: 'Forretningsplan' },
               { id: 'funding', label: 'Søknader (IN/EU)' },
+              { id: 'funding-radar', label: 'Finansieringsradar' },
               { id: 'investors', label: 'Investor-pipeline' },
               { id: 'partners', label: 'Samarbeidspartnere' },
               { id: 'role-room-economy', label: 'RR Økonomi' },

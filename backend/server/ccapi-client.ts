@@ -113,7 +113,11 @@ export class CcapiClient {
 
   /** Inventorer kameraets capabilities — må kjøres før andre endepunkter. */
   async connect(): Promise<CcapiInventory> {
-    const inventory = await this.get<CcapiInventory>("/ccapi");
+    // Kameraet returnerer versjons-kartet direkte, f.eks. { ver100: [...],
+    // ver110: [...] } — IKKE pakket i { apis: ... }. Pakk det selv så
+    // inventory.apis er definert (ellers kaster Object.keys(inventory.apis)).
+    const raw = await this.get<CcapiInventory["apis"]>("/ccapi");
+    const inventory: CcapiInventory = { apis: raw };
     this.inventory = inventory;
     return inventory;
   }
@@ -199,8 +203,27 @@ export class CcapiClient {
     );
   }
 
+  /**
+   * Start Live View. Mange Canon-kropper (bl.a. R6 MkII) må ha LV aktiv
+   * før remote-utløsning — ellers svarer shutterbutton "Camera busy".
+   * cameradisplay:"keep" lar den fysiske skjermen være som den er.
+   */
+  async startLiveView(size: "small" | "medium" = "small"): Promise<void> {
+    await this.post("/ccapi/ver100/shooting/liveview", {
+      liveviewsize: size,
+      cameradisplay: "keep",
+    });
+  }
+
   /** Trigger shutter — full_press + release-sekvens (samme som iPad) */
   async triggerShutter(af = true): Promise<void> {
+    // LV må være aktiv for remote-utløsning. Best-effort: allerede-på eller
+    // ikke-støttet skal ikke blokkere selve utløsningen.
+    try {
+      await this.startLiveView();
+    } catch {
+      // LV alt aktiv, eller kroppen støtter ikke kallet — fortsett.
+    }
     const path = "/ccapi/ver100/shooting/control/shutterbutton/manual";
     await this.post(path, { action: "full_press", af });
     await this.post(path, { action: "release", af });

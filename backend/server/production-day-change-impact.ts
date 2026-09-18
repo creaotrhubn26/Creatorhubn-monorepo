@@ -11,6 +11,19 @@
  * den dagen noen faktisk skriver til den, ikke før.
  */
 
+/**
+ * Rekvisitt-tilstander som betyr at rekvisitten er sikret for opptak.
+ * Alt annet — i praksis `in_production` — er under arbeid og verdt en advarsel.
+ */
+export const SECURED_PROP_AVAILABILITY = ['available', 'in_storage', 'rented'];
+
+/**
+ * Utstyrsstatusene som betyr klart til bruk. Vokabularet er låst av en
+ * CHECK-constraint i migrasjon 097: available | in_use | maintenance |
+ * retired. Bare den første betyr at kameraet står på hylla og kan rigges.
+ */
+export const READY_EQUIPMENT_STATUS = ['available'];
+
 export type ImpactSeverity = 'blocking' | 'warning' | 'info';
 export type ImpactArea =
   | 'call_sheet'
@@ -22,7 +35,11 @@ export type ImpactArea =
   | 'schedule'
   | 'scene_prep'
   | 'scene_cast'
-  | 'scene_material';
+  | 'scene_material'
+  | 'prop_availability'
+  | 'prop_load'
+  | 'equipment_status'
+  | 'equipment_load';
 
 export interface ChangeImpact {
   area: ImpactArea;
@@ -76,25 +93,34 @@ export async function collectProductionDayChangeImpact(
     });
   }
 
-  // 2. Utstyr booket rundt den gamle datoen. Bookingen er tidsstemplet;
-  //    overlapp regnes mot hele kalenderdagen i prosjektets tidssone.
-  const bookings = await pool.query(
+  // 2. Utstyret dagen har rigget, mot det som allerede står oppsatt på den
+  //    nye datoen. Denne leste tidligere equipment_bookings, som er tom i
+  //    produksjon — en advarsel som aldri kunne slå ut. Utstyret ligger på
+  //    dagen selv, og det er der kollisjonen faktisk oppstår.
+  const equipmentClash = await pool.query(
     `SELECT count(*)::int AS count
-       FROM equipment_bookings
-      WHERE project_id = $1
-        AND status <> 'cancelled'
-        AND start_date < ($2::date + INTERVAL '1 day')
-        AND end_date   >= $2::date`,
-    [projectId, fromDate],
+       FROM casting_production_days other
+      WHERE other.project_id = $1
+        AND other.id <> $2
+        AND other.date = $3::date
+        AND EXISTS (
+          SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(other.data -> 'equipment', '[]'::jsonb)) AS other_item(id)
+            JOIN casting_production_days this ON this.id = $2
+           WHERE other_item.id IN (
+             SELECT value FROM jsonb_array_elements_text(COALESCE(this.data -> 'equipment', '[]'::jsonb))
+           )
+        )`,
+    [projectId, dayId, toDate],
   );
-  const bookingCount = count(bookings.rows);
-  if (bookingCount > 0) {
+  const equipmentClashCount = count(equipmentClash.rows);
+  if (equipmentClashCount > 0) {
     impacts.push({
       area: 'equipment',
       severity: 'warning',
-      summary: `${bookingCount} utstyrsbooking${bookingCount === 1 ? '' : 'er'} dekker ${fromDate}.`,
-      action: 'Flytt eller bekreft bookingen for den nye datoen.',
-      count: bookingCount,
+      summary: `${equipmentClashCount} annen opptaksdag på ${toDate} bruker det samme utstyret.`,
+      action: 'Avklar hvem som har riggen den dagen.',
+      count: equipmentClashCount,
     });
   }
 
@@ -286,6 +312,205 @@ export async function collectProductionDaySceneImpact(
         severity: 'info',
         summary: `${materialCount} fil${materialCount === 1 ? '' : 'er'} ligger allerede på de nye scenene.`,
         count: materialCount,
+      });
+    }
+  }
+
+  return impacts;
+}
+
+/**
+ * Hva brekker hvis dagens rekvisitter byttes.
+ *
+ * Målt mot produksjon 2026-09-18: casting_props har 16 rader, 8 av dem i
+ * Troll, og null produksjonsdager har `prop_ids` fylt ut. Koblingen finnes i
+ * skjemaet og er ubrukt — så dette er ikke en rapport over eksisterende
+ * arbeid, men porten som gjør at arbeidet kan begynne uten å skape rot.
+ *
+ * `availability` er det eneste feltet rekvisittene faktisk fører, så det er
+ * det eneste vi advarer på. En advarsel om noe annet ville vært oppdiktet.
+ */
+export async function collectProductionDayPropImpact(
+  pool: QueryablePool,
+  input: {
+    projectId: string;
+    dayId: string;
+    fromPropIds: string[];
+    toPropIds: string[];
+  },
+): Promise<ChangeImpact[]> {
+  const { projectId, dayId, fromPropIds, toPropIds } = input;
+  const before = new Set(fromPropIds.map(String));
+  const after = new Set(toPropIds.map(String));
+  const added = [...after].filter((id) => !before.has(id));
+  const removed = [...before].filter((id) => !after.has(id));
+  const impacts: ChangeImpact[] = [];
+
+  if (added.length === 0 && removed.length === 0) return impacts;
+
+  // 1. Publisert call sheet lister dagens rekvisitter.
+  const callSheets = await pool.query(
+    `SELECT count(*)::int AS count
+       FROM role_room_call_sheet_deliveries
+      WHERE project_id = $1 AND production_day_id = $2 AND status = 'published'`,
+    [projectId, dayId],
+  );
+  const publishedCallSheets = count(callSheets.rows);
+  if (publishedCallSheets > 0) {
+    impacts.push({
+      area: 'call_sheet',
+      severity: 'blocking',
+      summary: 'Call sheet er publisert med dagens rekvisitter.',
+      action: 'Må republiseres etter endringen.',
+      count: publishedCallSheets,
+    });
+  }
+
+  if (added.length > 0) {
+    // 2. Rekvisitter som ikke er klare til å brukes.
+    //
+    //    Vokabularet er det rekvisittregisteret faktisk fører: `in_storage`
+    //    (på eget lager), `rented` (leid inn) og `available` betyr sikret;
+    //    `in_production` betyr under bygging. Jeg advarte først på alt som
+    //    ikke var `available`, og siden Troll ikke bruker det ordet i det
+    //    hele tatt slo advarselen ut på samtlige åtte rekvisitter. En
+    //    advarsel som alltid er på er ikke en advarsel.
+    const unavailable = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_props
+        WHERE project_id = $1
+          AND id = ANY($2::text[])
+          AND COALESCE(availability, 'available') <> ALL ($3::text[])`,
+      [projectId, added, SECURED_PROP_AVAILABILITY],
+    );
+    const unavailableCount = count(unavailable.rows);
+    if (unavailableCount > 0) {
+      impacts.push({
+        area: 'prop_availability',
+        severity: 'warning',
+        summary: `${unavailableCount} av rekvisittene som legges til er ikke klare til bruk.`,
+        action: 'Bekreft at de rekker å bli ferdige til denne dagen.',
+        count: unavailableCount,
+      });
+    }
+
+    // 3. Samme rekvisitt er allerede satt opp på en annen dag med samme dato.
+    const sameDay = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_production_days other
+         JOIN casting_production_days this
+           ON this.id = $2 AND this.project_id = other.project_id AND other.date = this.date
+        WHERE other.project_id = $1
+          AND other.id <> $2
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(COALESCE(other.prop_ids, '[]'::jsonb)) AS prop(id)
+             WHERE prop.id = ANY($3::text[])
+          )`,
+      [projectId, dayId, added],
+    );
+    const clashCount = count(sameDay.rows);
+    if (clashCount > 0) {
+      impacts.push({
+        area: 'prop_load',
+        severity: 'warning',
+        summary: `${clashCount} annen opptaksdag samme dato bruker de samme rekvisittene.`,
+        action: 'Avklar hvem som har dem når.',
+        count: clashCount,
+      });
+    }
+  }
+
+  return impacts;
+}
+
+/**
+ * Hva brekker hvis dagens utstyr byttes.
+ *
+ * Målt mot produksjon 2026-09-18: `casting_equipment` har 16 rader, 8 av dem
+ * i Troll — Alexa Mini LF, to Cooke-optikker, SkyPanel, Ronin 4D, Inspire 3,
+ * MixPre-10 og Easyrig. Alle står `available`. `equipment_bookings` og de
+ * øvrige 50-talls utstyrstabellene er tomme, så ingenting bygges på dem.
+ */
+export async function collectProductionDayEquipmentImpact(
+  pool: QueryablePool,
+  input: {
+    projectId: string;
+    dayId: string;
+    fromEquipmentIds: string[];
+    toEquipmentIds: string[];
+  },
+): Promise<ChangeImpact[]> {
+  const { projectId, dayId, fromEquipmentIds, toEquipmentIds } = input;
+  const before = new Set(fromEquipmentIds.map(String));
+  const after = new Set(toEquipmentIds.map(String));
+  const added = [...after].filter((id) => !before.has(id));
+  const removed = [...before].filter((id) => !after.has(id));
+  const impacts: ChangeImpact[] = [];
+
+  if (added.length === 0 && removed.length === 0) return impacts;
+
+  // 1. Publisert call sheet lister riggen.
+  const callSheets = await pool.query(
+    `SELECT count(*)::int AS count
+       FROM role_room_call_sheet_deliveries
+      WHERE project_id = $1 AND production_day_id = $2 AND status = 'published'`,
+    [projectId, dayId],
+  );
+  const publishedCallSheets = count(callSheets.rows);
+  if (publishedCallSheets > 0) {
+    impacts.push({
+      area: 'call_sheet',
+      severity: 'blocking',
+      summary: 'Call sheet er publisert med dagens utstyr.',
+      action: 'Må republiseres etter endringen.',
+      count: publishedCallSheets,
+    });
+  }
+
+  if (added.length > 0) {
+    // 2. Utstyr som ikke står klart: utlevert, på verksted eller pensjonert.
+    const notReady = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_equipment
+        WHERE project_id = $1
+          AND id::text = ANY($2::text[])
+          AND COALESCE(status, 'available') <> ALL ($3::text[])`,
+      [projectId, added, READY_EQUIPMENT_STATUS],
+    );
+    const notReadyCount = count(notReady.rows);
+    if (notReadyCount > 0) {
+      impacts.push({
+        area: 'equipment_status',
+        severity: 'warning',
+        summary: `${notReadyCount} av enhetene som legges til står ikke klare.`,
+        action: 'Sjekk om de er utlevert, på verksted eller pensjonert.',
+        count: notReadyCount,
+      });
+    }
+
+    // 3. Samme rigg på en annen dag med samme dato.
+    const sameDay = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_production_days other
+         JOIN casting_production_days this
+           ON this.id = $2 AND this.project_id = other.project_id AND other.date = this.date
+        WHERE other.project_id = $1
+          AND other.id <> $2
+          AND EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements_text(COALESCE(other.data -> 'equipment', '[]'::jsonb)) AS item(id)
+             WHERE item.id = ANY($3::text[])
+          )`,
+      [projectId, dayId, added],
+    );
+    const clashCount = count(sameDay.rows);
+    if (clashCount > 0) {
+      impacts.push({
+        area: 'equipment_load',
+        severity: 'warning',
+        summary: `${clashCount} annen opptaksdag samme dato bruker de samme enhetene.`,
+        action: 'Én rigg kan ikke stå to steder samtidig.',
+        count: clashCount,
       });
     }
   }

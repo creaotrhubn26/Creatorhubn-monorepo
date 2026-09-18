@@ -296,6 +296,39 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
       );
     },
   },
+  // Story Graph (game_studio): manusvakt — godta = åpent spørsmål til manusgjennomgangen.
+  'story.guardian-issue': {
+    icon: WarningAmberIcon,
+    label: 'Manusvakt',
+    highlight: true,
+    render: (s) => {
+      const p = s.payload as {
+        issueType: string; severity: 'low' | 'medium' | 'high'; title: string; description: string;
+        sceneCodes: string[]; evidence: Array<{ ref: string; quote: string }>; suggestedQuestion: string; origin: 'rule' | 'llm';
+      };
+      const sev = p.severity === 'high' ? 'Høy' : p.severity === 'medium' ? 'Middels' : 'Lav';
+      return (
+        <Box data-testid="narrative-guardian-suggestion">
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }} flexWrap="wrap" useFlexGap>
+            <Chip label={sev} size="small" color={p.severity === 'high' ? 'error' : p.severity === 'medium' ? 'warning' : 'default'} variant="outlined" />
+            <Typography variant="caption" color="text.secondary">{p.issueType} · {p.origin === 'rule' ? 'regel' : 'modell'}{p.sceneCodes?.length ? ` · ${p.sceneCodes.join(', ')}` : ''}</Typography>
+          </Stack>
+          <Typography variant="body2"><strong>{p.title}</strong></Typography>
+          <Typography variant="body2" sx={{ mt: 0.25 }}>{p.description}</Typography>
+          {p.evidence?.length ? (
+            <Box sx={{ mt: 0.5 }}>
+              {p.evidence.slice(0, 3).map((e, i) => (
+                <Typography key={i} variant="caption" display="block" color="text.secondary">{e.ref}: «{e.quote}»</Typography>
+              ))}
+            </Box>
+          ) : null}
+          {p.suggestedQuestion ? (
+            <Typography variant="caption" display="block" sx={{ mt: 0.5, fontStyle: 'italic' }}>Godta → åpent spørsmål: {p.suggestedQuestion}</Typography>
+          ) : null}
+        </Box>
+      );
+    },
+  },
   'story.logline': {
     icon: AutoStoriesIcon,
     label: 'Logline',

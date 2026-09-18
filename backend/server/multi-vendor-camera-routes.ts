@@ -19,25 +19,31 @@ import { getSonyClient, clearSonyClient } from "./sony-wifi-client.js";
 import { getArriClient } from "./arri-web-client.js";
 import { getZcamClient, clearZcamClient } from "./zcam-http-client.js";
 
-const HEADER_USER = "x-role-room-user-id";
-
-function readUserId(req: Request): string | null {
-  const header = req.header(HEADER_USER);
-  if (typeof header === "string" && header.trim().length > 0) return header.trim();
-  return null;
+// Kamera-IP må ligge på privat LAN. Tidligere godtok vi vilkårlig IPv4/IPv6
+// → serveren kunne tvinges til å koble til hvilken som helst host (SSRF, bl.a.
+// sky-metadata 169.254.169.254). Kun RFC1918-privat aksepteres. Samme sperre
+// som aerospot-routes bruker.
+function isPrivateLanIp(ip: string): boolean {
+  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const octets = m.slice(1).map(Number);
+  if (octets.some((o) => o > 255)) return false;
+  const [a, b] = octets;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
 }
 
-function requireUser(req: Request, res: Response): string | null {
-  const userId = readUserId(req);
-  if (!userId) {
-    res.status(401).json({ error: "user-id-header mangler" });
+// Valider :ip-param på ethvert kamera-endepunkt. 400 hvis ikke privat-LAN
+// (hindrer SSRF mot vilkårlig host via req.params.ip).
+function guardCameraIp(req: Request, res: Response): string | null {
+  const ip = req.params.ip;
+  if (!isPrivateLanIp(ip)) {
+    res.status(400).json({ error: "Ugyldig ip" });
     return null;
   }
-  return userId;
-}
-
-function ipAddressValid(ip: string): boolean {
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || /^[a-fA-F0-9:]+$/.test(ip);
+  return ip;
 }
 
 export interface MultiVendorCameraRoutesDeps {
@@ -53,9 +59,8 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/sony/connect", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number };
-    if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
+    if (!body.ipAddress || !isPrivateLanIp(body.ipAddress)) {
       res.status(400).json({ error: "Ugyldig ipAddress" });
       return;
     }
@@ -69,12 +74,9 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.get("/api/sony/cameras/:ip/state", async (req, res) => {
-    if (!requireUser(req, res)) return;
-    const ip = req.params.ip;
-    if (!ipAddressValid(ip)) {
-      res.status(400).json({ error: "Ugyldig ip" });
-      return;
-    }
+    if (!requireUserSession(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
       const client = getSonyClient(ip);
       const [info, event] = await Promise.all([
@@ -89,9 +91,10 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/sony/cameras/:ip/record/start", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      await getSonyClient(req.params.ip).startMovieRecording();
+      await getSonyClient(ip).startMovieRecording();
       res.json({ success: true });
     } catch (err) {
       res.status(502).json({ success: false, error: "vendor_error" });
@@ -100,9 +103,10 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/sony/cameras/:ip/record/stop", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      await getSonyClient(req.params.ip).stopMovieRecording();
+      await getSonyClient(ip).stopMovieRecording();
       res.json({ success: true });
     } catch (err) {
       res.status(502).json({ success: false, error: "vendor_error" });
@@ -111,7 +115,8 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/sony/cameras/:ip/settings", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     const body = (req.body ?? {}) as {
       iso?: number;
       shutterSpeed?: string;
@@ -119,7 +124,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       whiteBalanceK?: number;
     };
     try {
-      const client = getSonyClient(req.params.ip);
+      const client = getSonyClient(ip);
       if (body.iso !== undefined) await client.setIso(body.iso);
       if (body.shutterSpeed) await client.setShutterSpeed(body.shutterSpeed);
       if (body.fNumber) await client.setFNumber(body.fNumber);
@@ -132,8 +137,9 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.delete("/api/sony/cameras/:ip", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
-    clearSonyClient(req.params.ip);
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
+    clearSonyClient(ip);
     res.json({ success: true });
   });
 
@@ -141,9 +147,8 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/arri/connect", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number; secure?: boolean };
-    if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
+    if (!body.ipAddress || !isPrivateLanIp(body.ipAddress)) {
       res.status(400).json({ error: "Ugyldig ipAddress" });
       return;
     }
@@ -160,9 +165,11 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.get("/api/arri/cameras/:ip/state", async (req, res) => {
-    if (!requireUser(req, res)) return;
+    if (!requireUserSession(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      const client = getArriClient(req.params.ip);
+      const client = getArriClient(ip);
       const [info, state] = await Promise.all([client.getInfo(), client.getState()]);
       res.json({ success: true, info, state });
     } catch (err) {
@@ -172,9 +179,10 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/arri/cameras/:ip/record/start", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      await getArriClient(req.params.ip).startRecording();
+      await getArriClient(ip).startRecording();
       res.json({ success: true });
     } catch (err) {
       res.status(502).json({ success: false, error: "vendor_error" });
@@ -183,9 +191,10 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/arri/cameras/:ip/record/stop", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      await getArriClient(req.params.ip).stopRecording();
+      await getArriClient(ip).stopRecording();
       res.json({ success: true });
     } catch (err) {
       res.status(502).json({ success: false, error: "vendor_error" });
@@ -194,7 +203,8 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/arri/cameras/:ip/settings", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     const body = (req.body ?? {}) as {
       iso?: number;
       shutter?: string;
@@ -204,7 +214,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       tint?: number;
     };
     try {
-      const client = getArriClient(req.params.ip);
+      const client = getArriClient(ip);
       if (body.iso !== undefined || body.shutter || body.iris) {
         await client.setExposure({
           iso: body.iso,
@@ -226,9 +236,8 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/zcam/connect", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
     const body = (req.body ?? {}) as { ipAddress?: string; port?: number };
-    if (!body.ipAddress || !ipAddressValid(body.ipAddress)) {
+    if (!body.ipAddress || !isPrivateLanIp(body.ipAddress)) {
       res.status(400).json({ error: "Ugyldig ipAddress" });
       return;
     }
@@ -246,9 +255,11 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
   });
 
   app.get("/api/zcam/cameras/:ip/state", async (req, res) => {
-    if (!requireUser(req, res)) return;
+    if (!requireUserSession(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      const client = getZcamClient(req.params.ip);
+      const client = getZcamClient(ip);
       const [info, state] = await Promise.all([client.getInfo(), client.getState()]);
       res.json({ success: true, info, state });
     } catch (err) {
@@ -258,9 +269,10 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/zcam/cameras/:ip/record/start", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      await getZcamClient(req.params.ip).startRecording();
+      await getZcamClient(ip).startRecording();
       res.json({ success: true });
     } catch (err) {
       res.status(502).json({ success: false, error: "vendor_error" });
@@ -269,9 +281,10 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/zcam/cameras/:ip/record/stop", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     try {
-      await getZcamClient(req.params.ip).stopRecording();
+      await getZcamClient(ip).stopRecording();
       res.json({ success: true });
     } catch (err) {
       res.status(502).json({ success: false, error: "vendor_error" });
@@ -280,7 +293,8 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.post("/api/zcam/cameras/:ip/settings", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
     const body = (req.body ?? {}) as {
       iso?: number;
       shutterSpeed?: string;
@@ -289,7 +303,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       whiteBalanceK?: number;
     };
     try {
-      const client = getZcamClient(req.params.ip);
+      const client = getZcamClient(ip);
       if (body.iso !== undefined) await client.setIso(body.iso);
       if (body.shutterSpeed) await client.setShutterSpeed(body.shutterSpeed);
       if (body.iris) await client.setIris(body.iris);
@@ -303,8 +317,9 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
 
   app.delete("/api/zcam/cameras/:ip", async (req, res) => {
     if (!requireUserSession(req, res)) return;
-    if (!requireUser(req, res)) return;
-    clearZcamClient(req.params.ip);
+    const ip = guardCameraIp(req, res);
+    if (!ip) return;
+    clearZcamClient(ip);
     res.json({ success: true });
   });
 }

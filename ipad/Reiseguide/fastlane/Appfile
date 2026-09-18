@@ -1,0 +1,6 @@
+# Settes via env vars ved kjøring; tomme verdier i git så team-ID og Apple-ID
+# ikke havner i historikken (samme som LeadMapApp og CaptureApp).
+app_identifier("com.creatorhubn.reiseguide")
+apple_id(ENV["FASTLANE_USER"] || "")
+team_id(ENV["APP_STORE_TEAM_ID"] || "")
+itc_team_id(ENV["APP_STORE_CONNECT_TEAM_ID"] || "")
