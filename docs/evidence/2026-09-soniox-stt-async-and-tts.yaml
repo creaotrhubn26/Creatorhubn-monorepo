@@ -1,0 +1,72 @@
+claim: >
+  Soniox leverer det lydguide-POC-en (SenseAid Explore) trenger for teksting: async
+  fil-transkribering (modell stt-async-v5) med ordnivå-tidsstempler i millisekunder
+  (tokens[].start_ms/end_ms/confidence), norsk som «no» blant 60+ språk og EU-region per
+  prosjekt. I tillegg har Soniox nå egen TTS (tts-rt-v2, 60+ språk
+  inkl. norsk, alle stemmer snakker alle språk, stemmekloning) som gir tegnnivå-tidsstempler
+  direkte fra syntesen (kun WebSocket), slik at tekstingen kan lages uten et eget
+  transkriberingssteg.
+source_type: api_reference
+source: "https://registry.npmjs.org/@soniox/node (README v2.3.0, 2026-08-11), https://pypi.org/project/soniox/ (README v2.9.0), https://raw.githubusercontent.com/soniox/soniox_examples/master/speech_to_text/nodejs/soniox_async.js, .../speech_to_text/nodejs_sdk/soniox_sdk_async.js, .../text_to_speech/nodejs/soniox_rest.js, .../text_to_speech/nodejs/soniox_realtime.js; søkeutdrag fra https://soniox.com/docs/stt/concepts/timestamps, https://soniox.com/docs/stt/concepts/supported-languages, https://soniox.com/docs/tts/concepts/supported-languages, https://soniox.com/docs/data-residency, https://soniox.com/docs/security-and-privacy, https://soniox.com/pricing, https://soniox.com/blog/soniox-tts-v2"
+authority_tier: 1
+vendor: Soniox
+product: Speech-to-Text (async), Text-to-Speech, Node SDK @soniox/node, Python SDK soniox
+version_scope: "stt-async-v5, tts-rt-v2 (tts-rt-v1 i eksemplene), @soniox/node 2.3.0, soniox (PyPI) 2.9.0; per 2026-09-18"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "til Soniox slipper stt-async-v6 / tts-rt-v3 eller endrer token-feltene; prisene bør sjekkes mot soniox.com/pricing før budsjett"
+evidence_summary: >
+  STT async (REST, base https://api.soniox.com, Authorization: Bearer <key>): POST /v1/files
+  (multipart «file») gir file_id; POST /v1/transcriptions med {model:"stt-async-v5",
+  language_hints:["no"], audio_url | file_id, enable_language_identification,
+  enable_speaker_diarization, context, client_reference_id, webhook_url +
+  webhook_auth_header_name/value}; GET /v1/transcriptions/{id}
+  til status er completed|error; GET /v1/transcriptions/{id}/transcript gir tokens
+  [{text, start_ms, end_ms, confidence, language?, speaker?, translation_status?}];
+  DELETE på transcription og file. Node SDK: client.stt.transcribe({model, language_hints,
+  file|audio_url, wait:true, cleanup:['file','transcription']}) → transcript.segments()/tokens.
+  Norsk er «no» (ISO 639-1; bokmål/nynorsk/dialekter i én modell, «nb» er ikke bekreftet).
+  Kvoter (søkeutdrag): under 100 ventende og under 2000 lagrede transkripsjoner per prosjekt,
+  inntil 5 timer lyd per fil. stt-async-v4 pensjoneres 30.06.2026, så bare v5 er aktuelt.
+  Region velges per prosjekt i Console (EU på forespørsel); SDK har SONIOX_REGION=eu|jp.
+  SOC 2 / ISO 27001 / GDPR med DPA. Oppbevaring er motstridende i kildene (30 dagers
+  autosletting vs. «må slettes manuelt»): slett alltid selv via cleanup/DELETE.
+  Pris (søkeutdrag): ca. 0,10 USD per time async, 0,12 USD per time sanntid.
+  TTS: REST https://tts-rt.soniox.com/tts {model, language, voice, text, audio_format
+  (mp3|aac|wav|opus|flac|pcm_*), sample_rate, bitrate}; WebSocket wss://tts-rt.soniox.com/
+  tts-websocket med return_timestamps:true gir characters[] med start/sluttid i sekunder per
+  audio-frame (kun WebSocket; REST ignorerer flagget; tidsstemplene gjelder modellens
+  forbehandlede tekst). tts-rt-v2: 60+ språk, samme stemme på alle språk, stemmekloning fra
+  ≤20 s klipp, speed/reduce_silence. Pris (søkeutdrag): ca. 0,70 USD per generert time.
+  Ingen innebygd SRT/VTT-eksport (ikke forveksle med Sonix.ai); cues bygges av oss fra tokens.
+  Ikke verifisert: eksakt prisliste, oppbevaringsregel, om «no» også er koden for TTS-language
+  (TTS-siden var bare tilgjengelig som søkeutdrag).
+interpretation: >
+  To gyldige pipeliner. (A) Vedtatt 17.09: ElevenLabs-TTS → Soniox STT async for ordtider →
+  cues. Fungerer, men er en omvei: vi transkriberer vår egen syntetiske tale for å finne
+  tidene. (B) Soniox TTS v2 over WebSocket med return_timestamps: lyd og tegntider i ett kall,
+  én leverandør, én nøkkel (SENSEAID_SONIOX_API_KEY), samme stemme på alle språk (viktig for
+  «alle språk»-kravet). B krever at norsk stemmekvalitet holder mål mot ElevenLabs, og at vi
+  mapper tegntider tilbake til manussetninger (forbehandlet tekst ≠ råtekst).
+project_impact: >
+  backend: nytt pipeline-steg (planlagt backend/server/reiseguide-content-pipeline.ts) som
+  produserer guide_poi_audio + guide_poi_captions (cues {startS,endS,text} i sekunder, konverter
+  fra start_ms/end_ms). Node SDK @soniox/node kan brukes direkte (MIT, ingen deps). Nøkkel:
+  SENSEAID_SONIOX_API_KEY via reiseguide-config.ts. Ved valg B bortfaller
+  SENSEAID_ELEVENLABS_API_KEY. Velg EU-prosjekt i Soniox Console for GDPR (persondata er ikke
+  involvert i manus, men Daniel ønsker EU).
+confidence: verified
+decision: >
+  Åpen per 18.09.2026: Daniel må velge TTS-leverandør (ElevenLabs som vedtatt, eller Soniox
+  TTS v2). Anbefaling: prøv Soniox TTS v2 på ett norsk manus og sammenlign med ElevenLabs
+  før pipelinen bygges ferdig; STT-async-steget beholdes uansett som kvalitetskontroll og for
+  eksternt produsert lyd.
+affected:
+  - backend/server/reiseguide-config.ts
+  - backend/server/reiseguide-routes.ts (captions.cues-kontrakten)
+  - backend/migrations/0628_reiseguide_poc.sql (guide_poi_audio.tts_provider, guide_poi_captions.source)
+  - ipad/Reiseguide/Reiseguide/Features/Player/PlayerViewModel.swift (CaptionTimeline.build)
+lesson: >
+  Leverandørens produktflate kan ha flyttet seg siden beslutningen ble tatt (Soniox var
+  «bare STT» i skissen, men har nå TTS med tidsstempler). Sjekk vendor-docs på nytt før
+  et pipeline-steg bygges, ikke bare før leverandøren velges.
