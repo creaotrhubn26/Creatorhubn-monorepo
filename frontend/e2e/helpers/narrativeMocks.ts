@@ -800,7 +800,8 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       const byStatus: Record<string, number> = { idea: 0, in_progress: 0, in_review: 0, changes_requested: 0, approved: 0, implemented: 0 };
       const byEra: Record<string, number> = {};
       for (const sc of scenes) { byStatus[String(sc.status)] = (byStatus[String(sc.status)] ?? 0) + 1; byEra[String(sc.era ?? 'other')] = (byEra[String(sc.era ?? 'other')] ?? 0) + 1; }
-      const byKey = Object.fromEntries(GATE_KEYS.map((k) => [k, { passed: gates.filter((x) => x.gateKey === k && x.status === 'passed').length, total: scenes.length }]));
+      const startedScenes = scenes.filter((sc) => sc.status !== 'idea').length; // speiler getProjectOverview: idé-scener gates ikke
+      const byKey = Object.fromEntries(GATE_KEYS.map((k) => [k, { passed: gates.filter((x) => x.gateKey === k && x.status === 'passed').length, total: startedScenes }]));
       const nowMs = Date.now();
       const openTasks = tasks.filter((t) => t.status !== 'done');
       const primary = platformTargets.find((t) => t.isPrimary) ?? platformTargets[0];
@@ -808,7 +809,7 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       const activity = [...scenes.map((sc) => ({ kind: 'scene', id: sc.id, title: `${sc.code} – ${sc.title}`, detail: 'Scene oppdatert', at: sc.updatedAt, sceneId: sc.id })), ...milestones.map((ms) => ({ kind: 'milestone', id: ms.id, title: ms.title, detail: `Milepæl: ${ms.status}`, at: ms.updatedAt, sceneId: null }))].slice(0, 20);
       return route.fulfill(ok({
         scenes: { total: scenes.length, byStatus, byEra, withoutDates: scenes.filter((sc) => !sc.startAt && !sc.dueAt).length },
-        gates: { total: scenes.length * GATE_KEYS.length, passed: gates.filter((x) => x.status === 'passed').length, failed: gates.filter((x) => x.status === 'failed').length, byKey },
+        gates: { total: startedScenes * GATE_KEYS.length, passed: gates.filter((x) => x.status === 'passed').length, failed: gates.filter((x) => x.status === 'failed').length, byKey },
         tasks: { open: openTasks.length, overdue: openTasks.filter((t) => t.dueAt && new Date(String(t.dueAt)).getTime() < nowMs).length, done: tasks.filter((t) => t.status === 'done').length },
         reviews: { open: reviews.filter((r) => r.status === 'in_review').length },
         lines: { total: lines.length, approved: lines.filter((l) => l.recordingStatus === 'approved').length },
