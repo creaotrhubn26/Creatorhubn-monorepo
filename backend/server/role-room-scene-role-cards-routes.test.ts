@@ -36,6 +36,8 @@ vi.mock("./storyboard-service.js", () => ({
 interface Tilstand {
   spørringer: { sql: string; params: unknown[] }[];
   offentligRad: Record<string, unknown> | null;
+  /** Flere kort bak samme lenke (samme person, flere scener samme dag). */
+  offentligRader?: Record<string, unknown>[];
   oppdaterteRader: number;
   utsending?: Record<string, unknown>[];
   /** Lar «marker som åpnet»-spørringen feile, for å teste at kortet vises likevel. */
@@ -63,7 +65,8 @@ function byggApp(t: Tilstand, innlogget = true) {
         return { rows: t.utsending ?? [], rowCount: (t.utsending ?? []).length };
       }
       if (sql.includes("FROM scene_role_cards c")) {
-        return { rows: t.offentligRad ? [t.offentligRad] : [], rowCount: t.offentligRad ? 1 : 0 };
+        const rader = t.offentligRader ?? (t.offentligRad ? [t.offentligRad] : []);
+        return { rows: rader, rowCount: rader.length };
       }
       if (sql.includes("image_data FROM casting_storyboards")) {
         return { rows: [{ image_data: "data:image/png;base64,AAAA" }], rowCount: 1 };
@@ -192,18 +195,41 @@ describe("statistens side", () => {
   it("gir kortet uten innlogging", async () => {
     const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
     expect(res.status).toBe(200);
-    expect(res.body.card.action).toMatch(/bord 3/);
-    expect(res.body.scene.blocking.planUrl).toBeTruthy();
+    expect(res.body.cards[0].card.action).toMatch(/bord 3/);
+    expect(res.body.cards[0].scene.blocking.planUrl).toBeTruthy();
+  });
+
+  it("gir ALLE scenene bak lenken, ikke bare den første", async () => {
+    const andre = { ...t.offentligRad, action: "Du går forbi i bakgrunnen.", scene_title: "Gaten utenfor" };
+    const res = await request(byggApp({ ...t, offentligRader: [t.offentligRad, andre] }, false))
+      .get("/api/role-room/role-cards/r/et-token");
+
+    // Tre scener samme dag ga tre lenker før. Nå er det én lenke med tre deler.
+    expect(res.body.cards).toHaveLength(2);
+    expect(res.body.cards[1].scene.title).toBe("Gaten utenfor");
+    // Stedet hører til dagen, ikke til hver scene.
+    expect(res.body.meeting.name).toBe("Pizzeria Roma");
+  });
+
+  it("er hele lenken død når ett av kortene er trukket tilbake", async () => {
+    const trukket = { ...t.offentligRad, revoked_at: "2026-09-20T10:00:00Z" };
+    const res = await request(byggApp({ ...t, offentligRader: [t.offentligRad, trukket] }, false))
+      .get("/api/role-room/role-cards/r/et-token");
+    // En halv dag er verre enn ingen: da tror personen at hen har alt.
+    expect(res.status).toBe(404);
   });
 
   it("gir BARE denne personens kort — ingen andre, ingen kontaktliste", async () => {
     const res = await request(byggApp(t, false)).get("/api/role-room/role-cards/r/et-token");
     const nøkler = Object.keys(res.body);
     // Strengt med vilje: hver nye toppnøkkel skal måtte forsvares her.
-    expect(nøkler.sort()).toEqual(["card", "meeting", "project", "scene"]);
+    expect(nøkler.sort()).toEqual(["cards", "meeting", "person", "project"]);
     // Hele poenget: statisten skal ikke lete etter seg selv i scenen.
-    expect(JSON.stringify(res.body)).not.toContain("cards");
-    expect(res.body.card.id).toBeUndefined();
+    // `cards` er nå personens EGNE scener — vakten må derfor være at ingen
+    // andre personer finnes i svaret, ikke at nøkkelen mangler.
+    const navn = res.body.cards.map((d: { card: { person_name: string } }) => d.card.person_name);
+    expect([...new Set(navn)]).toEqual(["Statist 3"]);
+    expect(res.body.cards[0].card.id).toBeUndefined();
   });
 
   it("merker kortet som åpnet — første gang, og bare da", async () => {
@@ -217,7 +243,9 @@ describe("statistens side", () => {
     // `opened_at IS NULL` gjør senere åpninger til et no-op: vi teller ikke
     // hvor mange ganger noen har sett kortet, bare at de har sett det.
     expect(merking?.sql).toContain("opened_at IS NULL");
-    expect(merking?.params).toEqual([KORT_ID]);
+    // På token: personen åpnet LENKEN, ikke ett kort av gangen.
+    expect(merking?.sql).toContain("WHERE token = $1");
+    expect(merking?.params).toEqual(["et-token"]);
   });
 
   it("viser kortet selv om åpnings-merkingen feiler", async () => {
@@ -225,7 +253,7 @@ describe("statistens side", () => {
     const app = byggApp({ ...t, feilPåMerking: true }, false);
     const res = await request(app).get("/api/role-room/role-cards/r/et-token");
     expect(res.status).toBe(200);
-    expect(res.body.card.action).toMatch(/bord 3/);
+    expect(res.body.cards[0].card.action).toMatch(/bord 3/);
   });
 
   it("gir ikke statisten beskjed om at åpningen blir registrert i svaret", async () => {
@@ -353,6 +381,8 @@ describe("storyboard-rammer", () => {
 
 describe("utsending av lenker", () => {
   let t: Tilstand;
+  // Token hører til personen og dagen, ikke til kortet: to ulike personer må
+  // derfor ha ulike token, ellers havner de bak samme lenke.
   const rad = (over: Record<string, unknown> = {}) => ({
     id: KORT_ID, person_name: "Statist 3", action: "Du sitter ved bord 3.",
     cue: "Etter første bit.", call_time: null, token: "token-abc", sent_at: null,
@@ -398,8 +428,28 @@ describe("utsending av lenker", () => {
     expect(res.body.sent).toBe(1);
   });
 
+  it("sender ÉN e-post til en person med flere scener samme dag", async () => {
+    t.utsending = [
+      rad({ id: "a", scene_title: "Pizzarestauranten", call_time: "2026-10-01T07:30:00Z" }),
+      rad({ id: "b", scene_title: "Gaten utenfor", call_time: "2026-10-01T11:00:00Z" }),
+    ];
+    const res = await request(byggApp(t))
+      .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`).send({});
+
+    // Tre like e-poster med hver sin lenke var hele problemet.
+    expect(sendtEpost).toHaveBeenCalledTimes(1);
+    // Kvitteringen teller personer: én person fikk beskjed, ikke to kort.
+    expect(res.body.sent).toBe(1);
+    expect(sendtEpost.mock.calls[0][0].subject).toMatch(/2 scener/);
+    // Begge kortene er merket sendt, ellers ville «send til alle» sendt igjen.
+    expect(res.body.sentIds.sort()).toEqual(["a", "b"]);
+  });
+
   it("sender ikke kort uten handling eller uten adresse", async () => {
-    t.utsending = [rad({ id: "a", action: null }), rad({ id: "b", epost: null })];
+    t.utsending = [
+      rad({ id: "a", action: null, token: "token-a", person_name: "Uten handling" }),
+      rad({ id: "b", epost: null, token: "token-b", person_name: "Uten adresse" }),
+    ];
     const res = await request(byggApp(t))
       .post(`/api/role-room/projects/${PROSJEKT}/role-cards/send`).send({});
 
