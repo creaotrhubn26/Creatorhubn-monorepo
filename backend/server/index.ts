@@ -645,6 +645,7 @@ import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
+import { registerLeadgridSporbarhetRoutes } from "./leadgrid-sporbarhet-routes.js";
 import {
   registerLeadgridPublicFormSubmission,
   registerLeadgridFormAdminRoutes,
@@ -26002,6 +26003,9 @@ registerLeadgridDealsRoutes({ app, pool, activeSessions });
 // Skjema-endepunkter: publiserbar nøkkel per prosjekt, origin-liste og
 // ratebegrensning. Selve innsendingen er montert lenger opp.
 registerLeadgridFormAdminRoutes({ app, pool, activeSessions });
+// Sporbarhet for markedssjefen: hva som er satt opp, hvor kunden kom fra,
+// hva kampanjen kostet, og hva de kjøpte. Leadgrids egne tabeller (mig 0638).
+registerLeadgridSporbarhetRoutes({ app, pool, activeSessions });
 // Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers
 // (lead.created, pipeline.stage_changed, deal.probability_changed, ...) +
 // actions (send_email/sms/wa, change_pipeline_stage, add_tag, create_task,
