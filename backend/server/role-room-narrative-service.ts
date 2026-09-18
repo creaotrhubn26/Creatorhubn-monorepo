@@ -2995,7 +2995,10 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
     byEra[era] = (byEra[era] ?? 0) + 1;
     if (!r.start_at && !r.due_at) withoutDates += 1;
   }
-  const byKey = Object.fromEntries(NARRATIVE_GATE_KEYS.map((k) => [k, { passed: 0, total: scenes.rows.length }])) as Record<NarrativeGateKey, { passed: number; total: number }>;
+  // Gate-totalen teller bare scener som er startet (status ≠ idea): en scene på
+  // idéstadiet har ingen leveranse å gate ennå, og «6 av 204» skjuler reell fremdrift.
+  const startedScenes = scenes.rows.length - byStatus.idea;
+  const byKey = Object.fromEntries(NARRATIVE_GATE_KEYS.map((k) => [k, { passed: 0, total: startedScenes }])) as Record<NarrativeGateKey, { passed: number; total: number }>;
   let passed = 0; let failed = 0;
   for (const g of gates.rows as Row[]) {
     const key = String(g.gate_key) as NarrativeGateKey;
@@ -3016,7 +3019,7 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
   const reqs = primary ? normalizeRequirements(primary.requirements) : [];
   return {
     scenes: { total: scenes.rows.length, byStatus, byEra, withoutDates },
-    gates: { total: scenes.rows.length * NARRATIVE_GATE_KEYS.length, passed, failed, byKey },
+    gates: { total: startedScenes * NARRATIVE_GATE_KEYS.length, passed, failed, byKey },
     tasks: { open, overdue, done },
     reviews: { open: num(reviews.rows[0]?.n) },
     lines: { total: num(lines.rows[0]?.total), approved: num(lines.rows[0]?.approved) },
