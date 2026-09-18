@@ -21,9 +21,9 @@
  * the developers/testers/admins of the Meta app can exercise the write paths.
  * See docs/role-room/meta-app-review.md for the submission checklist.
  */
+import { META_GRAPH_BASE, META_GRAPH_API_VERSION } from "./meta-graph-version.js";
 
-const META_GRAPH_VERSION = "v21.0";
-const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+const META_GRAPH_VERSION = META_GRAPH_API_VERSION;
 
 export type MetaCampaignObjective =
   | "OUTCOME_AWARENESS"

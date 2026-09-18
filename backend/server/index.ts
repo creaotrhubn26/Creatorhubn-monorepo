@@ -651,6 +651,11 @@ import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
+import { registerLeadgridSporbarhetRoutes } from "./leadgrid-sporbarhet-routes.js";
+import {
+  registerLeadgridPublicFormSubmission,
+  registerLeadgridFormAdminRoutes,
+} from "./leadgrid-inbound-forms.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
@@ -1780,6 +1785,12 @@ app.post(
 // raw body signature verification. Handles Connect account.updated +
 // transfer.*/payout.* events for instructor payouts.
 setupAcademyStripeWebhookRoutes({ app, pool });
+
+// Innkommende skjema fra kundens egen nettside (mig 0652). Monteres her,
+// før den globale cors()-en og før express.json({limit:"50mb"}): ruta svarer
+// med sine egne CORS-headere per skjema, og en offentlig, uautentisert
+// endepunkt skal ikke ta imot 50 MB.
+registerLeadgridPublicFormSubmission({ app, pool });
 
 app.post(
   "/api/platform/billing/webhook",
@@ -26037,6 +26048,12 @@ registerLeadgridIndustriesRoutes({ app, pool, activeSessions });
 // weighted forecast (sum amount × probability/100), at-risk-list, stage-history.
 // Gated på deals.view_forecast / deals.view_amount / deals.edit.
 registerLeadgridDealsRoutes({ app, pool, activeSessions });
+// Skjema-endepunkter: publiserbar nøkkel per prosjekt, origin-liste og
+// ratebegrensning. Selve innsendingen er montert lenger opp.
+registerLeadgridFormAdminRoutes({ app, pool, activeSessions });
+// Sporbarhet for markedssjefen: hva som er satt opp, hvor kunden kom fra,
+// hva kampanjen kostet, og hva de kjøpte. Leadgrids egne tabeller (mig 0653).
+registerLeadgridSporbarhetRoutes({ app, pool, activeSessions });
 // Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers
 // (lead.created, pipeline.stage_changed, deal.probability_changed, ...) +
 // actions (send_email/sms/wa, change_pipeline_stage, add_tag, create_task,

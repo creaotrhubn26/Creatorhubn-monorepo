@@ -33,6 +33,7 @@ import {
   type ProfileRecBootstrap,
   type ProfileRecommendations,
 } from './role-room-agent-profile-recommendations.js';
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 export interface SetupAgentRoutesDeps {
   app: Application;
@@ -40,7 +41,6 @@ export interface SetupAgentRoutesDeps {
   requireAdminOrDemoBypass: (req: Request, res: Response) => boolean;
 }
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
 function bootstrapHash(b: ProfileRecBootstrap): string {
   // Stable hash for cache-key. Order-insensitive sort of keys.

@@ -1,0 +1,130 @@
+claim: >
+  HubSpot CRM-data kan hentes med en Service Key (Authorization: Bearer
+  mot api.hubapi.com) uten godkjenningsrunde hos HubSpot. Objekt-API-ene ligger
+  på datostemplede stier (i dag /crm/objects/2026-03/{objectType}), lesing
+  krever per-objekt-scopes (crm.objects.contacts.read, crm.objects.deals.read),
+  listing pagineres med limit (maks 100) + after-cursor, og batch/read tar maks
+  100 id-er per kall. Kontakt↔selskap-kobling leses via associations v4.
+  Rate-grenser for privat distribuerte apper er burst per app: 100 kall/10 s på
+  Free/Starter, 190 på Professional/Enterprise, med daglige grenser delt på
+  tvers av alle apper i kundens konto.
+source_type: api_reference
+source: >
+  HubSpot Developer Documentation (developers.hubspot.com), hentet via
+  context7 /websites/developers_hubspot 2026-09-18:
+  https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines
+  https://developers.hubspot.com/docs/api-reference/latest/crm/using-object-apis
+  https://developers.hubspot.com/docs/guides/crm/using-object-apis
+  https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/guide
+  https://developers.hubspot.com/docs/api-reference/latest/crm/objects/deals/get-deals
+  https://developers.hubspot.com/docs/developer-tooling/sdks/node
+verified_against_live_account: >
+  Testet mot ekte HubSpot developer test account (EU-region, portal 149361428)
+  2026-09-18. Funn som dokumentasjonen ikke ga:
+  - api.hubapi.com er riktig host også for EU-kontoer; api.hubapi.eu finnes ikke.
+  - Pipelines ligger på /crm/pipelines/<versjon>/<objekt>, IKKE
+    /crm/<versjon>/pipelines/<objekt>. Sistnevnte ga 404.
+  - HubSpot har flyttet private apps til «Legacy Apps» og fraråder dem
+    («won't receive new API scopes», «limited support going forward»).
+    Service Keys er den anbefalte veien for single-account API-tilgang.
+    Evidensfilen sa opprinnelig Private App; det var utdatert samme dag.
+  - Scope-endringer på en Service Key propagerer IKKE umiddelbart. Rett etter
+    lagring ga products/line_items vekselvis 403 og 200 i opptil et minutt.
+    En migrering må derfor tåle 403 rett etter at kunden har fikset scopes.
+  - Stage-metadata er strenger: {isClosed: "false", probability: "0.2"}.
+  - Standard-pipelinen heter «default» med sju stager fra appointmentscheduled
+    til closedwon/closedlost.
+authority_tier: 1
+vendor: HubSpot
+product: CRM API (objects, associations, pipelines)
+version_scope: "Datostemplet objekt-API: 2026-03. Private app tokens, associations v4."
+publication_date: "2026-09-18"
+valid_from: "2026-09-18"
+valid_to: "2027-03-18"
+evidence_summary: >
+  Repo-inventar (18.09.2026): NULL HubSpot-integrasjonskode. Ingen OAuth-klient,
+  ingen token-tabell, ingen sync-tjeneste, ingen webhook-mottaker, ingen
+  hubapi.com-kall, ingen npm-avhengighet. De ~15 treffene i levende tre er
+  doc-kommentarer som nevner HubSpot som kilde/mål, konkurrentdeteksjon på
+  prospekters nettsteder (market-intelligence/tech-stack-detection-service.ts),
+  en label i en admin-nedtrekksliste, og SEO/pris-tekst. Connector-siden
+  (leadgrid-connectors.tsx) merker HubSpot "planned", som er korrekt.
+interpretation: >
+  Service Key er riktig vei for en migreringsjobb: kunden lager nøkkelen selv
+  i HubSpot, det krever ingen app-review, og en engangs-migrering trenger bare
+  lesescopes. OAuth-app ville kostet en godkjenningsrunde uten å gi migreringen
+  noe den trenger. Legacy private apps virker fortsatt, men HubSpot fraråder
+  dem og gir dem ikke nye scopes.
+  Scopes vi faktisk trenger, verifisert mot kontoen: crm.objects.contacts.read,
+  crm.objects.companies.read, crm.objects.deals.read, crm.objects.owners.read,
+  crm.objects.products.read, crm.objects.line_items.read, crm.schemas.deals.read. Burst-grensen på 100-190 kall/10 s betyr at en
+  migrering av et større HubSpot-oppsett ikke kan ligge i en HTTP-request; den
+  må kjøre som bakgrunnsjobb med throttling og gjenopptakelse.
+project_impact: >
+  Migreringen er en ny kilde inn i en eksisterende motor, ikke et nytt
+  subsystem. leadgrid_import_batches (migrasjon 328) har allerede import_source,
+  column_mapping, dedupe_strategy og feiltellere; crm_customers har
+  import_source, import_batch_id og import_raw_data, så rå HubSpot-objekter kan
+  lagres for senere re-mapping uten nytt API-uttak. Prosjektavgrensning finnes
+  i project_id/organization_id/owner_user_id. Deals og pipeline-stadier er den
+  kostbare delen, men ikke fordi modellen mangler: vi HAR pipeline_stage,
+  deal_amount, expected_close_date og crm_deal_stage_history. Formen er en
+  annen — vår stage er en fast CHECK. At dealen lå PÅ kunde-raden var det
+  dyreste avviket; migrasjon 0650 ga salget sin egen tabell, så et selskap
+  med flere åpne deals ikke lenger mister alt annet enn den største.
+  Se model_gap.
+model_gap:
+  hard_failures:
+    - "pipeline_stage er CHECK IN (new, first_contact, qualified, meeting, proposal, negotiation, won, lost) (migrasjon 313:41). HubSpot-kunder definerer egne pipelines og stagenavn; ukjent verdi bryter constrainten."
+    - "leadgrid_customer_contacts.customer_id er NOT NULL med FK til crm_customers (migrasjon 0564). En HubSpot-kontakt uten company-association har ingen lovlig plass."
+    - "crm_customers.owner_user_id og crm_lead_activities.user_id peker på users(id). HubSpot-eieren er en HubSpot-bruker som ikke finnes hos oss; uten eier-mapping blir det FK-brudd eller tapt eierskap."
+  silent_data_loss:
+    - "HubSpot-kontakt kan tilhøre flere selskaper (mange-til-mange), og koblingen kan bære flere association labels samtidig (HUBSPOT_DEFINED + USER_DEFINED, inntil 50 labels per objektpar). Vår role er én tekststreng mot ett selskap."
+    - "crm_lead_activities.activity_type er CHECK med ti verdier (migrasjon 271); verken e-post eller telefonsamtale er blant dem. HubSpot-engasjementer kan ikke migreres uten å utvide listen."
+  decisions_required:
+    - "crm_customers.project_id er påkrevd. HubSpot har ikke prosjektbegrep, så migreringen må velge målprosjekt."
+    - "HubSpots beregnede og skrivebeskyttede properties bør ikke migreres; de er avledet av HubSpot-logikk vi ikke har."
+  closed:
+    - "LUKKET 18.09.2026 (migrasjon 0650): deal-feltene lå PÅ crm_customers-raden (migrasjon 0349), så et selskap med flere åpne deals fikk plass til én. leadgrid_deals gir null eller flere salg per bedrift; crm_customers speiler primærsalget så eksisterende lesere virker uendret. planHubSpotMigration returnerer nå deals[], og issue-kodene extra_deals_dropped og line_items_on_dropped_deal er fjernet fordi tapet ikke lenger finnes."
+    - "LUKKET 18.09.2026 (migrasjon 0650): leadgrid_customer_contacts manglet e-post og telefon. Kolonnene email, phone, title, is_primary og hubspot_contact_id er lagt til, og planleggeren bærer dem som ekte felter (PlannedContact.email/.phone), ikke som emailWithoutColumn."
+    - "LUKKET 18.09.2026 (migrasjon 0651): oppgaver fra HubSpot har nå en plass — leadgrid_oppgaver fikk due_at, assigned_user_id, deal_id, priority, task_type og hubspot_task_id."
+  not_a_problem:
+    - "Custom properties: lead_custom_field_definitions har tolv felttyper (text, long_text, number, dropdown, multi_select, boolean, date, datetime, url, email, phone, currency) og lead_custom_field_values lagrer per lead. HubSpot enumeration mapper til dropdown/multi_select."
+
+confidence: strong_evidence
+decision: >
+  GO for engangs-migrering HubSpot -> Leadgrid på Service Key. Første
+  steg er en ren klassifiserings-funksjon (hubspot-migration-plan.ts) som
+  avgjør hva som skjer med hver record mot våre constraints, testet mot
+  fikstur uten HubSpot-tilgang. Validering mot et gratis HubSpot developer
+  test account (hs test-account create) kommer før noen ekte kunde kobles på.
+  Ingen toveis sync i denne fasen.
+  Retningsvalg: gapene over skal IKKE lukkes ved å kaste data som ikke
+  passer. Der HubSpot var rikere enn oss er paritet minimumskravet: flere
+  deals per kunde og e-post på kontakt er lukket i migrasjon 0650, mens
+  mange-til-mange med labels og e-post/samtale som aktivitet gjenstår. Det er
+  paritet minimumskravet, ikke et strekkmål — ellers blir en migrering et
+  tap for kunden. Det vi har som de ikke har (prosjekt-avgrensning,
+  AI-score, import_raw_data-sporbarhet) er det som skal gjøre oss bedre,
+  og det forutsetter at grunnmuren først er på høyde.
+  Følg opp: den datostemplede API-stien (2026-03) må bumpes når HubSpot
+  ruller ny versjon; sjekk usage-guidelines på nytt før lansering fordi
+  rate-grensene varierer med kundens HubSpot-nivå.
+affected:
+  - backend/server/hubspot-migration-plan.ts
+  - backend/server/hubspot-migration-fixtures.ts
+  - backend/server/leadgrid-import-routes.ts
+  - backend/migrations/313_leadgrid_intelligence.sql
+  - backend/migrations/0349_leadgrid_deals_and_workflows.sql
+  - backend/migrations/0564_leadgrid_discovery_clinic_grouping.sql
+  - backend/migrations/271_lead_map.sql
+  - backend/migrations/328_leadgrid_lead_import.sql
+  - backend/server/integrations/integration-registry.ts
+  - frontend/client/src/pages/leadgrid-connectors.tsx
+  - frontend/client/src/pages/leadgrid-pricing.tsx
+lesson: >
+  Sjekk om en "ny integrasjon" egentlig er en ny kilde inn i en motor som
+  allerede finnes. Her var import-sporing, dedup og feltmapping bygget for to
+  år siden; det dyre er ikke uttaket fra vendoren, men målmodellen vi mangler
+  (pipeline-stadier). Avklar hvilke objekter vi faktisk kan ta imot FØR
+  connector-siden lover dem.

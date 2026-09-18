@@ -16,8 +16,9 @@
  */
 
 import type { Pool } from 'pg';
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
+
 const WORKER_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const SNAPSHOT_FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
 const STARTUP_DELAY_MS = 60_000; // wait 1 min after boot so the server is healthy

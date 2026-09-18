@@ -14,9 +14,9 @@
  * and the rest of the bootstrap pipeline continues — Google Places
  * data is the baseline, Meta Pages is strictly additive.
  */
+import { META_GRAPH_BASE, META_GRAPH_API_VERSION } from "./meta-graph-version.js";
 
-const META_GRAPH_VERSION = 'v21.0';
-const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+const META_GRAPH_VERSION = META_GRAPH_API_VERSION;
 const SEARCH_TIMEOUT_MS = 5_000;
 const METADATA_TIMEOUT_MS = 5_000;
 const MAX_SEARCH_RESULTS = 5;

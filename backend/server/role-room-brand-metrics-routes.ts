@@ -13,8 +13,8 @@
 
 import type { Application, Request, Response } from 'express';
 import type { Pool } from 'pg';
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
 export interface SetupBrandMetricsDeps {
   app: Application;

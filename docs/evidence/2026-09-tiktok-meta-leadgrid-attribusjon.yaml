@@ -1,0 +1,117 @@
+claim: >
+  Meta (Facebook + Instagram) og TikTok har begge en ferdig vei for å lukke
+  sløyfen fra annonse til vunnet avtale, og begge krever at klikk-ID-en
+  lagres på leadet.
+
+  Meta: Conversions API tar CRM-hendelser på POST /events med
+  action_source: "system_generated", user_data (lead_id fra lead-annonsen,
+  eller sha256-hashet em/ph) og custom_data { lead_event_source, event_source:
+  "crm" }. Det er dette som driver «Conversion Leads Optimization» — altså at
+  Meta optimaliserer mot avtaler som faktisk lukkes, ikke mot skjema-
+  utfyllinger. fbc bygges av fbclid etter mønsteret
+  fb.<subdomain_index>.<creation_time_ms>.<fbclid>, så fbclid alene er nok å
+  lagre. Samme klikk-id gjelder BÅDE Facebook og Instagram.
+
+  TikTok: offline-konverteringer går via event sets
+  (POST /open_api/v1.3/offline/create/, GET /open_api/v1.3/offline/get/), og
+  server-til-server-hendelser via POST /pixel/track/ og /pixel/batch/.
+  Klikk-ID-en ttclid sendes IKKE som et felt ved navn «ttclid», men som
+  context.ad.callback. Gyldighetstiden følger CTA-vinduet i Attribution
+  Manager.
+source_type: api_reference
+source: >
+  Meta Marketing API-dokumentasjon, hentet via context7
+  /websites/developers_facebook_marketing-api 2026-09-18:
+  https://developers.facebook.com/docs/marketing-api/conversions-api/conversion-leads-integration/crm-integration/3-implementing-the-crm-integration
+  https://developers.facebook.com/docs/marketing-api/conversions-api/conversion-leads-integration/payload-specification
+  https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/fbp-and-fbc
+
+  TikTok Business API SDK, hentet via context7
+  /tiktok/tiktok-business-api-sdk 2026-09-18:
+  https://github.com/tiktok/tiktok-business-api-sdk/blob/main/java_sdk/docs/MeasurementApi.md
+  https://github.com/tiktok/tiktok-business-api-sdk/blob/main/python_sdk/README.md
+  https://github.com/tiktok/tiktok-business-api-sdk/blob/main/js_sdk/docs/PixelContextAd.md
+verified_against_repo: >
+  Lest i backend/server 2026-09-18. 51 filer rører Meta eller TikTok. Det som
+  finnes er ekte og i bruk — men ingenting av det tar veien innom Leadgrid:
+
+    client-meta-suite.ts       pixler, custom conversions, custom audiences,
+                               sendMetaCapiEvent, listMetaCapiEvents
+    client-tiktok-suite.ts     pixler, reporting, listTiktokLeadForms,
+                               syncTiktokLeads, syncCrmEventToTiktok,
+                               fetchTiktokAttribution, audiences, creators
+    meta-conversions-api.ts    server-side CAPI for VÅRE EGNE nettsteder
+                               (creatorhubn.com og theroleroom.com), egen
+                               pixel per site, valgt på Origin-header
+    role-room-instagram-*.ts   OAuth, publisering, webhook, bildeopplasting
+    social-publisher-*.ts      publisering til Facebook Page, Instagram, TikTok
+    role-room-ads-oauth.ts     OAuth-scopes finnes bare for google og linkedin;
+                               Meta og TikTok har egne OAuth-veier
+
+  De to funksjonene som ser ut som løsningen, er det ikke:
+    syncTiktokLeads      skriver til tiktok_lead_records (mig 261), som bare
+                         leses av client-ads-routes.ts. Nøklet på
+                         producer_user_id og config_id. Når aldri crm_customers.
+    syncCrmEventToTiktok og sendMetaCapiEvent tar begge producerUserId og
+                         bruker byråets egen annonsekonto-kobling. De kan ikke
+                         sende på vegne av et Leadgrid-prosjekt.
+
+  Meta Graph API-versjon i bruk i repoet: 41 treff på v21.0, 3 på v22.0,
+  1 på v18.0. Ikke samstemt, og ikke verifisert mot gjeldende versjon.
+authority_tier: 1
+vendor: Meta / TikTok
+product: Conversions API (Meta), Events API + Offline Events (TikTok)
+version_scope: "Meta Graph v21.0/v22.0 i repoet. TikTok Business API v1.3."
+publication_date: "2026-09-18"
+valid_from: "2026-09-18"
+valid_to: "2027-03-18"
+interpretation: >
+  Strukturen er identisk med Google-funnet fra tidligere samme dag: hele
+  annonse- og attribusjonsstakken finnes, men den bor på byråsiden (Role Room)
+  og kjenner bare producer_user_id. Leadgrid — der kundens leads og avtaler
+  faktisk ligger — har ingen kobling til noen av dem.
+
+  Det betyr at lederspørsmålet «vi får mange henvendelser fra kampanje A, men
+  er det kampanje B som gir kundene med størst avtaleverdi?» ikke kunne
+  besvares for noen plattform, og at ingen plattform kunne få vite hvilke
+  leads som ble til penger.
+project_impact: >
+  Lukket 2026-09-18 (mig 0652): innkommende skjema lagrer nå gclid, fbclid og
+  ttclid på crm_customers, med indeks på hver. fbclid dekker Facebook og
+  Instagram. Attribusjonen står på bedriften, avtalebeløpet på salget
+  (mig 0650) — de henger sammen via customer_id, så spørsmålet er svarbart
+  med én join.
+
+  Gjenstår, i rekkefølgen som gir mest per time:
+    1. Tilbakerapportering ved vunnet avtale. Plumbingen finnes
+       (sendMetaCapiEvent, syncCrmEventToTiktok), men må kunne kjøre på et
+       Leadgrid-prosjekts annonsekonto i stedet for byråets. Uten dette
+       optimaliserer plattformene fortsatt mot skjema-utfyllinger.
+    2. Lead-annonser rett inn. TikTok har allerede listTiktokLeadForms og
+       syncTiktokLeads — de skriver bare til feil tabell. Meta har ingen
+       leadgen-webhook i det hele tatt.
+    3. Per-prosjekt OAuth for Meta og TikTok. role-room-ads-oauth.ts har bare
+       google og linkedin; Meta og TikTok har egne veier som ikke er
+       prosjekt-scopet.
+confidence: strong_evidence
+decision: >
+  Lagre klikk-ID-ene FØRST, resten etterpå. En klikk-id som ikke ble lagret da
+  henvendelsen kom inn, kan ikke rekonstrueres senere — den finnes bare i det
+  ene GET-parameteret på landingssiden. Alt annet i lista over kan bygges når
+  som helst mot data vi allerede har; dette ene kan bare bygges FRAMOVER.
+
+  Derfor ble mig 0652 utvidet med fbclid og ttclid før noe av
+  tilbakerapporteringen er påbegynt, selv om ingenting leser dem ennå.
+affected:
+  - backend/migrations/0652_leadgrid_inbound_forms.sql
+  - backend/server/leadgrid-inbound-forms.ts
+  - backend/server/client-meta-suite.ts
+  - backend/server/client-tiktok-suite.ts
+  - backend/server/meta-conversions-api.ts
+  - backend/server/role-room-ads-oauth.ts
+lesson: >
+  «Vi har allerede TikTok-integrasjon» var sant og likevel ubrukelig for
+  spørsmålet som ble stilt. Funksjonsnavnet syncTiktokLeads lover nøyaktig det
+  man leter etter; først når man leser hvilken TABELL den skriver til, ser man
+  at leadene aldri når CRM-et. Sjekk alltid hvor data lander, ikke bare at det
+  finnes en funksjon med riktig navn.

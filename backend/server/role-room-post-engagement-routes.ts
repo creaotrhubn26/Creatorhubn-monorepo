@@ -18,8 +18,9 @@
 
 import type { Application, Request, Response } from 'express';
 import type { Pool } from 'pg';
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0';
+
 const WORKER_INTERVAL_MS = 30 * 60 * 1000;          // 30 min
 const STARTUP_DELAY_MS = 150_000;                     // 2.5 min etter boot
 const POLL_DENSITY_HOURS = [1, 6, 24, 72, 168, 336, 720]; // 1h, 6h, 24h, 3d, 7d, 14d, 30d

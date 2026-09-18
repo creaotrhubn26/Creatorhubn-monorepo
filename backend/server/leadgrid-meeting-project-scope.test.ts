@@ -99,12 +99,14 @@ describe("Leadgrid meeting-memory project scope", () => {
     expect(result).toEqual({ status: 200, body: { oppgaver: [] } });
     const [sql, params] = query.mock.calls[0];
     expect(String(sql)).toContain("AND project_id = $2");
-    expect(String(sql)).toContain("AND user_id = $3");
+    // Mig 0636 skilte den som opprettet oppgaven fra den som skal gjøre den.
+    // «Mine oppgaver» er de jeg er ansvarlig for, ikke de jeg skrev ned.
+    expect(String(sql)).toContain("AND assigned_user_id = $4");
     expect(params).toEqual([
       "11111111-1111-4111-8111-111111111111",
       "dentum-oslo",
-      "seller-a",
       "open",
+      "seller-a",
     ]);
   });
 

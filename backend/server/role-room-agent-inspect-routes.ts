@@ -30,6 +30,7 @@ import type express from "express";
 import type { Pool } from "pg";
 
 import { listInstagramConnections } from "./role-room-instagram-oauth.js";
+import { META_GRAPH_BASE } from "./meta-graph-version.js";
 
 interface AdminSession {
   userId: string;
@@ -181,7 +182,7 @@ export function setupRoleRoomAgentInspectRoutes(
       return res.status(409).json({ success: false, error: "Koble Facebook/Instagram til Role Room først.", connectRequired: true });
     }
     const connection = connections[0];
-    const url = `https://graph.facebook.com/v21.0/pages/search?${new URLSearchParams({
+    const url = `${META_GRAPH_BASE}/pages/search?${new URLSearchParams({
       q,
       fields: "id,name,category,link,verification_status,fan_count",
       access_token: connection.accessToken,
