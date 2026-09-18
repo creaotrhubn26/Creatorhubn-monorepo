@@ -71,6 +71,8 @@ import {
 } from './icons/CastingIcons';
 import type { Prop } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { manuscriptService } from '../services/manuscriptService';
+import { mergeSceneOptions, type SceneOption } from './production/sceneOptions';
 import globalTagService from '../services/globalTagService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
@@ -400,6 +402,28 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   const [warehouseStockByItem, setWarehouseStockByItem] = useState<
     Record<string, { quantity: number; reserved: number; available: number }>
   >({});
+
+  // Scenene rekvisitten hører til. Panelet målte allerede `assignedScenes`
+  // — «klar»-telleren krever den — men ingenting kunne sette den, så alle
+  // rekvisitter telte som ikke klare uansett hva noen gjorde.
+  const [sceneOptions, setSceneOptions] = useState<SceneOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const manuscripts = await manuscriptService.getManuscripts(projectId);
+        const lists = await Promise.all(
+          manuscripts.map((manuscript) => manuscriptService.getScenes(manuscript.id)),
+        );
+        if (!cancelled) {
+          setSceneOptions(mergeSceneOptions(lists.flat(), castingService.getAvailableScenes(projectId)));
+        }
+      } catch {
+        if (!cancelled) setSceneOptions(castingService.getAvailableScenes(projectId));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -2927,6 +2951,62 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
             />
+
+            <FormControl fullWidth sx={{ gridColumn: '1 / -1' }}>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Scener</InputLabel>
+              <Select
+                multiple
+                value={formData.assignedScenes ?? []}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFormData({
+                    ...formData,
+                    assignedScenes: typeof value === 'string' ? value.split(',') : value,
+                  });
+                }}
+                label="Scener"
+                inputProps={{ 'aria-label': 'Scener rekvisitten hører til' }}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((sceneId) => (
+                      <Chip
+                        key={sceneId}
+                        size="small"
+                        label={sceneOptions.find((scene) => scene.id === sceneId)?.name ?? sceneId}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                sx={{
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                }}
+                MenuProps={{
+                  container: document.body,
+                  sx: { zIndex: 100010 },
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#1c2128',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      maxHeight: 300,
+                    },
+                  },
+                }}
+              >
+                {sceneOptions.length === 0 ? (
+                  <MenuItem disabled sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    Ingen scener i manuset ennå
+                  </MenuItem>
+                ) : sceneOptions.map((scene) => (
+                  <MenuItem key={scene.id} value={scene.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    {scene.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <TextField
               label="Notater"

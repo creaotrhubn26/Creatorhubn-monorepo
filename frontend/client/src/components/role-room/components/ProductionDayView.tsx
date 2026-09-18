@@ -113,6 +113,7 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { manuscriptService } from '../services/manuscriptService';
 import { equipmentApi } from '../services/castingApiService';
 import { mergeSceneOptions, type SceneOption } from './production/sceneOptions';
+import { propsNeededForDay } from './production/artDepartmentNeeds';
 import type { SceneBreakdown } from '../models/casting';
 
 /**
@@ -800,6 +801,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const availableScenes: SceneOption[] = useMemo(
     () => mergeSceneOptions(manuscriptScenes, castingService.getAvailableScenes(projectId)),
     [manuscriptScenes, projectId],
+  );
+
+  // Hva scenene på dagen krever av rekvisitter. Utledet, ikke registrert:
+  // scenen står på både dagen og rekvisitten, og da følger behovet av seg selv.
+  const propNeeds = useMemo(
+    () => propsNeededForDay(formData.scenes ?? [], formData.props ?? [], props),
+    [formData.scenes, formData.props, props],
   );
 
   // Utstyret prosjektet fører: kamera, optikk, lys, lyd, grip.
@@ -5475,6 +5483,29 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 })}
               </Select>
             </FormControl>
+
+            {propNeeds.missing.length > 0 && (
+              <Alert
+                severity="info"
+                sx={{ gridColumn: '1 / -1' }}
+                action={(
+                  <Button
+                    size="small"
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, color: '#c3cbe6' }}
+                    onClick={() => setFormData({
+                      ...formData,
+                      props: [...(formData.props ?? []), ...propNeeds.missing.map((item) => item.id)],
+                    })}
+                  >
+                    Legg til alle
+                  </Button>
+                )}
+              >
+                Scenene på dagen krever {propNeeds.missing.length}{' '}
+                {propNeeds.missing.length === 1 ? 'rekvisitt' : 'rekvisitter'} som ikke står her:{' '}
+                {propNeeds.missing.map((item) => item.name).join(', ')}.
+              </Alert>
+            )}
 
             {/* Riggen. Kamera, optikk, lys og lyd hører til dagen på samme
                 måte som scener og rekvisitter — og det var ingen vei til å
