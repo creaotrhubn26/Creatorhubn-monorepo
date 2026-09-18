@@ -1,6 +1,7 @@
-# Reiseguide (lydguide-POC, iPhone)
+# SenseAid Explore (lydguide-POC, iPhone)
 
-Native iPhone-app i SwiftUI (iOS 17+) for POC-en «Interaktiv reiseguide med
+Appen heter «SenseAid Explore» (besluttet av Daniel 18.09.2026); Xcode-prosjektet og
+mappen heter fortsatt `Reiseguide`. Native iPhone-app i SwiftUI (iOS 17+) for POC-en «Interaktiv reiseguide med
 tilgjengelighet». Designet er Konsept 2 «Dark Mode / Premium» etter
 UI-spesifikasjonen av 18.09.2026. Backend er `/api/guide/*` i Creatorhubn-
 backend (`backend/server/reiseguide-routes.ts`, migrasjon 0628).

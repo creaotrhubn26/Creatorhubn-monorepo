@@ -33,8 +33,8 @@ targets:
     info:
       path: Reiseguide/Generated/Info.plist
       properties:
-        CFBundleDisplayName: Reiseguide
-        CFBundleName: Reiseguide
+        CFBundleDisplayName: SenseAid Explore
+        CFBundleName: SenseAid Explore
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
