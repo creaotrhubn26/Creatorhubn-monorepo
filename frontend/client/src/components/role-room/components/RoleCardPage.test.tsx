@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import RoleCardPage, { isRoleCardPath } from './RoleCardPage';
 
-const KORT = {
+const DEL = {
   card: {
     person_name: 'Statist 3',
     person_kind: 'extra',
@@ -32,6 +32,21 @@ const KORT = {
     int_ext: 'INT',
     blocking: { planUrl: 'https://eksempel.test/plan.png', camera: { x: 0.9, y: 0.5 } },
   },
+};
+
+const ANDRE_DEL = {
+  card: {
+    ...DEL.card,
+    action: 'Du går forbi i bakgrunnen med en kaffekopp.',
+    cue: null,
+    call_time: '2026-10-01T11:00:00Z',
+  },
+  scene: { ...DEL.scene, title: 'Gaten utenfor', int_ext: 'EXT' },
+};
+
+const KORT = {
+  person: { name: 'Statist 3', kind: 'extra' },
+  cards: [DEL],
   meeting: {
     name: 'Pizzeria Roma',
     address: 'Storgata 1, Oslo',
@@ -91,7 +106,7 @@ describe('kortet', () => {
   });
 
   it('sier fra når plantegningen ikke er laget ennå', async () => {
-    svar({ ...KORT, scene: { ...KORT.scene, blocking: null } });
+    svar({ ...KORT, cards: [{ ...DEL, scene: { ...DEL.scene, blocking: null } }] });
     render(<RoleCardPage />);
     // Vanlig første døgn. En tom ramme ville sett ut som en feil.
     expect(await screen.findByText(/ikke klar ennå/)).toBeInTheDocument();
@@ -126,6 +141,25 @@ describe('kortet', () => {
     expect(await screen.findByText('Lenken gjelder ikke lenger')).toBeInTheDocument();
     // Personen står kanskje på settet. Da hjelper det ikke å forklare hvorfor.
     expect(screen.getByText(/innspillingslederen/i)).toBeInTheDocument();
+  });
+
+  it('viser alle scenene bak lenken, nummerert og i tidsrekkefølge', async () => {
+    svar({ ...KORT, cards: [DEL, ANDRE_DEL] });
+    render(<RoleCardPage />);
+
+    // Tre lenker for tre scener var problemet. Én lenke må da vise alle tre.
+    expect(await screen.findByText('2 scener denne dagen')).toBeInTheDocument();
+    expect(screen.getByText(/bord 3/)).toBeInTheDocument();
+    expect(screen.getByText(/kaffekopp/)).toBeInTheDocument();
+    expect(screen.getByText(/EXT · Gaten utenfor/)).toBeInTheDocument();
+  });
+
+  it('viser stedet én gang, ikke per scene', async () => {
+    svar({ ...KORT, cards: [DEL, ANDRE_DEL] });
+    render(<RoleCardPage />);
+    await screen.findByText('2 scener denne dagen');
+    // Stedet hører til dagen. Gjentatt per scene ville lest som flere steder.
+    expect(screen.getAllByText('Pizzeria Roma')).toHaveLength(1);
   });
 
   it('sier eksplisitt at kortet bare gjelder deg', async () => {
