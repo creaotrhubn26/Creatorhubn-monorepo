@@ -274,7 +274,7 @@ export function createHubSpotClient(options: HubSpotClientOptions): HubSpotClien
 
     async listPipelines(objectType) {
       const payload = await request<{ results: HubSpotPipeline[] }>(
-        `/crm/${HUBSPOT_API_VERSION}/pipelines/${encodeURIComponent(objectType)}`,
+        `/crm/pipelines/${HUBSPOT_API_VERSION}/${encodeURIComponent(objectType)}`,
       );
       return payload.results ?? [];
     },
