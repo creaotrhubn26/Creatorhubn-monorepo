@@ -60,19 +60,36 @@ jobs:
           # Finnes den fra før? Da skal den IKKE røres uten at noen ber om
           # det: en ny pepper gjør alle eksisterende ip_hash-verdier
           # uleselige, og ratebegrensningen mister historikken sin.
-          code=$(curl -s -o /tmp/existing.json -w '%{http_code}' \
-            -H "Authorization: Bearer ${RENDER_API_KEY}" \
-            -H 'Accept: application/json' \
-            "${BASE}/${KEY}")
+          #
+          # Listing, ikke oppslag per nøkkel — det er formen backup.py
+          # allerede kjører daglig, så den er bevist mot dette API-et.
+          # Paginering er unødvendig her: vi spør bare om nøkkelen finnes,
+          # og lista hentes i sider på 100 til vi ser den eller er tom.
+          found=no
+          cursor=""
+          for page in 1 2 3 4 5; do
+            url="${BASE}?limit=100"
+            [ -n "$cursor" ] && url="${url}&cursor=${cursor}"
+            curl -sS -m 20 -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H 'Accept: application/json' "$url" > /tmp/page.json
+            if ! jq -e 'type == "array"' /tmp/page.json > /dev/null 2>&1; then
+              echo "::error::Uventet svar fra Render ved listing"
+              jq -r '.message // .' /tmp/page.json 2>/dev/null || head -c 300 /tmp/page.json
+              exit 1
+            fi
+            [ "$(jq 'length' /tmp/page.json)" = "0" ] && break
+            if jq -e --arg k "$KEY" 'any(.[]; .envVar.key == $k)' /tmp/page.json > /dev/null; then
+              found=yes
+              break
+            fi
+            next=$(jq -r '.[-1].cursor // empty' /tmp/page.json)
+            [ -z "$next" ] || [ "$next" = "$cursor" ] && break
+            cursor="$next"
+          done
 
-          if [ "$code" = "200" ] && [ "$OVERWRITE" != "true" ]; then
+          if [ "$found" = "yes" ] && [ "$OVERWRITE" != "true" ]; then
             echo "$KEY er allerede satt. Kjør på nytt med overwrite=true for å rotere."
             exit 0
-          fi
-          if [ "$code" != "200" ] && [ "$code" != "404" ]; then
-            echo "::error::Uventet svar fra Render ved oppslag: HTTP $code"
-            cat /tmp/existing.json
-            exit 1
           fi
 
           PEPPER=$(openssl rand -hex 32)
@@ -87,7 +104,7 @@ jobs:
             --data "$(jq -nc --arg v "$PEPPER" '{value:$v}')" \
             "${BASE}/${KEY}")
 
-          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
             echo "::error::PUT feilet: HTTP $code"
             jq -r '.message // .' /tmp/put.json 2>/dev/null || cat /tmp/put.json
             exit 1
