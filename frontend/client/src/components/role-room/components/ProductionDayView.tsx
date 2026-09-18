@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useId, useCallback, type ReactNode } from 'react';
 import { ChangeImpactPreview } from './production/ChangeImpactPreview';
+import SceneRoleCardsDialog from './production/SceneRoleCardsDialog';
 import {
   Box,
   Typography,
@@ -518,6 +519,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
   // Inform team dialog state
   const [showInformTeamDialog, setShowInformTeamDialog] = useState(false);
+  // Rollekort for en dag: kortene hører til SCENEN, så dialogen tar dagens
+  // scener og lar deg velge hvilken du bygger.
+  const [rollekortDag, setRollekortDag] = useState<ProductionDay | null>(null);
   const [pendingSaveData, setPendingSaveData] = useState<NormalizedProductionDay | null>(null);
   const [changedFields, setChangedFields] = useState<string[]>([]);
 
@@ -4674,6 +4678,26 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               borderTop: '2px solid rgba(50, 18, 122,0.2)',
                             }}
                           >
+                            {/* Rollekort: det den enkelte på settet får. Ligger
+                                her fordi dagen er der man planlegger hvem som
+                                møter — kortet er neste spørsmål: hva de gjør. */}
+                            <Button
+                              size="medium"
+                              onClick={() => setRollekortDag(day)}
+                              sx={{
+                                color: '#9e93ed',
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                minHeight: TOUCH_TARGET_SIZE,
+                                px: { xs: 1.6, sm: 2 },
+                                border: '2px solid rgba(75, 61, 143, 0.35)',
+                                borderRadius: 2,
+                                mr: 1,
+                              }}
+                            >
+                              Rollekort
+                            </Button>
+
                             {/* Enhanced "Vis mer" button */}
                             <Button
                               variant="contained"
@@ -5720,6 +5744,21 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Rollekort for dagens scener. availableScenes gir navnene; dialogen
+          lar deg velge scene når dagen har flere. date er valgfri på
+          ProductionDay — uten dato står dagen uten navn, ikke «Invalid Date». */}
+      <SceneRoleCardsDialog
+        open={Boolean(rollekortDag)}
+        onClose={() => setRollekortDag(null)}
+        projectId={projectId}
+        dayLabel={rollekortDag?.date ? new Date(rollekortDag.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' }) : undefined}
+        scenes={(rollekortDag?.scenes ?? []).map((sceneId) => ({
+          id: sceneId,
+          title: availableScenes.find((scene) => scene.id === sceneId)?.name ?? sceneId,
+        }))}
+      />
+
     </Box>
   );
 }
