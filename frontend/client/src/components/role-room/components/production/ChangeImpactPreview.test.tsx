@@ -221,3 +221,105 @@ describe('ChangeImpactPreview', () => {
     expect(url).toContain('locationId=loc-new');
   });
 });
+
+describe('ChangeImpactPreview ved sceneendring', () => {
+  const sceneBase = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    currentDate: '2026-09-20',
+    targetDate: '2026-09-20',
+    currentSceneIds: ['scene-1', 'scene-2'],
+  };
+
+  it('spør ikke når de samme scenene kommer tilbake i en annen rekkefølge', () => {
+    // Rekkefølgen betyr ingenting for hva som brekker.
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChangeImpactPreview {...sceneBase} targetSceneIds={['scene-2', 'scene-1']} />);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('spør ikke når scenene ikke redigeres i det hele tatt', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChangeImpactPreview {...sceneBase} targetSceneIds={null} />);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('ber om konsekvensen når en scene fjernes', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromSceneIds: ['scene-1', 'scene-2'],
+      toSceneIds: ['scene-1'],
+      impacts: [{
+        area: 'scene_cast',
+        severity: 'warning',
+        summary: '3 roller er knyttet til scenene som fjernes.',
+        action: 'Gi beskjed hvis noen ikke lenger skal møte.',
+        count: 3,
+      }],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...sceneBase} targetSceneIds={['scene-1']} />);
+
+    expect(await screen.findByText('3 roller er knyttet til scenene som fjernes.')).toBeInTheDocument();
+    const url = String((globalThis.fetch as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url).toContain('sceneIds=scene-1');
+  });
+
+  it('behandler en tømt sceneliste som en ekte endring', async () => {
+    // «Ingen scener igjen» er et valg, ikke et fravær av valg.
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromSceneIds: ['scene-1', 'scene-2'],
+      toSceneIds: [],
+      impacts: [],
+      blocking: false,
+      unchanged: false,
+    });
+
+    render(<ChangeImpactPreview {...sceneBase} targetSceneIds={[]} />);
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    const url = String((globalThis.fetch as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url).toContain('sceneIds=');
+  });
+
+  it('stenger lagring når en sceneendring blokkerer', async () => {
+    respondWith({
+      from: '2026-09-20',
+      to: '2026-09-20',
+      fromSceneIds: ['scene-1', 'scene-2'],
+      toSceneIds: ['scene-1'],
+      impacts: [{
+        area: 'continuity',
+        severity: 'blocking',
+        summary: '2 kontinuitetsfiler er skutt på scener som fjernes.',
+        action: 'Flytt bevisene til dagen scenen faktisk skytes.',
+        count: 2,
+      }],
+      blocking: true,
+      unchanged: false,
+    });
+    const onBlockingChange = vi.fn();
+
+    render(
+      <ChangeImpactPreview
+        {...sceneBase}
+        targetSceneIds={['scene-1']}
+        onBlockingChange={onBlockingChange}
+      />,
+    );
+
+    expect(await screen.findByText('2 kontinuitetsfiler er skutt på scener som fjernes.')).toBeInTheDocument();
+    await waitFor(() => expect(onBlockingChange).toHaveBeenCalledWith(true));
+  });
+});

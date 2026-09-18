@@ -51,6 +51,10 @@ export interface ChangeImpactPreviewProps {
   currentLocationId?: string | null;
   /** Lokasjonen brukeren har valgt. */
   targetLocationId?: string | null;
+  /** Scenene dagen har i dag. `null` når scenene ikke redigeres her. */
+  currentSceneIds?: string[] | null;
+  /** Scenene brukeren har valgt. */
+  targetSceneIds?: string[] | null;
   /** Sier fra når noe må ryddes før lagring er forsvarlig. */
   onBlockingChange?: (blocking: boolean) => void;
 }
@@ -75,6 +79,8 @@ export function ChangeImpactPreview({
   targetDate,
   currentLocationId = null,
   targetLocationId = null,
+  currentSceneIds = null,
+  targetSceneIds = null,
   onBlockingChange,
 }: ChangeImpactPreviewProps): JSX.Element | null {
   const [data, setData] = useState<ImpactResponse | null>(null);
@@ -85,7 +91,12 @@ export function ChangeImpactPreview({
     && targetDate !== (currentDate ?? '');
   const locationChanged = Boolean(targetLocationId)
     && targetLocationId !== (currentLocationId ?? null);
-  const shouldAsk = Boolean(dayId) && (dateChanged || locationChanged);
+  // Rekkefølgen på scenene betyr ingenting for hva som brekker, så et bytte
+  // av rekkefølge skal ikke utløse en forhåndsvisning.
+  const sceneKey = targetSceneIds ? [...targetSceneIds].sort().join(',') : null;
+  const currentSceneKey = currentSceneIds ? [...currentSceneIds].sort().join(',') : null;
+  const scenesChanged = sceneKey !== null && sceneKey !== (currentSceneKey ?? '');
+  const shouldAsk = Boolean(dayId) && (dateChanged || locationChanged || scenesChanged);
 
   const load = useCallback(async () => {
     if (!dayId || !shouldAsk) return;
@@ -95,6 +106,8 @@ export function ChangeImpactPreview({
       const params = new URLSearchParams();
       if (dateChanged) params.set('date', targetDate);
       if (locationChanged && targetLocationId) params.set('locationId', targetLocationId);
+      // Tom liste er en ekte verdi her: «dagen har ingen scener igjen».
+      if (scenesChanged) params.set('sceneIds', (targetSceneIds ?? []).join(','));
       const response = await fetch(
         `/api/role-room/projects/${encodeURIComponent(projectId)}`
         + `/production-days/${encodeURIComponent(dayId)}/impact?${params.toString()}`,
@@ -108,7 +121,10 @@ export function ChangeImpactPreview({
     } finally {
       setLoading(false);
     }
-  }, [projectId, dayId, targetDate, targetLocationId, dateChanged, locationChanged, shouldAsk]);
+  }, [
+    projectId, dayId, targetDate, targetLocationId, targetSceneIds,
+    dateChanged, locationChanged, scenesChanged, shouldAsk,
+  ]);
 
   useEffect(() => {
     if (!shouldAsk) {
@@ -146,7 +162,7 @@ export function ChangeImpactPreview({
       <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 1 }}>
         <CircularProgress size={14} sx={{ color: '#5d76cb' }} />
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-          Sjekker hva flyttingen påvirker…
+          Sjekker hva endringen påvirker…
         </Typography>
       </Stack>
     );
@@ -155,7 +171,7 @@ export function ChangeImpactPreview({
   if (failed) {
     return (
       <Alert severity="error" icon={<BlockIcon fontSize="small" />} sx={{ mt: 1 }}>
-        Kunne ikke sjekke hva flyttingen påvirker. Lagring er stengt til vi vet
+        Kunne ikke sjekke hva endringen påvirker. Lagring er stengt til vi vet
         konsekvensen.
       </Alert>
     );
