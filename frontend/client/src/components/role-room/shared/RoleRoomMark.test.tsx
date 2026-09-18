@@ -66,10 +66,13 @@ describe('flatene bruker merket', () => {
     expect(src).toContain('surface="Utdanning"');
   });
 
-  it('Talents har sitt eget lockup med TALENTS under', () => {
-    // Talents skal IKKE bruke fellesmerket: flaten har et eget ordmerke.
-    // Testen står her for å gjøre unntaket synlig, ikke tilfeldig.
+  it('Talents rendrer merket med flatenavnet, som de andre', () => {
+    // Talents hadde tidligere en egen behandling: merket i en hvit boks,
+    // uten ordmerke. Den hvite boksen fantes fordi den gamle filen hadde
+    // tekst og hvite konturer — med det gjennomsiktige merket trengs den
+    // ikke, og da er det ingen grunn til at én flate ser annerledes ut.
     const src = les('../talents-app/TalentsAppShell.tsx');
-    expect(src).toContain('TalentsLogo');
+    expect(src).toContain('RoleRoomMark');
+    expect(src).toContain('surface="Talents"');
   });
 });

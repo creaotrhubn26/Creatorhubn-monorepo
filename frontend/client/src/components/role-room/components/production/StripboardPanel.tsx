@@ -657,7 +657,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
       <Box className={`print-header ${!printOptions.header ? 'hide-in-print' : ''}`}
         sx={{ display: 'none', '@media print': { display: printOptions.header ? 'flex !important' : 'none !important', flexDirection: 'column', alignItems: 'center', mb: 3, pb: 2, borderBottom: '2px solid #4b3d8f' } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-          <Box component="img" src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp" alt="The Role Room" sx={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 1 }} />
+          <Box component="img" src="/theroleroom-mark-1024-transparent.png" alt="The Role Room" sx={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 1 }} />
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 0.25 }}>{projectTitle}</Typography>
             <Typography variant="subtitle1" sx={{ color: '#4b3d8f', fontWeight: 600 }}>Stripboard / Opptaksplan</Typography>

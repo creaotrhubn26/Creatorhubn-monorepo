@@ -541,7 +541,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       gradientStart: '#F59E0B',
       gradientEnd: '#D946EF',
       categoryIcon: <GroupsIcon />,
-      logoSrc: '/TheRoleRoom_App_Logo.png',
+      logoSrc: '/theroleroom-mark-1024.png',
       logoAlt: 'The Role Room',
       subscriptionTiers: [
         {

@@ -177,7 +177,7 @@ export function buildToolConfiguration(clientName = "The Role Room"): Record<str
     client_name: clientName,
     // Logo vises som verktøy-ikon i LMS-en (kvadratisk app-ikon, ekte PNG på
     // frontend-roten). Uten denne får verktøyet et generisk placeholder-ikon.
-    logo_uri: `${APP_URL}theroleroom-app-icon-1024.png`,
+    logo_uri: `${APP_URL}theroleroom-mark-1024.png`,
     grant_types: ["client_credentials", "implicit"],
     response_types: ["id_token"],
     token_endpoint_auth_method: "private_key_jwt",

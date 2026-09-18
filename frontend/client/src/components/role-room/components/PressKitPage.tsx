@@ -47,10 +47,28 @@ const BOILERPLATE_LONG =
 
 const LOGOS: Array<{ name: string; src: string; alt: string; download: string }> = [
   {
-    name: 'The Role Room — App-logo (PNG)',
-    src: '/TheRoleRoom_App_Logo.png',
-    alt: 'The Role Room app-logo',
-    download: '/TheRoleRoom_App_Logo.png',
+    name: 'Logo med ordmerke — lys bakgrunn (PNG)',
+    src: '/theroleroom-lockup-light.png',
+    alt: 'The Role Room logo med ordmerke, for lys bakgrunn',
+    download: '/theroleroom-lockup-light.png',
+  },
+  {
+    name: 'Logo med ordmerke — mørk bakgrunn (PNG)',
+    src: '/theroleroom-lockup-dark.png',
+    alt: 'The Role Room logo med ordmerke, for mørk bakgrunn',
+    download: '/theroleroom-lockup-dark.png',
+  },
+  {
+    name: 'Logo med ordmerke (SVG)',
+    src: '/theroleroom-lockup-light.png',
+    alt: 'The Role Room logo med ordmerke som vektor',
+    download: '/theroleroom-lockup.svg',
+  },
+  {
+    name: 'Merket alene — app-ikon (PNG)',
+    src: '/theroleroom-mark-1024.png',
+    alt: 'The Role Room app-ikon',
+    download: '/theroleroom-mark-1024.png',
   },
   {
     name: 'Landing backdrop (WEBP)',
@@ -81,7 +99,7 @@ function useOrganizationPressSchema() {
       name: 'The Role Room',
       legalName: 'CreatorHub AS',
       url: 'https://theroleroom.com',
-      logo: 'https://theroleroom.com/TheRoleRoom_App_Logo.png',
+      logo: 'https://theroleroom.com/theroleroom-mark-1024.png',
       sameAs: ['https://creatorhubn.com'],
       contactPoint: [
         {

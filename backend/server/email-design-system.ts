@@ -146,7 +146,7 @@ export function emailHeader(category: EmailCategory = 'general', brand: 'roleroo
   // mørk/lilla og vises som den er.
   const logoHtml = brand === 'creatorhub'
     ? `<div style="display:inline-block;background:#0b0c10;border-radius:8px;padding:7px 12px;"><img src="https://creatorhubn.com/creatorhub-wordmark-light.png" alt="Creatorhub Norge" height="26" style="display:block;height:26px;width:auto;border:0;" /></div>`
-    : `<img src="https://theroleroom.com/TheRoleRoom_Logo_Tagline.png" alt="The Role Room" height="40" style="display:block;height:40px;width:auto;border:0;" />`;
+    : `<img src="https://theroleroom.com/theroleroom-mark-1024.png" alt="The Role Room" height="40" style="display:block;height:40px;width:auto;border:0;" />`;
   return `
     <tr>
       <td style="padding:32px 32px 8px 32px;">

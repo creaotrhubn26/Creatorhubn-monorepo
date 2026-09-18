@@ -64,7 +64,7 @@ interface CreatorHubPublicPricingPlan {
 
 const CREATORHUB_ICON_URL = '/creatorhub-icon.png';
 const CREATORHUB_WORDMARK_URL = '/creatorhub-wordmark-light.png';
-const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
+const ROLE_ROOM_LOGO_URL = '/theroleroom-mark-1024.png';
 const ACADEMY_LOGO_URL = '/creatorhub-academy-logo.svg';
 const COMMUNITY_ICON_URL = '/creatorhub-community-icon.svg';
 const ROLE_ROOM_EXTERNAL_URL = 'https://theroleroom.com';

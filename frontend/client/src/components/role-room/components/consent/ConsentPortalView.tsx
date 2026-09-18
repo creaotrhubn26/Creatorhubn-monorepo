@@ -602,7 +602,7 @@ export default function ConsentPortalView({
       <Stack alignItems="center" spacing={1.5} sx={{ mb: 4 }}>
         <Box
           component="img"
-          src="/role-room-assets/TheRoleRoom_App_Logo.webp"
+          src="/theroleroom-mark-1024.png"
           alt="The Role Room"
           sx={{
             height: { xs: 68, sm: 80 },

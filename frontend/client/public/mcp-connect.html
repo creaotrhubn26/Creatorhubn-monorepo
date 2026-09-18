@@ -36,7 +36,7 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; }); };
 
   function fail(msg) {
-    card.innerHTML = '<img class="logo" src="/theroleroom-app-icon-1024.png" alt="The Role Room">' + '<h1>Kan ikke koble til</h1><div class="err">' + esc(msg) + '</div>' +
+    card.innerHTML = '<img class="logo" src="/theroleroom-mark-1024.png" alt="The Role Room">' + '<h1>Kan ikke koble til</h1><div class="err">' + esc(msg) + '</div>' +
       '<p class="muted">Lukk dette vinduet og prøv på nytt fra appen.</p>';
   }
 
@@ -51,7 +51,7 @@
   var token = null;
   try { token = localStorage.getItem("role_room_auth_token") || localStorage.getItem("creatorhub_auth_token"); } catch (e) {}
   if (!token || !token.trim()) {
-    card.innerHTML = '<img class="logo" src="/theroleroom-app-icon-1024.png" alt="The Role Room">' + '<h1>Logg inn på The Role Room</h1>' +
+    card.innerHTML = '<img class="logo" src="/theroleroom-mark-1024.png" alt="The Role Room">' + '<h1>Logg inn på The Role Room</h1>' +
       '<p>Du må være innlogget på The Role Room i denne nettleseren for å godkjenne tilkoblingen.</p>' +
       '<div class="row"><a class="approve" style="text-decoration:none;text-align:center;line-height:1.4" href="/">Logg inn</a></div>' +
       '<p class="muted">Logg inn, og åpne denne lenken på nytt fra appen.</p>';
@@ -62,7 +62,7 @@
   var scope = q.get("scope") || "mcp:read";
   var scopeLabel = scope.indexOf("mcp:write") >= 0 ? "Lese og lage utkast" : "Lese";
   card.innerHTML =
-    '<img class="logo" src="/theroleroom-app-icon-1024.png" alt="The Role Room">' + '' +
+    '<img class="logo" src="/theroleroom-mark-1024.png" alt="The Role Room">' + '' +
     '<h1>Koble en app til The Role Room</h1>' +
     '<p>En ekstern app ber om tilgang til dine Role Room-data.</p>' +
     '<p>Tilgang: <span class="scope">' + esc(scopeLabel) + '</span></p>' +

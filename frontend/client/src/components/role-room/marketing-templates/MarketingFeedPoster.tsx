@@ -27,7 +27,7 @@ import {
 import QRCode from 'qrcode';
 import { getTheme, type MarketingPosterTheme } from './themes';
 
-const BRAND_LOGO_URL = '/TheRoleRoom_App_Logo.png';
+const BRAND_LOGO_URL = '/theroleroom-mark-1024.png';
 
 export type PosterCardIcon =
   | 'chart'

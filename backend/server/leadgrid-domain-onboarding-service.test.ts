@@ -463,7 +463,7 @@ describe("Leadgrid domain onboarding classification", () => {
       category_confidence: "high",
       brand_profile: {
         businessName: "The Role Room",
-        logoUrl: "https://theroleroom.com/TheRoleRoom_App_Logo.png",
+        logoUrl: "https://theroleroom.com/theroleroom-mark-1024.png",
         industry: "film_tv_and_content_production",
       },
     });
