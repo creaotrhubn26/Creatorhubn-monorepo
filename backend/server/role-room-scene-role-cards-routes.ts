@@ -138,6 +138,22 @@ export function setupRoleRoomSceneRoleCardsRoutes(
       : "extra";
 
     try {
+      // Lenken hører til personen og dagen, ikke til scenen. Er personen alt
+      // satt opp denne dagen, skal det nye kortet ligge bak SAMME lenke —
+      // ellers får hen én e-post per scene og må selv koble dem sammen.
+      const sceneId = typeof body.scene_id === "string" ? body.scene_id : null;
+      const dayId = typeof body.production_day_id === "string" ? body.production_day_id : null;
+      const eksisterende = await pool.query(
+        `SELECT token FROM scene_role_cards
+          WHERE project_id = $1
+            AND lower(person_name) = lower($2)
+            AND revoked_at IS NULL
+            AND ($3::text IS NOT NULL AND production_day_id = $3)
+          LIMIT 1`,
+        [projectId, personName, dayId],
+      );
+      const token = eksisterende.rows[0]?.token ?? newToken();
+
       const r = await pool.query(
         `INSERT INTO scene_role_cards
            (project_id, scene_id, production_day_id, person_name, person_kind, talent_id,
@@ -147,8 +163,8 @@ export function setupRoleRoomSceneRoleCardsRoutes(
          RETURNING *`,
         [
           projectId,
-          typeof body.scene_id === "string" ? body.scene_id : null,
-          typeof body.production_day_id === "string" ? body.production_day_id : null,
+          sceneId,
+          dayId,
           personName,
           kind,
           typeof body.talent_id === "string" ? body.talent_id : null,
@@ -159,7 +175,7 @@ export function setupRoleRoomSceneRoleCardsRoutes(
           typeof body.frame_image_url === "string" ? body.frame_image_url : null,
           typeof body.call_time === "string" ? body.call_time : null,
           Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : null,
-          newToken(),
+          token,
           userId,
           typeof body.contact_email === "string" ? body.contact_email.trim().toLowerCase() || null : null,
         ],
@@ -335,56 +351,87 @@ export function setupRoleRoomSceneRoleCardsRoutes(
           WHERE c.project_id = $1
             AND c.revoked_at IS NULL
             AND ($2::text IS NULL OR c.scene_id = $2)
-            AND ($3::text[] IS NULL OR c.id = ANY($3::uuid[]))`,
+            AND ($3::text[] IS NULL OR c.id = ANY($3::uuid[]))
+          ORDER BY c.call_time ASC NULLS LAST, c.sort_order ASC NULLS LAST, c.created_at ASC`,
         [projectId, sceneId, ids],
       );
+
+      // Én e-post per LENKE, ikke per kort: er personen med i tre scener samme
+      // dag, deler kortene token, og tre like e-poster ville bare skapt tvil om
+      // hvilken som gjelder.
+      const grupper = new Map<string, typeof r.rows>();
+      for (const rad of r.rows) {
+        const gruppe = grupper.get(rad.token);
+        if (gruppe) gruppe.push(rad);
+        else grupper.set(rad.token, [rad]);
+      }
 
       const base = (process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com").replace(/\/+$/, "");
       const sendt: string[] = [];
       const hoppet: Array<{ id: string; grunn: string }> = [];
+      // Kvitteringen teller PERSONER, ikke kort: «4 sendt» skal bety fire som
+      // har fått beskjed, ikke fire kort fordelt på to personer.
+      let lenkerSendt = 0;
 
-      for (const kort of r.rows) {
-        if (!kort.epost) { hoppet.push({ id: kort.id, grunn: "mangler_epost" }); continue; }
-        if (!kort.action) { hoppet.push({ id: kort.id, grunn: "mangler_handling" }); continue; }
-        if (kort.sent_at && !resend) { hoppet.push({ id: kort.id, grunn: "alt_sendt" }); continue; }
+      for (const kort of grupper.values()) {
+        const forste = kort[0];
+        const idene = kort.map((k) => k.id);
+        if (!forste.epost) { hoppet.push({ id: forste.id, grunn: "mangler_epost" }); continue; }
+        if (!kort.some((k) => k.action)) { hoppet.push({ id: forste.id, grunn: "mangler_handling" }); continue; }
+        if (kort.some((k) => k.sent_at) && !resend) { hoppet.push({ id: forste.id, grunn: "alt_sendt" }); continue; }
 
-        const lenke = `${base}/statist/${kort.token}`;
-        const emne = `Din oppgave${kort.scene_title ? ` — ${kort.scene_title}` : ""}`;
+        const lenke = `${base}/statist/${forste.token}`;
+        const flere = kort.length > 1;
+        const emne = flere
+          ? `Dine oppgaver — ${kort.length} scener`
+          : `Din oppgave${forste.scene_title ? ` — ${forste.scene_title}` : ""}`;
         const { html, text } = composeEmail({
           subject: emne,
           category: "general",
           brand: "roleroom",
-          preheader: `Din oppgave: ${String(kort.action).slice(0, 80)}`,
-          headline: `Hei ${kort.person_name}`,
-          subhead: kort.scene_title ? `${kort.project_name ?? "Produksjonen"} — ${kort.scene_title}` : (kort.project_name ?? "Produksjonen"),
-          body: kort.action,
-          table: [
-            ...(kort.cue ? [{ label: "Signalet ditt", value: String(kort.cue) }] : []),
-            ...(kort.call_time
-              ? [{ label: "Oppmøte", value: new Date(kort.call_time).toLocaleString("nb-NO") }]
-              : []),
-          ],
-          cta: { label: "Åpne kortet ditt", href: lenke },
+          preheader: flere
+            ? `Du er med i ${kort.length} scener denne dagen.`
+            : `Din oppgave: ${String(forste.action).slice(0, 80)}`,
+          headline: `Hei ${forste.person_name}`,
+          subhead: flere
+            ? `${forste.project_name ?? "Produksjonen"} — ${kort.length} scener denne dagen`
+            : (forste.scene_title ? `${forste.project_name ?? "Produksjonen"} — ${forste.scene_title}` : (forste.project_name ?? "Produksjonen")),
+          // Med flere scener hører hele oppgaven hjemme på kortet, ikke i
+          // e-posten: da slipper personen å lese to steder som kan sprike.
+          body: flere ? "Du er med i flere scener denne dagen. Kortet ditt viser dem i rekkefølge." : forste.action,
+          table: flere
+            ? kort.map((k) => ({
+                label: k.scene_title ?? "Scene",
+                value: k.call_time ? new Date(k.call_time).toLocaleString("nb-NO") : String(k.action).slice(0, 60),
+              }))
+            : [
+                ...(forste.cue ? [{ label: "Signalet ditt", value: String(forste.cue) }] : []),
+                ...(forste.call_time
+                  ? [{ label: "Oppmøte", value: new Date(forste.call_time).toLocaleString("nb-NO") }]
+                  : []),
+              ],
+          cta: { label: flere ? "Åpne kortet ditt" : "Åpne kortet ditt", href: lenke },
           footer: { reason: "Du får denne fordi du er satt opp på en innspilling." },
         });
 
         const svar = await sendTransactionalEmail({
-          to: String(kort.epost),
+          to: String(forste.epost),
           subject: emne,
           html,
           text,
         });
 
         if (svar.sent) {
-          sendt.push(kort.id);
-          await pool.query(`UPDATE scene_role_cards SET sent_at = now() WHERE id = $1`, [kort.id]);
+          lenkerSendt += 1;
+          sendt.push(...idene);
+          await pool.query(`UPDATE scene_role_cards SET sent_at = now() WHERE id = ANY($1::uuid[])`, [idene]);
         } else {
           // Årsaken fra e-posttjenesten, ikke lenken: den er legitimasjon.
-          hoppet.push({ id: kort.id, grunn: svar.reason ?? "sending_feilet" });
+          hoppet.push({ id: forste.id, grunn: svar.reason ?? "sending_feilet" });
         }
       }
 
-      return res.json({ sent: sendt.length, sentIds: sendt, skipped: hoppet });
+      return res.json({ sent: lenkerSendt, sentIds: sendt, skipped: hoppet });
     } catch (err) {
       console.error("[role-cards send] failed", err);
       return res.status(500).json({ error: "Klarte ikke å sende lenkene" });
@@ -472,64 +519,72 @@ export function setupRoleRoomSceneRoleCardsRoutes(
                           AND d.scene_ids @> to_jsonb(c.scene_id)))
            LEFT JOIN casting_locations l ON l.id = d.location_id
           WHERE c.token = $1
-          ORDER BY d.date ASC NULLS LAST
-          LIMIT 1`,
+          ORDER BY c.call_time ASC NULLS LAST, c.sort_order ASC NULLS LAST, c.created_at ASC`,
         [token],
       );
 
-      const card = r.rows[0];
+      const rader = r.rows;
+      const forste = rader[0];
       // Ukjent og tilbaketrukket svarer likt. Skiller vi dem, kan man prøve
       // seg fram til hvilke lenker som finnes.
-      if (!card || card.revoked_at) {
+      // Er ETT kort trukket tilbake, er hele lenken trukket tilbake: kortene bak
+      // den er samme persons dag, og en halv dag er verre enn ingen.
+      if (!forste || rader.some((rad) => rad.revoked_at)) {
         return res.status(404).json({ error: "Lenken gjelder ikke lenger" });
       }
 
-      // Første åpning markeres, senere lar raden stå: spørsmålet er «har hen
+      // Første åpning markeres, senere lar radene stå: spørsmålet er «har hen
       // sett kortet?», ikke hvor mange ganger. `opened_at IS NULL` gjør det til
-      // et no-op etter første gang.
-      // Feiler skrivingen, vises kortet likevel — kvitteringen er mindre viktig
+      // et no-op etter første gang. Alle kortene bak lenken merkes samtidig —
+      // personen åpnet lenken, ikke ett kort av gangen.
+      // Feiler skrivingen, vises kortene likevel — kvitteringen er mindre viktig
       // enn at personen får se hva hen skal gjøre.
       pool
         .query(
           `UPDATE scene_role_cards SET opened_at = NOW()
-            WHERE id = $1 AND opened_at IS NULL`,
-          [card.id],
+            WHERE token = $1 AND opened_at IS NULL`,
+          [token],
         )
         .catch((err) => console.error("[role-cards public] kunne ikke markere åpnet", err));
 
-      // Bare det personen trenger for å utføre oppgaven. Ingen andre kort,
-      // ingen kontaktliste, ingen budsjettall.
+      // Bare det personen trenger for å utføre oppgaven. Ingen andre personers
+      // kort, ingen kontaktliste, ingen budsjettall.
       return res.json({
-        card: {
-          person_name: card.person_name,
-          person_kind: card.person_kind,
-          action: card.action,
-          cue: card.cue,
-          position: card.position,
-          wardrobe: card.wardrobe,
-          frame_image_url: card.frame_image_url,
-          call_time: card.call_time,
-        },
-        scene: {
-          title: card.scene_title,
-          setting: card.scene_setting,
-          time_of_day: card.time_of_day,
-          int_ext: card.int_ext,
-          blocking: card.blocking,
-        },
+        person: { name: forste.person_name, kind: forste.person_kind },
+        // Én oppføring per scene personen er med i denne dagen, i rekkefølgen
+        // dagen faktisk går.
+        cards: rader.map((rad) => ({
+          card: {
+            person_name: rad.person_name,
+            person_kind: rad.person_kind,
+            action: rad.action,
+            cue: rad.cue,
+            position: rad.position,
+            wardrobe: rad.wardrobe,
+            frame_image_url: rad.frame_image_url,
+            call_time: rad.call_time,
+          },
+          scene: {
+            title: rad.scene_title,
+            setting: rad.scene_setting,
+            time_of_day: rad.time_of_day,
+            int_ext: rad.int_ext,
+            blocking: rad.blocking,
+          },
+        })),
         // Hvor og når. «Oppmøte 07:30» uten adresse er halve beskjeden — og
         // den halvdelen som gjør at folk står feil sted til rett tid.
         // Bare navn, adresse og hvordan man kommer inn; ingen kontaktinfo til
         // stedet, den hører produksjonen til.
-        meeting: card.location_name || card.location_address
+        meeting: forste.location_name || forste.location_address
           ? {
-              name: card.location_name,
-              address: card.location_address,
-              access_notes: card.location_access,
-              date: card.day_date,
+              name: forste.location_name,
+              address: forste.location_address,
+              access_notes: forste.location_access,
+              date: forste.day_date,
             }
           : null,
-        project: { name: card.project_name },
+        project: { name: forste.project_name },
       });
     } catch (err) {
       // Token aldri i loggen: den er legitimasjonen.
