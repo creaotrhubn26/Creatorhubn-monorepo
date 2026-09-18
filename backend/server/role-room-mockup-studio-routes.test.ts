@@ -422,16 +422,26 @@ describe("Mockup Studio Review Room routes", () => {
   });
 
   it("godkjenning bruker en hash av share-tokenet", async () => {
-    const { handlers, query } = harness({ rows: [{ name: "Kampanje" }] });
+    const { handlers, query } = harness({ rows: [publicLink()] });
     const res = response();
     await handlers.get("POST /api/role-room/mockup-shared/:token/approve")!({
-      params: { token: "secret" }, headers: { accept: "application/json" },
+      params: { token: "secret" }, headers: { accept: "application/json" }, socket: { remoteAddress: "127.0.0.1" },
     } as unknown as Request, res);
     expect(res.body).toEqual({ ok: true, status: "approved" });
-    expect(String(query.mock.calls[0][0])).toContain("UPDATE demo_studio_mockup_projects");
-    expect(String(query.mock.calls[0][0])).toContain("status='ready'");
-    expect(query.mock.calls[0][1][0]).not.toBe("secret");
-    expect(query.mock.calls[0][1][0]).toHaveLength(64);
+    const updateCall = query.mock.calls.find((c) => String(c[0]).includes("UPDATE demo_studio_mockup_projects"))!;
+    expect(String(updateCall[0])).toContain("status='ready'");
+    expect(updateCall[1][0]).not.toBe("secret");
+    expect(updateCall[1][0]).toHaveLength(64);
+  });
+
+  it("nekter godkjenning fra lenker uten godkjennings-tilgang", async () => {
+    const { handlers } = harness({ rows: [publicLink({ access_mode: "view" })] });
+    const res = response();
+    await handlers.get("POST /api/role-room/mockup-shared/:token/approve")!({
+      params: { token: "secret" }, headers: { accept: "application/json" }, socket: { remoteAddress: "127.0.0.1" },
+    } as unknown as Request, res);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: "godkjenning_ikke_tillatt" });
   });
 });
 
