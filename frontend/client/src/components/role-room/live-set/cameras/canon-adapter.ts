@@ -11,6 +11,7 @@ import type {
   CameraStateSnapshot,
   NormalizedCameraSettings,
 } from "./types";
+import { ccapiHeaders } from "@/lib/ccapiAuth";
 
 const BASE = "/api/ccapi";
 
@@ -19,6 +20,7 @@ interface CcapiStateResponse {
   state?: {
     identity?: { manufacturer?: string; productname?: string; serialnumber?: string; firmwareversion?: string };
     battery?: { level?: string };
+    lens?: { name?: string; mount?: string };
     storages?: Array<{ freesize?: number; maxsize?: number }>;
     temperature?: { status?: string };
     supportedVersions?: string[];
@@ -60,10 +62,7 @@ export class CanonCcapiAdapter implements CameraAdapter {
   async connect(): Promise<void> {
     const response = await fetch(`${BASE}/connect`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-role-room-user-id": getUserIdHeader(),
-      },
+      headers: ccapiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ipAddress: this.ipAddress }),
     });
     if (!response.ok) {
@@ -80,7 +79,7 @@ export class CanonCcapiAdapter implements CameraAdapter {
   async disconnect(): Promise<void> {
     await fetch(`${BASE}/cameras/${encodeURIComponent(this.ipAddress)}`, {
       method: "DELETE",
-      headers: { "x-role-room-user-id": getUserIdHeader() },
+      headers: ccapiHeaders(),
     });
     this.connected = false;
   }
@@ -91,7 +90,7 @@ export class CanonCcapiAdapter implements CameraAdapter {
 
   async fetchState(): Promise<CameraStateSnapshot> {
     const response = await fetch(`${BASE}/cameras/${encodeURIComponent(this.ipAddress)}/state`, {
-      headers: { "x-role-room-user-id": getUserIdHeader() },
+      headers: ccapiHeaders(),
     });
     const body = (await response.json()) as CcapiStateResponse;
     const state = body.state;
@@ -116,6 +115,7 @@ export class CanonCcapiAdapter implements CameraAdapter {
       fetchedAt: state?.lastFetchedAt ?? new Date().toISOString(),
       vendorExtra: {
         supportedVersions: state?.supportedVersions,
+        lensName: state?.lens?.name,
       },
     };
   }
@@ -138,10 +138,7 @@ export class CanonCcapiAdapter implements CameraAdapter {
   async triggerShutter(): Promise<void> {
     const response = await fetch(`${BASE}/cameras/${encodeURIComponent(this.ipAddress)}/shutter`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-role-room-user-id": getUserIdHeader(),
-      },
+      headers: ccapiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ af: true }),
     });
     if (!response.ok) {
@@ -149,14 +146,4 @@ export class CanonCcapiAdapter implements CameraAdapter {
       throw new Error(body.error ?? `Shutter failed (${response.status})`);
     }
   }
-}
-
-function getUserIdHeader(): string {
-  // Hent fra eksisterende session/auth-state — frontend har dette via
-  // role-room context. For nå: hardcoded fallback for utvikling.
-  if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem("role-room-user-id");
-    if (stored) return stored;
-  }
-  return "dev-user";
 }
