@@ -503,10 +503,22 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, pr
                     </Typography>
                   )}
 
-                  {/* Sendt er ikke det samme som sett. En statist som ikke har
-                      åpnet kortet vet ikke hvor hen skal stå, og det oppdages
-                      ellers først på settet. */}
-                  {k.opened_at ? (
+                  {/* Svaret er det innspillingslederen ringer rundt for å få.
+                      Det står derfor over «åpnet»: at kortet er lest sier ikke
+                      om personen kommer. */}
+                  {k.response ? (
+                    <Box sx={{ mt: 0.8 }}>
+                      <Typography sx={{ color: k.response === 'kommer' ? palette.success : palette.warning, fontSize: '0.78rem', fontWeight: 700 }}>
+                        {k.response === 'kommer' ? 'Kommer' : 'Kan ikke'}
+                        {k.responded_at ? ` · ${tidspunkt(k.responded_at)}` : ''}
+                      </Typography>
+                      {k.response_note && (
+                        <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.2 }}>
+                          «{k.response_note}»
+                        </Typography>
+                      )}
+                    </Box>
+                  ) : k.opened_at ? (
                     <Typography sx={{ color: palette.success, fontSize: '0.78rem', mt: 0.8 }}>
                       Åpnet {tidspunkt(k.opened_at)}
                     </Typography>

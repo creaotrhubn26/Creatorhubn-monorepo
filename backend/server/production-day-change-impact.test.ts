@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   collectProductionDayChangeImpact,
   collectProductionDayLocationImpact,
+  collectProductionDayPropImpact,
   collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
@@ -285,5 +286,65 @@ describe('collectProductionDaySceneImpact', () => {
     expect(impacts).toHaveLength(1);
     expect(impacts[0]).toMatchObject({ area: 'scene_material', severity: 'info', count: 12 });
     expect(impacts[0].action).toBeUndefined();
+  });
+});
+
+describe('collectProductionDayPropImpact', () => {
+  const PROP_INPUT = {
+    projectId: 'project-1',
+    dayId: 'day-6',
+    fromPropIds: ['prop-1'],
+    toPropIds: ['prop-1'],
+  };
+
+  it('says nothing when the props are the same', async () => {
+    const pool = poolWith({ casting_props: 5 });
+    const impacts = await collectProductionDayPropImpact(pool, PROP_INPUT);
+
+    expect(impacts).toEqual([]);
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('blocks on a published call sheet, which lists the props', async () => {
+    const impacts = await collectProductionDayPropImpact(
+      poolWith({ role_room_call_sheet_deliveries: 1 }),
+      { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2'] },
+    );
+
+    expect(impacts[0]).toMatchObject({ area: 'call_sheet', severity: 'blocking' });
+    expect(hasBlockingImpact(impacts)).toBe(true);
+  });
+
+  it('warns about a prop that is not marked available', async () => {
+    const impacts = await collectProductionDayPropImpact(
+      poolWith({ casting_props: 2 }),
+      { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2', 'prop-3'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'prop_availability', severity: 'warning', count: 2 });
+    expect(impacts[0].action).toBeTruthy();
+  });
+
+  it('warns when another day on the same date already uses them', async () => {
+    const impacts = await collectProductionDayPropImpact(
+      poolWith({ casting_production_days: 1 }),
+      { ...PROP_INPUT, toPropIds: ['prop-1', 'prop-2'] },
+    );
+
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]).toMatchObject({ area: 'prop_load', severity: 'warning', count: 1 });
+  });
+
+  it('asks nothing about availability when props are only removed', async () => {
+    // Å ta bort en rekvisitt kan ikke gjøre den mindre tilgjengelig.
+    const pool = poolWith({ casting_props: 3 });
+    const impacts = await collectProductionDayPropImpact(pool, {
+      ...PROP_INPUT,
+      fromPropIds: ['prop-1', 'prop-2'],
+      toPropIds: ['prop-1'],
+    });
+
+    expect(impacts.map((impact) => impact.area)).not.toContain('prop_availability');
   });
 });

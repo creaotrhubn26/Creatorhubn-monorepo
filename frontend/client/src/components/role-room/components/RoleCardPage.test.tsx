@@ -9,12 +9,12 @@
  * stedet for å vise en tom ramme.
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import RoleCardPage, { isRoleCardPath } from './RoleCardPage';
 
-const KORT = {
+const DEL = {
   card: {
     person_name: 'Statist 3',
     person_kind: 'extra',
@@ -32,6 +32,22 @@ const KORT = {
     int_ext: 'INT',
     blocking: { planUrl: 'https://eksempel.test/plan.png', camera: { x: 0.9, y: 0.5 } },
   },
+};
+
+const ANDRE_DEL = {
+  card: {
+    ...DEL.card,
+    action: 'Du går forbi i bakgrunnen med en kaffekopp.',
+    cue: null,
+    call_time: '2026-10-01T11:00:00Z',
+  },
+  scene: { ...DEL.scene, title: 'Gaten utenfor', int_ext: 'EXT' },
+};
+
+const KORT = {
+  person: { name: 'Statist 3', kind: 'extra' },
+  response: null,
+  cards: [DEL],
   meeting: {
     name: 'Pizzeria Roma',
     address: 'Storgata 1, Oslo',
@@ -91,7 +107,7 @@ describe('kortet', () => {
   });
 
   it('sier fra når plantegningen ikke er laget ennå', async () => {
-    svar({ ...KORT, scene: { ...KORT.scene, blocking: null } });
+    svar({ ...KORT, cards: [{ ...DEL, scene: { ...DEL.scene, blocking: null } }] });
     render(<RoleCardPage />);
     // Vanlig første døgn. En tom ramme ville sett ut som en feil.
     expect(await screen.findByText(/ikke klar ennå/)).toBeInTheDocument();
@@ -120,12 +136,84 @@ describe('kortet', () => {
     expect(screen.queryByText('Sted')).toBeNull();
   });
 
+  it('lar deg svare at du kommer, og sier at det er lagret', async () => {
+    const hent = svar(KORT);
+    render(<RoleCardPage />);
+    await screen.findByText(/bord 3/);
+
+    hent.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ svar: 'kommer', tidspunkt: '2026-10-01T12:00:00Z', melding: null }),
+    } as Response);
+    fireEvent.click(screen.getByRole('button', { name: 'Jeg kommer' }));
+
+    // Uten kvittering trykker folk en gang til for å være sikre.
+    expect(await screen.findByText(/produksjonen vet at du kommer/i)).toBeInTheDocument();
+    expect(hent).toHaveBeenLastCalledWith(
+      expect.stringContaining('/svar'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('spør om grunn først når svaret er «kan ikke»', async () => {
+    const hent = svar(KORT);
+    render(<RoleCardPage />);
+    await screen.findByText(/bord 3/);
+    // Før valget er feltet bare noe å lure på.
+    expect(screen.queryByLabelText(/Vil du si hvorfor/)).toBeNull();
+
+    hent.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ svar: 'kan_ikke', tidspunkt: '2026-10-01T12:00:00Z', melding: null }),
+    } as Response);
+    fireEvent.click(screen.getByRole('button', { name: 'Jeg kan ikke' }));
+
+    expect(await screen.findByLabelText(/Vil du si hvorfor/)).toBeInTheDocument();
+  });
+
+  it('viser svaret du alt har gitt, i stedet for å spørre på nytt', async () => {
+    svar({ ...KORT, response: { svar: 'kommer', tidspunkt: '2026-10-01T12:00:00Z', melding: null } });
+    render(<RoleCardPage />);
+    expect(await screen.findByText(/Du kan endre svaret/)).toBeInTheDocument();
+  });
+
+  it('sier hva som gikk galt og hva du kan gjøre når svaret ikke går gjennom', async () => {
+    const hent = svar(KORT);
+    render(<RoleCardPage />);
+    await screen.findByText(/bord 3/);
+
+    hent.mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'Klarte ikke å lagre svaret' }) } as Response);
+    fireEvent.click(screen.getByRole('button', { name: 'Jeg kommer' }));
+
+    // Personen står kanskje på vei til settet: si hva hen gjør nå.
+    expect(await screen.findByText(/si fra til innspillingslederen/)).toBeInTheDocument();
+  });
+
   it('sier hvem du skal spørre når lenken er død', async () => {
     svar({ error: 'Lenken gjelder ikke lenger' }, false);
     render(<RoleCardPage />);
     expect(await screen.findByText('Lenken gjelder ikke lenger')).toBeInTheDocument();
     // Personen står kanskje på settet. Da hjelper det ikke å forklare hvorfor.
     expect(screen.getByText(/innspillingslederen/i)).toBeInTheDocument();
+  });
+
+  it('viser alle scenene bak lenken, nummerert og i tidsrekkefølge', async () => {
+    svar({ ...KORT, cards: [DEL, ANDRE_DEL] });
+    render(<RoleCardPage />);
+
+    // Tre lenker for tre scener var problemet. Én lenke må da vise alle tre.
+    expect(await screen.findByText('2 scener denne dagen')).toBeInTheDocument();
+    expect(screen.getByText(/bord 3/)).toBeInTheDocument();
+    expect(screen.getByText(/kaffekopp/)).toBeInTheDocument();
+    expect(screen.getByText(/EXT · Gaten utenfor/)).toBeInTheDocument();
+  });
+
+  it('viser stedet én gang, ikke per scene', async () => {
+    svar({ ...KORT, cards: [DEL, ANDRE_DEL] });
+    render(<RoleCardPage />);
+    await screen.findByText('2 scener denne dagen');
+    // Stedet hører til dagen. Gjentatt per scene ville lest som flere steder.
+    expect(screen.getAllByText('Pizzeria Roma')).toHaveLength(1);
   });
 
   it('sier eksplisitt at kortet bare gjelder deg', async () => {

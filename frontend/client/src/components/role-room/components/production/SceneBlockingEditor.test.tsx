@@ -21,7 +21,8 @@ const kort = (over: Partial<Record<string, unknown>> = {}) => ({
   id: 'kort-1', project_id: 'p1', scene_id: 's1', person_name: 'Statist 3', person_kind: 'extra',
   action: 'Du sitter ved bord 3.', cue: null, position: { x: 0.4, y: 0.6 }, wardrobe: null,
   frame_image_url: null, call_time: null, sort_order: 0, token: 'token-abc', revoked_at: null,
-  contact_email: null, sent_at: null, opened_at: null, ...over,
+  contact_email: null, sent_at: null, opened_at: null,
+  response: null, responded_at: null, response_note: null, ...over,
 });
 
 describe('uten plantegning', () => {
@@ -150,6 +151,32 @@ describe('har kortet blitt åpnet?', () => {
     // Et kort som aldri er sendt har ingen status å melde — da er tomt riktigere
     // enn «ikke åpnet», som ville lest som at noen ignorerte lenken.
     expect(screen.queryByText(/åpnet/i)).toBeNull();
+  });
+});
+
+describe('kommer personen?', () => {
+  beforeEach(() => {
+    vi.spyOn(roleCardService, 'getBlocking').mockResolvedValue({ planUrl: PLAN, camera: null });
+    vi.spyOn(roleCardService, 'listFrames').mockResolvedValue([]);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('viser svaret framfor «åpnet» — det er svaret man ringer for å få', async () => {
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([
+      kort({ sent_at: '2026-10-01T18:00:00Z', opened_at: '2026-10-01T19:00:00Z', response: 'kommer', responded_at: '2026-10-01T19:05:00Z' }) as never,
+    ]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    expect(await screen.findByText(/^Kommer/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Åpnet/)).toBeNull();
+  });
+
+  it('tar med grunnen når personen ikke kan', async () => {
+    vi.spyOn(roleCardService, 'list').mockResolvedValue([
+      kort({ response: 'kan_ikke', responded_at: '2026-10-01T19:05:00Z', response_note: 'Er syk' }) as never,
+    ]);
+    render(<SceneBlockingEditor projectId="p1" sceneId="s1" />);
+    // Uten grunnen må innspillingslederen ringe likevel.
+    expect(await screen.findByText('«Er syk»')).toBeInTheDocument();
   });
 });
 
