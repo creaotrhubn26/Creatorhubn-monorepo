@@ -293,6 +293,9 @@ function Bekreftelsesfelt({
   // Meldingsfeltet dukker opp først når svaret er «kan ikke» — det er der det
   // har en funksjon, og før det er det bare et felt til å lure på.
   const [visMelding, setVisMelding] = useState(gjeldende?.svar === 'kan_ikke');
+  // Det som faktisk er lagret, så knappen bare vises når noe står ulagret.
+  const [lagretMelding, setLagretMelding] = useState(gjeldende?.melding ?? '');
+  const lagret = melding.trim() === lagretMelding.trim();
 
   const send = async (valg: 'kommer' | 'kan_ikke', tekst?: string) => {
     setSender(valg);
@@ -306,6 +309,7 @@ function Bekreftelsesfelt({
       const data = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error ?? 'Klarte ikke å lagre svaret');
       påSvart({ svar: valg, tidspunkt: data?.tidspunkt ?? new Date().toISOString(), melding: data?.melding ?? null });
+      setLagretMelding(data?.melding ?? '');
       setVisMelding(valg === 'kan_ikke');
     } catch (e) {
       // Si hva som gikk galt OG hva personen kan gjøre — hen står kanskje på
@@ -378,12 +382,30 @@ function Bekreftelsesfelt({
             label="Vil du si hvorfor? (valgfritt)"
             value={melding}
             onChange={(e) => setMelding(e.target.value.slice(0, 500))}
-            onBlur={() => { if (valgt === 'kan_ikke') void send('kan_ikke', melding.trim() || undefined); }}
+            onBlur={() => { if (valgt === 'kan_ikke' && !lagret) void send('kan_ikke', melding.trim() || undefined); }}
             sx={{
               '& .MuiOutlinedInput-root': { color: palette.textPrimary, bgcolor: palette.bgCardElevated, '& fieldset': { borderColor: palette.border } },
               '& .MuiInputLabel-root': { color: palette.textMuted },
             }}
           />
+          {/* Beskjeden lagres når feltet forlates — men på en telefon legger folk
+              fra seg mobilen uten å trykke utenfor, og da hadde teksten forsvunnet
+              uten at noe sa fra. Derfor en synlig knapp så lenge det står noe
+              ulagret, og en kvittering når det er lagret. */}
+          {!lagret ? (
+            <Button
+              size="small"
+              disabled={sender !== null}
+              onClick={() => void send('kan_ikke', melding.trim() || undefined)}
+              sx={{ mt: 0.8, textTransform: 'none', fontWeight: 700, color: palette.accentBright }}
+            >
+              Lagre beskjeden
+            </Button>
+          ) : melding.trim() ? (
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.8rem', mt: 0.8 }}>
+              Beskjeden er lagret.
+            </Typography>
+          ) : null}
         </Box>
       )}
 

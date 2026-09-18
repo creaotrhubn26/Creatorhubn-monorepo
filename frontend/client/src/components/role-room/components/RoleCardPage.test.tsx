@@ -171,6 +171,33 @@ describe('kortet', () => {
     expect(await screen.findByLabelText(/Vil du si hvorfor/)).toBeInTheDocument();
   });
 
+  it('lar deg lagre beskjeden uten å måtte klikke utenfor feltet', async () => {
+    const hent = svar(KORT);
+    render(<RoleCardPage />);
+    await screen.findByText(/bord 3/);
+
+    hent.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ svar: 'kan_ikke', tidspunkt: '2026-10-01T12:00:00Z', melding: null }),
+    } as Response);
+    fireEvent.click(screen.getByRole('button', { name: 'Jeg kan ikke' }));
+    const felt = await screen.findByLabelText(/Vil du si hvorfor/);
+
+    fireEvent.change(felt, { target: { value: 'Er syk' } });
+    // På en telefon legger folk fra seg mobilen uten å trykke utenfor. Uten en
+    // synlig knapp ville teksten forsvunnet uten at noe sa fra.
+    const lagre = screen.getByRole('button', { name: 'Lagre beskjeden' });
+
+    hent.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ svar: 'kan_ikke', tidspunkt: '2026-10-01T12:01:00Z', melding: 'Er syk' }),
+    } as Response);
+    fireEvent.click(lagre);
+
+    expect(await screen.findByText('Beskjeden er lagret.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Lagre beskjeden' })).toBeNull();
+  });
+
   it('viser svaret du alt har gitt, i stedet for å spørre på nytt', async () => {
     svar({ ...KORT, response: { svar: 'kommer', tidspunkt: '2026-10-01T12:00:00Z', melding: null } });
     render(<RoleCardPage />);
