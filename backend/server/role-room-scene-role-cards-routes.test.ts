@@ -40,6 +40,12 @@ function byggApp(t: Tilstand, innlogget = true) {
       if (sql.includes("INSERT INTO scene_role_cards")) {
         return { rows: [{ id: KORT_ID, token: "hemmelig-token" }], rowCount: 1 };
       }
+      if (sql.includes("UPDATE casting_scenes")) {
+        return { rows: t.oppdaterteRader ? [{ id: 'scene-1', blocking: { planUrl: 'https://eksempel.test/plan.png' } }] : [], rowCount: t.oppdaterteRader };
+      }
+      if (sql.includes("FROM casting_scenes")) {
+        return { rows: [{ blocking: null }], rowCount: 1 };
+      }
       if (sql.includes("UPDATE scene_role_cards") || sql.includes("DELETE FROM scene_role_cards")) {
         return { rows: t.oppdaterteRader ? [{ id: KORT_ID }] : [], rowCount: t.oppdaterteRader };
       }
@@ -164,5 +170,50 @@ describe("statistens side", () => {
     expect(b.status).toBe(404);
     // Ulik ordlyd ville latt noen prøve seg fram til hvilke lenker som finnes.
     expect(a.body.error).toBe(b.body.error);
+  });
+});
+
+describe("plantegning og kamera", () => {
+  let t: Tilstand;
+  beforeEach(() => { t = { spørringer: [], offentligRad: null, oppdaterteRader: 1 }; });
+
+  it("lagrer i scenens breakdown, ikke i en egen tabell", async () => {
+    const res = await request(byggApp(t))
+      .put(`/api/role-room/projects/${PROSJEKT}/scenes/scene-1/blocking`)
+      .send({ planUrl: "https://eksempel.test/plan.png", camera: { x: 0.9, y: 0.5 } });
+
+    expect(res.status).toBe(200);
+    const q = t.spørringer.find((x) => x.sql.includes("UPDATE casting_scenes"));
+    expect(q?.sql).toContain("jsonb_set");
+    // create_missing: scener uten breakdown fra før skal få nøkkelen, ikke feile.
+    expect(q?.sql).toContain("true");
+    // Både scene og prosjekt i WHERE — en scene-id fra et annet prosjekt
+    // skal ikke kunne skrives til ved å gjette.
+    expect(q?.sql).toContain("id = $1 AND project_id = $2");
+  });
+
+  it("avviser en plantegning som ikke er en http-adresse", async () => {
+    const res = await request(byggApp(t))
+      .put(`/api/role-room/projects/${PROSJEKT}/scenes/scene-1/blocking`)
+      .send({ planUrl: "javascript:alert(1)" });
+
+    expect(res.status).toBe(400);
+    expect(t.spørringer.some((q) => q.sql.includes("UPDATE casting_scenes"))).toBe(false);
+  });
+
+  it("klemmer kameraet til 0–1 som resten av posisjonene", async () => {
+    await request(byggApp(t))
+      .put(`/api/role-room/projects/${PROSJEKT}/scenes/scene-1/blocking`)
+      .send({ planUrl: "https://eksempel.test/plan.png", camera: { x: 9, y: -3 } });
+
+    const q = t.spørringer.find((x) => x.sql.includes("UPDATE casting_scenes"));
+    expect(JSON.parse(q?.params[2] as string).camera).toEqual({ x: 1, y: 0 });
+  });
+
+  it("krever prosjekt-tilgang", async () => {
+    const res = await request(byggApp(t))
+      .put("/api/role-room/projects/annet-prosjekt/scenes/scene-1/blocking")
+      .send({ planUrl: "https://eksempel.test/plan.png" });
+    expect(res.status).toBe(404);
   });
 });

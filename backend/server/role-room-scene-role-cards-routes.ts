@@ -215,6 +215,69 @@ export function setupRoleRoomSceneRoleCardsRoutes(
     }
   });
 
+  // ── PUT /projects/:projectId/scenes/:sceneId/blocking ───────────────
+  //
+  // Plantegningen og kameraet for scenen. Lagres i casting_scenes.
+  // production_breakdown -> 'blocking', ikke i en egen tabell: det er ett
+  // objekt per scene, og JSONB-kolonnen finnes allerede.
+  //
+  // jsonb_set med create_missing=true, så scener uten breakdown fra før får
+  // nøkkelen i stedet for å feile stille.
+  app.put("/api/role-room/projects/:projectId/scenes/:sceneId/blocking", async (req, res) => {
+    const { projectId, sceneId } = req.params;
+    if (!(await requireProject(req, res, projectId))) return;
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const planUrl = typeof body.planUrl === "string" ? body.planUrl.trim() : "";
+    const camera = cleanPosition(body.camera);
+
+    if (planUrl && !/^https?:\/\//i.test(planUrl)) {
+      return res.status(400).json({ error: "Plantegningen må være en http(s)-adresse" });
+    }
+
+    try {
+      const blocking = {
+        planUrl: planUrl || null,
+        camera,
+        updatedAt: new Date().toISOString(),
+      };
+      // scene_id OG project_id i WHERE: en scene-id fra et annet prosjekt
+      // skal ikke kunne skrives til ved å gjette.
+      const r = await pool.query(
+        `UPDATE casting_scenes
+            SET production_breakdown = jsonb_set(
+                  COALESCE(production_breakdown, '{}'::jsonb), '{blocking}', $3::jsonb, true),
+                updated_at = now()
+          WHERE id = $1 AND project_id = $2
+          RETURNING id, production_breakdown -> 'blocking' AS blocking`,
+        [sceneId, projectId, JSON.stringify(blocking)],
+      );
+      if (!r.rowCount) return res.status(404).json({ error: "Scene ikke funnet" });
+      return res.json({ blocking: r.rows[0].blocking });
+    } catch (err) {
+      console.error("[scene blocking PUT] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å lagre plantegningen" });
+    }
+  });
+
+  // ── GET /projects/:projectId/scenes/:sceneId/blocking ───────────────
+  app.get("/api/role-room/projects/:projectId/scenes/:sceneId/blocking", async (req, res) => {
+    const { projectId, sceneId } = req.params;
+    if (!(await requireProject(req, res, projectId))) return;
+    try {
+      const r = await pool.query(
+        `SELECT production_breakdown -> 'blocking' AS blocking
+           FROM casting_scenes WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [sceneId, projectId],
+      );
+      if (!r.rowCount) return res.status(404).json({ error: "Scene ikke funnet" });
+      return res.json({ blocking: r.rows[0].blocking ?? null });
+    } catch (err) {
+      console.error("[scene blocking GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente plantegningen" });
+    }
+  });
+
   // ── GET /role-cards/r/:token — det statisten åpner ──────────────────
   //
   // Offentlig, uten innlogging: en statist har sjelden konto, og et krav om
