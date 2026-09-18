@@ -28,8 +28,12 @@ interpretation: >
   A branch dry run is the cheapest way to get a real-Postgres test of every migration before
   production without adding Postgres to CI or a Neon-branch mock. Failure stops the deploy
   job before production is touched and leaves the branch for debugging; success deletes it.
-  The step is optional (skipped when NEON_API_KEY is unset) so the workflow keeps working
-  until the secrets are configured.
+  The step is optional (skipped unless BOTH NEON_API_KEY and NEON_PROJECT_ID are set) so
+  the workflow keeps working until the configuration is complete. Hardening 2026-09-18: the
+  first manual run with only the secret set failed the deploy job inside the script
+  ("NEON_PROJECT_ID mangler") before migrations ran; the step condition now requires both,
+  a preceding "Check Neon dry-run configuration" step emits a ::warning:: when exactly one
+  is set, and NEON_PROJECT_ID is accepted from repository Variables or Secrets.
 project_impact: >
   backend/scripts/neon-branch-dry-run.sh (create branch → set one-time password →
   preflight/apply/expect-zero against the branch → delete on success, keep on failure);
@@ -38,9 +42,10 @@ project_impact: >
   --self-test contract step in the validate job).
 prerequisites: >
   Repository secret NEON_API_KEY (Neon API key with write access to the project) and
-  repository variable NEON_PROJECT_ID=restless-wind-41713954 must be added by an owner
-  (Settings → Secrets and variables → Actions). Until then the step is skipped and reported
-  as such in the job log.
+  repository variable NEON_PROJECT_ID=restless-wind-41713954 (the Variables tab, not
+  Secrets — a secret with that name is also accepted) must be added by an owner
+  (Settings → Secrets and variables → Actions). Until both exist the step is skipped and
+  reported as such in the job log (gul advarsel når bare én av dem finnes).
 affected:
   - backend/scripts/neon-branch-dry-run.sh
   - .github/workflows/auto-migrate-on-push.yml
