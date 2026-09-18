@@ -1,8 +1,10 @@
 /**
  * hubspot-client.ts — uttak fra HubSpot CRM for migrering til Leadgrid.
  *
- * Leser bare. Autentiserer med et Private App-token som kunden lager selv
- * («Authorization: Bearer»), uten app-review hos HubSpot.
+ * Leser bare. Autentiserer med en Service Key som kunden lager selv
+ * («Authorization: Bearer»), uten app-review hos HubSpot. HubSpot har flyttet
+ * private apps til «Legacy Apps» og peker på Service Keys for single-account
+ * API-tilgang; begge sender samme Bearer-header.
  *
  * Tre ting denne fila finnes for, og som fikstur-tester dekker:
  *   1. Paginering. HubSpot gir maks 100 per side og en after-cursor.
@@ -58,7 +60,7 @@ function describeFailure(status: number, body: string): HubSpotRequestError {
     return new HubSpotRequestError(
       "invalid_token",
       status,
-      "HubSpot godtok ikke tokenet. Lag et nytt Private App-token i HubSpot og lim det inn på nytt.",
+      "HubSpot godtok ikke nøkkelen. Lag en ny Service Key i HubSpot og lim den inn på nytt.",
       body,
     );
   }
@@ -66,7 +68,7 @@ function describeFailure(status: number, body: string): HubSpotRequestError {
     return new HubSpotRequestError(
       "missing_scope",
       status,
-      "Tokenet mangler lesetilgang til denne datatypen. Åpne Private App-en i HubSpot og huk av lesescopet for kontakter, bedrifter og avtaler.",
+      "Nøkkelen mangler lesetilgang til denne datatypen. Åpne Service Key-en i HubSpot og huk av lesescopet. Merk at et nytt scope kan bruke opptil et minutt før det virker.",
       body,
     );
   }

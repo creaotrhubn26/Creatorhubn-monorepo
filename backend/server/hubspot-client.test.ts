@@ -47,7 +47,7 @@ function build(fetchImpl: unknown, extra: Partial<HubSpotClientOptions> = {}) {
 }
 
 describe("autentisering og forespørselsform", () => {
-  it("sender Private App-tokenet som Bearer mot det datostemplede API-et", async () => {
+  it("sender Service Key-en som Bearer mot det datostemplede API-et", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(reply(200, { results: [] }));
     const { client } = build(fetchImpl);
     await client.listAll("contacts", ["email", "firstname"]);
@@ -146,7 +146,7 @@ describe("feil kunden må forstå", () => {
 
     expect(error).toBeInstanceOf(HubSpotRequestError);
     expect(error.reason).toBe("invalid_token");
-    expect(error.userMessage).toContain("Private App-token");
+    expect(error.userMessage).toContain("Service Key");
   });
 
   it("peker på manglende lesescope ved 403, og prøver ikke igjen", async () => {

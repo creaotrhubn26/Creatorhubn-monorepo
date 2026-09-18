@@ -1,5 +1,5 @@
 claim: >
-  HubSpot CRM-data kan hentes med et Private App-token (Authorization: Bearer
+  HubSpot CRM-data kan hentes med en Service Key (Authorization: Bearer
   mot api.hubapi.com) uten godkjenningsrunde hos HubSpot. Objekt-API-ene ligger
   på datostemplede stier (i dag /crm/objects/2026-03/{objectType}), lesing
   krever per-objekt-scopes (crm.objects.contacts.read, crm.objects.deals.read),
@@ -18,6 +18,22 @@ source: >
   https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/guide
   https://developers.hubspot.com/docs/api-reference/latest/crm/objects/deals/get-deals
   https://developers.hubspot.com/docs/developer-tooling/sdks/node
+verified_against_live_account: >
+  Testet mot ekte HubSpot developer test account (EU-region, portal 149361428)
+  2026-09-18. Funn som dokumentasjonen ikke ga:
+  - api.hubapi.com er riktig host også for EU-kontoer; api.hubapi.eu finnes ikke.
+  - Pipelines ligger på /crm/pipelines/<versjon>/<objekt>, IKKE
+    /crm/<versjon>/pipelines/<objekt>. Sistnevnte ga 404.
+  - HubSpot har flyttet private apps til «Legacy Apps» og fraråder dem
+    («won't receive new API scopes», «limited support going forward»).
+    Service Keys er den anbefalte veien for single-account API-tilgang.
+    Evidensfilen sa opprinnelig Private App; det var utdatert samme dag.
+  - Scope-endringer på en Service Key propagerer IKKE umiddelbart. Rett etter
+    lagring ga products/line_items vekselvis 403 og 200 i opptil et minutt.
+    En migrering må derfor tåle 403 rett etter at kunden har fikset scopes.
+  - Stage-metadata er strenger: {isClosed: "false", probability: "0.2"}.
+  - Standard-pipelinen heter «default» med sju stager fra appointmentscheduled
+    til closedwon/closedlost.
 authority_tier: 1
 vendor: HubSpot
 product: CRM API (objects, associations, pipelines)
@@ -34,10 +50,14 @@ evidence_summary: >
   en label i en admin-nedtrekksliste, og SEO/pris-tekst. Connector-siden
   (leadgrid-connectors.tsx) merker HubSpot "planned", som er korrekt.
 interpretation: >
-  Private App-token er riktig vei for en migreringsjobb: kunden lager tokenet
-  selv i HubSpot, det krever ingen app-review, og en engangs-migrering trenger
-  bare lesescopes. OAuth-app ville kostet en godkjenningsrunde uten å gi
-  migreringen noe den trenger. Burst-grensen på 100-190 kall/10 s betyr at en
+  Service Key er riktig vei for en migreringsjobb: kunden lager nøkkelen selv
+  i HubSpot, det krever ingen app-review, og en engangs-migrering trenger bare
+  lesescopes. OAuth-app ville kostet en godkjenningsrunde uten å gi migreringen
+  noe den trenger. Legacy private apps virker fortsatt, men HubSpot fraråder
+  dem og gir dem ikke nye scopes.
+  Scopes vi faktisk trenger, verifisert mot kontoen: crm.objects.contacts.read,
+  crm.objects.companies.read, crm.objects.deals.read, crm.objects.owners.read,
+  crm.objects.products.read, crm.objects.line_items.read, crm.schemas.deals.read. Burst-grensen på 100-190 kall/10 s betyr at en
   migrering av et større HubSpot-oppsett ikke kan ligge i en HTTP-request; den
   må kjøre som bakgrunnsjobb med throttling og gjenopptakelse.
 project_impact: >
