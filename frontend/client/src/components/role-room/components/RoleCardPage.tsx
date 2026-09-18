@@ -20,7 +20,7 @@
  * første døgnet, før noen har rukket å legge dem inn.
  */
 
-import { Alert, Box, CircularProgress, Link, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Link, Stack, TextField, Typography } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
 import CheckroomIcon from '@mui/icons-material/CheckroomOutlined';
 import PlaceIcon from '@mui/icons-material/PlaceOutlined';
@@ -72,8 +72,16 @@ interface KortDel {
   scene: Scene;
 }
 
+/** Personens eget svar på om hen kommer. Null = ikke svart. */
+interface Bekreftelse {
+  svar: 'kommer' | 'kan_ikke';
+  tidspunkt: string | null;
+  melding: string | null;
+}
+
 interface Svar {
   person: { name: string; kind: string };
+  response: Bekreftelse | null;
   /** Alle scenene bak lenken, i den rekkefølgen dagen går. */
   cards: KortDel[];
   meeting: Meeting | null;
@@ -243,6 +251,12 @@ export default function RoleCardPage() {
           <SceneDel key={i} del={del} nummer={flere ? i + 1 : null} />
         ))}
 
+        <Bekreftelsesfelt
+          token={tokenFromPath() ?? ''}
+          gjeldende={svar.response}
+          påSvart={(b) => setSvar((f) => (f ? { ...f, response: b } : f))}
+        />
+
         <Alert
           severity="info"
           sx={{ mt: 2.4, bgcolor: 'rgba(75, 61, 143, 0.14)', color: palette.textSecondary, border: `1px solid ${palette.border}` }}
@@ -252,6 +266,132 @@ export default function RoleCardPage() {
             : 'Dette kortet gjelder bare deg. Andre på settet har sine egne.'}
         </Alert>
       </Box>
+    </Box>
+  );
+}
+
+/**
+ * «Kommer du?» — ett trykk fra kortet.
+ *
+ * Kvitteringen forteller at kortet er åpnet. Det er ikke det samme som at
+ * personen kommer, og forskjellen er den innspillingslederen ringer rundt for
+ * å finne ut. Svaret kan endres: folk blir syke etter at de har sagt ja, og et
+ * svar man ikke får endre blir et svar man ikke tør gi.
+ */
+function Bekreftelsesfelt({
+  token,
+  gjeldende,
+  påSvart,
+}: {
+  token: string;
+  gjeldende: Bekreftelse | null;
+  påSvart: (b: Bekreftelse) => void;
+}) {
+  const [sender, setSender] = useState<'kommer' | 'kan_ikke' | null>(null);
+  const [feil, setFeil] = useState<string | null>(null);
+  const [melding, setMelding] = useState(gjeldende?.melding ?? '');
+  // Meldingsfeltet dukker opp først når svaret er «kan ikke» — det er der det
+  // har en funksjon, og før det er det bare et felt til å lure på.
+  const [visMelding, setVisMelding] = useState(gjeldende?.svar === 'kan_ikke');
+
+  const send = async (valg: 'kommer' | 'kan_ikke', tekst?: string) => {
+    setSender(valg);
+    setFeil(null);
+    try {
+      const r = await fetch(`/api/role-room/role-cards/r/${encodeURIComponent(token)}/svar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ svar: valg, melding: tekst ?? (valg === 'kan_ikke' ? melding.trim() || null : null) }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error ?? 'Klarte ikke å lagre svaret');
+      påSvart({ svar: valg, tidspunkt: data?.tidspunkt ?? new Date().toISOString(), melding: data?.melding ?? null });
+      setVisMelding(valg === 'kan_ikke');
+    } catch (e) {
+      // Si hva som gikk galt OG hva personen kan gjøre — hen står kanskje på
+      // vei til settet.
+      setFeil(e instanceof Error ? e.message : 'Klarte ikke å lagre svaret');
+    } finally {
+      setSender(null);
+    }
+  };
+
+  const valgt = gjeldende?.svar ?? null;
+
+  return (
+    <Box sx={{ ...kortSx, mt: 2.4 }}>
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.72rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+        Kommer du?
+      </Typography>
+
+      <Stack direction="row" spacing={1.2} sx={{ mt: 1.2 }}>
+        <Button
+          fullWidth
+          disabled={sender !== null}
+          onClick={() => void send('kommer')}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            py: 1.1,
+            borderRadius: radius.md,
+            border: `1px solid ${valgt === 'kommer' ? palette.success : palette.border}`,
+            bgcolor: valgt === 'kommer' ? 'rgba(34, 197, 94, 0.14)' : 'transparent',
+            color: valgt === 'kommer' ? palette.success : palette.textSecondary,
+          }}
+        >
+          Jeg kommer
+        </Button>
+        <Button
+          fullWidth
+          disabled={sender !== null}
+          onClick={() => { setVisMelding(true); void send('kan_ikke'); }}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            py: 1.1,
+            borderRadius: radius.md,
+            border: `1px solid ${valgt === 'kan_ikke' ? palette.warning : palette.border}`,
+            bgcolor: valgt === 'kan_ikke' ? 'rgba(245, 158, 11, 0.14)' : 'transparent',
+            color: valgt === 'kan_ikke' ? palette.warning : palette.textSecondary,
+          }}
+        >
+          Jeg kan ikke
+        </Button>
+      </Stack>
+
+      {/* Svaret er lagret idet det er trykket — si det, ellers trykker folk to
+          ganger til for å være sikre. */}
+      {valgt && !feil && (
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem', mt: 1 }}>
+          {valgt === 'kommer' ? 'Takk — produksjonen vet at du kommer.' : 'Produksjonen har fått beskjed.'}
+          {' '}Du kan endre svaret her hvis noe skjer.
+        </Typography>
+      )}
+
+      {visMelding && (
+        <Box sx={{ mt: 1.4 }}>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            size="small"
+            label="Vil du si hvorfor? (valgfritt)"
+            value={melding}
+            onChange={(e) => setMelding(e.target.value.slice(0, 500))}
+            onBlur={() => { if (valgt === 'kan_ikke') void send('kan_ikke', melding.trim() || undefined); }}
+            sx={{
+              '& .MuiOutlinedInput-root': { color: palette.textPrimary, bgcolor: palette.bgCardElevated, '& fieldset': { borderColor: palette.border } },
+              '& .MuiInputLabel-root': { color: palette.textMuted },
+            }}
+          />
+        </Box>
+      )}
+
+      {feil && (
+        <Typography sx={{ color: palette.danger, fontSize: '0.86rem', mt: 1 }}>
+          {feil}. Prøv igjen, eller si fra til innspillingslederen.
+        </Typography>
+      )}
     </Box>
   );
 }

@@ -54,6 +54,26 @@ function newToken(): string {
  * JSON null-radene IKKE. Verifisert mot ekte Postgres:
  * position IS NULL → false, position = 'null'::jsonb → true.
  */
+/** Avsenderens adresse, kun til rate-limit. Lagres ikke. */
+function klientAdresse(req: { headers: Record<string, unknown>; socket: { remoteAddress?: string } }): string {
+  const videresendt = req.headers["x-forwarded-for"];
+  const rå = (Array.isArray(videresendt) ? videresendt[0] : videresendt) || req.socket.remoteAddress || "ukjent";
+  return String(rå).split(",")[0].trim().slice(0, 120);
+}
+
+const forsok = new Map<string, { antall: number; nullstillesVed: number }>();
+/** Enkel tak-teller. Svar-ruten er åpen, så den må tåle at noen prøver seg. */
+function forMange(nokkel: string, tak: number, vindu: number): boolean {
+  const na = Date.now();
+  const rad = forsok.get(nokkel);
+  if (!rad || rad.nullstillesVed <= na) {
+    forsok.set(nokkel, { antall: 1, nullstillesVed: na + vindu });
+    return false;
+  }
+  rad.antall += 1;
+  return rad.antall > tak;
+}
+
 function positionParam(value: unknown): string | null {
   const p = cleanPosition(value);
   return p ? JSON.stringify(p) : null;
@@ -104,7 +124,8 @@ export function setupRoleRoomSceneRoleCardsRoutes(
       const r = await pool.query(
         `SELECT id, project_id, scene_id, production_day_id, person_name, person_kind,
                 talent_id, action, cue, position, wardrobe, frame_image_url, call_time,
-                sort_order, token, revoked_at, contact_email, sent_at, opened_at, created_at, updated_at
+                sort_order, token, revoked_at, contact_email, sent_at, opened_at,
+                response, responded_at, response_note, created_at, updated_at
            FROM scene_role_cards
           WHERE project_id = $1
             AND ($2::text IS NULL OR scene_id = $2)
@@ -499,6 +520,7 @@ export function setupRoleRoomSceneRoleCardsRoutes(
       const r = await pool.query(
         `SELECT c.id, c.person_name, c.person_kind, c.action, c.cue, c.position,
                 c.wardrobe, c.frame_image_url, c.call_time, c.revoked_at,
+                c.response, c.responded_at, c.response_note,
                 s.title AS scene_title, s.setting AS scene_setting,
                 s.time_of_day, s.int_ext,
                 s.production_breakdown -> 'blocking' AS blocking,
@@ -584,12 +606,53 @@ export function setupRoleRoomSceneRoleCardsRoutes(
               date: forste.day_date,
             }
           : null,
+        // Personens eget svar, så kortet kan vise hva hen har sagt i stedet for
+        // å spørre på nytt hver gang lenken åpnes.
+        response: forste.response
+          ? { svar: forste.response, tidspunkt: forste.responded_at, melding: forste.response_note }
+          : null,
         project: { name: forste.project_name },
       });
     } catch (err) {
       // Token aldri i loggen: den er legitimasjonen.
       console.error("[role-cards public] failed");
       return res.status(500).json({ error: "Klarte ikke å hente kortet" });
+    }
+  });
+
+  // ── POST /role-cards/r/:token/svar — «jeg kommer» / «jeg kan ikke» ───
+  //
+  // Åpen, som kortet selv: lenken ER legitimasjonen, og et krav om innlogging
+  // ville gjort at ingen svarte. Svaret hører til personens dag, ikke til den
+  // enkelte scenen — du kommer til dagen, ikke til scene 3.
+  app.post("/api/role-room/role-cards/r/:token/svar", async (req, res) => {
+    const { token } = req.params;
+    // Åpen rute: en som gjetter på token skal ikke kunne prøve i det uendelige.
+    if (forMange(`svar:${klientAdresse(req)}`, 30, 10 * 60_000)) {
+      return res.status(429).json({ error: "For mange forsøk. Prøv igjen om en stund." });
+    }
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const svar = body.svar === "kommer" || body.svar === "kan_ikke" ? body.svar : null;
+    if (!svar) return res.status(400).json({ error: "Svaret må være «kommer» eller «kan_ikke»" });
+    const melding = typeof body.melding === "string" ? body.melding.trim().slice(0, 500) || null : null;
+
+    try {
+      const r = await pool.query(
+        `UPDATE scene_role_cards
+            SET response = $2, responded_at = NOW(), response_note = $3
+          WHERE token = $1 AND revoked_at IS NULL
+          RETURNING id`,
+        [token, svar, melding],
+      );
+      // Ukjent og tilbaketrukket svarer likt her også — ellers kan man prøve
+      // seg fram til hvilke lenker som finnes.
+      if (r.rowCount === 0) return res.status(404).json({ error: "Lenken gjelder ikke lenger" });
+
+      return res.json({ svar, tidspunkt: new Date().toISOString(), melding });
+    } catch (err) {
+      console.error("[role-cards svar] failed");
+      return res.status(500).json({ error: "Klarte ikke å lagre svaret" });
     }
   });
 }
