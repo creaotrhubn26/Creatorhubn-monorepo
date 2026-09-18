@@ -4,7 +4,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ChangeImpactPreview } from './ChangeImpactPreview';
+import { ChangeImpactPreview, changeHeadline, emptyImpactText } from './ChangeImpactPreview';
 
 const base = {
   projectId: 'project-1',
@@ -321,5 +321,43 @@ describe('ChangeImpactPreview ved sceneendring', () => {
 
     expect(await screen.findByText('2 kontinuitetsfiler er skutt på scener som fjernes.')).toBeInTheDocument();
     await waitFor(() => expect(onBlockingChange).toHaveBeenCalledWith(true));
+  });
+});
+
+describe('changeHeadline', () => {
+  const base = { dateChanged: false, locationChanged: false, scenesChanged: false, from: '2026-01-27', to: '2026-02-03' };
+
+  it('navngir en datoflytting med begge datoene', () => {
+    expect(changeHeadline({ ...base, dateChanged: true }))
+      .toBe('Flytting fra 2026-01-27 til 2026-02-03 påvirker:');
+  });
+
+  it('navngir en sceneendring som scener, ikke som lokasjon', () => {
+    // Overskriften sa «Ny lokasjon påvirker:» over funn om scener. Feil
+    // setning over riktige funn er verre enn ingen setning.
+    expect(changeHeadline({ ...base, scenesChanged: true })).toBe('Endrede scener påvirker:');
+  });
+
+  it('navngir en lokasjonsendring', () => {
+    expect(changeHeadline({ ...base, locationChanged: true })).toBe('Ny lokasjon påvirker:');
+  });
+
+  it('lister alle tre når alt er endret', () => {
+    expect(changeHeadline({ ...base, dateChanged: true, locationChanged: true, scenesChanged: true }))
+      .toBe('Ny dato, ny lokasjon og endrede scener påvirker:');
+  });
+});
+
+describe('emptyImpactText', () => {
+  const base = { dateChanged: false, locationChanged: false, scenesChanged: false, from: '2026-01-27', to: '2026-02-03' };
+
+  it('peker på datoen når det er datoen som flyttes', () => {
+    expect(emptyImpactText({ ...base, dateChanged: true }))
+      .toBe('Ingenting annet henger på 2026-01-27. Endringen berører bare dagen selv.');
+  });
+
+  it('peker på scenene når det er scenene som endres', () => {
+    expect(emptyImpactText({ ...base, scenesChanged: true }))
+      .toBe('Ingenting annet henger på scenene som endres. Endringen berører bare dagen selv.');
   });
 });

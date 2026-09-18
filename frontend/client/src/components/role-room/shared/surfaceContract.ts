@@ -70,6 +70,12 @@ export const ROLE_ROOM_SURFACE_CONTRACT = [
     note: 'Uinnlogget landingsside. Uten sesjon finnes det ingen andre flater å bytte til.',
   },
   {
+    component: 'RoleCardPage',
+    kind: 'public',
+    escapeHatch: 'none',
+    note: 'Ett rollekort åpnet fra en lenke på /statist/<token>. Leseren står på et sett om tolv minutter og har ingen sesjon å bytte flate med.',
+  },
+  {
     component: 'TalentsApp',
     kind: 'workspace',
     escapeHatch: 'own',
