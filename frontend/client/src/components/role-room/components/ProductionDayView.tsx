@@ -777,6 +777,29 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     [manuscriptScenes, projectId],
   );
 
+  // Rekvisittene prosjektet fører. Koblingen dag ↔ rekvisitt fantes i
+  // skjemaet, men ingen dag hadde den fylt ut — det var ingen vei til å sette
+  // den i grensesnittet.
+  const [availableProps, setAvailableProps] = useState<Array<{ id: string; name: string; availability?: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const props = await castingService.getProps(projectId);
+        if (!cancelled) {
+          setAvailableProps(props.map((prop) => ({
+            id: String(prop.id),
+            name: String(prop.name ?? prop.id),
+            availability: typeof prop.availability === 'string' ? prop.availability : undefined,
+          })));
+        }
+      } catch {
+        if (!cancelled) setAvailableProps([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   const openLocationInMaps = useCallback((locationId?: string) => {
     const location = locations.find((entry) => entry.id === locationId);
     if (!location) {
@@ -5165,6 +5188,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               targetLocationId={formData.locationId || null}
               currentSceneIds={editingDay?.scenes ?? null}
               targetSceneIds={editingDay ? (formData.scenes ?? []) : null}
+              currentPropIds={editingDay?.props ?? null}
+              targetPropIds={editingDay ? (formData.props ?? []) : null}
               onBlockingChange={setDateMoveBlocked}
             />
 
@@ -5325,6 +5350,73 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 ) : availableScenes.map((scene) => (
                   <MenuItem key={scene.id} value={scene.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
                     {scene.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Rekvisitter</InputLabel>
+              <Select
+                multiple
+                value={formData.props ?? []}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFormData({
+                    ...formData,
+                    props: typeof value === 'string' ? value.split(',') : value,
+                  });
+                }}
+                label="Rekvisitter"
+                inputProps={{ 'aria-label': 'Rekvisitter' }}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((propId) => (
+                      <Chip
+                        key={propId}
+                        size="small"
+                        label={availableProps.find((prop) => prop.id === propId)?.name ?? propId}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                sx={{
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#32127a' },
+                }}
+                MenuProps={{
+                  container: document.body,
+                  sx: { zIndex: 100010 },
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#1c2128',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      mt: 0.5,
+                      maxHeight: 300,
+                    },
+                  },
+                }}
+              >
+                {availableProps.length === 0 ? (
+                  <MenuItem disabled sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    Ingen rekvisitter registrert ennå
+                  </MenuItem>
+                ) : availableProps.map((prop) => (
+                  <MenuItem key={prop.id} value={prop.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    {prop.name}
+                    {prop.availability && prop.availability !== 'available' ? (
+                      // Nedtonet, ikke forklart: den kan velges, men du ser at
+                      // den ikke står som tilgjengelig før du gjør det.
+                      <Typography component="span" sx={{ ml: 1, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem' }}>
+                        ikke tilgjengelig
+                      </Typography>
+                    ) : null}
                   </MenuItem>
                 ))}
               </Select>
