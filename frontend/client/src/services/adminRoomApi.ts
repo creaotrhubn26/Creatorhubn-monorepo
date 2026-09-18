@@ -2323,3 +2323,381 @@ export const workspaceFundingOpportunitiesApi = {
   ): Promise<{ plan: WorkspaceFundingApplicationPlan; existing?: boolean }> =>
     jsonFetch(`/workspace/funding-opportunities/${id}/start-plan`, { method: 'POST', body: JSON.stringify(input) }),
 };
+
+// ─────────────────────────────────────────────────────────
+// Oppgaver og kalender i admin-workspace.
+//
+// Rutene og panelene ble skrevet i august, men ble aldri committet — de lå i
+// en stash (nå taggen arkiv/admin-workspace-stash-20260826) mens migrasjonene
+// gikk i produksjon. Klientene under er hentet derfra uendret.
+// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// Workspace tasks — adminens operative arbeidskø
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceTaskStatus =
+  | 'inbox'
+  | 'todo'
+  | 'in_progress'
+  | 'waiting'
+  | 'done'
+  | 'cancelled';
+export type WorkspaceTaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface WorkspaceTask {
+  id: string;
+  user_id: string;
+  product_key: AdminProductKey | null;
+  title: string;
+  description: string | null;
+  status: WorkspaceTaskStatus;
+  priority: WorkspaceTaskPriority;
+  due_date: string | null;
+  assignee: string | null;
+  project_id: string | null;
+  case_id: string | null;
+  project_title: string | null;
+  case_title: string | null;
+  tags: string[];
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface WorkspaceTaskContextOption {
+  id: string;
+  title: string;
+  product_key: AdminProductKey | null;
+  status: string;
+}
+
+export interface WorkspaceTaskOptions {
+  projects: WorkspaceTaskContextOption[];
+  cases: WorkspaceTaskContextOption[];
+}
+
+export type WorkspaceTaskInput = {
+  title?: string;
+  description?: string | null;
+  status?: WorkspaceTaskStatus;
+  priority?: WorkspaceTaskPriority;
+  dueDate?: string | null;
+  assignee?: string | null;
+  productKey?: AdminProductKey | null;
+  projectId?: string | null;
+  caseId?: string | null;
+  tags?: string[];
+};
+
+export type WorkspaceTaskListFilter = {
+  product?: AdminProductKey | 'internal';
+  status?: WorkspaceTaskStatus;
+  priority?: WorkspaceTaskPriority;
+  projectId?: string;
+  q?: string;
+  openOnly?: boolean;
+};
+
+export const WORKSPACE_TASK_STATUS_LABELS: Record<WorkspaceTaskStatus, string> = {
+  inbox: 'Innboks',
+  todo: 'Å gjøre',
+  in_progress: 'Pågår',
+  waiting: 'Venter',
+  done: 'Fullført',
+  cancelled: 'Avbrutt',
+};
+
+export const WORKSPACE_TASK_PRIORITY_LABELS: Record<WorkspaceTaskPriority, string> = {
+  low: 'Lav',
+  normal: 'Normal',
+  high: 'Høy',
+  urgent: 'Haster',
+};
+
+export const workspaceTasksApi = {
+  list: async (filter?: WorkspaceTaskListFilter): Promise<WorkspaceTask[]> => {
+    const params = new URLSearchParams();
+    if (filter?.product) params.set('product', filter.product);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.priority) params.set('priority', filter.priority);
+    if (filter?.projectId) params.set('projectId', filter.projectId);
+    if (filter?.q) params.set('q', filter.q);
+    if (filter?.openOnly) params.set('openOnly', 'true');
+    const query = params.toString();
+    const data = await jsonFetch<{ items: WorkspaceTask[] }>(
+      `/workspace/tasks${query ? `?${query}` : ''}`,
+    );
+    return data.items;
+  },
+  get: async (id: string): Promise<WorkspaceTask> => {
+    const data = await jsonFetch<{ item: WorkspaceTask }>(
+      `/workspace/tasks/${encodeURIComponent(id)}`,
+    );
+    return data.item;
+  },
+  options: async (product?: AdminProductKey | 'internal'): Promise<WorkspaceTaskOptions> => {
+    const query = product ? `?product=${encodeURIComponent(product)}` : '';
+    return jsonFetch(`/workspace/tasks/options${query}`);
+  },
+  create: async (input: WorkspaceTaskInput): Promise<WorkspaceTask> => {
+    const data = await jsonFetch<{ item: WorkspaceTask }>('/workspace/tasks', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceTaskInput): Promise<WorkspaceTask> => {
+    const data = await jsonFetch<{ item: WorkspaceTask }>(
+      `/workspace/tasks/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Workspace calendar — egne adminhendelser + normalisert feed
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceCalendarSource =
+  | 'calendar_event'
+  | 'task'
+  | 'case'
+  | 'project'
+  | 'funding_app'
+  | 'funding_opportunity'
+  | 'industry_follow_up'
+  | 'leadgrid_follow_up'
+  | 'partner_follow_up'
+  | 'investor_follow_up';
+export type WorkspaceCalendarEventType =
+  | 'meeting'
+  | 'focus'
+  | 'reminder'
+  | 'deadline'
+  | 'follow_up'
+  | 'other';
+export type WorkspaceCalendarStatus = 'confirmed' | 'tentative' | 'cancelled';
+
+export interface WorkspaceCalendarItem {
+  id: string;
+  entity_id: string;
+  source: WorkspaceCalendarSource;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  product_key: AdminProductKey | null;
+  event_type: WorkspaceCalendarEventType;
+  status: string | null;
+  priority: string | null;
+  location: string | null;
+  meeting_url: string | null;
+  assignee: string | null;
+  project_id: string | null;
+  project_title: string | null;
+  case_id: string | null;
+  case_title: string | null;
+  tags: string[];
+  editable: boolean;
+  link_path: string | null;
+  external_url?: string | null;
+  time_zone: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceCalendarOptions {
+  projects: WorkspaceTaskContextOption[];
+  cases: WorkspaceTaskContextOption[];
+}
+
+export type WorkspaceCalendarInput = {
+  title?: string;
+  description?: string | null;
+  eventType?: WorkspaceCalendarEventType;
+  status?: WorkspaceCalendarStatus;
+  startsAt?: string;
+  endsAt?: string;
+  allDay?: boolean;
+  productKey?: AdminProductKey | null;
+  location?: string | null;
+  meetingUrl?: string | null;
+  assignee?: string | null;
+  projectId?: string | null;
+  caseId?: string | null;
+  tags?: string[];
+};
+
+export type WorkspaceCalendarListFilter = {
+  from: string;
+  to: string;
+  product?: AdminProductKey | 'internal' | 'all';
+  sources?: WorkspaceCalendarSource[];
+};
+
+export const WORKSPACE_CALENDAR_SOURCE_LABELS: Record<WorkspaceCalendarSource, string> = {
+  calendar_event: 'Egen hendelse',
+  task: 'Oppgave',
+  case: 'Sak',
+  project: 'Adminprosjekt',
+  funding_app: 'Støttefrist',
+  funding_opportunity: 'Støtteordning',
+  industry_follow_up: 'Markedskontakt',
+  leadgrid_follow_up: 'Leadgrid-oppfølging',
+  partner_follow_up: 'Partner',
+  investor_follow_up: 'Investor',
+};
+
+export const WORKSPACE_CALENDAR_EVENT_TYPE_LABELS: Record<WorkspaceCalendarEventType, string> = {
+  meeting: 'Møte',
+  focus: 'Fokusblokk',
+  reminder: 'Påminnelse',
+  deadline: 'Frist',
+  follow_up: 'Oppfølging',
+  other: 'Annet',
+};
+
+export type WorkspaceFundingOpportunityStatus =
+  | 'watching'
+  | 'planned'
+  | 'applying'
+  | 'submitted'
+  | 'not_relevant'
+  | 'closed';
+
+export interface WorkspaceFundingOpportunity {
+  id: string;
+  user_id: string;
+  product_key: AdminProductKey | null;
+  catalog_key: string | null;
+  provider: string;
+  scheme_name: string;
+  description: string | null;
+  deadline: string | null;
+  is_rolling: boolean;
+  deadline_note: string | null;
+  status: WorkspaceFundingOpportunityStatus;
+  source_url: string;
+  application_url: string | null;
+  last_verified_at: string | null;
+  next_check_date: string | null;
+  assignee: string | null;
+  fit_notes: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkspaceFundingOpportunityInput = {
+  provider?: string;
+  schemeName?: string;
+  productKey?: AdminProductKey | null;
+  description?: string | null;
+  deadline?: string | null;
+  isRolling?: boolean;
+  deadlineNote?: string | null;
+  status?: WorkspaceFundingOpportunityStatus;
+  sourceUrl?: string;
+  applicationUrl?: string | null;
+  lastVerifiedAt?: string | null;
+  nextCheckDate?: string | null;
+  assignee?: string | null;
+  fitNotes?: string | null;
+  tags?: string[];
+};
+
+export interface WorkspaceFundingApplicationPlan {
+  projectId: string;
+  fundingAppId: string;
+  documentId: string;
+  taskIds: string[];
+  targetDate: string;
+  createdAt: string;
+}
+
+export const workspaceFundingOpportunitiesApi = {
+  list: async (product?: AdminProductKey | 'internal' | 'all'): Promise<WorkspaceFundingOpportunity[]> => {
+    const query = product && product !== 'all' ? `?product=${encodeURIComponent(product)}` : '';
+    const data = await jsonFetch<{ items: WorkspaceFundingOpportunity[] }>(`/workspace/funding-opportunities${query}`);
+    return data.items;
+  },
+  seed: async (): Promise<WorkspaceFundingOpportunity[]> => {
+    const data = await jsonFetch<{ items: WorkspaceFundingOpportunity[] }>('/workspace/funding-opportunities/seed', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return data.items;
+  },
+  create: async (input: WorkspaceFundingOpportunityInput): Promise<WorkspaceFundingOpportunity> => {
+    const data = await jsonFetch<{ item: WorkspaceFundingOpportunity }>('/workspace/funding-opportunities', {
+      method: 'POST', body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceFundingOpportunityInput): Promise<WorkspaceFundingOpportunity> => {
+    const data = await jsonFetch<{ item: WorkspaceFundingOpportunity }>(`/workspace/funding-opportunities/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  startPlan: async (
+    id: string,
+    input: { productKey?: AdminProductKey | null; projectTitle?: string; targetDate?: string } = {},
+  ): Promise<{ plan: WorkspaceFundingApplicationPlan; existing: boolean }> => {
+    return jsonFetch(`/workspace/funding-opportunities/${encodeURIComponent(id)}/start-plan`, {
+      method: 'POST', body: JSON.stringify(input),
+    });
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/funding-opportunities/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+export const workspaceCalendarApi = {
+  list: async (
+    filter: WorkspaceCalendarListFilter,
+  ): Promise<{ items: WorkspaceCalendarItem[]; range: { from: string; to: string } }> => {
+    const params = new URLSearchParams({ from: filter.from, to: filter.to });
+    if (filter.product && filter.product !== 'all') params.set('product', filter.product);
+    if (filter.sources?.length) params.set('sources', filter.sources.join(','));
+    return jsonFetch(`/workspace/calendar?${params.toString()}`);
+  },
+  options: async (): Promise<WorkspaceCalendarOptions> => {
+    return jsonFetch('/workspace/calendar/options');
+  },
+  get: async (id: string): Promise<WorkspaceCalendarItem> => {
+    const data = await jsonFetch<{ item: WorkspaceCalendarItem }>(
+      `/workspace/calendar/events/${encodeURIComponent(id)}`,
+    );
+    return data.item;
+  },
+  create: async (input: WorkspaceCalendarInput): Promise<WorkspaceCalendarItem> => {
+    const data = await jsonFetch<{ item: WorkspaceCalendarItem }>('/workspace/calendar/events', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (
+    id: string,
+    input: WorkspaceCalendarInput,
+  ): Promise<WorkspaceCalendarItem> => {
+    const data = await jsonFetch<{ item: WorkspaceCalendarItem }>(
+      `/workspace/calendar/events/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/calendar/events/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+};

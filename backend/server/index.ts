@@ -544,6 +544,8 @@ import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
 import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
 import { setupAdminWorkspaceFundingOpportunityRoutes } from "./admin-workspace-funding-opportunities-routes";
+import { setupAdminWorkspaceTasksRoutes } from "./admin-workspace-tasks-routes";
+import { setupAdminWorkspaceCalendarRoutes } from "./admin-workspace-calendar-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -17732,6 +17734,26 @@ setupAdminWorkspaceCasesRoutes({
 // og fylt med data, men ruten lå igjen i en stash og kom aldri på main — derfor
 // sto radaren tom. Gjenopprettet fra arkiv/admin-workspace-stash-20260826.
 setupAdminWorkspaceFundingOpportunityRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── AdminWorkspace oppgaver og kalender
+// Tabellene admin_workspace_tasks og admin_workspace_calendar_events ble
+// opprettet av migrasjon 0453/0454 og har data (16 oppgaver, 10 hendelser),
+// men rutene lå igjen i en stash og kom aldri på main — derfor sto flatene
+// som «kommer snart». Gjenopprettet fra arkiv/admin-workspace-stash-20260826.
+setupAdminWorkspaceTasksRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+setupAdminWorkspaceCalendarRoutes({
   app,
   pool,
   getActiveSessionFromRequest,
