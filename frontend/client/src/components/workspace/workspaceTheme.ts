@@ -158,6 +158,10 @@ export const WS_NAV: WsNavItem[] = [
   // Community — for alle; mentorer får admin/styring inne i hub-en (MentorDashboard)
   { key: 'community', label: 'Community', labelEn: 'Community', icon: 'Forum', group: 'hoved', route: true },
   // Smart Rom — profesjons-spesifikke
+  // Produksjoner: fasen for eget prosjekt, og hva som er annonsert på vei.
+  // Én flate for begge lesere — produsenten setter fasen, skuespilleren ser
+  // listen og velger varsel.
+  { key: 'produksjoner', label: 'Produksjoner', labelEn: 'Productions', icon: 'Campaign', group: 'hoved', route: true, categories: ['visual'] },
   { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, categories: ['visual'] },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, categories: ['visual'] },
   { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, categories: ['music'] },

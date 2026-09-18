@@ -543,6 +543,7 @@ import { setupAdminMarketingCatalogRoutes } from "./admin-room-marketing-catalog
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
 import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
+import { setupAdminWorkspaceFundingOpportunityRoutes } from "./admin-workspace-funding-opportunities-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -603,6 +604,7 @@ import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
 import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
 import { setupRoleRoomTalentCreditsRoutes } from "./role-room-talent-credits-routes";
 import { setupRoleRoomSceneRoleCardsRoutes } from "./role-room-scene-role-cards-routes";
+import { setupRoleRoomProductionPhaseRoutes } from "./role-room-production-phase-routes";
 import { setupRoleRoomEidRoutes } from "./role-room-eid-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
@@ -17714,6 +17716,18 @@ setupAdminWorkspaceCasesRoutes({
   logAdminActivity,
 });
 
+// ── AdminWorkspace finansieringsradar (eksterne ordninger: IN, Forskningsrådet, EU)
+// Tabellen admin_workspace_funding_opportunities ble opprettet av migrasjon 0455
+// og fylt med data, men ruten lå igjen i en stash og kom aldri på main — derfor
+// sto radaren tom. Gjenopprettet fra arkiv/admin-workspace-stash-20260826.
+setupAdminWorkspaceFundingOpportunityRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── AdminWorkspace aggregator (dagens agenda + kommende frister)
 // Fyller empty-states i AdminWorkspace høyre kolonne med live data
 // på tvers av meetings/funding/cases (PR #828 + #830).
@@ -25765,6 +25779,14 @@ setupRoleRoomTalentCreditsRoutes({
 // Rollekort for settet (migrasjon 0628): produksjonen ser alle kortene i en
 // scene, personen åpner sin egen lenke og ser bare sitt eget.
 setupRoleRoomSceneRoleCardsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Produksjonsfase og «produksjoner på vei» (migrasjon 0633): overgangen fra
+// utvikling til pre-produksjon er den skuespillere vil vite om, og den varsles
+// bare for produksjoner som er annonsert.
+setupRoleRoomProductionPhaseRoutes({
   app,
   pool,
   getActiveSession: getActiveSessionFromRequest,

@@ -4,14 +4,18 @@
  * kommentartråd per ramme (editor-comments, anker narrative_scene_frame).
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Autocomplete, Box, Button, IconButton, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { ArrowBack as LeftIcon, ArrowForward as RightIcon, ChatBubbleOutline as CommentIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { narrativeColors } from '../narrativeTheme';
 import type { NarrativeGraph, NarrativeSceneDetail } from '../narrativeTypes';
 import type { UseNarrativeScenesResult } from './useNarrativeScenes';
 import { AutosaveField, EmptyHint, sceneFieldSx } from './sceneUi';
 import { frameImageUrl } from './sceneOps';
+import { buildScenePrompt } from './scenePrompt';
+import { createAiReferenceFrame, generateStoryboardImage, getAssetDownloadUrl, listPlatformTargets, NarrativeApiError } from '../narrativeService';
+import { useGamePlanGate } from '../../game/useGamePlanGate';
 import { PostCommentLayer } from '../../components/PostCommentLayer';
 import { narrativeAuthHeaders } from '../narrativeAuthHeaders';
 import { authSessionService } from '../../services/authSessionService';
@@ -39,6 +43,51 @@ export function SceneStoryboardTab({ projectId, graph, detail, scenes, onNotice 
   const [url, setUrl] = useState('');
   const [adding, setAdding] = useState(false);
   const [openComments, setOpenComments] = useState<string | null>(null);
+  // Fase 8f: KI-referansebilde (ai_assist) + signerte URL-er for rammer lagret i objektlager (storage_key uten external_url).
+  const gate = useGamePlanGate();
+  const aiAllowed = gate.has('ai_assist');
+  const [generating, setGenerating] = useState(false);
+  const [aiUsage, setAiUsage] = useState<{ usedToday: number; dailyLimit: number } | null>(null);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const storedAssetIds = useMemo(() => detail.frames
+    .filter((f) => f.assetId && !f.externalUrl)
+    .map((f) => graph.assets.find((a) => a.id === f.assetId))
+    .filter((a): a is NonNullable<typeof a> => !!a && !a.externalUrl && !!a.storageKey)
+    .map((a) => a.id), [detail.frames, graph.assets]);
+  useEffect(() => {
+    let cancelled = false;
+    const missing = storedAssetIds.filter((id) => !signedUrls[id]);
+    if (missing.length === 0) return undefined;
+    void Promise.all(missing.map(async (id) => { try { const r = await getAssetDownloadUrl(projectId, id); return [id, r.url] as const; } catch { return [id, ''] as const; } }))
+      .then((pairs) => { if (!cancelled) setSignedUrls((prev) => ({ ...prev, ...Object.fromEntries(pairs.filter(([, u]) => u)) })); });
+    return () => { cancelled = true; };
+  }, [storedAssetIds, signedUrls, projectId]);
+  const frameSrc = (f: { assetId: string | null; externalUrl: string | null }) => frameImageUrl(f, graph.assets) ?? (f.assetId ? signedUrls[f.assetId] ?? null : null);
+
+  const generateReference = async () => {
+    if (generating || !aiAllowed) return;
+    setGenerating(true);
+    try {
+      const locationLink = detail.links.find((l) => l.ownerKind === 'component' && graph.components.find((c) => c.id === l.ownerId)?.kind === 'location');
+      const location = locationLink ? graph.components.find((c) => c.id === locationLink.ownerId) ?? null : null;
+      const targets = await listPlatformTargets(projectId).catch(() => []);
+      const primary = targets.find((t) => t.isPrimary) ?? targets[0];
+      const prompt = buildScenePrompt({
+        scene: { code: detail.scene.code, title: detail.scene.title, era: detail.scene.era, beforeState: detail.scene.beforeState, action: detail.scene.action, environment: detail.scene.environment, location: detail.scene.location },
+        location: location ? { name: location.name, profile: location.profile as { eras?: string[]; continuity?: string; props?: string[] } } : null,
+        visualDirection: primary?.visualDirection ?? null,
+      });
+      const img = await generateStoryboardImage(projectId, prompt);
+      const result = await createAiReferenceFrame(projectId, detail.scene.id, { imageBase64: img.imageBase64, caption: 'KI-referanse', prompt: img.prompt, model: img.model });
+      setAiUsage({ usedToday: result.usedToday, dailyLimit: result.dailyLimit });
+      await scenes.reloadDetail();
+      onNotice(`Referansebilde lagt til (${result.usedToday}/${result.dailyLimit} i dag).`, 'success');
+    } catch (err) {
+      if (err instanceof NarrativeApiError && err.code === 'daily_limit') onNotice('Daglig tak for KI-referansebilder (10 per prosjekt) er nådd.', 'warning');
+      else if (err instanceof NarrativeApiError && err.status === 402) onNotice('KI-referansebilder krever Pro/Studio (ai_assist).', 'warning');
+      else onNotice(err instanceof Error ? err.message : 'Kunne ikke generere referansebilde.', 'error');
+    } finally { setGenerating(false); }
+  };
   const urlValid = /^https?:\/\/\S+$/i.test(url.trim());
   const imageAssets = graph.assets.filter((a) => a.kind === 'image');
   const token = bearerToken();
@@ -69,6 +118,14 @@ export function SceneStoryboardTab({ projectId, graph, detail, scenes, onNotice 
         <Button variant="contained" disabled={!urlValid || adding} onClick={() => void addFromUrl()} data-testid="narrative-scene-frame-add" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, '&:hover': { bgcolor: narrativeColors.accentDark } }}>
           {adding ? 'Legger til…' : 'Legg til ramme'}
         </Button>
+        <Tooltip title={aiAllowed ? 'Konseptbilde fra scenekortet (Før/Handling/Miljø), lokasjonens profil og plattformens visuelle retning. Maks 10 per prosjekt per dag.' : 'KI-referansebilder krever Pro/Studio (ai_assist).'}>
+          <span>
+            <Button variant="outlined" startIcon={<AutoAwesomeIcon />} disabled={!aiAllowed || generating} onClick={() => void generateReference()} data-testid="narrative-scene-frame-generate" data-locked={aiAllowed ? undefined : 'plan'} sx={{ color: narrativeColors.accent, borderColor: narrativeColors.accent }}>
+              {generating ? 'Genererer…' : 'Generer referansebilde'}
+            </Button>
+          </span>
+        </Tooltip>
+        {aiUsage ? <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, alignSelf: 'center' }} data-testid="narrative-scene-frame-ai-usage">{aiUsage.usedToday}/{aiUsage.dailyLimit} i dag</Typography> : null}
       </Stack>
 
       {detail.frames.length === 0 ? (
@@ -76,7 +133,7 @@ export function SceneStoryboardTab({ projectId, graph, detail, scenes, onNotice 
       ) : (
         <Box sx={{ display: 'flex', gap: 1.5, overflowX: 'auto', pb: 1 }} data-testid="narrative-scene-frame-strip">
           {detail.frames.map((f, i) => {
-            const src = frameImageUrl(f, graph.assets);
+            const src = frameSrc(f);
             const commentsOpen = openComments === f.id;
             return (
               <Box key={f.id} sx={{ width: commentsOpen ? 420 : 240, flexShrink: 0, borderRadius: 2, border: `1px solid ${narrativeColors.borderStrong}`, bgcolor: narrativeColors.bgPanel, overflow: 'hidden', transition: 'width .15s' }} data-testid={`narrative-scene-frame-${i + 1}`}>

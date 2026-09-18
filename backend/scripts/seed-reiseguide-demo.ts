@@ -4,6 +4,11 @@
  *
  *   DATABASE_URL=… npm run seed:reiseguide
  *
+ * I produksjon kjøres den av workflowen «SenseAid Explore seed demo-innhold»
+ * (.github/workflows/senseaid-seed-demo.yml) med migrasjonsbrukeren; da settes
+ * MIGRATION_OWNER_ROLE=creatorhub_schema_owner og scriptet bytter rolle før
+ * det skriver, slik run-production-migrations.mjs gjør. Lokalt er variabelen tom.
+ *
  * Idempotent: kjøres i én transaksjon med upsert på id, så en ny kjøring
  * oppdaterer tekst og geodata uten å lage duplikater. Lydfiler og teksting
  * røres ikke (de hører til steg 2 og genereres fra godkjente manus), og
@@ -28,6 +33,15 @@ async function main(): Promise<void> {
   let quizQuestions = 0;
   try {
     await client.query("BEGIN");
+
+    const ownerRole = (process.env.MIGRATION_OWNER_ROLE ?? "").trim();
+    if (ownerRole) {
+      if (!/^[a-z_][a-z0-9_]*$/.test(ownerRole)) {
+        throw new Error("MIGRATION_OWNER_ROLE har et ugyldig rollenavn");
+      }
+      await client.query(`SET ROLE "${ownerRole}"`);
+      await client.query("SET search_path TO public, pg_temp");
+    }
 
     await client.query(
       `INSERT INTO guide_areas (id, slug, name, default_lang, center_lat, center_lng,

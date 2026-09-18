@@ -94,7 +94,13 @@ describe('production day change impact', () => {
       if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
         return {
           rows: dayDate
-            ? [{ id: 'day-6', date: dayDate, scene_ids: ['scene-1', 'scene-2'], prop_ids: ['prop-1'] }]
+            ? [{
+                id: 'day-6',
+                date: dayDate,
+                scene_ids: ['scene-1', 'scene-2'],
+                prop_ids: ['prop-1'],
+                data: { equipment: ['kamera-1'] },
+              }]
             : [],
           rowCount: dayDate ? 1 : 0,
         };
@@ -201,6 +207,30 @@ describe('production day change impact', () => {
       .set('authorization', `Bearer ${SESSION_TOKEN}`);
 
     expect(response.status).toBe(400);
+  });
+
+  it('previews what adding a camera to the day costs', async () => {
+    const app = createApp(impactQuery({ casting_equipment: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?equipmentIds=kamera-1,optikk-2`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.fromEquipmentIds).toEqual(['kamera-1']);
+    expect(response.body.toEquipmentIds).toEqual(['kamera-1', 'optikk-2']);
+    expect(response.body.impacts.map((i: { area: string }) => i.area)).toContain('equipment_status');
+  });
+
+  it('reads the rig out of the day even though it lives in the data blob', async () => {
+    const app = createApp(impactQuery({}));
+
+    const response = await request(app)
+      .get(`${PATH}?equipmentIds=kamera-1`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ unchanged: true, impacts: [] });
   });
 
   it('rejects a date it cannot parse instead of guessing', async () => {
@@ -823,6 +853,95 @@ describe('casting production-day access', () => {
       projectId: PROJECT_ID,
     }));
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO casting_production_days'))).toBe(true);
+  });
+
+  it('books the day\u2019s rig into equipment_bookings, which nothing wrote to before', async () => {
+    const kamera = 'ed06d901-368b-486c-aa71-4416e4e7ae9f';
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('INSERT INTO casting_production_days')) {
+        return {
+          rows: [{
+            id: 'day-9',
+            project_id: PROJECT_ID,
+            date: '2026-01-27',
+            scene_ids: [],
+            crew_ids: [],
+            prop_ids: [],
+            status: 'planned',
+            data: { equipment: [kamera] },
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await request(createApp(query))
+      .post('/api/role-room/production-days')
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        id: 'day-9',
+        projectId: PROJECT_ID,
+        date: '2026-01-27',
+        scenes: [],
+        crew: [],
+        props: [],
+        equipment: [kamera],
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.equipmentBookingsSynced).toBe(true);
+    const bookingSql = query.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((sql) => sql.includes('equipment_bookings'));
+    expect(bookingSql.some((sql) => sql.startsWith('INSERT'))).toBe(true);
+    expect(bookingSql.some((sql) => sql.includes("status = 'cancelled'"))).toBe(true);
+  });
+
+  it('still saves the day when the booking sync fails, and says so', async () => {
+    // Dagen er lagret. En feilet synk skal ikke rulle den tilbake, men den
+    // skal heller ikke se ut som om riggen er sikret.
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX/.test(text)) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('AS member_role')) {
+        return {
+          rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('equipment_bookings')) throw new Error('booking nede');
+      if (text.includes('INSERT INTO casting_production_days')) {
+        return {
+          rows: [{
+            id: 'day-9', project_id: PROJECT_ID, date: '2026-01-27',
+            scene_ids: [], crew_ids: [], prop_ids: [], status: 'planned',
+            data: { equipment: ['ed06d901-368b-486c-aa71-4416e4e7ae9f'] },
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const response = await request(createApp(query))
+      .post('/api/role-room/production-days')
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ id: 'day-9', projectId: PROJECT_ID, date: '2026-01-27', scenes: [], crew: [], props: [] });
+
+    expect(response.status).toBe(201);
+    expect(response.body.productionDay.id).toBe('day-9');
+    expect(response.body.equipmentBookingsSynced).toBe(false);
   });
 
   it('keeps management, coordination and continuity state outside generic production-day writes', async () => {

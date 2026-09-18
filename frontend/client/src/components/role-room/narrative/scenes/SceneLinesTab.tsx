@@ -13,6 +13,7 @@ import {
 import { createSceneLine, deleteSceneLine, patchSceneLine, reorderSceneLines, NarrativeApiError } from '../narrativeService';
 import type { UseNarrativeScenesResult } from './useNarrativeScenes';
 import { EmptyHint, sceneFieldSx } from './sceneUi';
+import { SceneTableRead } from './SceneTableRead';
 
 const RECORDING: NarrativeLineRecordingStatus[] = ['none', 'needs_take', 'recorded', 'approved'];
 const RECORDING_COLOR: Record<NarrativeLineRecordingStatus, string> = { none: narrativeColors.textDim, needs_take: narrativeColors.warning, recorded: '#93a4dc', approved: narrativeColors.accent };
@@ -74,6 +75,7 @@ export function SceneLinesTab({ projectId, graph, detail, scenes, onNotice }: { 
       <Typography sx={{ fontSize: 11, color: narrativeColors.textDim }}>
         Type: E = bevart engelsk, T = ny oversettelse, E+T = bevart med tillegg, U = brukertillegg, A = forslag. Ingen linje strykes stille — slett bare når kilden er kontrollert.
       </Typography>
+      {lines.length > 0 ? <SceneTableRead lines={lines} graph={graph} era={detail.scene.era} /> : null}
       {lines.length === 0 ? <EmptyHint title="Ingen replikker ennå" body="Legg inn dialog-linjer med cue-ID (W01.01) så opptak, oversettelse og kildestatus kan følges per linje." testId="narrative-scene-lines-empty" /> : (
         <Box sx={{ overflowX: 'auto' }}>
           <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', minWidth: 900, '& th': { textAlign: 'left', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: narrativeColors.textDim, fontWeight: 700, py: 0.5, px: 0.75, borderBottom: `1px solid ${narrativeColors.borderStrong}` }, '& td': { py: 0.5, px: 0.75, verticalAlign: 'top', borderBottom: `1px solid ${narrativeColors.borderStrong}` } }}>

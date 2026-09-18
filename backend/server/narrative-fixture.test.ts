@@ -69,6 +69,16 @@ const schema = z.object({
   })).min(1),
 });
 
+describe('demo-adventure fixture (mal, Fase 8g)', () => {
+  it('validerer mot skjemaet og har innhold uten IP', () => {
+    const demo = JSON.parse(readFileSync(resolve(here, '..', '..', 'frontend', 'shared', 'narrative-fixtures', 'demo-adventure.json'), 'utf8')) as StoryGraphFixture;
+    const parsed = schema.safeParse(demo);
+    expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues.slice(0, 5))).toBe(true);
+    expect(demo.meta.slug).toBe('demo-adventure');
+    expect(JSON.stringify(demo)).not.toMatch(/Nora|Elise|Oskar|Follows/);
+  });
+});
+
 describe('what-follows-us fixture', () => {
   it('validerer mot skjemaet', () => {
     const r = schema.safeParse(fixture);

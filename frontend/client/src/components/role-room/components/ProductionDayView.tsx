@@ -111,7 +111,9 @@ import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import calenderPng from './icons/Keep/roleroom_calender.png';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { manuscriptService } from '../services/manuscriptService';
+import { equipmentApi } from '../services/castingApiService';
 import { mergeSceneOptions, type SceneOption } from './production/sceneOptions';
+import { propsNeededForDay } from './production/artDepartmentNeeds';
 import type { SceneBreakdown } from '../models/casting';
 
 /**
@@ -119,6 +121,16 @@ import type { SceneBreakdown } from '../models/casting';
  * designer leser i forbifarten. `in_storage` og `rented` er sikret og trenger
  * ingen merknad; `in_production` er under bygging og er verdt å se.
  */
+/**
+ * Utstyrsstatusene fra CHECK-constrainten i migrasjon 097. `available` er
+ * normalen og trenger ingen merknad; de tre andre er verdt å se før du velger.
+ */
+const EQUIPMENT_STATUS_LABEL: Record<string, string> = {
+  in_use: 'utlevert',
+  maintenance: 'på verksted',
+  retired: 'pensjonert',
+};
+
 const PROP_AVAILABILITY_LABEL: Record<string, string> = {
   in_production: 'under bygging',
   rented: 'leid inn',
@@ -202,6 +214,7 @@ type NormalizedProductionDay = ProductionDay & {
   scenes: string[];
   crew: string[];
   props: string[];
+  equipment: string[];
   callTime: string;
   wrapTime: string;
   notes: string;
@@ -247,6 +260,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     scenes: Array.isArray(day.scenes) ? day.scenes : [],
     crew: Array.isArray(day.crew) ? day.crew : [],
     props: Array.isArray(day.props) ? day.props : [],
+    equipment: Array.isArray(day.equipment) ? day.equipment : [],
     callTime: day.callTime ?? '09:00',
     wrapTime: day.wrapTime ?? '17:00',
     notes: day.notes ?? '',
@@ -788,6 +802,35 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     () => mergeSceneOptions(manuscriptScenes, castingService.getAvailableScenes(projectId)),
     [manuscriptScenes, projectId],
   );
+
+  // Hva scenene på dagen krever av rekvisitter. Utledet, ikke registrert:
+  // scenen står på både dagen og rekvisitten, og da følger behovet av seg selv.
+  const propNeeds = useMemo(
+    () => propsNeededForDay(formData.scenes ?? [], formData.props ?? [], props),
+    [formData.scenes, formData.props, props],
+  );
+
+  // Utstyret prosjektet fører: kamera, optikk, lys, lyd, grip.
+  const [availableEquipment, setAvailableEquipment] = useState<Array<{ id: string; name: string; category?: string; status?: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await equipmentApi.getAll(projectId);
+        if (!cancelled) {
+          setAvailableEquipment(items.map((item) => ({
+            id: String(item.id),
+            name: String(item.name ?? item.id),
+            category: typeof item.category === 'string' ? item.category : undefined,
+            status: typeof item.status === 'string' ? item.status : undefined,
+          })));
+        }
+      } catch {
+        if (!cancelled) setAvailableEquipment([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   // Rekvisittene prosjektet fører. Koblingen dag ↔ rekvisitt fantes i
   // skjemaet, men ingen dag hadde den fylt ut — det var ingen vei til å sette
@@ -1784,6 +1827,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       if (JSON.stringify(editingDay.scenes) !== JSON.stringify(formData.scenes)) changes.push('scener');
       if (JSON.stringify(editingDay.crew) !== JSON.stringify(formData.crew)) changes.push('team');
       if (JSON.stringify(editingDay.props) !== JSON.stringify(formData.props)) changes.push('rekvisitter');
+      if (JSON.stringify(editingDay.equipment) !== JSON.stringify(formData.equipment)) changes.push('utstyr');
       return changes.length > 0 ? `Endret: ${changes.join(', ')}` : 'Ingen synlige endringer';
     };
 
@@ -1814,6 +1858,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           scenes: formData.scenes || [],
           crew: formData.crew || [],
           props: formData.props || [],
+          equipment: formData.equipment || [],
           notes: formData.notes || '',
           status: formData.status || 'planned',
           weatherForecast: weatherForecast,
@@ -5202,6 +5247,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               targetSceneIds={editingDay ? (formData.scenes ?? []) : null}
               currentPropIds={editingDay?.props ?? null}
               targetPropIds={editingDay ? (formData.props ?? []) : null}
+              currentEquipmentIds={editingDay?.equipment ?? null}
+              targetEquipmentIds={editingDay ? (formData.equipment ?? []) : null}
               onBlockingChange={setDateMoveBlocked}
             />
 
@@ -5427,6 +5474,100 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                       {tilstand ? (
                         // Nedtonet, ikke forklart: rekvisitten kan velges, og
                         // du ser tilstanden dens før du gjør det.
+                        <Typography component="span" sx={{ ml: 1, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem' }}>
+                          {tilstand}
+                        </Typography>
+                      ) : null}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+
+            {propNeeds.missing.length > 0 && (
+              <Alert
+                severity="info"
+                sx={{ gridColumn: '1 / -1' }}
+                action={(
+                  <Button
+                    size="small"
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, color: '#c3cbe6' }}
+                    onClick={() => setFormData({
+                      ...formData,
+                      props: [...(formData.props ?? []), ...propNeeds.missing.map((item) => item.id)],
+                    })}
+                  >
+                    Legg til alle
+                  </Button>
+                )}
+              >
+                Scenene på dagen krever {propNeeds.missing.length}{' '}
+                {propNeeds.missing.length === 1 ? 'rekvisitt' : 'rekvisitter'} som ikke står her:{' '}
+                {propNeeds.missing.map((item) => item.name).join(', ')}.
+              </Alert>
+            )}
+
+            {/* Riggen. Kamera, optikk, lys og lyd hører til dagen på samme
+                måte som scener og rekvisitter — og det var ingen vei til å
+                si hvilken rigg som skulle hvor. */}
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Utstyr</InputLabel>
+              <Select
+                multiple
+                value={formData.equipment ?? []}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFormData({
+                    ...formData,
+                    equipment: typeof value === 'string' ? value.split(',') : value,
+                  });
+                }}
+                label="Utstyr"
+                inputProps={{ 'aria-label': 'Utstyr' }}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((itemId) => (
+                      <Chip
+                        key={itemId}
+                        size="small"
+                        label={availableEquipment.find((item) => item.id === itemId)?.name ?? itemId}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                sx={{
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#32127a' },
+                }}
+                MenuProps={{
+                  container: document.body,
+                  sx: { zIndex: 100010 },
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#1c2128',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      mt: 0.5,
+                      maxHeight: 300,
+                    },
+                  },
+                }}
+              >
+                {availableEquipment.length === 0 ? (
+                  <MenuItem disabled sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    Ingen utstyr registrert ennå
+                  </MenuItem>
+                ) : availableEquipment.map((item) => {
+                  const tilstand = EQUIPMENT_STATUS_LABEL[item.status ?? ''] ?? null;
+                  return (
+                    <MenuItem key={item.id} value={item.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                      {item.name}
+                      {tilstand ? (
                         <Typography component="span" sx={{ ml: 1, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem' }}>
                           {tilstand}
                         </Typography>

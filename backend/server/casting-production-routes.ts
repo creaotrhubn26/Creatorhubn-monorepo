@@ -40,10 +40,12 @@ import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
   collectProductionDayChangeImpact,
   collectProductionDayLocationImpact,
+  collectProductionDayEquipmentImpact,
   collectProductionDayPropImpact,
   collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
+import { syncProductionDayEquipmentBookings } from './production-day-equipment-bookings.js';
 import {
   resolveCastingProjectAccess,
   userOwnsCastingProject,
@@ -1360,12 +1362,17 @@ export function createCastingProductionRouter(
       const toPropIds = propListGiven
         ? String(propParam).split(',').map((id) => id.trim()).filter(Boolean)
         : [];
+      const equipmentParam = req.query.equipmentIds;
+      const equipmentListGiven = equipmentParam !== undefined;
+      const toEquipmentIds = equipmentListGiven
+        ? String(equipmentParam).split(',').map((id) => id.trim()).filter(Boolean)
+        : [];
       // Samme rute svarer for alle tre endringene. En forespørsel uten noen av
       // dem har ingen konsekvens å beregne.
-      if (!toDate && !toLocationId && !sceneListGiven && !propListGiven) {
+      if (!toDate && !toLocationId && !sceneListGiven && !propListGiven && !equipmentListGiven) {
         res.status(400).json({
           error: 'invalid_payload',
-          message: 'Oppgi ny dato, ny lokasjon, nye scener eller nye rekvisitter.',
+          message: 'Oppgi ny dato, ny lokasjon, nye scener, nye rekvisitter eller nytt utstyr.',
         });
         return;
       }
@@ -1378,7 +1385,7 @@ export function createCastingProductionRouter(
       if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
 
       const dayResult = await pool.query(
-        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id, scene_ids, prop_ids
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id, scene_ids, prop_ids, data
            FROM casting_production_days
           WHERE id = $1 AND project_id = $2
           LIMIT 1`,
@@ -1389,6 +1396,7 @@ export function createCastingProductionRouter(
         location_id?: string | null;
         scene_ids?: unknown;
         prop_ids?: unknown;
+        data?: Record<string, unknown> | null;
       } | undefined;
       if (!day) {
         res.status(404).json({ error: 'not_found' });
@@ -1398,6 +1406,9 @@ export function createCastingProductionRouter(
       const fromLocationId = day.location_id ? String(day.location_id) : null;
       const fromSceneIds = asArray(day.scene_ids).map((sceneId) => String(sceneId));
       const fromPropIds = asArray(day.prop_ids).map((propId) => String(propId));
+      // Utstyret ligger i dagens `data`-blob, ikke i en egen kolonne — samme
+      // sted API-et allerede lagrer det når dagen skrives.
+      const fromEquipmentIds = asArray(day.data?.equipment).map((itemId) => String(itemId));
 
       const dateChanged = Boolean(toDate) && toDate !== fromDate;
       const locationChanged = Boolean(toLocationId) && toLocationId !== fromLocationId;
@@ -1407,7 +1418,10 @@ export function createCastingProductionRouter(
       const propsChanged = propListGiven
         && (fromPropIds.length !== toPropIds.length
           || [...new Set(fromPropIds)].some((id) => !toPropIds.includes(id)));
-      if (!dateChanged && !locationChanged && !scenesChanged && !propsChanged) {
+      const equipmentChanged = equipmentListGiven
+        && (fromEquipmentIds.length !== toEquipmentIds.length
+          || [...new Set(fromEquipmentIds)].some((id) => !toEquipmentIds.includes(id)));
+      if (!dateChanged && !locationChanged && !scenesChanged && !propsChanged && !equipmentChanged) {
         res.json({
           from: fromDate,
           to: toDate || fromDate,
@@ -1417,6 +1431,8 @@ export function createCastingProductionRouter(
           toSceneIds: sceneListGiven ? toSceneIds : fromSceneIds,
           fromPropIds,
           toPropIds: propListGiven ? toPropIds : fromPropIds,
+          fromEquipmentIds,
+          toEquipmentIds: equipmentListGiven ? toEquipmentIds : fromEquipmentIds,
           impacts: [],
           blocking: false,
           unchanged: true,
@@ -1443,6 +1459,11 @@ export function createCastingProductionRouter(
               projectId, dayId, fromPropIds, toPropIds,
             })
           : []),
+        ...(equipmentChanged
+          ? await collectProductionDayEquipmentImpact(pool, {
+              projectId, dayId, fromEquipmentIds, toEquipmentIds,
+            })
+          : []),
       ];
       res.json({
         from: fromDate,
@@ -1453,6 +1474,8 @@ export function createCastingProductionRouter(
         toSceneIds: sceneListGiven ? toSceneIds : fromSceneIds,
         fromPropIds,
         toPropIds: propListGiven ? toPropIds : fromPropIds,
+        fromEquipmentIds,
+        toEquipmentIds: equipmentListGiven ? toEquipmentIds : fromEquipmentIds,
         impacts,
         blocking: hasBlockingImpact(impacts),
         unchanged: false,
@@ -2093,7 +2116,25 @@ export function createCastingProductionRouter(
         res.status(404).json({ error: 'not_found' });
         return;
       }
-      res.status(201).json({ productionDay: mapDayRow(result.rows[0]) });
+      // Riggen dagen bærer er en booking. Tabellen og hele maskineriet rundt
+      // den — tilgjengelighet, konfliktsjekk — har ligget ubrukt fordi
+      // ingenting skrev til den. Dette er skriveren.
+      const savedDay = mapDayRow(result.rows[0]) as Record<string, unknown>;
+      try {
+        await syncProductionDayEquipmentBookings(pool, {
+          projectId,
+          dayId: id,
+          date: toDateString(b.date),
+          equipmentIds: asArray(savedDay.equipment).map((itemId) => String(itemId)),
+          bookedBy: (req as AuthedRequest).userId,
+        });
+      } catch {
+        // Dagen er lagret. En feilet bookingsynk skal ikke rulle den tilbake,
+        // men den skal heller ikke se ut som om riggen er sikret.
+        res.status(201).json({ productionDay: savedDay, equipmentBookingsSynced: false });
+        return;
+      }
+      res.status(201).json({ productionDay: savedDay, equipmentBookingsSynced: true });
     } catch (err) {
       res.status(500).json({ error: 'Kunne ikke lagre produksjonsdag', detail: "internal_error" });
     }
