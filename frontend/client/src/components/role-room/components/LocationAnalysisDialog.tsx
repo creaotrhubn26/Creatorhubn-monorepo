@@ -66,6 +66,7 @@ import { externalDataService } from '@/services/ExternalDataService';
 import { analyzeLocation as analyzeLocationApi, type LocationAnalysis as LocationPermitAnalysis } from '../services/locationAnalysisService';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
+import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 interface LocationAnalysisDialogProps {
@@ -1461,7 +1462,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               onClick={() => setGuideOpen(true)}
               startIcon={<HelpIcon />}
               sx={{
-                minHeight: 40,
+                minHeight: TOUCH_TARGET_SIZE,
                 textTransform: 'none',
                 color: 'rgba(255,255,255,0.9)',
                 borderColor: 'rgba(255,255,255,0.24)',
@@ -1670,7 +1671,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         size="small"
                         onClick={() => setAnalysisOperationalFilter(filterKey)}
                         sx={{
-                          minHeight: 34,
+                          minHeight: TOUCH_TARGET_SIZE,
                           textTransform: 'none',
                           borderColor:
                             analysisOperationalFilter === filterKey ? ROLE_ROOM_DIALOG_COLORS.secondary : 'rgba(255,255,255,0.2)',
@@ -1711,6 +1712,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     onClick={handleToggleManualEdit}
                     startIcon={manualEditOpen ? <CloseIcon /> : <EditIcon />}
                     sx={{
+                      minHeight: TOUCH_TARGET_SIZE,
                       textTransform: 'none',
                       bgcolor: manualEditOpen ? 'transparent' : ROLE_ROOM_DIALOG_COLORS.secondary,
                       color: manualEditOpen ? 'rgba(255,255,255,0.87)' : '#02141a',
@@ -2060,6 +2062,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       onClick={handleSavePermitWorkflow}
                       disabled={savingPermitWorkflow}
                       sx={{
+                        minHeight: TOUCH_TARGET_SIZE,
                         bgcolor: ROLE_ROOM_DIALOG_COLORS.accent,
                         color: '#fff',
                         textTransform: 'none',
@@ -2245,7 +2248,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             fontSize: '0.72rem',
                             fontWeight: 600,
                             textTransform: 'none',
-                            minHeight: 28,
+                            minHeight: TOUCH_TARGET_SIZE,
                             px: 1.25,
                             '&:hover': { bgcolor: 'rgba(251,191,36,0.15)' },
                           }}
@@ -2445,7 +2448,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                   startIcon={<ContentCopyIcon />}
                                   onClick={() => handleCopyPermitTemplate(contact)}
                                   disabled={copyingContactId === contact.id}
-                                  sx={{ textTransform: 'none', color: '#fff' }}
+                                  sx={{ textTransform: 'none', color: '#fff', minHeight: TOUCH_TARGET_SIZE }}
                                 >
                                   {copyingContactId === contact.id ? 'Kopierer...' : 'Kopier mal'}
                                 </Button>
