@@ -1,0 +1,60 @@
+claim: >
+  iOS 27 og Xcode 27 er ute (GA 14.09.2026), og FoundationModels-flaten deler seg i to:
+  iOS 26-delen (SystemLanguageModel, LanguageModelSession, @Generable, supportedLanguages)
+  kompilerer i dagens CI (macos-15 → Xcode 26.3), mens iOS 27-delen (LanguageModel- og
+  LanguageModelExecutor-protokollene, PrivateCloudComputeLanguageModel, tredjeparts-
+  modeller som Claude bak samme sesjon) krever Xcode 27, som bare finnes på GitHub-
+  runneren `macos-27` (public preview, arm64, Xcode 27.0 RC 27A266a, iphonesimulator27.0).
+  Apple Intelligence støtter norsk, så on-device-modellen kan brukes til SenseAid Explore.
+source_type: api_reference
+source: "https://developer.apple.com/tutorials/data/documentation/foundationmodels.json (+ /languagemodel, /languagemodelexecutor, /privatecloudcomputelanguagemodel, /systemlanguagemodel/supportedlanguages: introducedAt per plattform), https://developer.apple.com/tutorials/data/documentation/xcode-release-notes/xcode-27-release-notes.json, https://raw.githubusercontent.com/actions/runner-images/main/images/macos/xcode-27-arm64-Readme.md, .../macos-15-Readme.md, .../macos-26-Readme.md; Tier 2: https://github.blog/changelog/2026-09-10-xcode-27-runner-image-now-runs-on-macos-27/, https://support.apple.com/en-euro/121115 (Apple Intelligence-språk), søkeutdrag om iOS 27 GA 14.09.2026 og Translate/norsk bokmål"
+authority_tier: 1
+vendor: Apple
+product: FoundationModels, Xcode 27 SDK, GitHub macOS-runnere
+version_scope: "iOS 27.0 / Xcode 27.0 (27A266a) / runner-image macos-27 20260912; macos-15-image har Xcode 16.0–26.3, macos-26-image (20260824) har Xcode 26.0.1–26.6; per 2026-09-18"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "til macos-26/macos-15-imagene får Xcode 27, eller macos-27 går fra preview til GA (sjekk runner-images changelog)"
+evidence_summary: >
+  Apple-docs (JSON bak docs-siden, introducedAt): FoundationModels-rammeverket iOS 26.0;
+  LanguageModel (protokoll), LanguageModelExecutor (protokoll) og
+  PrivateCloudComputeLanguageModel er iOS 27.0; SystemLanguageModel.supportedLanguages er
+  iOS 26.0. Xcode 27-release-notes bekrefter SDK-er for iOS 27. Runner-images: macos-15
+  har nyeste stabile Xcode 26.3 (default 16.4), macos-26 har 26.6, kun `macos-27`
+  (public preview, arm64) har Xcode 27.0 med iOS 27-simulator; swiftlint/xcodegen er ikke
+  forhåndsinstallert der (workflowen installerer dem via brew allerede). Apple Intelligence
+  språkliste inkluderer norsk (support.apple.com). OCRTool/BarcodeReaderTool omtales i
+  WWDC26-dekning, men /documentation/foundationmodels/ocrtool gir 404 (ikke verifisert).
+  Ikke verifisert: Anthropic Swift-pakke som conformer til LanguageModel (kun Tier 2-omtale);
+  Translation-rammeverkets norsk-støtte (Tier 2: bokmål i Translate-appen fra iOS 27).
+interpretation: >
+  «Ta i bruk Apple Intelligence» i SenseAid Explore kan gjøres i to trinn uten å heve
+  deployment target fra iOS 17: (1) iOS 26-flaten bak `#if canImport(FoundationModels)`
+  + `@available(iOS 26, *)` med availability-sjekk som i CaptureApp
+  (OnDeviceNoteAnalyzer.swift), kompilerbar i dagens CI; (2) iOS 27-protokollene når
+  CI-jobben for Reiseguide flyttes til `macos-27`. Apple Intelligence-maskinvare
+  (iPhone 15 Pro/16+) og 7 GB fri plass er brukerkrav, så backend-fallback må finnes.
+project_impact: >
+  ipad/Reiseguide: kandidatfunksjoner er «spør guiden» (spørsmål/oppsummering om
+  severdigheten du står ved, on-device, offline) og guidet Q&A på tvers av språk;
+  Translation-rammeverket kan dekke on-device oversettelse av tekst/teksting for
+  «andre språk auto». .github/workflows/ipad-capture-ci.yml: Reiseguide-stegene må
+  til egen jobb på `macos-27` før iOS 27-symboler kan brukes (CaptureApp-jobben kan
+  bli på macos-15). pr-guardian flagger nye FoundationModels/LanguageModelSession-
+  symboler i diff; denne fila er valideringsgrunnlaget.
+confidence: verified
+decision: >
+  Åpen per 18.09.2026: Daniel velger hvilken Apple Intelligence-funksjon som bygges
+  først i SenseAid Explore. Teknisk anbefaling: start på iOS 26-flaten (kompilerer i
+  dagens CI, samme mønster som CaptureApp), og flytt Reiseguide-CI til macos-27 i en
+  egen liten PR før iOS 27-protokollene tas i bruk. Erstatter «vent på Xcode 27»-
+  beslutningen i 2026-07-ios27-fm-symbols.yaml, som nå er stale.
+affected:
+  - ipad/Reiseguide (SenseAid Explore)
+  - .github/workflows/ipad-capture-ci.yml
+  - ipad/CaptureApp/CaptureApp/Core/Notes/OnDeviceNoteAnalyzer.swift (mønster å gjenbruke)
+  - docs/evidence/2026-07-ios27-fm-symbols.yaml (stale, erstattet av denne)
+lesson: >
+  Docs-siden til Apple er JS-rendret og gir bare tittelen via fetch; JSON-endepunktet
+  /tutorials/data/documentation/<sti>.json gir introducedAt per plattform og er
+  Tier 1-kilden som svarer på «hvilken OS-versjon» uten kompilering.
