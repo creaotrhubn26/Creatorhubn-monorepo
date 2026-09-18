@@ -114,6 +114,18 @@ import { manuscriptService } from '../services/manuscriptService';
 import { mergeSceneOptions, type SceneOption } from './production/sceneOptions';
 import type { SceneBreakdown } from '../models/casting';
 
+/**
+ * Tilstandene rekvisittregisteret fører, oversatt til noe en produksjons-
+ * designer leser i forbifarten. `in_storage` og `rented` er sikret og trenger
+ * ingen merknad; `in_production` er under bygging og er verdt å se.
+ */
+const PROP_AVAILABILITY_LABEL: Record<string, string> = {
+  in_production: 'under bygging',
+  rented: 'leid inn',
+  unavailable: 'utilgjengelig',
+  reserved: 'reservert',
+};
+
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
@@ -5407,18 +5419,21 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                   <MenuItem disabled sx={{ minHeight: TOUCH_TARGET_SIZE }}>
                     Ingen rekvisitter registrert ennå
                   </MenuItem>
-                ) : availableProps.map((prop) => (
-                  <MenuItem key={prop.id} value={prop.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
-                    {prop.name}
-                    {prop.availability && prop.availability !== 'available' ? (
-                      // Nedtonet, ikke forklart: den kan velges, men du ser at
-                      // den ikke står som tilgjengelig før du gjør det.
-                      <Typography component="span" sx={{ ml: 1, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem' }}>
-                        ikke tilgjengelig
-                      </Typography>
-                    ) : null}
-                  </MenuItem>
-                ))}
+                ) : availableProps.map((prop) => {
+                  const tilstand = PROP_AVAILABILITY_LABEL[prop.availability ?? ''] ?? null;
+                  return (
+                    <MenuItem key={prop.id} value={prop.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                      {prop.name}
+                      {tilstand ? (
+                        // Nedtonet, ikke forklart: rekvisitten kan velges, og
+                        // du ser tilstanden dens før du gjør det.
+                        <Typography component="span" sx={{ ml: 1, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem' }}>
+                          {tilstand}
+                        </Typography>
+                      ) : null}
+                    </MenuItem>
+                  );
+                })}
               </Select>
             </FormControl>
 

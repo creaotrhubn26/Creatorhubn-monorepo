@@ -11,6 +11,12 @@
  * den dagen noen faktisk skriver til den, ikke før.
  */
 
+/**
+ * Rekvisitt-tilstander som betyr at rekvisitten er sikret for opptak.
+ * Alt annet — i praksis `in_production` — er under arbeid og verdt en advarsel.
+ */
+export const SECURED_PROP_AVAILABILITY = ['available', 'in_storage', 'rented'];
+
 export type ImpactSeverity = 'blocking' | 'warning' | 'info';
 export type ImpactArea =
   | 'call_sheet'
@@ -343,22 +349,29 @@ export async function collectProductionDayPropImpact(
   }
 
   if (added.length > 0) {
-    // 2. Rekvisitter som ikke er merket tilgjengelige.
+    // 2. Rekvisitter som ikke er klare til å brukes.
+    //
+    //    Vokabularet er det rekvisittregisteret faktisk fører: `in_storage`
+    //    (på eget lager), `rented` (leid inn) og `available` betyr sikret;
+    //    `in_production` betyr under bygging. Jeg advarte først på alt som
+    //    ikke var `available`, og siden Troll ikke bruker det ordet i det
+    //    hele tatt slo advarselen ut på samtlige åtte rekvisitter. En
+    //    advarsel som alltid er på er ikke en advarsel.
     const unavailable = await pool.query(
       `SELECT count(*)::int AS count
          FROM casting_props
         WHERE project_id = $1
           AND id = ANY($2::text[])
-          AND COALESCE(availability, 'available') <> 'available'`,
-      [projectId, added],
+          AND COALESCE(availability, 'available') <> ALL ($3::text[])`,
+      [projectId, added, SECURED_PROP_AVAILABILITY],
     );
     const unavailableCount = count(unavailable.rows);
     if (unavailableCount > 0) {
       impacts.push({
         area: 'prop_availability',
         severity: 'warning',
-        summary: `${unavailableCount} av rekvisittene som legges til er ikke merket tilgjengelige.`,
-        action: 'Bekreft at de kan skaffes til denne dagen.',
+        summary: `${unavailableCount} av rekvisittene som legges til er ikke klare til bruk.`,
+        action: 'Bekreft at de rekker å bli ferdige til denne dagen.',
         count: unavailableCount,
       });
     }
