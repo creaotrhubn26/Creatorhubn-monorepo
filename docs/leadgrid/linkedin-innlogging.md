@@ -59,7 +59,7 @@ forbeholder partnerprogrammet (`docs/evidence/2026-09-linkedin-oidc-login-claims
   og `ROLE_ROOM_LINKEDIN_REDIRECT_URI`. Ingen ny redirect-URL hos LinkedIn.
 - `LINKEDIN_LOGIN_ENABLED=off` skjuler knappene (web og iOS spør `GET /api/auth/linkedin/login-status`)
   og gir 503 på start. Ingen deploy nødvendig.
-- Migrasjon `0618_user_auth_identities.sql`.
+- Migrasjon `0627_user_auth_identities.sql`.
 
 ## Ikke i denne fasen
 

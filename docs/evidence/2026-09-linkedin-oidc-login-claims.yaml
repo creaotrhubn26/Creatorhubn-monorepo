@@ -35,7 +35,7 @@ interpretation: >
   hos oss (R2) i stedet for å lenkes.
 project_impact: >
   Ny innloggingsmetode (web LoginModal + Leadgrid iOS PairingView) bak
-  LINKEDIN_LOGIN_ENABLED. Ny tabell user_auth_identities (0618) for
+  LINKEDIN_LOGIN_ENABLED. Ny tabell user_auth_identities (0627) for
   (provider, subject). Oppslag: identitet → publiserings-tilkobling → verifisert
   e-post → opprett member + solo_free-org. Profilfelt fylles bare når tomme.
   Samme LinkedIn-app og callback-URL som tilkoblingen; state-prefiks lgn_
@@ -49,7 +49,7 @@ affected:
   - backend/server/linkedin-login.ts
   - backend/server/linkedin-login-routes.ts
   - backend/server/linkedin-oauth-config.ts
-  - backend/migrations/0618_user_auth_identities.sql
+  - backend/migrations/0627_user_auth_identities.sql
   - frontend/client/src/lib/creatorhubLinkedInAuth.ts
   - frontend/client/src/components/auth/LoginModal.tsx
   - ipad/LeadMapApp/LeadMapApp/Core/LinkedInSignInService.swift
