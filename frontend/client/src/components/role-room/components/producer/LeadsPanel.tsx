@@ -24,15 +24,15 @@ type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
 const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
   { key: 'varm', label: 'Varme', hint: 'Vil kontaktes nå', campaign: 'Book en gratis vurdering denne uken', color: '#ef4444' },
   { key: 'lunken', label: 'Lunkne', hint: 'Trenger mer info', campaign: 'Du spurte om behandling – her er hva som skjer videre', color: '#f59e0b' },
-  { key: 'kald', label: 'Kalde', hint: 'Lastet ned guide / viste interesse', campaign: 'Kundeeksempel: slik fikk kunden resultatet sitt', color: '#38bdf8' },
+  { key: 'kald', label: 'Kalde', hint: 'Lastet ned guide / viste interesse', campaign: 'Kundeeksempel: slik fikk kunden resultatet sitt', color: '#5d76cb' },
   { key: 'tapt', label: 'Tapte', hint: 'Svarte ikke / kjøpte ikke', campaign: 'Vi er her når du er klar – kort oppfølging', color: '#94a3b8' },
 ];
 
 // Conversion stage for the ROI funnel: answered → booked → became customer → lost.
 type Stage = 'svart' | 'booket' | 'kunde' | 'tapt';
 const STAGES: { key: Stage; label: string; color: string }[] = [
-  { key: 'svart', label: 'Svarte', color: '#38bdf8' },
-  { key: 'booket', label: 'Booket møte', color: '#9e8cf8' },
+  { key: 'svart', label: 'Svarte', color: '#5d76cb' },
+  { key: 'booket', label: 'Booket møte', color: '#93a4dc' },
   { key: 'kunde', label: 'Ble kunde', color: '#22c55e' },
   { key: 'tapt', label: 'Tapt', color: '#94a3b8' },
 ];
@@ -391,7 +391,7 @@ export default function LeadsPanel() {
                         size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 16 }} />}
                         onClick={() => autoSegment.mutate()}
                         disabled={leads.length === 0 || autoSegment.isPending}
-                        sx={{ bgcolor: 'rgba(136, 117, 235,0.9)', '&:hover': { bgcolor: 'rgb(98, 73, 223)' } }}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.9)', '&:hover': { bgcolor: 'rgb(75, 61, 143)' } }}
                       >
                         {autoSegment.isPending ? 'Segmenterer…' : 'AI-segmentér'}
                       </Button>
@@ -403,7 +403,7 @@ export default function LeadsPanel() {
                   {autoSegment.data && autoSegment.data.success === false ? (
                     <Alert severity="warning" sx={{ py: 0 }}>{autoSegment.data.error}</Alert>
                   ) : autoSegment.data?.success ? (
-                    <Typography sx={{ fontSize: '0.78rem', color: '#c6bdf4' }}>
+                    <Typography sx={{ fontSize: '0.78rem', color: '#c3cbe6' }}>
                       AI segmenterte {autoSegment.data.applied?.length ?? 0} nye leads. Hold over et segment for å se begrunnelsen.
                     </Typography>
                   ) : null}
@@ -414,7 +414,7 @@ export default function LeadsPanel() {
                       size="small" label={`Alle (${counts.alle})`} clickable
                       onClick={() => setSegmentFilter('alle')}
                       variant={segmentFilter === 'alle' ? 'filled' : 'outlined'}
-                      sx={{ fontWeight: 700, bgcolor: segmentFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: segmentFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
+                      sx={{ fontWeight: 700, bgcolor: segmentFilter === 'alle' ? 'rgba(93, 118, 203,0.18)' : 'transparent', color: segmentFilter === 'alle' ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.7)' }}
                     />
                     {SEGMENTS.map((s) => (
                       <Chip
@@ -437,7 +437,7 @@ export default function LeadsPanel() {
                         size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 15 }} />}
                         onClick={() => retargetingCopy.mutate(activeSegment.key)}
                         disabled={retargetingCopy.isPending}
-                        sx={{ mt: 1, bgcolor: 'rgba(136, 117, 235,0.9)', '&:hover': { bgcolor: 'rgb(98, 73, 223)' } }}
+                        sx={{ mt: 1, bgcolor: 'rgba(93, 118, 203,0.9)', '&:hover': { bgcolor: 'rgb(75, 61, 143)' } }}
                       >
                         {retargetingCopy.isPending ? 'Skriver…' : 'AI: skriv annonsetekst'}
                       </Button>
@@ -447,13 +447,13 @@ export default function LeadsPanel() {
                       {retargetingCopy.data?.success && retargetingCopy.isIdle === false ? (
                         <Stack spacing={1} sx={{ mt: 1.2 }}>
                           {(retargetingCopy.data.variants || []).map((v, i) => (
-                            <Box key={i} sx={{ bgcolor: 'rgba(10, 5, 21,0.4)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 1.5, p: 1.2 }}>
+                            <Box key={i} sx={{ bgcolor: 'rgba(27, 18, 44,0.4)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 1.5, p: 1.2 }}>
                               <Typography sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.9rem' }}>{v.headline}</Typography>
                               <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{v.primaryText}</Typography>
                               {v.description ? <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem', mt: 0.4 }}>{v.description}</Typography> : null}
                               <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.6 }}>
-                                <Chip size="small" label={v.cta} sx={{ height: 20, fontSize: '0.66rem', bgcolor: 'rgba(136, 117, 235,0.2)', color: '#c6bdf4' }} />
-                                <Button size="small" sx={{ minWidth: 0, fontSize: '0.72rem', textTransform: 'none', color: '#9e8cf8' }}
+                                <Chip size="small" label={v.cta} sx={{ height: 20, fontSize: '0.66rem', bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }} />
+                                <Button size="small" sx={{ minWidth: 0, fontSize: '0.72rem', textTransform: 'none', color: '#93a4dc' }}
                                   onClick={() => { try { navigator.clipboard?.writeText(`${v.headline}\n\n${v.primaryText}\n\n${v.description}`); } catch { /* ignore */ } }}>
                                   Kopier
                                 </Button>
@@ -485,10 +485,10 @@ export default function LeadsPanel() {
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2,1fr)', sm: 'repeat(4,1fr)', md: 'repeat(7,1fr)' }, gap: 1 }}>
                       {[
                         { label: 'Brukt på annonser', value: kr(summary?.spendKr ?? 0), color: '#e2e8f0' },
-                        { label: 'Leads inn', value: String(summary?.totalLeads ?? 0), color: 'var(--role-cyan, #22d3ee)' },
+                        { label: 'Leads inn', value: String(summary?.totalLeads ?? 0), color: 'var(--role-cyan, #5d76cb)' },
                         { label: 'Pris per lead', value: kr(summary?.costPerLeadKr ?? 0), color: '#e2e8f0' },
-                        { label: 'Svarte', value: String(summary?.answered ?? 0), color: '#38bdf8' },
-                        { label: 'Booket møte', value: String(summary?.booked ?? 0), color: '#9e8cf8' },
+                        { label: 'Svarte', value: String(summary?.answered ?? 0), color: '#5d76cb' },
+                        { label: 'Booket møte', value: String(summary?.booked ?? 0), color: '#93a4dc' },
                         { label: 'Ble kunder', value: String(summary?.customers ?? 0), color: '#22c55e' },
                         { label: 'Omsetning', value: kr(summary?.revenueKr ?? 0), color: '#22c55e' },
                       ].map((cell) => (
@@ -512,20 +512,20 @@ export default function LeadsPanel() {
                   </Box>
 
                   {/* Rask oppfølging — templates + seller notification */}
-                  <Box sx={{ border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(56,189,248,0.06)', borderRadius: 2 }}>
+                  <Box sx={{ border: '1px solid rgba(93, 118, 203,0.3)', bgcolor: 'rgba(93, 118, 203,0.06)', borderRadius: 2 }}>
                     <Stack
                       direction="row" alignItems="center" spacing={1}
                       sx={{ p: 1.4, cursor: 'pointer' }}
                       onClick={() => setShowFollowup((v) => !v)}
                     >
-                      <FollowupIcon sx={{ color: '#38bdf8' }} />
+                      <FollowupIcon sx={{ color: '#5d76cb' }} />
                       <Box sx={{ flex: 1 }}>
                         <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>Rask oppfølging</Typography>
                         <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
                           Send automatisk e-post, SMS og WhatsApp til nye leads, og varsle kunden. Trykk «Følg opp» på en lead under.
                         </Typography>
                       </Box>
-                      <Typography sx={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>
+                      <Typography sx={{ color: '#5d76cb', fontSize: '0.8rem', fontWeight: 700 }}>
                         {showFollowup ? 'Skjul' : 'Tilpass meldinger'}
                       </Typography>
                     </Stack>
@@ -579,13 +579,13 @@ export default function LeadsPanel() {
                                 placeholder="kunde@bedrift.no"
                               />
                             </Stack>
-                            <Box sx={{ border: '1px solid rgba(136, 117, 235,0.3)', bgcolor: 'rgba(136, 117, 235,0.06)', borderRadius: 1.5, px: 1.4, py: 0.6 }}>
+                            <Box sx={{ border: '1px solid rgba(93, 118, 203,0.3)', bgcolor: 'rgba(93, 118, 203,0.06)', borderRadius: 1.5, px: 1.4, py: 0.6 }}>
                               <FormControlLabel
                                 control={<Switch checked={cfg.aiPersonalize} onChange={(e) => setCfg({ ...cfg, aiPersonalize: e.target.checked })} />}
                                 label={
                                   <Box>
                                     <Typography sx={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                      <AiIcon sx={{ fontSize: 16, color: '#9e8cf8' }} /> La AI skrive en personlig melding til hver lead
+                                      <AiIcon sx={{ fontSize: 16, color: '#93a4dc' }} /> La AI skrive en personlig melding til hver lead
                                     </Typography>
                                     <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }}>Claude tilpasser meldingen ut fra hva hver lead spurte om. Malene over brukes som tone — og som reserve hvis AI feiler.</Typography>
                                   </Box>
@@ -714,7 +714,7 @@ export default function LeadsPanel() {
                                   </Select>
                                   {l.segmentReason ? (
                                     <Tooltip title={`AI: ${l.segmentReason}`} arrow>
-                                      <AiIcon sx={{ fontSize: 14, color: '#9e8cf8', flexShrink: 0 }} />
+                                      <AiIcon sx={{ fontSize: 14, color: '#93a4dc', flexShrink: 0 }} />
                                     </Tooltip>
                                   ) : null}
                                 </Stack>

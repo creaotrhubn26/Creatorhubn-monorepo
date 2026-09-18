@@ -46,8 +46,8 @@ interface ConsentPortalViewProps {
 }
 
 // ── Merkevare ──
-const BRAND = '#472bd4';
-const BRAND_DARK = '#3c27a5';
+const BRAND = '#3e3180';
+const BRAND_DARK = '#32127a';
 const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DARK} 100%)`;
 
 const cardSx = {
@@ -57,7 +57,7 @@ const cardSx = {
   borderRadius: 4,
   border: '1px solid',
   borderColor: alpha(BRAND, 0.1),
-  boxShadow: '0 18px 50px rgba(24, 18, 43, 0.10)',
+  boxShadow: '0 18px 50px rgba(42, 61, 86, 0.10)',
   bgcolor: '#fff',
 } as const;
 
@@ -69,7 +69,7 @@ const ctaSx = {
   textTransform: 'none',
   boxShadow: `0 10px 24px ${alpha(BRAND, 0.35)}`,
   background: BRAND_GRADIENT,
-  '&:hover': { background: `linear-gradient(135deg, ${BRAND_DARK} 0%, #301f84 100%)` },
+  '&:hover': { background: `linear-gradient(135deg, ${BRAND_DARK} 0%, #302a83 100%)` },
 } as const;
 
 const lightFieldSx = {
@@ -591,7 +591,7 @@ export default function ConsentPortalView({
     <Box
       sx={{
         minHeight: '100vh',
-        background: 'linear-gradient(180deg, #f6f5ff 0%, #ebe7fd 100%)',
+        background: 'linear-gradient(180deg, #f7f9ff 0%, #eef1fb 100%)',
         py: { xs: 4, md: 7 },
         px: 2,
         display: 'flex',

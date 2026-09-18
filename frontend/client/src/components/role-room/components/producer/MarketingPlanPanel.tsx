@@ -379,7 +379,7 @@ export default function MarketingPlanPanel({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
                 flexShrink: 0,
               }}
             >
@@ -462,7 +462,7 @@ export default function MarketingPlanPanel({
               <Chip
                 size="small"
                 label={`${plan.horizonDays} dager`}
-                sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc' }}
+                sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#c3cbe6' }}
               />
               {/* Model name + token/cost telemetry removed from the user-facing
                   card (internal noise); cost is still tracked server-side. */}
@@ -556,9 +556,9 @@ export default function MarketingPlanPanel({
                 fontSize: '0.86rem',
                 minHeight: 36,
                 color: 'rgba(226,232,240,0.6)',
-                '&.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
+                '&.Mui-selected': { color: 'var(--role-cyan, #5d76cb)' },
               },
-              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #5d76cb)' },
             }}
           >
             <Tab value="strategy" label="Strategi" />
@@ -570,7 +570,7 @@ export default function MarketingPlanPanel({
                   <Chip
                     size="small"
                     label={plan.pillars.length}
-                    sx={{ height: 16, fontSize: '0.66rem', bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc' }}
+                    sx={{ height: 16, fontSize: '0.66rem', bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }}
                   />
                 </Stack>
               }
@@ -654,7 +654,7 @@ export default function MarketingPlanPanel({
       ) : !readiness?.ready ? null : (
         <Alert
           severity="info"
-          sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
+          sx={{ bgcolor: 'rgba(93, 118, 203,0.06)', color: '#cbd5e1', border: '1px solid rgba(93, 118, 203,0.2)' }}
         >
           Ingen markedsplan ennå. Klikk "Generer plan" — CI bruker research-outputen og
           bygger 3–5 content pillars + kanalstrategi + KPI-mål.
@@ -674,7 +674,7 @@ export default function MarketingPlanPanel({
             px: 2,
             py: 1,
             bgcolor: 'rgba(11,18,38,0.94)',
-            borderTop: '1px solid rgba(136, 117, 235,0.32)',
+            borderTop: '1px solid rgba(93, 118, 203,0.32)',
             backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
@@ -699,7 +699,7 @@ export default function MarketingPlanPanel({
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
               flexShrink: 0,
             }}
           >
@@ -793,16 +793,16 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
       <Stack spacing={1.2}>
         <KeyValueRow label="Posisjonering">
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.55 }}>
-            <strong style={{ color: '#a5f3fc' }}>Verditilbud:</strong> {strategy.positioning.valueProp}
+            <strong style={{ color: '#c3cbe6' }}>Verditilbud:</strong> {strategy.positioning.valueProp}
           </Typography>
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.55 }}>
-            <strong style={{ color: '#a5f3fc' }}>Differensiering:</strong> {strategy.positioning.differentiator}
+            <strong style={{ color: '#c3cbe6' }}>Differensiering:</strong> {strategy.positioning.differentiator}
           </Typography>
         </KeyValueRow>
 
         <KeyValueRow label={`Kanal (${strategy.channelStrategy.cadencePerWeek}/uke)`}>
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
-            <Chip size="small" label={`Primær: ${strategy.channelStrategy.primary}`} sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc' }} />
+            <Chip size="small" label={`Primær: ${strategy.channelStrategy.primary}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6' }} />
             {strategy.channelStrategy.secondary.map((s) => (
               <Chip key={s} size="small" label={s} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.28)' }} />
             ))}
@@ -852,7 +852,7 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem' }}>
                     {kpi.target.toLocaleString('nb-NO')}
                   </Typography>
-                  <Typography sx={{ color: '#a5f3fc', fontSize: '0.82rem' }}>
+                  <Typography sx={{ color: '#c3cbe6', fontSize: '0.82rem' }}>
                     {kpi.metric.replace(/_/g, ' ')} per {kpi.per}
                   </Typography>
                 </Stack>
@@ -953,7 +953,7 @@ function PillarsSection({
             size="small"
             startIcon={<AddIcon fontSize="small" />}
             onClick={handleAdd}
-            sx={{ textTransform: 'none', color: '#9e8cf8', fontSize: '0.78rem' }}
+            sx={{ textTransform: 'none', color: '#93a4dc', fontSize: '0.78rem' }}
           >
             Legg til pillar
           </Button>
@@ -971,9 +971,9 @@ function PillarsSection({
               p: 1.2,
               borderRadius: 2.2,
               border: pillar.isCustom
-                ? '1px dashed rgba(136, 117, 235,0.5)'
-                : '1px solid rgba(136, 117, 235,0.24)',
-              bgcolor: 'rgba(136, 117, 235,0.08)',
+                ? '1px dashed rgba(93, 118, 203,0.5)'
+                : '1px solid rgba(93, 118, 203,0.24)',
+              bgcolor: 'rgba(93, 118, 203,0.08)',
               opacity: isActive ? 1 : 0.45,
               transition: 'opacity 0.2s',
             }}
@@ -985,8 +985,8 @@ function PillarsSection({
                     width: 22,
                     height: 22,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(136, 117, 235,0.22)',
-                    color: '#e0dbfa',
+                    bgcolor: 'rgba(93, 118, 203,0.22)',
+                    color: '#dfe4f3',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1004,7 +1004,7 @@ function PillarsSection({
                   <Chip
                     size="small"
                     label="Egendefinert"
-                    sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(158, 140, 248,0.18)', color: '#e0dbfa' }}
+                    sx={{ height: 16, fontSize: '0.62rem', bgcolor: 'rgba(147, 164, 220,0.18)', color: '#dfe4f3' }}
                   />
                 ) : null}
               </Stack>
@@ -1062,8 +1062,8 @@ function PillarsSection({
                       size="small"
                       label={seg}
                       sx={{
-                        bgcolor: 'rgba(158, 140, 248,0.16)',
-                        color: '#e0dbfa',
+                        bgcolor: 'rgba(147, 164, 220,0.16)',
+                        color: '#dfe4f3',
                         height: 18,
                         fontSize: '0.7rem',
                       }}
@@ -1078,8 +1078,8 @@ function PillarsSection({
                 label={`${pillar.targetKpi.target.toLocaleString('nb-NO')} ${pillar.targetKpi.metric.replace(/_/g, ' ')} / ${pillar.targetKpi.per}`}
                 sx={{
                   mt: 0.8,
-                  bgcolor: 'rgba(136, 117, 235,0.16)',
-                  color: '#e0dbfa',
+                  bgcolor: 'rgba(93, 118, 203,0.16)',
+                  color: '#dfe4f3',
                   fontWeight: 700,
                   fontSize: '0.72rem',
                 }}
@@ -1106,10 +1106,10 @@ const FORMAT_LABEL: Record<MarketingPlanPost['format'], string> = {
 const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: 'rgba(221,42,123,0.18)',
   carousel: 'rgba(245,133,41,0.2)',
-  image: 'rgba(34,211,238,0.16)',
-  story: 'rgba(136, 117, 235,0.2)',
+  image: 'rgba(93, 118, 203,0.16)',
+  story: 'rgba(93, 118, 203,0.2)',
   tiktok: 'rgba(236,72,153,0.2)',
-  linkedin_post: 'rgba(59,130,246,0.22)',
+  linkedin_post: 'rgba(63, 81, 181,0.22)',
   youtube_short: 'rgba(239,68,68,0.18)',
 };
 
@@ -1303,9 +1303,9 @@ function PostsSection({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            color: 'var(--role-cyan, #22d3ee)',
-            borderColor: 'rgba(34,211,238,0.5)',
-            '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
+            color: 'var(--role-cyan, #5d76cb)',
+            borderColor: 'rgba(93, 118, 203,0.5)',
+            '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.08)' },
           }}
         >
           {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
@@ -1323,11 +1323,11 @@ function PostsSection({
           // #152 — live progress for auto-generation
           <Alert
             severity="info"
-            icon={<CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />}
+            icon={<CircularProgress size={18} sx={{ color: 'var(--role-cyan, #5d76cb)' }} />}
             sx={{
-              bgcolor: 'rgba(34,211,238,0.08)',
-              color: '#a5f3fc',
-              border: '1px solid rgba(34,211,238,0.32)',
+              bgcolor: 'rgba(93, 118, 203,0.08)',
+              color: '#c3cbe6',
+              border: '1px solid rgba(93, 118, 203,0.32)',
             }}
           >
             <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
@@ -1345,7 +1345,7 @@ function PostsSection({
         ) : (
           <Alert
             severity="info"
-            sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
+            sx={{ bgcolor: 'rgba(93, 118, 203,0.06)', color: '#cbd5e1', border: '1px solid rgba(93, 118, 203,0.2)' }}
           >
             Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — CI bygger én post
             per dag balansert på tvers av pillars, med hook, format, script og CTA ferdig
@@ -1368,7 +1368,7 @@ function PostsSection({
                 const idx = ids.indexOf(pillarFilter);
                 setPillarFilter(ids[(idx + 1) % ids.length] as typeof pillarFilter);
               }}
-              sx={{ bgcolor: pillarFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(136, 117, 235,0.22)', color: '#e0dbfa', cursor: 'pointer' }}
+              sx={{ bgcolor: pillarFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(93, 118, 203,0.22)', color: '#dfe4f3', cursor: 'pointer' }}
             />
             <Chip
               size="small"
@@ -1378,7 +1378,7 @@ function PostsSection({
                 const idx = ps.indexOf(platformFilter);
                 setPlatformFilter(ps[(idx + 1) % ps.length]);
               }}
-              sx={{ bgcolor: platformFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(34,211,238,0.22)', color: '#a5f3fc', cursor: 'pointer' }}
+              sx={{ bgcolor: platformFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(93, 118, 203,0.22)', color: '#c3cbe6', cursor: 'pointer' }}
             />
             <Chip
               size="small"
@@ -1447,8 +1447,8 @@ function PostsSection({
               sx={{
                 p: 0.8,
                 borderRadius: 1.6,
-                bgcolor: 'rgba(136, 117, 235,0.16)',
-                border: '1px solid rgba(136, 117, 235,0.32)',
+                bgcolor: 'rgba(93, 118, 203,0.16)',
+                border: '1px solid rgba(93, 118, 203,0.32)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 0.8,
@@ -1461,7 +1461,7 @@ function PostsSection({
               <Button
                 size="small"
                 onClick={selectAllVisible}
-                sx={{ textTransform: 'none', color: '#c6bdf4', fontSize: '0.76rem' }}
+                sx={{ textTransform: 'none', color: '#c3cbe6', fontSize: '0.76rem' }}
               >
                 Velg alle synlige ({filteredPosts.length})
               </Button>
@@ -1477,7 +1477,7 @@ function PostsSection({
                 size="small"
                 variant="outlined"
                 onClick={() => setBulkPlatformMenuOpen((v) => !v)}
-                sx={{ textTransform: 'none', color: '#a5f3fc', borderColor: 'rgba(34,211,238,0.4)', fontSize: '0.76rem' }}
+                sx={{ textTransform: 'none', color: '#c3cbe6', borderColor: 'rgba(93, 118, 203,0.4)', fontSize: '0.76rem' }}
               >
                 Endre platform…
               </Button>
@@ -1490,7 +1490,7 @@ function PostsSection({
                 sx={{
                   textTransform: 'none',
                   fontWeight: 700,
-                  background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
                 }}
               >
                 {batchAccepting ? 'Aksepterer…' : `Accept ${selectedIds.size}`}
@@ -1521,10 +1521,10 @@ function PostsSection({
                     width: 6,
                     height: 6,
                     borderRadius: '50%',
-                    bgcolor: '#8875eb',
+                    bgcolor: '#5d76cb',
                   }}
                 />
-                <Typography sx={{ color: '#e0dbfa', fontWeight: 700, fontSize: '0.84rem' }}>
+                <Typography sx={{ color: '#dfe4f3', fontWeight: 700, fontSize: '0.84rem' }}>
                   {group.name}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
@@ -1805,11 +1805,11 @@ function PostCard({
         p: 1.2,
         borderRadius: 2.2,
         border: selected
-          ? '1px solid rgba(136, 117, 235,0.6)'
+          ? '1px solid rgba(93, 118, 203,0.6)'
           : hasWarnings
             ? '1px solid rgba(251,191,36,0.4)'
             : '1px solid rgba(148,163,184,0.18)',
-        bgcolor: selected ? 'rgba(136, 117, 235,0.08)' : 'rgba(15,23,42,0.58)',
+        bgcolor: selected ? 'rgba(93, 118, 203,0.08)' : 'rgba(15,23,42,0.58)',
         transition: 'border-color 0.15s, background-color 0.15s',
       }}
     >
@@ -1824,8 +1824,8 @@ function PostCard({
                 sx={{
                   height: 18,
                   fontSize: '0.66rem',
-                  bgcolor: 'rgba(158, 140, 248,0.18)',
-                  color: '#e0dbfa',
+                  bgcolor: 'rgba(147, 164, 220,0.18)',
+                  color: '#dfe4f3',
                   fontWeight: 700,
                   cursor: 'help',
                 }}
@@ -1858,8 +1858,8 @@ function PostCard({
                 sx={{
                   height: 18,
                   fontSize: '0.66rem',
-                  bgcolor: flag.severity === 'warning' ? 'rgba(251,191,36,0.18)' : 'rgba(96,165,250,0.18)',
-                  color: flag.severity === 'warning' ? '#fde68a' : '#bfdbfe',
+                  bgcolor: flag.severity === 'warning' ? 'rgba(251,191,36,0.18)' : 'rgba(147, 164, 220,0.18)',
+                  color: flag.severity === 'warning' ? '#fde68a' : '#c3cbe6',
                   cursor: 'help',
                 }}
               />
@@ -1879,8 +1879,8 @@ function PostCard({
               width: 20,
               height: 20,
               borderRadius: 0.6,
-              border: `1.5px solid ${selected ? '#8875eb' : 'rgba(148,163,184,0.4)'}`,
-              bgcolor: selected ? '#8875eb' : 'transparent',
+              border: `1.5px solid ${selected ? '#5d76cb' : 'rgba(148,163,184,0.4)'}`,
+              bgcolor: selected ? '#5d76cb' : 'transparent',
               cursor: 'pointer',
               flexShrink: 0,
               display: 'flex',
@@ -1888,7 +1888,7 @@ function PostCard({
               justifyContent: 'center',
               mt: 0.6,
               transition: 'all 0.15s',
-              '&:hover': { borderColor: '#8875eb' },
+              '&:hover': { borderColor: '#5d76cb' },
             }}
           >
             {selected ? (
@@ -1904,8 +1904,8 @@ function PostCard({
             minWidth: 44,
             minHeight: 44,
             borderRadius: 1.4,
-            bgcolor: 'rgba(34,211,238,0.14)',
-            color: '#a5f3fc',
+            bgcolor: 'rgba(93, 118, 203,0.14)',
+            color: '#c3cbe6',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1938,7 +1938,7 @@ function PostCard({
               <Chip
                 size="small"
                 label={`${post.goalKpi.target} ${post.goalKpi.metric.replace(/_/g, ' ')}/${post.goalKpi.per}`}
-                sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa', fontSize: '0.72rem' }}
+                sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3', fontSize: '0.72rem' }}
               />
             ) : null}
           </Stack>
@@ -1949,7 +1949,7 @@ function PostCard({
 
           {post.script ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.8rem', lineHeight: 1.5, mt: 0.5 }}>
-              <strong style={{ color: '#a5f3fc' }}>Script:</strong> {post.script}
+              <strong style={{ color: '#c3cbe6' }}>Script:</strong> {post.script}
             </Typography>
           ) : null}
 
@@ -2038,8 +2038,8 @@ function PostCard({
                   size="small"
                   label={tag}
                   sx={{
-                    bgcolor: 'rgba(34,211,238,0.08)',
-                    color: '#a5f3fc',
+                    bgcolor: 'rgba(93, 118, 203,0.08)',
+                    color: '#c3cbe6',
                     fontSize: '0.66rem',
                     height: 16,
                   }}
@@ -2057,13 +2057,13 @@ function PostCard({
                   px: 0.8,
                   py: 0.3,
                   borderRadius: 1,
-                  bgcolor: 'rgba(158, 140, 248,0.08)',
-                  border: '1px solid rgba(158, 140, 248,0.32)',
+                  bgcolor: 'rgba(147, 164, 220,0.08)',
+                  border: '1px solid rgba(147, 164, 220,0.32)',
                   display: 'inline-block',
                 }}
               >
-                <Typography sx={{ color: '#e0dbfa', fontSize: '0.72rem', fontWeight: 600 }}>
-                  Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#9e8cf8' }}>{suggestedCta.linkMacro}</code>
+                <Typography sx={{ color: '#dfe4f3', fontSize: '0.72rem', fontWeight: 600 }}>
+                  Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#93a4dc' }}>{suggestedCta.linkMacro}</code>
                 </Typography>
               </Box>
             </Tooltip>
@@ -2094,7 +2094,7 @@ function PostCard({
                       textTransform: 'none',
                       fontSize: '0.76rem',
                       py: 0.3,
-                      color: previewOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)',
+                      color: previewOpen ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.7)',
                       minWidth: 0,
                     }}
                   >
@@ -2112,7 +2112,7 @@ function PostCard({
                         textTransform: 'none',
                         fontSize: '0.76rem',
                         py: 0.3,
-                        color: '#e0dbfa',
+                        color: '#dfe4f3',
                         minWidth: 0,
                       }}
                     >
@@ -2131,7 +2131,7 @@ function PostCard({
                       textTransform: 'none',
                       fontSize: '0.76rem',
                       py: 0.3,
-                      color: '#9e8cf8',
+                      color: '#93a4dc',
                       minWidth: 0,
                     }}
                   >
@@ -2149,9 +2149,9 @@ function PostCard({
                     fontWeight: 700,
                     fontSize: '0.76rem',
                     py: 0.3,
-                    color: '#a5f3fc',
-                    borderColor: 'rgba(34,211,238,0.4)',
-                    '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
+                    color: '#c3cbe6',
+                    borderColor: 'rgba(93, 118, 203,0.4)',
+                    '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.08)' },
                   }}
                 >
                   {accepting ? 'Aksepterer…' : 'Send → Feed-planner'}
@@ -2181,7 +2181,7 @@ function PostCard({
           sx={{
             textTransform: 'none',
             fontSize: '0.74rem',
-            color: toolsOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.6)',
+            color: toolsOpen ? 'var(--role-cyan, #5d76cb)' : 'rgba(226,232,240,0.6)',
             py: 0,
             px: 0.6,
             minWidth: 0,
@@ -2233,7 +2233,7 @@ function PostCard({
                         {live?.profilePictureUrl ? (
                           <Box component="img" src={live.profilePictureUrl} alt="" sx={{ width: 22, height: 22, borderRadius: '50%' }} />
                         ) : (
-                          <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(158, 140, 248,0.2)' }} />
+                          <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(147, 164, 220,0.2)' }} />
                         )}
                         <Stack spacing={0} sx={{ flex: 1, minWidth: 0 }}>
                           <Typography sx={{ color: '#f8fafc', fontSize: '0.74rem', fontWeight: 700 }}>
@@ -2300,7 +2300,7 @@ function PostCard({
                       size="small"
                       onClick={() => void handleGenerateThumbnail()}
                       disabled={generatingThumbnail}
-                      sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#e0dbfa', py: 0 }}
+                      sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#dfe4f3', py: 0 }}
                     >
                       {generatingThumbnail ? 'Genererer…' : 'Generer ny variant'}
                     </Button>
@@ -2308,7 +2308,7 @@ function PostCard({
                       size="small"
                       endIcon={<OpenInNewIcon sx={{ fontSize: 10 }} />}
                       onClick={() => window.open(thumbnail.imageUrl, '_blank', 'noopener,noreferrer')}
-                      sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#e0dbfa', py: 0 }}
+                      sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#dfe4f3', py: 0 }}
                     >
                       Last ned
                     </Button>
@@ -2326,8 +2326,8 @@ function PostCard({
                   sx={{
                     textTransform: 'none',
                     fontSize: '0.72rem',
-                    color: '#e0dbfa',
-                    bgcolor: 'rgba(158, 140, 248,0.16)',
+                    color: '#dfe4f3',
+                    bgcolor: 'rgba(147, 164, 220,0.16)',
                     px: 1,
                     py: 0.3,
                   }}
@@ -2561,7 +2561,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
+            background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)',
             flexShrink: 0,
           }}
         >

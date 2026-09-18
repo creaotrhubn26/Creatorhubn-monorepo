@@ -59,7 +59,7 @@ import {
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
-const PURPLE_SOFT = 'rgba(136, 117, 235,0.12)';
+const PURPLE_SOFT = 'rgba(93, 118, 203,0.12)';
 const ALL_KINDS: readonly CalendarEventKind[] = ['rehearsal', 'performance', 'class', 'audition', 'availability'];
 const WEEKDAY_LABELS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 const MONTH_LABELS = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'];
@@ -423,7 +423,7 @@ export function DanceProductionCalendar({
               sx={{
                 cursor: 'pointer', px: 1.2, py: 0.5, fontSize: 10.5, fontWeight: 700, letterSpacing: 1,
                 color: view === v ? '#fff' : 'rgba(229,231,235,0.5)',
-                bgcolor: view === v ? 'rgba(158, 140, 248,0.22)' : 'transparent',
+                bgcolor: view === v ? 'rgba(147, 164, 220,0.22)' : 'transparent',
                 border: `1px solid ${view === v ? PURPLE_LIGHT : 'rgba(255,255,255,0.12)'}`,
                 borderRadius: 0.5,
                 textTransform: 'uppercase',
@@ -567,7 +567,7 @@ export function DanceProductionCalendar({
       <Dialog
         open={!!createDay}
         onClose={() => setCreateDay(null)}
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: danceFlowColors.textSecondary, minWidth: 360 } }}
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: danceFlowColors.textSecondary, minWidth: 360 } }}
       >
         <DialogTitle sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>
           Nytt event {createDay ? `· ${formatDateShort(createDay)}` : ''}
@@ -639,7 +639,7 @@ export function DanceProductionCalendar({
       <Dialog
         open={!!detailEvent}
         onClose={() => setDetailEvent(null)}
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: danceFlowColors.textSecondary, minWidth: 360 } }}
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: danceFlowColors.textSecondary, minWidth: 360 } }}
       >
         {detailEvent ? (() => {
           const meta = KIND_META[detailEvent.kind];
@@ -700,7 +700,7 @@ export function DanceProductionCalendar({
         anchor="bottom"
         open={!!drawerDay}
         onClose={() => setDrawerDay(null)}
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: danceFlowColors.textSecondary, borderTopLeftRadius: 12, borderTopRightRadius: 12, p: 2 } }}
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: danceFlowColors.textSecondary, borderTopLeftRadius: 12, borderTopRightRadius: 12, p: 2 } }}
       >
         {drawerDay ? (
           <>

@@ -136,7 +136,7 @@ export interface LayersPanelProps {
 // =============================================================================
 
 const PanelContainer = styled(Paper)(() => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -164,12 +164,12 @@ const LayerItem = styled(Box, {
   padding: '6px 8px',
   gap: 8,
   cursor: 'pointer',
-  backgroundColor: active ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-  borderLeft: active ? '3px solid #3b82f6' : '3px solid transparent',
+  backgroundColor: active ? 'rgba(63, 81, 181, 0.2)' : 'transparent',
+  borderLeft: active ? '3px solid #3f51b5' : '3px solid transparent',
   opacity: dragging ? 0.5 : 1,
   transition: 'all 0.15s',
   '&:hover': {
-    backgroundColor: active ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.05)',
+    backgroundColor: active ? 'rgba(63, 81, 181, 0.25)' : 'rgba(255,255,255,0.05)',
   },
 }));
 

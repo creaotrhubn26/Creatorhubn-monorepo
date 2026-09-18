@@ -24,10 +24,10 @@ export const danceFlowColors = {
   borderSoft: '#2a3142', //   21× — sekundær divider, hover-states
 
   // Brand accent (lavender)
-  lavender: '#9e8cf8', //      103× — primær aksent (knapper, fokusring, badges)
-  lavenderDark: '#8875eb', //   43× — hover/active
-  lavenderDeep: '#6249df', //   25× — pressed/selected
-  lavenderLight: '#c6bdf4', //  30× — disabled-aksent, dim aksent-tekst
+  lavender: '#93a4dc', //      103× — primær aksent (knapper, fokusring, badges)
+  lavenderDark: '#5d76cb', //   43× — hover/active
+  lavenderDeep: '#4b3d8f', //   25× — pressed/selected
+  lavenderLight: '#c3cbe6', //  30× — disabled-aksent, dim aksent-tekst
 
   // Secondary accents
   gold: '#fbbf24', //   42× — highlights, premium-badges
@@ -42,8 +42,8 @@ export const danceFlowColors = {
   warning: '#f59e0b', //         alias for amber — semantic
 
   // Info/blue (info-tilstander, lenker, sendt-badges)
-  info: '#3b82f6', //            11× — primær info (blue-500)
-  infoLight: '#60a5fa', //       15× — info-aksent + lenker (blue-400)
+  info: '#3f51b5', //            11× — primær info (blue-500)
+  infoLight: '#93a4dc', //       15× — info-aksent + lenker (blue-400)
   infoSoft: '#93c5fd', //         6× — info-bakgrunn (blue-300)
 
   // Pink-aksent (talents/agency-badges, highlights)

@@ -83,18 +83,18 @@ const PLATFORM_META: Record<Platform, PlatformConfig> = {
 };
 
 const palette = {
-  bg: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bg: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
 };
 
 const STATUS_LABEL: Record<string, { txt: string; color: string; bg: string }> = {
   delivered: { txt: 'SENDT', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
-  pending: { txt: 'PÅ VEI', color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
+  pending: { txt: 'PÅ VEI', color: '#93a4dc', bg: 'rgba(147, 164, 220,0.18)' },
   retrying: { txt: 'PRØVER PÅ NYTT', color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
   failed: { txt: 'FEILET', color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
 };
@@ -274,7 +274,7 @@ export default function ClientAdsCrmEventsPanel({
         <Stack direction="row" spacing={1.4} sx={{ mb: 2 }}>
           {[
             { label: 'Sendt OK', n: summary.delivered, color: '#34d399', bg: 'rgba(52,211,153,0.10)' },
-            { label: 'Underveis', n: summary.pending, color: '#60a5fa', bg: 'rgba(96,165,250,0.10)' },
+            { label: 'Underveis', n: summary.pending, color: '#93a4dc', bg: 'rgba(147, 164, 220,0.10)' },
             { label: 'Feilet', n: summary.failed, color: '#f87171', bg: 'rgba(248,113,113,0.10)' },
           ].map((b) => (
             <Box key={b.label} sx={{
@@ -304,7 +304,7 @@ export default function ClientAdsCrmEventsPanel({
               return (
                 <Box key={ev.id} sx={{
                   p: 1.4, borderRadius: 1.2,
-                  bgcolor: 'rgba(136, 117, 235,0.04)',
+                  bgcolor: 'rgba(93, 118, 203,0.04)',
                   border: `1px solid ${palette.border}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   gap: 1.4,
@@ -314,7 +314,7 @@ export default function ClientAdsCrmEventsPanel({
                       ? <CheckCircleOutlineIcon sx={{ color: '#34d399', fontSize: 18 }} />
                       : ev.deliveryStatus === 'failed'
                         ? <ErrorOutlineOutlinedIcon sx={{ color: '#f87171', fontSize: 18 }} />
-                        : <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                        : <CircularProgress size={14} sx={{ color: '#93a4dc' }} />
                     }
                     <Stack sx={{ flex: 1, minWidth: 0 }}>
                       <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: palette.textPrimary }}>

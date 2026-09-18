@@ -234,7 +234,7 @@ function Key({ children }: { children: React.ReactNode }) {
 
 const STATUS_PILLS: Record<string, { label: string; color: string; bg: string }> = {
   scheduled:         { label: 'Scheduled',         color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
-  confirmed:         { label: 'Confirmed',         color: '#3b82f6', bg: 'rgba(59,130,246,0.15)'  },
+  confirmed:         { label: 'Confirmed',         color: '#3f51b5', bg: 'rgba(63, 81, 181,0.15)'  },
   awaiting_callback: { label: 'Awaiting Callback', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)'  },
   completed:         { label: 'Completed',         color: '#10b981', bg: 'rgba(16,185,129,0.15)'  },
   cancelled:         { label: 'Cancelled',         color: '#ef4444', bg: 'rgba(239,68,68,0.15)'   },
@@ -336,48 +336,48 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   'What is the Audition Planner?': [
     // overview-main.png (3760x1520)
     annPx('planner-guide', 3760, 1520, 2539, 223, 2715, 313, 'Guide', '#22c55e', 'top-center'),
-    annPx('planner-export', 3760, 1520, 2813, 223, 3107, 313, 'Eksporter', '#60a5fa', 'top-center'),
-    annPx('planner-stats', 3760, 1520, 3121, 223, 3399, 313, 'Statistikk', '#38bdf8', 'top-center'),
+    annPx('planner-export', 3760, 1520, 2813, 223, 3107, 313, 'Eksporter', '#93a4dc', 'top-center'),
+    annPx('planner-stats', 3760, 1520, 3121, 223, 3399, 313, 'Statistikk', '#5d76cb', 'top-center'),
     annPx('planner-new', 3760, 1520, 3413, 223, 3686, 312, 'Ny avtale', '#f59e0b', 'top-center'),
     annPx('planner-project-btn', 3760, 1520, 74, 431, 447, 505, 'Prosjekt', '#f59e0b', 'top-center'),
-    annPx('planner-pool-btn', 3760, 1520, 479, 431, 755, 505, 'Maler', '#9e8cf8', 'top-center'),
-    annPx('planner-standard-btn', 3760, 1520, 170, 571, 361, 645, 'Standard', '#60a5fa', 'top-center'),
+    annPx('planner-pool-btn', 3760, 1520, 479, 431, 755, 505, 'Maler', '#93a4dc', 'top-center'),
+    annPx('planner-standard-btn', 3760, 1520, 170, 571, 361, 645, 'Standard', '#93a4dc', 'top-center'),
     annPx('planner-pro-btn', 3760, 1520, 393, 571, 615, 645, 'Pro-visning', '#22c55e', 'top-center'),
   ],
   'Panel header at a glance': [
     // overview-header.png (3760x640)
     annPx('header-guide', 3760, 640, 2539, 223, 2715, 313, 'Guide', '#22c55e', 'top-center'),
-    annPx('header-export', 3760, 640, 2813, 223, 3107, 313, 'Eksporter', '#60a5fa', 'top-center'),
-    annPx('header-stats', 3760, 640, 3121, 223, 3399, 313, 'Statistikk', '#38bdf8', 'top-center'),
+    annPx('header-export', 3760, 640, 2813, 223, 3107, 313, 'Eksporter', '#93a4dc', 'top-center'),
+    annPx('header-stats', 3760, 640, 3121, 223, 3399, 313, 'Statistikk', '#5d76cb', 'top-center'),
     annPx('header-new', 3760, 640, 3413, 223, 3686, 312, 'Ny avtale', '#f59e0b', 'top-center'),
-    annPx('header-kbd', 3760, 640, 2739, 247, 2788, 289, 'Snarveier', '#9e8cf8', 'top-center'),
+    annPx('header-kbd', 3760, 640, 2739, 247, 2788, 289, 'Snarveier', '#93a4dc', 'top-center'),
   ],
   'Workspace modes: Standard vs Pro': [
     // standard-vs-pro.png (3760x1800)
     annPx('mode-project-btn', 3760, 1800, 74, 182, 447, 257, 'Prosjekt', '#f59e0b', 'top-center'),
-    annPx('mode-pool-btn', 3760, 1800, 455, 182, 742, 257, 'Maler', '#9e8cf8', 'top-center'),
-    annPx('mode-standard-btn', 3760, 1800, 191, 323, 379, 397, 'Standard', '#60a5fa', 'top-center'),
+    annPx('mode-pool-btn', 3760, 1800, 455, 182, 742, 257, 'Maler', '#93a4dc', 'top-center'),
+    annPx('mode-standard-btn', 3760, 1800, 191, 323, 379, 397, 'Standard', '#93a4dc', 'top-center'),
     annPx('mode-pro-btn', 3760, 1800, 393, 323, 614, 396, 'Pro-visning', '#22c55e', 'top-center'),
-    annPx('mode-pipeline-btn', 3760, 1800, 2289, 467, 2502, 548, 'Pipeline', '#9e8cf8', 'top-center'),
-    annPx('mode-timeline-btn', 3760, 1800, 2517, 467, 2733, 549, 'Timeline', '#38bdf8', 'top-center'),
+    annPx('mode-pipeline-btn', 3760, 1800, 2289, 467, 2502, 548, 'Pipeline', '#93a4dc', 'top-center'),
+    annPx('mode-timeline-btn', 3760, 1800, 2517, 467, 2733, 549, 'Timeline', '#5d76cb', 'top-center'),
   ],
   'Creating a new audition slot': [
     // creating-form.png (2240x2044)
     annPx('create-candidate', 2240, 2044, 121, 203, 1090, 315, 'Kandidat', '#22c55e', 'top-center'),
-    annPx('create-role', 2240, 2044, 1146, 205, 2121, 315, 'Rolle', '#60a5fa', 'top-center'),
-    annPx('create-date', 2240, 2044, 118, 365, 2121, 475, 'Dato', '#38bdf8', 'top-center'),
+    annPx('create-role', 2240, 2044, 1146, 205, 2121, 315, 'Rolle', '#93a4dc', 'top-center'),
+    annPx('create-date', 2240, 2044, 118, 365, 2121, 475, 'Dato', '#5d76cb', 'top-center'),
     annPx('create-time', 2240, 2044, 118, 525, 2121, 635, 'Tid', '#f59e0b', 'top-center'),
     annPx('create-location', 2240, 2044, 118, 685, 2121, 795, 'Lokasjon', '#22c55e', 'top-center'),
-    annPx('create-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#9e8cf8', 'top-center'),
+    annPx('create-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#93a4dc', 'top-center'),
     annPx('create-status', 2240, 2044, 118, 1733, 2121, 1783, 'Status', '#ef4444', 'top-center'),
-    annPx('create-save', 2240, 2044, 1708, 1916, 1906, 2012, 'Lagre', '#60a5fa', 'top-center'),
+    annPx('create-save', 2240, 2044, 1708, 1916, 1906, 2012, 'Lagre', '#93a4dc', 'top-center'),
   ],
   'Editing an existing slot': [
     // editing-form.png (2240x2044)
     annPx('edit-candidate-role', 2240, 2044, 118, 203, 2121, 315, 'Forhåndsutfylt kandidat/rolle', '#22c55e', 'top-center'),
-    annPx('edit-date-time', 2240, 2044, 118, 365, 2121, 635, 'Dato og tid', '#60a5fa', 'top-center'),
-    annPx('edit-location-scene', 2240, 2044, 118, 685, 2121, 1115, 'Lokasjon og scene', '#38bdf8', 'top-center'),
-    annPx('edit-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#9e8cf8', 'top-center'),
+    annPx('edit-date-time', 2240, 2044, 118, 365, 2121, 635, 'Dato og tid', '#93a4dc', 'top-center'),
+    annPx('edit-location-scene', 2240, 2044, 118, 685, 2121, 1115, 'Lokasjon og scene', '#5d76cb', 'top-center'),
+    annPx('edit-notes', 2240, 2044, 115, 1199, 2124, 1733, 'Notater', '#93a4dc', 'top-center'),
     annPx('edit-status', 2240, 2044, 118, 1733, 2121, 1783, 'Status', '#ef4444', 'top-center'),
     annPx('edit-save', 2240, 2044, 1708, 1916, 1906, 2012, 'Lagre endringer', '#f59e0b', 'top-center'),
   ],
@@ -385,21 +385,21 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
     // view-modes-switcher.png (3760x720)
     annPx('view-mode-group', 3760, 720, 3398, 404, 3708, 562, 'Visningsmodus', '#22c55e', 'top-center'),
     annPx('view-mode-list', 3760, 720, 3417, 404, 3508, 560, 'Compact', '#f59e0b', 'top-center'),
-    annPx('view-mode-table', 3760, 720, 3513, 404, 3603, 560, 'Table', '#60a5fa', 'top-center'),
-    annPx('view-mode-grid', 3760, 720, 3609, 404, 3699, 560, 'Grid', '#38bdf8', 'top-center'),
+    annPx('view-mode-table', 3760, 720, 3513, 404, 3603, 560, 'Table', '#93a4dc', 'top-center'),
+    annPx('view-mode-grid', 3760, 720, 3609, 404, 3699, 560, 'Grid', '#5d76cb', 'top-center'),
   ],
   'Six-status workflow': [
     // status-workflow.png (3760x1520)
     annPx('status-pool', 3760, 1520, 366, 769, 477, 819, 'Pool', '#94a3b8', 'top-center'),
     annPx('status-planned', 3760, 1520, 488, 769, 617, 819, 'Planlagt', '#f59e0b', 'top-center'),
-    annPx('status-confirmed', 3760, 1520, 628, 769, 767, 819, 'Bekreftet', '#60a5fa', 'top-center'),
-    annPx('status-callback', 3760, 1520, 778, 769, 989, 819, 'Tilbakemelding', '#38bdf8', 'top-center'),
+    annPx('status-confirmed', 3760, 1520, 628, 769, 767, 819, 'Bekreftet', '#93a4dc', 'top-center'),
+    annPx('status-callback', 3760, 1520, 778, 769, 989, 819, 'Tilbakemelding', '#5d76cb', 'top-center'),
     annPx('status-completed', 3760, 1520, 1000, 769, 1117, 819, 'Fullført', '#22c55e', 'top-center'),
     annPx('status-cancelled', 3760, 1520, 1128, 769, 1279, 819, 'Kansellert', '#ef4444', 'top-center'),
   ],
   'Statistics banner': [
     // statistics-banner.png (3760x1520)
-    annPx('stats-banner', 3760, 1520, 22, 486, 3738, 764, 'Statistikkbanner', '#60a5fa', 'top-center'),
+    annPx('stats-banner', 3760, 1520, 22, 486, 3738, 764, 'Statistikkbanner', '#93a4dc', 'top-center'),
   ],
   'Conflict detection and priority scoring (Pro)': [
     // standard-vs-pro.png (3760x1800)
@@ -415,10 +415,10 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   'Status, date & dropdown filters': [
     // search-bar-active.png (3760x1520)
     annPx('filter-search', 3760, 1520, 61, 947, 2682, 1039, 'Søk', '#22c55e', 'top-center'),
-    annPx('filter-date', 3760, 1520, 2697, 949, 3037, 1039, 'Dato', '#60a5fa', 'top-center'),
-    annPx('filter-sort', 3760, 1520, 3051, 949, 3403, 1039, 'Sortering', '#38bdf8', 'top-center'),
-    annPx('filter-view-list', 3760, 1520, 3417, 949, 3507, 1039, 'List', '#9e8cf8', 'top-center'),
-    annPx('filter-view-table', 3760, 1520, 3513, 949, 3603, 1039, 'Table', '#60a5fa', 'top-center'),
+    annPx('filter-date', 3760, 1520, 2697, 949, 3037, 1039, 'Dato', '#93a4dc', 'top-center'),
+    annPx('filter-sort', 3760, 1520, 3051, 949, 3403, 1039, 'Sortering', '#5d76cb', 'top-center'),
+    annPx('filter-view-list', 3760, 1520, 3417, 949, 3507, 1039, 'List', '#93a4dc', 'top-center'),
+    annPx('filter-view-table', 3760, 1520, 3513, 949, 3603, 1039, 'Table', '#93a4dc', 'top-center'),
     annPx('filter-view-grid', 3760, 1520, 3609, 949, 3699, 1039, 'Grid', '#f59e0b', 'top-center'),
   ],
   'Active filter chips': [
@@ -432,7 +432,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   ],
   'Viewing and updating audition details': [
     // standard-vs-pro.png (3760x1800)
-    annPx('details-panel', 3760, 1800, 2263, 763, 3721, 1645, 'Detaljpanel', '#60a5fa', 'top-center'),
+    annPx('details-panel', 3760, 1800, 2263, 763, 3721, 1645, 'Detaljpanel', '#93a4dc', 'top-center'),
   ],
   'Selecting multiple auditions': [
     // overview-main.png (3760x1520)
@@ -445,16 +445,16 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   'Pro tools: compare and bulk planning': [
     // standard-vs-pro.png (3760x1800)
     annPx('pipeline', 3760, 1800, 39, 763, 2225, 1645, 'Pipeline', '#22c55e', 'top-center'),
-    annPx('pro-sort', 3760, 1800, 1408, 470, 1744, 546, 'Sorter', '#60a5fa', 'top-center'),
-    annPx('pro-status-filter', 3760, 1800, 1768, 470, 2064, 546, 'Statusfilter', '#38bdf8', 'top-center'),
+    annPx('pro-sort', 3760, 1800, 1408, 470, 1744, 546, 'Sorter', '#93a4dc', 'top-center'),
+    annPx('pro-status-filter', 3760, 1800, 1768, 470, 2064, 546, 'Statusfilter', '#5d76cb', 'top-center'),
     annPx('pro-actions', 3760, 1800, 2750, 470, 3699, 549, 'Lagrede visninger/handlinger', '#f59e0b', 'top-center'),
-    annPx('compare-bulk', 3760, 1800, 2263, 763, 3721, 1645, 'Pro-detaljer', '#60a5fa', 'top-center'),
+    annPx('compare-bulk', 3760, 1800, 2263, 763, 3721, 1645, 'Pro-detaljer', '#93a4dc', 'top-center'),
   ],
   'What is the Audition Pool?': [
     // pool-view.png (3760x1880)
     annPx('pool-tab', 3760, 1880, 387, 127, 611, 204, 'Maler', '#f59e0b', 'top-center'),
-    annPx('pool-info', 3760, 1880, 22, 768, 3738, 1120, 'Pool-info', '#9e8cf8', 'top-center'),
-    annPx('pool-area', 3760, 1880, 22, 1130, 3738, 1870, 'Pool-område', '#60a5fa', 'top-center'),
+    annPx('pool-info', 3760, 1880, 22, 768, 3738, 1120, 'Pool-info', '#93a4dc', 'top-center'),
+    annPx('pool-area', 3760, 1880, 22, 1130, 3738, 1870, 'Pool-område', '#93a4dc', 'top-center'),
   ],
   'Managing pool templates': [
     // pool-template-closeup.png (3760x1520)
@@ -462,7 +462,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   ],
   'Export to CSV': [
     // overview-header.png (3760x640)
-    annPx('export-btn', 3760, 640, 2838, 115, 3133, 211, 'Eksporter', '#60a5fa', 'top-center'),
+    annPx('export-btn', 3760, 640, 2838, 115, 3133, 211, 'Eksporter', '#93a4dc', 'top-center'),
   ],
   'Keyboard shortcuts': [
     // keyboard-shortcuts-modal.png (3320x1800)
@@ -471,7 +471,7 @@ const SECTION_ANNOTATION_PRESETS: Record<string, GuideStepAnnotation[]> = {
   'Guide and shortcut discoverability': [
     // overview-header.png (3760x640)
     annPx('guide-btn', 3760, 640, 2563, 115, 2737, 211, 'Guide', '#22c55e', 'top-center'),
-    annPx('kbd-trigger', 3760, 640, 2748, 115, 2828, 211, '?', '#60a5fa', 'top-center'),
+    annPx('kbd-trigger', 3760, 640, 2748, 115, 2828, 211, '?', '#93a4dc', 'top-center'),
   ],
 };
 
@@ -987,7 +987,7 @@ const STEPS_EN: Step[] = [
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
               {[
                 { label: 'Total', color: '#ffb800' },
-                { label: 'Upcoming', color: 'var(--role-cyan, #00d4ff)' },
+                { label: 'Upcoming', color: 'var(--role-cyan, #5d76cb)' },
                 { label: 'Scheduled', color: '#94a3b8' },
                 { label: 'Completed', color: '#10b981' },
                 { label: 'Cancelled', color: '#ef4444' },
@@ -1453,9 +1453,9 @@ const STEPS_EN: Step[] = [
                     label={row.scope}
                     sx={{
                       ml: 'auto',
-                      bgcolor: row.scope === 'Pro view' ? 'rgba(136, 117, 235,0.2)' : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${row.scope === 'Pro view' ? 'rgba(136, 117, 235,0.45)' : 'rgba(255,255,255,0.15)'}`,
-                      color: row.scope === 'Pro view' ? '#c6bdf4' : 'rgba(255,255,255,0.72)',
+                      bgcolor: row.scope === 'Pro view' ? 'rgba(93, 118, 203,0.2)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${row.scope === 'Pro view' ? 'rgba(93, 118, 203,0.45)' : 'rgba(255,255,255,0.15)'}`,
+                      color: row.scope === 'Pro view' ? '#c3cbe6' : 'rgba(255,255,255,0.72)',
                     }}
                   />
                 </Box>
@@ -1606,7 +1606,7 @@ export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
         aria-labelledby="audition-guide-title"
         PaperProps={{
           sx: {
-            bgcolor: '#100b1e',
+            bgcolor: '#2a3152',
             backgroundImage: 'none',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: isMobile ? 0 : 2,

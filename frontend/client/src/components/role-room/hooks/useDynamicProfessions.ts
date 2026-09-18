@@ -20,16 +20,16 @@ export interface ProfessionConfig {
 
 const DEFAULT_PROFESSIONS: DynamicProfession[] = [
   { id: 'photographer', name: 'Fotograf', icon: 'camera', color: '#10b981', description: 'Profesjonell fotograf', isActive: true },
-  { id: 'videographer', name: 'Videograf', icon: 'video', color: '#8875eb', description: 'Profesjonell videograf', isActive: true },
+  { id: 'videographer', name: 'Videograf', icon: 'video', color: '#5d76cb', description: 'Profesjonell videograf', isActive: true },
   { id: 'director', name: 'Regissør', icon: 'movie', color: '#ff6b35', description: 'Film- og videoregissør', isActive: true },
-  { id: 'editor', name: 'Redigerer', icon: 'edit', color: '#3b82f6', description: 'Video- og bilderedigerer', isActive: true },
+  { id: 'editor', name: 'Redigerer', icon: 'edit', color: '#3f51b5', description: 'Video- og bilderedigerer', isActive: true },
 ];
 
 const PROFESSION_CONFIGS: Record<string, ProfessionConfig> = {
   photographer: { id: 'photographer', name: 'Fotograf', icon: 'camera_alt', color: '#10b981', features: ['gallery', 'editing', 'presets'], defaultProjectType: 'photo' },
-  videographer: { id: 'videographer', name: 'Videograf', icon: 'videocam', color: '#8875eb', features: ['timeline', 'color', 'audio'], defaultProjectType: 'video' },
+  videographer: { id: 'videographer', name: 'Videograf', icon: 'videocam', color: '#5d76cb', features: ['timeline', 'color', 'audio'], defaultProjectType: 'video' },
   director: { id: 'director', name: 'Regissør', icon: 'movie', color: '#ff6b35', features: ['storyboard', 'casting', 'scheduling'], defaultProjectType: 'film' },
-  editor: { id: 'editor', name: 'Redigerer', icon: 'edit', color: '#3b82f6', features: ['timeline', 'effects', 'export'], defaultProjectType: 'edit' },
+  editor: { id: 'editor', name: 'Redigerer', icon: 'edit', color: '#3f51b5', features: ['timeline', 'effects', 'export'], defaultProjectType: 'edit' },
 };
 
 export function useDynamicProfessions() {

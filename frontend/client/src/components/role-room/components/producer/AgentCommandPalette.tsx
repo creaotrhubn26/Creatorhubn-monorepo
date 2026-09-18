@@ -126,7 +126,7 @@ export default function AgentCommandPalette({
       maxWidth="xs"
       PaperProps={{
         sx: {
-          bgcolor: 'rgba(10, 5, 21,0.98)',
+          bgcolor: 'rgba(27, 18, 44,0.98)',
           border: RR_COLORS.accentBorder,
           borderRadius: 2,
           backgroundImage: 'none',
@@ -143,7 +143,7 @@ export default function AgentCommandPalette({
           borderBottom: '1px solid rgba(148,163,184,0.18)',
         }}
       >
-        <SearchIcon sx={{ color: RR_COLORS.accent ?? 'var(--role-cyan, #22d3ee)', fontSize: 20 }} />
+        <SearchIcon sx={{ color: RR_COLORS.accent ?? 'var(--role-cyan, #5d76cb)', fontSize: 20 }} />
         <InputBase
           inputRef={inputRef}
           value={query}
@@ -189,8 +189,8 @@ export default function AgentCommandPalette({
                     mx: 1,
                     borderRadius: 1.2,
                     color: '#e2e8f0',
-                    '&.Mui-selected': { bgcolor: 'rgba(34,211,238,0.12)' },
-                    '&.Mui-selected:hover': { bgcolor: 'rgba(34,211,238,0.18)' },
+                    '&.Mui-selected': { bgcolor: 'rgba(93, 118, 203,0.12)' },
+                    '&.Mui-selected:hover': { bgcolor: 'rgba(93, 118, 203,0.18)' },
                   }}
                 >
                   <Typography sx={{ fontSize: '0.88rem' }}>{row.label}</Typography>

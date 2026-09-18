@@ -98,7 +98,7 @@ interface KanbanCardProps {
 
 const statusColumns: { id: ShotStatus; label: string; color: string; icon: React.ReactNode }[] = [
   { id: 'not_started', label: 'Venter', color: '#9ca3af', icon: <TaskIcon fontSize="small" /> },
-  { id: 'in_progress', label: 'Pågår', color: '#38bdf8', icon: <InProgressIcon fontSize="small" /> },
+  { id: 'in_progress', label: 'Pågår', color: '#5d76cb', icon: <InProgressIcon fontSize="small" /> },
   { id: 'completed', label: 'Fullført', color: '#22c55e', icon: <CompleteIcon fontSize="small" /> },
 ];
 
@@ -111,8 +111,8 @@ const priorityConfig: Record<ShotPriority, { label: string; color: string; bgCol
 const blockerConfig: Record<ShotBlocker, { label: string; color: string; bgColor: string }> = {
   none: { label: 'Ingen blokkering', color: '#9ca3af', bgColor: 'rgba(156,163,175,0.14)' },
   equipment: { label: 'Venter på utstyr', color: '#f59e0b', bgColor: 'rgba(245,158,11,0.16)' },
-  location: { label: 'Venter på location', color: '#06b6d4', bgColor: 'rgba(6,182,212,0.16)' },
-  talent: { label: 'Venter på talent', color: '#8875eb', bgColor: 'rgba(136, 117, 235,0.16)' },
+  location: { label: 'Venter på location', color: '#3f51b5', bgColor: 'rgba(63, 81, 181,0.16)' },
+  talent: { label: 'Venter på talent', color: '#5d76cb', bgColor: 'rgba(93, 118, 203,0.16)' },
 };
 
 const presetLabels: Record<DashboardFilterPreset, string> = {
@@ -188,8 +188,8 @@ const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, children }) => {
         overflowY: 'auto',
         p: 1,
         borderRadius: 2,
-        border: isOver ? '2px dashed rgba(56,189,248,0.55)' : '2px solid transparent',
-        bgcolor: isOver ? 'rgba(56,189,248,0.08)' : 'transparent',
+        border: isOver ? '2px dashed rgba(93, 118, 203,0.55)' : '2px solid transparent',
+        bgcolor: isOver ? 'rgba(93, 118, 203,0.08)' : 'transparent',
         transition: 'all 0.15s ease',
       }}
     >
@@ -231,7 +231,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
         border: '1px solid rgba(255,255,255,0.08)',
         '&:hover': {
           borderColor: 'rgba(255,255,255,0.18)',
-          boxShadow: '0 8px 22px rgba(10, 5, 21,0.45)',
+          boxShadow: '0 8px 22px rgba(27, 18, 44,0.45)',
         },
       }}
     >
@@ -242,7 +242,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
           </Typography>
           {shot.reservedBy && (
             <Tooltip title={`Reservert av ${shot.reservedByName ?? 'annen bruker'}`}>
-              <LockIcon sx={{ fontSize: 16, color: '#9e8cf8' }} />
+              <LockIcon sx={{ fontSize: 16, color: '#93a4dc' }} />
             </Tooltip>
           )}
         </Stack>
@@ -265,11 +265,11 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             <Chip
               size="small"
               label={`Avh.: ${dependencyCount}`}
-              icon={<DependencyIcon sx={{ color: `${hasDependencyRisk ? '#ef4444' : '#38bdf8'} !important` }} />}
+              icon={<DependencyIcon sx={{ color: `${hasDependencyRisk ? '#ef4444' : '#5d76cb'} !important` }} />}
               sx={{
-                bgcolor: hasDependencyRisk ? 'rgba(239,68,68,0.16)' : 'rgba(56,189,248,0.16)',
-                color: hasDependencyRisk ? '#ef4444' : '#38bdf8',
-                border: `1px solid ${hasDependencyRisk ? '#ef4444' : '#38bdf8'}44`,
+                bgcolor: hasDependencyRisk ? 'rgba(239,68,68,0.16)' : 'rgba(93, 118, 203,0.16)',
+                color: hasDependencyRisk ? '#ef4444' : '#5d76cb',
+                border: `1px solid ${hasDependencyRisk ? '#ef4444' : '#5d76cb'}44`,
                 height: 20,
               }}
             />
@@ -296,12 +296,12 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
           ) : (
             <Chip
               size="small"
-              icon={<PersonIcon sx={{ color: '#8875eb !important' }} />}
+              icon={<PersonIcon sx={{ color: '#5d76cb !important' }} />}
               label="Ledig"
               sx={{
-                bgcolor: 'rgba(136, 117, 235,0.15)',
-                color: '#8875eb',
-                border: '1px dashed rgba(136, 117, 235,0.45)',
+                bgcolor: 'rgba(93, 118, 203,0.15)',
+                color: '#5d76cb',
+                border: '1px dashed rgba(93, 118, 203,0.45)',
                 height: 20,
               }}
             />
@@ -1176,21 +1176,21 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#0a0515',
+        bgcolor: '#1b122c',
         minHeight: 0,
       }}
     >
       <Box sx={{ p: { xs: 1.5, md: 2 }, borderBottom: '1px solid rgba(255,255,255,0.09)' }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            <CalendarIcon sx={{ color: '#38bdf8', fontSize: 24 }} />
+            <CalendarIcon sx={{ color: '#5d76cb', fontSize: 24 }} />
             <Typography variant="h6" sx={{ color: '#f8fafc', fontWeight: 700 }}>
               Team Dashboard
             </Typography>
             <Chip
               size="small"
               label={activeCrewSegment === 'technical' ? `Teknisk • ${TECHNICAL_CREW_SUBGROUP_LABELS[technicalSubgroup]}` : 'Alle team'}
-              sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.35)' }}
+              sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#5d76cb', border: '1px solid rgba(93, 118, 203,0.35)' }}
             />
           </Stack>
 
@@ -1208,7 +1208,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               </IconButton>
             </Tooltip>
             <Tooltip title="Callsheet">
-              <IconButton aria-label="Åpne callsheet" onClick={() => setShowCallSheetDrawer(true)} sx={{ color: '#9e8cf8' }}>
+              <IconButton aria-label="Åpne callsheet" onClick={() => setShowCallSheetDrawer(true)} sx={{ color: '#93a4dc' }}>
                 <CallSheetIcon />
               </IconButton>
             </Tooltip>
@@ -1223,7 +1223,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               </Alert>
             )}
             {missingAvailabilityMembers.length > 0 && (
-              <Alert severity="info" sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: 'var(--role-cyan, #7dd3fc)' }}>
+              <Alert severity="info" sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: 'var(--role-cyan, #93a4dc)' }}>
                 {missingAvailabilityMembers.length} tekniske crewmedlemmer mangler tilgjengelighetsdata.
               </Alert>
             )}
@@ -1270,13 +1270,13 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>SLA risiko</Typography>
               <Typography sx={{ color: '#fb7185', fontWeight: 700, fontSize: 24 }}>{stats.criticalRisk}</Typography>
             </Paper>
-            <Paper sx={{ p: 1, bgcolor: 'rgba(56,189,248,0.14)' }}>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(93, 118, 203,0.14)' }}>
               <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Gj.snitt estimat</Typography>
-              <Typography sx={{ color: '#38bdf8', fontWeight: 700, fontSize: 24 }}>{stats.averageEstimated.toFixed(0)}m</Typography>
+              <Typography sx={{ color: '#5d76cb', fontWeight: 700, fontSize: 24 }}>{stats.averageEstimated.toFixed(0)}m</Typography>
             </Paper>
-            <Paper sx={{ p: 1, bgcolor: 'rgba(136, 117, 235,0.14)' }}>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(93, 118, 203,0.14)' }}>
               <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Teknisk readiness</Typography>
-              <Typography sx={{ color: '#c6bdf4', fontWeight: 700, fontSize: 24 }}>{readinessScore}%</Typography>
+              <Typography sx={{ color: '#c3cbe6', fontWeight: 700, fontSize: 24 }}>{readinessScore}%</Typography>
             </Paper>
           </Box>
 
@@ -1307,8 +1307,8 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
             sx={{
               minHeight: 40,
               '& .MuiTab-root': { color: 'rgba(248,250,252,0.7)', minHeight: 40, textTransform: 'none' },
-              '& .Mui-selected': { color: '#38bdf8', fontWeight: 600 },
-              '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
+              '& .Mui-selected': { color: '#5d76cb', fontWeight: 600 },
+              '& .MuiTabs-indicator': { bgcolor: '#5d76cb' },
             }}
           >
             <Tab icon={<KanbanIcon />} iconPosition="start" label={isMobile ? '' : 'Kanban'} value="kanban" />
@@ -1335,7 +1335,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                   color: '#f8fafc',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
-                  '&.Mui-focused fieldset': { borderColor: '#38bdf8' },
+                  '&.Mui-focused fieldset': { borderColor: '#5d76cb' },
                 },
               }}
             />
@@ -1600,7 +1600,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                   if (!activeItem) return null;
                   const priority = priorityConfig[activeItem.shot.priority ?? 'important'];
                   return (
-                    <Card sx={{ width: 280, bgcolor: '#0f172a', border: `1px solid ${priority.color}`, boxShadow: '0 12px 32px rgba(10, 5, 21,0.55)' }}>
+                    <Card sx={{ width: 280, bgcolor: '#0f172a', border: `1px solid ${priority.color}`, boxShadow: '0 12px 32px rgba(27, 18, 44,0.55)' }}>
                       <CardContent sx={{ p: 1.25 }}>
                         <Typography variant="body2" sx={{ color: '#f8fafc', fontWeight: 600 }}>
                           {activeItem.shot.description || activeItem.shot.shotType}
@@ -1629,7 +1629,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                       variant="outlined"
                       startIcon={<AddIcon />}
                       onClick={assignUnassignedShotsToTechnical}
-                      sx={{ borderColor: 'rgba(56,189,248,0.45)', color: 'var(--role-cyan, #7dd3fc)' }}
+                      sx={{ borderColor: 'rgba(93, 118, 203,0.45)', color: 'var(--role-cyan, #93a4dc)' }}
                     >
                       Bulk-tilordne
                     </Button>
@@ -1638,7 +1638,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                       variant="outlined"
                       startIcon={<AutoBalanceIcon />}
                       onClick={autoBalanceAssignments}
-                      sx={{ borderColor: 'rgba(136, 117, 235,0.45)', color: '#c6bdf4' }}
+                      sx={{ borderColor: 'rgba(93, 118, 203,0.45)', color: '#c3cbe6' }}
                     >
                       Auto-balanser
                     </Button>
@@ -1726,8 +1726,8 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                       <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap' }}>
                         <Chip size="small" label={`${load.assigned} tilordnet`} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f8fafc' }} />
                         <Chip size="small" label={`${load.blocked} blokkert`} sx={{ bgcolor: 'rgba(245,158,11,0.14)', color: '#f59e0b' }} />
-                        <Chip size="small" label={`Kapasitet ${load.capacity}`} sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: '#38bdf8' }} />
-                        <Chip size="small" label={`Utnyttelse ${(load.utilization * 100).toFixed(0)}%`} sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#c6bdf4' }} />
+                        <Chip size="small" label={`Kapasitet ${load.capacity}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#5d76cb' }} />
+                        <Chip size="small" label={`Utnyttelse ${(load.utilization * 100).toFixed(0)}%`} sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#c3cbe6' }} />
                       </Stack>
 
                       <Box sx={{ mt: 1 }}>
@@ -1761,7 +1761,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                               return next;
                             });
                           }}
-                          sx={{ minWidth: 'auto', color: 'var(--role-cyan, #7dd3fc)', p: 0 }}
+                          sx={{ minWidth: 'auto', color: 'var(--role-cyan, #93a4dc)', p: 0 }}
                         >
                           {isExpanded ? 'Skjul' : 'Detaljer'}
                         </Button>
@@ -1777,7 +1777,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                                 key={shot.id}
                                 sx={{
                                   p: 0.75,
-                                  bgcolor: 'rgba(10, 5, 21,0.65)',
+                                  bgcolor: 'rgba(27, 18, 44,0.65)',
                                   borderLeft: `3px solid ${priority.color}`,
                                   border: '1px solid rgba(255,255,255,0.08)',
                                 }}
@@ -1799,14 +1799,14 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                 })}
 
                 {workloadByMember.unassigned?.assigned > 0 && (
-                  <Paper sx={{ p: 1.25, bgcolor: 'rgba(136, 117, 235,0.12)', border: '1px solid rgba(136, 117, 235,0.45)' }}>
+                  <Paper sx={{ p: 1.25, bgcolor: 'rgba(93, 118, 203,0.12)', border: '1px solid rgba(93, 118, 203,0.45)' }}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                      <Avatar sx={{ bgcolor: '#8875eb', width: 34, height: 34 }}>
+                      <Avatar sx={{ bgcolor: '#5d76cb', width: 34, height: 34 }}>
                         <PersonIcon fontSize="small" />
                       </Avatar>
                       <Box sx={{ flex: 1 }}>
                         <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: 14 }}>Ufordelte shots</Typography>
-                        <Typography variant="caption" sx={{ color: '#c6bdf4' }}>{workloadByMember.unassigned.assigned} trenger eier</Typography>
+                        <Typography variant="caption" sx={{ color: '#c3cbe6' }}>{workloadByMember.unassigned.assigned} trenger eier</Typography>
                       </Box>
                       <Button
                         size="small"
@@ -1816,7 +1816,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                           setSelectedMemberForAssign(scopedCrewMembers[0]?.id ?? '');
                           setAssignDialogOpen(true);
                         }}
-                        sx={{ borderColor: 'rgba(136, 117, 235,0.5)', color: '#e0dbfa' }}
+                        sx={{ borderColor: 'rgba(93, 118, 203,0.5)', color: '#dfe4f3' }}
                       >
                         Tilordne
                       </Button>
@@ -1830,7 +1830,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                   <Typography sx={{ color: '#f8fafc', fontWeight: 600, mb: 0.75 }}>Estimat vs faktisk tid per rolle</Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 0.75 }}>
                     {perRoleTimeVariance.map((entry) => (
-                      <Paper key={entry.role} sx={{ p: 0.75, bgcolor: 'rgba(10, 5, 21,0.7)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <Paper key={entry.role} sx={{ p: 0.75, bgcolor: 'rgba(27, 18, 44,0.7)', border: '1px solid rgba(255,255,255,0.07)' }}>
                         <Typography variant="caption" sx={{ color: '#cbd5e1' }}>{getRoleLabel(entry.role)}</Typography>
                         <Typography variant="body2" sx={{ color: '#f8fafc', fontWeight: 600 }}>
                           {entry.estimated.toFixed(0)}m / {entry.actual.toFixed(0)}m
@@ -1872,7 +1872,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               </Paper>
 
               <Paper sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                <Box sx={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(10, 5, 21,0.7)' }}>
+                <Box sx={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(27, 18, 44,0.7)' }}>
                   <Box sx={{ width: 220, p: 1, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
                     <Typography variant="caption" sx={{ color: '#cbd5e1', fontWeight: 700 }}>Shot</Typography>
                   </Box>
@@ -2103,12 +2103,12 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                             sx={{
                               minWidth: 170,
                               color: '#f8fafc',
-                              bgcolor: shot.assigneeId ? 'rgba(56,189,248,0.14)' : 'rgba(136, 117, 235,0.14)',
+                              bgcolor: shot.assigneeId ? 'rgba(93, 118, 203,0.14)' : 'rgba(93, 118, 203,0.14)',
                               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
                             }}
                             renderValue={(value) => {
                               if (!value) {
-                                return <Typography sx={{ color: '#c6bdf4', fontSize: 12 }}>Ledig</Typography>;
+                                return <Typography sx={{ color: '#c3cbe6', fontSize: 12 }}>Ledig</Typography>;
                               }
                               const member = memberById.get(String(value));
                               return member?.name ?? String(value);
@@ -2185,7 +2185,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                 activityLog.map((entry) => (
                   <ListItem key={entry.id} sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <ListItemAvatar>
-                      <Avatar sx={{ width: 28, height: 28, bgcolor: '#38bdf8', fontSize: 12 }}>{entry.userName.charAt(0)}</Avatar>
+                      <Avatar sx={{ width: 28, height: 28, bgcolor: '#5d76cb', fontSize: 12 }}>{entry.userName.charAt(0)}</Avatar>
                     </ListItemAvatar>
                     <ListItemText
                       primary={`${entry.userName}: ${entry.action}`}
@@ -2307,11 +2307,11 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <CallSheetIcon sx={{ color: '#9e8cf8' }} />
+              <CallSheetIcon sx={{ color: '#93a4dc' }} />
               <Typography sx={{ fontWeight: 600 }}>Daglig teknisk callsheet</Typography>
             </Stack>
             <Stack direction="row" spacing={0.5}>
-              <Button size="small" variant="outlined" startIcon={<SendIcon />} onClick={sendCallSheet} sx={{ borderColor: 'rgba(56,189,248,0.5)', color: 'var(--role-cyan, #7dd3fc)' }}>
+              <Button size="small" variant="outlined" startIcon={<SendIcon />} onClick={sendCallSheet} sx={{ borderColor: 'rgba(93, 118, 203,0.5)', color: 'var(--role-cyan, #93a4dc)' }}>
                 Send callsheet
               </Button>
               <IconButton onClick={() => setShowCallSheetDrawer(false)} aria-label="Lukk callsheet" sx={{ color: '#f8fafc' }}>

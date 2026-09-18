@@ -90,7 +90,7 @@ const normalizeTimeOfDay = (scene: SceneBreakdown): string => {
 
 const getBarBackground = (scene: RuntimeScene, selected: boolean): string => {
   if (selected) {
-    return 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)';
+    return 'linear-gradient(135deg, #3f51b5 0%, #0284c7 100%)';
   }
 
   if (scene.hasIssues) {
@@ -105,7 +105,7 @@ const getBarBackground = (scene: RuntimeScene, selected: boolean): string => {
 
   return scene.timeOfDay === 'NIGHT'
     ? 'linear-gradient(135deg, #334155 0%, #1e293b 100%)'
-    : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)';
+    : 'linear-gradient(135deg, #3f51b5 0%, #4a5f89 100%)';
 };
 
 const conflictIconBySeverity = {
@@ -415,7 +415,7 @@ export const TimelineView: FC<TimelineViewProps> = ({
             Fargekode
           </Typography>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
-            <Chip size="small" label="INT dag" sx={{ bgcolor: '#06b6d4', color: '#fff' }} />
+            <Chip size="small" label="INT dag" sx={{ bgcolor: '#3f51b5', color: '#fff' }} />
             <Chip size="small" label="INT natt" sx={{ bgcolor: '#334155', color: '#fff' }} />
             <Chip size="small" label="EXT dag" sx={{ bgcolor: '#f59e0b', color: '#111827' }} />
             <Chip size="small" label="EXT natt" sx={{ bgcolor: '#1d4ed8', color: '#fff' }} />
@@ -590,7 +590,7 @@ export const TimelineView: FC<TimelineViewProps> = ({
                                 gap: 1,
                                 background: getBarBackground(row, isSelected),
                                 boxShadow: isSelected
-                                  ? '0 8px 24px rgba(14, 165, 233, 0.34)'
+                                  ? '0 8px 24px rgba(63, 81, 181, 0.34)'
                                   : '0 4px 14px rgba(15, 23, 42, 0.22)',
                                 transition: 'all 0.2s ease',
                                 '&:hover': {

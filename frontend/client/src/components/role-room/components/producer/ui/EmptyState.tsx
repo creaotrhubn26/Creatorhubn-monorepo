@@ -45,7 +45,7 @@ export interface EmptyStateProps {
 }
 
 const HINT_TONE: Record<EmptyStateHintTone, { bg: string; color: string; border: string }> = {
-  accent: { bg: RR_COLORS.accentBg, color: RR_COLORS.accent, border: '1px solid rgba(34,211,238,0.3)' },
+  accent: { bg: RR_COLORS.accentBg, color: RR_COLORS.accent, border: '1px solid rgba(93, 118, 203,0.3)' },
   positive: { bg: 'rgba(134,239,172,0.12)', color: RR_COLORS.positive, border: '1px solid rgba(134,239,172,0.3)' },
   neutral: { bg: 'rgba(148,163,184,0.12)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.25)' },
   warning: { bg: 'rgba(251,191,36,0.12)', color: RR_COLORS.warning, border: '1px solid rgba(251,191,36,0.3)' },
@@ -127,7 +127,7 @@ export default function EmptyState({
               bgcolor: RR_COLORS.accentBg,
               color: RR_COLORS.accent,
               boxShadow: 'none',
-              '&:hover': { bgcolor: 'rgba(34,211,238,0.22)', boxShadow: 'none' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.22)', boxShadow: 'none' },
             }}
           >
             {action.label}

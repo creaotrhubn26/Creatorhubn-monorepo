@@ -37,7 +37,7 @@ export function RoleRoomMark({
           backgroundRepeat: 'no-repeat',
           // Lysende lilla glød så merket «synes mer» (som på hero-bildet):
           // radial halo (0 0-blur) i to lag.
-          filter: 'drop-shadow(0 0 13px rgba(136, 117, 235,0.75)) drop-shadow(0 0 5px rgba(198, 189, 244,0.55))',
+          filter: 'drop-shadow(0 0 13px rgba(93, 118, 203,0.75)) drop-shadow(0 0 5px rgba(195, 203, 230,0.55))',
         }}
       />
       <Box sx={{ minWidth: 0 }}>
@@ -45,11 +45,11 @@ export function RoleRoomMark({
           THE ROLE ROOM
         </Typography>
         {surface ? (
-          <Typography sx={{ fontSize: markSize * 0.22, color: '#c6bdf4', letterSpacing: 0.6, lineHeight: 1, mt: 0.25 }}>
+          <Typography sx={{ fontSize: markSize * 0.22, color: '#c3cbe6', letterSpacing: 0.6, lineHeight: 1, mt: 0.25 }}>
             {surface}
           </Typography>
         ) : showTagline ? (
-          <Typography sx={{ fontSize: markSize * 0.2, color: '#c6bdf4', letterSpacing: 0.4, lineHeight: 1, mt: 0.25 }}>
+          <Typography sx={{ fontSize: markSize * 0.2, color: '#c3cbe6', letterSpacing: 0.4, lineHeight: 1, mt: 0.25 }}>
             Casting. Roles. Together.
           </Typography>
         ) : null}

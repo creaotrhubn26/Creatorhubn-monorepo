@@ -134,7 +134,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
       PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-        <ShieldIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
+        <ShieldIcon sx={{ color: 'var(--role-cyan, #5d76cb)' }} />
         <Stack spacing={0.2}>
           <Typography sx={{ fontWeight: 800 }}>
             Bekreft for å se passord
@@ -160,8 +160,8 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
               mb: 1.8,
               borderBottom: '1px solid rgba(148,163,184,0.2)',
               '& .MuiTab-root': { color: 'rgba(226,232,240,0.6)', textTransform: 'none', minHeight: 36 },
-              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
-              '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+              '& .MuiTab-root.Mui-selected': { color: 'var(--role-cyan, #5d76cb)' },
+              '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #5d76cb)' },
             }}
           >
             <Tab value="totp" label="Authenticator-app" icon={<ShieldIcon fontSize="small" />} iconPosition="start" />
@@ -201,10 +201,10 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
                 variant="outlined"
                 sx={{
                   textTransform: 'none',
-                  color: 'var(--role-cyan, #22d3ee)',
-                  borderColor: 'rgba(34,211,238,0.4)',
+                  color: 'var(--role-cyan, #5d76cb)',
+                  borderColor: 'rgba(93, 118, 203,0.4)',
                   alignSelf: 'flex-start',
-                  '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
+                  '&:hover': { borderColor: 'var(--role-cyan, #5d76cb)', bgcolor: 'rgba(93, 118, 203,0.08)' },
                 }}
               >
                 {sendingEmail ? 'Sender…' : 'Send kode på e-post'}
@@ -242,7 +242,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
         )}
 
         {error ? (
-          <Alert severity={error.startsWith('Dev-mode') ? 'info' : 'error'} sx={{ mt: 1.6, bgcolor: error.startsWith('Dev-mode') ? 'rgba(96,165,250,0.1)' : 'rgba(239,68,68,0.1)' }}>
+          <Alert severity={error.startsWith('Dev-mode') ? 'info' : 'error'} sx={{ mt: 1.6, bgcolor: error.startsWith('Dev-mode') ? 'rgba(147, 164, 220,0.1)' : 'rgba(239,68,68,0.1)' }}>
             {error}
           </Alert>
         ) : null}
@@ -264,9 +264,9 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: 'var(--role-cyan, #22d3ee)',
+            bgcolor: 'var(--role-cyan, #5d76cb)',
             color: '#0b1226',
-            '&:hover': { bgcolor: '#06b6d4' },
+            '&:hover': { bgcolor: '#3f51b5' },
           }}
         >
           {submitting ? 'Bekrefter…' : 'Bekreft'}

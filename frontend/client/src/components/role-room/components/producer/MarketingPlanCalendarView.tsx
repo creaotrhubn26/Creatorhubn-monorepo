@@ -22,10 +22,10 @@ interface Props {
 const FORMAT_COLOR: Record<MarketingPlanPost['format'], string> = {
   reel: '#DD2A7B',
   carousel: '#f58529',
-  image: 'var(--role-cyan, #22d3ee)',
-  story: '#8875eb',
+  image: 'var(--role-cyan, #5d76cb)',
+  story: '#5d76cb',
   tiktok: '#ec4899',
-  linkedin_post: '#3b82f6',
+  linkedin_post: '#3f51b5',
   youtube_short: '#ef4444',
 };
 
@@ -166,8 +166,8 @@ function PostTile({ post, readOnly, onClickPost }: {
                 sx={{
                   height: 12, fontSize: '0.55rem', fontWeight: 800,
                   bgcolor: post.lastEditedByKind === 'client'
-                    ? 'rgba(34,211,238,0.18)' : 'rgba(236,72,153,0.18)',
-                  color: post.lastEditedByKind === 'client' ? '#67e8f9' : '#f9a8d4',
+                    ? 'rgba(93, 118, 203,0.18)' : 'rgba(236,72,153,0.18)',
+                  color: post.lastEditedByKind === 'client' ? '#93a4dc' : '#f9a8d4',
                   '& .MuiChip-label': { px: 0.5 },
                   position: 'absolute', top: 2, right: 2,
                 }} />
@@ -186,7 +186,7 @@ const gridSx = {
 };
 
 const cellSx = {
-  bgcolor: 'rgba(10, 5, 21,0.6)',
+  bgcolor: 'rgba(27, 18, 44,0.6)',
   border: '1px solid rgba(148,163,184,0.12)',
   borderRadius: 1,
   p: 0.8,

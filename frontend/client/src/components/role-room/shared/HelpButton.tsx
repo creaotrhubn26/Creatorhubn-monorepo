@@ -96,7 +96,7 @@ const KIND_LABELS: Record<WhatsNewKind, string> = {
 
 const KIND_COLORS: Record<WhatsNewKind, string> = {
   feature: '#F5B82E',
-  improvement: '#7DD3FC',
+  improvement: '#93a4dc',
   fix: '#86EFAC',
 };
 

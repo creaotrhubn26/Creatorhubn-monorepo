@@ -105,7 +105,7 @@ export default function LinkedInPublishAsSelector({
     >
       <Typography
         sx={{
-          color: 'var(--role-cyan, #7dd3fc)',
+          color: 'var(--role-cyan, #93a4dc)',
           fontSize: '0.66rem',
           fontWeight: 700,
           textTransform: 'uppercase',

@@ -315,7 +315,7 @@ export default function ProducerEconomyPanel({
         p: { xs: 1.5, md: 2 },
         borderRadius: 2,
         border: '1px solid rgba(148,163,184,0.22)',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(10, 5, 21,0.82) 100%)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(27, 18, 44,0.82) 100%)',
       }}
     >
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap">
@@ -357,12 +357,12 @@ export default function ProducerEconomyPanel({
               p: { xs: 1.2, md: 1.5 },
               borderRadius: 2,
               border: '1px solid rgba(148,163,184,0.18)',
-              bgcolor: 'rgba(10, 5, 21,0.45)',
+              bgcolor: 'rgba(27, 18, 44,0.45)',
             }}
           >
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} divider={<Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(148,163,184,0.14)', display: { xs: 'none', sm: 'block' } }} />}>
               {stat('Estimert', totals.estimate, '#86efac')}
-              {stat('Godkjent', totals.approved, 'var(--role-cyan, #7dd3fc)')}
+              {stat('Godkjent', totals.approved, 'var(--role-cyan, #93a4dc)')}
               {stat('Faktisk', totals.actual, overApproved ? '#fca5a5' : '#fde68a')}
               <Box sx={{ flex: 1, minWidth: 120 }}>
                 <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -419,10 +419,10 @@ export default function ProducerEconomyPanel({
               py: 1.1,
               minHeight: 52,
               borderRadius: 2.5,
-              background: 'linear-gradient(135deg, #8875eb 0%, #6249df 100%)',
+              background: 'linear-gradient(135deg, #5d76cb 0%, #4b3d8f 100%)',
               color: '#fff',
-              boxShadow: '0 8px 24px rgba(136, 117, 235,0.35)',
-              '&:hover': { background: 'linear-gradient(135deg, #6249df 0%, #472bd4 100%)' },
+              boxShadow: '0 8px 24px rgba(93, 118, 203,0.35)',
+              '&:hover': { background: 'linear-gradient(135deg, #4b3d8f 0%, #3e3180 100%)' },
             }}
           >
             Send budsjett til kunden
@@ -525,8 +525,8 @@ export default function ProducerEconomyPanel({
               <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>{PHASE_LABELS[phaseKey]}</Typography>
               <Stack direction="row" spacing={0.75} flexWrap="wrap">
                 <Chip size="small" label={`Estimat ${formatCurrency(phaseTotals[phaseKey].estimate)}`} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
-                <Chip size="small" label={`Godkjent ${formatCurrency(phaseTotals[phaseKey].approved)}`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
-                <Chip size="small" label={`Faktisk ${formatCurrency(phaseTotals[phaseKey].actual)}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }} />
+                <Chip size="small" label={`Godkjent ${formatCurrency(phaseTotals[phaseKey].approved)}`} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
+                <Chip size="small" label={`Faktisk ${formatCurrency(phaseTotals[phaseKey].actual)}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }} />
                 {(() => {
                   const v = computeVariance(phaseTotals[phaseKey].approved, phaseTotals[phaseKey].actual);
                   const t = varianceColor(v);
@@ -566,7 +566,7 @@ export default function ProducerEconomyPanel({
                         justifyContent="space-between"
                         spacing={1}
                         onClick={() => toggleCategoryCollapsed(collapseKey)}
-                        sx={{ cursor: 'pointer', p: 1, '&:hover': { background: 'rgba(136, 117, 235,0.06)' } }}
+                        sx={{ cursor: 'pointer', p: 1, '&:hover': { background: 'rgba(93, 118, 203,0.06)' } }}
                       >
                         <Stack direction="row" alignItems="center" spacing={1}>
                           <IconButton size="small" sx={{ color: 'rgba(226,232,240,0.7)', p: 0.25 }}>
@@ -583,8 +583,8 @@ export default function ProducerEconomyPanel({
                         </Stack>
                         <Stack direction="row" spacing={0.6} flexWrap="wrap">
                           <Chip size="small" label={`Est ${formatCurrency(groupTotals.estimate)}`} sx={{ bgcolor: 'rgba(148,163,184,0.10)', color: '#e2e8f0', height: 22 }} />
-                          <Chip size="small" label={`Godkj ${formatCurrency(groupTotals.approved)}`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', height: 22 }} />
-                          <Chip size="small" label={`Faktisk ${formatCurrency(groupTotals.actual)}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.14)', color: '#e0dbfa', height: 22 }} />
+                          <Chip size="small" label={`Godkj ${formatCurrency(groupTotals.approved)}`} sx={{ bgcolor: 'rgba(63, 81, 181,0.14)', color: '#c3cbe6', height: 22 }} />
+                          <Chip size="small" label={`Faktisk ${formatCurrency(groupTotals.actual)}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: '#dfe4f3', height: 22 }} />
                           <Chip size="small" label={`Avvik ${formatVariance(groupVariance)}`} sx={{ bgcolor: groupVarianceTone.bg, color: groupVarianceTone.fg, fontWeight: 700, height: 22 }} />
                         </Stack>
                       </Stack>
@@ -598,7 +598,7 @@ export default function ProducerEconomyPanel({
                                 key={item.id}
                                 direction="column"
                                 spacing={1}
-                                sx={{ border: '1px solid rgba(148,163,184,0.14)', borderRadius: 1.25, p: 1, background: 'rgba(10, 5, 21,0.4)' }}
+                                sx={{ border: '1px solid rgba(148,163,184,0.14)', borderRadius: 1.25, p: 1, background: 'rgba(27, 18, 44,0.4)' }}
                               >
                                 <Stack
                                   direction={{ xs: 'column', md: 'row' }}
@@ -616,8 +616,8 @@ export default function ProducerEconomyPanel({
                                   </Box>
                                   <Stack direction="row" spacing={0.75} flexWrap="wrap">
                                     <Chip size="small" label={`Est ${formatCurrency(Number(item.estimate) || 0)}`} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
-                                    <Chip size="small" label={`Godkj ${formatCurrency(Number(item.approved) || 0)}`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
-                                    <Chip size="small" label={`Faktisk ${formatCurrency(Number(item.actual) || 0)}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.16)', color: '#e0dbfa' }} />
+                                    <Chip size="small" label={`Godkj ${formatCurrency(Number(item.approved) || 0)}`} sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }} />
+                                    <Chip size="small" label={`Faktisk ${formatCurrency(Number(item.actual) || 0)}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.16)', color: '#dfe4f3' }} />
                                     <Chip size="small" label={`Avvik ${formatVariance(itemVariance)}`} sx={{ bgcolor: itemVarTone.bg, color: itemVarTone.fg, fontWeight: 700 }} />
                                     <Chip size="small" label={getProducerEconomyStatusLabel(item.status)} />
                                     <Chip

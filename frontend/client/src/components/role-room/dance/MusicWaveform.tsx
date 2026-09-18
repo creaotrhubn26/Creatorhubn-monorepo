@@ -55,7 +55,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
       ws = WaveSurfer.create({
         container: containerRef.current,
         media: mediaElement,
-        waveColor: 'rgba(158, 140, 248,0.55)',
+        waveColor: 'rgba(147, 164, 220,0.55)',
         progressColor: PURPLE,
         cursorColor: danceFlowColors.successPrimary,
         cursorWidth: 2,
@@ -106,7 +106,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
           height,
           borderRadius: 1,
           bgcolor: danceFlowColors.bgInset,
-          border: '1px dashed rgba(136, 117, 235,0.25)',
+          border: '1px dashed rgba(93, 118, 203,0.25)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -125,7 +125,7 @@ export const MusicWaveform: React.FC<MusicWaveformProps> = ({
         position: 'relative',
         bgcolor: danceFlowColors.bgInset,
         borderRadius: 1,
-        border: '1px solid rgba(136, 117, 235,0.25)',
+        border: '1px solid rgba(93, 118, 203,0.25)',
         overflow: 'hidden',
       }}
     >

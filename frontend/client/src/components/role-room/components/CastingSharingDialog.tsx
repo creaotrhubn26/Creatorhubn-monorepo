@@ -158,9 +158,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             bgcolor: 'rgba(255,255,255,0.1)',
           },
           '&.Mui-selected': {
-            bgcolor: 'rgba(60, 39, 165,0.2)',
+            bgcolor: 'rgba(50, 18, 122,0.2)',
             '&:hover': {
-              bgcolor: 'rgba(60, 39, 165,0.3)',
+              bgcolor: 'rgba(50, 18, 122,0.3)',
             },
           },
         },
@@ -428,7 +428,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     const schedulesCompletedPercent = totalSchedules > 0 ? Math.round((completedSchedules / totalSchedules) * 100) : 0;
 
     // SVG Icon helpers
-    const getIconSVG = (iconName: string, size: number = 24, color: string = 'var(--role-cyan, #00d4ff)'): string => {
+    const getIconSVG = (iconName: string, size: number = 24, color: string = 'var(--role-cyan, #5d76cb)'): string => {
       const icons: Record<string, string> = {
         // Assignment/Clipboard icon for Roles
         assignment: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -510,7 +510,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     }
     .header {
       background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      border-bottom: 5px solid #00d4ff;
+      border-bottom: 5px solid #5d76cb;
       padding: 30px 35px;
       margin: -50px -60px 40px -60px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.05);
@@ -518,7 +518,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     .title {
       font-size: 36px;
       font-weight: 800;
-      color: #00d4ff;
+      color: #5d76cb;
       margin-bottom: 10px;
       letter-spacing: -1px;
       line-height: 1.2;
@@ -531,7 +531,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     }
     .summary {
       background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      border-left: 6px solid #00d4ff;
+      border-left: 6px solid #5d76cb;
       padding: 30px;
       margin-bottom: 45px;
       border-radius: 12px;
@@ -540,7 +540,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     .summary-title {
       font-size: 20px;
       font-weight: 700;
-      color: #00d4ff;
+      color: #5d76cb;
       margin-bottom: 25px;
       letter-spacing: -0.3px;
     }
@@ -569,7 +569,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     .summary-number {
       font-size: 36px;
       font-weight: 800;
-      color: #00d4ff;
+      color: #5d76cb;
       display: block;
       margin-bottom: 8px;
       line-height: 1;
@@ -593,7 +593,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     }
     .progress-fill {
       height: 100%;
-      background: linear-gradient(90deg, #00d4ff 0%, #00b8e6 100%);
+      background: linear-gradient(90deg, #5d76cb 0%, #00b8e6 100%);
       border-radius: 10px;
       transition: width 0.3s ease;
     }
@@ -647,7 +647,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       border-collapse: collapse;
     }
     th {
-      background: linear-gradient(135deg, #00d4ff 0%, #00b8e6 100%);
+      background: linear-gradient(135deg, #5d76cb 0%, #00b8e6 100%);
       color: white;
       font-weight: 700;
       padding: 18px 20px;
@@ -689,17 +689,17 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       letter-spacing: 0.5px;
     }
     .badge-draft { background: #94a3b8; color: white; }
-    .badge-open { background: #00d4ff; color: white; }
-    .badge-casting { background: #3b82f6; color: white; }
+    .badge-open { background: #5d76cb; color: white; }
+    .badge-casting { background: #3f51b5; color: white; }
     .badge-filled { background: #10b981; color: white; }
     .badge-cancelled { background: #ef4444; color: white; }
     .badge-pending { background: #f59e0b; color: white; }
-    .badge-requested { background: #00d4ff; color: white; }
-    .badge-shortlist { background: #8875eb; color: white; }
+    .badge-requested { background: #5d76cb; color: white; }
+    .badge-shortlist { background: #5d76cb; color: white; }
     .badge-selected { background: #10b981; color: white; }
     .badge-confirmed { background: #10b981; color: white; }
     .badge-rejected { background: #ef4444; color: white; }
-    .badge-scheduled { background: #00d4ff; color: white; }
+    .badge-scheduled { background: #5d76cb; color: white; }
     .badge-completed { background: #10b981; color: white; }
     .empty-state {
       padding: 50px;
@@ -712,7 +712,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       background: #f8fafc;
       padding: 25px 30px;
       border-radius: 10px;
-      border-left: 5px solid #00d4ff;
+      border-left: 5px solid #5d76cb;
       color: #475569;
       line-height: 1.9;
       margin-bottom: 40px;
@@ -1113,7 +1113,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <ShareIcon sx={{ fontSize: '1.5rem', color: 'var(--role-cyan, #00d4ff)' }} />
+            <ShareIcon sx={{ fontSize: '1.5rem', color: 'var(--role-cyan, #5d76cb)' }} />
             <Typography variant="h6">Del prosjekt</Typography>
           </Box>
           <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -1133,9 +1133,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                 startIcon={<AddIcon />}
                 onClick={() => setShowAddForm(true)}
                 sx={{
-                  borderColor: 'var(--role-cyan, #00d4ff)',
-                  color: 'var(--role-cyan, #00d4ff)',
-                  '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(0,212,255,0.1)' },
+                  borderColor: 'var(--role-cyan, #5d76cb)',
+                  color: 'var(--role-cyan, #5d76cb)',
+                  '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(93, 118, 203,0.1)' },
                 }}
               >
                 Legg til bruker
@@ -1169,7 +1169,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         color: '#fff',
                         '& fieldset': { borderColor: emailError ? '#f44336' : 'rgba(255,255,255,0.3)' },
                         '&:hover fieldset': { borderColor: emailError ? '#f44336' : 'rgba(255,255,255,0.5)' },
-                        '&.Mui-focused fieldset': { borderColor: emailError ? '#f44336' : 'var(--role-cyan, #00d4ff)' },
+                        '&.Mui-focused fieldset': { borderColor: emailError ? '#f44336' : 'var(--role-cyan, #5d76cb)' },
                       },
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                       '& .MuiFormHelperText-root': {
@@ -1230,7 +1230,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                       onClick={handleAddUser}
                       startIcon={<AddIcon />}
                       sx={{
-                        bgcolor: 'var(--role-cyan, #00d4ff)',
+                        bgcolor: 'var(--role-cyan, #5d76cb)',
                         color: '#000',
                         fontWeight: 600,
                         '&:hover': { bgcolor: '#00b8e6' },
@@ -1285,8 +1285,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                             label={getRoleLabel(userRole.role)}
                             size="small"
                             sx={{
-                              bgcolor: 'rgba(0,212,255,0.2)',
-                              color: 'var(--role-cyan, #00d4ff)',
+                              bgcolor: 'rgba(93, 118, 203,0.2)',
+                              color: 'var(--role-cyan, #5d76cb)',
                               fontWeight: 600,
                               mt: 0.5,
                             }}
@@ -1322,9 +1322,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
               onClick={handleExport}
               startIcon={<FileDownloadIcon />}
               sx={{
-                borderColor: 'var(--role-cyan, #00d4ff)',
-                color: 'var(--role-cyan, #00d4ff)',
-                '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(0,212,255,0.1)' },
+                borderColor: 'var(--role-cyan, #5d76cb)',
+                color: 'var(--role-cyan, #5d76cb)',
+                '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(93, 118, 203,0.1)' },
               }}
             >
               Eksporter prosjekt (PDF)
@@ -1372,7 +1372,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           >
             <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <FileDownloadIcon sx={{ fontSize: '1.5rem', color: 'var(--role-cyan, #00d4ff)' }} />
+                <FileDownloadIcon sx={{ fontSize: '1.5rem', color: 'var(--role-cyan, #5d76cb)' }} />
                 <Typography variant="h6">Velg elementer for eksport</Typography>
               </Box>
             </DialogTitle>
@@ -1397,7 +1397,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         borderColor: 'rgba(255,255,255,0.3)',
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: 'var(--role-cyan, #00d4ff)',
+                        borderColor: 'var(--role-cyan, #5d76cb)',
                       },
                     },
                   }}
@@ -1407,9 +1407,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     size="small"
                     onClick={handleSelectAllExportOptions}
                     sx={{
-                      color: 'var(--role-cyan, #00d4ff)',
-                      borderColor: 'var(--role-cyan, #00d4ff)',
-                      '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(0,212,255,0.1)' },
+                      color: 'var(--role-cyan, #5d76cb)',
+                      borderColor: 'var(--role-cyan, #5d76cb)',
+                      '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(93, 118, 203,0.1)' },
                     }}
                     variant="outlined"
                   >
@@ -1435,8 +1435,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeSummary}
                         onChange={() => handleToggleExportOption('includeSummary')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1452,8 +1452,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeRoles}
                         onChange={() => handleToggleExportOption('includeRoles')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1469,8 +1469,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeCandidates}
                         onChange={() => handleToggleExportOption('includeCandidates')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1486,8 +1486,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeSchedules}
                         onChange={() => handleToggleExportOption('includeSchedules')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1503,8 +1503,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeCrew}
                         onChange={() => handleToggleExportOption('includeCrew')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1520,8 +1520,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeLocations}
                         onChange={() => handleToggleExportOption('includeLocations')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1537,8 +1537,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeProps}
                         onChange={() => handleToggleExportOption('includeProps')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1554,8 +1554,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         checked={exportOptions.includeSharedUsers}
                         onChange={() => handleToggleExportOption('includeSharedUsers')}
                         sx={{
-                          color: 'var(--role-cyan, #00d4ff)',
-                          '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
+                          color: 'var(--role-cyan, #5d76cb)',
+                          '&.Mui-checked': { color: 'var(--role-cyan, #5d76cb)' },
                         }}
                       />
                     }
@@ -1582,7 +1582,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                 startIcon={<FileDownloadIcon />}
                 disabled={Object.values(exportOptions).every(v => !v)}
                 sx={{
-                  bgcolor: 'var(--role-cyan, #00d4ff)',
+                  bgcolor: 'var(--role-cyan, #5d76cb)',
                   color: '#000',
                   fontWeight: 600,
                   '&:hover': { bgcolor: '#00b8e6' },

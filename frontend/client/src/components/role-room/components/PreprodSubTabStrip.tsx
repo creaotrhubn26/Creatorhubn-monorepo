@@ -51,21 +51,21 @@ export const PreprodSubTabStrip = ({
         gap: 1,
         px: { xs: 1.25, sm: 1.75 },
         py: 0.65,
-        borderBottom: '1px solid rgba(125,211,252,0.18)',
-        bgcolor: 'rgba(56,189,248,0.06)',
+        borderBottom: '1px solid rgba(147, 164, 220,0.18)',
+        bgcolor: 'rgba(93, 118, 203,0.06)',
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-        <ConstructionIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #7dd3fc)' }} />
+        <ConstructionIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #93a4dc)' }} />
         <Typography
           sx={{
             fontSize: '0.68rem',
             fontWeight: 800,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
-            color: 'var(--role-cyan, #7dd3fc)',
+            color: 'var(--role-cyan, #93a4dc)',
           }}
         >
           Pre-prod
@@ -88,15 +88,15 @@ export const PreprodSubTabStrip = ({
                 height: 24,
                 fontWeight: 700,
                 fontSize: '0.74rem',
-                bgcolor: isActive ? '#0ea5e9' : 'rgba(14,165,233,0.12)',
-                color: isActive ? '#082f49' : '#bae6fd',
-                border: `1px solid ${isActive ? '#38bdf8' : 'rgba(56,189,248,0.32)'}`,
+                bgcolor: isActive ? '#3f51b5' : 'rgba(63, 81, 181,0.12)',
+                color: isActive ? '#2a3d56' : '#c3cbe6',
+                border: `1px solid ${isActive ? '#5d76cb' : 'rgba(93, 118, 203,0.32)'}`,
                 cursor: isActive ? 'default' : 'pointer',
                 transition: 'all 0.14s',
                 '&:hover': isActive ? {} : {
-                  bgcolor: 'rgba(14,165,233,0.22)',
-                  borderColor: 'rgba(56,189,248,0.55)',
-                  color: '#e0f2fe',
+                  bgcolor: 'rgba(63, 81, 181,0.22)',
+                  borderColor: 'rgba(93, 118, 203,0.55)',
+                  color: '#dfe4f3',
                 },
                 whiteSpace: 'nowrap',
               }}

@@ -160,7 +160,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                 borderRadius: 1.5,
                 display: 'grid',
                 placeItems: 'center',
-                bgcolor: 'rgba(0, 212, 255, 0.15)',
+                bgcolor: 'rgba(93, 118, 203, 0.15)',
                 border: `1px solid ${branding.colors.accent}`,
               }}
             >
@@ -224,7 +224,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                 gap: 1,
               }}
             >
-              <Chip label={activeTabLabel} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: branding.colors.accent }} />
+              <Chip label={activeTabLabel} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: branding.colors.accent }} />
               <Chip label={`${filteredTemplates.length} treff`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
               <Chip label={`${totalTemplateCount} totalt`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
               <Chip
@@ -307,7 +307,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                               {structure.description}
                             </Typography>
                             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                              <Chip label={`${structure.beats.length} beats`} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.14)', color: branding.colors.accent }} />
+                              <Chip label={`${structure.beats.length} beats`} size="small" sx={{ bgcolor: 'rgba(93, 118, 203,0.14)', color: branding.colors.accent }} />
                               <Chip label={`${structure.totalPages} sider`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
                             </Stack>
                           </CardContent>
@@ -386,7 +386,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                                 label={tag}
                                 size="small"
                                 sx={{
-                                  bgcolor: 'rgba(0,212,255,0.1)',
+                                  bgcolor: 'rgba(93, 118, 203,0.1)',
                                   color: branding.colors.accent,
                                   fontSize: '0.7rem',
                                   height: 21,
@@ -581,7 +581,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                         <Chip
                           label={typeof beat.page === 'number' ? `s.${beat.page}` : `s.${beat.page.min}-${beat.page.max}`}
                           size="small"
-                          sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: branding.colors.accent, fontWeight: 600 }}
+                          sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: branding.colors.accent, fontWeight: 600 }}
                         />
                         <Typography sx={{ color: branding.colors.textPrimary, fontWeight: 500 }}>
                           {beat.name}

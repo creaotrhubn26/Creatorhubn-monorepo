@@ -59,10 +59,10 @@ interface DataSourcesPanelProps {
 
 const STATE_META: Record<DataSource['state'], { color: string; bg: string; label: string; Icon: React.ElementType }> = {
   not_connected: { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', label: 'Ikke koblet', Icon: LinkIcon },
-  connected: { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', label: 'Koblet', Icon: LinkIcon },
+  connected: { color: '#93a4dc', bg: 'rgba(147, 164, 220,0.12)', label: 'Koblet', Icon: LinkIcon },
   expired: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: 'Token utløpt', Icon: ErrorIcon },
   needs_config: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', label: 'Mangler config', Icon: WarningIcon },
-  needs_test: { color: '#c6bdf4', bg: 'rgba(158, 140, 248,0.12)', label: 'Ikke testet', Icon: WarningIcon },
+  needs_test: { color: '#c3cbe6', bg: 'rgba(147, 164, 220,0.12)', label: 'Ikke testet', Icon: WarningIcon },
   test_failed: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: 'Test feilet', Icon: ErrorIcon },
   verified: { color: '#34d399', bg: 'rgba(52,211,153,0.12)', label: 'Verifisert', Icon: VerifiedIcon },
 };
@@ -241,14 +241,14 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
         sx={{
           mb: 1.4,
           py: 0.7,
-          bgcolor: 'rgba(96,165,250,0.08)',
-          border: '1px solid rgba(96,165,250,0.2)',
+          bgcolor: 'rgba(147, 164, 220,0.08)',
+          border: '1px solid rgba(147, 164, 220,0.2)',
           color: 'rgba(226,232,240,0.78)',
           fontSize: '0.78rem',
           '& .MuiAlert-message': { py: 0.4 },
         }}
       >
-        <strong style={{ color: '#bfdbfe' }}>To-stegs-modell:</strong> Først kobler du klient-konto
+        <strong style={{ color: '#c3cbe6' }}>To-stegs-modell:</strong> Først kobler du klient-konto
         i <strong>Kontoer-fanen</strong> (OAuth-invite, business manager). Her i Datakilder
         konfigurerer du KPI-henting (property-ID-er, OAuth-scopes for analytics) — én plattform kan
         ha begge deler.
@@ -439,7 +439,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
             onClick={() => void handleSaveConfig()}
             disabled={savingConfig || !configValue.trim()}
             startIcon={savingConfig ? <CircularProgress size={12} /> : null}
-            sx={{ background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)' }}
+            sx={{ background: 'linear-gradient(135deg, #5d76cb 0%, #3f51b5 100%)' }}
           >
             {savingConfig ? 'Lagrer…' : 'Lagre'}
           </Button>
@@ -604,8 +604,8 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
               sx={{
                 textTransform: 'none',
                 fontSize: '0.74rem',
-                color: 'var(--role-cyan, #22d3ee)',
-                '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
+                color: 'var(--role-cyan, #5d76cb)',
+                '&:hover': { bgcolor: 'rgba(93, 118, 203,0.08)' },
               }}
             >
               Be klient

@@ -54,7 +54,7 @@ export const SCENE_STATUS_LABELS: Record<NarrativeSceneStatus, string> = {
 
 export const SCENE_STATUS_COLORS: Record<NarrativeSceneStatus, string> = {
   idea: '#6b7280',
-  in_progress: '#60a5fa',
+  in_progress: '#93a4dc',
   in_review: narrativeColors.warning,
   changes_requested: narrativeColors.error,
   approved: narrativeColors.accent,

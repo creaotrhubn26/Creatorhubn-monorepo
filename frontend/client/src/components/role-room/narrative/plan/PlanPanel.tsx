@@ -18,7 +18,7 @@ import { AutosaveField, EmptyHint, sceneFieldSx } from '../scenes/sceneUi';
 import { SCENE_STATUS_COLORS } from '../scenes/sceneOps';
 import { ZOOM_LABELS, ZOOM_LEVELS, dateInputToIso, dateToPercent, isoToDateInput, laneRows, monthBands, planWindow, sortMilestones, weekBands, type PlanBar, type SortKey, type ZoomLevel } from './planOps';
 
-const MS_STATUS_COLOR: Record<NarrativeMilestoneStatus, string> = { planned: '#9ca3af', in_progress: '#60a5fa', done: narrativeColors.accent, blocked: narrativeColors.error };
+const MS_STATUS_COLOR: Record<NarrativeMilestoneStatus, string> = { planned: '#9ca3af', in_progress: '#93a4dc', done: narrativeColors.accent, blocked: narrativeColors.error };
 const menuProps = { PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } };
 const LABEL_W = 180;
 

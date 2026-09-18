@@ -160,13 +160,13 @@ export default function CarouselImageSwapDialog({
           value={tab}
           onChange={(_, v) => setTab(v as 'gallery' | 'ai' | 'stock')}
           sx={{
-            borderBottom: '1px solid rgba(136, 117, 235,0.22)',
+            borderBottom: '1px solid rgba(93, 118, 203,0.22)',
             '& .MuiTab-root': {
               color: 'rgba(226,232,240,0.65)',
               textTransform: 'none',
             },
-            '& .Mui-selected': { color: '#22d3ee !important' },
-            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
+            '& .Mui-selected': { color: '#5d76cb !important' },
+            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #5d76cb)' },
           }}
         >
           <Tab value="gallery" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Mine galleri" />
@@ -194,7 +194,7 @@ export default function CarouselImageSwapDialog({
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       color: '#e2e8f0',
-                      '& fieldset': { borderColor: 'rgba(136, 117, 235,0.22)' },
+                      '& fieldset': { borderColor: 'rgba(93, 118, 203,0.22)' },
                     },
                   }}
                 />
@@ -209,7 +209,7 @@ export default function CarouselImageSwapDialog({
               </Stack>
               {galleryLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress sx={{ color: '#9e8cf8' }} />
+                  <CircularProgress sx={{ color: '#93a4dc' }} />
                 </Box>
               ) : galleryMatches.length === 0 ? (
                 <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.65)' }}>
@@ -245,7 +245,7 @@ export default function CarouselImageSwapDialog({
                             label={tag}
                             size="small"
                             sx={{
-                              bgcolor: 'rgba(136, 117, 235,0.7)',
+                              bgcolor: 'rgba(93, 118, 203,0.7)',
                               color: '#fff',
                               fontSize: 10,
                               height: 18,
@@ -274,7 +274,7 @@ export default function CarouselImageSwapDialog({
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#e2e8f0',
-                    '& fieldset': { borderColor: 'rgba(136, 117, 235,0.22)' },
+                    '& fieldset': { borderColor: 'rgba(93, 118, 203,0.22)' },
                   },
                 }}
               />
@@ -285,8 +285,8 @@ export default function CarouselImageSwapDialog({
                   disabled={aiLoading || !prompt.trim()}
                   startIcon={aiLoading ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
                   sx={{
-                    bgcolor: '#8875eb',
-                    '&:hover': { bgcolor: '#6249df' },
+                    bgcolor: '#5d76cb',
+                    '&:hover': { bgcolor: '#4b3d8f' },
                     textTransform: 'none',
                   }}
                 >
@@ -306,7 +306,7 @@ export default function CarouselImageSwapDialog({
                       width: '100%',
                       maxWidth: 480,
                       borderRadius: 1.5,
-                      border: '1px solid rgba(136, 117, 235,0.22)',
+                      border: '1px solid rgba(93, 118, 203,0.22)',
                     }}
                   />
                   <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.65)' }}>
@@ -317,7 +317,7 @@ export default function CarouselImageSwapDialog({
                     onClick={applyAi}
                     sx={{
                       bgcolor: '#34d399',
-                      color: '#0a0515',
+                      color: '#1b122c',
                       fontWeight: 700,
                       '&:hover': { bgcolor: '#10b981' },
                       textTransform: 'none',

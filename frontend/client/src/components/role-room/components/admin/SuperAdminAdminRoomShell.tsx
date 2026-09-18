@@ -62,7 +62,7 @@ const SuperAdminAdminRoomShell: React.FC = () => {
 
   if (!ready) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#0a0515' }}>
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#1b122c' }}>
         <CircularProgress size={28} sx={{ color: GOLD }} />
       </Box>
     );
@@ -85,7 +85,7 @@ const SuperAdminAdminRoomShell: React.FC = () => {
     <ErrorBoundary componentName="superadmin-admin-room-shell">
     <Suspense
       fallback={
-        <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#0a0515' }}>
+        <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#1b122c' }}>
           <CircularProgress size={28} sx={{ color: GOLD }} />
         </Box>
       }

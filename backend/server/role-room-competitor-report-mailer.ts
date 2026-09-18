@@ -23,7 +23,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   opportunity: '#22c55e',
   threat: '#ef4444',
   gap: '#fbbf24',
-  trend: '#60a5fa',
+  trend: '#93a4dc',
 };
 const CATEGORY_LABEL: Record<string, string> = {
   opportunity: 'Mulighet',
@@ -52,7 +52,7 @@ const MOMENTUM_LABEL: Record<string, string> = {
 };
 const MOMENTUM_COLORS: Record<string, string> = {
   'fast-growth': '#22c55e',
-  steady: '#60a5fa',
+  steady: '#93a4dc',
   flat: '#94a3b8',
   declining: '#ef4444',
 };
@@ -118,7 +118,7 @@ export function renderCompetitorReportHtml(report: CompetitorReport, opts: {
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background:#f8fafc; padding:24px;">
     <div style="max-width:680px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-      <div style="background:linear-gradient(135deg,#9e8cf8 0%,#6249df 100%); color:#fff; padding:24px 32px;">
+      <div style="background:linear-gradient(135deg,#93a4dc 0%,#4b3d8f 100%); color:#fff; padding:24px 32px;">
         <div style="font-size:11px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; opacity:0.9;">${opts.brandName || 'The Role Room'} · Marketing Cockpit</div>
         <h1 style="margin:6px 0 0; font-size:24px; font-weight:800;">AI Konkurrent-rapport</h1>
         <div style="font-size:13px; opacity:0.9; margin-top:6px;">
@@ -128,8 +128,8 @@ export function renderCompetitorReportHtml(report: CompetitorReport, opts: {
       </div>
 
       <div style="padding:24px 32px;">
-        <div style="background:linear-gradient(135deg,rgba(136, 117, 235,0.08),rgba(136, 117, 235,0.16)); border:1px solid rgba(136, 117, 235,0.25); border-radius:6px; padding:14px 16px; margin-bottom:20px;">
-          <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#6249df; margin-bottom:6px;">Sammendrag</div>
+        <div style="background:linear-gradient(135deg,rgba(93, 118, 203,0.08),rgba(93, 118, 203,0.16)); border:1px solid rgba(93, 118, 203,0.25); border-radius:6px; padding:14px 16px; margin-bottom:20px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#4b3d8f; margin-bottom:6px;">Sammendrag</div>
           <div style="color:#1e293b; line-height:1.65; font-size:14px;">${escapeHtml(report.summary)}</div>
         </div>
 
@@ -194,7 +194,7 @@ export function renderCompetitorReportHtml(report: CompetitorReport, opts: {
 
         ${opts.reportUrl ? `
           <div style="margin-top:32px; text-align:center;">
-            <a href="${opts.reportUrl}" style="display:inline-block; background:#6249df; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:700; font-size:14px;">
+            <a href="${opts.reportUrl}" style="display:inline-block; background:#4b3d8f; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:700; font-size:14px;">
               Åpne i Marketing Cockpit →
             </a>
           </div>

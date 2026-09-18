@@ -1075,6 +1075,6 @@ function htmlPage(title: string, message: string): string {
   return `<!DOCTYPE html><html lang="no"><head><meta charset="UTF-8"><title>${title}</title>
 <style>body{font-family:-apple-system,sans-serif;background:#0a0a0f;color:#e5e7eb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}
 .box{max-width:480px;text-align:center;padding:32px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:rgba(255,255,255,0.03)}
-h1{color:#fff;margin:0 0 12px}p{color:rgba(229,231,235,0.75);line-height:1.6;margin:0}a{color:#9e8cf8}</style>
+h1{color:#fff;margin:0 0 12px}p{color:rgba(229,231,235,0.75);line-height:1.6;margin:0}a{color:#93a4dc}</style>
 </head><body><div class="box"><h1>${title}</h1><p>${message}</p><p style="margin-top:24px"><a href="https://theroleroom.com">← Tilbake til The Role Room</a></p></div></body></html>`;
 }

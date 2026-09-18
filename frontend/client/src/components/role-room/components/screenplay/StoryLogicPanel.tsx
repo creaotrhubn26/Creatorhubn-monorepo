@@ -289,7 +289,7 @@ type StartMode = 'idea' | 'character' | 'theme';
 const START_MODES: { id: StartMode; label: string; Icon: SvgIconComponent; iconColor: string; description: string; initialPhase: number }[] = [
   { id: 'idea',      label: 'Start med idé',     Icon: LightbulbIcon,    iconColor: '#fbbf24', description: 'Jeg har et konsept eller premiss', initialPhase: 0 },
   { id: 'character', label: 'Start med karakter', Icon: TheaterComedyIcon, iconColor: '#f472b6', description: 'Jeg har en karakter i tankene',   initialPhase: 1 },
-  { id: 'theme',     label: 'Start med tema',    Icon: PsychologyIcon,   iconColor: '#9e8cf8', description: 'Jeg vet budskapet først',           initialPhase: 2 },
+  { id: 'theme',     label: 'Start med tema',    Icon: PsychologyIcon,   iconColor: '#93a4dc', description: 'Jeg vet budskapet først',           initialPhase: 2 },
 ];
 
 // ============================================================================
@@ -383,9 +383,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
   const syncStatusColor = useMemo(() => {
     const status = syncMeta?.status ?? 'idle';
     if (status === 'synced') return '#10b981';
-    if (status === 'saving' || status === 'loading') return '#60a5fa';
+    if (status === 'saving' || status === 'loading') return '#93a4dc';
     if (status === 'conflict') return '#f59e0b';
-    if (status === 'local_only') return '#9e8cf8';
+    if (status === 'local_only') return '#93a4dc';
     if (status === 'error') return '#ef4444';
     return '#9ca3af';
   }, [syncMeta]);
@@ -429,9 +429,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     return {
       '& .MuiOutlinedInput-root': {
         '& fieldset': {
-          borderColor: '#3b82f6 !important',
+          borderColor: '#3f51b5 !important',
           borderWidth: '2px !important',
-          boxShadow: '0 0 12px rgba(59, 130, 246, 0.4)',
+          boxShadow: '0 0 12px rgba(63, 81, 181, 0.4)',
         },
       },
       transition: 'all 0.3s ease',
@@ -1218,11 +1218,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             transition: 'border-color 220ms ease-out',
           },
           '&.Mui-focused fieldset': {
-            borderColor: '#60a5fa',
+            borderColor: '#93a4dc',
             borderWidth: '1.5px',
           },
           '&.Mui-focused': {
-            boxShadow: '0 0 0 4px rgba(96,165,250,0.16)',
+            boxShadow: '0 0 0 4px rgba(147, 164, 220,0.16)',
           },
         },
         // Scroll-margin slik at jumpToField-feltet ikke ender helt øverst
@@ -1290,7 +1290,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             onClick={saveToStorage}
             disabled={isSaving}
             sx={{
-              bgcolor: '#3b82f6',
+              bgcolor: '#3f51b5',
               '&:hover': { bgcolor: '#2563eb' },
             }}
           >
@@ -1304,7 +1304,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
         <Paper sx={{ p: 2, mb: 2, bgcolor: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ color: '#fff' }}>Versjonshistorikk</Typography>
-            <Button size="small" onClick={() => saveVersion()} startIcon={<SaveIcon />} sx={{ color: '#60a5fa', textTransform: 'none' }}>
+            <Button size="small" onClick={() => saveVersion()} startIcon={<SaveIcon />} sx={{ color: '#93a4dc', textTransform: 'none' }}>
               Lagre øyeblikksbilde
             </Button>
           </Box>
@@ -1318,7 +1318,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     <Typography variant="body2" sx={{ color: '#d4d4d8' }}>{v.label}</Typography>
                     <Typography variant="caption" sx={{ color: '#6b7280' }}>{new Date(v.timestamp).toLocaleString()}</Typography>
                   </Box>
-                  <Button size="small" onClick={() => restoreVersion(v)} sx={{ color: '#9e8cf8', textTransform: 'none', fontSize: '0.7rem' }}>
+                  <Button size="small" onClick={() => restoreVersion(v)} sx={{ color: '#93a4dc', textTransform: 'none', fontSize: '0.7rem' }}>
                     Gjenopprett
                   </Button>
                 </Box>
@@ -1334,11 +1334,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
           severity="info"
           onClose={() => setPremiseChangeAlert(null)}
           action={
-            <Button size="small" onClick={() => { saveVersion('Før premissendring'); setPremiseChangeAlert(null); }} sx={{ color: '#60a5fa', textTransform: 'none' }}>
+            <Button size="small" onClick={() => { saveVersion('Før premissendring'); setPremiseChangeAlert(null); }} sx={{ color: '#93a4dc', textTransform: 'none' }}>
               Lagre versjon
             </Button>
           }
-          sx={{ mb: 2, bgcolor: 'rgba(59,130,246,0.08)', color: '#93c5fd', '& .MuiAlert-icon': { color: '#3b82f6' } }}
+          sx={{ mb: 2, bgcolor: 'rgba(63, 81, 181,0.08)', color: '#93c5fd', '& .MuiAlert-icon': { color: '#3f51b5' } }}
         >
           {premiseChangeAlert}
         </Alert>
@@ -1368,7 +1368,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     width: '100%',
                     minHeight: 92,
                     px: 2, py: 1.5,
-                    '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(59,130,246,0.05)' },
+                    '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(63, 81, 181,0.05)' },
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -1384,7 +1384,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             size="small"
             onClick={() => setShowTemplates(!showTemplates)}
             endIcon={showTemplates ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            sx={{ color: '#9e8cf8', textTransform: 'none', mt: 1.5, fontSize: '0.8rem' }}
+            sx={{ color: '#93a4dc', textTransform: 'none', mt: 1.5, fontSize: '0.8rem' }}
           >
             Eller start fra en mal
           </Button>
@@ -1398,12 +1398,12 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                   onDelete={() => applyTemplate(tpl)}
                   deleteIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
                   sx={{
-                    bgcolor: 'rgba(136, 117, 235,0.08)',
-                    color: '#9e8cf8',
-                    border: '1px solid rgba(136, 117, 235,0.2)',
+                    bgcolor: 'rgba(93, 118, 203,0.08)',
+                    color: '#93a4dc',
+                    border: '1px solid rgba(93, 118, 203,0.2)',
                     width: '100%',
                     justifyContent: 'space-between',
-                    '&:hover': { bgcolor: 'rgba(136, 117, 235,0.15)' },
+                    '&:hover': { bgcolor: 'rgba(93, 118, 203,0.15)' },
                   }}
                 />
               ))}
@@ -1511,8 +1511,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             <Box key={phase.key}>
               <Card
                 sx={{
-                  bgcolor: expandedPhase === phase.index ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)',
-                  border: expandedPhase === phase.index ? '1px solid rgba(59,130,246,0.45)' : '1px solid rgba(255,255,255,0.09)',
+                  bgcolor: expandedPhase === phase.index ? 'rgba(63, 81, 181,0.14)' : 'rgba(255,255,255,0.03)',
+                  border: expandedPhase === phase.index ? '1px solid rgba(63, 81, 181,0.45)' : '1px solid rgba(255,255,255,0.09)',
                   height: '100%',
                 }}
               >
@@ -1615,7 +1615,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     color: '#fff',
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3f51b5' },
                   },
                   '& .MuiInputLabel-root': { color: '#9ca3af' },
                 }}
@@ -1639,7 +1639,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3f51b5' },
                   }}
                 >
                   {GENRES.map((genre) => (
@@ -1660,7 +1660,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3f51b5' },
                   }}
                 >
                   {availableSubGenres.map((sub) => (
@@ -1693,11 +1693,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                         }}
                         disabled={state.locks.concept}
                         sx={{
-                          bgcolor: 'rgba(136, 117, 235, 0.1)',
-                          color: '#9e8cf8',
-                          border: '1px solid rgba(136, 117, 235, 0.3)',
-                          '& .MuiChip-icon': { color: '#9e8cf8' },
-                          '&:hover': { bgcolor: 'rgba(136, 117, 235, 0.2)' },
+                          bgcolor: 'rgba(93, 118, 203, 0.1)',
+                          color: '#93a4dc',
+                          border: '1px solid rgba(93, 118, 203, 0.3)',
+                          '& .MuiChip-icon': { color: '#93a4dc' },
+                          '&:hover': { bgcolor: 'rgba(93, 118, 203, 0.2)' },
                         }}
                       />
                     ))}
@@ -1741,14 +1741,14 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                           }
                         }}
                         sx={{
-                          bgcolor: state.concept.tone.includes(tone) ? '#3b82f620' : 'rgba(255,255,255,0.05)',
-                          color: state.concept.tone.includes(tone) ? '#60a5fa' : '#9ca3af',
-                          border: state.concept.tone.includes(tone) ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                          bgcolor: state.concept.tone.includes(tone) ? '#3f51b520' : 'rgba(255,255,255,0.05)',
+                          color: state.concept.tone.includes(tone) ? '#93a4dc' : '#9ca3af',
+                          border: state.concept.tone.includes(tone) ? '1px solid #3f51b5' : '1px solid rgba(255,255,255,0.1)',
                           cursor: state.locks.concept ? 'not-allowed' : 'pointer',
                           '&:hover': {
-                            bgcolor: state.locks.concept ? undefined : '#3b82f610',
+                            bgcolor: state.locks.concept ? undefined : '#3f51b510',
                           },
-                          '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: 2 },
+                          '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: 2 },
                         }}
                       />
                     ))}
@@ -1902,9 +1902,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
           {/* Reality Check Prompt — concept (#6) */}
           {conceptValidation.score >= 20 && conceptValidation.score < 70 && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(136, 117, 235,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(136, 117, 235,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-              <PsychologyIcon sx={{ fontSize: '1rem', color: '#9e8cf8', mt: 0.25, flexShrink: 0 }} aria-hidden />
-              <Typography variant="caption" sx={{ color: '#9e8cf8', fontStyle: 'italic' }}>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(93, 118, 203,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(93, 118, 203,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: '#93a4dc', mt: 0.25, flexShrink: 0 }} aria-hidden />
+              <Typography variant="caption" sx={{ color: '#93a4dc', fontStyle: 'italic' }}>
                 {conceptRealityPrompt}
               </Typography>
             </Box>
@@ -1935,7 +1935,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             number={2}
             title="Logline"
             purpose="Definer historiens DNA i én setning. Er den svak, bør du ikke gå videre."
-            icon={<CreateIcon sx={{ color: '#60a5fa' }} />}
+            icon={<CreateIcon sx={{ color: '#93a4dc' }} />}
             status={state.phaseStatus.logline}
             locked={state.locks.logline}
             onToggleLock={() => togglePhaseLock('logline')}
@@ -1947,9 +1947,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             severity="info"
             sx={{
               mb: 2,
-              bgcolor: 'rgba(59, 130, 246, 0.1)',
-              color: '#60a5fa',
-              '& .MuiAlert-icon': { color: '#3b82f6' },
+              bgcolor: 'rgba(63, 81, 181, 0.1)',
+              color: '#93a4dc',
+              '& .MuiAlert-icon': { color: '#3f51b5' },
             }}
           >
             <strong>Logline-formel:</strong> Når [HOVEDPERSON] må [MÅL], møter hen [ANTAGONISTISK KRAFT] — ellers [KONSEKVENSER].
@@ -2065,11 +2065,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 onClick={generateLogline}
                 disabled={state.locks.logline}
                 sx={{
-                  borderColor: 'var(--role-violet, #8875eb)',
-                  color: '#9e8cf8',
+                  borderColor: 'var(--role-violet, #5d76cb)',
+                  color: '#93a4dc',
                   '&:hover': {
-                    borderColor: '#9e8cf8',
-                    bgcolor: 'rgba(136, 117, 235, 0.1)',
+                    borderColor: '#93a4dc',
+                    bgcolor: 'rgba(93, 118, 203, 0.1)',
                   },
                 }}
               >
@@ -2171,9 +2171,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
           {/* Reality Check Prompt — logline (#6) */}
           {loglineValidation.score >= 20 && loglineValidation.score < 70 && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(136, 117, 235,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(136, 117, 235,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-              <PsychologyIcon sx={{ fontSize: '1rem', color: '#9e8cf8', mt: 0.25, flexShrink: 0 }} aria-hidden />
-              <Typography variant="caption" sx={{ color: '#9e8cf8', fontStyle: 'italic' }}>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(93, 118, 203,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(93, 118, 203,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: '#93a4dc', mt: 0.25, flexShrink: 0 }} aria-hidden />
+              <Typography variant="caption" sx={{ color: '#93a4dc', fontStyle: 'italic' }}>
                 {loglineRealityPrompt}
               </Typography>
             </Box>
@@ -2204,7 +2204,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             number={3}
             title="Tema og karakterintensjon"
             purpose="Gi historien mening. Dette hindrer at manuset blir hult eller episodisk."
-            icon={<PsychologyIcon sx={{ color: '#9e8cf8' }} />}
+            icon={<PsychologyIcon sx={{ color: '#93a4dc' }} />}
             status={state.phaseStatus.theme}
             locked={state.locks.theme}
             onToggleLock={() => togglePhaseLock('theme')}
@@ -2380,11 +2380,11 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     }}
                     disabled={state.locks.theme}
                     sx={{
-                      bgcolor: 'rgba(136, 117, 235, 0.1)',
-                      color: '#9e8cf8',
-                      border: '1px solid rgba(136, 117, 235, 0.3)',
-                      '& .MuiChip-icon': { color: '#9e8cf8' },
-                      '&:hover': { bgcolor: 'rgba(136, 117, 235, 0.2)' },
+                      bgcolor: 'rgba(93, 118, 203, 0.1)',
+                      color: '#93a4dc',
+                      border: '1px solid rgba(93, 118, 203, 0.3)',
+                      '& .MuiChip-icon': { color: '#93a4dc' },
+                      '&:hover': { bgcolor: 'rgba(93, 118, 203, 0.2)' },
                     }}
                   />
                 </Box>
@@ -2426,14 +2426,14 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                           }
                         }}
                         sx={{
-                          bgcolor: state.theme.emotionalJourney.includes(emotion) ? '#8875eb20' : 'rgba(255,255,255,0.05)',
-                          color: state.theme.emotionalJourney.includes(emotion) ? '#9e8cf8' : '#9ca3af',
-                          border: state.theme.emotionalJourney.includes(emotion) ? '1px solid #8875eb' : '1px solid rgba(255,255,255,0.1)',
+                          bgcolor: state.theme.emotionalJourney.includes(emotion) ? '#5d76cb20' : 'rgba(255,255,255,0.05)',
+                          color: state.theme.emotionalJourney.includes(emotion) ? '#93a4dc' : '#9ca3af',
+                          border: state.theme.emotionalJourney.includes(emotion) ? '1px solid #5d76cb' : '1px solid rgba(255,255,255,0.1)',
                           cursor: state.locks.theme ? 'not-allowed' : 'pointer',
                           '&:hover': {
-                            bgcolor: state.locks.theme ? undefined : '#8875eb10',
+                            bgcolor: state.locks.theme ? undefined : '#5d76cb10',
                           },
-                          '&:focus-visible': { outline: '2px solid #9e8cf8', outlineOffset: 2 },
+                          '&:focus-visible': { outline: '2px solid #93a4dc', outlineOffset: 2 },
                         }}
                       />
                     ))}
@@ -2441,8 +2441,8 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 </Box>
               ))}
               {state.theme.emotionalJourney.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(136, 117, 235, 0.1)', borderRadius: 2 }}>
-                  <Typography variant="body2" sx={{ color: '#9e8cf8' }}>
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(93, 118, 203, 0.1)', borderRadius: 2 }}>
+                  <Typography variant="body2" sx={{ color: '#93a4dc' }}>
                     Emosjonell bue: {state.theme.emotionalJourney.map((emotion) => nbLabel(emotion, EMOTION_LABELS_NB)).join(' → ')}
                   </Typography>
                 </Box>
@@ -2486,9 +2486,9 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
           {/* Reality Check Prompt — theme (#6) */}
           {themeValidation.score >= 20 && themeValidation.score < 70 && (
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(136, 117, 235,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(136, 117, 235,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-              <PsychologyIcon sx={{ fontSize: '1rem', color: '#9e8cf8', mt: 0.25, flexShrink: 0 }} aria-hidden />
-              <Typography variant="caption" sx={{ color: '#9e8cf8', fontStyle: 'italic' }}>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(93, 118, 203,0.06)', borderRadius: 2, borderLeft: '3px solid rgba(93, 118, 203,0.3)', display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <PsychologyIcon sx={{ fontSize: '1rem', color: '#93a4dc', mt: 0.25, flexShrink: 0 }} aria-hidden />
+              <Typography variant="caption" sx={{ color: '#93a4dc', fontStyle: 'italic' }}>
                 {themeRealityPrompt}
               </Typography>
             </Box>

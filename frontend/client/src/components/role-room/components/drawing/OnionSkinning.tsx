@@ -90,7 +90,7 @@ export const DEFAULT_ONION_SKIN_SETTINGS: OnionSkinSettings = {
 // =============================================================================
 
 const OnionContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(16, 11, 30, 0.95)',
+  backgroundColor: 'rgba(42, 49, 82, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
   overflow: 'hidden',
@@ -110,11 +110,11 @@ const FrameIndicator = styled(Box, {
   fontSize: 10,
   fontWeight: 600,
   backgroundColor: 
-    type === 'current' ? 'rgba(59, 130, 246, 0.4)' :
+    type === 'current' ? 'rgba(63, 81, 181, 0.4)' :
     type === 'before' ? (active ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.1)') :
     (active ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255,255,255,0.1)'),
   border: `2px solid ${
-    type === 'current' ? '#3b82f6' :
+    type === 'current' ? '#3f51b5' :
     type === 'before' ? (active ? '#ef4444' : 'transparent') :
     (active ? '#22c55e' : 'transparent')
   }`,

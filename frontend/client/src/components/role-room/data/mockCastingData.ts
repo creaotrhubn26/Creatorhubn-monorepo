@@ -304,7 +304,7 @@ export const campfireBannerConfig = {
     position: { x: 0, y: 4.5, z: -3 },
     width: 7,
     height: 1.8,
-    color: '#18122b',
+    color: '#2a3d56',
     glowColor: '#ff6b35',
     animationSpeed: 1.2,
     waveAmplitude: 0.06,

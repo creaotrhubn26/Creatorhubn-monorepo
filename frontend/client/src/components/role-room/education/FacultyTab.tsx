@@ -34,7 +34,7 @@ import { ACCENT, Panel, T } from './_eduUi';
 const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
 const ROLE_COLOR: Record<FacultyRole, string> = {
-  lead: '#c6bdf4', teacher: '#38bdf8', supervisor: '#34d399', guest: '#f59e0b',
+  lead: '#c3cbe6', teacher: '#5d76cb', supervisor: '#34d399', guest: '#f59e0b',
 };
 
 export function FacultyTab() {
@@ -136,7 +136,7 @@ export function FacultyTab() {
 
   const assignedCohortIds = useMemo(() => new Set(faculty.flatMap((f) => f.cohortIds)), [faculty]);
   const kpis = [
-    { id: 'faglaerere', label: 'Faglærere', value: faculty.filter((f) => f.role !== 'guest').length, hint: 'Aktive dette semesteret', icon: <FacultyIcon />, bg: 'rgba(136, 117, 235,0.16)', c: '#c6bdf4' },
+    { id: 'faglaerere', label: 'Faglærere', value: faculty.filter((f) => f.role !== 'guest').length, hint: 'Aktive dette semesteret', icon: <FacultyIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#c3cbe6' },
     { id: 'sensorer', label: 'Sensorer', value: censorCount ?? '—', hint: 'Eksterne, tilgang på eksamen', icon: <CensorIcon />, bg: 'rgba(245,158,11,0.16)', c: '#f59e0b' },
     { id: 'kull', label: 'Kull tildelt', value: `${assignedCohortIds.size}/${cohorts.length}`, hint: assignedCohortIds.size >= cohorts.length && cohorts.length > 0 ? 'Alle kull har veileder' : 'Har minst én veileder', icon: <CohortIcon />, bg: 'rgba(16,185,129,0.16)', c: '#34d399' },
     {
@@ -144,7 +144,7 @@ export function FacultyTab() {
       label: 'Ledige TRR-seter',
       value: !license ? '—' : license.unlimited ? 'Ubegrenset' : (license.available != null ? license.available : '—'),
       hint: !license ? 'Laster lisens…' : license.unlimited ? 'Site-/FTE-lisens' : (license.seatLimit != null ? `${license.used} av ${license.seatLimit} i bruk` : 'Lisens ikke satt — klikk tannhjulet'),
-      icon: <SeatIcon />, bg: 'rgba(56,189,248,0.16)', c: '#38bdf8',
+      icon: <SeatIcon />, bg: 'rgba(93, 118, 203,0.16)', c: '#5d76cb',
       onEdit: openLicenseEditor,
     },
   ];
@@ -156,7 +156,7 @@ export function FacultyTab() {
       {/* Header */}
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'flex-start' }} spacing={2}>
         <Stack direction="row" spacing={1.75} alignItems="flex-start">
-          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(136, 117, 235,0.16)', color: '#c6bdf4', display: 'grid', placeItems: 'center', flexShrink: 0 }}><FacultyIcon /></Box>
+          <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(93, 118, 203,0.16)', color: '#c3cbe6', display: 'grid', placeItems: 'center', flexShrink: 0 }}><FacultyIcon /></Box>
           <Box>
             <T eid="edu-fk-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Fakultet</T>
             <T eid="edu-fk-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Stab-seter, lærer-roller og hvem som veileder hvilket kull — pluss eksterne sensorer.</T>
@@ -166,7 +166,7 @@ export function FacultyTab() {
           <Button variant="outlined" startIcon={<InviteCensorIcon />} onClick={inviteCensor} disabled={busy} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
             <T eid="edu-fk-btn-censor" component="span" sx={{ fontWeight: 600 }}>Inviter sensor</T>
           </Button>
-          <Button variant="contained" startIcon={<InviteTeacherIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
+          <Button variant="contained" startIcon={<InviteTeacherIcon />} onClick={() => setCreating((v) => !v)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-fk-btn-teacher" component="span" sx={{ fontWeight: 700 }}>Inviter faglærer</T>
           </Button>
         </Stack>
@@ -176,7 +176,7 @@ export function FacultyTab() {
 
       {/* Skjema */}
       <Collapse in={creating}>
-        <Panel sx={{ border: '1px solid rgba(136, 117, 235,0.35)' }}>
+        <Panel sx={{ border: '1px solid rgba(93, 118, 203,0.35)' }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <TextField label="Navn" size="small" value={name} onChange={(e) => setName(e.target.value)} autoFocus fullWidth />
             <TextField label="E-post (valgfritt)" size="small" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
@@ -186,7 +186,7 @@ export function FacultyTab() {
           </Stack>
           <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
             <Button onClick={() => setCreating(false)} disabled={busy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-            <Button variant="contained" onClick={create} disabled={!name.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none' }}>{busy ? 'Legger til…' : 'Legg til'}</Button>
+            <Button variant="contained" onClick={create} disabled={!name.trim() || busy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none' }}>{busy ? 'Legger til…' : 'Legg til'}</Button>
           </Stack>
         </Panel>
       </Collapse>
@@ -227,7 +227,7 @@ export function FacultyTab() {
         ) : faculty.map((f) => (
           <Box key={f.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2fr 1fr 40px', minWidth: 600, alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)', gap: 1 }}>
             <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
-              <Avatar sx={{ width: 34, height: 34, fontSize: 12, bgcolor: 'rgba(136, 117, 235,0.3)', color: '#e0dbfa' }}>{initials(f.name)}</Avatar>
+              <Avatar sx={{ width: 34, height: 34, fontSize: 12, bgcolor: 'rgba(93, 118, 203,0.3)', color: '#dfe4f3' }}>{initials(f.name)}</Avatar>
               <Box sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</Typography>
                 {f.email && <Typography sx={{ fontSize: 11.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.email}</Typography>}
@@ -242,7 +242,7 @@ export function FacultyTab() {
               input={<OutlinedInput sx={{ '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' } }} />}
               renderValue={(sel) => (sel as string[]).length === 0 ? <em style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>Ingen</em> : (
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {(sel as string[]).map((id) => <Chip key={id} size="small" label={cohortName(id)} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(136, 117, 235,0.22)', color: '#e0dbfa' }} />)}
+                  {(sel as string[]).map((id) => <Chip key={id} size="small" label={cohortName(id)} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(93, 118, 203,0.22)', color: '#dfe4f3' }} />)}
                 </Stack>
               )}
               disabled={cohorts.length === 0}>
@@ -258,7 +258,7 @@ export function FacultyTab() {
 
       {/* Lisens-editor */}
       <Dialog open={licOpen} onClose={() => setLicOpen(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: '#100b1e', color: '#fff', border: '1px solid rgba(136, 117, 235,0.3)', borderRadius: 3 } }}>
+        PaperProps={{ sx: { bgcolor: '#2a3152', color: '#fff', border: '1px solid rgba(93, 118, 203,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>TRR-lisens</DialogTitle>
         <DialogContent>
           <T eid="edu-fk-lic-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
@@ -270,7 +270,7 @@ export function FacultyTab() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setLicOpen(false)} disabled={licBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>
-          <Button variant="contained" onClick={saveLicense} disabled={licBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#6249df' }, textTransform: 'none', fontWeight: 700 }}>{licBusy ? 'Lagrer…' : 'Lagre'}</Button>
+          <Button variant="contained" onClick={saveLicense} disabled={licBusy} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4b3d8f' }, textTransform: 'none', fontWeight: 700 }}>{licBusy ? 'Lagrer…' : 'Lagre'}</Button>
         </DialogActions>
       </Dialog>
 

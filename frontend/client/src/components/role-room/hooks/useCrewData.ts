@@ -101,7 +101,7 @@ export const STATUS_META: Record<
 > = {
   confirmed: { label: 'Bekreftet', color: '#10b981', bgColor: 'rgba(16,185,129,0.2)' },
   pending:   { label: 'Venter',    color: '#ffb800', bgColor: 'rgba(255,184,0,0.2)'   },
-  invited:   { label: 'Invitert',  color: '#3b82f6', bgColor: 'rgba(59,130,246,0.2)'  },
+  invited:   { label: 'Invitert',  color: '#3f51b5', bgColor: 'rgba(63, 81, 181,0.2)'  },
   unavailable: { label: 'Utilgjengelig', color: '#ef4444', bgColor: 'rgba(239,68,68,0.2)' },
 };
 

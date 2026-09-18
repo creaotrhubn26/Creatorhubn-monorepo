@@ -27,13 +27,13 @@ import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 const palette = {
-  bg: '#18122b',
-  border: 'rgba(136, 117, 235,0.18)',
-  borderStrong: 'rgba(136, 117, 235,0.32)',
-  textPrimary: '#f6f5ff',
-  textSecondary: '#c6bdf4',
+  bg: '#2a3d56',
+  border: 'rgba(93, 118, 203,0.18)',
+  borderStrong: 'rgba(93, 118, 203,0.32)',
+  textPrimary: '#f7f9ff',
+  textSecondary: '#c3cbe6',
   textMuted: '#94a3b8',
-  accent: '#9e8cf8',
+  accent: '#93a4dc',
   tiktok: '#ff0050',
 };
 
@@ -222,15 +222,15 @@ export default function ClientTiktokLeadsPanel({
           disabled={!selectedForm || syncing}
           startIcon={syncing ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <RefreshOutlinedIcon />}
           sx={{
-            background: 'linear-gradient(135deg, #ff0050 0%, #6249df 100%)',
+            background: 'linear-gradient(135deg, #ff0050 0%, #4b3d8f 100%)',
             color: '#fff',
             textTransform: 'none',
             fontWeight: 700,
             fontSize: '1rem',
             px: 4, py: 1.4,
             borderRadius: 1.6,
-            '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #472bd4 100%)' },
-            '&.Mui-disabled': { background: 'rgba(136, 117, 235,0.18)', color: 'rgba(246, 245, 255,0.4)' },
+            '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #3e3180 100%)' },
+            '&.Mui-disabled': { background: 'rgba(93, 118, 203,0.18)', color: 'rgba(246, 245, 255,0.4)' },
           }}
         >
           {syncing ? 'Henter nye henvendelser…' : 'Hent nye henvendelser nå'}
@@ -260,7 +260,7 @@ export default function ClientTiktokLeadsPanel({
                 <Box
                   key={lead.id}
                   sx={{
-                    bgcolor: 'rgba(136, 117, 235,0.04)',
+                    bgcolor: 'rgba(93, 118, 203,0.04)',
                     border: `1px solid ${palette.border}`,
                     borderRadius: 1.4,
                     p: 1.6,
@@ -295,8 +295,8 @@ export default function ClientTiktokLeadsPanel({
                       label={lead.status === 'new' ? 'NY' : lead.status === 'qualified' ? 'KVALIFISERT' : lead.status === 'contacted' ? 'KONTAKTET' : lead.status === 'converted' ? 'KUNDE' : 'TAPT'}
                       size="small"
                       sx={{
-                        bgcolor: lead.status === 'new' ? 'rgba(96,165,250,0.18)' : lead.status === 'converted' ? 'rgba(52,211,153,0.18)' : 'rgba(148,163,184,0.18)',
-                        color: lead.status === 'new' ? '#60a5fa' : lead.status === 'converted' ? '#34d399' : palette.textMuted,
+                        bgcolor: lead.status === 'new' ? 'rgba(147, 164, 220,0.18)' : lead.status === 'converted' ? 'rgba(52,211,153,0.18)' : 'rgba(148,163,184,0.18)',
+                        color: lead.status === 'new' ? '#93a4dc' : lead.status === 'converted' ? '#34d399' : palette.textMuted,
                         fontWeight: 700,
                         fontSize: '0.68rem',
                       }}

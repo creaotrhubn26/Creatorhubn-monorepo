@@ -945,7 +945,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           right: 0,
           bottom: 0,
           zIndex: 1300,
-          bgcolor: '#18122b',
+          bgcolor: '#2a3d56',
         }),
       }}
     >
@@ -958,7 +958,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           alignItems: 'center',
           gap: isMobile ? 0.5 : 1,
           borderBottom: '1px solid rgba(255,255,255,0.1)',
-          bgcolor: 'rgba(33, 28, 59,0.8)',
+          bgcolor: 'rgba(60, 78, 109,0.8)',
           flexWrap: 'wrap',
           position: 'relative',
         }}
@@ -1087,7 +1087,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   headerSummary.saveState === 'saved' ? (
                     <CheckCircleIcon sx={{ fontSize: responsive.iconSize - 8, color: '#34d399' }} />
                   ) : headerSummary.saveState === 'saving' ? (
-                    <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
+                    <CircularProgress size={14} sx={{ color: '#93a4dc' }} />
                   ) : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict' ? (
                     <WarningIcon sx={{ fontSize: responsive.iconSize - 8, color: '#f43f5e' }} />
                   ) : undefined
@@ -1099,7 +1099,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     headerSummary.saveState === 'saved'
                       ? 'rgba(52, 211, 153, 0.2)'
                       : headerSummary.saveState === 'saving'
-                        ? 'rgba(59, 130, 246, 0.2)'
+                        ? 'rgba(63, 81, 181, 0.2)'
                         : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? 'rgba(244, 63, 94, 0.2)'
                           : 'rgba(251, 191, 36, 0.2)',
@@ -1107,7 +1107,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     headerSummary.saveState === 'saved'
                       ? '#34d399'
                       : headerSummary.saveState === 'saving'
-                        ? '#60a5fa'
+                        ? '#93a4dc'
                         : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? '#f43f5e'
                           : '#fbbf24',
@@ -1246,7 +1246,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             sx={{
               '& .MuiDrawer-paper': {
                 width: responsive.sidebarWidth,
-                bgcolor: 'rgba(33, 28, 59,0.95)',
+                bgcolor: 'rgba(60, 78, 109,0.95)',
               },
             }}
           >
@@ -1297,13 +1297,13 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           }}
         >
           {hasStoryFoundation && (
-            <Box sx={{ flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(136, 117, 235,0.06)' }}>
+            <Box sx={{ flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(93, 118, 203,0.06)' }}>
               <Box
                 onClick={() => setStoryFoundationOpen((prev) => !prev)}
-                sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(136, 117, 235,0.1)' } }}
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(93, 118, 203,0.1)' } }}
               >
-                <StoryFoundationIcon sx={{ fontSize: responsive.iconSize - 2, color: '#9e8cf8' }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#c6bdf4' }}>
+                <StoryFoundationIcon sx={{ fontSize: responsive.iconSize - 2, color: '#93a4dc' }} />
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#c3cbe6' }}>
                   Story Foundation
                 </Typography>
                 {!storyFoundationOpen && storyFoundationLogline && (
@@ -1315,7 +1315,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   </Typography>
                 )}
                 <Box sx={{ flex: storyFoundationOpen || !storyFoundationLogline ? 1 : 'unset' }} />
-                {storyFoundationOpen ? <ExpandLessIcon sx={{ fontSize: 18, color: '#9e8cf8' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#9e8cf8' }} />}
+                {storyFoundationOpen ? <ExpandLessIcon sx={{ fontSize: 18, color: '#93a4dc' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#93a4dc' }} />}
               </Box>
               <Collapse in={storyFoundationOpen}>
                 <Box sx={{ px: 1.5, pb: 1.25, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -1326,10 +1326,10 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   )}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.25 }}>
                     {storyLogicData?.concept?.genre && (
-                      <Chip size="small" label={`Sjanger: ${storyLogicData.concept.genre}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: '#e0dbfa' }} />
+                      <Chip size="small" label={`Sjanger: ${storyLogicData.concept.genre}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#dfe4f3' }} />
                     )}
                     {storyLogicData?.theme?.centralTheme && (
-                      <Chip size="small" label={`Tema: ${storyLogicData.theme.centralTheme}`} sx={{ bgcolor: 'rgba(136, 117, 235,0.15)', color: '#e0dbfa' }} />
+                      <Chip size="small" label={`Tema: ${storyLogicData.theme.centralTheme}`} sx={{ bgcolor: 'rgba(93, 118, 203,0.15)', color: '#dfe4f3' }} />
                     )}
                     {storyLogicData?.logline?.antagonisticForce && (
                       <Chip size="small" label={`Konflikt: ${storyLogicData.logline.antagonisticForce}`} sx={{ bgcolor: 'rgba(239,68,68,0.12)', color: '#fecaca' }} />
@@ -1418,14 +1418,14 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     bottom: 0,
                     width: 2,
                     transform: 'translateX(-50%)',
-                    bgcolor: 'rgba(56,189,248,0.35)',
+                    bgcolor: 'rgba(93, 118, 203,0.35)',
                     borderRadius: 2,
                     transition: 'background-color 0.15s ease',
                   }
                 : undefined,
               '&:hover::before': rightPanel === 'storyboard'
                 ? {
-                    bgcolor: 'rgba(56,189,248,0.7)',
+                    bgcolor: 'rgba(93, 118, 203,0.7)',
                   }
                 : undefined,
             }}
@@ -1442,7 +1442,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               '& .MuiDrawer-paper': {
                 width: '85vw',
                 maxWidth: 400,
-                bgcolor: 'rgba(33, 28, 59,0.95)',
+                bgcolor: 'rgba(60, 78, 109,0.95)',
               },
             }}
           >

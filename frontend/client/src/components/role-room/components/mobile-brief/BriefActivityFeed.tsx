@@ -160,7 +160,7 @@ export const BriefActivityFeed: React.FC<BriefActivityFeedProps> = ({
                     height: 24,
                     bgcolor: entry.actor_role === 'client'
                       ? 'rgba(245, 184, 46, 0.6)'
-                      : 'rgba(136, 117, 235, 0.6)',
+                      : 'rgba(93, 118, 203, 0.6)',
                     fontSize: 12,
                   }}
                 >

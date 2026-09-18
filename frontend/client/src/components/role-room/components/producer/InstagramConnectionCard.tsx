@@ -166,7 +166,7 @@ export default function InstagramConnectionCard({
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #6249df 100%)',
+                background: 'linear-gradient(135deg, #f58529 0%, #DD2A7B 50%, #4b3d8f 100%)',
                 boxShadow: 'none',
                 '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
               }}
@@ -182,7 +182,7 @@ export default function InstagramConnectionCard({
                 textTransform: 'none',
                 fontSize: '0.82rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang
@@ -303,7 +303,7 @@ export default function InstagramConnectionCard({
               fontWeight: 600,
               color: 'rgba(226,232,240,0.7)',
               fontSize: '0.74rem',
-              '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
+              '&:hover': { bgcolor: 'rgba(93, 118, 203,0.06)' },
             }}
           >
             Koble en til

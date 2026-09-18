@@ -24,7 +24,7 @@ const WORKFLOW: Record<RoleWorkflowStatus, RoleWorkflowMeta> = {
   open: {
     status: 'open',
     label: 'Åpen',
-    color: '#00d4ff',
+    color: '#5d76cb',
     order: 1,
     allowedTransitions: ['casting', 'cancelled'],
   },

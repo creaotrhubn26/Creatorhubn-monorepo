@@ -305,8 +305,8 @@ export async function notifyProducerOfClientPlatformConnection(
     await notifyProducerTeamByEmail(pool, {
       projectId: input.projectId,
       subject: `Klient koblet til ${input.platformLabel}`,
-      html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#18122b">
-          <h2 style="color:#472bd4;margin:0 0 16px">Tilkobling fullført ✅</h2>
+      html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#2a3d56">
+          <h2 style="color:#3e3180;margin:0 0 16px">Tilkobling fullført ✅</h2>
           <p><strong>${who}</strong> har koblet til <strong>${input.platformLabel}</strong> for prosjektet.</p>
           <p>Tilgangen er aktiv — dere kan nå publisere / administrere på vegne av kunden.</p>
           <p style="color:#6b7280;font-size:13px;margin-top:24px">Se «Koblede kontoer» i Creative Sync Workspace.</p>

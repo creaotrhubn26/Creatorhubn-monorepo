@@ -171,7 +171,7 @@ export function buildFeedPost(
     .map((entry) => (entry.startsWith('#') ? entry : `#${entry}`));
 
   const backgroundColor = pickColor(derived.brandColors, index, index % 2 === 0 ? '#0f172a' : '#1e293b');
-  const accentColor = pickColor(derived.brandColors, index + 1, '#22d3ee');
+  const accentColor = pickColor(derived.brandColors, index + 1, '#5d76cb');
 
   return {
     id,

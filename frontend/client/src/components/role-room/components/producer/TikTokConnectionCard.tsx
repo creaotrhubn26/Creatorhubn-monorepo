@@ -168,11 +168,11 @@ export default function TikTokConnectionCard({
             sx={{
               width: 38,
               height: 38,
-              bgcolor: 'rgba(34,211,238,0.18)',
-              color: '#67e8f9',
+              bgcolor: 'rgba(93, 118, 203,0.18)',
+              color: '#93a4dc',
               fontSize: '0.95rem',
               fontWeight: 700,
-              border: '1px solid rgba(34,211,238,0.4)',
+              border: '1px solid rgba(93, 118, 203,0.4)',
             }}
           >
             {(connection.displayName ?? 'TT').charAt(0)}
@@ -249,7 +249,7 @@ export default function TikTokConnectionCard({
                 textTransform: 'none',
                 fontSize: '0.82rem',
                 color: '#93c5fd',
-                borderColor: 'rgba(59,130,246,0.4)',
+                borderColor: 'rgba(63, 81, 181,0.4)',
               }}
             >
               Be kunden om tilgang

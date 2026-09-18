@@ -37,9 +37,9 @@ const PALETTE: Record<WritingFlowState, { bg: string; fg: string; iconColor: str
     iconColor: '#6b7280',
   },
   starting: {
-    bg: 'rgba(96,165,250,0.12)',
+    bg: 'rgba(147, 164, 220,0.12)',
     fg: '#93c5fd',
-    iconColor: '#60a5fa',
+    iconColor: '#93a4dc',
   },
   flowing: {
     bg: 'rgba(16,185,129,0.14)',
@@ -47,9 +47,9 @@ const PALETTE: Record<WritingFlowState, { bg: string; fg: string; iconColor: str
     iconColor: '#10b981',
   },
   paused: {
-    bg: 'rgba(136, 117, 235,0.10)',
-    fg: '#c6bdf4',
-    iconColor: '#9e8cf8',
+    bg: 'rgba(93, 118, 203,0.10)',
+    fg: '#c3cbe6',
+    iconColor: '#93a4dc',
   },
 };
 

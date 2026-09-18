@@ -424,14 +424,14 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
           borderRadius: 3,
           border: '1px solid rgba(246,195,88,0.18)',
           background:
-            'linear-gradient(180deg, rgba(15, 14, 20,0.98) 0%, rgba(10, 5, 21,0.98) 100%)',
+            'linear-gradient(180deg, rgba(15, 14, 20,0.98) 0%, rgba(27, 18, 44,0.98) 100%)',
           color: '#f8fafc',
         },
       }}
     >
       <DialogTitle sx={{ pb: 1.25 }}>
         <Stack direction="row" spacing={1.25} alignItems="center">
-          <PersonIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
+          <PersonIcon sx={{ color: 'var(--role-cyan, #93a4dc)' }} />
           <Box>
             <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>
               Konto, abonnement og team
@@ -451,7 +451,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             mb: 2,
             '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(255,255,255,0.72)' },
             '& .Mui-selected': { color: '#f8fafc' },
-            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
+            '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #93a4dc)' },
           }}
         >
           <Tab label="Oversikt" />
@@ -476,7 +476,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             {syncLoading ? (
               <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
-                <CircularProgress sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
+                <CircularProgress sx={{ color: 'var(--role-cyan, #93a4dc)' }} />
               </Box>
             ) : null}
 
@@ -487,7 +487,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   sx={{
                     p: 2,
                     borderRadius: 2.5,
-                    border: '1px solid rgba(125,211,252,0.16)',
+                    border: '1px solid rgba(147, 164, 220,0.16)',
                     background: 'linear-gradient(135deg, rgba(9,22,34,0.5) 0%, rgba(15,23,42,0.92) 100%)',
                   }}
                 >
@@ -504,7 +504,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                       <Chip
                         size="small"
                         label={syncMeta?.lastSyncedAt ? `Sist synket ${formatDateTime(syncMeta.lastSyncedAt)}` : 'Ikke synket ennå'}
-                        sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
+                        sx={{ bgcolor: 'rgba(63, 81, 181,0.16)', color: '#c3cbe6' }}
                       />
                       <Chip
                         size="small"
@@ -526,10 +526,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                       }}
                       disabled={syncActionPending || !currentProject || queuedChanges.length === 0}
                       sx={{
-                        bgcolor: 'var(--role-cyan, #7dd3fc)',
-                        color: '#082f49',
+                        bgcolor: 'var(--role-cyan, #93a4dc)',
+                        color: '#2a3d56',
                         fontWeight: 800,
-                        '&:hover': { bgcolor: '#bae6fd' },
+                        '&:hover': { bgcolor: '#c3cbe6' },
                       }}
                     >
                       Synk lokale endringer
@@ -541,7 +541,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                         void handleResyncFromServer();
                       }}
                       disabled={syncActionPending || !currentProject || queuedChanges.length > 0}
-                      sx={{ borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }}
+                      sx={{ borderColor: 'rgba(147, 164, 220,0.34)', color: '#c3cbe6' }}
                     >
                       Resync fra server
                     </Button>
@@ -657,8 +657,8 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             sx={{
               p: 2,
               borderRadius: 2.5,
-              border: '1px solid rgba(125,211,252,0.18)',
-              background: 'linear-gradient(135deg, rgba(14,116,144,0.16) 0%, rgba(15,23,42,0.92) 100%)',
+              border: '1px solid rgba(147, 164, 220,0.18)',
+              background: 'linear-gradient(135deg, rgba(63, 81, 181,0.16) 0%, rgba(15,23,42,0.92) 100%)',
             }}
           >
             <Box
@@ -668,9 +668,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 borderRadius: '50%',
                 display: 'grid',
                 placeItems: 'center',
-                bgcolor: 'rgba(125,211,252,0.14)',
-                border: '1px solid rgba(125,211,252,0.3)',
-                color: '#e0f2fe',
+                bgcolor: 'rgba(147, 164, 220,0.14)',
+                border: '1px solid rgba(147, 164, 220,0.3)',
+                color: '#dfe4f3',
                 fontSize: '1rem',
                 fontWeight: 800,
                 letterSpacing: '0.08em',
@@ -693,9 +693,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                     size="small"
                     label={currentUser.workspaceLabel}
                     sx={{
-                      bgcolor: 'rgba(34,211,238,0.12)',
-                      color: '#67e8f9',
-                      border: '1px solid rgba(34,211,238,0.24)',
+                      bgcolor: 'rgba(93, 118, 203,0.12)',
+                      color: '#93a4dc',
+                      border: '1px solid rgba(93, 118, 203,0.24)',
                     }}
                   />
                 ) : null}
@@ -777,13 +777,13 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                           fontWeight: 700,
                           ...(adminPreview.selectedMode === 'client'
                             ? {
-                                bgcolor: '#38bdf8',
-                                color: '#082f49',
-                                '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
+                                bgcolor: '#5d76cb',
+                                color: '#2a3d56',
+                                '&:hover': { bgcolor: 'var(--role-cyan, #93a4dc)' },
                               }
                             : {
-                                borderColor: 'rgba(136, 117, 235,0.36)',
-                                color: '#e0dbfa',
+                                borderColor: 'rgba(93, 118, 203,0.36)',
+                                color: '#dfe4f3',
                               }),
                         }}
                       >
@@ -807,7 +807,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               }}
             >
               <Stack direction="row" spacing={1} alignItems="center">
-                <FolderOpenIcon sx={{ color: '#a5f3fc', fontSize: 18 }} />
+                <FolderOpenIcon sx={{ color: '#c3cbe6', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Aktivt prosjekt
                 </Typography>
@@ -908,9 +908,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   icon={<CalendarMonthOutlinedIcon sx={{ fontSize: 16 }} />}
                   label={googleCalendarReady ? 'Kalender klar' : 'Kalender ikke klargjort'}
                   sx={{
-                    bgcolor: googleCalendarReady ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
-                    color: googleCalendarReady ? '#bfdbfe' : '#cbd5e1',
-                    border: `1px solid ${googleCalendarReady ? 'rgba(59,130,246,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                    bgcolor: googleCalendarReady ? 'rgba(63, 81, 181,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: googleCalendarReady ? '#c3cbe6' : '#cbd5e1',
+                    border: `1px solid ${googleCalendarReady ? 'rgba(63, 81, 181,0.28)' : 'rgba(148,163,184,0.24)'}`,
                   }}
                 />
               ) : null}
@@ -920,9 +920,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   icon={<FolderOpenIcon sx={{ fontSize: 16 }} />}
                   label={googleDriveReady ? 'Drive klar' : 'Drive ikke klargjort'}
                   sx={{
-                    bgcolor: googleDriveReady ? 'rgba(125,211,252,0.16)' : 'rgba(148,163,184,0.12)',
-                    color: googleDriveReady ? '#bae6fd' : '#cbd5e1',
-                    border: `1px solid ${googleDriveReady ? 'rgba(125,211,252,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                    bgcolor: googleDriveReady ? 'rgba(147, 164, 220,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: googleDriveReady ? '#c3cbe6' : '#cbd5e1',
+                    border: `1px solid ${googleDriveReady ? 'rgba(147, 164, 220,0.28)' : 'rgba(148,163,184,0.24)'}`,
                   }}
                 />
               ) : null}
@@ -984,7 +984,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                     void handlePrepareProjectBinding();
                   }}
                   disabled={googleStatusLoading || googleActionPending}
-                  sx={{ borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }}
+                  sx={{ borderColor: 'rgba(147, 164, 220,0.34)', color: '#c3cbe6' }}
                 >
                   Klargjør prosjekt
                 </Button>
@@ -1009,7 +1009,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             sx={{
               p: 2,
               borderRadius: 2.5,
-              border: '1px solid rgba(125,211,252,0.16)',
+              border: '1px solid rgba(147, 164, 220,0.16)',
               background: 'linear-gradient(135deg, rgba(9,22,34,0.5) 0%, rgba(15,23,42,0.92) 100%)',
             }}
           >
@@ -1020,7 +1020,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               justifyContent="space-between"
             >
               <Stack direction="row" spacing={1} alignItems="center">
-                <InstallMobileOutlinedIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
+                <InstallMobileOutlinedIcon sx={{ color: 'var(--role-cyan, #93a4dc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Mobilapp og varsler
                 </Typography>
@@ -1040,9 +1040,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   icon={pushEnabled ? <NotificationsActiveOutlinedIcon sx={{ fontSize: 16 }} /> : <NotificationsOffOutlinedIcon sx={{ fontSize: 16 }} />}
                   label={pushEnabled ? 'Mobilvarsler på' : 'Mobilvarsler av'}
                   sx={{
-                    bgcolor: pushEnabled ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
-                    color: pushEnabled ? '#bfdbfe' : '#cbd5e1',
-                    border: `1px solid ${pushEnabled ? 'rgba(59,130,246,0.28)' : 'rgba(148,163,184,0.24)'}`,
+                    bgcolor: pushEnabled ? 'rgba(63, 81, 181,0.16)' : 'rgba(148,163,184,0.12)',
+                    color: pushEnabled ? '#c3cbe6' : '#cbd5e1',
+                    border: `1px solid ${pushEnabled ? 'rgba(63, 81, 181,0.28)' : 'rgba(148,163,184,0.24)'}`,
                   }}
                 />
               </Stack>
@@ -1076,9 +1076,9 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   size="small"
                   label={`Prosjekt: ${currentProject.name}`}
                   sx={{
-                    bgcolor: 'rgba(125,211,252,0.12)',
-                    color: '#bae6fd',
-                    border: '1px solid rgba(125,211,252,0.24)',
+                    bgcolor: 'rgba(147, 164, 220,0.12)',
+                    color: '#c3cbe6',
+                    border: '1px solid rgba(147, 164, 220,0.24)',
                   }}
                 />
               ) : null}
@@ -1127,12 +1127,12 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 }}
                 disabled={pwaBusy || (!canInstall && pwaInstalled)}
                 sx={pwaInstalled
-                  ? { borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }
+                  ? { borderColor: 'rgba(147, 164, 220,0.34)', color: '#c3cbe6' }
                   : {
-                      bgcolor: 'var(--role-cyan, #7dd3fc)',
-                      color: '#082f49',
+                      bgcolor: 'var(--role-cyan, #93a4dc)',
+                      color: '#2a3d56',
                       fontWeight: 800,
-                      '&:hover': { bgcolor: '#bae6fd' },
+                      '&:hover': { bgcolor: '#c3cbe6' },
                     }}
               >
                 {pwaInstalled ? 'App installert' : 'Installer app'}
@@ -1313,7 +1313,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             <Stack spacing={1}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <PeopleIcon sx={{ color: 'var(--role-violet, #8875eb)', fontSize: 18 }} />
+                <PeopleIcon sx={{ color: 'var(--role-violet, #5d76cb)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Teamet ditt
                 </Typography>
@@ -1371,7 +1371,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             <Stack spacing={1}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <SmsOutlinedIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
+                <SmsOutlinedIcon sx={{ color: 'var(--role-cyan, #93a4dc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
                   Forbruk denne måneden
                 </Typography>
@@ -1381,8 +1381,8 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 sx={{
                   p: 1.6,
                   borderRadius: 2,
-                  border: '1px solid rgba(125,211,252,0.18)',
-                  background: 'rgba(125,211,252,0.06)',
+                  border: '1px solid rgba(147, 164, 220,0.18)',
+                  background: 'rgba(147, 164, 220,0.06)',
                 }}
               >
                 <Stack

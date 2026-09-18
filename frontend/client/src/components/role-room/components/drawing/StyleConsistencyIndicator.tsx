@@ -65,13 +65,13 @@ export const StyleConsistencyIndicator: React.FC<StyleConsistencyIndicatorProps>
       sx={{
         p: compact ? 1 : 1.5,
         borderRadius: 1.5,
-        bgcolor: 'rgba(16, 11, 30,0.92)',
+        bgcolor: 'rgba(42, 49, 82,0.92)',
         border: '1px solid rgba(255,255,255,0.06)',
       }}
     >
       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.75 }}>
-        <PaletteIcon sx={{ fontSize: 14, color: hasTarget ? '#c6bdf4' : 'rgba(255,255,255,0.6)' }} />
-        <Typography variant="overline" sx={{ fontSize: 10, letterSpacing: '0.08em', color: hasTarget ? '#c6bdf4' : 'rgba(255,255,255,0.65)', fontWeight: 800 }}>
+        <PaletteIcon sx={{ fontSize: 14, color: hasTarget ? '#c3cbe6' : 'rgba(255,255,255,0.6)' }} />
+        <Typography variant="overline" sx={{ fontSize: 10, letterSpacing: '0.08em', color: hasTarget ? '#c3cbe6' : 'rgba(255,255,255,0.65)', fontWeight: 800 }}>
           {paletteLabel}
         </Typography>
       </Stack>

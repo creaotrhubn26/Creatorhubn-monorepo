@@ -93,7 +93,7 @@ export const MobileReviewCard: React.FC<MobileReviewCardProps> = ({ review, onOp
         cursor: 'pointer',
         minHeight: 'var(--rr-touch-target-min, 44px)',
         '&:focus-visible': {
-          outline: '2px solid #8875eb',
+          outline: '2px solid #5d76cb',
           outlineOffset: 2,
         },
       }}

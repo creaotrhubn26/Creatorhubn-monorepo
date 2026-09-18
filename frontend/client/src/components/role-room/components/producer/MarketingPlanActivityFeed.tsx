@@ -33,11 +33,11 @@ const EVENT_VISUALS: Record<ActivityEventKind, {
   actorBadge: string;
 }> = {
   plan_version: {
-    color: '#8875eb', bg: 'rgba(136, 117, 235,0.14)',
+    color: '#5d76cb', bg: 'rgba(93, 118, 203,0.14)',
     icon: VersionIcon, actorBadge: '',
   },
   client_comment: {
-    color: '#67e8f9', bg: 'rgba(34,211,238,0.14)',
+    color: '#93a4dc', bg: 'rgba(93, 118, 203,0.14)',
     icon: CommentIcon, actorBadge: 'Klient',
   },
   team_comment: {
@@ -112,7 +112,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
   return (
     <Box sx={cardSx}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.4 }}>
-        <HistoryIcon sx={{ color: '#8875eb', fontSize: 22 }} />
+        <HistoryIcon sx={{ color: '#5d76cb', fontSize: 22 }} />
         <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1rem' }}>
           Aktivitet
         </Typography>
@@ -123,7 +123,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
 
       {loading && (
         <Stack alignItems="center" sx={{ py: 4 }}>
-          <CircularProgress size={28} sx={{ color: '#8875eb' }} />
+          <CircularProgress size={28} sx={{ color: '#5d76cb' }} />
         </Stack>
       )}
 
@@ -153,7 +153,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
                   variant="text"
                   size="small"
                   sx={{
-                    color: '#8875eb',
+                    color: '#5d76cb',
                     textTransform: 'none',
                     fontWeight: 700,
                   }}>

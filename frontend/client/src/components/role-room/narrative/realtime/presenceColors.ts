@@ -4,7 +4,7 @@
  */
 
 export const PRESENCE_PALETTE = [
-  '#a78bfa', '#fbbf24', '#34d399', '#60a5fa',
+  '#a78bfa', '#fbbf24', '#34d399', '#93a4dc',
   '#ec4899', '#f87171', '#06b6d4', '#84cc16',
 ] as const;
 

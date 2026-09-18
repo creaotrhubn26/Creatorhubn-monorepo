@@ -34,7 +34,7 @@ export const STATUS_LABELS: Record<string, string> = {
  */
 export function getConfidenceTier(score: number): { label: string; color: string } {
   if (score >= 80) return { label: 'Høy', color: '#10b981' };
-  if (score >= 60) return { label: 'På vei opp', color: '#60a5fa' };
+  if (score >= 60) return { label: 'På vei opp', color: '#93a4dc' };
   if (score >= 40) return { label: 'Middels', color: '#f59e0b' };
   if (score >= 20) return { label: 'Tidlig fase', color: '#fb923c' };
   return { label: 'Nettopp startet', color: '#9ca3af' };

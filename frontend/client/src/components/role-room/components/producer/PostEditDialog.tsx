@@ -116,7 +116,7 @@ export function PostEditDialog({ post, onClose, onSaved }: Props) {
           </Typography>
           {post?.dayOffset !== null && post?.dayOffset !== undefined && (
             <Chip size="small" label={`Dag ${post.dayOffset + 1}`}
-                  sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9', fontWeight: 700 }} />
+                  sx={{ bgcolor: 'rgba(93, 118, 203,0.18)', color: '#93a4dc', fontWeight: 700 }} />
           )}
         </Stack>
       </DialogTitle>

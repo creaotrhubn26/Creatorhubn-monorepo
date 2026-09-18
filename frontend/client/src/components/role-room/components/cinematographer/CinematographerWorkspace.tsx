@@ -66,9 +66,9 @@ const TONE_STYLES: Record<
     border: 'rgba(245, 158, 11, 0.27)',
   },
   upcoming: {
-    color: '#7dd3fc',
-    background: 'rgba(14, 165, 233, 0.08)',
-    border: 'rgba(56, 189, 248, 0.24)',
+    color: '#93a4dc',
+    background: 'rgba(63, 81, 181, 0.08)',
+    border: 'rgba(93, 118, 203, 0.24)',
   },
   ready: {
     color: '#6ee7b7',
@@ -134,14 +134,14 @@ export function CinematographerWorkspace({
           <Box>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5, flexWrap: 'wrap' }}>
               <Chip
-                icon={<CameraIcon sx={{ color: '#7dd3fc !important' }} />}
+                icon={<CameraIcon sx={{ color: '#93a4dc !important' }} />}
                 label="FILMFOTOGRAF · DoP"
                 size="small"
                 sx={{
                   height: 25,
-                  color: '#bae6fd',
-                  bgcolor: 'rgba(14, 165, 233, 0.12)',
-                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  color: '#c3cbe6',
+                  bgcolor: 'rgba(63, 81, 181, 0.12)',
+                  border: '1px solid rgba(93, 118, 203, 0.3)',
                   fontWeight: 800,
                   letterSpacing: 0.55,
                 }}
@@ -167,7 +167,7 @@ export function CinematographerWorkspace({
             sx={{
               minHeight: targetSize,
               color: roleTokens.text,
-              borderColor: 'rgba(56, 189, 248, 0.34)',
+              borderColor: 'rgba(93, 118, 203, 0.34)',
               alignSelf: { xs: 'stretch', md: 'center' },
               ...focusVisibleStyles,
             }}
@@ -190,7 +190,7 @@ export function CinematographerWorkspace({
             gap: 1,
             p: 1,
             mb: 2.5,
-            border: '1px solid rgba(56, 189, 248, 0.24)',
+            border: '1px solid rgba(93, 118, 203, 0.24)',
             bgcolor: 'rgba(14, 18, 30, 0.92)',
             borderRadius: 2,
           }}
@@ -211,13 +211,13 @@ export function CinematographerWorkspace({
                   justifyContent: 'flex-start',
                   px: 1.5,
                   color: selected ? '#fff' : roleTokens.textMuted,
-                  bgcolor: selected ? 'rgba(14, 165, 233, 0.16)' : 'transparent',
+                  bgcolor: selected ? 'rgba(63, 81, 181, 0.16)' : 'transparent',
                   border: selected
-                    ? '1px solid rgba(56, 189, 248, 0.34)'
+                    ? '1px solid rgba(93, 118, 203, 0.34)'
                     : '1px solid transparent',
                   '&:hover': {
                     bgcolor: selected
-                      ? 'rgba(14, 165, 233, 0.22)'
+                      ? 'rgba(63, 81, 181, 0.22)'
                       : 'rgba(255,255,255,0.05)',
                   },
                   ...focusVisibleStyles,
@@ -344,7 +344,7 @@ export function CinematographerWorkspace({
               variant="outlined"
               sx={{
                 bgcolor: 'rgba(7, 31, 45, 0.76)',
-                borderColor: 'rgba(56, 189, 248, 0.24)',
+                borderColor: 'rgba(93, 118, 203, 0.24)',
                 color: roleTokens.text,
               }}
             >
@@ -363,8 +363,8 @@ export function CinematographerWorkspace({
                       sx={{
                         p: 1.25,
                         borderRadius: 1.5,
-                        bgcolor: 'rgba(14, 165, 233, 0.055)',
-                        border: '1px solid rgba(56, 189, 248, 0.1)',
+                        bgcolor: 'rgba(63, 81, 181, 0.055)',
+                        border: '1px solid rgba(93, 118, 203, 0.1)',
                       }}
                     >
                       <Typography sx={{ fontSize: { xs: '1.15rem', md: '1.4rem' }, fontWeight: 780 }}>
@@ -385,7 +385,7 @@ export function CinematographerWorkspace({
                       : 'Ingen kommende opptaksdag funnet'}
                   </Typography>
                   {updatedLabel ? (
-                    <Typography sx={{ mt: 0.7, color: 'rgba(186,230,253,0.58)', fontSize: '0.7rem' }}>
+                    <Typography sx={{ mt: 0.7, color: 'rgba(195, 203, 230,0.58)', fontSize: '0.7rem' }}>
                       Prosjektdata sist oppdatert {updatedLabel}
                     </Typography>
                   ) : null}

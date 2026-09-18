@@ -39,15 +39,15 @@ export const RR_COLORS = {
   dashedBorder: '1px dashed rgba(148,163,184,0.25)',
 
   /** Primary accent (cyan). */
-  accent: '#22d3ee',
+  accent: '#5d76cb',
   /** Light accent (cyan text on tint). */
-  accentLight: '#a5f3fc',
+  accentLight: '#c3cbe6',
   /** Accent tint background (subtle). */
-  accentBgSubtle: 'rgba(34,211,238,0.08)',
+  accentBgSubtle: 'rgba(93, 118, 203,0.08)',
   /** Accent tint background (stronger). */
-  accentBg: 'rgba(34,211,238,0.12)',
+  accentBg: 'rgba(93, 118, 203,0.12)',
   /** Accent border for chips/pills. */
-  accentBorder: '1px solid rgba(34,211,238,0.3)',
+  accentBorder: '1px solid rgba(93, 118, 203,0.3)',
 
   /** Strongest heading text. */
   headingStrong: '#f8fafc',

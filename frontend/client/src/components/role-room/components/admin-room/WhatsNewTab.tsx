@@ -47,7 +47,7 @@ import {
 
 const KIND_COLORS: Record<WhatsNewKind, string> = {
   feature: '#F5B82E',
-  improvement: '#7DD3FC',
+  improvement: '#93a4dc',
   fix: '#86EFAC',
 };
 
@@ -188,7 +188,7 @@ export function WhatsNewTab(): JSX.Element {
               ))}
             </Select>
           </FormControl>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ bgcolor: '#9e8cf8' }}>
+          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ bgcolor: '#93a4dc' }}>
             Ny oppføring
           </Button>
         </Stack>
@@ -210,7 +210,7 @@ export function WhatsNewTab(): JSX.Element {
         Array.from(grouped.entries()).map(([mode, list]) => (
           <Paper key={mode} sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <Typography sx={{ color: '#9e8cf8', fontWeight: 700, fontSize: '0.92rem', letterSpacing: 0.5 }}>
+              <Typography sx={{ color: '#93a4dc', fontWeight: 700, fontSize: '0.92rem', letterSpacing: 0.5 }}>
                 {modeLabel(mode).toUpperCase()} · {list.length}
               </Typography>
             </Box>
@@ -267,7 +267,7 @@ export function WhatsNewTab(): JSX.Element {
                         {entry.displayOrder}
                       </TableCell>
                       <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEdit(entry)} sx={{ color: '#9e8cf8' }}>
+                        <IconButton size="small" onClick={() => openEdit(entry)} sx={{ color: '#93a4dc' }}>
                           <EditOutlinedIcon fontSize="small" />
                         </IconButton>
                         <IconButton size="small" onClick={() => remove(entry.id)} sx={{ color: '#f87171' }}>
@@ -361,7 +361,7 @@ export function WhatsNewTab(): JSX.Element {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog} disabled={saving}>Avbryt</Button>
-          <Button onClick={submit} variant="contained" disabled={saving} sx={{ bgcolor: '#9e8cf8' }}>
+          <Button onClick={submit} variant="contained" disabled={saving} sx={{ bgcolor: '#93a4dc' }}>
             {saving ? 'Lagrer…' : editing ? 'Lagre' : 'Opprett'}
           </Button>
         </DialogActions>

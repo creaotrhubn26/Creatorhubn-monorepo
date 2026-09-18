@@ -183,16 +183,16 @@ export default function PostAgentLinkPage(): JSX.Element {
         alignItems: 'center',
         justifyContent: 'center',
         background:
-          'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(71, 43, 212, 0.18), transparent 60%), #0a0515',
-        color: '#ebe7fd',
+          'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(62, 49, 128, 0.18), transparent 60%), #1b122c',
+        color: '#eef1fb',
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
         padding: 24,
       }}
     >
       <div
         style={{
-          background: 'rgba(33, 28, 59, 0.7)',
-          border: '1px solid #261763',
+          background: 'rgba(60, 78, 109, 0.7)',
+          border: '1px solid #2b2553',
           borderRadius: 12,
           padding: 32,
           maxWidth: 480,
@@ -201,7 +201,7 @@ export default function PostAgentLinkPage(): JSX.Element {
         }}
       >
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Koble Post Agent</h1>
-        <p style={{ color: '#9e8cf8', fontSize: 14, marginTop: 8, marginBottom: 24 }}>
+        <p style={{ color: '#93a4dc', fontSize: 14, marginTop: 8, marginBottom: 24 }}>
           Skriv inn 6-tegns koden som vises i Post Agent for å pare den med Role Room-kontoen din.
         </p>
 
@@ -230,7 +230,7 @@ export default function PostAgentLinkPage(): JSX.Element {
               style={{
                 width: '100%',
                 background: '#4ad48a',
-                color: '#0a0515',
+                color: '#1b122c',
                 border: 'none',
                 borderRadius: 8,
                 padding: '12px 16px',
@@ -265,7 +265,7 @@ export default function PostAgentLinkPage(): JSX.Element {
               disabled={authLoading}
               style={{
                 display: 'inline-block',
-                background: '#472bd4',
+                background: '#3e3180',
                 color: '#fff',
                 border: 'none',
                 padding: '10px 20px',
@@ -303,7 +303,7 @@ export default function PostAgentLinkPage(): JSX.Element {
             <label
               style={{
                 display: 'block',
-                color: '#9e8cf8',
+                color: '#93a4dc',
                 fontSize: 12,
                 textTransform: 'uppercase',
                 letterSpacing: 1,
@@ -321,11 +321,11 @@ export default function PostAgentLinkPage(): JSX.Element {
               maxLength={7}
               style={{
                 width: '100%',
-                background: '#0a0515',
-                border: '1px solid #261763',
+                background: '#1b122c',
+                border: '1px solid #2b2553',
                 borderRadius: 8,
                 padding: '14px 18px',
-                color: '#ebe7fd',
+                color: '#eef1fb',
                 fontSize: 22,
                 fontFamily: 'ui-monospace, "SF Mono", monospace',
                 letterSpacing: 4,
@@ -339,7 +339,7 @@ export default function PostAgentLinkPage(): JSX.Element {
               disabled={status === 'pairing' || code.replace('-', '').length < 6}
               style={{
                 width: '100%',
-                background: '#472bd4',
+                background: '#3e3180',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 8,
@@ -371,7 +371,7 @@ export default function PostAgentLinkPage(): JSX.Element {
           </>
         )}
 
-        <p style={{ color: '#6249df', fontSize: 11, marginTop: 24, marginBottom: 0 }}>
+        <p style={{ color: '#4b3d8f', fontSize: 11, marginTop: 24, marginBottom: 0 }}>
           Pairing-koden utløper etter 10 minutter. Du kan generere en ny direkte fra Post Agent.
         </p>
       </div>

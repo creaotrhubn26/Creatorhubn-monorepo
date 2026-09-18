@@ -38,20 +38,20 @@ function SpotlightIcon({ size, style, title }: { size: number; style?: CSSProper
       <title>{title}</title>
       <defs>
         <linearGradient id={gradientId} x1="50%" y1="0%" x2="50%" y2="100%">
-          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+          <stop offset="0%" stopColor="#5d76cb" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#5d76cb" stopOpacity="0" />
         </linearGradient>
       </defs>
       {/* Beam */}
       <path d="M26 10 L38 10 L56 56 L8 56 Z" fill={`url(#${gradientId})`} opacity="0.55" />
       {/* Ground ellipse */}
-      <ellipse cx="32" cy="56" rx="22" ry="3.2" fill="#22d3ee" opacity="0.25" />
+      <ellipse cx="32" cy="56" rx="22" ry="3.2" fill="#5d76cb" opacity="0.25" />
       {/* Lamp body */}
-      <rect x="24" y="6" width="16" height="10" rx="3" fill="#0f172a" stroke="#22d3ee" strokeWidth="2" />
+      <rect x="24" y="6" width="16" height="10" rx="3" fill="#0f172a" stroke="#5d76cb" strokeWidth="2" />
       {/* Lens glow */}
-      <rect x="26" y="14" width="12" height="3" rx="1.2" fill="#22d3ee" />
+      <rect x="26" y="14" width="12" height="3" rx="1.2" fill="#5d76cb" />
       {/* Top handle */}
-      <rect x="30" y="2" width="4" height="5" rx="1.5" fill="#22d3ee" />
+      <rect x="30" y="2" width="4" height="5" rx="1.5" fill="#5d76cb" />
     </svg>
   );
 }
@@ -68,15 +68,15 @@ function HeadlinerIcon({ size, style, title }: { size: number; style?: CSSProper
     <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label={title} style={style}>
       <title>{title}</title>
       {/* Marquee frame */}
-      <rect x="8" y="22" width="48" height="26" rx="4" fill="#0f172a" stroke="#8875eb" strokeWidth="2" />
+      <rect x="8" y="22" width="48" height="26" rx="4" fill="#0f172a" stroke="#5d76cb" strokeWidth="2" />
       {/* Inner frame */}
-      <rect x="11" y="25" width="42" height="20" rx="2" fill="none" stroke="#8875eb" strokeWidth="1" opacity="0.5" />
+      <rect x="11" y="25" width="42" height="20" rx="2" fill="none" stroke="#5d76cb" strokeWidth="1" opacity="0.5" />
       {/* Bottom stand */}
-      <rect x="28" y="48" width="8" height="8" fill="#8875eb" opacity="0.75" />
-      <rect x="22" y="56" width="20" height="3" rx="1" fill="#8875eb" />
+      <rect x="28" y="48" width="8" height="8" fill="#5d76cb" opacity="0.75" />
+      <rect x="22" y="56" width="20" height="3" rx="1" fill="#5d76cb" />
       {/* Headline text proxy */}
-      <rect x="16" y="31" width="32" height="3" rx="1" fill="#8875eb" opacity="0.9" />
-      <rect x="18" y="37" width="28" height="2.5" rx="1" fill="#8875eb" opacity="0.55" />
+      <rect x="16" y="31" width="32" height="3" rx="1" fill="#5d76cb" opacity="0.9" />
+      <rect x="18" y="37" width="28" height="2.5" rx="1" fill="#5d76cb" opacity="0.55" />
       {/* Top bulbs with glow */}
       {bulbs.map(([cx, cy], index) => (
         <g key={`bulb-${index}`}>
@@ -150,7 +150,7 @@ export const ROLE_ROOM_TIERS: Record<
     name: 'Role Room Spotlight',
     shortName: 'Spotlight',
     tagline: 'Kom i gang med kundeanalyse og feed-planlegging.',
-    accentHex: 'var(--role-cyan, #22d3ee)',
+    accentHex: 'var(--role-cyan, #5d76cb)',
     level: 1,
   },
   headliner: {
@@ -158,7 +158,7 @@ export const ROLE_ROOM_TIERS: Record<
     name: 'Role Room Headliner',
     shortName: 'Headliner',
     tagline: 'Full tilgang til alle AI-anbefalinger og planleggingsverktøy.',
-    accentHex: '#8875eb',
+    accentHex: '#5d76cb',
     level: 2,
   },
   showrunner: {
