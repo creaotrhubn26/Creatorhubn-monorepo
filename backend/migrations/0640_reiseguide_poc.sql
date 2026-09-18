@@ -1,4 +1,6 @@
--- 0630_reiseguide_poc.sql
+-- 0640_reiseguide_poc.sql
+-- Nummerert 0640 med vilje: 0627–0630 ble tatt av andre grener tre ganger på
+-- samme dag, og deploy-porten avviser gjenbrukte numre. Hull i rekken er greit.
 -- Lydguide-POC («Interaktiv reiseguide med tilgjengelighet»), steg 1:
 -- datamodell for områder, severdigheter (POI), manus per språk og variant,
 -- lydfiler, teksting og (mock-)kjøp. Leses av backend/server/reiseguide-routes.ts.

@@ -1,12 +1,12 @@
--- 0631_reiseguide_after_visit.sql
+-- 0641_reiseguide_after_visit.sql
 -- SenseAid Explore (lydguide-POC), «etter besøket» (Daniel 18.09.2026):
 --   * kort quiz om stedet man nettopp besøkte (guide_poi_quiz_questions)
 --   * stjernerangering etter endt tur (guide_poi_ratings)
 -- Liknende steder i nærheten regnes ut fra guide_pois (kategori + avstand),
 -- deling bruker /api/guide/share/{slug}, og den personlige loggen over
 -- besøkte steder ligger på telefonen og, med samtykke, på serveren
--- (0632_reiseguide_visits.sql).
--- Bygger på 0630_reiseguide_poc.sql; leses av backend/server/reiseguide-routes.ts.
+-- (0642_reiseguide_visits.sql).
+-- Bygger på 0640_reiseguide_poc.sql; leses av backend/server/reiseguide-routes.ts.
 
 CREATE TABLE IF NOT EXISTS guide_poi_quiz_questions (
   id TEXT PRIMARY KEY,

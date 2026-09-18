@@ -2,7 +2,7 @@
 //
 // Dekoder et ekte svar fra GET /api/guide/areas/:slug?lang=nb (fixture tatt
 // 18.09.2026 fra backend/server/reiseguide-routes.ts mot demo-seed med manus
-// v1 og quiz, migrasjon 0630 + 0631) og sjekker at modellene matcher kontrakten.
+// v1 og quiz, migrasjon 0640 + 0641) og sjekker at modellene matcher kontrakten.
 
 import XCTest
 @testable import Reiseguide

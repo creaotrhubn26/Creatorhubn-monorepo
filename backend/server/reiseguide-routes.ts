@@ -1,6 +1,6 @@
 /**
  * Lydguide-POC («Interaktiv reiseguide med tilgjengelighet»), steg 1:
- * lese-endepunkt over datamodellen i migrasjon 0630_reiseguide_poc.sql.
+ * lese-endepunkt over datamodellen i migrasjon 0640_reiseguide_poc.sql.
  *
  * Offentlige GET-ruter uten innlogging (turist-appen har ingen konto, kun
  * anonym enhets-ID). Monteres fra backend/server/index.ts med
@@ -12,12 +12,12 @@
  *                                             kapitler, lyd-URL-er og teksting
  *   GET /api/guide/pois/:idOrSlug?lang=nb     én severdighet i samme form
  *   POST /api/guide/pois/:idOrSlug/rating     stjernerangering 1–5 fra anonym enhet
- *                                             (0631_reiseguide_after_visit.sql)
+ *                                             (0641_reiseguide_after_visit.sql)
  *   GET /api/guide/share/:idOrSlug?lang=nb    delingsside (HTML med Open Graph) som
  *                                             åpner appen via senseaidexplore://poi/{slug}
  *   /api/guide/device/*                       personlig besøkslogg per anonym enhet med
  *                                             innsyn og sletting (reiseguide-visits.ts,
- *                                             0632_reiseguide_visits.sql)
+ *                                             0642_reiseguide_visits.sql)
  *
  * «Etter besøket» (Daniel 18.09.2026): hver POI får quiz (per språk, samme
  * fallback som manusene), rating {average, count} og shareUrl. Liknende steder

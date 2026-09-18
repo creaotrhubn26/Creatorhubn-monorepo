@@ -4,7 +4,7 @@ Appen heter «SenseAid Explore» (besluttet av Daniel 18.09.2026); Xcode-prosjek
 mappen heter fortsatt `Reiseguide`. Native iPhone-app i SwiftUI (iOS 17+) for POC-en «Interaktiv reiseguide med
 tilgjengelighet». Designet er Konsept 2 «Dark Mode / Premium» etter
 UI-spesifikasjonen av 18.09.2026. Backend er `/api/guide/*` i Creatorhubn-
-backend (`backend/server/reiseguide-routes.ts`, migrasjon 0630 og 0631).
+backend (`backend/server/reiseguide-routes.ts`, migrasjon 0640 og 0641).
 
 ## Bygge
 
@@ -16,7 +16,7 @@ open Reiseguide.xcodeproj
 ```
 
 Lokal backend: kjør `npm run seed:reiseguide` i `backend/` mot en database med
-migrasjon 0630 og 0631, start backend, og sett miljøvariabelen
+migrasjon 0640 og 0641, start backend, og sett miljøvariabelen
 `REISEGUIDE_API_BASE_URL=http://localhost:5000` i schemet (kun DEBUG). Uten
 overstyring brukes produksjons-URL-en fra `project.yml`.
 
@@ -61,7 +61,7 @@ fastlane/         TestFlight (lane `ios beta`, manuell signering), se TESTFLIGHT
   og gir appen ny enhets-ID. `GET /api/guide/device/data` gir innsyn/eksport som JSON.
   Serveren sletter loggen automatisk etter `SENSEAID_VISIT_RETENTION_DAYS` (365);
   teksten i appen sier «ett år», så endres verdien må `privacy.footer` oppdateres.
-  Migrasjon `0632_reiseguide_visits.sql`, logikk i `backend/server/reiseguide-visits.ts`.
+  Migrasjon `0642_reiseguide_visits.sql`, logikk i `backend/server/reiseguide-visits.ts`.
 - Lydfiler finnes ikke ennå (steg 2: manus, TTS, Soniox). Avspilleren viser
   «Lyden er ikke klar ennå» og kjører en simulert tidslinje med anslått teksting
   fra manuset. Når backend leverer `audio.url` og `captions.cues`, brukes de

@@ -5,7 +5,7 @@
 // Feltnavnene er identiske med JSON-en, så JSONDecoder brukes uten keyStrategy.
 // Testfixture: ReiseguideTests/Fixtures/area-nb.json (ekte svar fra backend).
 //
-// «Etter besøket» (migrasjon 0631): quiz, rating og shareUrl per POI. De er
+// «Etter besøket» (migrasjon 0641): quiz, rating og shareUrl per POI. De er
 // valgfrie i dekodingen så et eldre cachet svar fortsatt kan leses.
 
 import Foundation
@@ -155,7 +155,7 @@ struct ServerVisit: Codable, Sendable, Equatable, Identifiable {
     let quizTotal: Int?
 }
 
-/// Svar på synk av besøksloggen (migrasjon 0632).
+/// Svar på synk av besøksloggen (migrasjon 0642).
 struct VisitSyncResponse: Codable, Sendable, Equatable {
     let deviceId: String
     let saved: Int

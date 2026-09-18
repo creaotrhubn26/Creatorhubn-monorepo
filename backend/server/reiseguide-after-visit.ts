@@ -3,7 +3,7 @@
  * stjernerangering og delingssiden, uten Express og uten database, så den kan
  * enhetstestes rett. Rutene i reiseguide-routes.ts bruker dette.
  *
- * Datamodell: migrations/0631_reiseguide_after_visit.sql.
+ * Datamodell: migrations/0641_reiseguide_after_visit.sql.
  */
 
 export interface QuizRow {

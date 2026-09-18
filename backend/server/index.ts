@@ -2850,9 +2850,9 @@ app.use(
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomMarketingActivityFeedRoutes(app, { pool, activeSessions });
 // Lydguide-POC (Interaktiv reiseguide med tilgjengelighet): offentlige leseruter
-// under /api/guide/*. Datamodell i migrations/0630_reiseguide_poc.sql og
-// 0631_reiseguide_after_visit.sql (quiz, vurdering, delingsside) og
-// 0632_reiseguide_visits.sql (besøkslogg per anonym enhet, GDPR).
+// under /api/guide/*. Datamodell i migrations/0640_reiseguide_poc.sql og
+// 0641_reiseguide_after_visit.sql (quiz, vurdering, delingsside) og
+// 0642_reiseguide_visits.sql (besøkslogg per anonym enhet, GDPR).
 registerReiseguideRoutes(app, { pool });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
 app.use("/api/post-agent", createPostAgentRouter(pool, activeSessions));

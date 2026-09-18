@@ -1,7 +1,7 @@
--- 0632_reiseguide_visits.sql
+-- 0642_reiseguide_visits.sql
 -- SenseAid Explore (lydguide-POC): personlig logg over besøkte steder på
 -- serveren (Daniel 18.09.2026: «ja vil ha loggen på serveren … samtidig er
--- det viktig med GDPR»). Bygger på 0630/0631; leses av
+-- det viktig med GDPR»). Bygger på 0640/0641; leses av
 -- backend/server/reiseguide-visits.ts.
 --
 -- Personvern (dataminimering, GDPR art. 5):

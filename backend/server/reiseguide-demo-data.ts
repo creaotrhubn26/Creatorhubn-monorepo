@@ -63,7 +63,7 @@ export interface DemoPoi {
     }
   >;
   scripts: Record<DemoLang, DemoScript[]>;
-  /** Kort quiz etter besøket (0631): tre spørsmål per språk, fakta fra manuset. */
+  /** Kort quiz etter besøket (0641): tre spørsmål per språk, fakta fra manuset. */
   quiz: Record<DemoLang, DemoQuizQuestion[]>;
 }
 
