@@ -189,6 +189,9 @@ test.describe('Story Graph — Scener & gameplay', () => {
   test('storyboard: ramme via URL, bildetekst med autosave, rekkefølge, scenebilde i oversikten', async ({ page }) => {
     await withSession(page);
     await installNarrativeMocks(page, { gamePlan: 'studio' });
+    // Eksterne bilder (picsum) er ikke tilgjengelige i CI/container; hero-<img> har onError → plassholder,
+    // så uten stubb forsvinner `narrative-scene-hero` og testen blir flaky. 1×1 PNG holder.
+    await page.route('https://picsum.photos/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }));
     await page.goto(`${HARNESS}&tab=scenes`);
     await expect(page.getByTestId('narrative-scenes-panel')).toBeVisible({ timeout: 15_000 });
     await createScene(page, 'Elva');
