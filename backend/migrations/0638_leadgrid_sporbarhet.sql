@@ -28,10 +28,18 @@ CREATE TABLE IF NOT EXISTS leadgrid_tracking_setup (
   project_id        TEXT NOT NULL,
 
   kind              VARCHAR(20) NOT NULL
-    CHECK (kind IN ('gtm', 'ga4', 'meta_pixel', 'tiktok_pixel', 'google_ads', 'linkedin_insight')),
+    CHECK (kind IN ('gtm', 'ga4', 'meta_pixel', 'tiktok_pixel', 'google_ads',
+                    'linkedin_insight', 'clarity')),
   -- GTM-container (GTM-XXXX), GA4 measurement id (G-XXXX), pixel-id, osv.
   external_id       VARCHAR(120) NOT NULL,
   label             VARCHAR(160),
+  -- Hvordan raden kom hit. Et skann finner ID-en i sidekilden; det er ikke
+  -- det samme som at noen har bekreftet at den er riktig. Skillet gjør at
+  -- oversikten kan vise hva som er sjekket av et menneske.
+  source            VARCHAR(10) NOT NULL DEFAULT 'manuell'
+    CHECK (source IN ('manuell', 'skann')),
+  -- Variabelnavnet ID-en sto i, når den ble funnet av et skann.
+  funnet_som        VARCHAR(120),
   notes             TEXT,
 
   active            BOOLEAN NOT NULL DEFAULT TRUE,

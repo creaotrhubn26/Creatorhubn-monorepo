@@ -21,6 +21,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import { skannSporing, type SporingsType } from "./leadgrid-sporing-skann.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -402,6 +403,154 @@ export function registerLeadgridSporbarhetRoutes(deps: Deps): void {
       } catch (err) {
         console.error("[sporbarhet/lead]", err);
         res.status(500).json({ error: "sporbarhet_feilet" });
+      }
+    },
+  );
+
+  // ── POST /api/leadgrid/sporbarhet/skann ────────────────────────────────
+  // Finn ut hva som allerede er satt opp, i stedet for å be kunden skrive
+  // inn GTM-ID-en sin fra hukommelsen.
+  app.post(
+    "/api/leadgrid/sporbarhet/skann",
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const projectId =
+        typeof body.projectId === "string"
+          ? body.projectId
+          : typeof body.project_id === "string"
+            ? body.project_id
+            : null;
+      const url = typeof body.url === "string" ? body.url.trim() : "";
+      if (!projectId || !url) {
+        res.status(400).json({ error: "project_id_og_url_kreves" });
+        return;
+      }
+      try {
+        const project = await loadAccessibleLeadgridProject(pool, projectId, session.userId);
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
+
+        let skann;
+        try {
+          skann = await skannSporing(url);
+        } catch (err) {
+          // SSRF-guarden og nettverksfeil havner her. Meldingen er kort med
+          // vilje: den som skanner skal se at det feilet, ikke få et kart
+          // over hva som finnes på innsiden av nettet vårt.
+          res.status(400).json({
+            error: "kunne_ikke_skanne",
+            detalj: String((err as Error)?.message ?? "").slice(0, 120),
+          });
+          return;
+        }
+
+        // Hva har prosjektet fra før? Da kan svaret vise hva som er nytt,
+        // i stedet for å be noen sammenligne to lister selv.
+        const fra_for = await pool.query<{ kind: string; external_id: string }>(
+          `SELECT kind, external_id FROM leadgrid_tracking_setup
+            WHERE organization_id = $1::uuid AND project_id = $2 AND active`,
+          [project.organizationId, project.id],
+        );
+        const kjent = new Set(fra_for.rows.map((r) => `${r.kind}:${r.external_id}`));
+
+        res.json({
+          url: skann.url,
+          funn: skann.funn.map((f) => ({
+            ...f,
+            registrert_fra_for: kjent.has(`${f.type}:${f.id}`),
+          })),
+          gtm_containere_lest: skann.gtm_containere_lest,
+          advarsler: skann.advarsler,
+          // Det som mangler helt. Uten TikTok-pixel og Google Ads-tag kan
+          // ikke klikk-ID-ene fanges, og da er tilbakerapportering umulig.
+          mangler: (["gtm", "ga4", "meta_pixel", "tiktok_pixel", "google_ads"] as SporingsType[])
+            .filter((t) => !skann.funn.some((f) => f.type === t)),
+        });
+      } catch (err) {
+        console.error("[sporbarhet/skann]", err);
+        res.status(500).json({ error: "skann_feilet" });
+      }
+    },
+  );
+
+  // ── POST /api/leadgrid/sporbarhet/skann/importer ───────────────────────
+  // Ett kall tar valgte funn inn i prosjektet. Idempotent, så en gjentatt
+  // import ikke lager duplikater.
+  app.post(
+    "/api/leadgrid/sporbarhet/skann/importer",
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const projectId =
+        typeof body.projectId === "string"
+          ? body.projectId
+          : typeof body.project_id === "string"
+            ? body.project_id
+            : null;
+      const funn = Array.isArray(body.funn) ? body.funn : null;
+      if (!projectId || !funn || funn.length === 0) {
+        res.status(400).json({ error: "project_id_og_funn_kreves" });
+        return;
+      }
+      if (funn.length > 50) {
+        res.status(400).json({ error: "for_mange_funn" });
+        return;
+      }
+      const LOVLIGE: SporingsType[] = [
+        "gtm", "ga4", "meta_pixel", "tiktok_pixel", "google_ads",
+        "linkedin_insight", "clarity",
+      ];
+      const rader: Array<{ type: string; id: string; label: string | null; funnet_som: string | null }> = [];
+      for (const raw of funn) {
+        const f = (raw ?? {}) as Record<string, unknown>;
+        const type = typeof f.type === "string" ? f.type : "";
+        const id = typeof f.id === "string" ? f.id.trim() : "";
+        if (!(LOVLIGE as string[]).includes(type) || !id || id.length > 120) {
+          res.status(400).json({ error: "ugyldig_funn", funn: f });
+          return;
+        }
+        rader.push({
+          type,
+          id,
+          label: typeof f.label === "string" ? f.label.slice(0, 160) : null,
+          funnet_som: typeof f.kontekst === "string" ? f.kontekst.slice(0, 120) : null,
+        });
+      }
+
+      try {
+        const project = await loadAccessibleLeadgridProject(pool, projectId, session.userId);
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
+        let lagt_til = 0;
+        for (const r of rader) {
+          const res2 = await pool.query(
+            `INSERT INTO leadgrid_tracking_setup
+               (organization_id, project_id, kind, external_id, label,
+                source, funnet_som, created_by_user_id)
+             VALUES ($1::uuid, $2, $3, $4, $5, 'skann', $6, $7)
+             ON CONFLICT DO NOTHING`,
+            [project.organizationId, project.id, r.type, r.id, r.label,
+             r.funnet_som, session.userId],
+          );
+          lagt_til += res2.rowCount ?? 0;
+        }
+        res.status(201).json({ lagt_til, av: rader.length });
+      } catch (err) {
+        console.error("[sporbarhet/skann/importer]", err);
+        res.status(500).json({ error: "import_feilet" });
       }
     },
   );
