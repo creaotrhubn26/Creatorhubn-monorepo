@@ -87,7 +87,6 @@ export const LEADGRID_ACTIVITY_TYPES = [
 export type IssueCode =
   | "contact_without_company"
   | "extra_company_links_dropped"
-  | "extra_deals_dropped"
   | "unknown_pipeline_stage"
   | "unknown_owner"
   | "archived_owner"
@@ -97,7 +96,6 @@ export type IssueCode =
   | "calculated_property_skipped"
   | "missing_deal_amount"
   | "custom_lifecycle_stage"
-  | "line_items_on_dropped_deal"
   | "unsupported_billing_frequency";
 
 export interface MigrationIssue {
@@ -132,14 +130,33 @@ export interface PlannedCustomer {
   raw: Record<string, unknown>;
 }
 
+/**
+ * Ett salg. Før mig 0635 lagret Leadgrid én avtale per kunde, så alt annet
+ * enn den største ble forkastet — en bedrift med en løpende avtale OG en
+ * kampanje under forhandling mistet den ene. Nå blir alle med.
+ */
+export interface PlannedDeal {
+  hubspotId: string;
+  customerHubspotId: string;
+  title: string;
+  pipelineStage: LeadgridStage;
+  dealAmount: number | null;
+  dealProbability: number | null;
+  expectedCloseDate: string | null;
+  ownerUserId: string | null;
+  /** Salget crm_customers sine flate deal-felt speiler (mig 0635). */
+  isPrimary: boolean;
+  raw: Record<string, unknown>;
+}
+
 export interface PlannedContact {
   hubspotId: string;
   customerHubspotId: string;
   name: string;
   role: string | null;
-  /** Har ingen kolonne i leadgrid_customer_contacts i dag. */
-  emailWithoutColumn: string | null;
-  phoneWithoutColumn: string | null;
+  /** Kolonnene kom i mig 0635; før det hadde kontakten bare navn og rolle. */
+  email: string | null;
+  phone: string | null;
   /** Eieren er resolvet for å fange ukjent/deaktivert eier, men lagres ikke:
    *  leadgrid_customer_contacts har ingen eier-kolonne. */
   ownerWithoutColumn: string | null;
@@ -175,7 +192,9 @@ export interface PlannedProduct {
 
 export interface PlannedLineItem {
   hubspotId: string;
-  /** HubSpot-id-en til avtalens selskap, altså kunden linjen havner på. */
+  /** HubSpot-id-en til avtalen linjen hører til (mig 0635). */
+  dealHubspotId: string;
+  /** Bedriften avtalen ligger på. Brukes til scoping ved import. */
   customerHubspotId: string;
   productHubspotId: string | null;
   name: string;
@@ -191,6 +210,7 @@ export interface PlannedLineItem {
 
 export interface MigrationPlan {
   customers: PlannedCustomer[];
+  deals: PlannedDeal[];
   contacts: PlannedContact[];
   products: PlannedProduct[];
   lineItems: PlannedLineItem[];
@@ -198,6 +218,7 @@ export interface MigrationPlan {
   issues: MigrationIssue[];
   counts: {
     customers: number;
+    deals: number;
     contacts: number;
     merged: number;
     products: number;
@@ -279,6 +300,7 @@ function contactDisplayName(properties: Record<string, string | null>): string {
 export function planHubSpotMigration(input: MigrationInput, options: MigrationOptions): MigrationPlan {
   const issues: MigrationIssue[] = [];
   const customers: PlannedCustomer[] = [];
+  const deals: PlannedDeal[] = [];
   const products: PlannedProduct[] = [];
   const lineItems: PlannedLineItem[] = [];
   const contacts: PlannedContact[] = [];
@@ -383,6 +405,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
       const discountAmount = toNumber(line.properties.discount) ?? 0;
       lineItems.push({
         hubspotId: line.id,
+        dealHubspotId: dealId,
         customerHubspotId,
         productHubspotId: line.properties.hs_product_id ?? null,
         name: line.properties.name ?? `Linje ${line.id}`,
@@ -403,59 +426,49 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
     const dealIds = input.companyToDeals[company.id] ?? [];
     const companyDeals = dealIds.map((id) => dealsById.get(id)).filter((d): d is HubSpotObject => Boolean(d));
 
-    // Vår modell har plass til én deal per kunde-rad. Velg den største åpne.
+    // Alle avtalene blir med (mig 0635). Den største blir primærsalget,
+    // fordi det er den crm_customers sine flate deal-felt speiler — og det
+    // er de feltene pipeline, forecast og scoring fortsatt leser.
     const sorted = [...companyDeals].sort(
       (a, b) => (toNumber(b.properties.amount) ?? 0) - (toNumber(a.properties.amount) ?? 0),
     );
     const primaryDeal = sorted[0] ?? null;
-    if (primaryDeal) addLineItems(primaryDeal.id, company.id);
 
-    // Linjene på avtalene vi ikke tar med, forsvinner sammen med dem.
-    // Det skal sies høyt, med beløp, ikke bare antydes.
-    for (const dropped of sorted.slice(1)) {
-      const droppedLines = (input.dealToLineItems?.[dropped.id] ?? [])
-        .map((id) => lineItemsById.get(id))
-        .filter((l): l is HubSpotObject => Boolean(l));
-      if (droppedLines.length === 0) continue;
-      issues.push({
-        code: "line_items_on_dropped_deal",
-        hubspotId: dropped.id,
-        message: `${droppedLines.length} produktlinje(r) på «${dropped.properties.dealname ?? dropped.id}» blir ikke med, fordi avtalen selv ikke blir med: ${droppedLines
-          .map((l) => l.properties.name ?? l.id)
-          .join(", ")}.`,
-        silentLoss: true,
-      });
-    }
-
-    if (sorted.length > 1) {
-      issues.push({
-        code: "extra_deals_dropped",
-        hubspotId: company.id,
-        message: `${sorted.length} avtaler i HubSpot, men Leadgrid lagrer én per kunde. Disse blir ikke med: ${sorted
-          .slice(1)
-          .map((d) => d.properties.dealname ?? d.id)
-          .join(", ")}.`,
-        silentLoss: true,
-      });
-    }
-    if (primaryDeal && toNumber(primaryDeal.properties.amount) == null) {
-      issues.push({
-        code: "missing_deal_amount",
-        hubspotId: primaryDeal.id,
-        message: `Avtalen «${primaryDeal.properties.dealname ?? primaryDeal.id}» mangler beløp i HubSpot.`,
-        silentLoss: false,
+    for (const deal of sorted) {
+      addLineItems(deal.id, company.id);
+      const dealMapped = mapPipelineStage(deal.properties.dealstage ?? null, input.pipelines);
+      if (!dealMapped.matched) {
+        issues.push({
+          code: "unknown_pipeline_stage",
+          hubspotId: deal.id,
+          message: `Stagen «${deal.properties.dealstage}» finnes ikke i pipelinen vi hentet. Avtalen settes på «new».`,
+          silentLoss: false,
+        });
+      }
+      if (toNumber(deal.properties.amount) == null) {
+        issues.push({
+          code: "missing_deal_amount",
+          hubspotId: deal.id,
+          message: `Avtalen «${deal.properties.dealname ?? deal.id}» mangler beløp i HubSpot.`,
+          silentLoss: false,
+        });
+      }
+      deals.push({
+        hubspotId: deal.id,
+        customerHubspotId: company.id,
+        title: deal.properties.dealname ?? `HubSpot-avtale ${deal.id}`,
+        pipelineStage: dealMapped.stage,
+        dealAmount: toNumber(deal.properties.amount),
+        dealProbability:
+          dealMapped.probability == null ? null : Math.round(dealMapped.probability * 100),
+        expectedCloseDate: deal.properties.closedate ?? null,
+        ownerUserId: resolveOwner(deal.properties.hubspot_owner_id ?? null, deal.id),
+        isPrimary: deal.id === primaryDeal?.id,
+        raw: { object: "deal", ...deal },
       });
     }
 
     const mapped = mapPipelineStage(primaryDeal?.properties.dealstage ?? null, input.pipelines);
-    if (primaryDeal && !mapped.matched) {
-      issues.push({
-        code: "unknown_pipeline_stage",
-        hubspotId: primaryDeal.id,
-        message: `Stagen «${primaryDeal.properties.dealstage}» finnes ikke i pipelinen vi hentet. Kunden settes på «new».`,
-        silentLoss: false,
-      });
-    }
 
     customers.push({
       hubspotId: company.id,
@@ -579,8 +592,8 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
       ownerWithoutColumn: contactOwner,
       name: contactDisplayName(contact.properties),
       role: contact.properties.jobtitle ?? labels.find((l) => l !== "Primary") ?? null,
-      emailWithoutColumn: email,
-      phoneWithoutColumn: phone,
+      email,
+      phone,
     });
   }
 
@@ -599,6 +612,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
 
   return {
     customers,
+    deals,
     contacts,
     products,
     lineItems,
@@ -606,6 +620,7 @@ export function planHubSpotMigration(input: MigrationInput, options: MigrationOp
     issues,
     counts: {
       customers: customers.length,
+      deals: deals.length,
       contacts: contacts.length,
       merged: mergedIntoExisting.length,
       products: products.length,
