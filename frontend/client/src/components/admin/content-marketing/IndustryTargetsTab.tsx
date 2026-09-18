@@ -75,12 +75,12 @@ const STATUS_COLORS: Record<IndustryStatus, string> = {
   cold: '#64748b',
   warm: '#fbbf24',
   engaged: '#34d399',
-  advocate: '#a78bfa',
+  advocate: '#93a4dc',
   paused: '#475569',
 };
 const TIER_COLORS: Record<IndustryTier, string> = {
   T1: '#f472b6',
-  T2: '#a78bfa',
+  T2: '#93a4dc',
   T3: '#64748b',
 };
 
@@ -199,7 +199,7 @@ export function IndustryTargetsTab() {
             T2 = ukentlig touchpoint, T3 = månedlig.
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#3e3180' }}>
           Ny target
         </Button>
       </Stack>
@@ -210,7 +210,7 @@ export function IndustryTargetsTab() {
 
       <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.22)' }}>
         <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1.5 }}>
-          <Typography sx={{ color: '#a78bfa', fontWeight: 800, fontSize: '0.92rem', letterSpacing: '0.04em' }}>
+          <Typography sx={{ color: '#93a4dc', fontWeight: 800, fontSize: '0.92rem', letterSpacing: '0.04em' }}>
             Outreach Plan v2 — fase-progress
           </Typography>
           <Tooltip
@@ -244,7 +244,7 @@ export function IndustryTargetsTab() {
           </Box>
 
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(167,139,250,0.05)', border: '1px solid rgba(167,139,250,0.25)' }}>
-            <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
+            <Typography sx={{ color: '#93a4dc', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, mb: 0.5 }}>
               Fase 2 · Innhold + dans (mnd 3-6)
             </Typography>
             <Stack spacing={0.4} sx={{ mb: 0.5 }}>
@@ -280,7 +280,7 @@ export function IndustryTargetsTab() {
       </Paper>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(6, 1fr)' }, gap: 1.5, mb: 3 }}>
-        <StatCard label="Targets totalt" value={stats?.totals.total ?? 0} accent="#a78bfa" />
+        <StatCard label="Targets totalt" value={stats?.totals.total ?? 0} accent="#93a4dc" />
         <StatCard label="T1 (daglig)" value={stats?.totals.tier_t1 ?? 0} accent="#f472b6" />
         <StatCard label="Engasjerte" value={stats?.totals.engaged ?? 0} accent="#34d399" />
         <StatCard
@@ -363,7 +363,7 @@ export function IndustryTargetsTab() {
                       <Typography sx={{ color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }}>
                         T1: engaged offentlig (kommentar, repost)
                       </Typography>
-                      <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 700 }}>
+                      <Typography sx={{ color: '#93a4dc', fontSize: '0.7rem', fontWeight: 700 }}>
                         T2: ga substantiv value (artikkel, stat, intro)
                       </Typography>
                       <Typography sx={{ color: '#22d3ee', fontSize: '0.7rem', fontWeight: 700 }}>
@@ -778,7 +778,7 @@ const TOUCH_LABELS = [
   'Touch 2 — ga substantiv value (artikkel, stat, intro)',
   'Touch 3 — klar for ask (DM, mail, møte)',
 ];
-const TOUCH_COLORS = ['#475569', '#fbbf24', '#a78bfa', '#22d3ee'];
+const TOUCH_COLORS = ['#475569', '#fbbf24', '#93a4dc', '#22d3ee'];
 
 function TouchCadence({ value, onChange }: { value: number; onChange: (next: number) => void }) {
   const clamped = Math.max(0, Math.min(3, value));
@@ -1101,7 +1101,7 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
               {/* Post-prod-spesifikke felter — vises kun for post-prod-roller */}
               {['editor', 'colorist', 'sound_designer', 'foley_artist', 'post_supervisor', 'post_vfx_artist', 'title_designer', 'music_supervisor', 'mastering_engineer', 'composer'].includes(form.segment ?? '') ? (
                 <Stack spacing={1.25} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(167,139,250,0.05)', border: '1px dashed rgba(167,139,250,0.3)' }}>
-                  <Typography sx={{ color: '#a78bfa', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  <Typography sx={{ color: '#93a4dc', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                     Etterproduksjon · software-erfaring
                   </Typography>
                   <TextField
@@ -1163,7 +1163,7 @@ function TargetDrawer({ open, initial, allTargets, onClose, onSaved }: TargetDra
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none' }}>Avbryt</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#3e3180' }}>
           {saving ? 'Lagrer…' : initial ? 'Lagre endringer' : 'Opprett target'}
         </Button>
       </DialogActions>

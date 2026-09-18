@@ -210,7 +210,7 @@ export function NewsletterBlockBuilder(props: BuilderProps) {
                   fontSize: '0.72rem',
                   color: '#c4b5fd',
                   borderColor: 'rgba(148,163,184,0.18)',
-                  '&:hover': { bgcolor: 'rgba(139,92,246,0.1)', borderColor: 'rgba(167,139,250,0.5)' },
+                  '&:hover': { bgcolor: 'rgba(75, 61, 143,0.1)', borderColor: 'rgba(167,139,250,0.5)' },
                 }}
               >
                 {p.icon}
@@ -223,13 +223,13 @@ export function NewsletterBlockBuilder(props: BuilderProps) {
             AI Assist
           </Typography>
           <Stack spacing={0.5}>
-            <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} onClick={() => setAiDialog('first-draft')} sx={{ justifyContent: 'flex-start', textTransform: 'none', color: '#a78bfa', fontWeight: 600, fontSize: '0.78rem' }}>
+            <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} onClick={() => setAiDialog('first-draft')} sx={{ justifyContent: 'flex-start', textTransform: 'none', color: '#93a4dc', fontWeight: 600, fontSize: '0.78rem' }}>
               Førsteutkast
             </Button>
-            <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} onClick={() => setAiDialog('subject-lines')} sx={{ justifyContent: 'flex-start', textTransform: 'none', color: '#a78bfa', fontWeight: 600, fontSize: '0.78rem' }}>
+            <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} onClick={() => setAiDialog('subject-lines')} sx={{ justifyContent: 'flex-start', textTransform: 'none', color: '#93a4dc', fontWeight: 600, fontSize: '0.78rem' }}>
               Subject lines (×5)
             </Button>
-            <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} onClick={() => setAiDialog('content-score')} sx={{ justifyContent: 'flex-start', textTransform: 'none', color: '#a78bfa', fontWeight: 600, fontSize: '0.78rem' }}>
+            <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} onClick={() => setAiDialog('content-score')} sx={{ justifyContent: 'flex-start', textTransform: 'none', color: '#93a4dc', fontWeight: 600, fontSize: '0.78rem' }}>
               Content score
             </Button>
           </Stack>
@@ -243,7 +243,7 @@ export function NewsletterBlockBuilder(props: BuilderProps) {
         <Box sx={{ p: 3, overflow: 'auto', bgcolor: '#0a0a0f' }}>
           <Box sx={{ maxWidth: 600, mx: 'auto' }}>
             <Box sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', pb: 2, mb: 3 }}>
-              <Typography sx={{ color: '#8b5cf6', fontFamily: '"Courier New", monospace', fontSize: '0.72rem', letterSpacing: '0.25em', textTransform: 'uppercase', fontWeight: 700 }}>
+              <Typography sx={{ color: '#4b3d8f', fontFamily: '"Courier New", monospace', fontSize: '0.72rem', letterSpacing: '0.25em', textTransform: 'uppercase', fontWeight: 700 }}>
                 Norwegian Casting Brief
               </Typography>
             </Box>
@@ -347,9 +347,9 @@ function SortableBlock({ block, isSelected, onSelect, onUpdate, onDelete }: Sort
         p: 1.5,
         borderRadius: 1.5,
         border: `1px solid ${isSelected ? 'rgba(167,139,250,0.6)' : 'transparent'}`,
-        bgcolor: isSelected ? 'rgba(139,92,246,0.06)' : 'transparent',
+        bgcolor: isSelected ? 'rgba(75, 61, 143,0.06)' : 'transparent',
         cursor: 'pointer',
-        '&:hover': { bgcolor: isSelected ? 'rgba(139,92,246,0.08)' : 'rgba(255,255,255,0.02)' },
+        '&:hover': { bgcolor: isSelected ? 'rgba(75, 61, 143,0.08)' : 'rgba(255,255,255,0.02)' },
       }}
     >
       <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 0.5, opacity: isSelected ? 1 : 0, transition: '0.15s', '.MuiBox-root:hover > &': { opacity: 1 } }}>
@@ -411,7 +411,7 @@ function BlockInlineEditor({ block, onUpdate }: { block: NewsletterBlock; onUpda
   if (block.type === 'cta') {
     return (
       <Box sx={{ textAlign: block.align ?? 'center', py: 1 }}>
-        <Box sx={{ display: 'inline-block', bgcolor: '#8b5cf6', borderRadius: 1, p: '8px 16px' }}>
+        <Box sx={{ display: 'inline-block', bgcolor: '#4b3d8f', borderRadius: 1, p: '8px 16px' }}>
           <TextField
             variant="standard"
             value={block.label}
@@ -424,7 +424,7 @@ function BlockInlineEditor({ block, onUpdate }: { block: NewsletterBlock; onUpda
   }
   if (block.type === 'quote') {
     return (
-      <Box sx={{ borderLeft: '3px solid #8b5cf6', pl: 2 }}>
+      <Box sx={{ borderLeft: '3px solid #4b3d8f', pl: 2 }}>
         <TextField
           fullWidth
           multiline
@@ -586,7 +586,7 @@ function AiAssistDialog({ kind, onClose, flattenedContent, title, subject, onIns
     <Dialog open={kind !== null} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'rgba(2,6,23,0.96)', color: '#e2e8f0' } }}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <AutoAwesomeIcon sx={{ color: '#a78bfa' }} />
+          <AutoAwesomeIcon sx={{ color: '#93a4dc' }} />
           <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>
             {kind === 'first-draft' ? 'AI Førsteutkast' : kind === 'subject-lines' ? 'AI Subject lines' : kind === 'content-score' ? 'AI Content score' : 'AI Assist'}
           </Typography>
@@ -606,7 +606,7 @@ function AiAssistDialog({ kind, onClose, flattenedContent, title, subject, onIns
         {kind === 'subject-lines' && subjects ? (
           <Stack spacing={1}>
             {subjects.map((s) => (
-              <Box key={s.text} onClick={() => onPickSubject(s.text)} sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.18)', cursor: 'pointer', '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(139,92,246,0.08)' } }}>
+              <Box key={s.text} onClick={() => onPickSubject(s.text)} sx={{ p: 1.5, borderRadius: 1, border: '1px solid rgba(148,163,184,0.18)', cursor: 'pointer', '&:hover': { borderColor: '#93a4dc', bgcolor: 'rgba(75, 61, 143,0.08)' } }}>
                 <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.5 }}>{s.text}</Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>{s.rationale}</Typography>
               </Box>
@@ -650,7 +650,7 @@ function AiAssistDialog({ kind, onClose, flattenedContent, title, subject, onIns
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <Stack alignItems="center" spacing={1}>
-              <CircularProgress size={24} sx={{ color: '#a78bfa' }} />
+              <CircularProgress size={24} sx={{ color: '#93a4dc' }} />
               <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>Claude tenker …</Typography>
             </Stack>
           </Box>
@@ -659,7 +659,7 @@ function AiAssistDialog({ kind, onClose, flattenedContent, title, subject, onIns
       <DialogActions>
         <Button onClick={onClose} sx={{ textTransform: 'none' }}>Lukk</Button>
         {kind === 'first-draft' ? (
-          <Button onClick={handleFirstDraft} variant="contained" disabled={loading || !prompt.trim()} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
+          <Button onClick={handleFirstDraft} variant="contained" disabled={loading || !prompt.trim()} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#3e3180' }}>
             Generer utkast
           </Button>
         ) : null}
