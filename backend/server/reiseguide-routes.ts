@@ -1,6 +1,6 @@
 /**
  * Lydguide-POC («Interaktiv reiseguide med tilgjengelighet»), steg 1:
- * lese-endepunkt over datamodellen i migrasjon 0627_reiseguide_poc.sql.
+ * lese-endepunkt over datamodellen i migrasjon 0628_reiseguide_poc.sql.
  *
  * Offentlige GET-ruter uten innlogging (turist-appen har ingen konto, kun
  * anonym enhets-ID). Monteres fra backend/server/index.ts med
