@@ -94,7 +94,13 @@ describe('production day change impact', () => {
       if (text.includes('FROM casting_production_days') && text.includes('YYYY-MM-DD')) {
         return {
           rows: dayDate
-            ? [{ id: 'day-6', date: dayDate, scene_ids: ['scene-1', 'scene-2'], prop_ids: ['prop-1'] }]
+            ? [{
+                id: 'day-6',
+                date: dayDate,
+                scene_ids: ['scene-1', 'scene-2'],
+                prop_ids: ['prop-1'],
+                data: { equipment: ['kamera-1'] },
+              }]
             : [],
           rowCount: dayDate ? 1 : 0,
         };
@@ -201,6 +207,30 @@ describe('production day change impact', () => {
       .set('authorization', `Bearer ${SESSION_TOKEN}`);
 
     expect(response.status).toBe(400);
+  });
+
+  it('previews what adding a camera to the day costs', async () => {
+    const app = createApp(impactQuery({ casting_equipment: 1 }));
+
+    const response = await request(app)
+      .get(`${PATH}?equipmentIds=kamera-1,optikk-2`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.fromEquipmentIds).toEqual(['kamera-1']);
+    expect(response.body.toEquipmentIds).toEqual(['kamera-1', 'optikk-2']);
+    expect(response.body.impacts.map((i: { area: string }) => i.area)).toContain('equipment_status');
+  });
+
+  it('reads the rig out of the day even though it lives in the data blob', async () => {
+    const app = createApp(impactQuery({}));
+
+    const response = await request(app)
+      .get(`${PATH}?equipmentIds=kamera-1`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ unchanged: true, impacts: [] });
   });
 
   it('rejects a date it cannot parse instead of guessing', async () => {
