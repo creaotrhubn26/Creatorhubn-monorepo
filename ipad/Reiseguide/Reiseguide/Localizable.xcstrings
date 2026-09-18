@@ -902,6 +902,40 @@
         }
       }
     },
+    "log.syncOff": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen ligger bare på denne telefonen. Du kan lagre den på serveren under Innstillinger → Personvern."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The log lives only on this phone. You can keep it on the server under Settings → Privacy."
+          }
+        }
+      }
+    },
+    "log.syncOn": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen lagres også på serveren (Innstillinger → Personvern)."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The log is also stored on the server (Settings → Privacy)."
+          }
+        }
+      }
+    },
     "map.listLabel": {
       "extractionState": "manual",
       "localizations": {
@@ -1514,6 +1548,227 @@
         }
       }
     },
+    "privacy.deleteAll": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett mine data på serveren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete my data on the server"
+          }
+        }
+      }
+    },
+    "privacy.deleteConfirm": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        }
+      }
+    },
+    "privacy.deleteConfirmMessage": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen og vurderingene dine slettes fra serveren, og appen får en ny enhets-ID. Loggen på telefonen beholdes."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your log and ratings are deleted from the server and the app gets a new device ID. The log on this phone is kept."
+          }
+        }
+      }
+    },
+    "privacy.deleteConfirmTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette alle data på serveren?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete all data on the server?"
+          }
+        }
+      }
+    },
+    "privacy.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen ligger alltid på telefonen. Slår du dette på, lagres sted, tidspunkt, stjerner og quiz-resultat også på serveren, knyttet til en tilfeldig enhets-ID uten navn, konto eller posisjon. Dataene slettes automatisk etter ett år, når du slår av bryteren, eller når du sletter dem her."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The log always lives on your phone. If you turn this on, place, time, stars and quiz score are also stored on the server, tied to a random device ID without name, account or location. The data is deleted automatically after one year, when you turn this off, or when you delete it here."
+          }
+        }
+      }
+    },
+    "privacy.status.deleted": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dataene dine på serveren er slettet, og appen har fått ny enhets-ID."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your data on the server has been deleted and the app has a new device ID."
+          }
+        }
+      }
+    },
+    "privacy.status.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke nå serveren. Prøver igjen senere."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not reach the server. Will try again later."
+          }
+        }
+      }
+    },
+    "privacy.status.off": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagres bare på denne telefonen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored only on this phone."
+          }
+        }
+      }
+    },
+    "privacy.status.on": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen lagres på serveren."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your log is stored on the server."
+          }
+        }
+      }
+    },
+    "privacy.status.pending": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Venter på nett for å lagre."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for a connection to save."
+          }
+        }
+      }
+    },
+    "privacy.status.synced": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sist lagret på serveren %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last saved to the server %@."
+          }
+        }
+      }
+    },
+    "privacy.status.syncing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagrer …"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving…"
+          }
+        }
+      }
+    },
+    "privacy.syncLog": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre loggen på serveren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep my log on the server"
+          }
+        }
+      }
+    },
     "quiz.again": {
       "extractionState": "manual",
       "localizations": {
@@ -2071,6 +2326,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Playback"
+          }
+        }
+      }
+    },
+    "settings.privacy": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Personvern"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
           }
         }
       }

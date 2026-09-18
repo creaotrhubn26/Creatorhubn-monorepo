@@ -4,7 +4,8 @@
 --   * stjernerangering etter endt tur (guide_poi_ratings)
 -- Liknende steder i nærheten regnes ut fra guide_pois (kategori + avstand),
 -- deling bruker /api/guide/share/{slug}, og den personlige loggen over
--- besøkte steder ligger kun på telefonen (ingen konto i POC-en).
+-- besøkte steder ligger på telefonen og, med samtykke, på serveren
+-- (0631_reiseguide_visits.sql).
 -- Bygger på 0629_reiseguide_poc.sql; leses av backend/server/reiseguide-routes.ts.
 
 CREATE TABLE IF NOT EXISTS guide_poi_quiz_questions (

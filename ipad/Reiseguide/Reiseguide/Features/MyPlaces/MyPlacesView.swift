@@ -1,7 +1,8 @@
 // MyPlacesView.swift
 //
 // «Mine steder»: favoritter (AppSettings.favoritePoiIds) og den personlige
-// loggen over besøkte steder med tid og dato (VisitLogStore, kun lokalt).
+// loggen over besøkte steder med tid og dato (VisitLogStore på telefonen,
+// speilet til serveren bare når brukeren har slått det på i Personvern).
 // Et loggoppslag åpner etter-besøket-arket på nytt (quiz, vurdering, tips).
 
 import SwiftUI
@@ -86,22 +87,27 @@ struct MyPlacesView: View {
             }
         } else {
             List {
-                ForEach(env.visits.entries) { entry in
-                    Button {
-                        selectedVisit = entry
-                    } label: {
-                        VisitRow(entry: entry, locale: locale, uiLang: env.settings.uiLanguage)
+                Section {
+                    ForEach(env.visits.entries) { entry in
+                        Button {
+                            selectedVisit = entry
+                        } label: {
+                            VisitRow(entry: entry, locale: locale, uiLang: env.settings.uiLanguage)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Text("log.rowHint"))
+                        .listRowBackground(AppColor.bgSurface)
+                        .listRowSeparatorTint(contrast.border)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(Text("log.rowHint"))
-                    .listRowBackground(AppColor.bgSurface)
-                    .listRowSeparatorTint(contrast.border)
-                }
-                .onDelete { offsets in
-                    let ids = offsets.map { env.visits.entries[$0].id }
-                    for id in ids {
-                        env.visits.remove(entryId: id)
+                    .onDelete { offsets in
+                        let ids = offsets.map { env.visits.entries[$0].id }
+                        for id in ids {
+                            env.visits.remove(entryId: id)
+                        }
                     }
+                } footer: {
+                    Text(env.settings.syncVisitsToServer ? LocalizedStringKey("log.syncOn") : LocalizedStringKey("log.syncOff"))
+                        .foregroundStyle(contrast.textSecondary)
                 }
             }
             .listStyle(.insetGrouped)

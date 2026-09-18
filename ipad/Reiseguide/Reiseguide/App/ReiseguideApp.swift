@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct ReiseguideApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var environment = AppEnvironment()
 
     var body: some Scene {
@@ -23,6 +24,12 @@ struct ReiseguideApp: App {
                 }
                 .onOpenURL { url in
                     environment.handle(url: url)
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    // Besøk som ikke kom fram (uten nett) sendes når appen er i forgrunnen igjen.
+                    if phase == .active {
+                        Task { await environment.visitSync.flush() }
+                    }
                 }
         }
     }

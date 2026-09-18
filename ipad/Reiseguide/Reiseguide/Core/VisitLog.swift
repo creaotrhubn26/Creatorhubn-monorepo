@@ -1,10 +1,11 @@
 // VisitLog.swift
 //
 // Personlig logg over besøkte steder med tid og dato («etter besøket»,
-// Daniel 18.09.2026). Ligger KUN på telefonen: appen har ingen konto, og
-// hvor noen har vært er personopplysninger vi ikke trenger på serveren.
-// Lagres som JSON i Application Support (atomisk skriving); tåler at fila
-// mangler eller er ødelagt (da starter loggen tom).
+// Daniel 18.09.2026). Telefonen er alltid kilden: JSON i Application Support
+// (atomisk skriving), tåler at fila mangler eller er ødelagt (da starter
+// loggen tom). Når brukeren har samtykket, speiles endringene til serveren
+// av VisitSync via `onEntryChanged`/`onEntryRemoved` (kun sted, tid,
+// stjerner og quiz-resultat; tittelen sendes ikke).
 //
 // Ett besøk = én oppføring. Starter man samme sted igjen innen kort tid
 // (pause, bytte av variant) gjenbrukes oppføringen i stedet for å lage en ny.
@@ -42,6 +43,11 @@ final class VisitLogStore {
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private let now: () -> Date
 
+    /// Kalles etter hver lagret endring av én oppføring (VisitSync lytter).
+    @ObservationIgnored var onEntryChanged: ((VisitEntry) -> Void)?
+    /// Kalles når en oppføring fjernes, med id-en.
+    @ObservationIgnored var onEntryRemoved: ((String) -> Void)?
+
     init(fileURL: URL? = nil, now: @escaping () -> Date = { Date() }) {
         self.now = now
         self.fileURL = fileURL ?? Self.defaultFileURL()
@@ -77,6 +83,7 @@ final class VisitLogStore {
         )
         entries.insert(entry, at: 0)
         persist()
+        onEntryChanged?(entry)
         return entry
     }
 
@@ -100,13 +107,19 @@ final class VisitLogStore {
     }
 
     func remove(entryId: String) {
+        guard entries.contains(where: { $0.id == entryId }) else { return }
         entries.removeAll { $0.id == entryId }
         persist()
+        onEntryRemoved?(entryId)
     }
 
     func removeAll() {
+        let ids = entries.map(\.id)
         entries = []
         persist()
+        for id in ids {
+            onEntryRemoved?(id)
+        }
     }
 
     // MARK: - Privat
@@ -115,6 +128,7 @@ final class VisitLogStore {
         guard let index = entries.firstIndex(where: { $0.id == entryId }) else { return }
         change(&entries[index])
         persist()
+        onEntryChanged?(entries[index])
     }
 
     private func persist() {

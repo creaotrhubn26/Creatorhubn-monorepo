@@ -27,15 +27,16 @@ Reiseguide/
   App/            ReiseguideApp (inngang, tabs, miniavspiller), AppEnvironment
   Core/           GuideModels (API-kontrakt), GuideAPIClient, AreaStore (cache),
                   AppSettings (UserDefaults), LocationService, Geo, L10n,
-                  VisitLog (besøkslogg, kun lokalt), RelatedPlaces, QuizSession, DeepLink
+                  VisitLog (besøkslogg på telefonen), VisitSync (speiling til serveren
+                  med samtykke), RelatedPlaces, QuizSession, DeepLink
   DesignSystem/   AppColor/AppSpacing/AppTypography + Components (knapper, chips, kort)
   Features/       Explore, Map (+ liste), POIDetail, Player (AVPlayer + simulert tidslinje),
                   Paywall (mock), AfterVisit (quiz, stjerner, tips, deling),
-                  MyPlaces (favoritter + logg), Settings
+                  MyPlaces (favoritter + logg), Settings (+ Personvern)
   Assets.xcassets Fargetokens fra spesifikasjonen (bgBase, accent, textPrimary …)
   Localizable.xcstrings  nb (kilde) og en; UI-språket følger språkvelgeren
 ReiseguideTests/  Modell-dekoding mot ekte API-fixture, Geo, tekstingstidslinje,
-                  besøkslogg, liknende steder, quiz og deep link
+                  besøkslogg, speiling til serveren, liknende steder, quiz og deep link
 ```
 
 ## Hva som virker nå, og hva som venter
@@ -48,7 +49,18 @@ ReiseguideTests/  Modell-dekoding mot ekte API-fixture, Geo, tekstingstidslinje,
   tips til liknende steder i nærheten (samme kategori, kortest vei, regnet ut lokalt)
   og «Anbefal til en venn» med delingssiden `/api/guide/share/{slug}`, som åpner appen
   igjen via `senseaidexplore://poi/{slug}`. Besøkene lagres i loggen under Mine steder
-  med dato og klokkeslett, kun på telefonen.
+  med dato og klokkeslett, alltid på telefonen.
+- Loggen på serveren (GDPR): under Innstillinger → Personvern kan brukeren slå på
+  «Lagre loggen på serveren» (av som standard, samtykke). Da speiles sted, tid, stjerner
+  og quiz-resultat til `PUT /api/guide/device/visits` med den anonyme enhets-ID-en i
+  headeren `X-SenseAid-Device` (aldri navn, konto, posisjon eller tittel). Endringer
+  samles i én sending; uten nett blir de liggende i kø og sendes når appen kommer i
+  forgrunnen. Slås bryteren av, slettes loggen på serveren. «Slett mine data på
+  serveren» sletter alt om enheten (også vurderinger) via `DELETE /api/guide/device/data`
+  og gir appen ny enhets-ID. `GET /api/guide/device/data` gir innsyn/eksport som JSON.
+  Serveren sletter loggen automatisk etter `SENSEAID_VISIT_RETENTION_DAYS` (365);
+  teksten i appen sier «ett år», så endres verdien må `privacy.footer` oppdateres.
+  Migrasjon `0631_reiseguide_visits.sql`, logikk i `backend/server/reiseguide-visits.ts`.
 - Lydfiler finnes ikke ennå (steg 2: manus, TTS, Soniox). Avspilleren viser
   «Lyden er ikke klar ennå» og kjører en simulert tidslinje med anslått teksting
   fra manuset. Når backend leverer `audio.url` og `captions.cues`, brukes de

@@ -143,6 +143,38 @@ struct RatingResponse: Codable, Sendable, Equatable {
     let rating: RatingSummary?
 }
 
+/// Ett besøk slik serveren har det (PUT/GET /api/guide/device/visits).
+struct ServerVisit: Codable, Sendable, Equatable, Identifiable {
+    let id: String
+    let poiId: String
+    let poiSlug: String?
+    let startedAt: String
+    let completedAt: String?
+    let stars: Int?
+    let quizCorrect: Int?
+    let quizTotal: Int?
+}
+
+/// Svar på synk av besøksloggen (migrasjon 0631).
+struct VisitSyncResponse: Codable, Sendable, Equatable {
+    let deviceId: String
+    let saved: Int
+    let skipped: [String]
+    let retentionDays: Int
+    let visits: [ServerVisit]
+}
+
+/// Svar på sletting (ett besøk, hele loggen eller alle data om enheten).
+struct DeviceDeletionResponse: Codable, Sendable, Equatable {
+    struct Counts: Codable, Sendable, Equatable {
+        let visits: Int
+        let ratings: Int?
+    }
+
+    let deviceId: String
+    let deleted: Counts
+}
+
 struct GuidePOI: Codable, Sendable, Identifiable, Equatable {
     let id: String
     let slug: String

@@ -1,0 +1,60 @@
+claim: >
+  SenseAid Explore (lydguide-POC) kan lagre den personlige besøksloggen på serveren
+  innenfor GDPR uten konto eller identitet, hvis loggen behandles som personopplysning
+  (hvor en person har vært, når) og bygges rundt samtykke, dataminimering,
+  lagringsbegrensning og enkle innsyns-/slettingsflater.
+source_type: standard
+source: "Forordning (EU) 2016/679 (GDPR), gjennomført i Norge ved personopplysningsloven (LOV-2018-06-15-38): art. 4 nr. 1 (personopplysning, også pseudonyme identifikatorer), art. 5 nr. 1 bokstav c og e (dataminimering, lagringsbegrensning), art. 6 nr. 1 bokstav a (samtykke) og art. 7 nr. 3 (tilbaketrekking like enkelt som å gi), art. 15 (innsyn), art. 17 (sletting), art. 20 (dataportabilitet), art. 25 (innebygd personvern). Datatilsynets veiledning om innebygd personvern (datatilsynet.no). Kildene er ikke hentet på nytt i denne økten (proxy); artiklene er stabile siden 2018."
+authority_tier: 1
+vendor: EU / Datatilsynet
+product: GDPR
+version_scope: "GDPR som gjeldende per 2026-09; ingen versjonsendring ventet"
+publication_date: "2026-09-18"
+valid_from: "2026-09"
+valid_to: "til appen får konto/innlogging (da må rettslig grunnlag og innsyn knyttes til brukeren, ikke enheten) eller Datatilsynet endrer veiledning om pseudonyme identifikatorer"
+evidence_summary: >
+  En tilfeldig enhets-ID i UserDefaults er en pseudonym identifikator; koblet til
+  steder og tidspunkter er loggen en personopplysning (art. 4 nr. 1), selv uten navn.
+  Samtykke (art. 6 nr. 1 a) må være et aktivt valg og like lett å trekke som å gi
+  (art. 7 nr. 3). Dataminimering (art. 5 nr. 1 c) betyr bare det formålet trenger.
+  Lagringsbegrensning (art. 5 nr. 1 e) krever en definert oppbevaringstid. Innsyn
+  (art. 15), sletting (art. 17) og portabilitet (art. 20) må kunne oppfylles uten
+  at brukeren må identifisere seg mer enn nødvendig; enhets-ID-en er nøkkelen.
+interpretation: >
+  Verdikt (Fable 5.1, produksjonskonsekvens): loggen kan ligge på serveren hvis
+  (1) bryteren er av som standard og tekstene forklarer hva som lagres, (2) bare
+  sted-id, tidspunkter, stjerner og quiz-resultat sendes (ingen posisjon, IP, tittel
+  eller fritekst), (3) enhets-ID-en holdes ute av URL-er og tilgangslogger,
+  (4) loggen slettes automatisk etter fast tid, og (5) innsyn og sletting virker
+  med ett trykk. En egen personvernerklæring i App Store-oppføringen kommer i tillegg
+  før publisering (ikke en del av POC-koden).
+project_impact: >
+  Bygd 18.09.2026 på claude/project-thread-xxx8zg (PR #2384):
+  backend/migrations/0631_reiseguide_visits.sql (guide_poi_visits, PK (device_id, id)),
+  backend/server/reiseguide-visits.ts (PUT/GET/DELETE /api/guide/device/visits,
+  GET/DELETE /api/guide/device/data, header X-SenseAid-Device, purge etter
+  SENSEAID_VISIT_RETENTION_DAYS=365, 60 kall/min per IP), iOS Core/VisitSync.swift,
+  AppSettings.syncVisitsToServer (standard av) og resetDeviceId(), Personvern-seksjon i
+  SettingsView. Vurderinger (guide_poi_ratings) slettes sammen med loggen ved
+  «slett mine data», men beholdes når bare bryteren slås av (anonyme snitt).
+confidence: probable
+decision: >
+  Daniel 18.09.2026: «ja vil ha loggen på serveren», «samtidig er det viktig med GDPR».
+  Valgt: samtykke (opt-in) framfor «alltid på», enhets-ID i header framfor i URL,
+  365 dagers oppbevaring, ny enhets-ID etter sletting. Daniel har ikke tatt stilling
+  til om bryteren skal være på som standard; standard av er det tryggeste og kan
+  snus ved å endre startverdien i AppSettings.
+affected:
+  - backend/migrations/0631_reiseguide_visits.sql
+  - backend/server/reiseguide-visits.ts
+  - backend/server/reiseguide-routes.ts
+  - backend/.env.example (SENSEAID_VISIT_RETENTION_DAYS)
+  - ipad/Reiseguide/Reiseguide/Core/VisitSync.swift
+  - ipad/Reiseguide/Reiseguide/Core/AppSettings.swift
+  - ipad/Reiseguide/Reiseguide/Core/GuideAPIClient.swift
+  - ipad/Reiseguide/Reiseguide/Features/Settings/SettingsView.swift
+  - ipad/Reiseguide/README.md
+lesson: >
+  «Anonym enhets-ID» gjør ikke data anonyme. Design personvernflatene (samtykke,
+  innsyn, sletting, oppbevaring) i samme PR som funksjonen, ikke som opprydding
+  etterpå; da koster de noen titalls linjer.

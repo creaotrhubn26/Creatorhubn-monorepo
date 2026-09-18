@@ -2,7 +2,8 @@
 //
 // Tynn klient mot de offentlige rutene i backend/server/reiseguide-routes.ts.
 // Ingen innlogging: appen har kun anonym enhets-ID (POC-skisse 17.09.2026),
-// som også brukes når en stjernerangering sendes inn.
+// som brukes når en stjernerangering sendes inn og, med samtykke, når
+// besøksloggen speiles til serveren (headeren X-SenseAid-Device, aldri i URL-en).
 // Base-URL: Info.plist (GuideAPIBaseURL fra project.yml), overstyrbar i DEBUG
 // med miljøvariabelen REISEGUIDE_API_BASE_URL (samme mønster som Lead Map).
 
@@ -22,8 +23,9 @@ enum GuideAPIError: LocalizedError, Sendable {
     }
 }
 
-actor GuideAPIClient {
+actor GuideAPIClient: VisitSyncTransport {
     static let productionBaseURL = "https://creatorhub-backend-rtbl.onrender.com"
+    static let deviceHeader = "X-SenseAid-Device"
 
     static let baseURL: URL = {
         #if DEBUG
@@ -95,11 +97,79 @@ actor GuideAPIClient {
         )
     }
 
+    // MARK: - Besøkslogg på serveren (samtykke, GDPR)
+
+    /// Speiler besøk til serveren. Bare sted, tid, stjerner og quiz-resultat
+    /// sendes (ikke tittel), og samme besøk kan sendes flere ganger (upsert).
+    func syncVisits(deviceId: String, visits: [VisitEntry]) async throws -> VisitSyncResponse {
+        let body = try Self.syncPayload(for: visits)
+        return try await send(
+            VisitSyncResponse.self,
+            method: "PUT",
+            path: "/api/guide/device/visits",
+            query: [],
+            body: body,
+            deviceId: deviceId
+        )
+    }
+
+    /// Kroppen til PUT /api/guide/device/visits: kun feltene serveren lagrer
+    /// (dataminimering), datoer som ISO 8601. Testet i VisitSyncTests.
+    nonisolated static func syncPayload(for visits: [VisitEntry]) throws -> Data {
+        struct Item: Encodable {
+            let id: String
+            let poiId: String
+            let startedAt: Date
+            let completedAt: Date?
+            let stars: Int?
+            let quizCorrect: Int?
+            let quizTotal: Int?
+        }
+        struct Body: Encodable {
+            let visits: [Item]
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let items = visits.map {
+            Item(
+                id: $0.id, poiId: $0.poiId, startedAt: $0.startedAt, completedAt: $0.completedAt,
+                stars: $0.stars, quizCorrect: $0.quizCorrect, quizTotal: $0.quizTotal
+            )
+        }
+        return try encoder.encode(Body(visits: items))
+    }
+
+    func deleteVisit(deviceId: String, id: String) async throws {
+        _ = try await send(
+            DeviceDeletionResponse.self, method: "DELETE", path: "/api/guide/device/visits/\(id)",
+            query: [], body: nil, deviceId: deviceId
+        )
+    }
+
+    /// Hele loggen på serveren (når brukeren slår av synk). Vurderinger beholdes.
+    func deleteVisits(deviceId: String) async throws {
+        _ = try await send(
+            DeviceDeletionResponse.self, method: "DELETE", path: "/api/guide/device/visits",
+            query: [], body: nil, deviceId: deviceId
+        )
+    }
+
+    /// Retten til sletting: alt om enheten, også vurderinger.
+    func deleteDeviceData(deviceId: String) async throws -> DeviceDeletionResponse {
+        try await send(
+            DeviceDeletionResponse.self, method: "DELETE", path: "/api/guide/device/data",
+            query: [], body: nil, deviceId: deviceId
+        )
+    }
+
     private func get<T: Decodable>(_ type: T.Type, path: String, query: [URLQueryItem]) async throws -> T {
         try await send(type, method: "GET", path: path, query: query, body: nil)
     }
 
-    private func send<T: Decodable>(_ type: T.Type, method: String, path: String, query: [URLQueryItem], body: Data?) async throws -> T {
+    private func send<T: Decodable>(
+        _ type: T.Type, method: String, path: String, query: [URLQueryItem], body: Data?, deviceId: String? = nil
+    ) async throws -> T {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw GuideAPIError.invalidURL
         }
@@ -111,6 +181,9 @@ actor GuideAPIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let deviceId {
+            request.setValue(deviceId, forHTTPHeaderField: Self.deviceHeader)
+        }
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

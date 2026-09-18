@@ -1,8 +1,8 @@
 // AppEnvironment.swift
 //
 // Ett felles objekt-sett som deles via SwiftUI Environment: innstillinger,
-// området (innhold), posisjon, besøksloggen og avspilleren. Opprettes én gang
-// i ReiseguideApp. `pendingPoi` er «åpne dette stedet» fra deep link eller
+// området (innhold), posisjon, besøksloggen (og speilingen av den til
+// serveren) og avspilleren. Opprettes én gang i ReiseguideApp. `pendingPoi` er «åpne dette stedet» fra deep link eller
 // «liknende i nærheten»; RootTabView utfører navigasjonen.
 
 import Observation
@@ -16,6 +16,7 @@ final class AppEnvironment {
     let store: AreaStore
     let location: LocationService
     let visits: VisitLogStore
+    let visitSync: VisitSync
     let player: PlayerViewModel
 
     /// Sted som skal åpnes i Utforsk-stacken: id eller slug (deep link).
@@ -38,6 +39,7 @@ final class AppEnvironment {
         self.store = store ?? AreaStore(api: api)
         self.location = location
         self.visits = visits
+        self.visitSync = VisitSync(settings: settings, visits: visits, transport: api)
         self.player = PlayerViewModel(settings: settings, visits: visits)
     }
 

@@ -15,11 +15,15 @@
  *                                             (0630_reiseguide_after_visit.sql)
  *   GET /api/guide/share/:idOrSlug?lang=nb    delingsside (HTML med Open Graph) som
  *                                             åpner appen via senseaidexplore://poi/{slug}
+ *   /api/guide/device/*                       personlig besøkslogg per anonym enhet med
+ *                                             innsyn og sletting (reiseguide-visits.ts,
+ *                                             0631_reiseguide_visits.sql)
  *
  * «Etter besøket» (Daniel 18.09.2026): hver POI får quiz (per språk, samme
  * fallback som manusene), rating {average, count} og shareUrl. Liknende steder
- * i nærheten regner appen ut selv fra området (kategori + avstand), og den
- * personlige loggen ligger kun på telefonen.
+ * i nærheten regner appen ut selv fra området (kategori + avstand). Den
+ * personlige loggen ligger på telefonen og, når brukeren har samtykket,
+ * på serveren (GDPR-premissene står i reiseguide-visits.ts).
  *
  * Språk (POC-skisse 17.09.2026): ønsket språk → primærtag (nb-NO → nb) → en →
  * områdets default_lang, avgjort per POI. Svaret sier hvilket språk som ble
@@ -50,6 +54,7 @@ import {
   type RatingAggregateRow,
   type RatingSummary,
 } from "./reiseguide-after-visit.js";
+import { registerReiseguideVisitRoutes } from "./reiseguide-visits.js";
 import { isSenseAidStorageKey, senseAidMediaUrl } from "./reiseguide-storage.js";
 
 interface Deps {
@@ -60,6 +65,8 @@ interface Deps {
   publicApiBase?: string;
   /** Presignering av en S3-nøkkel; standard er CreatorHub S3. Byttes ut i tester. */
   presignMedia?: (key: string) => Promise<string | null>;
+  /** Dager besøksloggen beholdes; standard SENSEAID_VISIT_RETENTION_DAYS eller 365. */
+  visitRetentionDays?: number;
 }
 
 /** Signerte lyd-URL-er lever kort; appen henter en ny via omdirigeringen ved hver avspilling. */
@@ -739,4 +746,6 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
     const { rows } = await pool.query<PoiRow & { default_lang: string }>(POI_LOOKUP_SELECT, [idOrSlug]);
     return rows[0];
   }
+
+  registerReiseguideVisitRoutes(app, { pool, retentionDays: deps.visitRetentionDays });
 }

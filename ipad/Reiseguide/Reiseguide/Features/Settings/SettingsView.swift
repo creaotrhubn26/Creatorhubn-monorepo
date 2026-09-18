@@ -1,12 +1,15 @@
 // SettingsView.swift
 //
-// Innstillinger: språk, teksting, hastighet, mock-kjøp (nullstill) og
+// Innstillinger: språk, teksting, hastighet, personvern (besøksloggen på
+// serveren: samtykke, status og «slett mine data»), mock-kjøp (nullstill) og
 // informasjon om demo-modus og API.
 
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.contrastColors) private var contrast
+    @State private var confirmDelete = false
 
     var body: some View {
         @Bindable var settings = env.settings
@@ -27,6 +30,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            privacySection
             Section("settings.demo") {
                 if let area = env.store.area {
                     LabeledContent("settings.area", value: area.name)
@@ -51,6 +55,64 @@ struct SettingsView: View {
         .background(AppColor.bgBase)
         .navigationTitle("tab.settings")
         .toolbarBackground(AppColor.bgBase, for: .navigationBar)
+        .confirmationDialog("privacy.deleteConfirmTitle", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("privacy.deleteConfirm", role: .destructive) {
+                Task { await env.visitSync.deleteAllServerData() }
+            }
+        } message: {
+            Text("privacy.deleteConfirmMessage")
+        }
+    }
+
+    /// GDPR: samtykke (av som standard), hva som lagres, status og sletting.
+    private var privacySection: some View {
+        Section {
+            Toggle("privacy.syncLog", isOn: syncBinding)
+                .disabled(env.visitSync.state == .syncing)
+            Text(syncStatusText)
+                .font(AppFont.subtitle)
+                .foregroundStyle(env.visitSync.state == .failed ? AppColor.error : contrast.textSecondary)
+                .accessibilityLabel(Text(syncStatusText))
+            Button("privacy.deleteAll", role: .destructive) {
+                confirmDelete = true
+            }
+            .disabled(env.visitSync.state == .syncing)
+        } header: {
+            Text("settings.privacy")
+        } footer: {
+            Text("privacy.footer")
+                .foregroundStyle(contrast.textSecondary)
+        }
+    }
+
+    private var syncBinding: Binding<Bool> {
+        Binding(
+            get: { env.settings.syncVisitsToServer },
+            set: { enabled in Task { await env.visitSync.setEnabled(enabled) } }
+        )
+    }
+
+    private var syncStatusText: String {
+        let uiLang = env.settings.uiLanguage
+        switch env.visitSync.state {
+        case .off:
+            return L10n.string("privacy.status.off", lang: uiLang)
+        case .syncing:
+            return L10n.string("privacy.status.syncing", lang: uiLang)
+        case .failed:
+            return L10n.string("privacy.status.failed", lang: uiLang)
+        case .deleted:
+            return L10n.string("privacy.status.deleted", lang: uiLang)
+        case .idle:
+            if env.visitSync.hasPending {
+                return L10n.string("privacy.status.pending", lang: uiLang)
+            }
+            if let at = env.visitSync.lastSyncedAt {
+                return L10n.string("privacy.status.synced", lang: uiLang)
+                    .replacingOccurrences(of: "%@", with: AfterVisitView.visitDate(at, locale: env.settings.locale))
+            }
+            return L10n.string("privacy.status.on", lang: uiLang)
+        }
     }
 
     private var languages: [String] {
