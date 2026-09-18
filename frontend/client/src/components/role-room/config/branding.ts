@@ -1632,9 +1632,25 @@ export type BrandingSettings = {
 } & BrandingIdentity;
 
 export const ROLE_ROOM_BRAND_ASSETS = {
-  mark: '/role-room-assets/TheRoleRoom_Logo.webp',
-  appLogo: '/role-room-assets/TheRoleRoom_App_Logo.webp',
-  wordmark: '/role-room-assets/TheRoleRoom_Logo_Tagline.webp',
+  /** Merket alene, gjennomsiktig. Bruk dette i grensesnittet. */
+  mark: '/theroleroom-mark-1024-transparent.png',
+  /** Kvadratisk ikon på merkets mørke grunn: favicon, PWA, og:image. */
+  appLogo: '/theroleroom-mark-1024.png',
+  /**
+   * Lockup: merke + «THE ROLE ROOM» + taglinen, satt i Poppins — logoens
+   * egen skrift — og stavet riktig. Erstatter de slettede filene der
+   * taglinen sto feil malt inn i bildet.
+   *
+   * Velg etter bakgrunn: teksten er hvit i dark, mørk indigo i light.
+   * Feil variant gir usynlig tekst, ikke bare feil kontrast.
+   */
+  lockupDark: '/theroleroom-lockup-dark.png',
+  lockupLight: '/theroleroom-lockup-light.png',
+  lockupTransparent: '/theroleroom-lockup-transparent.png',
+  /** Vektor for web og trykk. Teksten er ekte tekst; merket er innebygd raster. */
+  lockupSvg: '/theroleroom-lockup.svg',
+  /** Appen er mørk, så ordmerket peker på den mørke lockupen. */
+  wordmark: '/theroleroom-lockup-dark.png',
 } as const;
 
 const DEFAULT_IDENTITY: BrandingIdentity = {

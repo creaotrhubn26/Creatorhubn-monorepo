@@ -831,7 +831,7 @@ class ProducerHandoffPdfExportService {
 
   private async getLogoDataUrl(): Promise<string | null> {
     if (!this.logoDataUrlPromise) {
-      this.logoDataUrlPromise = this.loadImageAsPngDataUrl(ROLE_ROOM_BRAND_ASSETS.wordmark);
+      this.logoDataUrlPromise = this.loadImageAsPngDataUrl(ROLE_ROOM_BRAND_ASSETS.lockupLight);
     }
     return this.logoDataUrlPromise;
   }

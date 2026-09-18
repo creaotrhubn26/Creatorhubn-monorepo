@@ -16572,7 +16572,7 @@ const ROLE_ROOM_PLATFORM_BRANDING_DEFAULT_IDENTITY: RoleRoomPlatformBrandingIden
   domain: "theroleroom.com",
   supportEmail: "support@theroleroom.com",
   docsUrl: "https://docs.theroleroom.com",
-  emailLogoUrl: "/role-room-assets/TheRoleRoom_Logo_Tagline.webp",
+  emailLogoUrl: "/theroleroom-mark-1024.png",
 };
 
 const ROLE_ROOM_PLATFORM_DEFAULT_EMAIL_THEME: RoleRoomPlatformEmailTheme = {

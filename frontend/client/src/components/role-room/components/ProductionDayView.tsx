@@ -5111,6 +5111,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               targetDate={formData.date || ''}
               currentLocationId={editingDay?.locationId ?? null}
               targetLocationId={formData.locationId || null}
+              currentSceneIds={editingDay?.scenes ?? null}
+              targetSceneIds={editingDay ? (formData.scenes ?? []) : null}
               onBlockingChange={setDateMoveBlocked}
             />
 
@@ -5207,6 +5209,70 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 {locations.map((location) => (
                   <MenuItem key={location.id} value={location.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
                     {location.name} - {location.address}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* Scenene er dagens innhold, og de var tidligere bare lesbare her:
+                du kunne se hvilke scener dagen hadde, men ikke endre dem uten
+                å gå en annen vei. Endringen går gjennom samme
+                konsekvensforhåndsvisning som dato og lokasjon. */}
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Scener</InputLabel>
+              <Select
+                multiple
+                value={formData.scenes ?? []}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFormData({
+                    ...formData,
+                    scenes: typeof value === 'string' ? value.split(',') : value,
+                  });
+                }}
+                label="Scener"
+                inputProps={{ 'aria-label': 'Scener' }}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((sceneId) => (
+                      <Chip
+                        key={sceneId}
+                        size="small"
+                        label={availableScenes.find((scene) => scene.id === sceneId)?.name ?? sceneId}
+                        sx={{ bgcolor: 'rgba(93, 118, 203,0.2)', color: '#c3cbe6' }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                sx={{
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#32127a' },
+                }}
+                MenuProps={{
+                  container: document.body,
+                  sx: { zIndex: 100010 },
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#1c2128',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      mt: 0.5,
+                      maxHeight: 300,
+                    },
+                  },
+                }}
+              >
+                {availableScenes.length === 0 ? (
+                  <MenuItem disabled sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    Ingen scener i manuset ennå
+                  </MenuItem>
+                ) : availableScenes.map((scene) => (
+                  <MenuItem key={scene.id} value={scene.id} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                    {scene.name}
                   </MenuItem>
                 ))}
               </Select>

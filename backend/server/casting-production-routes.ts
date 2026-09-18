@@ -40,6 +40,7 @@ import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
   collectProductionDayChangeImpact,
   collectProductionDayLocationImpact,
+  collectProductionDaySceneImpact,
   hasBlockingImpact,
 } from './production-day-change-impact.js';
 import {
@@ -1345,10 +1346,18 @@ export function createCastingProductionRouter(
       const dayId = String(req.params.dayId || '').trim();
       const toDate = String(req.query.date || '').trim();
       const toLocationId = String(req.query.locationId || '').trim();
-      // Samme rute svarer for begge endringene. En forespørsel uten noen av
+      // Scenene kommer som kommaseparert liste. Tom streng betyr «ingen
+      // scener», som er en ekte endring, mens fravær av parameteren betyr
+      // «scenene røres ikke» — derfor skilles de to.
+      const sceneParam = req.query.sceneIds;
+      const sceneListGiven = sceneParam !== undefined;
+      const toSceneIds = sceneListGiven
+        ? String(sceneParam).split(',').map((id) => id.trim()).filter(Boolean)
+        : [];
+      // Samme rute svarer for alle tre endringene. En forespørsel uten noen av
       // dem har ingen konsekvens å beregne.
-      if (!toDate && !toLocationId) {
-        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato eller ny lokasjon.' });
+      if (!toDate && !toLocationId && !sceneListGiven) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Oppgi ny dato, ny lokasjon eller nye scener.' });
         return;
       }
       if (toDate && !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
@@ -1360,28 +1369,38 @@ export function createCastingProductionRouter(
       if (!(await ensureProductionAccess(req, res, projectId, 'write'))) return;
 
       const dayResult = await pool.query(
-        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, location_id, scene_ids
            FROM casting_production_days
           WHERE id = $1 AND project_id = $2
           LIMIT 1`,
         [dayId, projectId],
       );
-      const day = dayResult.rows[0] as { date?: string; location_id?: string | null } | undefined;
+      const day = dayResult.rows[0] as {
+        date?: string;
+        location_id?: string | null;
+        scene_ids?: unknown;
+      } | undefined;
       if (!day) {
         res.status(404).json({ error: 'not_found' });
         return;
       }
       const fromDate = String(day.date ?? '');
       const fromLocationId = day.location_id ? String(day.location_id) : null;
+      const fromSceneIds = asArray(day.scene_ids).map((sceneId) => String(sceneId));
 
       const dateChanged = Boolean(toDate) && toDate !== fromDate;
       const locationChanged = Boolean(toLocationId) && toLocationId !== fromLocationId;
-      if (!dateChanged && !locationChanged) {
+      const scenesChanged = sceneListGiven
+        && (fromSceneIds.length !== toSceneIds.length
+          || [...new Set(fromSceneIds)].some((id) => !toSceneIds.includes(id)));
+      if (!dateChanged && !locationChanged && !scenesChanged) {
         res.json({
           from: fromDate,
           to: toDate || fromDate,
           fromLocationId,
           toLocationId: toLocationId || fromLocationId,
+          fromSceneIds,
+          toSceneIds: sceneListGiven ? toSceneIds : fromSceneIds,
           impacts: [],
           blocking: false,
           unchanged: true,
@@ -1398,12 +1417,19 @@ export function createCastingProductionRouter(
               projectId, dayId, fromLocationId, toLocationId,
             })
           : []),
+        ...(scenesChanged
+          ? await collectProductionDaySceneImpact(pool, {
+              projectId, dayId, fromSceneIds, toSceneIds,
+            })
+          : []),
       ];
       res.json({
         from: fromDate,
         to: toDate || fromDate,
         fromLocationId,
         toLocationId: toLocationId || fromLocationId,
+        fromSceneIds,
+        toSceneIds: sceneListGiven ? toSceneIds : fromSceneIds,
         impacts,
         blocking: hasBlockingImpact(impacts),
         unchanged: false,

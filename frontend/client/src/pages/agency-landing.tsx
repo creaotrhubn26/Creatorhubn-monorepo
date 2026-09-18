@@ -207,7 +207,7 @@ function TopNav() {
           <Stack component="a" href="/" direction="row" alignItems="center" spacing={1} sx={{ textDecoration: 'none', color: 'inherit' }}>
             <Box
               component="img"
-              src="/role-room-assets/TheRoleRoom_Logo.webp"
+              src="/theroleroom-mark-1024-transparent.png"
               alt="The Role Room"
               sx={{ height: 30, width: 'auto', objectFit: 'contain', display: 'block' }}
             />
