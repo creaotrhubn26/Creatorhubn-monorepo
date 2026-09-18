@@ -691,7 +691,7 @@ export async function handleStripeWebhook(
 
 export const GAME_DEFAULT_PLAN_SLUG = 'solo';
 
-/** Feature-nøkler Story Graph gater på (speiler seeden i 0619). */
+/** Feature-nøkler Story Graph gater på (speiler seeden i 0621). */
 export type GameFeature =
   | 'play' | 'export_json' | 'export_md' | 'share_links' | 'export_html'
   | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages' | 'export_pdf' | 'scene_review'

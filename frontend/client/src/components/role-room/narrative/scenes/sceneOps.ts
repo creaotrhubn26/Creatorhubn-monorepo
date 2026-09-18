@@ -16,7 +16,7 @@ import type {
 } from '../narrativeTypes';
 import { narrativeColors } from '../narrativeTheme';
 
-/** Speiler CHECK-en i 0621: 1–3 bokstaver + 1–4 sifre. */
+/** Speiler CHECK-en i 0623: 1–3 bokstaver + 1–4 sifre. */
 export const SCENE_CODE_RE = /^[A-Za-z]{1,3}[0-9]{1,4}[A-Za-z]?$/;
 
 export function normalizeSceneCode(raw: string): string {

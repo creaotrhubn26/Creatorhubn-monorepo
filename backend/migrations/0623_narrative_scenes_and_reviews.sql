@@ -1,4 +1,4 @@
--- 0621_narrative_scenes_and_reviews.sql
+-- 0623_narrative_scenes_and_reviews.sql
 --
 -- Story Graph Fase 6 — «Scener & gameplay» + «Review & Godkjenning» for
 -- spillstudio-vertikalen (game_studio). Scener er produksjonsenheter rundt
@@ -9,7 +9,7 @@
 --
 -- Egne narrative_scene*-tabeller (ikke casting_scenes / role_room_phase_
 -- timeline_items): film-scenene er blob-først og mangler status/ansvarlig,
--- og timeline-ACL-en avviser spillstudio-eiere. Samme konvensjoner som 0616.
+-- og timeline-ACL-en avviser spillstudio-eiere. Samme konvensjoner som 0618.
 
 -- ─── Scener ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS narrative_scenes (

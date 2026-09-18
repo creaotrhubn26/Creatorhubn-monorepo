@@ -39,7 +39,7 @@ export type AISuggestionSourceType =
   | "role"
   | "manuscript"
   | "project"
-  | "narrative_element"; // Story Graph-element (migrasjon 0617)
+  | "narrative_element"; // Story Graph-element (migrasjon 0619)
 
 export interface AISuggestion<TPayload = unknown> {
   id: string;

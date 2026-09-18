@@ -2905,12 +2905,12 @@ app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
 );
-// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0619_game_billing.sql.
+// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0621_game_billing.sql.
 app.use(
   "/api/game/billing",
   createGameBillingRouter(pool, { activeSessions }),
 );
-// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0623_game_team.sql.
+// Spillstudio-team (Story Graph, Fase 7e-1): roller, seter, PIN-invitasjoner. Se 0625_game_team.sql.
 app.use(
   "/api/game/teams",
   createGameTeamRouter(pool, { activeSessions }),
@@ -2931,7 +2931,7 @@ app.use(
   "/api/dance/addons",
   createDanceAddonRouter(pool, { activeSessions }),
 );
-// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0624). Montert før
+// Spillstudio — gjeste-review av scener uten innlogging (Fase 7e-2, 0626). Montert før
 // narrative-routeren så /review/:token aldri treffer prosjekt-rutene.
 app.use(
   "/api/role-room/narrative/review",

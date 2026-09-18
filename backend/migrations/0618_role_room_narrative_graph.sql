@@ -1,4 +1,4 @@
--- 0616_role_room_narrative_graph.sql
+-- 0618_role_room_narrative_graph.sql
 --
 -- Story Graph — narrativ design for spillstudio-vertikalen (game_studio).
 -- Datamodellen speiler Arcweaves JSON-eksport 1:1 (boards, elements, jumpers,

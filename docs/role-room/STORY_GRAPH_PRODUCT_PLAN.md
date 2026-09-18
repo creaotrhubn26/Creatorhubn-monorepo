@@ -3,7 +3,7 @@
 Arbeidsnavn **Story Graph**. Vertikal `game_studio` i The Role Room, beta bak
 `?mode=game_studio`. Kodemappe `frontend/client/src/components/role-room/narrative/`,
 backend `backend/server/role-room-narrative-*.ts`, tabellprefiks `narrative_*`
-(migrasjon `0616_role_room_narrative_graph.sql`).
+(migrasjon `0618_role_room_narrative_graph.sql`).
 
 ## Produktløftet
 
@@ -56,7 +56,7 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
 
 - Egen profession-mode `game_studio` med faner brett / komponenter / variabler /
   ressurser / spill / eksport / historikk (`professionTabs.ts`).
-- Datamodell 1:1 med Arcweaves JSON (migrasjon 0616), prosjekt-skopet under
+- Datamodell 1:1 med Arcweaves JSON (migrasjon 0618), prosjekt-skopet under
   `casting_projects` med `canAccessRoleRoomProject`.
 - Backend-ruter `/api/role-room/narrative/projects/:projectId/…` med zod, `{ success, data }`,
   optimistisk låsing (`If-Match` → 409 med gjeldende rad).
@@ -110,7 +110,7 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
 - KI: `backend/server/ai-narrative-element-agent.ts` (`narrative-element-agent`, modus
   next/enhance/branches, `claude-opus-5`, effort medium, cachet system-prompt, tool_choice auto)
   + applier som materialiserer i accept-transaksjonen; ny kildetype `narrative_element`
-  (migrasjon `0617_ai_suggestions_narrative_source_type.sql`); «Foreslå med KI» i element-skuffen
+  (migrasjon `0619_ai_suggestions_narrative_source_type.sql`); «Foreslå med KI» i element-skuffen
   (`editor/NarrativeAiAssist.tsx`, mountes først ved åpning).
 - MCP: `rr_export_story_graph` (arcweave | markdown) og `rr_draft_element` (skriv: ukoblet
   utkast på brettet «KI-utkast»/mappe «Utkast» — utkast-invarianten uten migrasjon).
@@ -124,7 +124,7 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
   Harlowe (best-effort, uverifisert), Ink-delsett (knots/stitches, valg, gathers, diverts, VAR,
   `~`, `{cond: a | b}`; once-only og sekvenser er lossy med advarsel). Samme `POST …/import`
   (`format: arcweave | twee | ink`), filvelger i Eksport-fanen med sniff + forhåndsvisning.
-- **Lokalisering / Translation Mode** (migrasjon 0618, `narrative-format/locale.ts`): in-row
+- **Lokalisering / Translation Mode** (migrasjon 0620, `narrative-format/locale.ts`): in-row
   `i18n`-JSONB på elementer/koblinger/innstillinger, `nb` kanonisk, kodeblokker oversettes aldri
   (`mergeCodeBlocks`). Fane «Oversettelser» med KI-forslag (`narrative-translate.ts`, statsløst),
   locale-velger i Play Mode, `?locale=` på `/story/:token`, locale på alle eksporter.
@@ -133,7 +133,7 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
   mutasjoner → debounced reload. Ingen CRDT.
 - **Lansering**: landingskort «Spillstudio — Story Graph» (beta), login-persona med rollekort
   Spillstudio/Narrativ designer → `?mode=game_studio`, `?signup=game_studio`.
-- **Billing** (migrasjon 0619, `game-billing-*`, `game-plan-gate.ts`, `role-room/game/`): planer
+- **Billing** (migrasjon 0621, `game-billing-*`, `game-plan-gate.ts`, `role-room/game/`): planer
   Solo (gratis) / Pro / Studio (plassholderpriser, admin-redigerbare), Stripe checkout/portal/
   webhook, tester-invites. Gating på prosjekteierens plan: delingslenker, spillbar HTML,
   KI-forslag, oversettelser, Twine/Ink-import, elementgrense (402 `plan_required`/`plan_limit`).
@@ -152,7 +152,7 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
 - **Embed-kode**: `/story/:token?embed=1` skjuler toppstripa; «Embed-kode»-knapp ved ny delingslenke
   gir en `<iframe>`-snutt (kopier med umiddelbar «Kopiert!»-tilbakemelding). Vises kun rett etter
   opprettelse fordi bare token-hashen lagres.
-- **PDF-eksport** (`backend/server/narrative-pdf.ts`, Pro/Studio via migrasjon 0620 `export_pdf`):
+- **PDF-eksport** (`backend/server/narrative-pdf.ts`, Pro/Studio via migrasjon 0622 `export_pdf`):
   pdfkit med innebygd DejaVu Sans (æøå), tittelside, per brett elementer med innhold/skript/valg/
   forgreninger/jumpere/notater, vedlegg variabler + komponenter, sidetall. `GET …/export.pdf?locale=`
   → 402 på Solo; knappen er låst med forklarende banner før man trykker (forebygg fremfor forklar).
@@ -169,7 +169,7 @@ states designet (tom/laster/feil/låst/lagret/stale), umiddelbar feedback (autos
 «Lagret HH:MM», optimistisk avkryssing), forebygg fremfor forklar (kode foreslås og valideres
 unik før lagring; review-knappen deaktivert med forklaring når en runde er åpen; stale-banner
 før noen rekker å trykke «Godkjenn»).
-- **Datamodell** (`0621_narrative_scenes_and_reviews.sql`): `narrative_scenes` (kode `^[A-Za-z]{1,3}[0-9]{1,4}$`
+- **Datamodell** (`0623_narrative_scenes_and_reviews.sql`): `narrative_scenes` (kode `^[A-Za-z]{1,3}[0-9]{1,4}$`
   unik per prosjekt, tittel/undertittel/lokasjon/utfordring/spillmekanikk/miljø, status, ansvarlig,
   frist, hero-asset), `narrative_scene_links` (scene ⇄ element/brett, reverse-indeks),
   `narrative_scene_frames` (asset XOR URL), `narrative_scene_tasks`, `narrative_scene_reviews`
@@ -195,7 +195,7 @@ M1-kvalitetskrav, bevegelseskontrakt, implementeringsrapporter). Studioets AGENT
 inn: kildehendelse (W/K) / brukertillegg (U) / forslag (A) / bevart engelsk (E) / ny oversettelse (T)
 holdes fra hverandre, ingen replikk strykes stille, ingen gate er bestått uten sitert bevis, og
 kildene registreres med SHA-256.
-- **Datamodell** (`0622_narrative_production_os.sql`, `0623_game_team.sql`, `0624_narrative_review_share_links.sql`):
+- **Datamodell** (`0624_narrative_production_os.sql`, `0625_game_team.sql`, `0626_narrative_review_share_links.sql`):
   scenekort v2 (Før/Handling/Kontroll/Etter/Lyd/Endring/Bro/tidsnote, kunnskap §E, epoke, episode,
   kildemerker, arbeids-ID; kode med bokstav-suffiks for G03A), `narrative_scene_gates` (seks gater,
   «bestått» krever bevis — CHECK i DB og 400 i API), `narrative_scene_lines` (cue-ID, taler, type,

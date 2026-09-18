@@ -50,7 +50,7 @@ affected:
   - backend/server/narrative-fixture-seed.ts
   - backend/scripts/seed-what-follows-us.ts
   - backend/server/narrative-fixture.test.ts
-  - backend/migrations/0622_narrative_production_os.sql (narrative_sources, source_refs, gates)
+  - backend/migrations/0624_narrative_production_os.sql (narrative_sources, source_refs, gates)
 lesson: >
   Mechanical extraction by smaller models is fine for fixture content when the contract (types,
   tag rules, «never drop a line», «passed needs evidence») is explicit and a stronger model
