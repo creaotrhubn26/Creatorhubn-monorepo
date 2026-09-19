@@ -9,10 +9,7 @@ import express, { Router, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { google } from 'googleapis';
 import * as crypto from 'crypto';
-import {
-  getGoogleWorkspaceOauthConfig,
-  type GoogleWorkspaceOauthApp,
-} from './google-workspace-oauth.js';
+import { getGoogleWorkspaceOauthConfig, type GoogleWorkspaceOauthApp } from './google-workspace-oauth.js';
 
 const CREATORHUB_GOOGLE_OAUTH_APP: GoogleWorkspaceOauthApp = 'creatorhub';
 const DESKTOP_URL_SCHEME = 'creatorhub-one-desk';
@@ -36,6 +33,12 @@ type DesktopOauthState = {
   };
 };
 
+type DesktopProjectRow = {
+  id: string;
+  name: string;
+  created_at: string | Date | null;
+};
+
 const desktopOauthStateStore = new Map<string, DesktopOauthState>();
 
 function pruneExpiredState(): void {
@@ -51,6 +54,54 @@ function hashToken(t: string): string {
   return crypto.createHash('sha256').update(t).digest('hex');
 }
 
+function projectTimestamp(row: DesktopProjectRow): number {
+  const value = row.created_at;
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+/**
+ * Desktop projects live canonically in public.projects. Older installations
+ * may still have rows in legacy.projects, so that source is read best-effort
+ * and never allowed to take the whole Desk project picker down.
+ */
+export async function listDesktopProjectRows(pool: Pick<Pool, 'query'>, userId: string): Promise<Array<{ id: string; name: string }>> {
+  const publicResult = await pool.query<DesktopProjectRow>(
+    `SELECT id::text AS id,
+            COALESCE(NULLIF(title, ''), NULLIF(name, ''), id::text) AS name,
+            created_at
+       FROM projects
+      WHERE user_id::text = $1
+        AND (status IS NULL OR status NOT IN ('archived', 'deleted'))
+      ORDER BY created_at DESC`,
+    [userId],
+  );
+
+  const legacyResult = await pool
+    .query<DesktopProjectRow>(
+      `SELECT id::text AS id,
+            COALESCE(NULLIF(title, ''), NULLIF(name, ''), id::text) AS name,
+            created_at
+       FROM legacy.projects
+      WHERE user_id::text = $1
+        AND (status IS NULL OR status NOT IN ('archived', 'deleted'))
+      ORDER BY created_at DESC`,
+      [userId],
+    )
+    .catch((error: unknown) => {
+      console.warn('[desktop-auth] legacy projects unavailable; continuing with public.projects:', error instanceof Error ? error.message : String(error));
+      return { rows: [] as DesktopProjectRow[] };
+    });
+
+  const rowsById = new Map<string, DesktopProjectRow>();
+  for (const row of legacyResult.rows) rowsById.set(String(row.id), row);
+  // The canonical public row wins if an older migration copied the same ID.
+  for (const row of publicResult.rows) rowsById.set(String(row.id), row);
+
+  return [...rowsById.values()].sort((left, right) => projectTimestamp(right) - projectTimestamp(left)).map((row) => ({ id: String(row.id), name: String(row.name || row.id) }));
+}
+
 function resolveBrowserOrigin(req: Request): string {
   const origin = req.headers.origin;
   if (typeof origin === 'string' && /^https?:\/\//.test(origin)) return origin;
@@ -60,12 +111,7 @@ function resolveBrowserOrigin(req: Request): string {
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export function createDesktopAuthRouter(pool: Pool): Router {
@@ -91,11 +137,7 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     });
 
     const redirectUri = `${browserOrigin}/api/desktop/auth/google/callback`;
-    const oauthClient = new google.auth.OAuth2(
-      config.clientId!,
-      config.clientSecret!,
-      redirectUri,
-    );
+    const oauthClient = new google.auth.OAuth2(config.clientId!, config.clientSecret!, redirectUri);
     const authorizationUrl = oauthClient.generateAuthUrl({
       access_type: 'online',
       scope: ['openid', 'email', 'profile'],
@@ -144,9 +186,7 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     const state = stateId ? desktopOauthStateStore.get(stateId) : null;
 
     if (!state || !code) {
-      return res
-        .status(400)
-        .send(renderErrorPage('Ugyldig forespørsel', 'Lukk denne siden og prøv på nytt fra Creatorhub One Desk.'));
+      return res.status(400).send(renderErrorPage('Ugyldig forespørsel', 'Lukk denne siden og prøv på nytt fra Creatorhub One Desk.'));
     }
     // Behold state-id slik at app-en kan polle /complete-endepunktet
     // (fallback for deep-link-handler-quirks). Slettes når token er
@@ -159,36 +199,38 @@ export function createDesktopAuthRouter(pool: Pool): Router {
 
     try {
       const redirectUri = `${state.browserOrigin}/api/desktop/auth/google/callback`;
-      const oauthClient = new google.auth.OAuth2(
-        config.clientId!,
-        config.clientSecret!,
-        redirectUri,
-      );
+      const oauthClient = new google.auth.OAuth2(config.clientId!, config.clientSecret!, redirectUri);
       const { tokens } = await oauthClient.getToken(code);
       oauthClient.setCredentials(tokens);
 
       const oauth2 = google.oauth2({ version: 'v2', auth: oauthClient });
       const profile = await oauth2.userinfo.get();
-      const googleEmail = String(profile.data.email || '').toLowerCase().trim();
+      const googleEmail = String(profile.data.email || '')
+        .toLowerCase()
+        .trim();
       if (!googleEmail) {
         return res.status(400).send(renderErrorPage('Google-kontoen mangler e-post', ''));
       }
 
       // Slå opp brukeren i CreatorHub via e-post. Samme defensive
       // pattern som creatorhub-google-routes:resolveCreatorHubGoogleLoginUser
-      let userRow: { id: string; email: string; first_name: string | null; last_name: string | null } | null = null;
+      let userRow: {
+        id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+      } | null = null;
       try {
-        const r = await pool.query<{ id: string; email: string; first_name: string | null; last_name: string | null }>(
-          `SELECT id, email, first_name, last_name FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-          [googleEmail],
-        );
+        const r = await pool.query<{
+          id: string;
+          email: string;
+          first_name: string | null;
+          last_name: string | null;
+        }>(`SELECT id, email, first_name, last_name FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [googleEmail]);
         userRow = r.rows[0] ?? null;
       } catch (err: any) {
         if (err?.code === '42703') {
-          const r = await pool.query<{ id: string; email: string }>(
-            `SELECT id, email FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-            [googleEmail],
-          );
+          const r = await pool.query<{ id: string; email: string }>(`SELECT id, email FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [googleEmail]);
           if (r.rows[0]) {
             userRow = { ...r.rows[0], first_name: null, last_name: null };
           }
@@ -198,12 +240,14 @@ export function createDesktopAuthRouter(pool: Pool): Router {
       }
 
       if (!userRow) {
-        return res.status(403).send(
-          renderErrorPage(
-            'Ingen Creatorhub-konto',
-            `Google-kontoen <strong>${escapeHtml(googleEmail)}</strong> er ikke knyttet til en aktiv Creatorhub-konto. Be administrator om å opprette en bruker først.`,
-          ),
-        );
+        return res
+          .status(403)
+          .send(
+            renderErrorPage(
+              'Ingen Creatorhub-konto',
+              `Google-kontoen <strong>${escapeHtml(googleEmail)}</strong> er ikke knyttet til en aktiv Creatorhub-konto. Be administrator om å opprette en bruker først.`,
+            ),
+          );
       }
 
       // Utsted device-token. Format: `trr_desk_<32-byte-hex>`. Token
@@ -239,9 +283,7 @@ export function createDesktopAuthRouter(pool: Pool): Router {
         message: error instanceof Error ? error.message : String(error),
         code: (error as any)?.code,
       });
-      return res
-        .status(500)
-        .send(renderErrorPage('Innlogging feilet', 'Noe gikk galt. Lukk denne siden og prøv på nytt.'));
+      return res.status(500).send(renderErrorPage('Innlogging feilet', 'Noe gikk galt. Lukk denne siden og prøv på nytt.'));
     }
   });
 
@@ -259,7 +301,10 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     }
     const tokenHash = hashToken(token);
 
-    const tokenResult = await pool.query<{ user_id: string; user_email: string }>(
+    const tokenResult = await pool.query<{
+      user_id: string;
+      user_email: string;
+    }>(
       `SELECT user_id, user_email FROM desktop_device_tokens
        WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
       [tokenHash],
@@ -270,30 +315,17 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     const { user_id, user_email } = tokenResult.rows[0];
 
     // Fire-and-forget last_used_at
-    pool
-      .query(`UPDATE desktop_device_tokens SET last_used_at = now() WHERE token_hash = $1`, [tokenHash])
-      .catch(() => {});
+    pool.query(`UPDATE desktop_device_tokens SET last_used_at = now() WHERE token_hash = $1`, [tokenHash]).catch(() => {});
 
-    // Hent DIT/foto-prosjekter brukeren eier. Kilden er legacy.projects
-    // (skrives av POST /api/photographer/projects fra
-    // ProjectCreationWithMemoryCards.tsx) — IKKE casting_projects som
-    // er Role Room/casting-flyten. Status-filter skipper arkivert/slettet.
+    // Hent DIT/foto-prosjekter brukeren eier. Nye prosjekter skrives til
+    // public.projects; eldre legacy-rader tas med best-effort uten at manglende
+    // tilgang til legacy-skjemaet kan velte hele Desk-innloggingen.
     let projectRows: Array<{ id: string; name: string }> = [];
     try {
-      const r = await pool.query<{ id: string; name: string }>(
-        `SELECT id, COALESCE(NULLIF(title, ''), NULLIF(name, ''), id) AS name
-           FROM legacy.projects
-          WHERE user_id = $1
-            AND (status IS NULL OR status NOT IN ('archived', 'deleted'))
-          ORDER BY created_at DESC`,
-        [user_id],
-      );
-      projectRows = r.rows;
+      projectRows = await listDesktopProjectRows(pool, user_id);
     } catch (err: any) {
       console.error('[desktop-auth] projects query failed:', err?.message || err);
-      return res
-        .status(500)
-        .json({ success: false, error: 'Kunne ikke hente prosjekter' });
+      return res.status(500).json({ success: false, error: 'Kunne ikke hente prosjekter' });
     }
 
     // For hvert prosjekt: utsted en fresh helper-token. dit_helper_tokens-
@@ -353,9 +385,7 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     }
     const token = auth.slice(7).trim();
     const tokenHash = hashToken(token);
-    await pool
-      .query(`UPDATE desktop_device_tokens SET revoked_at = now() WHERE token_hash = $1`, [tokenHash])
-      .catch(() => {});
+    await pool.query(`UPDATE desktop_device_tokens SET revoked_at = now() WHERE token_hash = $1`, [tokenHash]).catch(() => {});
     return res.json({ success: true });
   });
 

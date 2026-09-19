@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   CircularProgress,
-  Container,
   Link,
   Stack,
   Typography,
@@ -13,8 +12,8 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { deviceTokenStatus, refreshProjectsFromApi } from "../api";
+import AuthSurface from "./AuthSurface";
 import DeskIcon from "./DeskIcon";
-import noProjectsBg from "../assets/no-projects-bg.png";
 
 interface Props {
   onRefresh: () => void;
@@ -42,7 +41,7 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
       } else {
         // Ingen prosjekter funnet — fortell brukeren tydelig
         setError(
-          "Ingen prosjekter funnet på kontoen. Opprett ditt første prosjekt på creatorhubn.com og prøv igjen.",
+          "Ingen prosjekter funnet på kontoen. Opprett ditt første prosjekt i din workspace og prøv igjen.",
         );
       }
     } catch (e) {
@@ -53,24 +52,10 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        // Krem-amber radial-gradient som matcher Desk-merket. Bildet
-        // bringer inn floatende skapelses-verktøy-kort langs kantene;
-        // CSS-gradienten under sørger for at lerretet ikke blir hvitt
-        // hvis bildet ikke laster (offline / loading).
-        background: `
-          radial-gradient(ellipse at center, rgba(255,248,236,1) 0%, rgba(253,226,179,0.85) 60%, rgba(245,185,74,0.18) 100%),
-          url(${noProjectsBg}) center/cover no-repeat
-        `,
-        backgroundBlendMode: "lighten",
-      }}
-    >
-    <Container maxWidth="sm" sx={{ py: 8 }}>
-      <Stack spacing={4} sx={{ alignItems: "stretch", textAlign: "center" }}>
+    <AuthSurface>
+      <Stack spacing={3} sx={{ alignItems: "stretch", textAlign: "center" }}>
         <Box sx={{ display: "flex", justifyContent: "center" }}>
-          <DeskIcon size={96} />
+          <DeskIcon size={80} />
         </Box>
 
         <Box>
@@ -84,9 +69,8 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
             Ingen prosjekter ennå
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Når du oppretter et fotograf-prosjekt på creatorhubn.com, dukker
-            det opp her automatisk. Klikk «Hent på nytt» etter at du har
-            laget et prosjekt.
+            Når du oppretter et prosjekt i din workspace, dukker det opp her
+            automatisk. Klikk «Hent på nytt» etter at du har laget prosjektet.
           </Typography>
         </Box>
 
@@ -127,9 +111,11 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
             variant="outlined"
             size="large"
             startIcon={<OpenInNewIcon />}
-            onClick={() => void openUrl("https://www.creatorhubn.com/workspace?new=1")}
+            onClick={() =>
+              void openUrl("https://www.creatorhubn.com/workspace?new=1")
+            }
           >
-            Opprett prosjekt på creatorhubn.com
+            Opprett prosjekt i din workspace
           </Button>
 
           <Button
@@ -152,13 +138,12 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
                 void openUrl("https://www.creatorhubn.com/workspace?new=1")
               }
             >
-              wizarden på creatorhubn.com
+              prosjektwizarden i din workspace
             </Link>{" "}
             for å sette opp prosjektets memory cards og destinasjoner.
           </Typography>
         </Box>
       </Stack>
-    </Container>
-    </Box>
+    </AuthSurface>
   );
 }
