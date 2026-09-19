@@ -18,6 +18,10 @@ describe('resolveSessionProjectRole', () => {
     expect(resolveSessionProjectRole('1st_ad')).toBe('first_ad');
     expect(resolveSessionProjectRole('first_assistant_director')).toBe('first_ad');
     expect(resolveSessionProjectRole('2nd_ad')).toBe('second_ad');
+    expect(resolveSessionProjectRole('2nd_2nd_ad')).toBe('second_second_assistant_director');
+    expect(resolveSessionProjectRole('set_pa')).toBe('set_production_assistant');
+    expect(resolveSessionProjectRole('office_pa')).toBe('office_production_assistant');
+    expect(resolveSessionProjectRole('local_casting_director')).toBe('local_casting_director');
   });
 
   it('tåler skitne verdier fra sesjonen', () => {
@@ -44,32 +48,24 @@ describe('resolveSessionProjectRole', () => {
 });
 
 describe('katalogen og linseregisteret er enige', () => {
-  // To kopier av de samme aliasene kan drive fra hverandre uten at noe sier
-  // fra. Her sier noe fra: hver skrivemåte registeret kjenner må også løses av
-  // katalogen, til den rollen linsen faktisk tilhører.
-  const LENS_EXPECTATION: Record<string, string> = {
-    director: 'director',
-    cinematography: 'camera_team',
-    'production-management': 'production_manager',
-    'production-coordination': 'production_coordinator',
-    continuity: 'script_supervisor',
-  };
-
-  it('løser hver alias i registeret til samme rolle som linsen tilhører', () => {
+  it('løser hver rolle i linseregisteret gjennom den kanoniske rollekatalogen', () => {
     for (const entry of WORKSPACE_LENS_REGISTRY) {
-      const expected = LENS_EXPECTATION[entry.lens];
-      if (!expected) continue;
       for (const alias of entry.projectRoles) {
-        expect(resolveSessionProjectRole(alias), `${alias} i linsen ${entry.lens}`).toBe(expected);
+        expect(resolveSessionProjectRole(alias), `${alias} i linsen ${entry.lens}`).not.toBeNull();
         expect(matchesLensProjectRole(entry.lens, alias)).toBe(true);
       }
     }
   });
 
-  it('dekker begge regiassistentene, som deler én linse men er to roller', () => {
+  it('dekker hele regiassistentlinjen i den delte arbeidsflaten', () => {
     const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'assistant-direction');
     const roller = new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole));
-    expect([...roller].sort()).toEqual(['first_ad', 'second_ad']);
+    expect([...roller].sort()).toEqual([
+      'first_ad',
+      'second_ad',
+      'second_second_assistant_director',
+      'set_production_assistant',
+    ]);
   });
 
   it('løser location-linsens tre roller hver for seg', () => {

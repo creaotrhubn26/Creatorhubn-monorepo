@@ -645,6 +645,18 @@ export const ROLE_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 const PRODUCTION_ROLE_PRESET_ALIASES: Readonly<Record<string, string>> = {
+  line_producer: 'production_manager',
+  production_accountant: 'production_manager',
+  production_secretary: 'production_coordinator',
+  office_production_assistant: 'production_coordinator',
+  office_pa: 'production_coordinator',
+  production_assistant: 'production_coordinator',
+  second_second_assistant_director: 'second_ad',
+  '2nd_2nd_ad': 'second_ad',
+  set_production_assistant: 'pa',
+  set_pa: 'pa',
+  local_casting_director: 'casting_director',
+  extras_casting_director: 'casting_director',
   cinematographer: 'dop',
   director_of_photography: 'dop',
   'director of photography': 'dop',

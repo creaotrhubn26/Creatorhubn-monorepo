@@ -49,11 +49,25 @@ export interface WorkspaceLensEntry {
  */
 export const WORKSPACE_LENS_REGISTRY = [
   {
+    lens: 'producer',
+    workspaceKind: 'producer',
+    projectRoles: ['executive_producer', 'producer', 'line_producer'],
+    surfaceSource: 'none',
+    usesSceneParam: false,
+  },
+  {
     lens: 'director',
     workspaceKind: 'director',
     projectRoles: ['director'],
     surfaceSource: 'own',
     usesSceneParam: true,
+  },
+  {
+    lens: 'casting',
+    workspaceKind: 'casting',
+    projectRoles: ['casting_director', 'local_casting_director', 'extras_casting_director'],
+    surfaceSource: 'own',
+    usesSceneParam: false,
   },
   {
     lens: 'cinematography',
@@ -72,6 +86,10 @@ export const WORKSPACE_LENS_REGISTRY = [
       'second_ad',
       'second_assistant_director',
       '2nd_ad',
+      'second_second_assistant_director',
+      '2nd_2nd_ad',
+      'set_production_assistant',
+      'set_pa',
     ],
     surfaceSource: 'own',
     usesSceneParam: false,
@@ -79,14 +97,20 @@ export const WORKSPACE_LENS_REGISTRY = [
   {
     lens: 'production-management',
     workspaceKind: 'production_management',
-    projectRoles: ['production_manager'],
+    projectRoles: ['production_manager', 'production_accountant'],
     surfaceSource: 'none',
     usesSceneParam: false,
   },
   {
     lens: 'production-coordination',
     workspaceKind: 'production_coordination',
-    projectRoles: ['production_coordinator'],
+    projectRoles: [
+      'production_coordinator',
+      'production_secretary',
+      'office_production_assistant',
+      'office_pa',
+      'production_assistant',
+    ],
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -134,6 +158,10 @@ export const SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES: readonly string[] = [
   'second_ad',
   'second_assistant_director',
   '2nd_ad',
+  'second_second_assistant_director',
+  '2nd_2nd_ad',
+  'set_production_assistant',
+  'set_pa',
 ];
 
 export function getWorkspaceLensEntry(lens: RoleWorkspaceLens): WorkspaceLensEntry {

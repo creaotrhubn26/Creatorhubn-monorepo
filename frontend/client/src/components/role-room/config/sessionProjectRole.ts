@@ -21,14 +21,23 @@ import type { UserRoleType } from '../models/casting';
  * kortformer for noen av dem, og her står hele oversettelsen samlet.
  */
 const CATALOG_TO_PROJECT_ROLE: Partial<Record<ProductionRoleId, UserRoleType>> = {
+  executive_producer: 'executive_producer',
   director: 'director',
   producer: 'producer',
+  line_producer: 'line_producer',
   casting_director: 'casting_director',
+  local_casting_director: 'local_casting_director',
+  extras_casting_director: 'extras_casting_director',
   cinematographer: 'camera_team',
   first_assistant_director: 'first_ad',
   second_assistant_director: 'second_ad',
+  second_second_assistant_director: 'second_second_assistant_director',
+  set_production_assistant: 'set_production_assistant',
   production_manager: 'production_manager',
+  production_accountant: 'production_accountant',
   production_coordinator: 'production_coordinator',
+  production_secretary: 'production_secretary',
+  office_production_assistant: 'office_production_assistant',
   location_manager: 'location_manager',
   location_scout: 'location_scout',
   location_security: 'location_security',

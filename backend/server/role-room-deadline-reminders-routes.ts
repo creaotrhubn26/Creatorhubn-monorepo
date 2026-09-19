@@ -20,9 +20,21 @@ import {
   notifyProducerTeamByEmail,
   resolveProducerTeamEmails,
 } from './role-room-producer-notifications.js';
+import { runTalentRequestNotificationSweep } from './role-room-talent-request-notifications.js';
 
 interface Deps {
   pool: Pool;
+}
+
+function hasValidCronToken(req: Request): boolean {
+  const presented = String(req.headers['x-cron-trigger-token'] || '').trim();
+  const expected = (process.env.CRON_TRIGGER_TOKEN || '').trim();
+  return Boolean(
+    presented
+    && expected
+    && presented.length === expected.length
+    && crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(expected)),
+  );
 }
 
 function fmtFrist(due: Date, now: Date): string {
@@ -56,10 +68,24 @@ function reminderEmail(args: { heading: string; lines: string[]; cta: string }):
 export function registerRoleRoomDeadlineReminderRoutes(app: Express, deps: Deps): void {
   const { pool } = deps;
 
+  app.post('/api/role-room/internal/talent-request-reminders/run', async (req: Request, res: Response) => {
+    if (!hasValidCronToken(req)) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+    const dryRun = String(req.query.dryRun || '') === 'true';
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
+    try {
+      const summary = await runTalentRequestNotificationSweep(pool, { dryRun, limit });
+      res.json({ ok: true, ...summary });
+    } catch (error) {
+      console.error('[role-room] talent request reminder run failed', error);
+      res.status(500).json({ error: 'talent_request_reminder_run_failed' });
+    }
+  });
+
   app.post('/api/role-room/internal/deadline-reminders/run', async (req: Request, res: Response) => {
-    const presented = String(req.headers['x-cron-trigger-token'] || '').trim();
-    const expected = (process.env.CRON_TRIGGER_TOKEN || '').trim();
-    if (!presented || !expected || presented.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) {
+    if (!hasValidCronToken(req)) {
       res.status(401).json({ error: 'unauthorized' });
       return;
     }
@@ -211,7 +237,12 @@ export function registerRoleRoomDeadlineReminderRoutes(app: Express, deps: Deps)
         }
       }
 
-      res.json({ ok: true, ...summary });
+      // ── (3) Byrå: 48 t / 24 t / utløpt talentforespørsel ────────────────
+      // Denne delen bruker en varig claim/lease-ledger og er derfor trygg ved
+      // workflow-retry, parallell backend og deploy midt i utsendingen.
+      const talentRequests = await runTalentRequestNotificationSweep(pool, { dryRun });
+
+      res.json({ ok: true, ...summary, talentRequests });
     } catch (error) {
       console.error('[role-room] deadline reminder run failed', error);
       res.status(500).json({ error: 'reminder_run_failed' });

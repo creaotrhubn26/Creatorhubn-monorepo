@@ -328,6 +328,149 @@ export interface TalentProposal {
   proposer_name?: string | null;
 }
 
+export interface ProjectTalentSource {
+  invitation_id: string;
+  agency_id: string;
+  agency_name: string;
+  agency_logo_url: string | null;
+  agency_verified: boolean;
+  role_ids: string[] | null;
+  expires_at: string | null;
+  visible_talent_count: number;
+  pending_proposal_count: number;
+  open_request_count: number;
+}
+
+export interface ProjectSourcedTalent {
+  id: string;
+  display_name: string;
+  city: string | null;
+  country: string | null;
+  headshot_url: string | null;
+  playing_age_min: number | null;
+  playing_age_max: number | null;
+  gender: string | null;
+  availability_status: string | null;
+  agency_id: string;
+  agency_name: string;
+  agency_logo_url: string | null;
+  agency_verified: boolean;
+  invitation_id: string;
+  granted_scopes: string[];
+  already_proposed: boolean;
+  already_candidate: boolean;
+  active_request_id: string | null;
+  active_request_status: 'pending' | 'acknowledged' | null;
+}
+
+export interface ProjectTalentSearchResult {
+  project_id: string;
+  query: string;
+  role_id: string | null;
+  can_manage_partnerships: boolean;
+  sources: ProjectTalentSource[];
+  talents: ProjectSourcedTalent[];
+}
+
+export function searchProjectTalents(
+  projectId: string,
+  filters?: { q?: string; roleId?: string; limit?: number },
+): Promise<ProjectTalentSearchResult> {
+  return api(`/casting-projects/${encodeURIComponent(projectId)}/talent-search`, {
+    method: 'GET',
+    params: {
+      q: filters?.q,
+      role_id: filters?.roleId,
+      limit: filters?.limit ? String(filters.limit) : undefined,
+    },
+  });
+}
+
+export type TalentRequestStatus =
+  | 'pending'
+  | 'acknowledged'
+  | 'fulfilled'
+  | 'declined'
+  | 'cancelled'
+  | 'expired';
+
+export interface TalentRequest {
+  id: string;
+  invitation_id: string;
+  talent_id: string;
+  casting_role_id: string;
+  requested_by_user_id: string | null;
+  brief: string;
+  response_deadline: string;
+  status: TalentRequestStatus;
+  response_note: string | null;
+  acknowledged_at: string | null;
+  responded_at: string | null;
+  responded_by_user_id: string | null;
+  fulfilled_proposal_id: string | null;
+  created_at: string;
+  updated_at: string;
+  talent_display_name: string;
+  role_name: string;
+  agency_id?: string;
+  agency_name: string;
+  agency_logo_url?: string | null;
+  project_id?: string;
+  project_name?: string;
+  production_name?: string | null;
+  requester_name?: string | null;
+}
+
+export interface TalentRequestQueueSummary {
+  open: number;
+  unacknowledged: number;
+  due_within_48h: number;
+  overdue: number;
+  oldest_unacknowledged_hours: number | null;
+}
+
+export function projectTalentRequests(projectId: string): Promise<{ requests: TalentRequest[] }> {
+  return api(`/casting-projects/${encodeURIComponent(projectId)}/talent-requests`);
+}
+
+export function createTalentRequest(
+  projectId: string,
+  args: {
+    invitation_id: string;
+    talent_id: string;
+    casting_role_id: string;
+    brief: string;
+    response_deadline: string;
+  },
+): Promise<{ request: TalentRequest }> {
+  return api(`/casting-projects/${encodeURIComponent(projectId)}/talent-requests`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
+export function cancelTalentRequest(requestId: string): Promise<{ request: TalentRequest }> {
+  return api(`/talent-requests/${encodeURIComponent(requestId)}/cancel`, { method: 'POST' });
+}
+
+export function incomingTalentRequests(status?: TalentRequestStatus): Promise<{
+  requests: TalentRequest[];
+  summary: TalentRequestQueueSummary;
+}> {
+  return api('/talent-requests/incoming', { params: { status } });
+}
+
+export function respondToTalentRequest(
+  requestId: string,
+  action: 'acknowledge' | 'decline' | 'fulfill',
+  responseNote?: string,
+): Promise<{ request: TalentRequest; proposal_id: string | null }> {
+  return api(`/talent-requests/${encodeURIComponent(requestId)}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ action, response_note: responseNote?.trim() || null }),
+  });
+}
+
 export function proposableTalents(invitationId: string, q?: string): Promise<{ talents: ProposableTalent[] }> {
   return api(`/invitations/${invitationId}/proposable-talents`, { method: 'GET', params: { q } });
 }

@@ -39,6 +39,7 @@ import {
 
 interface Props {
   castingProjectId: string;
+  onCandidateAccepted?: (candidateId: string | null) => void | Promise<void>;
 }
 
 const COLORS = {
@@ -70,7 +71,7 @@ const STATUS_BADGE: Record<TalentProposal['status'], { label: string; color: str
   withdrawn: { label: 'Trukket', color: '#9ca3af', bg: 'rgba(156,163,175,0.18)', Icon: RemoveCircleOutlineIcon },
 };
 
-export default function IncomingTalentProposalsList({ castingProjectId }: Props) {
+export default function IncomingTalentProposalsList({ castingProjectId, onCandidateAccepted }: Props) {
   const [proposals, setProposals] = useState<TalentProposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -115,6 +116,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
             ? `${responseTarget.proposal.display_name} akseptert og lagt til i kandidatlisten.`
             : `${responseTarget.proposal.display_name} akseptert (allerede i kandidatlisten).`,
         );
+        await onCandidateAccepted?.(result.candidate_id);
       } else {
         setInfo(`${responseTarget.proposal.display_name} avslått.`);
       }
@@ -126,7 +128,7 @@ export default function IncomingTalentProposalsList({ castingProjectId }: Props)
     } finally {
       setBusy(false);
     }
-  }, [responseTarget, productionNotes, reload]);
+  }, [responseTarget, productionNotes, reload, onCandidateAccepted]);
 
   if (loading && proposals.length === 0) {
     return (

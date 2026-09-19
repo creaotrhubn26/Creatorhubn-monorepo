@@ -34,6 +34,14 @@ describe('workspaceLensRegistry', () => {
     expect(matchesLensProjectRole('cinematography', 'dop')).toBe(true);
     expect(matchesLensProjectRole('cinematography', '  DoP  ')).toBe(true);
     expect(matchesLensProjectRole('assistant-direction', '2nd_ad')).toBe(true);
+    expect(matchesLensProjectRole('assistant-direction', '2nd_2nd_ad')).toBe(true);
+    expect(matchesLensProjectRole('assistant-direction', 'set_pa')).toBe(true);
+    expect(matchesLensProjectRole('producer', 'executive_producer')).toBe(true);
+    expect(matchesLensProjectRole('producer', 'line_producer')).toBe(true);
+    expect(matchesLensProjectRole('casting', 'local_casting_director')).toBe(true);
+    expect(matchesLensProjectRole('casting', 'extras_casting_director')).toBe(true);
+    expect(matchesLensProjectRole('production-coordination', 'production_secretary')).toBe(true);
+    expect(matchesLensProjectRole('production-coordination', 'office_pa')).toBe(true);
     expect(matchesLensProjectRole('location-management', 'location_scout')).toBe(true);
     expect(matchesLensProjectRole('director', 'producer')).toBe(false);
     expect(matchesLensProjectRole('director', null)).toBe(false);
@@ -53,6 +61,19 @@ describe('resolveWorkspaceLens', () => {
       isAssigned: only('continuity'),
       isAllowed: all,
     })).toBe('continuity');
+  });
+
+  it('opens producer and casting lenses from their assigned role', () => {
+    expect(resolveWorkspaceLens({
+      preference: null,
+      isAssigned: only('producer'),
+      isAllowed: all,
+    })).toBe('producer');
+    expect(resolveWorkspaceLens({
+      preference: null,
+      isAssigned: only('casting'),
+      isAllowed: all,
+    })).toBe('casting');
   });
 
   it('lets an explicit preference override the assigned role', () => {
@@ -129,6 +150,20 @@ describe('resolveLensUrlState', () => {
       lens: 'production-management',
       plannerSurface: 'roles',
     })).toEqual({ lens: 'production-management', surface: '', scene: '' });
+  });
+
+  it('keeps producer URLs clean and publishes the casting surface', () => {
+    expect(resolveLensUrlState({
+      ...base,
+      lens: 'producer',
+      plannerSurface: 'approval',
+    })).toEqual({ lens: 'producer', surface: '', scene: '' });
+    expect(resolveLensUrlState({
+      ...base,
+      lens: 'casting',
+      surfaces: { casting: 'talents' },
+      plannerSurface: 'project_room',
+    })).toEqual({ lens: 'casting', surface: 'talents', scene: '' });
   });
 
   it('falls back to the planner surface for the continuity lens', () => {
