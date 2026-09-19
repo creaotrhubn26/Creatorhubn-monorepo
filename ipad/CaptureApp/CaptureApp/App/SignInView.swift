@@ -59,6 +59,8 @@ struct SignInView: View {
             .frame(maxWidth: 640) // Cap width so fields don't sprawl on wide iPads.
             .frame(maxWidth: .infinity)
         }
+        .foregroundStyle(CHTheme.textPrimary)
+        .background(CHTheme.bg)
         .onAppear {
             // If the build hasn't wired native Google sign-in yet, open
             // the advanced panel by default — otherwise the screen would
@@ -94,11 +96,25 @@ struct SignInView: View {
             .controlSize(.large)
             .disabled(isWorking || !googleOAuth.isConfigured)
 
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--screenshot-demo-fixtures") {
+                Button("Bruk demo-konto") {
+                    auth.setInMemoryDemoSession(
+                        userId: "00000000-0000-4000-8000-000000000001",
+                        backendBaseURL: URL(string: "https://capture-screenshot.invalid")!,
+                        displayName: "CreatorHub Demo"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("screenshot.demo-account")
+            }
+            #endif
+
             Text(googleOAuth.isConfigured
                  ? "Åpner Google i en sikker system-popup. Passordet ditt berører aldri appen — bare innlogginsbeviset som backend bytter mot en CreatorHub-session."
                  : "Google-innlogging er ikke konfigurert på denne builden. Bruk Avansert-panelet under for å logge inn manuelt.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CHTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 8)
         }
@@ -111,7 +127,7 @@ struct SignInView: View {
         VStack(spacing: 14) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 44))
-                .foregroundStyle(.green)
+                .foregroundStyle(CHTheme.success)
             Text("Du er logget inn")
                 .font(.title3.bold())
             VStack(spacing: 2) {
@@ -119,7 +135,7 @@ struct SignInView: View {
                     .font(.body.weight(.semibold))
                 Text(session.email)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textSecondary)
             }
             Button(role: .destructive) {
                 auth.signOut()
@@ -133,10 +149,8 @@ struct SignInView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(uiColor: .secondarySystemBackground)),
-        )
+        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(CHTheme.border, lineWidth: 1))
     }
 
     // MARK: - Error banner
@@ -145,10 +159,10 @@ struct SignInView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(CHTheme.danger)
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.red)
+                .foregroundStyle(CHTheme.danger)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
@@ -156,7 +170,7 @@ struct SignInView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.red.opacity(0.08)),
+                .fill(CHTheme.danger.opacity(0.10)),
         )
     }
 
@@ -174,7 +188,7 @@ struct SignInView: View {
                 Image(systemName: showAdvanced ? "chevron.up" : "chevron.down")
                     .font(.caption2.weight(.semibold))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(CHTheme.textSecondary)
         }
         .buttonStyle(.plain)
     }
@@ -193,7 +207,7 @@ struct SignInView: View {
                     .autocorrectionDisabled()
                 Text("Peker på produksjonsserveren som standard. Endre kun for staging eller lokal backend.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textMuted)
             }
 
             Divider()
@@ -210,11 +224,11 @@ struct SignInView: View {
                     .autocorrectionDisabled()
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color(uiColor: .separator), lineWidth: 0.5),
+                            .stroke(CHTheme.border, lineWidth: 1),
                     )
                 Text("Fra OAuth Playground eller GoogleSignIn-SDK. Backend bytter den mot en CreatorHub-session.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textMuted)
                 Button {
                     Task { await submitWithPastedToken() }
                 } label: {
@@ -249,7 +263,7 @@ struct SignInView: View {
                     .textFieldStyle(.roundedBorder)
                 Text("Bruk når Google OAuth ikke er wiret — lim inn en forhåndsutstedt session-bearer.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textMuted)
                 Button {
                     Task { await submitWithBearer() }
                 } label: {
@@ -264,10 +278,8 @@ struct SignInView: View {
             }
         }
         .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(uiColor: .secondarySystemBackground)),
-        )
+        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(CHTheme.border, lineWidth: 1))
     }
 
     // MARK: - Actions

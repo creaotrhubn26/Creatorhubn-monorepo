@@ -67,6 +67,20 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         XCTAssertNil(response.addedcontents)
     }
 
+    func testDirectLiveViewUsesAdvertisedEndpointsAndReturnsJPEG() async throws {
+        let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
+        _ = try await client.connect()
+
+        try await client.startLiveView()
+        let frame = try await client.liveViewFrame()
+        await client.stopLiveView()
+
+        XCTAssertGreaterThan(frame.count, 100)
+        XCTAssertEqual(frame.first, 0xff)
+        XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/liveview"))
+        XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/liveview/flip"))
+    }
+
     /// P1-regresjon: `get(path:)` brukte `appendingPathComponent` som prosent-kodet
     /// «?» → «%3F», så et EKTE kamera aldri så `continue=on`. Assert på RÅ URL
     /// (absoluteString bevarer koding; `url.path` dekoder %3F og ville maskert det).

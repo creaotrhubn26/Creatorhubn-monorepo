@@ -344,7 +344,10 @@ struct ShotListPanel: View {
         if let shot, let image = capturedImage(for: shot) {
             Image(uiImage: image).resizable().scaledToFill()
         } else if let shot, let backendId = shot.capturedAssetBackendId,
-                  let url = model.assetPreviewURL(backendAssetId: backendId) {
+                  let url = model.assetPreviewURL(
+                    backendAssetId: backendId,
+                    token: shot.capturedAssetPreviewToken
+                  ) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image { image.resizable().scaledToFill() } else { thumbPlaceholder }
             }

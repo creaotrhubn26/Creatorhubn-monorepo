@@ -491,17 +491,16 @@ actor BackendClient {
         return response.assets
     }
 
-    /// Bygg STABILE thumbnail-URL-er for shot-oppdaterings-kortet: de siste
-    /// `limit` opplastede bildene i økta, som `…/assets/<id>/preview`-
-    /// redirecter (aldri utløper — backend re-signerer S3 pr kall). Kun
-    /// bilder som faktisk har en preview i skyen tas med.
+    /// Bygg stabile, asset-scopede capability-URL-er for shot-oppdateringskortet.
+    /// Backend re-signerer den private S3-lesingen per kall; UUID uten capability
+    /// fungerer ikke. Kun bilder med ferdig preview tas med.
     func shotThumbURLs(sessionId: UUID, limit: Int) async -> [String] {
         guard let assets = try? await listSessionAssets(sessionId: sessionId, limit: 500, offset: 0)
         else { return [] }
         return assets
-            .filter { $0.previewUrl != nil }
+            .filter { $0.previewUrl != nil && $0.previewToken != nil }
             .suffix(limit)
-            .map { baseURL.appendingPathComponent("/api/capture/assets/\($0.id)/preview").absoluteString }
+            .compactMap { assetPreviewURL(backendAssetId: $0.id, token: $0.previewToken)?.absoluteString }
     }
 
     /// Run the Claude-backed Live Set coverage check. Backend lives at
@@ -547,6 +546,96 @@ actor BackendClient {
             path: "/api/capture/assets/\(assetId.uuidString.lowercased())/upload/complete",
             body: body,
         )
+    }
+
+    // MARK: - CreatorHub One video capture
+
+    func initiateVideoCapture(
+        projectId: String,
+        body: BackendVideoCaptureInitiateRequest,
+    ) async throws -> BackendVideoCaptureInitiateResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/initiate",
+            body: body,
+        )
+    }
+
+    func signVideoCaptureParts(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoSignPartsRequest,
+    ) async throws -> BackendVideoSignedPartsResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/upload/parts",
+            body: body,
+        )
+    }
+
+    func videoCaptureUploadStatus(
+        projectId: String,
+        assetId: String,
+    ) async throws -> BackendVideoUploadStatus {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/upload/status",
+        )
+    }
+
+    func completeVideoCapture(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoCompleteRequest,
+    ) async throws -> BackendVideoCaptureAssetResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/upload/complete",
+            body: body,
+        )
+    }
+
+    func fetchVideoCaptureAsset(
+        projectId: String,
+        assetId: String,
+    ) async throws -> BackendVideoCaptureAssetResponse {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)",
+        )
+    }
+
+    func listVideoCaptureAssets(
+        projectId: String,
+        limit: Int = 100,
+    ) async throws -> BackendVideoCaptureListResponse {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets?limit=\(limit)",
+        )
+    }
+
+    func promoteVideoCaptureAsset(
+        projectId: String,
+        assetId: String,
+        versionLabel: String? = nil,
+    ) async throws -> BackendVideoPromotionResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/promote",
+            body: BackendVideoPromotionRequest(versionLabel: versionLabel),
+        )
+    }
+
+    func putVideoCaptureFile(
+        url: URL,
+        fileURL: URL,
+        requiredHeaders: [String: String],
+    ) async throws -> String? {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        for (name, value) in requiredHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        let (_, response) = try await session.upload(for: request, fromFile: fileURL)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: nil)
+        }
+        return http.value(forHTTPHeaderField: "ETag") ?? http.value(forHTTPHeaderField: "Etag")
     }
 
     /// PUT a single part's bytes to a presigned CreatorHub S3 URL and return
@@ -773,10 +862,16 @@ actor BackendClient {
         return c?.url
     }
 
-    /// Stabil preview-URL for et backend-asset (thumbnail overalt). Offentlig
-    /// redirect → laster i AsyncImage/`<img>` uten auth.
-    nonisolated func assetPreviewURL(backendAssetId: String) -> URL? {
-        baseURL.appendingPathComponent("/api/capture/assets/\(backendAssetId)/preview")
+    /// Stabil preview-URL for et backend-asset. Capabilityen lar AsyncImage og
+    /// `<img>` laste uten auth-header, men er kryptografisk bundet til assetet.
+    nonisolated func assetPreviewURL(backendAssetId: String, token: String?) -> URL? {
+        guard let token, !token.isEmpty else { return nil }
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("/api/capture/assets/\(backendAssetId)/preview"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [URLQueryItem(name: "t", value: token)]
+        return components?.url
     }
 
     /// #9 Hent bryllups-timelinen for prosjektet og form den til en kompakt

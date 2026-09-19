@@ -33,9 +33,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::copy_engine::{
-    build_dest_path, copy_and_verify_typed, hash_file_xxh64, CopyErrorKind,
-};
+use crate::copy_engine::{CopyErrorKind, build_dest_path, copy_and_verify_typed, hash_file_xxh64};
 use crate::dit_reporter;
 use crate::helper_client::{self, Config};
 use crate::mount_watcher;
@@ -113,7 +111,12 @@ pub struct CopySessionState {
 
 impl CopySessionState {
     pub fn list(&self) -> Vec<SessionStatus> {
-        self.sessions.lock().unwrap().values().map(|h| h.status.clone()).collect()
+        self.sessions
+            .lock()
+            .unwrap()
+            .values()
+            .map(|h| h.status.clone())
+            .collect()
     }
 
     pub fn cancel(&self, session_id: &str) -> bool {
@@ -165,7 +168,11 @@ fn enumerate_media_files(mount: &Path) -> Vec<PathBuf> {
         if !entry.file_type().is_file() {
             continue;
         }
-        let Some(ext) = entry.path().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase())
+        let Some(ext) = entry
+            .path()
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase())
         else {
             continue;
         };
@@ -300,7 +307,10 @@ pub async fn start_session(
     let log = match SessionLog::create(&session_id, &spec, &files_with_size) {
         Ok(l) => Some(Arc::new(l)),
         Err(err) => {
-            eprintln!("[session-log] kunne ikke opprette log for {}: {}", session_id, err);
+            eprintln!(
+                "[session-log] kunne ikke opprette log for {}: {}",
+                session_id, err
+            );
             None
         }
     };
@@ -372,11 +382,7 @@ pub async fn resume_session(
             mount.display()
         ));
     }
-    let files: Vec<PathBuf> = data
-        .files
-        .iter()
-        .map(|f| PathBuf::from(&f.path))
-        .collect();
+    let files: Vec<PathBuf> = data.files.iter().map(|f| PathBuf::from(&f.path)).collect();
     let total_bytes: u64 = data.files.iter().map(|f| f.size).sum();
     let status = SessionStatus {
         session_id: session_id.clone(),
@@ -408,9 +414,7 @@ pub async fn resume_session(
     // Vi appender til den eksisterende log-fila — ingen ny SessionStarted-
     // event (det ville ført til to konfliktende start-events). Bare videre
     // FileResult- og SessionEnded-events.
-    let log = SessionLog::open_existing(&session_id)
-        .ok()
-        .map(Arc::new);
+    let log = SessionLog::open_existing(&session_id).ok().map(Arc::new);
 
     let app_clone = app.clone();
     let state_clone = state.clone();
@@ -483,13 +487,17 @@ async fn process_destination(
     };
     // Idempotens: hvis dest finnes med samme størrelse og hash, hopp over.
     if dest_path.exists() {
-        let same_size = std::fs::metadata(&dest_path).map(|m| m.len() == size).unwrap_or(false);
+        let same_size = std::fs::metadata(&dest_path)
+            .map(|m| m.len() == size)
+            .unwrap_or(false);
         if same_size {
             match hash_file_xxh64(&dest_path).await {
                 Ok(existing_hash) if existing_hash == src_hash => {
                     // Hvis backend-tracked, prøv å markere verified i etterkant — best-effort
                     if let (Some(backend_id), Some(cfg)) = (&dest_spec.backend_id, &cfg) {
-                        match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash).await {
+                        match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash)
+                            .await
+                        {
                             Ok(job_id) => {
                                 if let Err(err) = dit_reporter::report_verified(
                                     cfg,
@@ -556,21 +564,15 @@ async fn process_destination(
     // Backend-jobb opprettes FØR kopi starter, så vi kan rapportere progress
     // underveis. Best-effort: ingen jobb betyr bare at backend-status mangler.
     let backend_job_id: Option<String> = match (&dest_spec.backend_id, &cfg) {
-        (Some(backend_id), Some(cfg)) => match dit_reporter::create_job(
-            cfg,
-            backend_id,
-            &src_disp,
-            size,
-            &src_hash,
-        )
-        .await
-        {
-            Ok(job_id) => Some(job_id),
-            Err(err) => {
-                eprintln!("[dit] create_job failed for {}: {}", dest_spec.label, err);
-                None
+        (Some(backend_id), Some(cfg)) => {
+            match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash).await {
+                Ok(job_id) => Some(job_id),
+                Err(err) => {
+                    eprintln!("[dit] create_job failed for {}: {}", dest_spec.label, err);
+                    None
+                }
             }
-        },
+        }
         _ => None,
     };
 
@@ -741,7 +743,12 @@ async fn process_b2_destination(
     // Validér at vi har det vi trenger for cloud-flow
     let Some(creds) = dest_spec.cloud_credentials.as_ref() else {
         emit_completed(
-            &app, &session_id, &src_disp, &dest_spec.id, false, None,
+            &app,
+            &session_id,
+            &src_disp,
+            &dest_spec.id,
+            false,
+            None,
             Some("Cloud-creds mangler — fotograf må konfigurere storage-provider".into()),
             false,
         );
@@ -749,7 +756,12 @@ async fn process_b2_destination(
     };
     let Some(bucket_id) = dest_spec.cloud_bucket_id.as_ref() else {
         emit_completed(
-            &app, &session_id, &src_disp, &dest_spec.id, false, None,
+            &app,
+            &session_id,
+            &src_disp,
+            &dest_spec.id,
+            false,
+            None,
             Some("cloud_bucket_id mangler".into()),
             false,
         );
@@ -785,7 +797,10 @@ async fn process_b2_destination(
             match dit_reporter::create_job(cfg, backend_id, &src_disp, size, &src_hash).await {
                 Ok(job_id) => Some(job_id),
                 Err(err) => {
-                    eprintln!("[dit/b2] create_job failed for {}: {}", dest_spec.label, err);
+                    eprintln!(
+                        "[dit/b2] create_job failed for {}: {}",
+                        dest_spec.label, err
+                    );
                     None
                 }
             }
@@ -799,7 +814,12 @@ async fn process_b2_destination(
         Err(err) => {
             state.update(&session_id, |s| s.failed += 1);
             emit_completed(
-                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                &app,
+                &session_id,
+                &src_disp,
+                &dest_spec.id,
+                false,
+                None,
                 Some(format!("SHA-1-beregning feilet: {}", err)),
                 false,
             );
@@ -814,7 +834,12 @@ async fn process_b2_destination(
         Err(err) => {
             state.update(&session_id, |s| s.failed += 1);
             emit_completed(
-                &app, &session_id, &src_disp, &dest_spec.id, false, None,
+                &app,
+                &session_id,
+                &src_disp,
+                &dest_spec.id,
+                false,
+                None,
                 Some(format!("B2 authorize feilet: {}", err)),
                 false,
             );
@@ -850,7 +875,9 @@ async fn process_b2_destination(
         );
     };
 
-    match b2_uploader::upload_file_smart(&auth, bucket_id, &src, &dest_name, &sha1, on_progress).await {
+    match b2_uploader::upload_file_smart(&auth, bucket_id, &src, &dest_name, &sha1, on_progress)
+        .await
+    {
         Ok(result) => {
             if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
                 if let Err(err) = dit_reporter::report_verified(
@@ -867,9 +894,14 @@ async fn process_b2_destination(
             }
             state.update(&session_id, |s| s.succeeded += 1);
             emit_completed(
-                &app, &session_id, &src_disp, &dest_spec.id, true,
+                &app,
+                &session_id,
+                &src_disp,
+                &dest_spec.id,
+                true,
                 Some(result.content_sha1),
-                None, false,
+                None,
+                false,
             );
         }
         Err(err) => {
@@ -887,8 +919,14 @@ async fn process_b2_destination(
             }
             state.update(&session_id, |s| s.failed += 1);
             emit_completed(
-                &app, &session_id, &src_disp, &dest_spec.id, false, None,
-                Some(err), false,
+                &app,
+                &session_id,
+                &src_disp,
+                &dest_spec.id,
+                false,
+                None,
+                Some(err),
+                false,
             );
         }
     }
@@ -1010,8 +1048,7 @@ async fn run_session(
                 continue;
             }
             let dest_root = PathBuf::from(&dest_spec.path);
-            let dest_path = match build_dest_path(&source, &mount, &dest_root, &spec.volume_label)
-            {
+            let dest_path = match build_dest_path(&source, &mount, &dest_root, &spec.volume_label) {
                 Ok(p) => p,
                 Err(err) => {
                     let app_em = app.clone();
@@ -1047,7 +1084,8 @@ async fn run_session(
             let cancel_em = cancel.clone();
             let dest_spec_clone = dest_spec.clone();
             let cfg_clone = cfg.clone();
-            let disabled_dests_clone = state.disabled_dests_handle(&session_id)
+            let disabled_dests_clone = state
+                .disabled_dests_handle(&session_id)
                 .unwrap_or_else(|| Arc::new(Mutex::new(HashSet::new())));
 
             let log_clone = log.clone();
@@ -1170,17 +1208,29 @@ mod recovery_tests {
 
     #[test]
     fn enospc_strings_classify_as_no_space() {
-        assert_eq!(classify("Skriv til /Volumes/Foo/bar: No space left on device"), "DEST_NO_SPACE");
+        assert_eq!(
+            classify("Skriv til /Volumes/Foo/bar: No space left on device"),
+            "DEST_NO_SPACE"
+        );
         assert_eq!(classify("ENOSPC error"), "DEST_NO_SPACE");
         assert_eq!(classify("DEST_NO_SPACE: write failed"), "DEST_NO_SPACE");
-        assert_eq!(classify("Sync /Volumes/RAID/file: ingen plass igjen"), "DEST_NO_SPACE");
+        assert_eq!(
+            classify("Sync /Volumes/RAID/file: ingen plass igjen"),
+            "DEST_NO_SPACE"
+        );
     }
 
     #[test]
     fn perm_denied_strings_classify_as_perm() {
-        assert_eq!(classify("Opprett mappe /Volumes/X: Permission denied (os error 13)"), "DEST_PERM_DENIED");
+        assert_eq!(
+            classify("Opprett mappe /Volumes/X: Permission denied (os error 13)"),
+            "DEST_PERM_DENIED"
+        );
         assert_eq!(classify("EACCES on /Volumes/Y"), "DEST_PERM_DENIED");
-        assert_eq!(classify("DEST_PERM_DENIED: no write access"), "DEST_PERM_DENIED");
+        assert_eq!(
+            classify("DEST_PERM_DENIED: no write access"),
+            "DEST_PERM_DENIED"
+        );
         assert_eq!(classify("ikke tillatelse til skriving"), "DEST_PERM_DENIED");
     }
 

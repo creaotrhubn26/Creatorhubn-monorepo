@@ -157,7 +157,10 @@ final class CullTheaterModel {
     private func cullStore() throws -> CullStore {
         let url = try AppDatabase.defaultDiskURL()
         let db = try AppDatabase.openOnDisk(at: url)
-        return CullStore(database: db, outbox: Outbox(database: db))
+        return CullStore(
+            database: db,
+            outbox: Outbox(database: db, ownerUserId: ownerUserId)
+        )
     }
 
     func load() async {

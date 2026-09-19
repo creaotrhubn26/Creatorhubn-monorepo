@@ -74,10 +74,9 @@ export async function fetchAsset(
   return rows[0]?.asset ?? null;
 }
 
-/// Slår opp previewKey for et asset UTEN owner-gate — brukes av den stabile
-/// chat-thumbnail-redirecten (`GET /assets/:id/preview`). Team-medlemmer som
-/// ikke eier økta må kunne se thumbnailen; asset-id er en ugjettbar UUID og
-/// den underliggende R2-URL-en er fortsatt kortlevd signert.
+/// Slår opp previewKey etter at preview-ruten har verifisert en HMAC-capability
+/// bundet til asset-id-en. Teammedlemmer kan dermed vise varige chat-bilder
+/// uten auth-header, mens en kjent UUID alene ikke gir lesetilgang.
 export async function fetchAssetPreviewKey(
   db: Db,
   assetId: string,

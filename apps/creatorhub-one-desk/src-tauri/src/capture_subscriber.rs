@@ -80,10 +80,7 @@ fn build_ws_url(api_base: &str, session_id: &str, token: &str) -> Result<String,
         s => return Err(format!("Uventet scheme: {}", s)),
     };
     let host = parsed.host_str().ok_or("Mangler host")?;
-    let port = parsed
-        .port()
-        .map(|p| format!(":{}", p))
-        .unwrap_or_default();
+    let port = parsed.port().map(|p| format!(":{}", p)).unwrap_or_default();
     Ok(format!(
         "{}://{}{}/api/capture/ws/sessions/{}?token={}",
         scheme,
@@ -207,7 +204,11 @@ async fn run_subscription(
 
         // Bytt API-base hvis brukeren rotert backend-URL også (sjeldent,
         // men billig sjekk). Default: bruk URL-en fra start_subscription.
-        let effective_base = if cfg.api_base.is_empty() { api_base.clone() } else { cfg.api_base.clone() };
+        let effective_base = if cfg.api_base.is_empty() {
+            api_base.clone()
+        } else {
+            cfg.api_base.clone()
+        };
 
         let url = match build_ws_url(&effective_base, &session_id, &cfg.token) {
             Ok(u) => u,

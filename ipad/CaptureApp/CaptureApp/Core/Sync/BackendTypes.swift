@@ -65,6 +65,9 @@ struct BackendAsset: Decodable, Sendable {
     /// the asset has been registered but no preview has been uploaded
     /// yet, or when the endpoint was hit on an older backend.
     let previewUrl: String?
+    /// Asset-scoped capability for the stable preview redirect. Issued only
+    /// by authenticated listing endpoints; safe to embed in AsyncImage/chat.
+    let previewToken: String?
     /// Optional review fields — populated on the listing endpoint so
     /// the Live Set dashboard can render star-count + pick state
     /// without a second round-trip per asset.
@@ -135,6 +138,155 @@ struct BackendSignedParts: Decodable, Sendable {
 struct BackendCompletedPart: Encodable, Sendable {
     let partNumber: Int
     let etag: String
+}
+
+// MARK: - CreatorHub One video capture
+
+struct BackendVideoCaptureTake: Decodable, Sendable, Equatable {
+    let id: String
+    let sceneId: String?
+    let shotId: String?
+    let slate: String?
+    let takeNumber: Int
+    let status: String
+    let circled: Bool
+    let continuityNotes: String?
+    let performanceNotes: String?
+    let technicalNotes: String?
+}
+
+struct BackendVideoCaptureAsset: Decodable, Sendable, Identifiable, Equatable {
+    let id: String
+    let projectId: String
+    let fileName: String
+    let contentType: String
+    let sizeBytes: Int64
+    let checksumSha256: String
+    let sourceType: String
+    let cameraManufacturer: String?
+    let cameraModel: String?
+    let cameraSerial: String?
+    let durationMs: Int64?
+    let frameRate: Double?
+    let width: Int?
+    let height: Int?
+    let timecodeStart: String?
+    let recordedAt: String
+    let captureState: String
+    let streamUid: String?
+    let streamState: String
+    let streamError: String?
+    let take: BackendVideoCaptureTake?
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct BackendVideoCaptureInitiateRequest: Encodable, Sendable {
+    let assetId: String
+    let fileName: String
+    let sizeBytes: Int64
+    let contentType: String
+    let checksumSha256: String
+    let sourceType: String
+    let recordedAt: String
+    let durationMs: Int64?
+    let frameRate: Double?
+    let width: Int?
+    let height: Int?
+    let timecodeStart: String?
+    let cameraManufacturer: String?
+    let cameraModel: String?
+    let cameraSerial: String?
+    let sceneId: String?
+    let shotId: String?
+    let slate: String?
+    let takeNumber: Int
+    let forceMultipart: Bool
+}
+
+struct BackendVideoUploadTicket: Decodable, Sendable, Equatable {
+    let objectId: String
+    let strategy: String
+    let expiresInSeconds: Int
+    let uploadUrl: String?
+    let uploadId: String?
+    let partSize: Int64?
+    let partCount: Int?
+    let requiredHeaders: [String: String]?
+}
+
+struct BackendVideoCaptureInitiateResponse: Decodable, Sendable {
+    let asset: BackendVideoCaptureAsset
+    let upload: BackendVideoUploadTicket?
+}
+
+struct BackendVideoSignedPart: Decodable, Sendable, Equatable {
+    let partNumber: Int
+    let uploadUrl: String
+    let requiredHeaders: [String: String]
+}
+
+struct BackendVideoSignedPartsResponse: Decodable, Sendable {
+    let parts: [BackendVideoSignedPart]
+}
+
+struct BackendVideoUploadPartRequest: Encodable, Sendable {
+    let partNumber: Int
+    let checksumSha256: String
+}
+
+struct BackendVideoSignPartsRequest: Encodable, Sendable {
+    let parts: [BackendVideoUploadPartRequest]
+}
+
+struct BackendVideoUploadedPart: Decodable, Sendable, Equatable {
+    let partNumber: Int
+    let etag: String
+    let checksumSha256: String?
+    let sizeBytes: Int64
+}
+
+struct BackendVideoUploadStatus: Decodable, Sendable {
+    let status: String
+    let strategy: String
+    let uploadedParts: [BackendVideoUploadedPart]
+}
+
+struct BackendVideoCompletedPart: Encodable, Sendable {
+    let partNumber: Int
+    let etag: String
+    let checksumSha256: String
+}
+
+struct BackendVideoCompleteRequest: Encodable, Sendable {
+    let parts: [BackendVideoCompletedPart]
+}
+
+struct BackendVideoCaptureAssetResponse: Decodable, Sendable {
+    let asset: BackendVideoCaptureAsset
+    let playbackUrl: String?
+    let thumbnailUrl: String?
+}
+
+struct BackendVideoCaptureListResponse: Decodable, Sendable {
+    let assets: [BackendVideoCaptureAsset]
+    let nextBefore: String?
+}
+
+struct BackendVideoPromotionRequest: Encodable, Sendable {
+    let versionLabel: String?
+}
+
+struct BackendVideoPromotion: Decodable, Sendable, Equatable {
+    let id: String
+    let versionNumber: Int
+    let versionLabel: String?
+    let status: String
+}
+
+struct BackendVideoPromotionResponse: Decodable, Sendable, Equatable {
+    let version: BackendVideoPromotion
+    let created: Bool
 }
 
 struct BackendUploadCompleteRequest: Encodable, Sendable {
@@ -235,8 +387,10 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
     let scouted: Bool?
     let isCompleted: Bool?
     let capturedAssetId: String?
-    /// Backend asset-id → thumbnail via `/api/capture/assets/:id/preview`.
+    /// Backend asset-id; trenger den separate preview-capabilityen under.
     let capturedAssetBackendId: String?
+    /// HMAC capability bound to ``capturedAssetBackendId``.
+    let capturedAssetPreviewToken: String?
     /// Hvem som tok shotet (team-attribusjon, «Ferdig · Ole»). Optional +
     /// bakoverkompatibel — nil når backend ikke sender feltet.
     let completedBy: String?
@@ -247,12 +401,14 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
          priority: String? = nil, shotType: String? = nil, locationName: String? = nil,
          notes: String? = nil, scouted: Bool? = nil, isCompleted: Bool? = nil,
          capturedAssetId: String? = nil, capturedAssetBackendId: String? = nil,
+         capturedAssetPreviewToken: String? = nil,
          completedBy: String? = nil) {
         self.id = id; self.scene = scene; self.description = description
         self.estimatedDuration = estimatedDuration; self.priority = priority
         self.shotType = shotType; self.locationName = locationName; self.notes = notes
         self.scouted = scouted; self.isCompleted = isCompleted
         self.capturedAssetId = capturedAssetId; self.capturedAssetBackendId = capturedAssetBackendId
+        self.capturedAssetPreviewToken = capturedAssetPreviewToken
         self.completedBy = completedBy
     }
 }

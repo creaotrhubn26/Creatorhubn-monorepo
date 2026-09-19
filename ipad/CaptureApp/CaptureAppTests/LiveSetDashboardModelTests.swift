@@ -300,7 +300,7 @@ final class LiveSetDashboardModelTests: XCTestCase {
             mime: "image/jpeg", sizeBytes: 1024,
             previewKey: "k/\(id)", fullKey: nil, rawKey: nil,
             state: "uploaded", checksumSha256: nil,
-            previewUrl: previewUrl, rating: rating,
+            previewUrl: previewUrl, previewToken: "preview-token", rating: rating,
             flaggedForClient: flagged, rejected: rejected,
         )
     }

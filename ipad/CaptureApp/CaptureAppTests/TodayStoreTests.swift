@@ -23,6 +23,41 @@ import XCTest
 ///     a thrown error.
 final class TodayStoreTests: XCTestCase {
 
+    func testSyncProjectsPopulatesLocalTodayMirrorForSignedInOwner() async throws {
+        let db = try AppDatabase.inMemory()
+        let store = TodayStore(database: db)
+        let syncedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let summary = BackendProjectSummary(
+            id: "project-synced",
+            title: "CreatorHub shoot",
+            clientName: "Kari",
+            eventDate: "2027-01-15",
+            location: "Oslo",
+            projectType: "portrait",
+            status: "active",
+            shotListSummary: BackendProjectShotListSummary(
+                listId: "list-1",
+                totalShots: 12,
+                completedShots: 5,
+                mustHaveShots: 4,
+                completedMustHave: 2,
+            ),
+            updatedAt: "2027-01-10T12:00:00Z",
+        )
+
+        try await store.syncProjects([summary], ownerUserId: "real-user", syncedAt: syncedAt)
+
+        let project = try await db.dbWriter.read { db in
+            try Project.fetchOne(db, key: "project-synced")
+        }
+        XCTAssertEqual(project?.ownerUserId, "real-user")
+        XCTAssertEqual(project?.title, "CreatorHub shoot")
+        XCTAssertEqual(project?.totalShots, 12)
+        XCTAssertEqual(project?.completedMustHave, 2)
+        XCTAssertEqual(project?.lastSyncedAt, syncedAt)
+        XCTAssertNotNil(project?.eventDate)
+    }
+
     // MARK: - Fixtures
 
     private let owner = "photographer-1"

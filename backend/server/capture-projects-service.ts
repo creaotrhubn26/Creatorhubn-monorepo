@@ -84,8 +84,8 @@ export interface ShotListItem {
   isCompleted?: boolean;
   /// Lokal asset-id (on-device thumbnail).
   capturedAssetId?: string | null;
-  /// Backend asset-id (satt post-levering) → thumbnail via
-  /// `/api/capture/assets/:id/preview` for web/call-sheet/andre enheter.
+  /// Backend asset-id (satt post-levering). Det autentiserte API-svaret legger
+  /// ved en separat preview-capability; id-en alene gir ikke lesetilgang.
   capturedAssetBackendId?: string | null;
   /// Hvem som tok shotet (team-attribusjon).
   completedBy?: string | null;

@@ -42,7 +42,9 @@ struct OnboardingView: View {
                     .padding(.bottom, 32)
             }
         }
-        .background(Color(uiColor: .systemBackground))
+        .foregroundStyle(CHTheme.textPrimary)
+        .background(CHTheme.bg.ignoresSafeArea())
+        .chBranded()
         .onChange(of: auth.session?.userId ?? "") { _, userId in
             // Sign-in writes a session into SignInService. As soon as
             // one lands, advance the state so the view can dismiss.
@@ -154,10 +156,8 @@ struct OnboardingView: View {
                 )
             }
             .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(uiColor: .secondarySystemBackground)),
-            )
+            .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(CHTheme.border, lineWidth: 1))
             Spacer()
         }
     }
@@ -217,10 +217,8 @@ struct OnboardingView: View {
             Spacer(minLength: 0)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(uiColor: .secondarySystemBackground)),
-        )
+        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(CHTheme.border, lineWidth: 1))
     }
 
     private func permissionRow(icon: String, title: String, body: String) -> some View {

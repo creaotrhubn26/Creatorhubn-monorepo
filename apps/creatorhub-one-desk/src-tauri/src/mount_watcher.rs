@@ -27,14 +27,13 @@ pub const VIDEO_EXTS: &[&str] = &[
 ];
 
 pub const PHOTO_EXTS: &[&str] = &[
-    "jpg", "jpeg", "heic", "heif", "png", "tiff", "tif",
-    "cr2", "cr3", "crw", // Canon
-    "nef", "nrw",        // Nikon
+    "jpg", "jpeg", "heic", "heif", "png", "tiff", "tif", "cr2", "cr3", "crw", // Canon
+    "nef", "nrw", // Nikon
     "arw", "srf", "sr2", // Sony
-    "raf",               // Fujifilm
-    "rw2",               // Panasonic
-    "orf",               // Olympus
-    "dng",               // Adobe / generic
+    "raf", // Fujifilm
+    "rw2", // Panasonic
+    "orf", // Olympus
+    "dng", // Adobe / generic
     "raw",
 ];
 
@@ -146,7 +145,12 @@ fn scan_volume(root: &Path) -> DetectedMount {
         if !entry.file_type().is_file() {
             continue;
         }
-        let Some(ext) = entry.path().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase()) else {
+        let Some(ext) = entry
+            .path()
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase())
+        else {
             continue;
         };
         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);

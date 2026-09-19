@@ -180,16 +180,22 @@ actor CardImportService {
         // The JPEG (or the only file) becomes the preview + full so it displays
         // in cull / Redigering immediately.
         if let jpeg = group.jpeg {
-            let jpegDest = display.url == jpeg.url
-                ? displayDest
-                : try Self.copyTo(dir: dir, assetId: assetId, file: jpeg)
+            let jpegDest: URL
+            let jpegChecksum: String
+            if display.url == jpeg.url {
+                jpegDest = displayDest
+                jpegChecksum = displayChecksum
+            } else {
+                jpegDest = dir.appendingPathComponent("\(assetId.uuidString).\(jpeg.ext)")
+                jpegChecksum = try Self.copyAndChecksum(from: jpeg.url, to: jpegDest)
+            }
             try await sessionStore.attachStorageKey(
                 id: assetId, kind: .preview, key: jpegDest.path,
-                checksumSha256: displayChecksum, sizeBytes: jpeg.sizeBytes,
+                checksumSha256: jpegChecksum, sizeBytes: jpeg.sizeBytes,
             )
             try await sessionStore.attachStorageKey(
                 id: assetId, kind: .full, key: jpegDest.path,
-                checksumSha256: displayChecksum, sizeBytes: jpeg.sizeBytes,
+                checksumSha256: jpegChecksum, sizeBytes: jpeg.sizeBytes,
             )
             backupItems.append(.init(
                 localId: assetId, originalFilename: jpeg.filename, captureTime: jpeg.captureTime,
@@ -200,12 +206,18 @@ actor CardImportService {
         // The RAW original is attached + backed up. When there's no JPEG it is
         // also the display file (Redigering renders RAW; cull shows the name).
         if let raw = group.raw {
-            let rawDest = display.url == raw.url
-                ? displayDest
-                : try Self.copyTo(dir: dir, assetId: assetId, file: raw)
+            let rawDest: URL
+            let rawChecksum: String
+            if display.url == raw.url {
+                rawDest = displayDest
+                rawChecksum = displayChecksum
+            } else {
+                rawDest = dir.appendingPathComponent("\(assetId.uuidString).\(raw.ext)")
+                rawChecksum = try Self.copyAndChecksum(from: raw.url, to: rawDest)
+            }
             try await sessionStore.attachStorageKey(
                 id: assetId, kind: .raw, key: rawDest.path,
-                checksumSha256: displayChecksum, sizeBytes: raw.sizeBytes,
+                checksumSha256: rawChecksum, sizeBytes: raw.sizeBytes,
             )
             backupItems.append(.init(
                 localId: assetId, originalFilename: raw.filename, captureTime: raw.captureTime,
@@ -224,12 +236,6 @@ actor CardImportService {
             .appendingPathComponent("CaptureApp/card-imports/\(sessionId.uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
-    }
-
-    private static func copyTo(dir: URL, assetId: UUID, file: CardMediaFile) throws -> URL {
-        let dest = dir.appendingPathComponent("\(assetId.uuidString).\(file.ext)")
-        _ = try copyAndChecksum(from: file.url, to: dest)
-        return dest
     }
 
     /// Stream-copy a file and compute its SHA-256 in the same pass (so large

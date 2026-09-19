@@ -154,7 +154,10 @@ impl MirrorState {
     }
 
     pub fn enable(&self, session_id: String, destinations: Vec<MirrorDestination>) {
-        self.enabled.lock().unwrap().insert(session_id, destinations);
+        self.enabled
+            .lock()
+            .unwrap()
+            .insert(session_id, destinations);
     }
 
     pub fn disable(&self, session_id: &str) -> bool {
@@ -172,7 +175,10 @@ impl MirrorState {
     /// Returner true hvis vi tok ansvar for asset_id (første gang vi ser den).
     /// Brukes til dedup mellom samtidige events.
     fn claim_asset(&self, asset_id: &str) -> bool {
-        self.seen_assets.lock().unwrap().insert(asset_id.to_string())
+        self.seen_assets
+            .lock()
+            .unwrap()
+            .insert(asset_id.to_string())
     }
 
     fn release_asset(&self, asset_id: &str) {
@@ -362,7 +368,10 @@ mod safe_filename_tests {
     #[test]
     fn allows_normal_filenames() {
         assert_eq!(safe_filename("IMG_0001.CR3", "x"), "IMG_0001.CR3");
-        assert_eq!(safe_filename("foto med mellomrom.jpg", "x"), "foto med mellomrom.jpg");
+        assert_eq!(
+            safe_filename("foto med mellomrom.jpg", "x"),
+            "foto med mellomrom.jpg"
+        );
         assert_eq!(safe_filename("héllo.png", "x"), "héllo.png");
     }
 
@@ -380,10 +389,7 @@ mod safe_filename_tests {
     }
 }
 
-async fn fetch_download_url(
-    cfg: &Config,
-    asset_id: &str,
-) -> Result<(String, String), String> {
+async fn fetch_download_url(cfg: &Config, asset_id: &str) -> Result<(String, String), String> {
     let url = format!(
         "{}/api/dit/assets/{}/download-url",
         cfg.api_base.trim_end_matches('/'),
@@ -578,10 +584,7 @@ pub fn maybe_mirror_asset(
                 }
                 Err(err) => {
                     any_failed = true;
-                    eprintln!(
-                        "[mirror] copy til {} feilet: {}",
-                        dest.label, err
-                    );
+                    eprintln!("[mirror] copy til {} feilet: {}", dest.label, err);
                 }
             }
         }
@@ -594,7 +597,11 @@ pub fn maybe_mirror_asset(
             MirrorEvent {
                 session_id: session_id.clone(),
                 asset_id: asset_id.clone(),
-                state: if any_failed { "failed".into() } else { "done".into() },
+                state: if any_failed {
+                    "failed".into()
+                } else {
+                    "done".into()
+                },
                 filename: Some(filename),
                 error: None,
             },

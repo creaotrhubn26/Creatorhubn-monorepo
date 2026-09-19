@@ -288,6 +288,122 @@ extension AppDatabase {
                 t.add(column: "pendingDetections", .text)
             }
         }
+        migrator.registerMigration("v8_persistent_capture_uploads") { db in
+            // Durable CreatorHub S3 multipart checkpoints. Only opaque S3
+            // upload ids, object keys and ETags are stored; signed URLs and
+            // authentication credentials are deliberately never persisted.
+            try db.create(table: "multipartUploadCheckpoint") { t in
+                t.primaryKey("id", .text) // localAssetId:kind
+                t.column("localAssetId", .text).notNull()
+                t.column("backendAssetId", .text).notNull()
+                t.column("backendSessionId", .text).notNull()
+                t.column("kind", .text).notNull()
+                t.column("localPath", .text).notNull()
+                t.column("mime", .text).notNull()
+                t.column("sizeBytes", .integer).notNull()
+                t.column("checksumSha256", .text).notNull()
+                t.column("uploadId", .text)
+                t.column("objectKey", .text)
+                t.column("partSize", .integer)
+                t.column("partCount", .integer)
+                t.column("partUrlBatchMax", .integer)
+                t.column("completedPartsJson", .text).notNull().defaults(to: "[]")
+                t.column("status", .text).notNull().defaults(to: "registered")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(indexOn: "multipartUploadCheckpoint", columns: ["localAssetId"])
+            try db.create(indexOn: "multipartUploadCheckpoint", columns: ["status", "updatedAt"])
+
+            // The user-facing card-import job. This is created before the
+            // first network call, so even an app kill before upload/start can
+            // be recovered from the already-copied originals in Documents.
+            try db.create(table: "cardBackupJob") { t in
+                t.primaryKey("id", .text) // local import session id
+                t.column("ownerUserId", .text).notNull()
+                t.column("sessionName", .text).notNull()
+                t.column("sessionStartedAt", .datetime).notNull()
+                t.column("projectId", .text).notNull()
+                t.column("projectTitle", .text).notNull()
+                t.column("itemsJson", .text).notNull()
+                t.column("assetCount", .integer).notNull()
+                t.column("duplicateCount", .integer).notNull().defaults(to: 0)
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(indexOn: "cardBackupJob", columns: ["ownerUserId", "status", "updatedAt"])
+        }
+        migrator.registerMigration("v9_scope_outbox_to_owner") { db in
+            // Older builds did not record which CreatorHub account created an
+            // offline mutation. Those rows cannot be attributed safely, so
+            // quarantine them instead of ever sending them with the next
+            // signed-in account's bearer token.
+            let legacyOwner = "__legacy_unscoped__"
+            try db.alter(table: "outboxMutation") { table in
+                table.add(column: "ownerUserId", .text)
+                    .notNull()
+                    .defaults(to: legacyOwner)
+            }
+            try db.execute(
+                sql: """
+                    UPDATE outboxMutation
+                       SET status = 'failed', attemptCount = ?,
+                           lastError = 'Legacy unscoped mutation quarantined',
+                           updatedAt = ?
+                     WHERE ownerUserId = ?
+                    """,
+                arguments: [OutboxMutation.maxAttempts, Date(), legacyOwner]
+            )
+            try db.create(
+                indexOn: "outboxMutation",
+                columns: ["ownerUserId", "status", "createdAt"]
+            )
+        }
+        migrator.registerMigration("v10_video_capture_assets") { db in
+            // Durable local source of truth for native video recordings. The
+            // file lives under Documents/CreatorHubVideo until CreatorHub S3
+            // verification succeeds; signed URLs and bearer tokens are never
+            // persisted here.
+            try db.create(table: "videoCaptureAsset") { t in
+                t.primaryKey("id", .text)
+                t.column("ownerUserId", .text).notNull()
+                t.column("projectId", .text).notNull()
+                t.column("localPath", .text).notNull()
+                t.column("fileName", .text).notNull()
+                t.column("contentType", .text).notNull()
+                t.column("sizeBytes", .integer).notNull()
+                t.column("checksumSha256", .text)
+                t.column("sourceType", .text).notNull()
+                t.column("cameraName", .text)
+                t.column("durationMs", .integer)
+                t.column("frameRate", .double)
+                t.column("width", .integer)
+                t.column("height", .integer)
+                t.column("recordedAt", .datetime).notNull()
+                t.column("captureState", .text).notNull().defaults(to: "local")
+                t.column("streamState", .text).notNull().defaults(to: "pending")
+                t.column("uploadObjectId", .text)
+                t.column("streamUid", .text)
+                t.column("lastError", .text)
+                t.column("sceneId", .text)
+                t.column("shotId", .text)
+                t.column("slate", .text)
+                t.column("takeNumber", .integer).notNull().defaults(to: 1)
+                t.column("takeStatus", .text).notNull().defaults(to: "unrated")
+                t.column("circled", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                indexOn: "videoCaptureAsset",
+                columns: ["ownerUserId", "projectId", "recordedAt"]
+            )
+            try db.create(
+                indexOn: "videoCaptureAsset",
+                columns: ["ownerUserId", "captureState", "updatedAt"]
+            )
+        }
 
         return migrator
     }()
@@ -364,6 +480,12 @@ extension OutboxMutation: FetchableRecord, MutablePersistableRecord {
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
     }
+}
+
+extension VideoCaptureAsset: FetchableRecord, PersistableRecord {
+    static var databaseTableName: String { "videoCaptureAsset" }
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
 }
 
 // MARK: - JSON-backed columns
