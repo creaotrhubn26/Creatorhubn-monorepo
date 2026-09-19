@@ -558,7 +558,7 @@ actor DeliveryService {
                 plan: plan,
                 persistedParts: checkpoint?.completedParts ?? [],
             )
-        } catch let error as BackendError where resumedPlan && Self.isMissingMultipartUpload(error) {
+        } catch where resumedPlan && Self.isMissingMultipartUpload(error) {
             // S3 can expire/abort old multipart ids. Start one replacement
             // exactly once; all other failures retain the checkpoint for retry.
             try await uploadStore?.resetPlan(localAssetId: localAssetId, kind: kind)
@@ -726,10 +726,17 @@ actor DeliveryService {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func isMissingMultipartUpload(_ error: BackendError) -> Bool {
-        switch error {
-        case .notFound, .httpStatus(404, _): return true
-        default: return false
+    private static func isMissingMultipartUpload(_ error: any Error) -> Bool {
+        if let backendError = error as? BackendError {
+            switch backendError {
+            case .notFound, .httpStatus(404, _): return true
+            default: break
+            }
         }
+        if let uploadError = error as? BackgroundMultipartUploader.UploadError,
+           case .httpStatus(404) = uploadError {
+            return true
+        }
+        return false
     }
 }

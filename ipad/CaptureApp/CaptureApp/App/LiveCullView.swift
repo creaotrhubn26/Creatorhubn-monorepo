@@ -41,7 +41,7 @@ struct LiveCullView: View {
         else { return nil }
         return AssetMarkupStore(
             database: db,
-            outbox: Outbox(database: db),
+            outbox: Outbox(database: db, ownerUserId: ownerUserId),
             markupStorage: MarkupStorage(rootDirectory: sigDir),
         )
     }
@@ -50,7 +50,10 @@ struct LiveCullView: View {
         do {
             let url = try AppDatabase.defaultDiskURL()
             let db = try AppDatabase.openOnDisk(at: url)
-            return CullStore(database: db, outbox: Outbox(database: db))
+            return CullStore(
+                database: db,
+                outbox: Outbox(database: db, ownerUserId: ownerUserId)
+            )
         } catch {
             return nil
         }

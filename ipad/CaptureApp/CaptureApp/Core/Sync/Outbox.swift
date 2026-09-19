@@ -21,9 +21,12 @@ import GRDB
 ///     restarts, which rules out in-memory queues.
 actor Outbox {
     private let database: AppDatabase
+    nonisolated let ownerUserId: String
 
-    init(database: AppDatabase) {
+    init(database: AppDatabase, ownerUserId: String) {
+        precondition(!ownerUserId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         self.database = database
+        self.ownerUserId = ownerUserId
     }
 
     /// Append a new mutation to the queue. Generates a fresh
@@ -44,6 +47,7 @@ actor Outbox {
         let draft = OutboxMutation(
             id: nil,
             clientMutationId: UUID().uuidString,
+            ownerUserId: ownerUserId,
             endpoint: endpoint,
             method: method,
             bodyJson: bodyJson,
@@ -96,6 +100,7 @@ actor Outbox {
         var mutation = OutboxMutation(
             id: nil,
             clientMutationId: UUID().uuidString,
+            ownerUserId: ownerUserId,
             endpoint: endpoint,
             method: method,
             bodyJson: try Self.encodeBody(body),
@@ -116,6 +121,7 @@ actor Outbox {
         try await database.dbWriter.read { db in
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.pending.rawValue)
+                .filter(Column("ownerUserId") == ownerUserId)
                 .order(Column("createdAt").asc, Column("id").asc)
                 .limit(limit)
                 .fetchAll(db)
@@ -128,6 +134,9 @@ actor Outbox {
     /// re-send the same row.
     func markSyncing(_ mutations: [OutboxMutation]) async throws {
         guard !mutations.isEmpty else { return }
+        guard mutations.allSatisfy({ $0.ownerUserId == ownerUserId }) else {
+            throw OutboxError.ownerMismatch
+        }
         try await database.dbWriter.write { db in
             for var m in mutations {
                 m.status = .syncing
@@ -146,14 +155,15 @@ actor Outbox {
                 sql: """
                 UPDATE outboxMutation
                    SET status = ?, lastError = ?, updatedAt = ?
-                 WHERE status = ?
+                 WHERE status = ? AND ownerUserId = ?
                 """,
                 arguments: [
                     OutboxMutation.Status.pending.rawValue,
                     "Recovered after app restart",
                     Date(),
                     OutboxMutation.Status.syncing.rawValue,
-                ],
+                    ownerUserId
+                ]
             )
         }
     }
@@ -162,6 +172,7 @@ actor Outbox {
     /// that have succeeded are kept for 24h in case the UI wants to
     /// show a "sync log" and then pruned by ``sweep()``.
     func markSucceeded(_ mutation: OutboxMutation) async throws {
+        guard mutation.ownerUserId == ownerUserId else { throw OutboxError.ownerMismatch }
         try await database.dbWriter.write { db in
             var m = mutation
             m.status = .succeeded
@@ -177,6 +188,7 @@ actor Outbox {
     /// ``attemptCount`` reaches ``maxAttempts`` it stays ``failed``
     /// and the UI surfaces it as needing manual resolution.
     func markFailed(_ mutation: OutboxMutation, error: String) async throws {
+        guard mutation.ownerUserId == ownerUserId else { throw OutboxError.ownerMismatch }
         // Increment attemptCount via SQL so repeated calls with a
         // stale ``mutation`` snapshot still advance the DB row — the
         // counter is "how many times has this row been tried" and
@@ -191,13 +203,14 @@ actor Outbox {
                 UPDATE outboxMutation
                 SET status = ?, attemptCount = attemptCount + 1,
                     lastError = ?, updatedAt = ?
-                WHERE clientMutationId = ?
+                WHERE clientMutationId = ? AND ownerUserId = ?
                 """,
                 arguments: [
                     OutboxMutation.Status.failed.rawValue,
                     trimmedError,
                     Date(),
-                    clientMutationId
+                    clientMutationId,
+                    ownerUserId
                 ],
             )
         }
@@ -208,6 +221,7 @@ actor Outbox {
     /// hammer a degraded backend.
     func requeue(_ mutation: OutboxMutation) async throws {
         guard mutation.attemptCount < OutboxMutation.maxAttempts else { return }
+        guard mutation.ownerUserId == ownerUserId else { throw OutboxError.ownerMismatch }
         try await database.dbWriter.write { db in
             var m = mutation
             m.status = .pending
@@ -224,6 +238,7 @@ actor Outbox {
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.pending.rawValue
                     || Column("status") == OutboxMutation.Status.syncing.rawValue)
+                .filter(Column("ownerUserId") == ownerUserId)
                 .fetchCount(db)
         }
     }
@@ -237,6 +252,7 @@ actor Outbox {
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.failed.rawValue
                     && Column("attemptCount") >= OutboxMutation.maxAttempts)
+                .filter(Column("ownerUserId") == ownerUserId)
                 .fetchCount(db)
         }
     }
@@ -249,6 +265,7 @@ actor Outbox {
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.failed.rawValue
                     && Column("attemptCount") < OutboxMutation.maxAttempts)
+                .filter(Column("ownerUserId") == ownerUserId)
                 .order(Column("updatedAt").asc)
                 .fetchAll(db)
         }
@@ -262,6 +279,7 @@ actor Outbox {
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.succeeded.rawValue
                     && Column("updatedAt") < cutoff)
+                .filter(Column("ownerUserId") == ownerUserId)
                 .deleteAll(db)
         }
     }
@@ -276,6 +294,10 @@ actor Outbox {
         let data = try encoder.encode(anyBody)
         return String(data: data, encoding: .utf8)
     }
+}
+
+enum OutboxError: Error, Equatable {
+    case ownerMismatch
 }
 
 /// Type-erasing wrapper so ``Outbox.enqueue`` can accept any

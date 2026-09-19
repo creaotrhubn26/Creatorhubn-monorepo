@@ -4,6 +4,29 @@ import XCTest
 @testable import CaptureApp
 
 final class DeliveryServiceTests: XCTestCase {
+    private actor ExpiredThenSuccessfulPartUploader: MultipartPartUploading {
+        private var uploadAttempts = 0
+
+        func uploadPart(
+            sourceFile: URL,
+            offset: Int64,
+            length: Int64,
+            destination: URL,
+            checkpointId: String,
+            partNumber: Int
+        ) async throws -> String {
+            uploadAttempts += 1
+            if uploadAttempts == 1 {
+                throw BackgroundMultipartUploader.UploadError.httpStatus(404)
+            }
+            return "replacement-etag"
+        }
+
+        func acknowledgePart(checkpointId: String, partNumber: Int) async {}
+
+        func attemptCount() -> Int { uploadAttempts }
+    }
+
     private final class Recorder: @unchecked Sendable {
         private let lock = NSLock()
         private var requests: [(method: String, path: String, body: Data?)] = []
@@ -262,6 +285,125 @@ final class DeliveryServiceTests: XCTestCase {
         XCTAssertEqual(requests.filter { $0.path.hasSuffix("/upload/complete") }.count, 1)
         let completedCheckpoint = try await store.checkpoint(localAssetId: localId, kind: .raw)
         XCTAssertEqual(completedCheckpoint?.status, "completed")
+    }
+
+    func testCardBackupReplacesExpiredBackgroundMultipartUpload() async throws {
+        let backendSessionId = UUID(uuidString: "00000000-0000-4000-8000-000000000210")!
+        let backendAssetId = UUID(uuidString: "00000000-0000-4000-8000-000000000220")!
+        let recorder = Recorder()
+        let session = MockURLProtocol.makeSession()
+        MockURLProtocol.handler = { request in
+            let body = request.capturedBodyData()
+            recorder.append(request, body: body)
+            let path = request.url!.path
+
+            if path.hasSuffix("/upload/start") {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"bucket":"creatorhub-private","key":"replacement/raw","uploadId":"replacement-upload","partSize":3,"partCount":1,"signedUrlTtlSeconds":900,"partUrlBatchMax":1}
+                """)
+            }
+            if path.hasSuffix("/upload/parts") {
+                let requestJSON = try JSONSerialization.jsonObject(with: body ?? Data()) as! [String: Any]
+                let uploadId = requestJSON["uploadId"] as! String
+                let signedURL = uploadId == "stale-upload"
+                    ? "https://s3.example/stale-part-1"
+                    : "https://s3.example/replacement-part-1"
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"parts":[{"partNumber":1,"url":"\(signedURL)"}],"expiresInSeconds":900}
+                """)
+            }
+            if path.hasSuffix("/upload/complete") {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"id":"\(backendAssetId.uuidString.lowercased())","sessionId":"\(backendSessionId.uuidString.lowercased())","originalFilename":"IMG_4.CR3","mime":"image/x-canon-cr3","sizeBytes":3,"previewKey":null,"fullKey":null,"rawKey":"replacement/raw","state":"ready","checksumSha256":null,"previewUrl":null,"rating":null,"flaggedForClient":null,"rejected":null}
+                """)
+            }
+            if path.hasSuffix("/client-tokens") {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"id":"token-id","token":"secret","clientLabel":null,"expiresAt":"2026-09-20T10:00:00Z","hasPin":false}
+                """, status: 201)
+            }
+            throw URLError(.badServerResponse)
+        }
+
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("delivery-expired-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let raw = temp.appendingPathComponent("IMG_4.CR3")
+        let bytes = Data("raw".utf8)
+        try bytes.write(to: raw)
+        let checksum = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+
+        let database = try AppDatabase.inMemory()
+        let store = PersistentUploadStore(database: database)
+        let localId = UUID()
+        _ = try await store.prepare(
+            localAssetId: localId,
+            backendAssetId: backendAssetId,
+            backendSessionId: backendSessionId,
+            kind: .raw,
+            localPath: raw.path,
+            mime: "image/x-canon-cr3",
+            sizeBytes: Int64(bytes.count),
+            checksumSha256: checksum
+        )
+        try await store.savePlan(
+            localAssetId: localId,
+            kind: .raw,
+            plan: BackendUploadPlan(
+                bucket: "creatorhub-private",
+                key: "stale/raw",
+                uploadId: "stale-upload",
+                partSize: 3,
+                partCount: 1,
+                signedUrlTtlSeconds: 900,
+                partUrlBatchMax: 1
+            )
+        )
+
+        let backend = BackendClient(
+            baseURL: URL(string: "https://creatorhub.example")!,
+            session: session,
+            authHeaders: ["Authorization": "Bearer token"]
+        )
+        let uploader = ExpiredThenSuccessfulPartUploader()
+        let delivery = DeliveryService(
+            backend: backend,
+            uploadStore: store,
+            partUploader: uploader
+        )
+        let result = try await delivery.backupCard(
+            sessionName: "Resume expired",
+            sessionStartedAt: Date(),
+            items: [
+                .init(
+                    localId: localId,
+                    originalFilename: "IMG_4.CR3",
+                    captureTime: Date(),
+                    mime: "image/x-canon-cr3",
+                    path: raw.path,
+                    kind: .raw
+                )
+            ],
+            projectId: nil
+        )
+
+        let requests = recorder.snapshot()
+        let signBodies = requests
+            .filter { $0.path.hasSuffix("/upload/parts") }
+            .compactMap(\.body)
+            .compactMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let signedUploadIds = signBodies.compactMap { $0["uploadId"] as? String }
+        let uploadAttempts = await uploader.attemptCount()
+        let checkpoint = try await store.checkpoint(localAssetId: localId, kind: .raw)
+
+        XCTAssertEqual(result.uploadedCount, 1)
+        XCTAssertEqual(signedUploadIds, ["stale-upload", "replacement-upload"])
+        XCTAssertEqual(requests.filter { $0.path.hasSuffix("/upload/start") }.count, 1)
+        XCTAssertEqual(requests.filter { $0.path.hasSuffix("/upload/complete") }.count, 1)
+        XCTAssertEqual(uploadAttempts, 2)
+        XCTAssertEqual(checkpoint?.uploadId, "replacement-upload")
+        XCTAssertEqual(checkpoint?.status, "completed")
     }
 
     func testCardBackupJobRoundTripsAndDeletes() async throws {

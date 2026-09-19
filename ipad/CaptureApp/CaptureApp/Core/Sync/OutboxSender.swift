@@ -117,7 +117,7 @@ actor CaptureSyncCoordinator {
 
         do {
             let database = try AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
-            let outbox = Outbox(database: database)
+            let outbox = Outbox(database: database, ownerUserId: stored.userId)
             try await outbox.recoverInterruptedSyncs()
             let sender = HTTPOutboxSender(
                 baseURL: stored.backendBaseURL,

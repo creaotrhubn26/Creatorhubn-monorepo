@@ -44,7 +44,7 @@ final class BackgroundMultipartUploader: NSObject, MultipartPartUploading, @unch
     private var completedResults: [Int: Result<String, any Error>] = [:]
     private var backgroundCompletionHandler: (() -> Void)?
 
-    private lazy var session: URLSession = URLSession(
+    private lazy var session = URLSession(
         configuration: configuration,
         delegate: self,
         delegateQueue: nil

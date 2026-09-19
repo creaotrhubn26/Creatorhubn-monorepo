@@ -124,8 +124,8 @@ actor PersistentUploadStore {
                     sizeBytes,
                     checksumSha256,
                     now,
-                    now,
-                ],
+                    now
+                ]
             )
         }
         guard let checkpoint = try await checkpoint(localAssetId: localAssetId, kind: kind) else {
@@ -168,8 +168,8 @@ actor PersistentUploadStore {
                     plan.partCount,
                     max(1, plan.partUrlBatchMax),
                     Date(),
-                    Self.key(localAssetId: localAssetId, kind: kind),
-                ],
+                    Self.key(localAssetId: localAssetId, kind: kind)
+                ]
             )
         }
     }
@@ -193,7 +193,9 @@ actor PersistentUploadStore {
             parts.removeAll { $0.partNumber == part.partNumber }
             parts.append(part)
             parts.sort { $0.partNumber < $1.partNumber }
-            let encoded = String(decoding: try encoder.encode(parts), as: UTF8.self)
+            guard let encoded = String(bytes: try encoder.encode(parts), encoding: .utf8) else {
+                throw CocoaError(.fileWriteInapplicableStringEncoding)
+            }
             try db.execute(
                 sql: "UPDATE multipartUploadCheckpoint SET completedPartsJson = ?, updatedAt = ? WHERE id = ?",
                 arguments: [encoded, Date(), id],
@@ -277,7 +279,12 @@ actor CardBackupJobStore {
     }
 
     func save(_ job: Job) async throws {
-        let itemsJSON = String(decoding: try JSONEncoder().encode(job.items), as: UTF8.self)
+        guard let itemsJSON = String(
+            bytes: try JSONEncoder().encode(job.items),
+            encoding: .utf8
+        ) else {
+            throw CocoaError(.fileWriteInapplicableStringEncoding)
+        }
         let now = Date()
         try await database.dbWriter.write { db in
             try db.execute(
@@ -308,8 +315,8 @@ actor CardBackupJobStore {
                     job.assetCount,
                     job.duplicateCount,
                     now,
-                    now,
-                ],
+                    now
+                ]
             )
         }
     }

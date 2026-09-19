@@ -334,6 +334,32 @@ extension AppDatabase {
             }
             try db.create(indexOn: "cardBackupJob", columns: ["ownerUserId", "status", "updatedAt"])
         }
+        migrator.registerMigration("v9_scope_outbox_to_owner") { db in
+            // Older builds did not record which CreatorHub account created an
+            // offline mutation. Those rows cannot be attributed safely, so
+            // quarantine them instead of ever sending them with the next
+            // signed-in account's bearer token.
+            let legacyOwner = "__legacy_unscoped__"
+            try db.alter(table: "outboxMutation") { table in
+                table.add(column: "ownerUserId", .text)
+                    .notNull()
+                    .defaults(to: legacyOwner)
+            }
+            try db.execute(
+                sql: """
+                    UPDATE outboxMutation
+                       SET status = 'failed', attemptCount = ?,
+                           lastError = 'Legacy unscoped mutation quarantined',
+                           updatedAt = ?
+                     WHERE ownerUserId = ?
+                    """,
+                arguments: [OutboxMutation.maxAttempts, Date(), legacyOwner]
+            )
+            try db.create(
+                indexOn: "outboxMutation",
+                columns: ["ownerUserId", "status", "createdAt"]
+            )
+        }
 
         return migrator
     }()

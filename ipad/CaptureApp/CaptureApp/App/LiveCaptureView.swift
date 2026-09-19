@@ -6006,6 +6006,7 @@ final class LiveCaptureModel {
     // → outbox-sync til /api/projects/:id/shot-list → synlig i workspace.
     private var autoCheckedShotAssetIds: Set<UUID> = []
     private var shotAutoCheckStore: ShotListStore?
+    private var shotAutoCheckOwnerUserId: String?
     /// Team-flagg (projects.settings.shotListAutoCheck) — eier/lead styrer det
     /// fra web-workspacen. Default PÅ; hentes når prosjekt kobles til.
     var shotListAutoCheckEnabled = true
@@ -6925,17 +6926,23 @@ final class LiveCaptureModel {
         }
     }
 
-    private func shotStore() -> ShotListStore? {
-        if let s = shotAutoCheckStore { return s }
+    private func shotStore(ownerUserId: String) -> ShotListStore? {
+        if shotAutoCheckOwnerUserId == ownerUserId, let store = shotAutoCheckStore {
+            return store
+        }
         guard let url = try? AppDatabase.defaultDiskURL(),
               let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
-        let s = ShotListStore(database: db, outbox: Outbox(database: db))
-        shotAutoCheckStore = s
-        return s
+        let store = ShotListStore(
+            database: db,
+            outbox: Outbox(database: db, ownerUserId: ownerUserId)
+        )
+        shotAutoCheckStore = store
+        shotAutoCheckOwnerUserId = ownerUserId
+        return store
     }
 
     private func autoCheckShot(assetId: UUID, previewKey: String, projectId: String, owner: String) async {
-        guard let store = shotStore(),
+        guard let store = shotStore(ownerUserId: owner),
               let list = try? await store.load(projectId: projectId, ownerUserId: owner),
               list.shots.contains(where: { !($0.isCompleted ?? false) })
         else { return }
@@ -6989,7 +6996,7 @@ final class LiveCaptureModel {
             return
         }
         guard let projectId = selectedProject?.id else { return }
-        if let store = shotStore(),
+        if let store = shotStore(ownerUserId: actorUserId),
            let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId),
            let shot = list.shots.first(where: { $0.id == shotId }), shot.isCompleted ?? false {
             try? await store.toggleCompletion(shotId: shotId, in: list)   // true → false
@@ -7036,7 +7043,7 @@ final class LiveCaptureModel {
 
         // «Neste» = høyest prioriterte uhukede shots akkurat nå.
         var nextArr: [String] = []
-        if let store = shotStore(),
+        if let store = shotStore(ownerUserId: actorUserId),
            let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId) {
             nextArr = list.shots.filter { !($0.isCompleted ?? false) }
                 .sorted { prioRank($0.priority) < prioRank($1.priority) }
@@ -7205,7 +7212,8 @@ final class LiveCaptureModel {
                 shotAssetMap[asset.id.uuidString.lowercased()] = backendId.uuidString.lowercased()
             }
         }
-        if !shotAssetMap.isEmpty, let pid = selectedProject?.id, let store = shotStore(),
+        if !shotAssetMap.isEmpty, let pid = selectedProject?.id,
+           let store = shotStore(ownerUserId: actorUserId),
            let list = try? await store.load(projectId: pid, ownerUserId: actorUserId) {
             try? await store.linkBackendAssetIds(shotAssetMap, in: list)
             await loadProjectDetail(projectId: pid)
