@@ -548,6 +548,96 @@ actor BackendClient {
         )
     }
 
+    // MARK: - CreatorHub One video capture
+
+    func initiateVideoCapture(
+        projectId: String,
+        body: BackendVideoCaptureInitiateRequest,
+    ) async throws -> BackendVideoCaptureInitiateResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/initiate",
+            body: body,
+        )
+    }
+
+    func signVideoCaptureParts(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoSignPartsRequest,
+    ) async throws -> BackendVideoSignedPartsResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/upload/parts",
+            body: body,
+        )
+    }
+
+    func videoCaptureUploadStatus(
+        projectId: String,
+        assetId: String,
+    ) async throws -> BackendVideoUploadStatus {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/upload/status",
+        )
+    }
+
+    func completeVideoCapture(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoCompleteRequest,
+    ) async throws -> BackendVideoCaptureAssetResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/upload/complete",
+            body: body,
+        )
+    }
+
+    func fetchVideoCaptureAsset(
+        projectId: String,
+        assetId: String,
+    ) async throws -> BackendVideoCaptureAssetResponse {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)",
+        )
+    }
+
+    func listVideoCaptureAssets(
+        projectId: String,
+        limit: Int = 100,
+    ) async throws -> BackendVideoCaptureListResponse {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets?limit=\(limit)",
+        )
+    }
+
+    func promoteVideoCaptureAsset(
+        projectId: String,
+        assetId: String,
+        versionLabel: String? = nil,
+    ) async throws -> BackendVideoPromotionResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/promote",
+            body: BackendVideoPromotionRequest(versionLabel: versionLabel),
+        )
+    }
+
+    func putVideoCaptureFile(
+        url: URL,
+        fileURL: URL,
+        requiredHeaders: [String: String],
+    ) async throws -> String? {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        for (name, value) in requiredHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        let (_, response) = try await session.upload(for: request, fromFile: fileURL)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: nil)
+        }
+        return http.value(forHTTPHeaderField: "ETag") ?? http.value(forHTTPHeaderField: "Etag")
+    }
+
     /// PUT a single part's bytes to a presigned CreatorHub S3 URL and return
     /// the ETag required when calling completeUpload.
     func putPart(url: URL, bytes: Data) async throws -> String {

@@ -16,6 +16,7 @@
 
 use std::path::PathBuf;
 
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -29,6 +30,10 @@ pub struct DeskIdentity {
 
 fn identity_path() -> PathBuf {
     helper_client::config_dir().join("desk-identity.json")
+}
+
+fn bridge_secret_path() -> PathBuf {
+    helper_client::config_dir().join("bridge-access-token")
 }
 
 fn default_name() -> String {
@@ -53,6 +58,34 @@ pub fn load_or_create() -> Result<DeskIdentity, String> {
     };
     persist(&identity)?;
     Ok(identity)
+}
+
+/// A separate 256-bit bearer token used by paired iPads when reading the
+/// local Bridge manifest. It is deliberately not part of `DeskIdentity`,
+/// because that value is returned to the Tauri webview.
+pub fn load_or_create_bridge_secret() -> Result<String, String> {
+    let path = bridge_secret_path();
+    if let Ok(raw) = std::fs::read_to_string(&path) {
+        let value = raw.trim();
+        if value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit()) {
+            return Ok(value.to_string());
+        }
+    }
+
+    let mut bytes = [0_u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let token = hex::encode(bytes);
+    let dir = helper_client::config_dir();
+    std::fs::create_dir_all(&dir).map_err(|error| format!("Opprett config-mappe: {error}"))?;
+    std::fs::write(&path, format!("{token}\n"))
+        .map_err(|error| format!("Skriv {}: {error}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("Beskytt {}: {error}", path.display()))?;
+    }
+    Ok(token)
 }
 
 fn persist(identity: &DeskIdentity) -> Result<(), String> {

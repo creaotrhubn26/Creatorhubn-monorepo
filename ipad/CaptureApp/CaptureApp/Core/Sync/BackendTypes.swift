@@ -140,6 +140,155 @@ struct BackendCompletedPart: Encodable, Sendable {
     let etag: String
 }
 
+// MARK: - CreatorHub One video capture
+
+struct BackendVideoCaptureTake: Decodable, Sendable, Equatable {
+    let id: String
+    let sceneId: String?
+    let shotId: String?
+    let slate: String?
+    let takeNumber: Int
+    let status: String
+    let circled: Bool
+    let continuityNotes: String?
+    let performanceNotes: String?
+    let technicalNotes: String?
+}
+
+struct BackendVideoCaptureAsset: Decodable, Sendable, Identifiable, Equatable {
+    let id: String
+    let projectId: String
+    let fileName: String
+    let contentType: String
+    let sizeBytes: Int64
+    let checksumSha256: String
+    let sourceType: String
+    let cameraManufacturer: String?
+    let cameraModel: String?
+    let cameraSerial: String?
+    let durationMs: Int64?
+    let frameRate: Double?
+    let width: Int?
+    let height: Int?
+    let timecodeStart: String?
+    let recordedAt: String
+    let captureState: String
+    let streamUid: String?
+    let streamState: String
+    let streamError: String?
+    let take: BackendVideoCaptureTake?
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct BackendVideoCaptureInitiateRequest: Encodable, Sendable {
+    let assetId: String
+    let fileName: String
+    let sizeBytes: Int64
+    let contentType: String
+    let checksumSha256: String
+    let sourceType: String
+    let recordedAt: String
+    let durationMs: Int64?
+    let frameRate: Double?
+    let width: Int?
+    let height: Int?
+    let timecodeStart: String?
+    let cameraManufacturer: String?
+    let cameraModel: String?
+    let cameraSerial: String?
+    let sceneId: String?
+    let shotId: String?
+    let slate: String?
+    let takeNumber: Int
+    let forceMultipart: Bool
+}
+
+struct BackendVideoUploadTicket: Decodable, Sendable, Equatable {
+    let objectId: String
+    let strategy: String
+    let expiresInSeconds: Int
+    let uploadUrl: String?
+    let uploadId: String?
+    let partSize: Int64?
+    let partCount: Int?
+    let requiredHeaders: [String: String]?
+}
+
+struct BackendVideoCaptureInitiateResponse: Decodable, Sendable {
+    let asset: BackendVideoCaptureAsset
+    let upload: BackendVideoUploadTicket?
+}
+
+struct BackendVideoSignedPart: Decodable, Sendable, Equatable {
+    let partNumber: Int
+    let uploadUrl: String
+    let requiredHeaders: [String: String]
+}
+
+struct BackendVideoSignedPartsResponse: Decodable, Sendable {
+    let parts: [BackendVideoSignedPart]
+}
+
+struct BackendVideoUploadPartRequest: Encodable, Sendable {
+    let partNumber: Int
+    let checksumSha256: String
+}
+
+struct BackendVideoSignPartsRequest: Encodable, Sendable {
+    let parts: [BackendVideoUploadPartRequest]
+}
+
+struct BackendVideoUploadedPart: Decodable, Sendable, Equatable {
+    let partNumber: Int
+    let etag: String
+    let checksumSha256: String?
+    let sizeBytes: Int64
+}
+
+struct BackendVideoUploadStatus: Decodable, Sendable {
+    let status: String
+    let strategy: String
+    let uploadedParts: [BackendVideoUploadedPart]
+}
+
+struct BackendVideoCompletedPart: Encodable, Sendable {
+    let partNumber: Int
+    let etag: String
+    let checksumSha256: String
+}
+
+struct BackendVideoCompleteRequest: Encodable, Sendable {
+    let parts: [BackendVideoCompletedPart]
+}
+
+struct BackendVideoCaptureAssetResponse: Decodable, Sendable {
+    let asset: BackendVideoCaptureAsset
+    let playbackUrl: String?
+    let thumbnailUrl: String?
+}
+
+struct BackendVideoCaptureListResponse: Decodable, Sendable {
+    let assets: [BackendVideoCaptureAsset]
+    let nextBefore: String?
+}
+
+struct BackendVideoPromotionRequest: Encodable, Sendable {
+    let versionLabel: String?
+}
+
+struct BackendVideoPromotion: Decodable, Sendable, Equatable {
+    let id: String
+    let versionNumber: Int
+    let versionLabel: String?
+    let status: String
+}
+
+struct BackendVideoPromotionResponse: Decodable, Sendable, Equatable {
+    let version: BackendVideoPromotion
+    let created: Bool
+}
+
 struct BackendUploadCompleteRequest: Encodable, Sendable {
     let kind: BackendUploadKind
     let uploadId: String

@@ -69,6 +69,26 @@ final class BackgroundMultipartUploader: NSObject, MultipartPartUploading, @unch
         checkpointId: String,
         partNumber: Int
     ) async throws -> String {
+        try await uploadPart(
+            sourceFile: sourceFile,
+            offset: offset,
+            length: length,
+            destination: destination,
+            checkpointId: checkpointId,
+            partNumber: partNumber,
+            requiredHeaders: [:]
+        )
+    }
+
+    func uploadPart(
+        sourceFile: URL,
+        offset: Int64,
+        length: Int64,
+        destination: URL,
+        checkpointId: String,
+        partNumber: Int,
+        requiredHeaders: [String: String]
+    ) async throws -> String {
         guard offset >= 0, length > 0, partNumber > 0 else {
             throw UploadError.invalidRange
         }
@@ -111,6 +131,9 @@ final class BackgroundMultipartUploader: NSObject, MultipartPartUploading, @unch
         var request = URLRequest(url: destination)
         request.httpMethod = "PUT"
         request.setValue(String(length), forHTTPHeaderField: "Content-Length")
+        for (name, value) in requiredHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         let task = session.uploadTask(with: request, fromFile: partFile)
         task.taskDescription = try Self.encodeContext(context)
 

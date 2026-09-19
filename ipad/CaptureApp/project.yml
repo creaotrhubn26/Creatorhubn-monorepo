@@ -81,11 +81,16 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSLocalNetworkUsageDescription: Used to discover and communicate with your Canon camera over the local network during a shoot.
-        NSBonjourServices: [_http._tcp]
-        NSCameraUsageDescription: Not used. Present only to satisfy App Store review when tethering to external cameras.
+        NSLocalNetworkUsageDescription: Used to discover cameras and your paired CreatorHub Bridge over the local network during a shoot.
+        NSBonjourServices: [_http._tcp, _creatorhubbridge._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          # Bridge preview is local HLS. This exemption is scoped to AVFoundation
+          # media loads; API/auth traffic still follows normal ATS rules.
+          NSAllowsArbitraryLoadsInMedia: true
+        NSCameraUsageDescription: Show a live monitor and record video from the iPad camera or a connected UVC camera.
         NSPhotoLibraryAddUsageDescription: Used only when you explicitly export a captured session to Photos.
-        NSMicrophoneUsageDescription: Record short voice memos attached to individual shots so you can dictate retouch + delivery instructions while shooting continues.
+        NSMicrophoneUsageDescription: Record production audio with video and short voice memos attached to individual shots.
         NSSpeechRecognitionUsageDescription: Transcribe your voice memos on-device so dictated retouch and delivery notes become searchable text.
         NSLocationWhenInUseUsageDescription: Used to show accurate golden-hour and weather for your current shoot location on the "I dag" dashboard.
         NSCalendarsWriteOnlyAccessUsageDescription: Add a shoot to your calendar. Write-only — the app never reads your existing events.

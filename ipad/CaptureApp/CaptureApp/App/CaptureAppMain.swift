@@ -190,6 +190,13 @@ struct RootView: View {
         if launchArguments.contains("--legacy-capture-only") {
             return .legacyCapture
         }
+        #if DEBUG
+        // Deterministic QA entry point for simulator and a tethered iPad.
+        // It does not mutate the user's persisted onboarding state.
+        if launchArguments.contains("--tab-video") {
+            return .mainShell
+        }
+        #endif
         if forceOnboarding {
             return .onboardingForced
         }

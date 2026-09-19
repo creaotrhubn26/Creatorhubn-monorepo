@@ -22,6 +22,7 @@ struct CreatorHubOneRootView: View {
     enum Tab: Int, CaseIterable, Identifiable {
         case today
         case shoot
+        case video
         case gallery
         case redigering
         case admin
@@ -64,6 +65,8 @@ struct CreatorHubOneRootView: View {
         // QA/skjermbilde-hook: `--tab-shoot` åpner Shoot-fanen direkte.
         if ProcessInfo.processInfo.arguments.contains("--tab-shoot") {
             _selected = State(initialValue: .shoot)
+        } else if ProcessInfo.processInfo.arguments.contains("--tab-video") {
+            _selected = State(initialValue: .video)
         }
         #endif
     }
@@ -126,6 +129,10 @@ struct CreatorHubOneRootView: View {
             LiveCaptureView()
                 .tabItem { Label("Shoot", systemImage: "camera") }
                 .tag(Tab.shoot)
+
+            VideoCaptureView()
+                .tabItem { Label("Video", systemImage: "video.fill") }
+                .tag(Tab.video)
 
             // Galleri → NATIVE client-gallery review (showcase admin).
             // Rebuilt native for a run-and-gun feel: live engagement

@@ -138,9 +138,9 @@ where
             .map_err(|e| CopyError::other(format!("Opprett mappe {}: {}", parent.display(), e)))?;
     }
 
-    let mut src_file = File::open(source).await.map_err(|e| {
-        CopyError::source_read(format!("Åpne kilde {}: {}", source.display(), e))
-    })?;
+    let mut src_file = File::open(source)
+        .await
+        .map_err(|e| CopyError::source_read(format!("Åpne kilde {}: {}", source.display(), e)))?;
     let metadata = src_file.metadata().await.map_err(|e| {
         CopyError::source_read(format!("Les metadata for {}: {}", source.display(), e))
     })?;
@@ -338,7 +338,10 @@ mod tests {
         let result = copy_with_progress(&missing_src, &dst, |_, _| {}).await;
         let err = result.expect_err("kopi skal feile");
         assert_eq!(err.kind, CopyErrorKind::SourceReadFailed);
-        assert!(!dst.exists(), "ingen dest-fil skal eksistere når kilde feilet");
+        assert!(
+            !dst.exists(),
+            "ingen dest-fil skal eksistere når kilde feilet"
+        );
     }
 
     #[tokio::test]
@@ -347,9 +350,11 @@ mod tests {
         // FS-mounts), men vi kan teste at en typed CopyError klassifiseres
         // riktig for kjente fra_io-input.
         let mock_full = std::io::Error::new(std::io::ErrorKind::WriteZero, "ingen plass");
-        assert_eq!(CopyErrorKind::from_io(&mock_full), CopyErrorKind::DestNoSpace);
-        let mock_perm =
-            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "ikke lov");
+        assert_eq!(
+            CopyErrorKind::from_io(&mock_full),
+            CopyErrorKind::DestNoSpace
+        );
+        let mock_perm = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "ikke lov");
         assert_eq!(
             CopyErrorKind::from_io(&mock_perm),
             CopyErrorKind::DestPermDenied
@@ -365,11 +370,7 @@ mod tests {
     async fn copy_with_progress_refuses_to_overwrite_existing_dest() {
         let dir = tempdir().unwrap();
         let src = write_tmp_file(dir.path(), "src.bin", b"new content");
-        let dst = write_tmp_file(
-            dir.path(),
-            "dst.bin",
-            b"existing content - do not touch",
-        );
+        let dst = write_tmp_file(dir.path(), "dst.bin", b"existing content - do not touch");
         let result = copy_with_progress(&src, &dst, |_, _| {}).await;
         // Skal feile fordi create_new=true; partial-fila er ikke vår,
         // så vi sletter den IKKE — bruker kan inspisere.
@@ -412,8 +413,12 @@ pub fn build_dest_path(
     dest_root: &Path,
     volume_label: &str,
 ) -> Result<PathBuf, String> {
-    let rel = source
-        .strip_prefix(mount_root)
-        .map_err(|_| format!("{} er ikke under {}", source.display(), mount_root.display()))?;
+    let rel = source.strip_prefix(mount_root).map_err(|_| {
+        format!(
+            "{} er ikke under {}",
+            source.display(),
+            mount_root.display()
+        )
+    })?;
     Ok(dest_root.join(volume_label).join(rel))
 }

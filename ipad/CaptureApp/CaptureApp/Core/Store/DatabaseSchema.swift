@@ -360,6 +360,50 @@ extension AppDatabase {
                 columns: ["ownerUserId", "status", "createdAt"]
             )
         }
+        migrator.registerMigration("v10_video_capture_assets") { db in
+            // Durable local source of truth for native video recordings. The
+            // file lives under Documents/CreatorHubVideo until CreatorHub S3
+            // verification succeeds; signed URLs and bearer tokens are never
+            // persisted here.
+            try db.create(table: "videoCaptureAsset") { t in
+                t.primaryKey("id", .text)
+                t.column("ownerUserId", .text).notNull()
+                t.column("projectId", .text).notNull()
+                t.column("localPath", .text).notNull()
+                t.column("fileName", .text).notNull()
+                t.column("contentType", .text).notNull()
+                t.column("sizeBytes", .integer).notNull()
+                t.column("checksumSha256", .text)
+                t.column("sourceType", .text).notNull()
+                t.column("cameraName", .text)
+                t.column("durationMs", .integer)
+                t.column("frameRate", .double)
+                t.column("width", .integer)
+                t.column("height", .integer)
+                t.column("recordedAt", .datetime).notNull()
+                t.column("captureState", .text).notNull().defaults(to: "local")
+                t.column("streamState", .text).notNull().defaults(to: "pending")
+                t.column("uploadObjectId", .text)
+                t.column("streamUid", .text)
+                t.column("lastError", .text)
+                t.column("sceneId", .text)
+                t.column("shotId", .text)
+                t.column("slate", .text)
+                t.column("takeNumber", .integer).notNull().defaults(to: 1)
+                t.column("takeStatus", .text).notNull().defaults(to: "unrated")
+                t.column("circled", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                indexOn: "videoCaptureAsset",
+                columns: ["ownerUserId", "projectId", "recordedAt"]
+            )
+            try db.create(
+                indexOn: "videoCaptureAsset",
+                columns: ["ownerUserId", "captureState", "updatedAt"]
+            )
+        }
 
         return migrator
     }()
@@ -436,6 +480,12 @@ extension OutboxMutation: FetchableRecord, MutablePersistableRecord {
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
     }
+}
+
+extension VideoCaptureAsset: FetchableRecord, PersistableRecord {
+    static var databaseTableName: String { "videoCaptureAsset" }
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
 }
 
 // MARK: - JSON-backed columns
