@@ -74,4 +74,17 @@ final class CCAPIInventoryTests: XCTestCase {
         XCTAssertEqual(response.isoValue, "800")
         XCTAssertEqual(response.exposureCompensation, "+0.3")
     }
+
+    func testPollingResponseDecodesMovieRecordingState() throws {
+        let start = try JSONDecoder().decode(
+            CCAPIPollingResponse.self,
+            from: Data(#"{"recbutton":{"action":"start"}}"#.utf8)
+        )
+        let stop = try JSONDecoder().decode(
+            CCAPIPollingResponse.self,
+            from: Data(#"{"recbutton":{"status":"stop"}}"#.utf8)
+        )
+        XCTAssertEqual(start.movieRecording, true)
+        XCTAssertEqual(stop.movieRecording, false)
+    }
 }

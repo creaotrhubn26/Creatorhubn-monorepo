@@ -64,6 +64,32 @@ struct CCAPIEndpoint: Sendable, Decodable, Hashable {
     let delete: Bool?
 }
 
+// MARK: - Video control
+
+enum CCAPIShootingSettingKey: String, CaseIterable, Sendable, Hashable {
+    case tv
+    case av
+    case iso
+
+    var displayName: String {
+        switch self {
+        case .tv: "Lukker"
+        case .av: "Blender"
+        case .iso: "ISO"
+        }
+    }
+}
+
+struct CCAPIChoiceSetting: Sendable, Decodable, Equatable {
+    let value: String
+    let ability: [String]
+}
+
+struct CCAPIVideoCapabilities: Sendable, Equatable {
+    let canRecordMovie: Bool
+    let writableSettings: Set<CCAPIShootingSettingKey>
+}
+
 // MARK: - Camera information (§6.2.1)
 
 struct CCAPIDeviceInformation: Sendable, Decodable {
@@ -148,6 +174,12 @@ struct CCAPIPollingResponse: Sendable, Decodable {
     /// Attached lens name, mirrors `/devicestatus/lens.name`.
     let lensName: String?
 
+    /// Movie recording state emitted after `/shooting/control/recbutton`.
+    /// Camera event payloads have been observed with both `action` and
+    /// `status` for the same `start` / `stop` value, so the decoder tolerates
+    /// both shapes and ignores all other values.
+    let movieRecording: Bool?
+
     private enum CodingKeys: String, CodingKey {
         case addedcontents
         case storage
@@ -157,6 +189,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         case iso
         case exposure
         case lens
+        case recbutton
     }
 
     init(
@@ -168,7 +201,8 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         shutterSpeed: String? = nil,
         isoValue: String? = nil,
         exposureCompensation: String? = nil,
-        lensName: String? = nil
+        lensName: String? = nil,
+        movieRecording: Bool? = nil
     ) {
         self.addedcontents = addedcontents
         self.totalContentsCount = totalContentsCount
@@ -179,6 +213,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         self.isoValue = isoValue
         self.exposureCompensation = exposureCompensation
         self.lensName = lensName
+        self.movieRecording = movieRecording
     }
 
     init(from decoder: Decoder) throws {
@@ -199,6 +234,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         self.shutterSpeed = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .tv))?.value
         self.isoValue = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .iso))?.value
         self.exposureCompensation = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .exposure))?.value
+        self.movieRecording = (try? container.decodeIfPresent(CCAPIRecordingDiff.self, forKey: .recbutton))?.isRecording
     }
 }
 
@@ -224,4 +260,17 @@ private struct CCAPIBatteryDiff: Decodable {
 private struct CCAPILensDiff: Decodable {
     let mount: Bool?
     let name: String?
+}
+
+private struct CCAPIRecordingDiff: Decodable {
+    let action: String?
+    let status: String?
+
+    var isRecording: Bool? {
+        switch action ?? status {
+        case "start": true
+        case "stop": false
+        default: nil
+        }
+    }
 }

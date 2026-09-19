@@ -114,6 +114,8 @@ final class ScreenshotHarness: XCTestCase {
             "--tab-video",
             "--screenshot-demo-fixtures",
             "--video-take-demo",
+            "--fake-cameras",
+            "--canon-video-demo",
         ]
         video.launch()
         let recordButton = video.buttons["video-record-button"]
@@ -122,6 +124,22 @@ final class ScreenshotHarness: XCTestCase {
             "Video-opptaksknappen må være tilgjengelig i landscape",
         )
         XCTAssertTrue(recordButton.isHittable, "Video-opptaksknappen må være synlig og trykkbar")
+
+        let canonCamera = video.buttons["canon-camera-fake1"]
+        XCTAssertTrue(
+            canonCamera.waitForExistence(timeout: 4),
+            "Den simulerte Canon-kilden må være synlig i landscape",
+        )
+        canonCamera.tap()
+        XCTAssertTrue(
+            video.staticTexts["canon-controls-title"].waitForExistence(timeout: 8),
+            "CCAPI-kontrollene må vises etter at kameraet er koblet til",
+        )
+        XCTAssertTrue(
+            video.buttons["canon-setting-iso"].waitForExistence(timeout: 3),
+            "Kameraannonserte ISO-verdier må være tilgjengelige",
+        )
+
         let landscapeTakeButton = video.buttons["video-take-panel"]
         if landscapeTakeButton.waitForExistence(timeout: 2) {
             XCTAssertTrue(landscapeTakeButton.isHittable, "Take-knappen må være trykkbar i landscape")
@@ -152,6 +170,83 @@ final class ScreenshotHarness: XCTestCase {
         XCTAssertTrue(
             takeInspectorVisible || takeButtonVisible,
             "Take-panelet må fortsatt være tilgjengelig etter rotasjon",
+        )
+    }
+
+    /// Opt-in test against a physical Canon body. Run only while the iPad is
+    /// on the camera's CCAPI network:
+    /// `RUN_REAL_CANON_SMOKE=1 xcodebuild ... -only-testing:.../testRealCanonR6HardwareSmoke`
+    func testRealCanonR6HardwareSmoke() throws {
+        guard ProcessInfo.processInfo.environment["RUN_REAL_CANON_SMOKE"] == "1" else {
+            throw XCTSkip("Krever fysisk Canon R6 Mark II i CCAPI-modus")
+        }
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += ["--tab-video", "--canon-hardware-smoke"]
+        app.launch()
+
+        let camera = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Canon EOS R6 Mark II")
+        ).firstMatch
+        XCTAssertTrue(
+            camera.waitForExistence(timeout: 90),
+            "R6 Mark II ble ikke oppdaget på iPadens lokale nettverk",
+        )
+        camera.tap()
+
+        XCTAssertTrue(
+            app.images["Canon CCAPI live monitor"].waitForExistence(timeout: 30),
+            "R6 Mark II leverte ikke CCAPI live view",
+        )
+        XCTAssertTrue(
+            app.buttons["canon-setting-iso"].waitForExistence(timeout: 10),
+            "R6 Mark II annonserte ikke en skrivbar ISO-kontroll i aktiv modus",
+        )
+
+        let record = app.buttons["video-record-button"]
+        XCTAssertTrue(record.isEnabled, "R6 Mark II annonserte ikke fjernstyrt video-REC")
+        record.tap()
+        XCTAssertTrue(
+            app.buttons["Stopp opptak"].waitForExistence(timeout: 10),
+            "R6 Mark II bekreftet ikke opptaksstart",
+        )
+        sleep(2)
+        app.buttons["Stopp opptak"].tap()
+
+        XCTAssertTrue(
+            app.buttons["Start opptak"].waitForExistence(timeout: 60),
+            "Klippet ble ikke ferdigstilt og importert fra R6 Mark II",
+        )
+        snap(app, name: "QA_Canon_R6_Mark_II")
+    }
+
+    func testCanonVideoDemoRecordAndImport() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "--tab-video",
+            "--fake-cameras",
+            "--canon-video-demo",
+            "--canon-hardware-smoke",
+        ]
+        app.launch()
+
+        let camera = app.buttons["canon-camera-fake2"]
+        XCTAssertTrue(camera.waitForExistence(timeout: 15))
+        camera.tap()
+        XCTAssertTrue(app.images["Canon CCAPI live monitor"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["canon-setting-iso"].waitForExistence(timeout: 5))
+
+        let record = app.buttons["video-record-button"]
+        XCTAssertTrue(record.isEnabled)
+        record.tap()
+        XCTAssertTrue(app.buttons["Stopp opptak"].waitForExistence(timeout: 5))
+        app.buttons["Stopp opptak"].tap()
+        XCTAssertTrue(app.buttons["Start opptak"].waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.staticTexts["Klippet er hentet fra kameraet og sikres i CreatorHub."]
+                .waitForExistence(timeout: 15)
         )
     }
 

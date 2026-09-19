@@ -263,6 +263,107 @@ actor CCAPIClient {
         try? await delete(path: path)
     }
 
+    // MARK: - Direct movie control
+
+    /// Returns only operations advertised by this specific camera. Movie
+    /// recording is intentionally separate from the still-image shutter.
+    func videoCapabilities() throws -> CCAPIVideoCapabilities {
+        guard inventory != nil else { throw CCAPIError.notDiscovered }
+        let canRecordMovie = (try? advertisedEndpoint(
+            containing: "/shooting/control/recbutton",
+            exactSuffix: "/shooting/control/recbutton",
+            method: .post
+        )) != nil
+        let writableSettings = Set(CCAPIShootingSettingKey.allCases.filter { key in
+            writableSettingEndpoint(key) != nil
+        })
+        return CCAPIVideoCapabilities(
+            canRecordMovie: canRecordMovie,
+            writableSettings: writableSettings
+        )
+    }
+
+    /// Reads each exposure value from its exact advertised resource. This
+    /// keeps the ability list tied to the same endpoint used for writes and
+    /// lets bodies omit controls they do not support in the active mode.
+    func videoShootingSettings() async throws -> [CCAPIShootingSettingKey: CCAPIChoiceSetting] {
+        guard inventory != nil else { throw CCAPIError.notDiscovered }
+        var settings: [CCAPIShootingSettingKey: CCAPIChoiceSetting] = [:]
+        for key in CCAPIShootingSettingKey.allCases {
+            guard let path = readableSettingEndpoint(key) else { continue }
+            let setting: CCAPIChoiceSetting = try await get(path: path)
+            guard !setting.ability.isEmpty, setting.ability.contains(setting.value) else { continue }
+            settings[key] = setting
+        }
+        return settings
+    }
+
+    /// Writes only a camera-advertised value through an endpoint that
+    /// advertises both GET and PUT. A fresh GET confirms the applied value.
+    func updateVideoShootingSetting(
+        _ key: CCAPIShootingSettingKey,
+        value: String
+    ) async throws -> CCAPIChoiceSetting {
+        guard let path = writableSettingEndpoint(key) else {
+            throw CCAPIError.unsupportedOperation("/shooting/settings/\(key.rawValue)")
+        }
+        let current: CCAPIChoiceSetting = try await get(path: path)
+        guard current.ability.contains(value) else {
+            throw CCAPIError.invalidResponse("value is not advertised for \(key.rawValue)")
+        }
+        try await put(path: path, body: ["value": value])
+        let confirmed: CCAPIChoiceSetting = try await get(path: path)
+        guard confirmed.value == value else {
+            throw CCAPIError.invalidResponse("camera did not confirm \(key.rawValue)")
+        }
+        return confirmed
+    }
+
+    /// Canon CCAPI movie start/stop. The command is available only when the
+    /// connected body advertises the dedicated recbutton POST operation.
+    func setMovieRecording(_ recording: Bool) async throws {
+        let path = try advertisedEndpoint(
+            containing: "/shooting/control/recbutton",
+            exactSuffix: "/shooting/control/recbutton",
+            method: .post
+        )
+        try await post(path: path, body: ["action": recording ? "start" : "stop"])
+    }
+
+    /// Downloads camera media through URLSession's file-backed download path,
+    /// avoiding a full movie in memory. Absolute URLs are accepted only when
+    /// they remain on the connected camera origin.
+    func downloadContentToDirectory(
+        contentPath: String,
+        directory: URL
+    ) async throws -> URL {
+        let contentURL = try sameOriginContentURL(contentPath)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        let originalName = contentURL.lastPathComponent.isEmpty
+            ? "CANON-\(UUID().uuidString.lowercased()).mp4"
+            : contentURL.lastPathComponent
+        let destination = Self.uniqueDestination(directory: directory, fileName: originalName)
+        var request = URLRequest(url: contentURL)
+        request.httpMethod = "GET"
+        let (temporaryURL, response) = try await session.download(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(code: http.statusCode, body: nil)
+        }
+        try FileManager.default.moveItem(at: temporaryURL, to: destination)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDestination = destination
+        try? mutableDestination.setResourceValues(values)
+        return destination
+    }
+
     private enum HTTPMethod {
         case get, post, put, delete
     }
@@ -292,6 +393,59 @@ actor CCAPIClient {
         case .put: endpoint.put == true
         case .delete: endpoint.delete == true
         }
+    }
+
+    private func readableSettingEndpoint(_ key: CCAPIShootingSettingKey) -> String? {
+        try? advertisedEndpoint(
+            containing: "/shooting/settings/\(key.rawValue)",
+            exactSuffix: "/shooting/settings/\(key.rawValue)",
+            method: .get
+        )
+    }
+
+    private func writableSettingEndpoint(_ key: CCAPIShootingSettingKey) -> String? {
+        guard let inventory else { return nil }
+        let suffix = "/shooting/settings/\(key.rawValue)"
+        return inventory.versions
+            .sorted { $0.ver > $1.ver }
+            .flatMap(\.apis)
+            .first { endpoint in
+                endpoint.path.hasSuffix(suffix)
+                    && endpoint.get == true
+                    && endpoint.put == true
+            }?
+            .path
+    }
+
+    private func sameOriginContentURL(_ path: String) throws -> URL {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
+              url.scheme?.lowercased() == baseURL.scheme?.lowercased(),
+              url.host?.lowercased() == baseURL.host?.lowercased(),
+              Self.effectivePort(for: url) == Self.effectivePort(for: baseURL)
+        else {
+            throw CCAPIError.invalidResponse("camera returned a cross-origin content URL")
+        }
+        return url
+    }
+
+    private static func effectivePort(for url: URL) -> Int? {
+        if let port = url.port { return port }
+        switch url.scheme?.lowercased() {
+        case "http": return 80
+        case "https": return 443
+        default: return nil
+        }
+    }
+
+    private static func uniqueDestination(directory: URL, fileName: String) -> URL {
+        let safeName = URL(fileURLWithPath: fileName).lastPathComponent
+        let initial = directory.appendingPathComponent(safeName)
+        guard FileManager.default.fileExists(atPath: initial.path) else { return initial }
+        let stem = initial.deletingPathExtension().lastPathComponent
+        let ext = initial.pathExtension
+        let uniqueName = "\(stem)-\(UUID().uuidString.lowercased())"
+            + (ext.isEmpty ? "" : ".\(ext)")
+        return directory.appendingPathComponent(uniqueName)
     }
 
     private func getBinary(path: String, timeout: TimeInterval) async throws -> (Data, String) {
@@ -337,6 +491,37 @@ actor CCAPIClient {
         guard let http = response as? HTTPURLResponse else {
             throw CCAPIError.invalidResponse("not HTTPURLResponse")
         }
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(
+                code: http.statusCode,
+                body: String(data: data, encoding: .utf8)
+            )
+        }
+    }
+
+    private func put(path: String, body: [String: any Sendable]) async throws {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw CCAPIError.invalidResponse("bad URL: \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let requestBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = requestBody
+        let started = Date()
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        await recorder?.recordHTTP(
+            method: "PUT",
+            relativePath: path,
+            requestBody: requestBody,
+            statusCode: http.statusCode,
+            responseBody: data,
+            durationMs: Date().timeIntervalSince(started) * 1000
+        )
+        if http.statusCode == 503 { throw CCAPIError.cameraBusy }
         guard (200..<300).contains(http.statusCode) else {
             throw CCAPIError.httpStatus(
                 code: http.statusCode,

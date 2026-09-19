@@ -203,6 +203,7 @@ struct VideoCaptureView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .disabled(model.isRecording)
                     }
 
                     if !model.canon.cameras.isEmpty {
@@ -246,7 +247,12 @@ struct VideoCaptureView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(model.camera.isRecording)
+                        .disabled(model.isRecording)
+                        .accessibilityIdentifier("canon-camera-\(camera.id)")
+                    }
+
+                    if model.canon.selectedCameraId != nil {
+                        canonControls
                     }
 
                     if !model.bridgeDiscovery.sources.isEmpty {
@@ -291,14 +297,14 @@ struct VideoCaptureView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(model.camera.isRecording)
+                        .disabled(model.isRecording)
                     }
                 }
             }
             Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 5) {
                 Label("UVC gir monitor + opptak", systemImage: "checkmark.circle")
-                Label("Canon live view går direkte via CCAPI", systemImage: "camera.aperture")
+                Label("Canon live view, REC og klippimport via CCAPI", systemImage: "camera.aperture")
                 Label("Bridge-preview går kun på lokalnettet", systemImage: "network")
             }
             .font(.caption2)
@@ -325,7 +331,7 @@ struct VideoCaptureView: View {
                     VideoPreviewView(controller: model.camera)
                         .accessibilityLabel("Live videomonitor")
                 }
-                if !model.monitorReady && !model.camera.isRecording {
+                if !model.monitorReady && !model.isRecording {
                     VStack(spacing: 12) {
                         ProgressView().controlSize(.large)
                         Text(model.connectionLabel)
@@ -335,7 +341,7 @@ struct VideoCaptureView: View {
                 }
                 VStack {
                     HStack {
-                        if model.camera.isRecording {
+                        if model.isRecording {
                             Label("REC", systemImage: "circle.fill")
                                 .font(.caption.weight(.black))
                                 .foregroundStyle(CHTheme.danger)
@@ -372,7 +378,7 @@ struct VideoCaptureView: View {
                     .foregroundStyle(CHTheme.textMuted)
             }
             Spacer()
-            if model.camera.isRecording {
+            if model.isRecording {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(model.recordingDurationLabel)
                         .font(.title3.monospacedDigit().weight(.semibold))
@@ -386,7 +392,7 @@ struct VideoCaptureView: View {
                     Circle()
                         .stroke(.white.opacity(0.9), lineWidth: 4)
                         .frame(width: 64, height: 64)
-                    if model.camera.isRecording {
+                    if model.isRecording {
                         RoundedRectangle(cornerRadius: 6)
                             .fill(CHTheme.danger)
                             .frame(width: 27, height: 27)
@@ -396,9 +402,9 @@ struct VideoCaptureView: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(!model.canRecord)
-            .opacity(model.canRecord || model.camera.isRecording ? 1 : 0.42)
-            .accessibilityLabel(model.camera.isRecording ? "Stopp opptak" : "Start opptak")
+            .disabled(!model.canRecord && !model.isRecording)
+            .opacity(model.canRecord || model.isRecording ? 1 : 0.42)
+            .accessibilityLabel(model.isRecording ? "Stopp opptak" : "Start opptak")
             .accessibilityIdentifier("video-record-button")
             Spacer()
             Label(model.pendingUploadLabel, systemImage: "icloud.and.arrow.up")
@@ -407,6 +413,107 @@ struct VideoCaptureView: View {
                 .frame(minWidth: 110, alignment: .trailing)
         }
         .padding(.horizontal, 24).padding(.bottom, 16)
+    }
+
+    private var canonControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("KAMERAKONTROLL")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1)
+                    .foregroundStyle(CHTheme.textMuted)
+                    .accessibilityIdentifier("canon-controls-title")
+                Spacer()
+                Button {
+                    Task { await model.canon.refreshShootingSettings() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isRecording)
+                .accessibilityLabel("Oppdater Canon-innstillinger")
+            }
+
+            if model.canon.capabilities.canRecordMovie {
+                Label("Fjernstyrt REC og automatisk klippimport", systemImage: "record.circle")
+                    .font(.caption2)
+                    .foregroundStyle(CHTheme.success)
+            } else {
+                Label("REC annonseres ikke i denne kameramodusen", systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(CHTheme.warning)
+            }
+
+            ForEach(CCAPIShootingSettingKey.allCases, id: \.self) { key in
+                if let setting = model.canon.shootingSettings[key] {
+                    if model.canon.capabilities.writableSettings.contains(key) {
+                        Menu {
+                            ForEach(setting.ability, id: \.self) { value in
+                                Button {
+                                    Task { await model.updateCanonSetting(key, value: value) }
+                                } label: {
+                                    if value == setting.value {
+                                        Label(value, systemImage: "checkmark")
+                                    } else {
+                                        Text(value)
+                                    }
+                                }
+                            }
+                        } label: {
+                            canonSettingLabel(key: key, setting: setting)
+                        }
+                        .disabled(model.isRecording || model.canon.updatingSetting != nil)
+                        .accessibilityIdentifier("canon-setting-\(key.rawValue)")
+                    } else {
+                        HStack {
+                            Text(key.displayName)
+                            Spacer()
+                            Text(setting.value).font(.caption.monospaced())
+                            Image(systemName: "lock.fill").font(.caption2)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CHTheme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .frame(height: 38)
+                        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(CHTheme.borderSoft))
+                        .accessibilityLabel("\(key.displayName), \(setting.value), skrivebeskyttet")
+                    }
+                }
+            }
+
+            if let message = model.canon.lastImportMessage {
+                Label(message, systemImage: model.canon.isImporting ? "arrow.down.circle" : "checkmark.circle")
+                    .font(.caption2)
+                    .foregroundStyle(model.canon.isImporting ? CHTheme.warning : CHTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(CHTheme.borderSoft))
+    }
+
+    private func canonSettingLabel(
+        key: CCAPIShootingSettingKey,
+        setting: CCAPIChoiceSetting
+    ) -> some View {
+        HStack {
+            Text(key.displayName)
+            Spacer()
+            if model.canon.updatingSetting == key {
+                ProgressView().controlSize(.small)
+            } else {
+                Text(setting.value).font(.caption.monospaced())
+                Image(systemName: "chevron.up.chevron.down").font(.caption2)
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(CHTheme.textPrimary)
+        .padding(.horizontal, 10)
+        .frame(height: 38)
+        .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(CHTheme.borderSoft))
     }
 
     private var takeInspector: some View {
@@ -868,6 +975,17 @@ final class VideoCaptureModel {
     init() {
         selectedProjectId = UserDefaults.standard.string(forKey: "video.selectedProjectId")
         selectedProjectTitle = UserDefaults.standard.string(forKey: "video.selectedProjectTitle")
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--canon-hardware-smoke") {
+            SignInService.shared.setInMemoryDemoSession(
+                userId: "ccapi-hardware-smoke",
+                backendBaseURL: URL(string: "https://capture-hardware-smoke.invalid")!,
+                displayName: "Canon Hardware Smoke"
+            )
+            selectedProjectId = "ccapi-hardware-smoke"
+            selectedProjectTitle = "Canon Hardware Smoke"
+        }
+        #endif
         do {
             store = try VideoCaptureStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
         } catch {
@@ -876,16 +994,23 @@ final class VideoCaptureModel {
     }
 
     var canRecord: Bool {
-        SignInService.shared.session != nil
-            && selectedProjectId != nil
-            && selectedBridgeSourceId == nil
-            && canon.selectedCameraId == nil
-            && camera.isReady
-            && !camera.isRecording
+        guard SignInService.shared.session != nil,
+              selectedProjectId != nil,
+              selectedBridgeSourceId == nil,
+              !isRecording
+        else { return false }
+        if canon.selectedCameraId != nil { return canon.canRecordMovie }
+        return camera.isReady
+    }
+
+    var isRecording: Bool {
+        camera.isRecording || canon.isRecording
     }
 
     var connectionLabel: String {
         if canon.selectedCameraId != nil {
+            if canon.isImporting { return "Henter Canon-klipp" }
+            if canon.isRecording { return "Canon-opptak pågår" }
             switch canon.phase {
             case .idle: return "Canon frakoblet"
             case .connecting: return "Kobler til Canon"
@@ -970,6 +1095,14 @@ final class VideoCaptureModel {
         bridgePlayer = nil
         selectedBridgeSourceId = nil
         bridgeDiscovery.stop()
+        if canon.isRecording {
+            do {
+                let recording = try await canon.stopMovieRecording()
+                try await register(recording)
+            } catch {
+                errorMessage = "Canon-opptaket ble stoppet, men klippet kunne ikke sikres: \(error.localizedDescription)"
+            }
+        }
         await canon.stop()
         if !camera.isRecording { await camera.stop() }
     }
@@ -986,7 +1119,7 @@ final class VideoCaptureModel {
     }
 
     func selectSource(_ id: String) async {
-        guard !camera.isRecording else { return }
+        guard !isRecording else { return }
         await canon.stop()
         canon.startDiscovery()
         bridgePlayer?.pause()
@@ -1004,7 +1137,7 @@ final class VideoCaptureModel {
     }
 
     func selectBridgeSource(_ source: CreatorHubBridgeDiscovery.Source) async {
-        guard !camera.isRecording else { return }
+        guard !isRecording else { return }
         await canon.stop()
         canon.startDiscovery()
         await camera.stop()
@@ -1017,12 +1150,20 @@ final class VideoCaptureModel {
     }
 
     func selectCanonCamera(_ source: CameraDiscovery.Found) async {
-        guard !camera.isRecording else { return }
+        guard !isRecording else { return }
         bridgePlayer?.pause()
         bridgePlayer = nil
         selectedBridgeSourceId = nil
         await camera.stop()
         await canon.select(source)
+    }
+
+    func updateCanonSetting(_ key: CCAPIShootingSettingKey, value: String) async {
+        do {
+            try await canon.updateShootingSetting(key, value: value)
+        } catch {
+            errorMessage = "Kameraet avviste \(key.displayName.lowercased()): \(error.localizedDescription)"
+        }
     }
 
     func selectAsset(_ id: String) {
@@ -1106,6 +1247,10 @@ final class VideoCaptureModel {
     }
 
     func toggleRecording() async {
+        if canon.selectedCameraId != nil {
+            await toggleCanonRecording()
+            return
+        }
         if camera.isRecording {
             camera.stopRecording()
             return
@@ -1125,7 +1270,28 @@ final class VideoCaptureModel {
         }
     }
 
-    private func register(_ recording: VideoCameraController.Recording) async throws {
+    private func toggleCanonRecording() async {
+        guard selectedProjectId != nil else {
+            errorMessage = "Velg et CreatorHub-prosjekt før du starter opptak."
+            return
+        }
+        do {
+            if canon.isRecording {
+                let recording = try await canon.stopMovieRecording()
+                recordingStartedAt = nil
+                try await register(recording)
+                await updateNextTakeNumber()
+            } else {
+                try await canon.startMovieRecording()
+                recordingStartedAt = Date()
+            }
+        } catch {
+            recordingStartedAt = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func register(_ recording: CapturedVideoRecording) async throws {
         guard let session = SignInService.shared.session,
               let projectId = selectedProjectId,
               let store
@@ -1144,7 +1310,8 @@ final class VideoCaptureModel {
             projectId: projectId,
             localPath: recording.fileURL.path,
             fileName: recording.fileURL.lastPathComponent,
-            contentType: "video/quicktime",
+            contentType: UTType(filenameExtension: recording.fileURL.pathExtension)?.preferredMIMEType
+                ?? "application/octet-stream",
             sizeBytes: Int64(rawSize),
             checksumSha256: nil,
             sourceType: recording.sourceType,

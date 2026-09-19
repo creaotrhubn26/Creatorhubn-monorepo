@@ -81,6 +81,74 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/liveview/flip"))
     }
 
+    func testCapabilityGatedMovieRecordSettingsAndMediaImport() async throws {
+        let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
+        _ = try await client.connect()
+
+        let capabilities = try await client.videoCapabilities()
+        XCTAssertTrue(capabilities.canRecordMovie)
+        XCTAssertEqual(capabilities.writableSettings, Set(CCAPIShootingSettingKey.allCases))
+
+        var settings = try await client.videoShootingSettings()
+        XCTAssertEqual(settings[.tv]?.value, "1/50")
+        XCTAssertEqual(settings[.av]?.value, "f2.8")
+        XCTAssertEqual(settings[.iso]?.ability, ["400", "800", "1600"])
+
+        let confirmed = try await client.updateVideoShootingSetting(.iso, value: "1600")
+        XCTAssertEqual(confirmed.value, "1600")
+        settings = try await client.videoShootingSettings()
+        XCTAssertEqual(settings[.iso]?.value, "1600")
+
+        try await client.setMovieRecording(true)
+        try await client.setMovieRecording(false)
+        let event = try await client.pollEvents()
+        let contentPath = try XCTUnwrap(event.addedcontents?.first { $0.hasSuffix(".MP4") })
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ccapi-video-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = try await client.downloadContentToDirectory(
+            contentPath: contentPath,
+            directory: directory
+        )
+        XCTAssertEqual(fileURL.lastPathComponent, "MVI_0001.MP4")
+        XCTAssertGreaterThan((try Data(contentsOf: fileURL)).count, 0)
+        XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/control/recbutton"))
+    }
+
+    func testSettingWriteRejectsValueOutsideCameraAbilityBeforePUT() async throws {
+        let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
+        _ = try await client.connect()
+
+        do {
+            _ = try await client.updateVideoShootingSetting(.iso, value: "102400")
+            XCTFail("expected ability validation to reject the value")
+        } catch CCAPIError.invalidResponse {
+            // Expected: only the validation GET reaches the camera.
+        }
+
+        XCTAssertEqual(
+            camera.seenRequests.filter { $0 == "/ccapi/ver100/shooting/settings/iso" }.count,
+            1
+        )
+    }
+
+    func testMediaImportRejectsCrossOriginCameraURL() async throws {
+        let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
+        _ = try await client.connect()
+
+        do {
+            _ = try await client.downloadContentToDirectory(
+                contentPath: "https://example.invalid/private/MVI_0001.MP4",
+                directory: FileManager.default.temporaryDirectory
+            )
+            XCTFail("expected a cross-origin content URL to be rejected")
+        } catch CCAPIError.invalidResponse {
+            // Expected before any network request is made.
+        }
+        XCTAssertFalse(camera.seenRawURLs.contains { $0.contains("example.invalid") })
+    }
+
     /// P1-regresjon: `get(path:)` brukte `appendingPathComponent` som prosent-kodet
     /// «?» → «%3F», så et EKTE kamera aldri så `continue=on`. Assert på RÅ URL
     /// (absoluteString bevarer koding; `url.path` dekoder %3F og ville maskert det).

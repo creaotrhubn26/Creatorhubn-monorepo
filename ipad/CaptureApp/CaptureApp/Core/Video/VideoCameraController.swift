@@ -4,6 +4,60 @@ import Observation
 import SwiftUI
 import UIKit
 
+struct CapturedVideoRecording: Sendable {
+    let fileURL: URL
+    let recordedAt: Date
+    let durationMs: Int64
+    let frameRate: Double?
+    let width: Int?
+    let height: Int?
+    let sourceType: VideoCaptureAsset.SourceType
+    let cameraName: String
+
+    static func recordingsDirectory() throws -> URL {
+        let root = try FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("CreatorHubVideo/Recordings", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableRoot = root
+        try? mutableRoot.setResourceValues(values)
+        return root
+    }
+
+    static func inspect(
+        fileURL: URL,
+        recordedAt: Date,
+        fallbackDurationMs: Int64,
+        sourceType: VideoCaptureAsset.SourceType,
+        cameraName: String
+    ) async -> Self {
+        let media = AVURLAsset(url: fileURL)
+        let duration = (try? await media.load(.duration)).map { CMTimeGetSeconds($0) }
+        let track = try? await media.loadTracks(withMediaType: .video).first
+        let size = try? await track?.load(.naturalSize)
+        let frameRate = try? await track?.load(.nominalFrameRate)
+        let measuredDurationMs = duration.flatMap { value in
+            value.isFinite && value > 0 ? Int64(value * 1000) : nil
+        }
+        return Self(
+            fileURL: fileURL,
+            recordedAt: recordedAt,
+            durationMs: measuredDurationMs ?? fallbackDurationMs,
+            frameRate: frameRate.map(Double.init),
+            width: size.map { Int(abs($0.width)) },
+            height: size.map { Int(abs($0.height)) },
+            sourceType: sourceType,
+            cameraName: cameraName
+        )
+    }
+}
+
 @MainActor
 @Observable
 final class VideoCameraController: NSObject {
@@ -11,17 +65,6 @@ final class VideoCameraController: NSObject {
         let id: String
         let name: String
         let isExternal: Bool
-    }
-
-    struct Recording: Sendable {
-        let fileURL: URL
-        let recordedAt: Date
-        let durationMs: Int64
-        let frameRate: Double?
-        let width: Int?
-        let height: Int?
-        let sourceType: VideoCaptureAsset.SourceType
-        let cameraName: String
     }
 
     enum Phase: Equatable {
@@ -43,7 +86,7 @@ final class VideoCameraController: NSObject {
     @ObservationIgnored private var activeDevice: AVCaptureDevice?
     @ObservationIgnored private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     @ObservationIgnored private var rotationObservations: [NSKeyValueObservation] = []
-    private var completion: CheckedContinuation<Recording, any Error>?
+    private var completion: CheckedContinuation<CapturedVideoRecording, any Error>?
     private var activeSource: Source?
     private var recordStartedAt: Date?
     private var expectedRecordingURL: URL?
@@ -132,7 +175,7 @@ final class VideoCameraController: NSObject {
         await start()
     }
 
-    func record() async throws -> Recording {
+    func record() async throws -> CapturedVideoRecording {
         guard phase == .ready, !box.movieOutput.isRecording else {
             throw CameraFailure.notReady
         }
@@ -253,18 +296,7 @@ final class VideoCameraController: NSObject {
     }
 
     private static func newRecordingURL() throws -> URL {
-        let root = try FileManager.default
-            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("CreatorHubVideo/Recordings", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: root,
-            withIntermediateDirectories: true,
-            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
-        )
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        var mutableRoot = root
-        try? mutableRoot.setResourceValues(values)
+        let root = try CapturedVideoRecording.recordingsDirectory()
         return root.appendingPathComponent("CH-\(UUID().uuidString.lowercased()).mov")
     }
 
@@ -276,22 +308,15 @@ final class VideoCameraController: NSObject {
             phase = .ready
             return
         }
-        let media = AVURLAsset(url: url)
-        let duration = (try? await media.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
-        let track = try? await media.loadTracks(withMediaType: .video).first
-        let size = try? await track?.load(.naturalSize)
-        let frameRate = try? await track?.load(.nominalFrameRate)
         let source = activeSource
-        completion?.resume(returning: Recording(
+        let recording = await CapturedVideoRecording.inspect(
             fileURL: url,
             recordedAt: recordStartedAt ?? Date(),
-            durationMs: Int64(max(0, duration) * 1000),
-            frameRate: frameRate.map(Double.init),
-            width: size.map { Int(abs($0.width)) },
-            height: size.map { Int(abs($0.height)) },
+            fallbackDurationMs: Int64(max(0, Date().timeIntervalSince(recordStartedAt ?? Date())) * 1000),
             sourceType: source?.isExternal == true ? .uvc : .ipadCamera,
             cameraName: source?.name ?? "Ukjent kamera"
-        ))
+        )
+        completion?.resume(returning: recording)
         completion = nil
         expectedRecordingURL = nil
         phase = .ready

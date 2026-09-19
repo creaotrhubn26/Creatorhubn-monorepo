@@ -18,6 +18,13 @@ final class FakeCanonCamera: @unchecked Sendable {
     private let lock = NSLock()
     private var pendingAddedContents: [String] = []
     private var contentBodies: [String: Data] = [:]
+    private var movieRecording = false
+    private var movieSequence = 1
+    private var shootingSettings: [String: (value: String, ability: [String])] = [
+        "tv": ("1/50", ["1/25", "1/50", "1/100"]),
+        "av": ("f2.8", ["f2.0", "f2.8", "f4.0"]),
+        "iso": ("800", ["400", "800", "1600"]),
+    ]
 
     private(set) var pollCount = 0
     private(set) var seenRequests: [String] = []
@@ -93,6 +100,13 @@ final class FakeCanonCamera: @unchecked Sendable {
         seenRequests.append(pathWithQuery)
         seenRawURLs.append(url.absoluteString)
         lock.unlock()
+
+        if pathWithQuery == "/ccapi/ver100/shooting/control/recbutton" {
+            return movieRecordingResponse(for: request, url: url)
+        }
+        if pathWithQuery.hasPrefix("/ccapi/ver100/shooting/settings/") {
+            return shootingSettingResponse(for: request, url: url)
+        }
 
         switch pathWithQuery {
         case "/ccapi":
@@ -217,6 +231,63 @@ final class FakeCanonCamera: @unchecked Sendable {
         return MockURLProtocol.jsonResponse(for: url, body: "{}")
     }
 
+    private func movieRecordingResponse(
+        for request: URLRequest,
+        url: URL
+    ) -> (HTTPURLResponse, Data) {
+        let body = (request.httpBody ?? Self.drainStream(request.httpBodyStream)) ?? Data()
+        let action = (try? JSONSerialization.jsonObject(with: body) as? [String: String])?["action"]
+        lock.lock()
+        defer { lock.unlock() }
+        if action == "start" {
+            movieRecording = true
+        } else if action == "stop", movieRecording {
+            movieRecording = false
+            let filename = String(format: "MVI_%04d.MP4", movieSequence)
+            movieSequence += 1
+            let path = "/ccapi/ver120/contents/sd/100CANON/\(filename)"
+            pendingAddedContents.append(path)
+            contentBodies[path] = Data("fake-canon-movie-\(filename)".utf8)
+        } else {
+            return MockURLProtocol.jsonResponse(
+                for: url,
+                body: #"{"message":"Invalid parameter"}"#,
+                status: 400
+            )
+        }
+        return MockURLProtocol.jsonResponse(for: url, body: "{}")
+    }
+
+    private func shootingSettingResponse(
+        for request: URLRequest,
+        url: URL
+    ) -> (HTTPURLResponse, Data) {
+        let key = url.lastPathComponent
+        lock.lock()
+        defer { lock.unlock() }
+        guard var setting = shootingSettings[key] else {
+            return MockURLProtocol.jsonResponse(for: url, body: "{}", status: 404)
+        }
+        if request.httpMethod == "PUT" {
+            let body = (request.httpBody ?? Self.drainStream(request.httpBodyStream)) ?? Data()
+            let requested = (try? JSONSerialization.jsonObject(with: body) as? [String: String])?["value"]
+            guard let requested, setting.ability.contains(requested) else {
+                return MockURLProtocol.jsonResponse(
+                    for: url,
+                    body: #"{"message":"Invalid parameter"}"#,
+                    status: 400
+                )
+            }
+            setting.value = requested
+            shootingSettings[key] = setting
+        }
+        let ability = setting.ability.map { "\"\($0)\"" }.joined(separator: ",")
+        return MockURLProtocol.jsonResponse(
+            for: url,
+            body: "{\"value\":\"\(setting.value)\",\"ability\":[\(ability)]}"
+        )
+    }
+
     private static func drainStream(_ stream: InputStream?) -> Data? {
         guard let stream else { return nil }
         stream.open()
@@ -238,7 +309,11 @@ final class FakeCanonCamera: @unchecked Sendable {
       "ver100": [
         {"path":"/ccapi/ver100/deviceinformation","get":true,"post":false,"put":false,"delete":false},
         {"path":"/ccapi/ver100/shooting/liveview","get":false,"post":true,"put":false,"delete":true},
-        {"path":"/ccapi/ver100/shooting/liveview/flip","get":true,"post":false,"put":false,"delete":false}
+        {"path":"/ccapi/ver100/shooting/liveview/flip","get":true,"post":false,"put":false,"delete":false},
+        {"path":"/ccapi/ver100/shooting/control/recbutton","get":false,"post":true,"put":false,"delete":false},
+        {"path":"/ccapi/ver100/shooting/settings/tv","get":true,"post":false,"put":true,"delete":false},
+        {"path":"/ccapi/ver100/shooting/settings/av","get":true,"post":false,"put":true,"delete":false},
+        {"path":"/ccapi/ver100/shooting/settings/iso","get":true,"post":false,"put":true,"delete":false}
       ],
       "ver110": [
         {"path":"/ccapi/ver110/devicestatus/storage","get":true,"post":false,"put":false,"delete":false},
