@@ -26,6 +26,15 @@ struct AdaptiveWorkspaceLayoutTests {
         #expect(wide.showsSourceRail)
         #expect(wide.showsTakeInspector)
 
+        let iPadMiniLandscape = VideoWorkspaceLayout.resolve(size: CGSize(width: 1_133, height: 744))
+        #expect(iPadMiniLandscape.mode == .standard)
+        #expect(iPadMiniLandscape.showsSourceRail)
+        #expect(!iPadMiniLandscape.showsTakeInspector)
+
+        let shortWideWindow = VideoWorkspaceLayout.resolve(size: CGSize(width: 1_600, height: 685))
+        #expect(shortWideWindow.mode == .standard)
+        #expect(!shortWideWindow.showsTakeInspector)
+
         let standard = VideoWorkspaceLayout.resolve(size: CGSize(width: 820, height: 700))
         #expect(standard.mode == .standard)
         #expect(standard.showsSourceRail)

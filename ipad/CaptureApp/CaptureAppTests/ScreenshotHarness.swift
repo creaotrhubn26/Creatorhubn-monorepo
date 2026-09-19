@@ -22,6 +22,7 @@ final class ScreenshotHarness: XCTestCase {
     override class var runsForEachTargetApplicationUIConfiguration: Bool { false }
 
     override func tearDown() {
+        XCUIApplication().terminate()
         XCUIDevice.shared.orientation = .portrait
         super.tearDown()
     }
@@ -91,6 +92,7 @@ final class ScreenshotHarness: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
 
         let shoot = XCUIApplication()
+        shoot.terminate()
         shoot.launchArguments += [
             "--legacy-capture-only",
             "--auto-demo",
@@ -108,7 +110,11 @@ final class ScreenshotHarness: XCTestCase {
         shoot.terminate()
 
         let video = XCUIApplication()
-        video.launchArguments += ["--tab-video", "--screenshot-demo-fixtures"]
+        video.launchArguments += [
+            "--tab-video",
+            "--screenshot-demo-fixtures",
+            "--video-take-demo",
+        ]
         video.launch()
         let recordButton = video.buttons["video-record-button"]
         XCTAssertTrue(
@@ -116,16 +122,22 @@ final class ScreenshotHarness: XCTestCase {
             "Video-opptaksknappen må være tilgjengelig i landscape",
         )
         XCTAssertTrue(recordButton.isHittable, "Video-opptaksknappen må være synlig og trykkbar")
-        let landscapeTakeInspector = video.staticTexts["TAKE"].waitForExistence(timeout: 2)
-        let landscapeTakeButton = landscapeTakeInspector
-            ? nil
-            : video.buttons["video-take-panel"]
+        let landscapeTakeButton = video.buttons["video-take-panel"]
+        if landscapeTakeButton.waitForExistence(timeout: 2) {
+            XCTAssertTrue(landscapeTakeButton.isHittable, "Take-knappen må være trykkbar i landscape")
+            landscapeTakeButton.tap()
+        } else {
+            XCTAssertTrue(
+                video.buttons["video-take-status-good"].waitForExistence(timeout: 3),
+                "Take-panelet må være synlig når egen knapp ikke brukes",
+            )
+        }
+        let goodTakeStatus = video.buttons["video-take-status-good"]
         XCTAssertTrue(
-            landscapeTakeInspector
-                || (landscapeTakeButton?.waitForExistence(timeout: 4) == true
-                    && landscapeTakeButton?.isHittable == true),
-            "Take-panelet må være synlig eller nås fra en trykkbar knapp i landscape",
+            goodTakeStatus.waitForExistence(timeout: 4),
+            "Take board må vise statuskontroller for valgt take",
         )
+        XCTAssertTrue(goodTakeStatus.isHittable, "Take-status må være synlig og trykkbar")
         snap(video, name: "QA_Video_Landscape")
 
         XCUIDevice.shared.orientation = .portrait

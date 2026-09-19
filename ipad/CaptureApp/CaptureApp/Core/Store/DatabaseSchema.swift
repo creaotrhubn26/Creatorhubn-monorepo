@@ -404,6 +404,18 @@ extension AppDatabase {
                 columns: ["ownerUserId", "captureState", "updatedAt"]
             )
         }
+        migrator.registerMigration("v11_video_take_board") { db in
+            try db.alter(table: "videoCaptureAsset") { table in
+                table.add(column: "continuityNotes", .text)
+                table.add(column: "performanceNotes", .text)
+                table.add(column: "technicalNotes", .text)
+                table.add(column: "takeMetadataDirty", .boolean).notNull().defaults(to: false)
+            }
+            try db.create(
+                indexOn: "videoCaptureAsset",
+                columns: ["ownerUserId", "takeMetadataDirty", "updatedAt"]
+            )
+        }
 
         return migrator
     }()

@@ -76,4 +76,52 @@ struct VideoCaptureStore: Sendable {
             try asset.update(db)
         }
     }
+
+    @discardableResult
+    func updateTakeMetadata(
+        id: String,
+        ownerUserId: String,
+        status: VideoCaptureAsset.TakeStatus,
+        circled: Bool,
+        continuityNotes: String?,
+        performanceNotes: String?,
+        technicalNotes: String?
+    ) async throws -> VideoCaptureAsset? {
+        try await database.dbWriter.write { db in
+            guard var asset = try VideoCaptureAsset
+                .filter(Column("id") == id && Column("ownerUserId") == ownerUserId)
+                .fetchOne(db)
+            else { return nil }
+            asset.takeStatus = status
+            asset.circled = circled
+            asset.continuityNotes = continuityNotes
+            asset.performanceNotes = performanceNotes
+            asset.technicalNotes = technicalNotes
+            asset.takeMetadataDirty = true
+            asset.updatedAt = Date()
+            try asset.update(db)
+            return asset
+        }
+    }
+
+    func markTakeMetadataSynced(id: String, ownerUserId: String) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try VideoCaptureAsset
+                .filter(Column("id") == id && Column("ownerUserId") == ownerUserId)
+                .fetchOne(db)
+            else { return }
+            asset.takeMetadataDirty = false
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    func pendingTakeMetadata(ownerUserId: String) async throws -> [VideoCaptureAsset] {
+        try await database.dbWriter.read { db in
+            try VideoCaptureAsset
+                .filter(Column("ownerUserId") == ownerUserId && Column("takeMetadataDirty") == true)
+                .order(Column("updatedAt"))
+                .fetchAll(db)
+        }
+    }
 }

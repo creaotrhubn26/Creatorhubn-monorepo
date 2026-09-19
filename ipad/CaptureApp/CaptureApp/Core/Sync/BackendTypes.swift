@@ -273,6 +273,27 @@ struct BackendVideoCaptureListResponse: Decodable, Sendable {
     let nextBefore: String?
 }
 
+struct BackendVideoCaptureTakePatch: Encodable, Sendable, Equatable {
+    let status: String
+    let circled: Bool
+    let continuityNotes: String?
+    let performanceNotes: String?
+    let technicalNotes: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case status, circled, continuityNotes, performanceNotes, technicalNotes
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(status, forKey: .status)
+        try values.encode(circled, forKey: .circled)
+        try values.encode(continuityNotes, forKey: .continuityNotes)
+        try values.encode(performanceNotes, forKey: .performanceNotes)
+        try values.encode(technicalNotes, forKey: .technicalNotes)
+    }
+}
+
 struct BackendVideoPromotionRequest: Encodable, Sendable {
     let versionLabel: String?
 }

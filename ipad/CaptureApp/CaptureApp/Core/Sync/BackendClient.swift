@@ -620,6 +620,17 @@ actor BackendClient {
         )
     }
 
+    func updateVideoCaptureTake(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoCaptureTakePatch,
+    ) async throws -> BackendVideoCaptureAssetResponse {
+        try await patchJSON(
+            path: "/api/projects/\(projectId)/video-capture/assets/\(assetId)/take",
+            body: body,
+        )
+    }
+
     func putVideoCaptureFile(
         url: URL,
         fileURL: URL,
@@ -960,6 +971,39 @@ actor BackendClient {
         do {
             let decoder = JSONDecoder()
             return try decoder.decode(Response.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
+
+    private func patchJSON<RequestBody: Encodable, Response: Decodable>(
+        path: String,
+        body: RequestBody,
+    ) async throws -> Response {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw BackendError.unauthorized
+        }
+        if http.statusCode == 404 {
+            throw BackendError.notFound
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
         } catch {
             throw BackendError.decode(String(describing: error))
         }

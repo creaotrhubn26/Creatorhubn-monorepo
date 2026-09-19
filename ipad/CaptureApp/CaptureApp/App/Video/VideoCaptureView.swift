@@ -1,8 +1,10 @@
 import AVFoundation
 import AVKit
 import Foundation
+import ImageIO
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct VideoCaptureView: View {
     private enum AuxiliaryPanel: String, Identifiable {
@@ -15,6 +17,7 @@ struct VideoCaptureView: View {
     @State private var auth = SignInService.shared
     @State private var showProjectPicker = false
     @State private var auxiliaryPanel: AuxiliaryPanel?
+    @State private var playbackAsset: VideoCaptureAsset?
 
     var body: some View {
         GeometryReader { proxy in
@@ -57,8 +60,11 @@ struct VideoCaptureView: View {
                 }
             }
             .frame(minWidth: 320, minHeight: 420)
-            .presentationDetents([.medium, .large])
+            .presentationDetents(panel == .take ? [.large] : [.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $playbackAsset) { asset in
+            VideoTakePlaybackView(asset: asset)
         }
         .task { await model.activate() }
         .onDisappear { Task { await model.deactivate() } }
@@ -79,6 +85,7 @@ struct VideoCaptureView: View {
                     .font(.caption)
                     .foregroundStyle(CHTheme.textMuted)
             }
+            .layoutPriority(1)
             Spacer()
             if !layout.showsSourceRail {
                 Button {
@@ -100,6 +107,10 @@ struct VideoCaptureView: View {
                             : (model.selectedProjectTitle ?? "Velg prosjekt")
                     )
                         .lineLimit(1)
+                        .frame(
+                            maxWidth: layout.mode == .wide ? 200 : 120,
+                            alignment: .leading
+                        )
                     Image(systemName: "chevron.down").font(.caption2)
                 }
                 .font(.subheadline.weight(.semibold))
@@ -108,6 +119,7 @@ struct VideoCaptureView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(CHTheme.border))
             }
             .buttonStyle(.plain)
+            .layoutPriority(1)
             .accessibilityIdentifier("video-project-picker")
 
             if !layout.showsTakeInspector {
@@ -117,14 +129,27 @@ struct VideoCaptureView: View {
                     Label("Take", systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(.bordered)
+                .fixedSize()
+                .layoutPriority(3)
                 .accessibilityIdentifier("video-take-panel")
             }
 
-            Label(model.connectionLabel, systemImage: model.connectionIcon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(model.monitorReady ? CHTheme.success : CHTheme.textSecondary)
-                .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(CHTheme.surface, in: Capsule())
+            if layout.mode == .wide {
+                Label(model.connectionLabel, systemImage: model.connectionIcon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(model.monitorReady ? CHTheme.success : CHTheme.textSecondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: 180)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(CHTheme.surface, in: Capsule())
+            } else {
+                Image(systemName: model.connectionIcon)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(model.monitorReady ? CHTheme.success : CHTheme.textSecondary)
+                    .frame(width: 34, height: 34)
+                    .background(CHTheme.surface, in: Circle())
+                    .accessibilityLabel(model.connectionLabel)
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
         .background(CHTheme.bg)
@@ -413,6 +438,98 @@ struct VideoCaptureView: View {
                             .foregroundStyle(CHTheme.textPrimary)
                             .lineLimit(2)
                         Button {
+                            playbackAsset = selected
+                        } label: {
+                            Label("Spill av take", systemImage: "play.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!FileManager.default.fileExists(atPath: selected.localPath))
+
+                        Text("VURDERING")
+                            .font(.caption2.weight(.bold)).tracking(1.1)
+                            .foregroundStyle(CHTheme.textMuted)
+                            .padding(.top, 4)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(VideoCaptureAsset.TakeStatus.allCases, id: \.self) { status in
+                                takeStatusButton(status)
+                            }
+                        }
+                        Button {
+                            model.takeCircled.toggle()
+                        } label: {
+                            Label(
+                                model.takeCircled ? "Valgt take" : "Marker som valgt take",
+                                systemImage: model.takeCircled ? "circle.inset.filled" : "circle"
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(model.takeCircled ? CHTheme.accent : CHTheme.textSecondary)
+                        .accessibilityIdentifier("video-take-circled")
+
+                        takeNoteField(
+                            "Kontinuitet",
+                            text: $model.continuityNotes,
+                            prompt: "Props, garderobe, posisjon…"
+                        )
+                        takeNoteField(
+                            "Performance",
+                            text: $model.performanceNotes,
+                            prompt: "Timing, energi, beste øyeblikk…"
+                        )
+                        takeNoteField(
+                            "Teknisk",
+                            text: $model.technicalNotes,
+                            prompt: "Fokus, lyd, eksponering…"
+                        )
+                        Button {
+                            Task { await model.saveSelectedTake() }
+                        } label: {
+                            Label(
+                                model.isSavingTake ? "Lagrer…" : "Lagre take",
+                                systemImage: "checkmark.circle"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(CHTheme.accent)
+                        .disabled(model.isSavingTake)
+                        .accessibilityIdentifier("video-save-take")
+                        if let takeSaveMessage = model.takeSaveMessage {
+                            Label(
+                                takeSaveMessage,
+                                systemImage: selected.takeMetadataDirty
+                                    ? "icloud.slash"
+                                    : "checkmark.icloud.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(selected.takeMetadataDirty ? CHTheme.warning : CHTheme.success)
+                        }
+
+                        if selected.captureState == .failed {
+                            Button {
+                                Task { await model.retrySelectedUpload() }
+                            } label: {
+                                Label(
+                                    model.isUploading(selected.id) ? "Prøver igjen…" : "Prøv opplasting igjen",
+                                    systemImage: "arrow.clockwise.icloud"
+                                )
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(CHTheme.warning)
+                            .disabled(model.isUploading(selected.id))
+                            .accessibilityIdentifier("video-retry-upload")
+                            if let lastError = selected.lastError, !lastError.isEmpty {
+                                Text(lastError)
+                                    .font(.caption2)
+                                    .foregroundStyle(CHTheme.danger)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        Button {
                             Task { await model.promoteSelectedTake() }
                         } label: {
                             Label(
@@ -463,6 +580,53 @@ struct VideoCaptureView: View {
         }
     }
 
+    private func takeStatusButton(_ status: VideoCaptureAsset.TakeStatus) -> some View {
+        Button {
+            model.takeStatus = status
+        } label: {
+            Label(status.displayName, systemImage: status.systemImage)
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(model.takeStatus == status ? takeStatusColor(status) : CHTheme.textSecondary)
+        .background(
+            model.takeStatus == status ? takeStatusColor(status).opacity(0.16) : CHTheme.surface,
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(model.takeStatus == status ? takeStatusColor(status) : CHTheme.borderSoft)
+        )
+        .accessibilityAddTraits(model.takeStatus == status ? .isSelected : [])
+        .accessibilityIdentifier("video-take-status-\(status.rawValue)")
+    }
+
+    private func takeNoteField(_ label: String, text: Binding<String>, prompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.caption).foregroundStyle(CHTheme.textMuted)
+            ZStack(alignment: .topLeading) {
+                if text.wrappedValue.isEmpty {
+                    Text(prompt)
+                        .font(.caption)
+                        .foregroundStyle(CHTheme.textMuted)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: text)
+                    .font(.caption)
+                    .foregroundStyle(CHTheme.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .padding(5)
+                    .frame(minHeight: 70)
+            }
+            .background(CHTheme.input, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(CHTheme.borderSoft))
+        }
+    }
+
     private var filmstrip: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 10) {
@@ -479,9 +643,19 @@ struct VideoCaptureView: View {
                         VStack(alignment: .leading, spacing: 5) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 8).fill(Color.black)
-                                Image(systemName: "film.fill")
-                                    .font(.title2).foregroundStyle(CHTheme.textMuted)
+                                VideoTakeThumbnailView(asset: asset)
                                 VStack {
+                                    HStack {
+                                        if asset.circled {
+                                            Image(systemName: "circle.inset.filled")
+                                                .foregroundStyle(CHTheme.accent)
+                                        }
+                                        Spacer()
+                                        Image(systemName: asset.takeStatus.systemImage)
+                                            .foregroundStyle(takeStatusColor(asset.takeStatus))
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .padding(6)
                                     Spacer()
                                     HStack {
                                         Text("T\(asset.takeNumber)")
@@ -540,6 +714,95 @@ struct VideoCaptureView: View {
         default: CHTheme.info
         }
     }
+
+    private func takeStatusColor(_ status: VideoCaptureAsset.TakeStatus) -> Color {
+        switch status {
+        case .unrated: CHTheme.textSecondary
+        case .hold: CHTheme.warning
+        case .good: CHTheme.success
+        case .noGood: CHTheme.danger
+        }
+    }
+}
+
+private struct VideoTakeThumbnailView: View {
+    let asset: VideoCaptureAsset
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "film.fill")
+                    .font(.title2)
+                    .foregroundStyle(CHTheme.textMuted)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .task(id: asset.localPath) {
+            image = await VideoThumbnailRenderer.render(
+                fileURL: URL(fileURLWithPath: asset.localPath)
+            )
+        }
+    }
+}
+
+private enum VideoThumbnailRenderer {
+    static func render(fileURL: URL) async -> UIImage? {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        let data = await Task.detached(priority: .utility) { () -> Data? in
+            let asset = AVURLAsset(url: fileURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 480, height: 270)
+            guard let image = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(
+                data,
+                UTType.jpeg.identifier as CFString,
+                1,
+                nil
+            ) else { return nil }
+            CGImageDestinationAddImage(destination, image, [
+                kCGImageDestinationLossyCompressionQuality: 0.78
+            ] as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else { return nil }
+            return data as Data
+        }.value
+        return data.flatMap(UIImage.init(data:))
+    }
+}
+
+private struct VideoTakePlaybackView: View {
+    let asset: VideoCaptureAsset
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer
+
+    init(asset: VideoCaptureAsset) {
+        self.asset = asset
+        _player = State(initialValue: AVPlayer(url: URL(fileURLWithPath: asset.localPath)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            VideoPlayer(player: player)
+                .background(Color.black)
+                .navigationTitle("Take \(asset.takeNumber)")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Ferdig") { dismiss() }
+                    }
+                }
+                .onAppear { player.play() }
+                .onDisappear { player.pause() }
+        }
+        .chBranded()
+    }
 }
 
 struct VideoWorkspaceLayout: Equatable {
@@ -554,7 +817,7 @@ struct VideoWorkspaceLayout: Equatable {
     var showsTakeInspector: Bool { mode == .wide }
 
     static func resolve(size: CGSize) -> Self {
-        let mode: Mode = if size.width >= 980 {
+        let mode: Mode = if size.width >= 1_180 && size.height >= 760 {
             .wide
         } else if size.width >= 700 {
             .standard
@@ -591,8 +854,16 @@ final class VideoCaptureModel {
     var errorMessage: String?
     var promotionMessage: String?
     var isPromoting = false
+    var takeStatus: VideoCaptureAsset.TakeStatus = .unrated
+    var takeCircled = false
+    var continuityNotes = ""
+    var performanceNotes = ""
+    var technicalNotes = ""
+    var isSavingTake = false
+    var takeSaveMessage: String?
     var selectedBridgeSourceId: String?
     var bridgePlayer: AVPlayer?
+    private var takeDraftAssetId: String?
 
     init() {
         selectedProjectId = UserDefaults.standard.string(forKey: "video.selectedProjectId")
@@ -690,6 +961,8 @@ final class VideoCaptureModel {
         await reload()
         await camera.start()
         await resumePendingUploads()
+        await syncPendingTakeMetadata()
+        await reload()
     }
 
     func deactivate() async {
@@ -755,6 +1028,54 @@ final class VideoCaptureModel {
     func selectAsset(_ id: String) {
         selectedAssetId = id
         promotionMessage = nil
+        takeSaveMessage = nil
+        if let asset = assets.first(where: { $0.id == id }) {
+            loadTakeDraft(asset)
+        }
+    }
+
+    func isUploading(_ assetId: String) -> Bool {
+        activeUploads.contains(assetId)
+    }
+
+    func retrySelectedUpload() async {
+        guard let selectedAsset, selectedAsset.captureState == .failed else { return }
+        guard FileManager.default.fileExists(atPath: selectedAsset.localPath) else {
+            errorMessage = "Originalfilen finnes ikke lenger på iPaden, så opplastingen kan ikke fortsette."
+            return
+        }
+        await upload(selectedAsset)
+    }
+
+    func saveSelectedTake() async {
+        guard !isSavingTake,
+              let selectedAsset,
+              let store
+        else { return }
+        isSavingTake = true
+        takeSaveMessage = nil
+        defer { isSavingTake = false }
+        do {
+            guard let updated = try await store.updateTakeMetadata(
+                id: selectedAsset.id,
+                ownerUserId: selectedAsset.ownerUserId,
+                status: takeStatus,
+                circled: takeCircled,
+                continuityNotes: continuityNotes.nilIfBlank,
+                performanceNotes: performanceNotes.nilIfBlank,
+                technicalNotes: technicalNotes.nilIfBlank
+            ) else {
+                throw TakeBoardFailure.takeMissing
+            }
+            replaceAsset(updated)
+            if await syncTakeMetadata(updated) {
+                takeSaveMessage = "Lagret og synkronisert"
+            } else {
+                takeSaveMessage = "Lagret på iPaden · synkroniseres automatisk"
+            }
+        } catch {
+            errorMessage = "Kunne ikke lagre taken: \(error.localizedDescription)"
+        }
     }
 
     func promoteSelectedTake() async {
@@ -842,7 +1163,7 @@ final class VideoCaptureModel {
             shotId: shotId.nilIfBlank,
             slate: slate.nilIfBlank,
             takeNumber: takeNumber,
-            takeStatus: "unrated",
+            takeStatus: .unrated,
             circled: false,
             createdAt: now,
             updatedAt: now
@@ -878,6 +1199,10 @@ final class VideoCaptureModel {
         )
         do {
             try await VideoCaptureUploader(backend: backend, store: store).upload(asset)
+            if let latest = try? await store.asset(id: asset.id, ownerUserId: asset.ownerUserId),
+               latest.takeMetadataDirty {
+                _ = await syncTakeMetadata(latest)
+            }
         } catch {
             try? await store.updateState(
                 id: asset.id,
@@ -891,11 +1216,23 @@ final class VideoCaptureModel {
     }
 
     private func reload() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--video-take-demo") {
+            let fixture = Self.takeBoardFixture
+            assets = [fixture]
+            selectedAssetId = fixture.id
+            if takeDraftAssetId != fixture.id { loadTakeDraft(fixture) }
+            return
+        }
+        #endif
         guard let session = SignInService.shared.session, let store else { return }
         do {
             assets = try await store.list(ownerUserId: session.userId, projectId: selectedProjectId)
             if selectedAssetId == nil || !assets.contains(where: { $0.id == selectedAssetId }) {
                 selectedAssetId = assets.first?.id
+            }
+            if let selectedAsset, takeDraftAssetId != selectedAsset.id {
+                loadTakeDraft(selectedAsset)
             }
             await updateNextTakeNumber()
         } catch {
@@ -915,6 +1252,66 @@ final class VideoCaptureModel {
         )) ?? 1
     }
 
+    private func loadTakeDraft(_ asset: VideoCaptureAsset) {
+        takeDraftAssetId = asset.id
+        takeStatus = asset.takeStatus
+        takeCircled = asset.circled
+        continuityNotes = asset.continuityNotes ?? ""
+        performanceNotes = asset.performanceNotes ?? ""
+        technicalNotes = asset.technicalNotes ?? ""
+    }
+
+    private func replaceAsset(_ asset: VideoCaptureAsset) {
+        guard let index = assets.firstIndex(where: { $0.id == asset.id }) else { return }
+        assets[index] = asset
+    }
+
+    private func syncTakeMetadata(_ asset: VideoCaptureAsset) async -> Bool {
+        guard asset.takeMetadataDirty,
+              asset.captureState != .local,
+              asset.captureState != .hashing,
+              let session = SignInService.shared.session,
+              let store
+        else { return false }
+        let backend = BackendClient(
+            baseURL: session.backendBaseURL,
+            authHeaders: SignInService.shared.authHeaders
+        )
+        do {
+            _ = try await backend.updateVideoCaptureTake(
+                projectId: asset.projectId,
+                assetId: asset.id,
+                body: BackendVideoCaptureTakePatch(
+                    status: asset.takeStatus.rawValue,
+                    circled: asset.circled,
+                    continuityNotes: asset.continuityNotes,
+                    performanceNotes: asset.performanceNotes,
+                    technicalNotes: asset.technicalNotes
+                )
+            )
+            try await store.markTakeMetadataSynced(
+                id: asset.id,
+                ownerUserId: asset.ownerUserId
+            )
+            if var synced = try await store.asset(id: asset.id, ownerUserId: asset.ownerUserId) {
+                synced.takeMetadataDirty = false
+                replaceAsset(synced)
+            }
+            return true
+        } catch {
+            // Metadata stays dirty and is retried after upload/app activation.
+            return false
+        }
+    }
+
+    private func syncPendingTakeMetadata() async {
+        guard let session = SignInService.shared.session, let store else { return }
+        guard let pending = try? await store.pendingTakeMetadata(ownerUserId: session.userId) else { return }
+        for asset in pending {
+            _ = await syncTakeMetadata(asset)
+        }
+    }
+
     enum RegistrationFailure: LocalizedError {
         case missingProjectOrSession
         case emptyFile
@@ -926,6 +1323,52 @@ final class VideoCaptureModel {
             }
         }
     }
+
+    enum TakeBoardFailure: LocalizedError {
+        case takeMissing
+
+        var errorDescription: String? { "Taken finnes ikke lenger i den lokale databasen." }
+    }
+
+    #if DEBUG
+    private static var takeBoardFixture: VideoCaptureAsset {
+        let recordedAt = Date(timeIntervalSince1970: 1_789_812_000)
+        return VideoCaptureAsset(
+            id: "00000000-0000-4000-8000-000000000099",
+            ownerUserId: "capture-ui-test",
+            projectId: "capture-ui-test",
+            localPath: "/tmp/creatorhub-video-take-demo.mov",
+            fileName: "A001_T03.mov",
+            contentType: "video/quicktime",
+            sizeBytes: 12_500_000,
+            checksumSha256: String(repeating: "a", count: 64),
+            sourceType: .uvc,
+            cameraName: "CreatorHub QA Camera",
+            durationMs: 12_000,
+            frameRate: 25,
+            width: 1920,
+            height: 1080,
+            recordedAt: recordedAt,
+            captureState: .ready,
+            streamState: "ready",
+            uploadObjectId: "capture-ui-test",
+            streamUid: nil,
+            lastError: nil,
+            sceneId: "12",
+            shotId: "12A",
+            slate: "A001",
+            takeNumber: 3,
+            takeStatus: .good,
+            circled: true,
+            continuityNotes: "Glass i venstre hånd",
+            performanceNotes: "Beste timing i siste replikk",
+            technicalNotes: "Ren fokus og lyd",
+            takeMetadataDirty: false,
+            createdAt: recordedAt,
+            updatedAt: recordedAt
+        )
+    }
+    #endif
 }
 
 private extension String {

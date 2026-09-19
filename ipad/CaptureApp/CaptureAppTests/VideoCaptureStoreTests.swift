@@ -38,6 +38,34 @@ struct VideoCaptureStoreTests {
         #expect(updated.uploadObjectId == "object-id")
     }
 
+    @Test func takeBoardPersistsOfflineAndClearsDirtyFlagAfterSync() async throws {
+        let store = try VideoCaptureStore(database: .inMemory())
+        let asset = sample(id: "take", projectId: "project", take: 3, state: .ready)
+        try await store.save(asset)
+
+        let edited = try #require(await store.updateTakeMetadata(
+            id: asset.id,
+            ownerUserId: asset.ownerUserId,
+            status: .good,
+            circled: true,
+            continuityNotes: "Glass in left hand",
+            performanceNotes: nil,
+            technicalNotes: "Clean focus"
+        ))
+        #expect(edited.takeStatus == .good)
+        #expect(edited.circled)
+        #expect(edited.continuityNotes == "Glass in left hand")
+        #expect(edited.performanceNotes == nil)
+        #expect(edited.technicalNotes == "Clean focus")
+        #expect(edited.takeMetadataDirty)
+        #expect(try await store.pendingTakeMetadata(ownerUserId: "owner").map(\.id) == [asset.id])
+
+        try await store.markTakeMetadataSynced(id: asset.id, ownerUserId: asset.ownerUserId)
+        let synced = try #require(await store.asset(id: asset.id, ownerUserId: asset.ownerUserId))
+        #expect(!synced.takeMetadataDirty)
+        #expect(try await store.pendingTakeMetadata(ownerUserId: "owner").isEmpty)
+    }
+
     private func sample(
         id: String,
         projectId: String,
@@ -54,7 +82,7 @@ struct VideoCaptureStoreTests {
             recordedAt: date, captureState: state, streamState: "pending",
             uploadObjectId: nil, streamUid: nil, lastError: nil,
             sceneId: "1", shotId: "1A", slate: "A001", takeNumber: take,
-            takeStatus: "unrated", circled: false, createdAt: date, updatedAt: date
+            takeStatus: .unrated, circled: false, createdAt: date, updatedAt: date
         )
     }
 }

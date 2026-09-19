@@ -162,6 +162,46 @@ final class BackendClientTests: XCTestCase {
         }
     }
 
+    func testVideoTakePatchSendsAllFieldsAndExplicitNulls() async throws {
+        let captured = Box<URLRequest>()
+        let capturedBody = Box<Data>()
+        MockURLProtocol.handler = { request in
+            captured.value = request
+            capturedBody.value = request.httpBodyStreamData() ?? request.httpBody
+            return MockURLProtocol.jsonResponse(
+                for: request.url!,
+                body: Self.videoCaptureAssetResponseJSON
+            )
+        }
+
+        let response = try await makeClient().updateVideoCaptureTake(
+            projectId: "project-1",
+            assetId: "asset-1",
+            body: .init(
+                status: "good",
+                circled: true,
+                continuityNotes: nil,
+                performanceNotes: "Best timing",
+                technicalNotes: "Clean focus"
+            )
+        )
+
+        XCTAssertEqual(captured.value?.httpMethod, "PATCH")
+        XCTAssertEqual(
+            captured.value?.url?.path,
+            "/api/projects/project-1/video-capture/assets/asset-1/take"
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(capturedBody.value)) as? [String: Any]
+        )
+        XCTAssertEqual(json["status"] as? String, "good")
+        XCTAssertEqual(json["circled"] as? Bool, true)
+        XCTAssertTrue(json["continuityNotes"] is NSNull)
+        XCTAssertEqual(json["performanceNotes"] as? String, "Best timing")
+        XCTAssertEqual(json["technicalNotes"] as? String, "Clean focus")
+        XCTAssertEqual(response.asset.take?.status, "good")
+    }
+
     // MARK: - Handoff filter encoding
 
     func testHandoffFilterEncodesIdsKind() async throws {
@@ -381,6 +421,27 @@ final class BackendClientTests: XCTestCase {
             XCTAssertEqual(body, "boom")
         }
     }
+}
+
+private extension BackendClientTests {
+    static let videoCaptureAssetResponseJSON = #"""
+    {
+      "asset": {
+        "id":"asset-1","projectId":"project-1","fileName":"take.mov",
+        "contentType":"video/quicktime","sizeBytes":1024,
+        "checksumSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceType":"uvc","cameraManufacturer":null,"cameraModel":"UVC",
+        "cameraSerial":null,"durationMs":1000,"frameRate":25,"width":1920,"height":1080,
+        "timecodeStart":null,"recordedAt":"2026-09-19T12:00:00.000Z",
+        "captureState":"ready","streamUid":null,"streamState":"pending","streamError":null,
+        "take":{"id":"take-1","sceneId":"1","shotId":"1A","slate":"A001","takeNumber":1,
+          "status":"good","circled":true,"continuityNotes":null,
+          "performanceNotes":"Best timing","technicalNotes":"Clean focus"},
+        "createdAt":"2026-09-19T12:00:00.000Z","updatedAt":"2026-09-19T12:00:00.000Z"
+      },
+      "playbackUrl":null,"thumbnailUrl":null
+    }
+    """#
 }
 
 /// Sendable reference holder so closures can "return" values to the test

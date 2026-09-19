@@ -1,6 +1,31 @@
 import Foundation
 
 struct VideoCaptureAsset: Codable, Sendable, Equatable, Identifiable {
+    enum TakeStatus: String, Codable, Sendable, CaseIterable {
+        case unrated
+        case hold
+        case good
+        case noGood = "no_good"
+
+        var displayName: String {
+            switch self {
+            case .unrated: "Ikke vurdert"
+            case .hold: "Hold"
+            case .good: "God"
+            case .noGood: "Ikke bruk"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .unrated: "minus.circle"
+            case .hold: "pause.circle"
+            case .good: "checkmark.circle.fill"
+            case .noGood: "xmark.circle.fill"
+            }
+        }
+    }
+
     enum SourceType: String, Codable, Sendable, CaseIterable {
         case ipadCamera = "ipad_camera"
         case uvc
@@ -44,8 +69,12 @@ struct VideoCaptureAsset: Codable, Sendable, Equatable, Identifiable {
     var shotId: String?
     var slate: String?
     var takeNumber: Int
-    var takeStatus: String
+    var takeStatus: TakeStatus
     var circled: Bool
+    var continuityNotes: String? = nil
+    var performanceNotes: String? = nil
+    var technicalNotes: String? = nil
+    var takeMetadataDirty: Bool = false
     var createdAt: Date
     var updatedAt: Date
 }
