@@ -17,6 +17,7 @@ tools/*/src-tauri/target/
 .env.page-mentions.demo.local
 .env.page-metadata.demo.local
 .env.google-verification.demo.local
+backend/.env.before-google-demo
 .env.ig-public.demo.local
 .env.leads-retrieval.demo.local
 .env.ig-events.demo.local
