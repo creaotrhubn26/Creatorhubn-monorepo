@@ -215,9 +215,10 @@ actor CCAPIClient {
         ])
     }
 
-    /// Fetches one JPEG live-view frame from a GET endpoint advertised under
-    /// `/shooting/liveview`. Canon bodies commonly expose a `/flip` child, but
-    /// the client intentionally discovers the concrete path from `/ccapi`.
+    /// Fetches one complete JPEG from Canon's polling `flip` endpoint.
+    /// `scroll`, `scrolldetail` and `multipart` are long-lived streams and must
+    /// never be sampled with this request/response method: doing so can leave
+    /// the body busy and prevent `flip` from producing frames.
     func liveViewFrame() async throws -> Data {
         guard let inventory else { throw CCAPIError.notDiscovered }
         let candidates = inventory.versions
@@ -225,16 +226,10 @@ actor CCAPIClient {
             .flatMap(\.apis)
             .filter { endpoint in
                 endpoint.get == true
-                    && endpoint.path.contains("/shooting/liveview")
-                    && !endpoint.path.hasSuffix("/shooting/liveview")
-            }
-            .sorted { lhs, rhs in
-                let lhsFlip = lhs.path.hasSuffix("/flip")
-                let rhsFlip = rhs.path.hasSuffix("/flip")
-                return lhsFlip != rhsFlip ? lhsFlip : lhs.path < rhs.path
+                    && endpoint.path.hasSuffix("/shooting/liveview/flip")
             }
         guard !candidates.isEmpty else {
-            throw CCAPIError.unsupportedOperation("/shooting/liveview frame")
+            throw CCAPIError.unsupportedOperation("/shooting/liveview/flip")
         }
         var lastError: Error?
         for endpoint in candidates {
@@ -251,16 +246,27 @@ actor CCAPIClient {
         throw CCAPIError.invalidResponse("liveview endpoint did not return JPEG")
     }
 
-    /// Stops live view only when the camera explicitly advertises DELETE for
-    /// the live-view root. Bodies without that capability are left untouched;
-    /// we never guess a stop payload.
+    /// Stops the exact Live View lifecycle the body advertises. Some Canon
+    /// bodies, including the verified R6 Mark II, expose POST-only on the
+    /// general endpoint and use Canon's documented `liveviewsize: off` body.
     func stopLiveView() async {
-        guard let path = try? advertisedEndpoint(
+        if let path = try? advertisedEndpoint(
             containing: "/shooting/liveview",
             exactSuffix: "/shooting/liveview",
             method: .delete
+        ) {
+            try? await delete(path: path)
+            return
+        }
+        guard let path = try? advertisedEndpoint(
+            containing: "/shooting/liveview",
+            exactSuffix: "/shooting/liveview",
+            method: .post
         ) else { return }
-        try? await delete(path: path)
+        try? await post(path: path, body: [
+            "liveviewsize": "off",
+            "cameradisplay": "on"
+        ])
     }
 
     // MARK: - Direct movie control

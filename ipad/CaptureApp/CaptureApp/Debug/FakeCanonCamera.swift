@@ -308,8 +308,9 @@ final class FakeCanonCamera: @unchecked Sendable {
     {
       "ver100": [
         {"path":"/ccapi/ver100/deviceinformation","get":true,"post":false,"put":false,"delete":false},
-        {"path":"/ccapi/ver100/shooting/liveview","get":false,"post":true,"put":false,"delete":true},
+        {"path":"/ccapi/ver100/shooting/liveview","get":false,"post":true,"put":false,"delete":false},
         {"path":"/ccapi/ver100/shooting/liveview/flip","get":true,"post":false,"put":false,"delete":false},
+        {"path":"/ccapi/ver100/shooting/liveview/scroll","get":true,"post":false,"put":false,"delete":true},
         {"path":"/ccapi/ver100/shooting/control/recbutton","get":false,"post":true,"put":false,"delete":false},
         {"path":"/ccapi/ver100/shooting/settings/tv","get":true,"post":false,"put":true,"delete":false},
         {"path":"/ccapi/ver100/shooting/settings/av","get":true,"post":false,"put":true,"delete":false},

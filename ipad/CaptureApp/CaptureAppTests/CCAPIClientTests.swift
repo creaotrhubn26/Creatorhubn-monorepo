@@ -105,6 +105,15 @@ final class CCAPIInventoryTests: XCTestCase {
         XCTAssertEqual(named.label, "Full")
         XCTAssertEqual(named.systemImage, "battery.100")
         XCTAssertFalse(named.isLow)
+
+        let realR6Level = try XCTUnwrap(CCAPIBatteryStatus(rawValue: "high"))
+        XCTAssertEqual(realR6Level.label, "Høy")
+        XCTAssertEqual(realR6Level.systemImage, "battery.75")
+        XCTAssertFalse(realR6Level.isLow)
+
+        let quarter = try XCTUnwrap(CCAPIBatteryStatus(rawValue: "quarter"))
+        XCTAssertEqual(quarter.label, "Kvart")
+        XCTAssertTrue(quarter.isLow)
     }
 
     @MainActor

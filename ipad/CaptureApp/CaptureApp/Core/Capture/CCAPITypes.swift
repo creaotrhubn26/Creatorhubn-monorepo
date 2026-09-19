@@ -110,9 +110,15 @@ struct CCAPIBatteryStatus: Sendable, Equatable {
         if let percent { return "\(percent)%" }
         switch rawValue.lowercased() {
         case "full": return "Full"
+        case "high": return "Høy"
         case "half": return "Halv"
+        case "quarter": return "Kvart"
         case "low": return "Lav"
         case "empty": return "Tom"
+        case "unknown": return "Ukjent"
+        case "charge": return "Lader"
+        case "chargestop": return "Lading stoppet"
+        case "chargecomp": return "Fulladet"
         default: return rawValue
         }
     }
@@ -126,17 +132,19 @@ struct CCAPIBatteryStatus: Sendable, Equatable {
             return "battery.0"
         }
         switch rawValue.lowercased() {
-        case "full": return "battery.100"
+        case "full", "chargecomp": return "battery.100"
+        case "high": return "battery.75"
         case "half": return "battery.50"
-        case "low": return "battery.25"
+        case "quarter", "low": return "battery.25"
         case "empty": return "battery.0"
+        case "charge": return "battery.100percent.bolt"
         default: return "battery.75"
         }
     }
 
     var isLow: Bool {
         if let percent { return percent < 20 }
-        return ["low", "empty"].contains(rawValue.lowercased())
+        return ["quarter", "low", "empty"].contains(rawValue.lowercased())
     }
 }
 

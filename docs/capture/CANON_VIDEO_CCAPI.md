@@ -19,7 +19,10 @@ Last verified: 2026-09-19
 - Discovery probes HTTP/HTTPS on the common 80, 443, 8080 and 8443 ports. For
   custom ports, the operator can enter the exact URL displayed on the camera's
   CCAPI communication screen; `/ccapi` is normalized to the base origin.
-- Canon live view remains active around recording when the body supports it.
+- Canon live view polls only the advertised `flip` JPEG endpoint. Streaming
+  `scroll`/`multipart` endpoints are not accidentally consumed as finite
+  responses, and POST-only bodies are stopped with Canon's documented
+  `liveviewsize: off` payload.
 - Stopping a recording waits for a newly-added movie (`MP4`, `MOV`, `MXF` or
   `CRM`), downloads it with URLSession's file-backed download API, inspects its
   media metadata and registers it in the existing offline-first Video Take
@@ -38,10 +41,11 @@ Last verified: 2026-09-19
   REC start/stop, new-content polling and local movie import.
 - `testAdaptiveLandscapeWorkspaces` passes after the Canon controls were added.
 - A signed device build installs and launches on the connected iPad.
-- A real-body smoke run was attempted against an EOS R6 Mark II before the
-  discovery fixes. The iPad did not discover a CCAPI endpoint within 90
-  seconds, so no command was sent to the camera. Re-run after entering the URL
-  shown on the camera if automatic discovery does not find its configured port.
+- A real EOS R6 Mark II on firmware 1.6.0 was reached over its HTTPS CCAPI
+  origin. Inventory, device identity and battery reads returned HTTP 200. A
+  bounded Live View start returned HTTP 200, `flip` returned a valid 512×288
+  JPEG after the startup lifecycle was corrected, and the documented POST-off
+  cleanup returned HTTP 200. No recording or media mutation was performed.
 
 The real-body test is `ScreenshotHarness.testRealCanonR6HardwareSmoke`. It is
 opt-in and skips unless the UI-test runner has `RUN_REAL_CANON_SMOKE=1` in its
@@ -57,11 +61,11 @@ playback proxy after the S3 original has been secured.
 
 ## Remaining hardware validation
 
-1. Enable CCAPI/network control on the EOS R6 Mark II, leave the camera on its
-   CCAPI communication screen and note the displayed URL.
-2. Put the iPad and camera on the same reachable network (or join the camera's
-   access point from the iPad), then run the opt-in smoke test.
-3. Confirm live view remains available during movie recording on that firmware.
+1. Install with an Xcode/device-support version compatible with the connected
+   iPad's iPadOS 27.0. Xcode 26.5 built the app, but device installation failed
+   before launch with Apple profile error `0xe800801f`.
+2. Run the opt-in physical-iPad smoke test against the now-confirmed endpoint.
+3. Confirm Live View remains available during movie recording on firmware 1.6.0.
 4. Confirm `addedcontents` timing and imported metadata for MP4 and any enabled
    high-quality/raw movie format.
 5. Run a longer clip to validate transfer progress, background interruption,

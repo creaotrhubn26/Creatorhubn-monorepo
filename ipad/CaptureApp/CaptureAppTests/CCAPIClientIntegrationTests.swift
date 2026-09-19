@@ -77,8 +77,13 @@ final class CCAPIClientIntegrationTests: XCTestCase {
 
         XCTAssertGreaterThan(frame.count, 100)
         XCTAssertEqual(frame.first, 0xff)
-        XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/liveview"))
+        XCTAssertEqual(
+            camera.seenRequests.filter { $0 == "/ccapi/ver100/shooting/liveview" }.count,
+            2,
+            "R6-style POST-only Live View must send both start and documented off payloads"
+        )
         XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/liveview/flip"))
+        XCTAssertFalse(camera.seenRequests.contains("/ccapi/ver100/shooting/liveview/scroll"))
     }
 
     func testCapabilityGatedMovieRecordSettingsAndMediaImport() async throws {
