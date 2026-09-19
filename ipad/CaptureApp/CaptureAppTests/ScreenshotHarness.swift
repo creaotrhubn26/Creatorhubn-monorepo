@@ -55,7 +55,7 @@ final class ScreenshotHarness: XCTestCase {
         // Main shell tabs: walk each once.
         snap(app, name: "04_Today")
 
-        app.tabBars.buttons["Shoot"].tap()
+        tapTab("Shoot", in: app)
         snap(app, name: "05_Shoot")
 
         // Live Cull is a nested view from Shoot → a session; the
@@ -66,17 +66,26 @@ final class ScreenshotHarness: XCTestCase {
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
 
-        app.tabBars.buttons["Galleri"].tap()
+        tapTab("Galleri", in: app)
         snap(app, name: "07_Galleri")
 
-        app.tabBars.buttons["Admin"].tap()
+        tapTab("Admin", in: app)
         snap(app, name: "08_Admin")
 
-        app.tabBars.buttons["Tilbud"].tap()
+        tapTab("Tilbud", in: app)
         snap(app, name: "09_Tilbud")
 
-        app.tabBars.buttons["Pris"].tap()
+        tapTab("Pris", in: app)
         snap(app, name: "10_Pris")
+    }
+
+    /// iPadOS 26 exposes SwiftUI's floating tab bar as button/cell nodes, not
+    /// an XCUIElementTypeTabBar. Query the accessible tab button directly so
+    /// the harness works on both the old bottom bar and the new floating bar.
+    private func tapTab(_ title: String, in app: XCUIApplication) {
+        let button = app.buttons[title].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 4), "Fant ikke \(title)-fanen")
+        button.tap()
     }
 
     /// Capture a screenshot + attach it to the test so fastlane's

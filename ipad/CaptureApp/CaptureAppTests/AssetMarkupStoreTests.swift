@@ -35,7 +35,7 @@ final class AssetMarkupStoreTests: XCTestCase {
         AssetMarkupStore, Outbox, AppDatabase, MarkupStorage, UUID
     ) {
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let storage = MarkupStorage(rootDirectory: tempDir)
         let store = AssetMarkupStore(
             database: db,

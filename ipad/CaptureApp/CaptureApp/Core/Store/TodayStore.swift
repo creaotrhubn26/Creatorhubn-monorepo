@@ -35,6 +35,41 @@ struct TodayStore: Sendable {
         let lastSyncAt: Date?
     }
 
+    /// Refresh the local read model from the authenticated Capture project API.
+    /// Existing detail-only fields are retained because the summary endpoint
+    /// intentionally omits client email and the full metadata blob.
+    func syncProjects(
+        _ summaries: [BackendProjectSummary],
+        ownerUserId: String,
+        syncedAt: Date = Date()
+    ) async throws {
+        try await database.dbWriter.write { db in
+            for summary in summaries {
+                let existing = try Project.fetchOne(db, key: summary.id)
+                let counters = summary.shotListSummary
+                var project = Project(
+                    id: summary.id,
+                    ownerUserId: ownerUserId,
+                    title: summary.title,
+                    clientName: summary.clientName,
+                    clientEmail: existing?.ownerUserId == ownerUserId ? existing?.clientEmail : nil,
+                    eventDate: Self.parseBackendDate(summary.eventDate),
+                    location: summary.location,
+                    projectType: summary.projectType,
+                    status: summary.status,
+                    metadataJson: existing?.ownerUserId == ownerUserId ? existing?.metadataJson ?? "{}" : "{}",
+                    totalShots: counters?.totalShots ?? 0,
+                    completedShots: counters?.completedShots ?? 0,
+                    mustHaveShots: counters?.mustHaveShots ?? 0,
+                    completedMustHave: counters?.completedMustHave ?? 0,
+                    updatedAt: Self.parseBackendDate(summary.updatedAt) ?? syncedAt,
+                    lastSyncedAt: syncedAt,
+                )
+                try project.save(db)
+            }
+        }
+    }
+
     /// One-call load. Uses a single GRDB read transaction so the
     /// three sub-queries see a consistent snapshot (not strictly
     /// necessary for this read-mostly surface, but cheap and
@@ -114,4 +149,29 @@ struct TodayStore: Sendable {
         let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
         return (start, end)
     }
+
+    private static func parseBackendDate(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let date = isoFractional.date(from: raw) ?? isoPlain.date(from: raw) {
+            return date
+        }
+        return dateOnly.date(from: raw)
+    }
+
+    private nonisolated(unsafe) static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private nonisolated(unsafe) static let isoPlain = ISO8601DateFormatter()
+
+    private nonisolated(unsafe) static let dateOnly: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }

@@ -25,7 +25,10 @@ struct ShotListView: View {
         do {
             let url = try AppDatabase.defaultDiskURL()
             let db = try AppDatabase.openOnDisk(at: url)
-            return ShotListStore(database: db, outbox: Outbox(database: db))
+            return ShotListStore(
+                database: db,
+                outbox: Outbox(database: db, ownerUserId: ownerUserId)
+            )
         } catch {
             return nil
         }

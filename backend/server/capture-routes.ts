@@ -76,12 +76,21 @@ import {
   listProjectsForPhotographer,
 } from './capture-projects-service.js';
 import {
+  createCaptureRevision,
+  listCaptureRevisions,
+  updateCaptureRevisionStatus,
+} from './capture-revision-service.js';
+import {
   classifySession,
   type CaptureAssetForCulling,
   type CullingStrictness,
 } from './capture-culling-service.js';
 import { captureAssets, captureReviews, captureSessions } from '../migrations/capture-schema.js';
 import { and, asc, eq } from 'drizzle-orm';
+import {
+  signCapturePreviewToken,
+  verifyCapturePreviewToken,
+} from './capture-preview-token.js';
 
 interface SessionData {
   userId: string;
@@ -554,7 +563,15 @@ export function createCaptureRouter(
       res.status(404).json({ error: 'project_not_found' });
       return;
     }
-    res.json(detail);
+    const shotList = await Promise.all(detail.shotList.map(async (shot) => {
+      const assetId = shot.capturedAssetBackendId;
+      if (!assetId) return shot;
+      const ownedAsset = await fetchAsset(db, userId, assetId);
+      return ownedAsset
+        ? { ...shot, capturedAssetPreviewToken: signCapturePreviewToken(assetId) }
+        : shot;
+    }));
+    res.json({ ...detail, shotList });
   });
 
   // Create a minimal project from the iPad — used when the photographer
@@ -581,6 +598,7 @@ export function createCaptureRouter(
   // on a delivered photo; the iPad "Revisjoner" inbox reads + resolves them.
   // `originalFilename` is the key the iPad matches against memory cards.
   router.post('/projects/:projectId/revision-requests', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const filename = String(body.originalFilename ?? body.filename ?? '').trim();
     if (!filename) {
@@ -588,50 +606,62 @@ export function createCaptureRouter(
       return;
     }
     const assetId = typeof body.assetId === 'string' && body.assetId ? body.assetId : null;
-    const result = await pool.query<{ id: string }>(
-      `INSERT INTO capture_revision_requests
-         (project_id, asset_id, original_filename, client_email, note, source)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id`,
-      [
-        req.params.projectId,
-        assetId,
-        filename,
-        typeof body.clientEmail === 'string' ? body.clientEmail : null,
-        typeof body.note === 'string' ? body.note : '',
-        typeof body.source === 'string' ? body.source : 'gallery',
-      ],
-    );
-    res.status(201).json({ id: result.rows[0].id });
+    if (assetId && !z.string().uuid().safeParse(assetId).success) {
+      res.status(400).json({ error: 'invalid_asset_id' });
+      return;
+    }
+    const id = await createCaptureRevision(pool, {
+      projectId: req.params.projectId,
+      ownerUserId: userId,
+      assetId,
+      originalFilename: filename,
+      clientEmail: typeof body.clientEmail === 'string' ? body.clientEmail : null,
+      note: typeof body.note === 'string' ? body.note : '',
+      source: typeof body.source === 'string' ? body.source : 'gallery',
+    });
+    if (!id) {
+      res.status(404).json({ error: 'project_or_asset_not_found' });
+      return;
+    }
+    res.status(201).json({ id });
   });
 
   router.get('/projects/:projectId/revision-requests', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
     const status = typeof req.query.status === 'string' ? req.query.status : 'open';
-    const result = await pool.query(
-      `SELECT id, project_id AS "projectId", asset_id AS "assetId",
-              original_filename AS "originalFilename", client_email AS "clientEmail",
-              note, status, source, created_at AS "createdAt", resolved_at AS "resolvedAt"
-         FROM capture_revision_requests
-        WHERE project_id = $1 AND ($2 = 'all' OR status = $2)
-        ORDER BY created_at DESC`,
-      [req.params.projectId, status],
-    );
-    res.json({ revisions: result.rows });
+    if (!['open', 'in_progress', 'resolved', 'all'].includes(status)) {
+      res.status(400).json({ error: 'bad_status' });
+      return;
+    }
+    const revisions = await listCaptureRevisions(pool, userId, req.params.projectId, status);
+    if (!revisions) {
+      res.status(404).json({ error: 'project_not_found' });
+      return;
+    }
+    res.json({ revisions });
   });
 
   router.post('/revision-requests/:id/status', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
     const status = String(((req.body ?? {}) as Record<string, unknown>).status ?? '').trim();
     if (!['open', 'in_progress', 'resolved'].includes(status)) {
       res.status(400).json({ error: 'bad_status' });
       return;
     }
-    await pool.query(
-      `UPDATE capture_revision_requests
-          SET status = $2,
-              resolved_at = CASE WHEN $2 = 'resolved' THEN now() ELSE resolved_at END
-        WHERE id = $1`,
-      [req.params.id, status],
+    if (!z.string().uuid().safeParse(req.params.id).success) {
+      res.status(400).json({ error: 'invalid_revision_id' });
+      return;
+    }
+    const updated = await updateCaptureRevisionStatus(
+      pool,
+      userId,
+      req.params.id,
+      status as 'open' | 'in_progress' | 'resolved',
     );
+    if (!updated) {
+      res.status(404).json({ error: 'revision_not_found' });
+      return;
+    }
     res.json({ ok: true });
   });
 
@@ -785,6 +815,7 @@ export function createCaptureRouter(
         rows.map(async (row) => ({
           ...row,
           previewUrl: row.previewKey ? await signAssetReadUrl(row.previewKey) : null,
+          previewToken: row.previewKey ? signCapturePreviewToken(row.id) : null,
         })),
       );
       res.json({ assets: withUrls });
@@ -797,18 +828,22 @@ export function createCaptureRouter(
     }
   });
 
-  // Stabil thumbnail-URL for shot-oppdaterings-kortet i team-chatten. 302 →
-  // fersk-signert privat preview hver gang (aldri utløper), så en varig chat-
-  // melding kan peke hit. INGEN auth: må lastes av <img>/AsyncImage uten
-  // headere, og team-medlemmer (ikke bare økt-eier) må se den. Asset-id er en
-  // ugjettbar UUID; den underliggende S3/R2-URL-en er fortsatt kortlevd signert.
+  // Stabil capability-URL for shot-oppdateringskort og AsyncImage. Tokenet er
+  // HMAC-bundet til nøyaktig ett asset og utstedes bare gjennom autentiserte,
+  // prosjekt-scopede svar. Selve S3-URL-en forblir kortlevd og privat.
   router.get('/assets/:id/preview', async (req, res) => {
     try {
+      const token = typeof req.query.t === 'string' ? req.query.t : '';
+      if (!verifyCapturePreviewToken(req.params.id, token)) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
       const key = await fetchAssetPreviewKey(db, req.params.id);
       if (!key) { res.status(404).json({ error: 'not_found' }); return; }
       const url = await signAssetReadUrl(key);
       if (!url) { res.status(404).json({ error: 'not_found' }); return; }
       res.setHeader('Cache-Control', 'private, max-age=120');
+      res.setHeader('Referrer-Policy', 'no-referrer');
       res.redirect(302, url);
     } catch {
       res.status(404).json({ error: 'not_found' });

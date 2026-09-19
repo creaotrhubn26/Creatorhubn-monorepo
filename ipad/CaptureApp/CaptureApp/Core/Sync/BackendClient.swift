@@ -491,17 +491,16 @@ actor BackendClient {
         return response.assets
     }
 
-    /// Bygg STABILE thumbnail-URL-er for shot-oppdaterings-kortet: de siste
-    /// `limit` opplastede bildene i økta, som `…/assets/<id>/preview`-
-    /// redirecter (aldri utløper — backend re-signerer S3 pr kall). Kun
-    /// bilder som faktisk har en preview i skyen tas med.
+    /// Bygg stabile, asset-scopede capability-URL-er for shot-oppdateringskortet.
+    /// Backend re-signerer den private S3-lesingen per kall; UUID uten capability
+    /// fungerer ikke. Kun bilder med ferdig preview tas med.
     func shotThumbURLs(sessionId: UUID, limit: Int) async -> [String] {
         guard let assets = try? await listSessionAssets(sessionId: sessionId, limit: 500, offset: 0)
         else { return [] }
         return assets
-            .filter { $0.previewUrl != nil }
+            .filter { $0.previewUrl != nil && $0.previewToken != nil }
             .suffix(limit)
-            .map { baseURL.appendingPathComponent("/api/capture/assets/\($0.id)/preview").absoluteString }
+            .compactMap { assetPreviewURL(backendAssetId: $0.id, token: $0.previewToken)?.absoluteString }
     }
 
     /// Run the Claude-backed Live Set coverage check. Backend lives at
@@ -773,10 +772,16 @@ actor BackendClient {
         return c?.url
     }
 
-    /// Stabil preview-URL for et backend-asset (thumbnail overalt). Offentlig
-    /// redirect → laster i AsyncImage/`<img>` uten auth.
-    nonisolated func assetPreviewURL(backendAssetId: String) -> URL? {
-        baseURL.appendingPathComponent("/api/capture/assets/\(backendAssetId)/preview")
+    /// Stabil preview-URL for et backend-asset. Capabilityen lar AsyncImage og
+    /// `<img>` laste uten auth-header, men er kryptografisk bundet til assetet.
+    nonisolated func assetPreviewURL(backendAssetId: String, token: String?) -> URL? {
+        guard let token, !token.isEmpty else { return nil }
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("/api/capture/assets/\(backendAssetId)/preview"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [URLQueryItem(name: "t", value: token)]
+        return components?.url
     }
 
     /// #9 Hent bryllups-timelinen for prosjektet og form den til en kompakt

@@ -366,8 +366,8 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     const statusTxt = done && s.completedBy ? `Ferdig · ${s.completedBy}` : (done ? 'Ferdig' : statusBase);
     const kat = s.category || s.kategori || s.phase || s.scene || '—';
     const loc = s.location || s.lokasjon || s.locationName || '—';
-    const thumb = s.capturedAssetBackendId
-      ? buildApiUrl(`/api/capture/assets/${encodeURIComponent(s.capturedAssetBackendId)}/preview`)
+    const thumb = s.capturedAssetBackendId && s.capturedAssetPreviewToken
+      ? buildApiUrl(`/api/capture/assets/${encodeURIComponent(s.capturedAssetBackendId)}/preview?t=${encodeURIComponent(s.capturedAssetPreviewToken)}`)
       : null;
     return {
       isSample: false,

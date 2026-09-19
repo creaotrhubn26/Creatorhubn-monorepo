@@ -288,6 +288,78 @@ extension AppDatabase {
                 t.add(column: "pendingDetections", .text)
             }
         }
+        migrator.registerMigration("v8_persistent_capture_uploads") { db in
+            // Durable CreatorHub S3 multipart checkpoints. Only opaque S3
+            // upload ids, object keys and ETags are stored; signed URLs and
+            // authentication credentials are deliberately never persisted.
+            try db.create(table: "multipartUploadCheckpoint") { t in
+                t.primaryKey("id", .text) // localAssetId:kind
+                t.column("localAssetId", .text).notNull()
+                t.column("backendAssetId", .text).notNull()
+                t.column("backendSessionId", .text).notNull()
+                t.column("kind", .text).notNull()
+                t.column("localPath", .text).notNull()
+                t.column("mime", .text).notNull()
+                t.column("sizeBytes", .integer).notNull()
+                t.column("checksumSha256", .text).notNull()
+                t.column("uploadId", .text)
+                t.column("objectKey", .text)
+                t.column("partSize", .integer)
+                t.column("partCount", .integer)
+                t.column("partUrlBatchMax", .integer)
+                t.column("completedPartsJson", .text).notNull().defaults(to: "[]")
+                t.column("status", .text).notNull().defaults(to: "registered")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(indexOn: "multipartUploadCheckpoint", columns: ["localAssetId"])
+            try db.create(indexOn: "multipartUploadCheckpoint", columns: ["status", "updatedAt"])
+
+            // The user-facing card-import job. This is created before the
+            // first network call, so even an app kill before upload/start can
+            // be recovered from the already-copied originals in Documents.
+            try db.create(table: "cardBackupJob") { t in
+                t.primaryKey("id", .text) // local import session id
+                t.column("ownerUserId", .text).notNull()
+                t.column("sessionName", .text).notNull()
+                t.column("sessionStartedAt", .datetime).notNull()
+                t.column("projectId", .text).notNull()
+                t.column("projectTitle", .text).notNull()
+                t.column("itemsJson", .text).notNull()
+                t.column("assetCount", .integer).notNull()
+                t.column("duplicateCount", .integer).notNull().defaults(to: 0)
+                t.column("status", .text).notNull().defaults(to: "pending")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(indexOn: "cardBackupJob", columns: ["ownerUserId", "status", "updatedAt"])
+        }
+        migrator.registerMigration("v9_scope_outbox_to_owner") { db in
+            // Older builds did not record which CreatorHub account created an
+            // offline mutation. Those rows cannot be attributed safely, so
+            // quarantine them instead of ever sending them with the next
+            // signed-in account's bearer token.
+            let legacyOwner = "__legacy_unscoped__"
+            try db.alter(table: "outboxMutation") { table in
+                table.add(column: "ownerUserId", .text)
+                    .notNull()
+                    .defaults(to: legacyOwner)
+            }
+            try db.execute(
+                sql: """
+                    UPDATE outboxMutation
+                       SET status = 'failed', attemptCount = ?,
+                           lastError = 'Legacy unscoped mutation quarantined',
+                           updatedAt = ?
+                     WHERE ownerUserId = ?
+                    """,
+                arguments: [OutboxMutation.maxAttempts, Date(), legacyOwner]
+            )
+            try db.create(
+                indexOn: "outboxMutation",
+                columns: ["ownerUserId", "status", "createdAt"]
+            )
+        }
 
         return migrator
     }()

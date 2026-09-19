@@ -18,7 +18,7 @@ final class ShotListStoreTests: XCTestCase {
 
     private func makeStack() async throws -> (ShotListStore, Outbox, AppDatabase) {
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let store = ShotListStore(database: db, outbox: outbox)
 
         // Seed a project so shot_list's FK resolves.

@@ -15,7 +15,7 @@ final class CullStoreTests: XCTestCase {
 
     private func makeStack() async throws -> (CullStore, Outbox, AppDatabase, UUID) {
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let store = CullStore(database: db, outbox: outbox)
 
         // Seed a session owned by ``owner``.

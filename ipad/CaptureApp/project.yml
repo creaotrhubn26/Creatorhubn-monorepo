@@ -131,6 +131,22 @@ targets:
     platform: iOS
     sources:
       - path: CaptureAppTests
+        excludes:
+          - ScreenshotHarness.swift
+    dependencies:
+      - target: CaptureApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+  # XCUIApplication requires a UI-test runner with CaptureApp configured as
+  # target application. Keeping this harness in the unit-test bundle made the
+  # otherwise-green full suite fail before the first screenshot was taken.
+  CaptureAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: CaptureAppTests/ScreenshotHarness.swift
     dependencies:
       - target: CaptureApp
     settings:
@@ -164,3 +180,18 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Apple Distribution"
         PROVISIONING_PROFILE_SPECIFIER: "CreatorHub Widgets AppStore"
+
+schemes:
+  CaptureApp:
+    build:
+      targets:
+        CaptureApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CaptureAppTests
+        - CaptureAppUITests
+    archive:
+      config: Release

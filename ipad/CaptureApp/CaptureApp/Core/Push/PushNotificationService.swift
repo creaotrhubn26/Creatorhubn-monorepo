@@ -87,6 +87,17 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         // Stille — simulator/uten nett gir ingen token; ingen degradering.
     }
 
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        BackgroundMultipartUploader.shared.handleEvents(
+            identifier: identifier,
+            completionHandler: completionHandler
+        )
+    }
+
     /// Route Google Sign-In's registered callback scheme back to the SDK.
     func application(
         _ application: UIApplication,

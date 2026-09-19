@@ -31,7 +31,7 @@ struct ContractSigningView: View {
             let sigDir = try SignatureStorage.defaultDirectory()
             return ContractStore(
                 database: db,
-                outbox: Outbox(database: db),
+                outbox: Outbox(database: db, ownerUserId: ownerUserId),
                 signatureStorage: SignatureStorage(rootDirectory: sigDir),
             )
         } catch {
