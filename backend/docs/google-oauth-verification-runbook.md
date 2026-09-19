@@ -25,8 +25,8 @@ Begge er løst. Dette dokumentet er sannhetskilden for gjenopptakelsen.
 | Scope-begrunnelser | ✅ | Fire felter på Data Access, 936/897/800/635 tegn |
 | Feature-kategorier | ✅ | Drive: productivity + sync client. Gmail: client + productivity. Chat: Chat app |
 | Demo-video | ⬜ | Tas opp med skriptet under |
-| Innlogging til appen for reviewer | ⬜ | CreatorHub-konto på demo-brukeren — se «Oppsett» under |
-| Workspace-bruker til opptaket | ⬜ | **Påkrevd** for Chat API (ikke gmail.com). Dekker også personvern |
+| Innlogging til appen for reviewer | ⬜ | Vanlig CreatorHub-bruker med e-post/passord. Gratis, ikke en Google-konto |
+| Konto til opptaket | ⬜ | `daniel@` holder — allerede Workspace, så Chat API virker. Egen demo-bruker er valgfri isolasjon |
 | Svar på e-posttråden | ⬜ | Ingenting starter uten dette |
 
 ## Hvorfor personvernsiden ble avvist
@@ -133,58 +133,72 @@ Kontoen som gir samtykke må altså ha denne dataen i sin egen Google-konto.
 Det er likt uansett miljø — lokalt løser rene *prosjekt*-data, ikke
 fraværet av Gmail-/Chat-innhold.
 
-### Chat API krever Workspace — ikke gmail.com
-
-Dette avgjør hvilken konto som kan brukes:
+### Chat API krever Workspace — men ikke en ny konto
 
 > Google Chat API is only available to Google Workspace users.
 
 Kilde: <https://developers.google.com/workspace/chat/configure-chat-api>.
-En vanlig gmail.com-konto kan ikke opprette spaces eller poste meldinger
-via API-et, så `chat.messages` og `chat.messages.readonly` lar seg ikke
+En gmail.com-konto kan ikke opprette spaces eller poste meldinger via
+API-et, så `chat.messages` og `chat.messages.readonly` lar seg ikke
 demonstrere derfra.
 
-`creatorhubn.com` kjører Google Workspace (MX → `smtp.google.com`), så
-løsningen er én Workspace-bruker i Admin-konsollen.
+Kravet utelukker altså forbrukerkontoer — det krever ikke en *ny* konto.
+`daniel@creatorhubn.com` er allerede Workspace (`creatorhubn.com` har MX →
+`smtp.google.com`), så Chat API virker der.
 
-### Oppsett — hvem gjør hva
+### Gratis oppsett (anbefalt)
 
-**1. Opprett demo-brukeren** — <https://admin.google.com/ac/users> → Add
-new user, f.eks. `demo@creatorhubn.com`. Koster én Workspace-plass, kan
-slettes etterpå. Gir ren Gmail, tom Drive og fungerende Chat API.
+Ingen ny Workspace-plass. Tre ting holder eksponeringen nede:
 
-**2. Seed Drive** — logg inn som demo-brukeren og legg to dummy-filer i
-Drive: f.eks. en «Shoot brief»-Doc og et placeholder-bilde. Ekte kundefiler
-skal ikke inn i videoen.
+**1. Reviewer får en CreatorHub-innlogging, ikke en Google-konto.**
+Google trenger tilgang til *appen*; de bruker sin egen Google-konto til
+selve samtykket. Opprett en vanlig CreatorHub-bruker med e-post/passord
+(`POST /api/auth/login` finnes) og gi den til Trust & Safety. Gratis.
 
-**3. CreatorHub-konto og prosjekt** — opprett en CreatorHub-bruker på
-`demo@creatorhubn.com` med e-post/passord (ikke Google Sign-In, se
-port-notatet over) og ett prosjekt. Denne innloggingen er også den du
-oppgir til Trust & Safety, så reviewer kommer inn i appen.
+**2. Ta opp med `daniel@creatorhubn.com` i et eget, rent prosjekt.**
+Opprett et nytt prosjekt som bare inneholder demodata. Drive-steget peker
+på dummy-filene, ikke kundemapper.
 
-**4. Gmail-tråden** — trenger ingen ekstra konto. Fra prosjekt-chatten
-sender du en melding til `daniel@creatorhubn.com`, som spiller kunden.
-Svar derfra. Ved refresh matcher `chat-gmail-poller.ts` svaret på
-`Message-ID` og viser det i prosjekttråden — nøyaktig den oppførselen
-`gmail.readonly`-begrunnelsen beskriver.
+**3. Chat-rommet lages under opptaket.** Ikke bruk et eksisterende rom. Når
+CreatorHub oppretter rommet live, er det tomt, og `chat.spaces.create`
+demonstreres på kjøpet.
 
-**5. Chat-rommet** — ikke opprett det på forhånd. La CreatorHub lage det
-under opptaket: da demonstreres `chat.spaces.create` live, i tillegg til
-`chat.messages` og `chat.messages.readonly`. Legg `daniel@` inn som medlem
-så det finnes en samtale å lese tilbake.
+**Den ene regelen under opptaket: åpne aldri Gmail-grensesnittet.** Hele
+Gmail-steget skal foregå i CreatorHubs prosjektpanel. Det er der
+`In-Reply-To`-matchingen vises uansett, og innboksen kommer aldri på
+skjermen. Åpner du Gmail for å vise utkastet, havner innboksen i en video
+som går til Google og lastes opp til YouTube.
 
-### Alternativ uten ny Workspace-plass
+«Kunden» som svarer kan være hvilken som helst adresse — en gmail.com du
+har, eller en privat. Den siden trenger ingen API-tilgang.
 
-Bruk `daniel@creatorhubn.com` i et eget, rent CreatorHub-prosjekt. Da
-sparer du seten, men:
+### Hvis du heller vil betale for full isolasjon
 
-- Gmail-steget må holde seg til prosjektpanelet. Åpner du Gmail for å vise
-  utkastet, eksponeres innboksen i en video som går til Google og YouTube.
-- Drive-steget må peke på filer du har lagt inn for formålet, ikke
-  kundemapper.
+Én Workspace-bruker, f.eks. `demo@creatorhubn.com`, gir ren Gmail, tom
+Drive og fungerende Chat uten at du må passe på noe under opptaket. Koster
+én plass, kan slettes etterpå. Opprettes i
+<https://admin.google.com/ac/users> → Add new user. Skru av «Ask for a
+password change at next sign-in», ellers møter reviewer en
+passordbytte-skjerm.
 
-Det er gjennomførbart, men krever disiplin under opptaket. Egen demo-bruker
-fjerner hele klassen av feil.
+### Demodata til Drive-steget
+
+To placeholder-filer som sier i innholdet at de er laget for denne
+verifiseringen og ikke inneholder kundedata:
+
+- `Shoot brief — Demo Production.txt`
+- `Demo still 001.png`
+
+Last dem opp til Drive på kontoen som gir samtykke, og knytt dem til
+demoprosjektet.
+
+### Gmail-tråden
+
+Fra prosjekt-chatten sender du en melding til «kunde»-adressen, og svarer
+derfra. Ved refresh matcher `chat-gmail-poller.ts` svaret på `Message-ID`
+og viser det i prosjekttråden — nøyaktig den oppførselen
+`gmail.readonly`-begrunnelsen beskriver. Det er det sterkeste enkeltbildet
+i videoen, fordi det viser hvor smal tilgangen faktisk er.
 
 ## Ta opp mot produksjon (hvis lokalt ikke lar seg gjøre)
 
