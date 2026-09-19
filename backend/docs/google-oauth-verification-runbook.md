@@ -114,6 +114,30 @@ rolle for Workspace-tilkoblingen — den er server-side redirect. Det spiller
 rolle for Google Sign-In, så **logg inn i CreatorHub med e-post/passord
 lokalt**.
 
+### Isoler databasen først (Neon-branch)
+
+`backend/.env` peker `DATABASE_URL` mot produksjonsdatabasen. Et lokalt
+opptak ville dermed skrevet ekte data — nye prosjekter, Chat-rom og
+Gmail-koblinger havner i prod.
+
+Lag en Neon-branch og kjør backend mot den i stedet:
+
+```
+Prosjekt:  Creatorhub EU  (restless-wind-41713954)
+Branch:    demo-google-oauth-verification
+```
+
+Branchen er copy-on-write fra produksjon ved HEAD, så skjemaet er identisk
+og ingen migrering trengs. Alt opptaket skriver blir liggende i branchen.
+
+**Branchen blanker ikke dataene.** Den inneholder hele produksjonskopien —
+alle brukere og prosjekter. Den beskytter mot skriving, ikke mot at ekte
+kundedata vises på skjermen. Du må fortsatt lage et nytt, tomt prosjekt for
+opptaket. Til gjengjeld kan du trygt rydde bort andre prosjekter i
+branchen for å få et rent UI, siden ingenting treffer produksjon.
+
+Slett branchen når opptaket er ferdig.
+
 ### Kjør
 
 ```
