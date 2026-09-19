@@ -237,6 +237,10 @@ final class ScreenshotHarness: XCTestCase {
         camera.tap()
         XCTAssertTrue(app.images["Canon CCAPI live monitor"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["canon-setting-iso"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["canon-battery-status"].waitForExistence(timeout: 5),
+            "Canon-batteriet må vises i monitoren",
+        )
 
         let record = app.buttons["video-record-button"]
         XCTAssertTrue(record.isEnabled)

@@ -90,6 +90,56 @@ struct CCAPIVideoCapabilities: Sendable, Equatable {
     let writableSettings: Set<CCAPIShootingSettingKey>
 }
 
+struct CCAPIBatteryStatus: Sendable, Equatable {
+    let rawValue: String
+    let percent: Int?
+
+    init?(rawValue: String) {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        self.rawValue = normalized
+        let numeric = normalized.trimmingCharacters(in: CharacterSet(charactersIn: "%"))
+        if let value = Int(numeric), (0...100).contains(value) {
+            percent = value
+        } else {
+            percent = nil
+        }
+    }
+
+    var label: String {
+        if let percent { return "\(percent)%" }
+        switch rawValue.lowercased() {
+        case "full": return "Full"
+        case "half": return "Halv"
+        case "low": return "Lav"
+        case "empty": return "Tom"
+        default: return rawValue
+        }
+    }
+
+    var systemImage: String {
+        if let percent {
+            if percent >= 75 { return "battery.100" }
+            if percent >= 50 { return "battery.75" }
+            if percent >= 25 { return "battery.50" }
+            if percent >= 10 { return "battery.25" }
+            return "battery.0"
+        }
+        switch rawValue.lowercased() {
+        case "full": return "battery.100"
+        case "half": return "battery.50"
+        case "low": return "battery.25"
+        case "empty": return "battery.0"
+        default: return "battery.75"
+        }
+    }
+
+    var isLow: Bool {
+        if let percent { return percent < 20 }
+        return ["low", "empty"].contains(rawValue.lowercased())
+    }
+}
+
 // MARK: - Camera information (§6.2.1)
 
 struct CCAPIDeviceInformation: Sendable, Decodable {

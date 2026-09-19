@@ -18,6 +18,7 @@ struct VideoCaptureView: View {
     @State private var showProjectPicker = false
     @State private var auxiliaryPanel: AuxiliaryPanel?
     @State private var playbackAsset: VideoCaptureAsset?
+    @State private var canonAddress = ""
 
     var body: some View {
         GeometryReader { proxy in
@@ -163,12 +164,18 @@ struct VideoCaptureView: View {
                     .tracking(1.1)
                     .foregroundStyle(CHTheme.textMuted)
                 Spacer()
-                Button { model.camera.refreshSources() } label: {
-                    Image(systemName: "arrow.clockwise")
+                Button { model.refreshVideoSources() } label: {
+                    if model.canon.isDiscovering {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(CHTheme.textSecondary)
+                .disabled(model.isRecording)
                 .accessibilityLabel("Oppdater videokilder")
+                .accessibilityIdentifier("video-refresh-sources")
             }
             ScrollView {
                 LazyVStack(spacing: 8) {
@@ -206,15 +213,15 @@ struct VideoCaptureView: View {
                         .disabled(model.isRecording)
                     }
 
-                    if !model.canon.cameras.isEmpty {
-                        HStack {
-                            Rectangle().fill(CHTheme.borderSoft).frame(height: 1)
-                            Text("CANON CCAPI").font(.caption2.weight(.bold)).tracking(1)
-                            Rectangle().fill(CHTheme.borderSoft).frame(height: 1)
-                        }
-                        .foregroundStyle(CHTheme.textMuted)
-                        .padding(.vertical, 4)
+                    HStack {
+                        Rectangle().fill(CHTheme.borderSoft).frame(height: 1)
+                        Text("CANON CCAPI").font(.caption2.weight(.bold)).tracking(1)
+                        Rectangle().fill(CHTheme.borderSoft).frame(height: 1)
                     }
+                    .foregroundStyle(CHTheme.textMuted)
+                    .padding(.vertical, 4)
+
+                    canonDiscoveryStatus
 
                     ForEach(model.canon.cameras) { camera in
                         Button {
@@ -250,6 +257,38 @@ struct VideoCaptureView: View {
                         .disabled(model.isRecording)
                         .accessibilityIdentifier("canon-camera-\(camera.id)")
                     }
+
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Direkte tilkobling")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CHTheme.textPrimary)
+                        TextField("http://kamera:port", text: $canonAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .font(.caption.monospaced())
+                            .padding(.horizontal, 9)
+                            .frame(height: 36)
+                            .background(CHTheme.bgDeep, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(CHTheme.borderSoft))
+                            .accessibilityIdentifier("canon-direct-address")
+                        Button {
+                            Task { await model.connectCanon(address: canonAddress) }
+                        } label: {
+                            Label("Koble til", systemImage: "link")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(canonAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isRecording)
+                        .accessibilityIdentifier("canon-direct-connect")
+                        Text("Bruk adressen som vises på kameraets CCAPI-skjerm.")
+                            .font(.caption2)
+                            .foregroundStyle(CHTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(CHTheme.borderSoft))
 
                     if model.canon.selectedCameraId != nil {
                         canonControls
@@ -315,6 +354,34 @@ struct VideoCaptureView: View {
         .accessibilityIdentifier("video-source-rail")
     }
 
+    @ViewBuilder
+    private var canonDiscoveryStatus: some View {
+        if model.canon.localNetworkPermissionDenied {
+            VStack(alignment: .leading, spacing: 7) {
+                Label("Lokalnett er blokkert", systemImage: "wifi.exclamationmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CHTheme.warning)
+                Button("Åpne Innstillinger") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("canon-open-settings")
+            }
+        } else if model.canon.isDiscovering {
+            Label("Søker på lokalnettet…", systemImage: "wifi")
+                .font(.caption2)
+                .foregroundStyle(CHTheme.textSecondary)
+                .accessibilityIdentifier("canon-discovery-searching")
+        } else if model.canon.cameras.isEmpty && model.canon.selectedCameraId == nil {
+            Label("Ingen Canon-kilde funnet. Kontroller CCAPI-modus, søk på nytt eller bruk adressen under.", systemImage: "camera.badge.ellipsis")
+                .font(.caption2)
+                .foregroundStyle(CHTheme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("canon-discovery-empty")
+        }
+    }
+
     private var monitor: some View {
         VStack(spacing: 0) {
             ZStack {
@@ -349,6 +416,16 @@ struct VideoCaptureView: View {
                                 .background(.black.opacity(0.72), in: Capsule())
                         }
                         Spacer()
+                        if model.canon.selectedCameraId != nil,
+                           let battery = model.canon.batteryStatus {
+                            Label(battery.label, systemImage: battery.systemImage)
+                                .font(.caption.monospacedDigit().weight(.bold))
+                                .foregroundStyle(battery.isLow ? CHTheme.danger : .white.opacity(0.9))
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .background(.black.opacity(0.65), in: Capsule())
+                                .accessibilityLabel("Kamerabatteri \(battery.label)")
+                                .accessibilityIdentifier("canon-battery-status")
+                        }
                         Text(model.activeFormatLabel)
                             .font(.caption.monospaced().weight(.semibold))
                             .foregroundStyle(.white.opacity(0.82))
@@ -442,6 +519,16 @@ struct VideoCaptureView: View {
                 Label("REC annonseres ikke i denne kameramodusen", systemImage: "exclamationmark.triangle")
                     .font(.caption2)
                     .foregroundStyle(CHTheme.warning)
+            }
+
+            if let battery = model.canon.batteryStatus {
+                Label(
+                    battery.isLow ? "Lavt kamerabatteri · \(battery.label)" : "Kamerabatteri · \(battery.label)",
+                    systemImage: battery.systemImage
+                )
+                .font(.caption2.weight(battery.isLow ? .bold : .regular))
+                .foregroundStyle(battery.isLow ? CHTheme.danger : CHTheme.textSecondary)
+                .accessibilityIdentifier("canon-battery-detail")
             }
 
             ForEach(CCAPIShootingSettingKey.allCases, id: \.self) { key in
@@ -1115,6 +1202,27 @@ final class VideoCaptureModel {
         Task {
             await updateNextTakeNumber()
             await reload()
+        }
+    }
+
+    func refreshVideoSources() {
+        guard !isRecording else { return }
+        camera.refreshSources()
+        canon.refreshDiscovery()
+        bridgeDiscovery.stop()
+        bridgeDiscovery.start()
+    }
+
+    func connectCanon(address: String) async {
+        guard !isRecording else { return }
+        bridgePlayer?.pause()
+        bridgePlayer = nil
+        selectedBridgeSourceId = nil
+        await camera.stop()
+        do {
+            try await canon.connectManually(address: address)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

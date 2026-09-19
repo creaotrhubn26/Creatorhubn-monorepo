@@ -37,6 +37,7 @@ final class CameraDiscovery: ObservableObject {
 
     private var browser: NWBrowser?
     private var probes: [String: Task<Void, Never>] = [:]
+    private var scanGeneration = UUID()
 
     /// Inject a custom URLSession factory for tests; defaults to the
     /// self-signed-cert-trusting session `CCAPIClient` expects.
@@ -50,6 +51,8 @@ final class CameraDiscovery: ObservableObject {
 
     func start() {
         guard browser == nil else { return }
+        let generation = UUID()
+        scanGeneration = generation
         cameras = []
         permissionDenied = false
         isSearching = true
@@ -109,11 +112,19 @@ final class CameraDiscovery: ObservableObject {
         // local /24 subnet in parallel; successful CCAPI probes land as
         // Found entries alongside any Bonjour hits (deduped by host).
         scanTask = Task { [weak self] in
-            await self?.scanLocalSubnets()
+            await self?.scanLocalSubnets(generation: generation)
         }
     }
 
+    /// Re-run both Bonjour and subnet discovery. Canon may enter CCAPI mode
+    /// after this screen has already opened, so a one-shot scan is not enough.
+    func refresh() {
+        stop()
+        start()
+    }
+
     func stop() {
+        scanGeneration = UUID()
         browser?.cancel()
         browser = nil
         scanTask?.cancel()
@@ -126,7 +137,7 @@ final class CameraDiscovery: ObservableObject {
     /// Enumerate all local /24 subnets via `getifaddrs`, probe every host
     /// in each, and surface CCAPI responders. Parallelism is capped so we
     /// don't open 254 simultaneous sockets — batches of 16.
-    private func scanLocalSubnets() async {
+    private func scanLocalSubnets(generation: UUID) async {
         let subnets = Self.localIPv4Subnets()
         if subnets.isEmpty {
             AppLog.capture.error("CameraDiscovery: no private IPv4 subnets found — getifaddrs empty")
@@ -152,21 +163,26 @@ final class CameraDiscovery: ObservableObject {
             index = upper
         }
         await MainActor.run {
+            guard self.scanGeneration == generation else { return }
             self.isSearching = false
             AppLog.capture.notice("CameraDiscovery: scan complete — \(self.cameras.count, privacy: .public) camera(s) found")
         }
     }
 
-    /// Every Canon body we've verified uses one of these three (scheme, port)
-    /// combinations for CCAPI:
+    /// Common CCAPI scheme/port combinations. Canon allows the port to be
+    /// configured on-camera, so discovery also supports connecting to the
+    /// exact URL shown by the camera.
     ///   - http://host:8080   — R5 (original) in infrastructure mode
     ///   - https://host:443   — R6 Mark II in AP mode (Canon's default TLS)
     ///   - https://host:8443  — alternate TLS port some newer bodies use
     /// Probe all three in parallel per IP and take the first valid responder.
-    private static let probeVariants: [(scheme: String, port: Int?)] = [
+    static let probeVariants: [(scheme: String, port: Int?)] = [
+        ("http", nil),    // default 80
         ("http", 8080),
         ("https", nil),   // default 443
-        ("https", 8443)
+        ("https", 8443),
+        ("http", 8443),
+        ("https", 8080)
     ]
 
     private func probeIP(host: String) async {
@@ -355,7 +371,7 @@ final class CameraDiscovery: ObservableObject {
         let host: String
         let port: UInt16
 
-        func buildBaseURL() -> URL? {
+        func buildBaseURL(scheme: String = "http") -> URL? {
             // Bracket IPv6 literals and strip trailing zone identifiers.
             var h = host
             if h.contains(":") {
@@ -365,9 +381,7 @@ final class CameraDiscovery: ObservableObject {
                 }
                 h = "[\(h)]"
             }
-            // Canon CCAPI bodies serve over HTTPS; if this is a plain HTTP
-            // printer etc., the probe will fail anyway and we'll drop it.
-            return URL(string: "https://\(h):\(port)")
+            return URL(string: "\(scheme)://\(h):\(port)")
         }
     }
 

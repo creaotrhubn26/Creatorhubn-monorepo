@@ -87,4 +87,48 @@ final class CCAPIInventoryTests: XCTestCase {
         XCTAssertEqual(start.movieRecording, true)
         XCTAssertEqual(stop.movieRecording, false)
     }
+
+    func testPollingResponseAndBatteryPresentationHandlePercentAndNamedLevels() throws {
+        let response = try JSONDecoder().decode(
+            CCAPIPollingResponse.self,
+            from: Data(#"{"battery":{"level":"17"}}"#.utf8)
+        )
+        XCTAssertEqual(response.batteryLevel, "17")
+
+        let numeric = try XCTUnwrap(CCAPIBatteryStatus(rawValue: "17%"))
+        XCTAssertEqual(numeric.percent, 17)
+        XCTAssertEqual(numeric.label, "17%")
+        XCTAssertEqual(numeric.systemImage, "battery.25")
+        XCTAssertTrue(numeric.isLow)
+
+        let named = try XCTUnwrap(CCAPIBatteryStatus(rawValue: "full"))
+        XCTAssertEqual(named.label, "Full")
+        XCTAssertEqual(named.systemImage, "battery.100")
+        XCTAssertFalse(named.isLow)
+    }
+
+    @MainActor
+    func testManualCameraAddressNormalizesDisplayedCCAPIURLAndCustomPort() throws {
+        XCTAssertEqual(
+            CCAPILiveViewController.normalizedCameraURL("192.168.1.42:8080")?.absoluteString,
+            "http://192.168.1.42:8080"
+        )
+        XCTAssertEqual(
+            CCAPILiveViewController.normalizedCameraURL("https://192.168.1.42:9443/ccapi")?.absoluteString,
+            "https://192.168.1.42:9443"
+        )
+        XCTAssertNil(CCAPILiveViewController.normalizedCameraURL("ftp://192.168.1.42"))
+        XCTAssertNil(CCAPILiveViewController.normalizedCameraURL(""))
+    }
+
+    @MainActor
+    func testDiscoveryProbesPlainHTTPDefaultAndKnownCanonPorts() {
+        let variants = CameraDiscovery.probeVariants.map {
+            "\($0.scheme):\($0.port ?? ($0.scheme == "https" ? 443 : 80))"
+        }
+        XCTAssertTrue(variants.contains("http:80"))
+        XCTAssertTrue(variants.contains("http:8080"))
+        XCTAssertTrue(variants.contains("https:443"))
+        XCTAssertTrue(variants.contains("https:8443"))
+    }
 }
