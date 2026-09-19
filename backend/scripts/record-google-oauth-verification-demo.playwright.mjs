@@ -52,10 +52,15 @@
  * prosjekt, ikke av origin. Samme CREATORHUB_GOOGLE_CLIENT_ID gir samme
  * appnavn, samme branding og nøyaktig de samme scopene.
  *
- *   # backend MÅ kjøre på 5000 — det er redirect-URI-en som er registrert
- *   # på OAuth-klienten (http://localhost:5000/api/creatorhub/google/oauth/callback)
- *   cd backend && PORT=5000 npm run dev
- *   cd frontend && npm run dev          # 5001
+ *   cd backend  && npm run dev          # 3003 (standard)
+ *   cd frontend && npm run dev          # 5001, proxyer /api → 3003
+ *
+ * Redirect-URI-en lokalt er http://localhost:5001/api/creatorhub/google/
+ * oauth/callback: Google sender nettleseren til frontend-porten, og Vite
+ * proxyer /api videre til backend. backend/.env har allerede denne verdien
+ * i CREATORHUB_GOOGLE_REDIRECT_URI, og resolveGoogleWorkspaceRedirectUri()
+ * lar en konfigurert localhost-URI vinne. Den må stå i Authorized redirect
+ * URIs på OAuth-klienten, ellers feiler samtykket med redirect_uri_mismatch.
  *
  *   APP_BASE_URL=http://localhost:5001 \
  *     node backend/scripts/record-google-oauth-verification-demo.playwright.mjs
@@ -457,32 +462,28 @@ async function preflight(env) {
     let backendOk = false;
     let backendNote = 'ingenting svarer';
     try {
-      const cbRes = await fetch('http://localhost:5000/api/creatorhub/google/status', { redirect: 'manual' });
-      const server = cbRes.headers.get('server') || '';
-      const ctype = cbRes.headers.get('content-type') || '';
-      if (/AirTunes/i.test(server)) {
-        backendNote = `macOS AirPlay Receiver squatter på porten (Server: ${server})`;
-      } else if (!/json/i.test(ctype)) {
-        backendNote = `noe annet enn backend svarer (${cbRes.status}, content-type: ${ctype || 'ukjent'})`;
-      } else {
+      const res = await fetch(`${base}/api/creatorhub/google/status`, { redirect: 'manual' });
+      const ctype = res.headers.get('content-type') || '';
+      if (/json/i.test(ctype)) {
         backendOk = true;
-        log(`Preflight: backend på :5000 svarer ${cbRes.status} (JSON) ✓`);
+        log(`Preflight: backend nås via ${base}/api (${res.status}, JSON) ✓`);
+      } else {
+        backendNote = `${base}/api svarer ${res.status} med content-type ${ctype || 'ukjent'} — Vite-proxyen når ikke backend`;
       }
     } catch (err) {
-      backendNote = `ingenting svarer (${err.message})`;
+      backendNote = `${base}/api svarer ikke (${err.message})`;
     }
 
     if (!backendOk) {
       log('');
-      log(`ADVARSEL: http://localhost:5000 — ${backendNote}.`);
-      log('Redirect-URI-en som er registrert på OAuth-klienten er');
-      log('  http://localhost:5000/api/creatorhub/google/oauth/callback');
-      log('Kjører ikke backend der, feiler samtykket med redirect_uri_mismatch');
-      log('midt i opptaket.');
+      log(`ADVARSEL: ${backendNote}.`);
+      log('Start backend: cd backend && npm run dev   (standard port 3003)');
+      log('Vite proxyer /api dit fra 5001.');
       log('');
-      log('På macOS holder AirPlay Receiver port 5000 som standard. Slå den av:');
-      log('  Systeminnstillinger → Generelt → AirDrop og Handoff → AirPlay-mottaker');
-      log('Start deretter backend med:  cd backend && PORT=5000 npm run dev');
+      log('Redirect-URI-en lokalt er');
+      log(`  ${base}/api/creatorhub/google/oauth/callback`);
+      log('Den MÅ stå i Authorized redirect URIs på OAuth-klienten, ellers');
+      log('feiler samtykket med redirect_uri_mismatch midt i opptaket.');
     }
   }
   return true;

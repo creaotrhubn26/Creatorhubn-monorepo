@@ -85,39 +85,51 @@ Googles krav om «same application, including name, branding» handler om.
 registrert som Authorized redirect URI nr. 2 på CreatorHub-klienten
 (`256648631702-o1ncl3el…`). Ingen konsollendring trengs.
 
-### Porter
+### Porter og redirect-URI
 
 | | Port | Merk |
 |---|---|---|
-| Backend | **5000** | Må være 5000 — det er den registrerte redirect-URI-en. Standard er ellers 3003 |
-| Frontend | 5001 | `vite --strictPort` |
+| Backend | 3003 | Standard. Ingen `PORT`-override |
+| Frontend | 5001 | Vite proxyer `/api` og `/ws` → `http://localhost:3003` |
 
-**På macOS holder AirPlay Receiver port 5000 som standard.** Den svarer 403
-med `Server: AirTunes/…`, og uten å slå den av kan ikke backend binde
-porten. Slå av under Systeminnstillinger → Generelt → AirDrop og Handoff →
-AirPlay-mottaker. Preflighten i skriptet oppdager dette og sier fra.
+Redirect-URI-en lokalt er:
 
-Registrert JS-origin er `localhost:5002`, ikke 5001. Det spiller ingen rolle
-for Workspace-tilkoblingen — den er server-side redirect. Det spiller rolle
-for Google Sign-In, så **logg inn i CreatorHub med e-post/passord lokalt**.
+```
+http://localhost:5001/api/creatorhub/google/oauth/callback
+```
+
+Google sender nettleseren til **frontend**-porten, og Vite proxyer `/api`
+videre til backend. `backend/.env` har allerede denne verdien i
+`CREATORHUB_GOOGLE_REDIRECT_URI`, og `resolveGoogleWorkspaceRedirectUri()`
+lar en konfigurert localhost-URI vinne over den request-avledede.
+
+**Den må stå i Authorized redirect URIs på OAuth-klienten.** Klienten har i
+dag `http://localhost:5000/...` registrert — en port ingenting kjører på i
+dette oppsettet. Legg til 5001-varianten under
+<https://console.cloud.google.com/auth/clients> → CreatorHub. Uten den
+feiler samtykket med `redirect_uri_mismatch` midt i opptaket.
+
+Registrert JS-origin er `localhost:5002`, ikke 5001. Det spiller ingen
+rolle for Workspace-tilkoblingen — den er server-side redirect. Det spiller
+rolle for Google Sign-In, så **logg inn i CreatorHub med e-post/passord
+lokalt**.
 
 ### Kjør
 
 ```
-cd backend  && PORT=5000 npm run dev
+cd backend  && npm run dev
 cd frontend && npm run dev
 
 APP_BASE_URL=http://localhost:5001 \
   node backend/scripts/record-google-oauth-verification-demo.playwright.mjs
 ```
 
-Backend trenger de ekte `CREATORHUB_GOOGLE_CLIENT_ID` og `_CLIENT_SECRET`
-lokalt for at samtykkeskjermen skal bli riktig. De ligger i Render — legg
-dem i en lokal `.env`, aldri i repoet.
+`backend/.env` har allerede `DATABASE_URL`, `CREATORHUB_GOOGLE_CLIENT_ID`
+og `_CLIENT_SECRET` satt, så samtykkeskjermen blir identisk med produksjon.
 
-Skriptet kjører en preflight før opptaket starter: det sjekker at målet
-faktisk er CreatorHub (ikke bare at noe svarer), at backend på 5000 svarer
-JSON, og minner om engelsk språk og rene demodata.
+Skriptet kjører en preflight før opptaket: det sjekker at målet faktisk er
+CreatorHub (ikke bare at noe svarer), at `/api` når backend gjennom
+proxyen, og minner om engelsk språk og rene demodata.
 
 ### Hva må finnes i demodataene
 
