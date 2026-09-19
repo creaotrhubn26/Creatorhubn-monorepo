@@ -26,6 +26,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ws, workspaceDarkTheme, workspaceCategoryFor } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
+import ProjectQuickCreate, { type QuickCreateResult } from '../project/ProjectQuickCreate';
 import GettingStartedChecklist from '../onboarding/GettingStartedChecklist';
 import GoogleReauthBanner from './GoogleReauthBanner';
 
@@ -48,6 +49,10 @@ const WorkspaceHome: React.FC = () => {
   // ?new=1 — samme modal uten prefill (f.eks. Creatorhub One Desk sin
   // «ingen prosjekter»-skjerm, som bare vil rett til wizarden).
   const [createInitialData, setCreateInitialData] = useState<any | null>(null);
+  // Hurtigopprettelse er standard. Den tunge wizarden åpnes bare når noe
+  // allerede har fylt den ut for brukeren (f.eks. fra en forespørsel).
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -230,7 +235,7 @@ const WorkspaceHome: React.FC = () => {
         </Container>
 
         {/* Prosjekt-opprettelse — samme wizard som workspace/dashboard */}
-        <Dialog open={showCreate} onClose={() => { setShowCreate(false); setCreateInitialData(null); }} fullWidth maxWidth="lg">
+        <Dialog open={showCreate} onClose={() => { setShowCreate(false); setCreateInitialData(null); }} fullWidth maxWidth={createInitialData ? "lg" : "sm"}>
           <Box sx={{
             px: 3, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             bgcolor: ws.panelSolid, borderBottom: `1px solid ${ws.border}`,
@@ -248,11 +253,44 @@ const WorkspaceHome: React.FC = () => {
             </IconButton>
           </Box>
           <DialogContent dividers sx={{ p: 0 }}>
-            {showCreate && (
+            {showCreate && !createInitialData && (
+              <ProjectQuickCreate
+                busy={quickBusy}
+                error={quickError}
+                onCancel={() => { setShowCreate(false); setQuickError(null); }}
+                onContinue={async (result: QuickCreateResult) => {
+                  setQuickBusy(true);
+                  setQuickError(null);
+                  try {
+                    const created: any = await apiRequest('/api/projects', {
+                      method: 'POST',
+                      body: {
+                        name: result.name,
+                        projectType: result.projectType,
+                        profession: (profession as string) || 'photographer',
+                        status: 'draft',
+                      },
+                    });
+                    setShowCreate(false);
+                    if (created?.id) {
+                      startTransition(() => navigate(`/workspace/${created.id}`));
+                    }
+                  } catch (err) {
+                    // Feiler opprettelsen, skal brukeren få vite det HER —
+                    // ikke oppdage det ved at ingenting skjer.
+                    console.error('Hurtigopprettelse feilet:', err);
+                    setQuickError('Kunne ikke opprette prosjektet. Prøv igjen.');
+                  } finally {
+                    setQuickBusy(false);
+                  }
+                }}
+              />
+            )}
+            {showCreate && createInitialData && (
               <ProjectCreationWithMemoryCards
                 profession={(profession as string) || 'photographer'}
                 userId={userId}
-                initialData={createInitialData || undefined}
+                initialData={createInitialData}
                 onProjectCreated={(p: any) => {
                   setShowCreate(false);
                   setCreateInitialData(null);
