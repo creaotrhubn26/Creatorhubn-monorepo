@@ -41,7 +41,7 @@ enum BridgeCredentialStore {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: deskId,
+            kSecAttrAccount as String: deskId
         ]
     }
 

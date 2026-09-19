@@ -211,7 +211,7 @@ actor CCAPIClient {
         )
         try await post(path: path, body: [
             "liveviewsize": size,
-            "cameradisplay": "keep",
+            "cameradisplay": "keep"
         ])
     }
 

@@ -780,8 +780,9 @@ final class VideoCaptureModel {
     private func resumePendingUploads() async {
         guard let session = SignInService.shared.session, let store else { return }
         do {
-            for asset in try await store.pending(ownerUserId: session.userId) {
-                if FileManager.default.fileExists(atPath: asset.localPath) { await upload(asset) }
+            for asset in try await store.pending(ownerUserId: session.userId)
+            where FileManager.default.fileExists(atPath: asset.localPath) {
+                await upload(asset)
             }
         } catch {
             errorMessage = error.localizedDescription
