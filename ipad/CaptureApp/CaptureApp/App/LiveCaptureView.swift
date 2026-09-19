@@ -369,7 +369,10 @@ struct LiveCaptureView: View {
     }
 
     private var connectedLayout: some View {
-        VStack(spacing: 0) {
+        GeometryReader { proxy in
+            let layout = CaptureWorkspaceLayout.resolve(size: proxy.size)
+
+            VStack(spacing: 0) {
             if case let .reconnecting(attempt) = model.connectionState {
                 ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
             }
@@ -423,197 +426,253 @@ struct LiveCaptureView: View {
 
             Divider().background(Color.captureSeparator)
 
-            ZStack {
-                if model.isReviewMode, let focused = model.focusedAsset {
-                    ReviewModeStage(
-                        asset: focused,
-                        reviewsForAsset: model.recentClientReviews
-                            .filter { $0.assetId == focused.id },
-                        allReviews: model.recentClientReviews,
-                        replyMemosDirectory: model.replyMemosDirectory
-                            ?? FileManager.default.temporaryDirectory,
-                        onSelectAnotherAsset: { id in
-                            model.focusedAssetId = id
-                        },
-                        onExit: { model.exitReviewMode() },
-                        onOpenFullscreen: { asset in viewerAsset = asset },
-                        onSendReply: { text in
-                            model.sendPhotographerReply(assetId: focused.id, comment: text)
-                        },
-                        onSendVoiceReply: { url, duration in
-                            model.sendPhotographerVoiceReply(
-                                assetId: focused.id, audioURL: url, durationSeconds: duration,
-                            )
-                        }
-                    )
-                } else if model.isComparing,
-                   let anchor = model.compareAnchorAsset,
-                   let candidate = model.focusedAsset {
-                    CompareHeroStage(
-                        anchor: anchor,
-                        candidate: candidate,
-                        onExit: { model.exitCompare() },
-                        onSwap: {
-                            // Promote candidate to anchor: B becomes the
-                            // new A, A becomes the new B (focused).
-                            let newAnchorId = candidate.id
-                            let newFocusId = anchor.id
-                            model.compareAnchorAssetId = newAnchorId
-                            model.focusedAssetId = newFocusId
-                        }
-                    )
-                } else {
-                    HeroStage(
-                        asset: model.focusedAsset,
-                        recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
-                        recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
-                        analysis: model.showHUD ? model.focusedAnalysis : nil,
-                        faceAnalysis: model.showHUD ? model.focusedAssetAnalysis : nil,
-                        aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
-                        aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
-                        showMagic: model.showMagic,
-                        onTap: { asset in viewerAsset = asset },
-                        onToggleMagic: { model.showMagic.toggle() },
-                        onOpenTune: {
-                            guard model.focusedAsset?.enhancedKey != nil else { return }
-                            isTunePresented = true
-                        },
-                        onSetRating: { rating in
-                            guard let id = model.focusedAsset?.id else { return }
-                            Task { await model.setRating(assetId: id, rating: rating) }
-                        },
-                        onTogglePick: {
-                            guard let asset = model.focusedAsset else { return }
-                            Task { await model.togglePick(asset: asset) }
-                        },
-                        onToggleReject: {
-                            guard let asset = model.focusedAsset else { return }
-                            Task { await model.toggleReject(asset: asset) }
-                        },
-                        onSetColor: { label in
-                            guard let id = model.focusedAsset?.id else { return }
-                            Task { await model.setColorLabel(assetId: id, label: label) }
-                        },
-                        voiceMemoState: model.voiceMemoService?.state ?? .idle,
-                        voiceMemoExists: model.focusedAsset?.voiceMemoKey != nil,
-                        onStartVoiceMemo: {
-                            guard let id = model.focusedAsset?.id else { return }
-                            model.startVoiceMemoRecording(assetId: id)
-                        },
-                        onStopVoiceMemo: {
-                            guard let id = model.focusedAsset?.id else { return }
-                            model.stopVoiceMemoRecording(assetId: id)
-                        },
-                        onPlayVoiceMemo: {
-                            guard let id = model.focusedAsset?.id else { return }
-                            model.toggleVoiceMemoPlayback(assetId: id)
-                        },
-                        onDeleteVoiceMemo: {
-                            guard let id = model.focusedAsset?.id else { return }
-                            model.deleteVoiceMemo(assetId: id)
-                        },
-                        onTranscribeVoiceMemo: {
-                            guard let id = model.focusedAsset?.id else { return }
-                            Task { await model.transcribeVoiceMemo(assetId: id) }
-                        },
-                        voiceMemoTranscript: model.focusedAsset.flatMap { model.voiceMemoTranscripts[$0.id] },
-                        onDismissNotes: {
-                            guard let id = model.focusedAsset?.id else { return }
-                            model.dismissNotes(assetId: id)
-                        }
-                    )
-                    .onChange(of: model.focusedAssetId) { _, _ in
-                        model.refreshAnalysis(for: model.focusedAsset)
-                    }
-                    .onChange(of: model.focusedAsset?.previewKey) { _, _ in
-                        model.refreshAnalysis(for: model.focusedAsset)
-                    }
+            if layout.mode == .landscapeRail {
+                HStack(spacing: 0) {
+                    captureStage
+                    Divider().background(Color.captureSeparator)
+                    landscapeCaptureRail
+                        .frame(width: layout.sideRailWidth)
                 }
-                ShutterFlashOverlay(trigger: model.shutterFlashToken)
-                    .allowsHitTesting(false)
+                .frame(maxHeight: .infinity)
+            } else {
+                captureStage
+                    .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
 
             TelemetryFooter(telemetry: model.telemetry, shotsRemaining: model.estimatedShotsRemaining)
 
-            CapturePolicyBar(model: model)
-
-            VStack(spacing: 0) {
-                FilmstripFilterBar(
-                    current: model.filmstripFilter,
-                    currentColor: model.filmstripColorFilter,
-                    counts: FilmstripFilterBar.Counts(
-                        total: model.assets.count,
-                        picks: model.assets.filter { $0.flaggedForClient && !$0.rejected }.count,
-                        fourPlus: model.assets.filter { $0.rating >= 4 && !$0.rejected }.count
-                    ),
-                    colorCounts: Dictionary(
-                        grouping: model.assets.compactMap { $0.colorLabel },
-                        by: { $0 }
-                    ).mapValues(\.count),
-                    onSelect: { model.filmstripFilter = $0 },
-                    onSelectColor: { model.filmstripColorFilter = $0 }
-                )
-                if !model.personGroups.isEmpty {
-                    PersonFilterRow(model: model)
+            if layout.mode == .stacked {
+                HStack(spacing: 0) {
+                    CapturePolicyBar(model: model)
+                    ShutterButton(
+                        enabled: model.canShoot,
+                        isShooting: model.connectionState == .shooting,
+                        diameter: 68
+                    ) {
+                        Task { await model.triggerShutter() }
+                    }
+                    .padding(.trailing, 24)
+                    .padding(.vertical, 6)
                 }
-                FilmstripRail(
-                    assets: model.filteredAssets,
-                    focusedAssetId: model.focusedAssetId,
-                    compareAnchorId: model.compareAnchorAssetId,
-                    assetIdsWithReviews: model.clientReviewsEnabled
-                        ? model.assetIdsWithReviews
-                        : [],
-                    autoEditedIds: model.autoEditedAssetIds,
-                    onSelect: { model.focusedAssetId = $0.id },
-                    onDoubleTap: { asset in
-                        // Slice 7 — route to DetectionReviewSheet when
-                        // there are pending detections; once committed,
-                        // doubleTap opens the viewer normally.
-                        if let pending = asset.pendingDetections, !pending.isEmpty {
-                            pendingReviewAsset = asset
-                        } else {
-                            viewerAsset = asset
-                        }
-                    },
-                    onLongPress: { asset in
-                        // Long-press anchors A-side; if user long-presses
-                        // the anchor again, exit compare. If they
-                        // long-press the currently-focused asset (no B
-                        // would exist), bump focus to the previous asset
-                        // so the compare panel has both sides ready.
-                        if model.compareAnchorAssetId == asset.id {
-                            model.exitCompare()
-                        } else {
-                            model.compareAnchorAssetId = asset.id
-                            if model.focusedAssetId == asset.id,
-                               let other = model.assets.first(where: { $0.id != asset.id }) {
-                                model.focusedAssetId = other.id
-                            }
-                        }
+                filmstripPanel(axis: .horizontal)
+                    .frame(height: layout.filmstripHeight)
+            }
+            }
+            .overlay(alignment: .top) {
+                if let err = model.errorMessage, model.phase == .connected {
+                    ErrorToast(message: err) { model.errorMessage = nil }
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        }
+    }
+
+    private var captureStage: some View {
+        ZStack {
+            if model.isReviewMode, let focused = model.focusedAsset {
+                ReviewModeStage(
+                    asset: focused,
+                    reviewsForAsset: model.recentClientReviews.filter { $0.assetId == focused.id },
+                    allReviews: model.recentClientReviews,
+                    replyMemosDirectory: model.replyMemosDirectory ?? FileManager.default.temporaryDirectory,
+                    onSelectAnotherAsset: { model.focusedAssetId = $0 },
+                    onExit: { model.exitReviewMode() },
+                    onOpenFullscreen: { viewerAsset = $0 },
+                    onSendReply: { model.sendPhotographerReply(assetId: focused.id, comment: $0) },
+                    onSendVoiceReply: { url, duration in
+                        model.sendPhotographerVoiceReply(
+                            assetId: focused.id,
+                            audioURL: url,
+                            durationSeconds: duration
+                        )
                     }
                 )
-                .frame(height: 152)
+            } else if model.isComparing,
+                      let anchor = model.compareAnchorAsset,
+                      let candidate = model.focusedAsset {
+                CompareHeroStage(
+                    anchor: anchor,
+                    candidate: candidate,
+                    onExit: { model.exitCompare() },
+                    onSwap: {
+                        model.compareAnchorAssetId = candidate.id
+                        model.focusedAssetId = anchor.id
+                    }
+                )
+            } else {
+                HeroStage(
+                    asset: model.focusedAsset,
+                    recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
+                    recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
+                    analysis: model.showHUD ? model.focusedAnalysis : nil,
+                    faceAnalysis: model.showHUD ? model.focusedAssetAnalysis : nil,
+                    aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
+                    aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
+                    showMagic: model.showMagic,
+                    onTap: { viewerAsset = $0 },
+                    onToggleMagic: { model.showMagic.toggle() },
+                    onOpenTune: {
+                        guard model.focusedAsset?.enhancedKey != nil else { return }
+                        isTunePresented = true
+                    },
+                    onSetRating: { rating in
+                        guard let id = model.focusedAsset?.id else { return }
+                        Task { await model.setRating(assetId: id, rating: rating) }
+                    },
+                    onTogglePick: {
+                        guard let asset = model.focusedAsset else { return }
+                        Task { await model.togglePick(asset: asset) }
+                    },
+                    onToggleReject: {
+                        guard let asset = model.focusedAsset else { return }
+                        Task { await model.toggleReject(asset: asset) }
+                    },
+                    onSetColor: { label in
+                        guard let id = model.focusedAsset?.id else { return }
+                        Task { await model.setColorLabel(assetId: id, label: label) }
+                    },
+                    voiceMemoState: model.voiceMemoService?.state ?? .idle,
+                    voiceMemoExists: model.focusedAsset?.voiceMemoKey != nil,
+                    onStartVoiceMemo: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        model.startVoiceMemoRecording(assetId: id)
+                    },
+                    onStopVoiceMemo: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        model.stopVoiceMemoRecording(assetId: id)
+                    },
+                    onPlayVoiceMemo: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        model.toggleVoiceMemoPlayback(assetId: id)
+                    },
+                    onDeleteVoiceMemo: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        model.deleteVoiceMemo(assetId: id)
+                    },
+                    onTranscribeVoiceMemo: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        Task { await model.transcribeVoiceMemo(assetId: id) }
+                    },
+                    voiceMemoTranscript: model.focusedAsset.flatMap { model.voiceMemoTranscripts[$0.id] },
+                    onDismissNotes: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        model.dismissNotes(assetId: id)
+                    }
+                )
+                .onChange(of: model.focusedAssetId) { _, _ in
+                    model.refreshAnalysis(for: model.focusedAsset)
+                }
+                .onChange(of: model.focusedAsset?.previewKey) { _, _ in
+                    model.refreshAnalysis(for: model.focusedAsset)
+                }
             }
-            .background(Color.captureFilmstripBG)
+            ShutterFlashOverlay(trigger: model.shutterFlashToken)
+                .allowsHitTesting(false)
         }
-        .overlay(alignment: .bottomTrailing) {
-            ShutterButton(
-                enabled: model.canShoot,
-                isShooting: model.connectionState == .shooting
-            ) {
-                Task { await model.triggerShutter() }
+    }
+
+    private var landscapeCaptureRail: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Siste bilder")
+                        .font(.headline.weight(.semibold))
+                    Text("\(model.filteredAssets.count) i aktivt utvalg")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                ShutterButton(
+                    enabled: model.canShoot,
+                    isShooting: model.connectionState == .shooting,
+                    diameter: 72
+                ) {
+                    Task { await model.triggerShutter() }
+                }
             }
-            .padding(.trailing, 32)
-            .padding(.bottom, 176)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+
+            Divider().background(Color.captureSeparator)
+            filmstripPanel(axis: .vertical)
+            Divider().background(Color.captureSeparator)
+            CapturePolicyBar(model: model)
         }
-        .overlay(alignment: .top) {
-            if let err = model.errorMessage, model.phase == .connected {
-                ErrorToast(message: err) { model.errorMessage = nil }
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+        .background(Color.captureFilmstripBG)
+    }
+
+    private func filmstripPanel(axis: Axis.Set) -> some View {
+        VStack(spacing: 0) {
+            FilmstripFilterBar(
+                current: model.filmstripFilter,
+                currentColor: model.filmstripColorFilter,
+                counts: FilmstripFilterBar.Counts(
+                    total: model.assets.count,
+                    picks: model.assets.filter { $0.flaggedForClient && !$0.rejected }.count,
+                    fourPlus: model.assets.filter { $0.rating >= 4 && !$0.rejected }.count
+                ),
+                colorCounts: Dictionary(
+                    grouping: model.assets.compactMap { $0.colorLabel },
+                    by: { $0 }
+                ).mapValues(\.count),
+                onSelect: { model.filmstripFilter = $0 },
+                onSelectColor: { model.filmstripColorFilter = $0 }
+            )
+            if !model.personGroups.isEmpty {
+                PersonFilterRow(model: model)
             }
+            FilmstripRail(
+                assets: model.filteredAssets,
+                focusedAssetId: model.focusedAssetId,
+                compareAnchorId: model.compareAnchorAssetId,
+                assetIdsWithReviews: model.clientReviewsEnabled ? model.assetIdsWithReviews : [],
+                autoEditedIds: model.autoEditedAssetIds,
+                axis: axis,
+                onSelect: { model.focusedAssetId = $0.id },
+                onDoubleTap: { asset in
+                    if let pending = asset.pendingDetections, !pending.isEmpty {
+                        pendingReviewAsset = asset
+                    } else {
+                        viewerAsset = asset
+                    }
+                },
+                onLongPress: { asset in
+                    if model.compareAnchorAssetId == asset.id {
+                        model.exitCompare()
+                    } else {
+                        model.compareAnchorAssetId = asset.id
+                        if model.focusedAssetId == asset.id,
+                           let other = model.assets.first(where: { $0.id != asset.id }) {
+                            model.focusedAssetId = other.id
+                        }
+                    }
+                }
+            )
         }
+        .background(Color.captureFilmstripBG)
+    }
+}
+
+struct CaptureWorkspaceLayout: Equatable {
+    enum Mode: Equatable { case stacked, landscapeRail }
+
+    let mode: Mode
+    let sideRailWidth: CGFloat
+    let filmstripHeight: CGFloat
+
+    static func resolve(size: CGSize) -> Self {
+        // iPadOS 26 can restore a short, wide freeform window whose logical
+        // width is below 900 pt even on a 13-inch iPad. It still needs the
+        // side rail; the stacked shutter would otherwise fall below the
+        // visible window. Aspect ratio prevents this from triggering in a
+        // narrow Split View column.
+        let usesRail = size.width >= 760 && size.width > size.height * 1.12
+        return Self(
+            mode: usesRail ? .landscapeRail : .stacked,
+            sideRailWidth: min(400, max(300, size.width * 0.28)),
+            filmstripHeight: size.height < 820 ? 132 : 152
+        )
     }
 }
 
@@ -4402,44 +4461,46 @@ private struct FilmstripRail: View {
     let assetIdsWithReviews: Set<UUID>
     /// Bilder capture-edit-policyen auto-redigerte → «Auto»-badge (E4).
     var autoEditedIds: Set<UUID> = []
+    var axis: Axis.Set = .horizontal
     let onSelect: (Asset) -> Void
     let onDoubleTap: (Asset) -> Void
     let onLongPress: (Asset) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(Array(assets.enumerated()), id: \.element.id) { idx, asset in
-                        FilmstripTile(
-                            asset: asset,
-                            isFocused: asset.id == focusedAssetId,
-                            isCompareAnchor: asset.id == compareAnchorId,
-                            hasReviews: assetIdsWithReviews.contains(asset.id),
-                            lightChanged: idx > 0 && ExifInfo.lightChanged(
-                                previousFired: assets[idx - 1].signals.flashFired,
-                                previousComp: assets[idx - 1].signals.flashCompensation,
-                                currentFired: asset.signals.flashFired,
-                                currentComp: asset.signals.flashCompensation),
-                            autoEdited: autoEditedIds.contains(asset.id)
-                        )
-                        // Order matters — register double-tap before
-                        // single-tap so the dispatcher waits for a
-                        // possible second tap before firing single.
-                        .onTapGesture(count: 2) { onDoubleTap(asset) }
-                        .onTapGesture { onSelect(asset) }
-                        .onLongPressGesture(minimumDuration: 0.4) {
-                            onLongPress(asset)
+            Group {
+                if axis == .vertical {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 156, maximum: 156), spacing: 10)],
+                            alignment: .center,
+                            spacing: 12
+                        ) {
+                            ForEach(Array(assets.enumerated()), id: \.element.id) { idx, asset in
+                                tile(asset, at: idx)
+                            }
                         }
-                        .id(asset.id)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 14)
+                    }
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 10) {
+                            ForEach(Array(assets.enumerated()), id: \.element.id) { idx, asset in
+                                tile(asset, at: idx)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
             }
             .onChange(of: assets.count) { _, _ in
                 if let last = assets.last?.id {
-                    withAnimation(.spring) { proxy.scrollTo(last, anchor: .trailing) }
+                    withAnimation(.spring) {
+                        proxy.scrollTo(last, anchor: axis == .vertical ? .bottom : .trailing)
+                    }
                 }
             }
             .onChange(of: focusedAssetId) { _, new in
@@ -4450,6 +4511,26 @@ private struct FilmstripRail: View {
                 }
             }
         }
+    }
+
+    private func tile(_ asset: Asset, at idx: Int) -> some View {
+        FilmstripTile(
+            asset: asset,
+            isFocused: asset.id == focusedAssetId,
+            isCompareAnchor: asset.id == compareAnchorId,
+            hasReviews: assetIdsWithReviews.contains(asset.id),
+            lightChanged: idx > 0 && ExifInfo.lightChanged(
+                previousFired: assets[idx - 1].signals.flashFired,
+                previousComp: assets[idx - 1].signals.flashCompensation,
+                currentFired: asset.signals.flashFired,
+                currentComp: asset.signals.flashCompensation
+            ),
+            autoEdited: autoEditedIds.contains(asset.id)
+        )
+        .onTapGesture(count: 2) { onDoubleTap(asset) }
+        .onTapGesture { onSelect(asset) }
+        .onLongPressGesture(minimumDuration: 0.4) { onLongPress(asset) }
+        .id(asset.id)
     }
 }
 
@@ -4871,6 +4952,7 @@ private struct TelemetryChip: View {
 private struct ShutterButton: View {
     let enabled: Bool
     let isShooting: Bool
+    var diameter: CGFloat = 88
     let onTap: () -> Void
 
     var body: some View {
@@ -4881,17 +4963,17 @@ private struct ShutterButton: View {
             ZStack {
                 Circle()
                     .fill(enabled ? Color.accentColor : Color.gray.opacity(0.35))
-                    .frame(width: 88, height: 88)
-                    .shadow(color: .black.opacity(0.4), radius: 18, y: 6)
+                    .frame(width: diameter, height: diameter)
+                    .shadow(color: .black.opacity(0.4), radius: diameter * 0.2, y: 6)
                 Circle()
                     .stroke(.white.opacity(0.25), lineWidth: 4)
-                    .frame(width: 70, height: 70)
+                    .frame(width: diameter * 0.8, height: diameter * 0.8)
                 if isShooting {
                     ProgressView()
                         .tint(.white)
                 } else {
                     Image(systemName: "camera.shutter.button.fill")
-                        .font(.system(size: 32, weight: .medium))
+                        .font(.system(size: diameter * 0.36, weight: .medium))
                         .foregroundStyle(.white)
                 }
             }
@@ -4899,6 +4981,8 @@ private struct ShutterButton: View {
         .buttonStyle(PressableScale())
         .disabled(!enabled)
         .keyboardShortcut(.return, modifiers: [])
+        .accessibilityLabel(isShooting ? "Tar bilde" : "Ta bilde")
+        .accessibilityIdentifier("capture-shutter-button")
     }
 }
 

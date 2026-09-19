@@ -21,6 +21,11 @@ import XCTest
 final class ScreenshotHarness: XCTestCase {
     override class var runsForEachTargetApplicationUIConfiguration: Bool { false }
 
+    override func tearDown() {
+        XCUIDevice.shared.orientation = .portrait
+        super.tearDown()
+    }
+
     func testCaptureAppStoreScreenshots() {
         let app = XCUIApplication()
         app.launchArguments += [
@@ -77,6 +82,65 @@ final class ScreenshotHarness: XCTestCase {
 
         tapTab("Pris", in: app)
         snap(app, name: "10_Pris")
+    }
+
+    /// Guards the two production workspaces that make the most intensive use
+    /// of iPad landscape. The assertions deliberately target controls that
+    /// used to be clipped or hidden when the window changed width.
+    func testAdaptiveLandscapeWorkspaces() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+
+        let shoot = XCUIApplication()
+        shoot.launchArguments += [
+            "--legacy-capture-only",
+            "--auto-demo",
+            "--auto-demo-shots=1",
+            "--no-demo-reviews",
+        ]
+        shoot.launch()
+        let shutter = shoot.buttons["capture-shutter-button"]
+        XCTAssertTrue(
+            shutter.waitForExistence(timeout: 12),
+            "Shoot-utløseren må være tilgjengelig i landscape",
+        )
+        XCTAssertTrue(shutter.isHittable, "Shoot-utløseren må være synlig og trykkbar i landscape")
+        snap(shoot, name: "QA_Shoot_Landscape")
+        shoot.terminate()
+
+        let video = XCUIApplication()
+        video.launchArguments += ["--tab-video", "--screenshot-demo-fixtures"]
+        video.launch()
+        let recordButton = video.buttons["video-record-button"]
+        XCTAssertTrue(
+            recordButton.waitForExistence(timeout: 12),
+            "Video-opptaksknappen må være tilgjengelig i landscape",
+        )
+        XCTAssertTrue(recordButton.isHittable, "Video-opptaksknappen må være synlig og trykkbar")
+        let landscapeTakeInspector = video.staticTexts["TAKE"].waitForExistence(timeout: 2)
+        let landscapeTakeButton = landscapeTakeInspector
+            ? nil
+            : video.buttons["video-take-panel"]
+        XCTAssertTrue(
+            landscapeTakeInspector
+                || (landscapeTakeButton?.waitForExistence(timeout: 4) == true
+                    && landscapeTakeButton?.isHittable == true),
+            "Take-panelet må være synlig eller nås fra en trykkbar knapp i landscape",
+        )
+        snap(video, name: "QA_Video_Landscape")
+
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(
+            video.staticTexts["VIDEOKILDER"].waitForExistence(timeout: 8),
+            "Videokilder må fortsatt være tilgjengelige etter rotasjon",
+        )
+        let takeInspectorVisible = video.staticTexts["TAKE"].waitForExistence(timeout: 2)
+        let takeButtonVisible = takeInspectorVisible
+            ? false
+            : video.buttons["video-take-panel"].waitForExistence(timeout: 6)
+        XCTAssertTrue(
+            takeInspectorVisible || takeButtonVisible,
+            "Take-panelet må fortsatt være tilgjengelig etter rotasjon",
+        )
     }
 
     /// iPadOS 26 exposes SwiftUI's floating tab bar as button/cell nodes, not

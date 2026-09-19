@@ -5,28 +5,39 @@ import Observation
 import SwiftUI
 
 struct VideoCaptureView: View {
+    private enum AuxiliaryPanel: String, Identifiable {
+        case sources
+        case take
+        var id: String { rawValue }
+    }
+
     @State private var model = VideoCaptureModel()
     @State private var auth = SignInService.shared
     @State private var showProjectPicker = false
+    @State private var auxiliaryPanel: AuxiliaryPanel?
 
     var body: some View {
         GeometryReader { proxy in
+            let layout = VideoWorkspaceLayout.resolve(size: proxy.size)
+
             VStack(spacing: 0) {
-                header
+                header(layout: layout)
                 Divider().overlay(CHTheme.border)
                 HStack(spacing: 0) {
-                    sourceRail
-                        .frame(width: proxy.size.width >= 850 ? 220 : 170)
-                    Divider().overlay(CHTheme.border)
-                    monitor
-                    if proxy.size.width >= 980 {
+                    if layout.showsSourceRail {
+                        sourceRail
+                            .frame(width: layout.sourceRailWidth)
                         Divider().overlay(CHTheme.border)
-                        takeInspector.frame(width: 280)
+                    }
+                    monitor
+                    if layout.showsTakeInspector {
+                        Divider().overlay(CHTheme.border)
+                        takeInspector.frame(width: layout.takeInspectorWidth)
                     }
                 }
                 Divider().overlay(CHTheme.border)
                 filmstrip
-                    .frame(height: 126)
+                    .frame(height: layout.filmstripHeight)
             }
             .background(CHTheme.bgDeep)
         }
@@ -35,6 +46,19 @@ struct VideoCaptureView: View {
             ProjectSelectionView { project in model.selectProject(project) }
                 .environment(auth)
                 .presentationDetents([.large])
+        }
+        .sheet(item: $auxiliaryPanel) { panel in
+            Group {
+                switch panel {
+                case .sources:
+                    sourceRail
+                case .take:
+                    takeInspector
+                }
+            }
+            .frame(minWidth: 320, minHeight: 420)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .task { await model.activate() }
         .onDisappear { Task { await model.deactivate() } }
@@ -45,7 +69,7 @@ struct VideoCaptureView: View {
         }
     }
 
-    private var header: some View {
+    private func header(layout: VideoWorkspaceLayout) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Video")
@@ -56,12 +80,25 @@ struct VideoCaptureView: View {
                     .foregroundStyle(CHTheme.textMuted)
             }
             Spacer()
+            if !layout.showsSourceRail {
+                Button {
+                    auxiliaryPanel = .sources
+                } label: {
+                    Label("Kilder", systemImage: "video.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("video-sources-panel")
+            }
             Button {
                 showProjectPicker = true
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "folder")
-                    Text(model.selectedProjectTitle ?? "Velg prosjekt")
+                    Text(
+                        layout.mode == .compact
+                            ? "Prosjekt"
+                            : (model.selectedProjectTitle ?? "Velg prosjekt")
+                    )
                         .lineLimit(1)
                     Image(systemName: "chevron.down").font(.caption2)
                 }
@@ -72,6 +109,16 @@ struct VideoCaptureView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("video-project-picker")
+
+            if !layout.showsTakeInspector {
+                Button {
+                    auxiliaryPanel = .take
+                } label: {
+                    Label("Take", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("video-take-panel")
+            }
 
             Label(model.connectionLabel, systemImage: model.connectionIcon)
                 .font(.caption.weight(.semibold))
@@ -234,6 +281,7 @@ struct VideoCaptureView: View {
         }
         .padding(14)
         .background(CHTheme.bg)
+        .accessibilityIdentifier("video-source-rail")
     }
 
     private var monitor: some View {
@@ -249,7 +297,7 @@ struct VideoCaptureView: View {
                     VideoPlayer(player: player)
                         .accessibilityLabel("CreatorHub Bridge live monitor")
                 } else {
-                    VideoPreviewView(session: model.camera.captureSession)
+                    VideoPreviewView(controller: model.camera)
                         .accessibilityLabel("Live videomonitor")
                 }
                 if !model.monitorReady && !model.camera.isRecording {
@@ -491,6 +539,34 @@ struct VideoCaptureView: View {
         case .local: CHTheme.warning
         default: CHTheme.info
         }
+    }
+}
+
+struct VideoWorkspaceLayout: Equatable {
+    enum Mode: Equatable { case compact, standard, wide }
+
+    let mode: Mode
+    let sourceRailWidth: CGFloat
+    let takeInspectorWidth: CGFloat
+    let filmstripHeight: CGFloat
+
+    var showsSourceRail: Bool { mode != .compact }
+    var showsTakeInspector: Bool { mode == .wide }
+
+    static func resolve(size: CGSize) -> Self {
+        let mode: Mode = if size.width >= 980 {
+            .wide
+        } else if size.width >= 700 {
+            .standard
+        } else {
+            .compact
+        }
+        return Self(
+            mode: mode,
+            sourceRailWidth: size.width >= 1_100 ? 220 : 180,
+            takeInspectorWidth: size.width >= 1_200 ? 300 : 270,
+            filmstripHeight: size.height < 650 ? 104 : 126
+        )
     }
 }
 

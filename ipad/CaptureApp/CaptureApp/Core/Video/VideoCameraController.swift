@@ -39,6 +39,10 @@ final class VideoCameraController: NSObject {
     }
 
     private let box = SessionBox()
+    @ObservationIgnored private weak var previewLayer: AVCaptureVideoPreviewLayer?
+    @ObservationIgnored private var activeDevice: AVCaptureDevice?
+    @ObservationIgnored private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    @ObservationIgnored private var rotationObservations: [NSKeyValueObservation] = []
     private var completion: CheckedContinuation<Recording, any Error>?
     private var activeSource: Source?
     private var recordStartedAt: Date?
@@ -97,6 +101,28 @@ final class VideoCameraController: NSObject {
         let session = box.session
         await Task.detached(priority: .utility) { session.stopRunning() }.value
         phase = .idle
+    }
+
+    func attachPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
+        if previewLayer === layer, rotationCoordinator != nil {
+            if layer.session !== box.session { layer.session = box.session }
+            return
+        }
+        previewLayer = layer
+        layer.session = box.session
+        if let activeDevice {
+            installRotationCoordinator(device: activeDevice, previewLayer: layer)
+        }
+    }
+
+    func detachPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
+        guard previewLayer === layer else { return }
+        previewLayer = nil
+        if let activeDevice {
+            installRotationCoordinator(device: activeDevice, previewLayer: nil)
+        } else {
+            clearRotationCoordinator()
+        }
     }
 
     func selectSource(id: String) async {
@@ -167,11 +193,63 @@ final class VideoCameraController: NSObject {
         guard session.canAddOutput(box.movieOutput) else { throw CameraFailure.unsupportedRecording }
         session.addOutput(box.movieOutput)
         box.movieOutput.movieFragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
+        activeDevice = device
+        installRotationCoordinator(device: device, previewLayer: previewLayer)
         activeSource = Source(
             id: device.uniqueID,
             name: device.localizedName,
             isExternal: device.deviceType == .external
         )
+    }
+
+    private func installRotationCoordinator(
+        device: AVCaptureDevice,
+        previewLayer: AVCaptureVideoPreviewLayer?
+    ) {
+        clearRotationCoordinator()
+        let coordinator = AVCaptureDevice.RotationCoordinator(
+            device: device,
+            previewLayer: previewLayer
+        )
+        rotationCoordinator = coordinator
+        rotationObservations = [
+            coordinator.observe(
+                \.videoRotationAngleForHorizonLevelPreview,
+                options: [.initial, .new]
+            ) { [weak self] coordinator, _ in
+                Task { @MainActor [weak self] in
+                    self?.applyPreviewRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
+                }
+            },
+            coordinator.observe(
+                \.videoRotationAngleForHorizonLevelCapture,
+                options: [.initial, .new]
+            ) { [weak self] coordinator, _ in
+                Task { @MainActor [weak self] in
+                    self?.applyCaptureRotation(coordinator.videoRotationAngleForHorizonLevelCapture)
+                }
+            },
+        ]
+    }
+
+    private func clearRotationCoordinator() {
+        rotationObservations.forEach { $0.invalidate() }
+        rotationObservations.removeAll()
+        rotationCoordinator = nil
+    }
+
+    private func applyPreviewRotation(_ angle: CGFloat) {
+        guard let connection = previewLayer?.connection,
+              connection.isVideoRotationAngleSupported(angle)
+        else { return }
+        connection.videoRotationAngle = angle
+    }
+
+    private func applyCaptureRotation(_ angle: CGFloat) {
+        guard let connection = box.movieOutput.connection(with: .video),
+              connection.isVideoRotationAngleSupported(angle)
+        else { return }
+        connection.videoRotationAngle = angle
     }
 
     private static func newRecordingURL() throws -> URL {
@@ -252,17 +330,35 @@ extension VideoCameraController: AVCaptureFileOutputRecordingDelegate {
 }
 
 struct VideoPreviewView: UIViewRepresentable {
-    let session: AVCaptureSession
+    let controller: VideoCameraController
+
+    @MainActor
+    final class Coordinator {
+        weak var controller: VideoCameraController?
+
+        init(controller: VideoCameraController) {
+            self.controller = controller
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(controller: controller)
+    }
 
     func makeUIView(context: Context) -> PreviewSurface {
         let view = PreviewSurface()
         view.previewLayer.videoGravity = .resizeAspect
-        view.previewLayer.session = session
+        controller.attachPreviewLayer(view.previewLayer)
         return view
     }
 
     func updateUIView(_ uiView: PreviewSurface, context: Context) {
-        if uiView.previewLayer.session !== session { uiView.previewLayer.session = session }
+        controller.attachPreviewLayer(uiView.previewLayer)
+    }
+
+    static func dismantleUIView(_ uiView: PreviewSurface, coordinator: Coordinator) {
+        coordinator.controller?.detachPreviewLayer(uiView.previewLayer)
+        uiView.previewLayer.session = nil
     }
 }
 

@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 
 struct AppDatabase: Sendable {
+    private static let diskOpenLock = NSLock()
     let dbWriter: any DatabaseWriter
 
     init(_ dbWriter: any DatabaseWriter) throws {
@@ -10,15 +11,24 @@ struct AppDatabase: Sendable {
     }
 
     static func openOnDisk(at fileURL: URL) throws -> AppDatabase {
+        // GRDB enables WAL while the pool is opened. SQLite requires that
+        // journal-mode transition to be exclusive, so serialize construction
+        // when multiple SwiftUI surfaces (or app startup services) request the
+        // same database at once. Normal reads/writes remain concurrent.
+        diskOpenLock.lock()
+        defer { diskOpenLock.unlock() }
+
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         var configuration = Configuration()
-        configuration.prepareDatabase { db in
-            try db.execute(sql: "PRAGMA foreign_keys = ON")
-            try db.execute(sql: "PRAGMA journal_mode = WAL")
-        }
+        // DatabasePool already enables WAL, and GRDB enables foreign keys by
+        // default. Re-running those PRAGMAs for every connection can require
+        // an exclusive lock and made concurrent app/widget startup fail with
+        // SQLITE_BUSY on physical iPads. Let GRDB own setup and wait briefly
+        // when another CreatorHub connection is finishing a write/migration.
+        configuration.busyMode = .timeout(5)
         let pool = try DatabasePool(path: fileURL.path, configuration: configuration)
         return try AppDatabase(pool)
     }
