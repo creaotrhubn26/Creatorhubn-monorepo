@@ -445,8 +445,12 @@ async function preflight(env) {
     log('');
     log('Målet svarer ikke. Start miljøet først:');
     if (isLocal) {
-      log('  cd backend  && PORT=5000 npm run dev     # 5000 er registrert redirect-URI');
-      log('  cd frontend && npm run dev               # 5001');
+      log('  cd backend  && npm run dev   # 3003');
+      log('  cd frontend && npm run dev   # 5001, proxyer /api → 3003');
+      log('');
+      log('Svarer 5001 med feil innhold? Sjekk om en annen Vite-server deler');
+      log('porten på IPv6 — macOS slår opp localhost til ::1 først:');
+      log('  lsof -nP -iTCP:5001 -sTCP:LISTEN');
     } else {
       log(`  Sjekk at ${base} er oppe.`);
     }
