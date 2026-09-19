@@ -2268,6 +2268,15 @@ const EnhancedIntegrationWrapper: React.FC<{
 export const useEnhancedMasterIntegration = () => {
   const context = useContext(MasterIntegrationContext);
   if (!context) {
+    // Under SSR (geo-prerender av juridiske sider) finnes ingen provider, og
+    // å dra hele provider-kjeden inn i prerender-bundelen trekker med seg
+    // AuthProvider, GA4 og helsesjekker. Konsumentene som prerendres leser
+    // context valgfritt (`(integration as any)?.icons`), så null er trygt.
+    // I nettleseren står guarden uendret — en manglende provider der er en
+    // ekte feil.
+    if (typeof window === 'undefined') {
+      return null as unknown as MasterIntegrationContextType;
+    }
     throw new Error('useEnhancedMasterIntegration must be used within EnhancedMasterIntegrationProvider');
 }
   return context;
