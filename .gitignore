@@ -16,6 +16,7 @@ tools/*/src-tauri/target/
 .env.page-public-content.demo.local
 .env.page-mentions.demo.local
 .env.page-metadata.demo.local
+.env.google-verification.demo.local
 .env.ig-public.demo.local
 .env.leads-retrieval.demo.local
 .env.ig-events.demo.local
@@ -83,7 +84,6 @@ docker/
 !docs/creatorhub-workspace-tasklist.md
 !docs/prototype-tester-legal-release-checklist.md
 !ipad/CaptureApp/TESTFLIGHT.md
-!ipad/Reiseguide/TESTFLIGHT.md
 !ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
 !backend/gfpgan-runner/GPU_DEPLOY.md
 !apps/resolve-script-manager/RELEASE.md
