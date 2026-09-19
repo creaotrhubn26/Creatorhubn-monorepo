@@ -40,8 +40,38 @@
  * Bruk:
  *   node backend/scripts/record-google-oauth-verification-demo.playwright.mjs
  *
+ * ANBEFALT: kjør mot lokalt miljø, ikke produksjon.
+ *
+ * Konsollen sier selv: «If your app is already public, do not deploy
+ * unverified scopes to your production traffic ... use a staging
+ * environment or hidden test route.» Lokalt gir i tillegg rene demodata,
+ * så ekte kundeinnhold ikke havner i en video som går til Google og
+ * YouTube.
+ *
+ * Samtykkeskjermen blir identisk lokalt: den drives av client ID og
+ * prosjekt, ikke av origin. Samme CREATORHUB_GOOGLE_CLIENT_ID gir samme
+ * appnavn, samme branding og nøyaktig de samme scopene.
+ *
+ *   # backend MÅ kjøre på 5000 — det er redirect-URI-en som er registrert
+ *   # på OAuth-klienten (http://localhost:5000/api/creatorhub/google/oauth/callback)
+ *   cd backend && PORT=5000 npm run dev
+ *   cd frontend && npm run dev          # 5001
+ *
+ *   APP_BASE_URL=http://localhost:5001 \
+ *     node backend/scripts/record-google-oauth-verification-demo.playwright.mjs
+ *
+ * Backend trenger de ekte CREATORHUB_GOOGLE_CLIENT_ID og _CLIENT_SECRET
+ * lokalt for at samtykkeskjermen skal bli riktig. De ligger i Render —
+ * legg dem i en lokal .env, aldri i repoet.
+ *
+ * Logg inn i CreatorHub med e-post/passord lokalt, ikke Google Sign-In:
+ * registrert JS-origin er localhost:5002, mens frontend dev kjører på
+ * 5001. Workspace-tilkoblingen er server-side redirect og bryr seg ikke
+ * om JS-origin, men Google Sign-In gjør det.
+ *
  * Env (leses fra backend/.env.google-verification.demo.local hvis den finnes):
  *   APP_BASE_URL        default: https://creatorhubn.com
+ *                       lokalt:  http://localhost:5001
  *   DEMO_PROJECT_ID     prosjekt med Drive-filer, Gmail-tråd og Chat-rom
  *
  * USE_USER_CHROME=1: bruk din installerte Chrome-profil (testbrukeren må
@@ -373,6 +403,91 @@ async function openBrowser() {
   return { context, browser, ownsBrowser: true };
 }
 
+/**
+ * Sjekker at målet svarer før vi starter opptaket. Uten dette bruker man
+ * et helt take på å oppdage at dev-serveren ikke kjører.
+ */
+async function preflight(env) {
+  const base = env.APP_BASE_URL.replace(/\/$/, '');
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(base);
+
+  // «Noe svarer» er ikke godt nok. På macOS squatter AirPlay Receiver på
+  // port 5000 og svarer 403 med Server: AirTunes — og en hvilken som helst
+  // annen dev-server kan sitte på 5001. Begge ga falskt grønt lys her
+  // 2026-09-19. Preflighten sjekker derfor at det faktisk er CreatorHub.
+  let reachable = false;
+  try {
+    const res = await fetch(base, { redirect: 'follow' });
+    const server = res.headers.get('server') || '';
+    const body = await res.text().catch(() => '');
+    const looksLikeCreatorHub = /CreatorHub/i.test(body);
+    reachable = (res.ok || res.status < 500) && looksLikeCreatorHub;
+    log(`Preflight: ${base} svarer ${res.status}${server ? ` (Server: ${server})` : ''}`);
+    if (!looksLikeCreatorHub) {
+      log(`Preflight: ${base} svarer, men innholdet er IKKE CreatorHub.`);
+      if (/AirTunes/i.test(server)) {
+        log('           Server-headeren sier AirTunes — det er macOS AirPlay Receiver.');
+      }
+    }
+  } catch (err) {
+    log(`Preflight: ${base} svarer IKKE (${err.message})`);
+  }
+
+  if (!reachable) {
+    log('');
+    log('Målet svarer ikke. Start miljøet først:');
+    if (isLocal) {
+      log('  cd backend  && PORT=5000 npm run dev     # 5000 er registrert redirect-URI');
+      log('  cd frontend && npm run dev               # 5001');
+    } else {
+      log(`  Sjekk at ${base} er oppe.`);
+    }
+    return false;
+  }
+
+  if (!isLocal) {
+    log('');
+    log('ADVARSEL: du tar opp mot PRODUKSJON.');
+    log('Konsollen anbefaler staging/lokalt for demo-opptak, og produksjons-');
+    log('prosjekter inneholder ekte kundedata som da havner i videoen.');
+  } else {
+    // Redirect-URI-en på OAuth-klienten er hardkodet til port 5000. Kjører
+    // backend et annet sted, feiler samtykket med redirect_uri_mismatch
+    // først ETTER at operatøren har gått gjennom halve opptaket.
+    let backendOk = false;
+    let backendNote = 'ingenting svarer';
+    try {
+      const cbRes = await fetch('http://localhost:5000/api/creatorhub/google/status', { redirect: 'manual' });
+      const server = cbRes.headers.get('server') || '';
+      const ctype = cbRes.headers.get('content-type') || '';
+      if (/AirTunes/i.test(server)) {
+        backendNote = `macOS AirPlay Receiver squatter på porten (Server: ${server})`;
+      } else if (!/json/i.test(ctype)) {
+        backendNote = `noe annet enn backend svarer (${cbRes.status}, content-type: ${ctype || 'ukjent'})`;
+      } else {
+        backendOk = true;
+        log(`Preflight: backend på :5000 svarer ${cbRes.status} (JSON) ✓`);
+      }
+    } catch (err) {
+      backendNote = `ingenting svarer (${err.message})`;
+    }
+
+    if (!backendOk) {
+      log('');
+      log(`ADVARSEL: http://localhost:5000 — ${backendNote}.`);
+      log('Redirect-URI-en som er registrert på OAuth-klienten er');
+      log('  http://localhost:5000/api/creatorhub/google/oauth/callback');
+      log('Kjører ikke backend der, feiler samtykket med redirect_uri_mismatch');
+      log('midt i opptaket.');
+      log('');
+      log('På macOS holder AirPlay Receiver port 5000 som standard. Slå den av:');
+      log('  Systeminnstillinger → Generelt → AirDrop og Handoff → AirPlay-mottaker');
+      log('Start deretter backend med:  cd backend && PORT=5000 npm run dev');
+    }
+  }
+  return true;
+}
+
 async function main() {
   const env = await loadEnv();
   log('Google OAuth verification screencast');
@@ -380,8 +495,12 @@ async function main() {
   log(`  DEMO_PROJECT_ID: ${env.DEMO_PROJECT_ID || '(ingen — naviger manuelt)'}`);
   log(`  Modus:           ${USE_USER_CHROME ? 'systemets Chrome' : 'medfølgende Chromium'}`);
   log('');
-  log('Logg inn som TESTBRUKEREN du oppgir til Google, ikke din egen konto.');
-  log('Google skal kunne gjenta flyten med de samme legitimasjonene.');
+  await preflight(env);
+  log('');
+  log('Sjekkliste før du starter:');
+  log('  • Nettleserens språk står på engelsk (samtykkeskjermen MÅ være på engelsk)');
+  log('  • Du er logget inn i CreatorHub med en konto som har rene demodata');
+  log('  • Prosjektet har en Drive-fil, en Gmail-tråd og et Chat-rom å vise');
   await ask('Trykk ENTER for å starte opptaket… ');
 
   await ensureDir(VIDEO_DIR);

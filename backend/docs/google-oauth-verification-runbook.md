@@ -66,7 +66,74 @@ Kodepekere: `backend/server/creatorhub-google-routes.ts:126-165` (scope-bunten
 med kommentarer), `backend/server/chat-gmail-poller.ts:1-11` (Message-ID-
 matchingen), `backend/server/communication-routes.ts:383-395` (scope-gatene).
 
-## Ta opp videoen
+## Ta opp videoen — lokalt (anbefalt)
+
+Konsollen anbefaler det selv:
+
+> If your app is already public, do not deploy unverified scopes to your
+> production traffic. [...] use a staging environment or hidden test route.
+
+Lokalt gir i tillegg rene demodata, så ekte kundeinnhold ikke havner i en
+video som sendes til Google og lastes opp til YouTube.
+
+**Samtykkeskjermen blir identisk lokalt.** Den drives av client ID og
+prosjekt, ikke av origin. Samme `CREATORHUB_GOOGLE_CLIENT_ID` gir samme
+appnavn, samme branding og nøyaktig de samme 43 scopene — som er det
+Googles krav om «same application, including name, branding» handler om.
+
+`http://localhost:5000/api/creatorhub/google/oauth/callback` står allerede
+registrert som Authorized redirect URI nr. 2 på CreatorHub-klienten
+(`256648631702-o1ncl3el…`). Ingen konsollendring trengs.
+
+### Porter
+
+| | Port | Merk |
+|---|---|---|
+| Backend | **5000** | Må være 5000 — det er den registrerte redirect-URI-en. Standard er ellers 3003 |
+| Frontend | 5001 | `vite --strictPort` |
+
+**På macOS holder AirPlay Receiver port 5000 som standard.** Den svarer 403
+med `Server: AirTunes/…`, og uten å slå den av kan ikke backend binde
+porten. Slå av under Systeminnstillinger → Generelt → AirDrop og Handoff →
+AirPlay-mottaker. Preflighten i skriptet oppdager dette og sier fra.
+
+Registrert JS-origin er `localhost:5002`, ikke 5001. Det spiller ingen rolle
+for Workspace-tilkoblingen — den er server-side redirect. Det spiller rolle
+for Google Sign-In, så **logg inn i CreatorHub med e-post/passord lokalt**.
+
+### Kjør
+
+```
+cd backend  && PORT=5000 npm run dev
+cd frontend && npm run dev
+
+APP_BASE_URL=http://localhost:5001 \
+  node backend/scripts/record-google-oauth-verification-demo.playwright.mjs
+```
+
+Backend trenger de ekte `CREATORHUB_GOOGLE_CLIENT_ID` og `_CLIENT_SECRET`
+lokalt for at samtykkeskjermen skal bli riktig. De ligger i Render — legg
+dem i en lokal `.env`, aldri i repoet.
+
+Skriptet kjører en preflight før opptaket starter: det sjekker at målet
+faktisk er CreatorHub (ikke bare at noe svarer), at backend på 5000 svarer
+JSON, og minner om engelsk språk og rene demodata.
+
+### Hva må finnes i demodataene
+
+Stegene 5–7 viser de tre restricted-gruppene i bruk. Uten ekte data å peke
+på har de ingenting å vise:
+
+- **Drive** — minst én fil brukeren har knyttet til prosjektet
+- **Gmail** — en tråd der CreatorHub har sendt ut en melding og kunden har
+  svart, slik at `In-Reply-To`-matchingen faktisk demonstreres
+- **Chat** — et Google Chat-rom koblet til prosjektet
+
+Kontoen som gir samtykke må altså ha denne dataen i sin egen Google-konto.
+Det er likt uansett miljø — lokalt løser rene *prosjekt*-data, ikke
+fraværet av Gmail-/Chat-innhold.
+
+## Ta opp mot produksjon (hvis lokalt ikke lar seg gjøre)
 
 ```
 node backend/scripts/record-google-oauth-verification-demo.playwright.mjs
@@ -78,6 +145,9 @@ Leser `backend/.env.google-verification.demo.local`:
 APP_BASE_URL=https://creatorhubn.com
 DEMO_PROJECT_ID=<prosjekt med Drive-filer, Gmail-tråd og Chat-rom>
 ```
+
+Skriptet advarer om at du tar opp mot produksjon. Pass på at prosjektet du
+viser ikke inneholder ekte kundedata.
 
 `USE_USER_CHROME=1` bruker din installerte Chrome-profil. Chrome må være helt
 avsluttet (cmd+Q) først, ellers feiler det med «profile locked».
