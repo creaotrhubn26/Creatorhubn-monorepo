@@ -5,6 +5,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { readString } from "./_shared";
 import { canAccessProject } from "./project-team-routes";
+import { createProjectFolderStructure } from "./project-folder-structure.js";
 import {
   ensureProjectTeamSchema,
   requireProjectAccess,
@@ -540,6 +541,23 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       console.log(
         `🎬 Nytt prosjekt opprettet: "${projectName}" (${projectId}) av ${userId}${customerId ? ` for kunde ${customerId}` : ""}`,
       );
+
+      // Mappestruktur i vår egen lagring. Kjører i bakgrunnen og kaster
+      // aldri: prosjektet er opprettet, og en lagringshikke skal ikke gjøre
+      // om et vellykket kall til en feil for brukeren.
+      void createProjectFolderStructure(userId, projectId)
+        .then((folders) => {
+          if (folders.skipped) {
+            console.log(`[project-folders] hoppet over for ${projectId}: ${folders.reason}`);
+          } else {
+            console.log(
+              `[project-folders] opprettet ${folders.created.length} mapper for ${projectId}`,
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn("[project-folders] uventet feil:", err);
+        });
 
       // If created from CRM customer, link project back to customer.
       // Eier-scope owner_user_id: customerId er caller-oppgitt — uten filter
