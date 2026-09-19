@@ -1,6 +1,8 @@
 export const ROLE_ROOM_WORKSPACE_LENSES = [
   'full',
+  'producer',
   'director',
+  'casting',
   'cinematography',
   'assistant-direction',
   'production-management',

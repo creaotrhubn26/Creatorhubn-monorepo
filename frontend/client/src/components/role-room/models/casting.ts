@@ -6,17 +6,26 @@
 import type { StoryboardDocumentAspectRatio } from '../state/storyboardDrawingDocument';
 
 export type UserRoleType =
+  | 'executive_producer'
   | 'director'
   | 'producer'
+  | 'line_producer'
   | 'casting_director'
+  | 'local_casting_director'
+  | 'extras_casting_director'
   | 'production_manager'
+  | 'production_accountant'
   | 'production_coordinator'
+  | 'production_secretary'
+  | 'office_production_assistant'
   | 'location_manager'
   | 'location_scout'
   | 'location_security'
   | 'script_supervisor'
   | 'first_ad'
   | 'second_ad'
+  | 'second_second_assistant_director'
+  | 'set_production_assistant'
   | 'camera_team'
   | 'content_producer'
   | 'client_reviewer'
@@ -70,6 +79,10 @@ export interface UserRole {
   user_id?: string;
   email?: string;
   role: UserRoleType;
+  /** Server-resolved secondary roles held through the same membership row. */
+  additionalRoles?: string[];
+  /** Canonical operational grants returned by the project-access resolver. */
+  serverGrants?: Record<string, boolean>;
   permissions?: UserRolePermissions;
   addedBy?: string;
   createdAt?: string;
