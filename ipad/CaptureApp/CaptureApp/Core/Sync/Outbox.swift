@@ -137,6 +137,27 @@ actor Outbox {
         }
     }
 
+    /// A process termination can leave claimed rows in `syncing` forever.
+    /// No request is active after a fresh launch, so those rows are safe to
+    /// return to `pending` before the production worker starts.
+    func recoverInterruptedSyncs() async throws {
+        try await database.dbWriter.write { db in
+            try db.execute(
+                sql: """
+                UPDATE outboxMutation
+                   SET status = ?, lastError = ?, updatedAt = ?
+                 WHERE status = ?
+                """,
+                arguments: [
+                    OutboxMutation.Status.pending.rawValue,
+                    "Recovered after app restart",
+                    Date(),
+                    OutboxMutation.Status.syncing.rawValue,
+                ],
+            )
+        }
+    }
+
     /// Move a mutation to ``succeeded`` after a 2xx response. Rows
     /// that have succeeded are kept for 24h in case the UI wants to
     /// show a "sync log" and then pruned by ``sweep()``.

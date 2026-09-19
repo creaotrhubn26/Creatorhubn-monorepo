@@ -27,8 +27,20 @@ final class CardImportModel {
     var progressDone = 0
     var progressTotal = 0
     var statusLine = ""
+    var successfulImportCount = 0
 
     private var scopedURLs: [URL] = []
+    private var pendingBackupItems: [DeliveryService.CardBackupItem] = []
+    private var pendingProjectId: String?
+    private var pendingProjectTitle: String?
+    private var pendingSessionStartedAt: Date?
+    private var pendingDelivery: DeliveryService?
+    private var pendingJobId: UUID?
+    private var pendingJobStore: CardBackupJobStore?
+
+    var canRetryBackup: Bool {
+        !pendingBackupItems.isEmpty && pendingProjectId != nil && pendingSessionStartedAt != nil
+    }
 
     var totalBytes: Int64 { groups.reduce(0) { $0 + $1.totalBytes } }
     var rawCount: Int { groups.filter { $0.raw != nil }.count }
@@ -122,6 +134,7 @@ final class CardImportModel {
             phase = .done
             return
         }
+        successfulImportCount = groups.count - duplicateCount
 
         // 2. Link to project + back up ORIGINALS to CreatorHub S3.
         phase = .backingUp
@@ -129,11 +142,43 @@ final class CardImportModel {
         progressDone = 0
         statusLine = "Sikkerhetskopierer til skyen …"
 
+        // Keep a retryable snapshot after the card files have been copied into
+        // app storage. A network/S3 failure must not force a second card scan.
+        pendingBackupItems = backupItems
+        pendingProjectId = project.id
+        pendingProjectTitle = project.title
+        pendingSessionStartedAt = importSession.startsAt
+        pendingJobId = importSession.id
+
+        let jobStore = CardBackupJobStore(database: database)
+        pendingJobStore = jobStore
+        do {
+            try await jobStore.save(.init(
+                id: importSession.id,
+                ownerUserId: owner,
+                sessionName: name,
+                sessionStartedAt: importSession.startsAt,
+                projectId: project.id,
+                projectTitle: project.title,
+                items: backupItems,
+                assetCount: successfulImportCount,
+                duplicateCount: duplicateCount,
+            ))
+        } catch {
+            phase = .failed("Kunne ikke lagre backup-checkpoint: \(error.localizedDescription)")
+            return
+        }
+
         let backend = BackendClient(
             baseURL: session.backendBaseURL,
             authHeaders: ["Authorization": "Bearer \(session.bearer)"],
         )
-        let delivery = DeliveryService(backend: backend)
+        let delivery = DeliveryService(
+            backend: backend,
+            uploadStore: PersistentUploadStore(database: database),
+            partUploader: BackgroundMultipartUploader.shared,
+        )
+        pendingDelivery = delivery
         do {
             _ = try await delivery.backupCard(
                 sessionName: name,
@@ -153,7 +198,110 @@ final class CardImportModel {
         }
 
         releaseScopedAccess()
+        await finishPendingBackup()
         phase = .done
+    }
+
+    func retryBackup() async {
+        guard let session = SignInService.shared.session,
+              let projectId = pendingProjectId,
+              let startedAt = pendingSessionStartedAt,
+              !pendingBackupItems.isEmpty
+        else {
+            phase = .failed("Fant ingen avbrutt backup å fortsette.")
+            return
+        }
+
+        phase = .backingUp
+        progressDone = 0
+        progressTotal = pendingBackupItems.count
+        statusLine = "Fortsetter sikkerhetskopiering til CreatorHub S3 …"
+        let backend = BackendClient(
+            baseURL: session.backendBaseURL,
+            authHeaders: ["Authorization": "Bearer \(session.bearer)"],
+        )
+        let delivery: DeliveryService
+        if let pendingDelivery {
+            delivery = pendingDelivery
+        } else {
+            do {
+                let database = try AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
+                pendingJobStore = pendingJobStore ?? CardBackupJobStore(database: database)
+                delivery = DeliveryService(
+                    backend: backend,
+                    uploadStore: PersistentUploadStore(database: database),
+                    partUploader: BackgroundMultipartUploader.shared,
+                )
+            } catch {
+                phase = .failed("Kunne ikke åpne backup-checkpoint: \(error.localizedDescription)")
+                return
+            }
+        }
+        pendingDelivery = delivery
+        do {
+            _ = try await delivery.backupCard(
+                sessionName: sessionName.isEmpty ? Self.defaultSessionName() : sessionName,
+                sessionStartedAt: startedAt,
+                items: pendingBackupItems,
+                projectId: projectId,
+            ) { done, total in
+                Task { @MainActor in
+                    self.progressDone = done
+                    self.progressTotal = total
+                }
+            }
+            await finishPendingBackup()
+            phase = .done
+        } catch {
+            phase = .failed("Backup til skyen feilet igjen: \(error.localizedDescription). De lokale filene er fortsatt trygge.")
+        }
+    }
+
+    /// Called when the card-import sheet opens. Reconstructs the latest
+    /// unfinished job for this account from SQLite and copied local originals.
+    func restorePendingBackup() async {
+        guard phase == .picking,
+              let session = SignInService.shared.session
+        else { return }
+        do {
+            let database = try AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
+            let jobStore = CardBackupJobStore(database: database)
+            guard let job = try await jobStore.latestPending(ownerUserId: session.userId) else { return }
+            // Keep the handle even when copied originals have disappeared, so
+            // Reset can remove the orphaned job instead of rediscovering it on
+            // every sheet presentation.
+            pendingJobId = job.id
+            pendingJobStore = jobStore
+            guard job.items.allSatisfy({
+                FileManager.default.fileExists(atPath: $0.path)
+            }) else {
+                phase = .failed("Fant en avbrutt backup, men én eller flere lokale originalfiler mangler.")
+                return
+            }
+
+            pendingBackupItems = job.items
+            pendingProjectId = job.projectId
+            pendingProjectTitle = job.projectTitle
+            pendingSessionStartedAt = job.sessionStartedAt
+            sessionName = job.sessionName
+            importedSessionId = job.id
+            ownerUserId = job.ownerUserId
+            duplicateCount = job.duplicateCount
+            successfulImportCount = job.assetCount
+            progressTotal = job.items.count
+            progressDone = 0
+            pendingDelivery = DeliveryService(
+                backend: BackendClient(
+                    baseURL: session.backendBaseURL,
+                    authHeaders: ["Authorization": "Bearer \(session.bearer)"],
+                ),
+                uploadStore: PersistentUploadStore(database: database),
+                partUploader: BackgroundMultipartUploader.shared,
+            )
+            phase = .failed("Fant en avbrutt backup for «\(job.projectTitle)». Fortsett fra siste fullførte del.")
+        } catch {
+            AppLog.sync.error("[CardImport] restore checkpoint failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func reset() {
@@ -165,11 +313,35 @@ final class CardImportModel {
         progressDone = 0
         progressTotal = 0
         statusLine = ""
+        successfulImportCount = 0
+        let store = pendingJobStore
+        let jobId = pendingJobId
+        clearPendingMemory()
+        if let store, let jobId {
+            Task { try? await store.delete(id: jobId) }
+        }
     }
 
     private func releaseScopedAccess() {
         for url in scopedURLs { url.stopAccessingSecurityScopedResource() }
         scopedURLs = []
+    }
+
+    private func finishPendingBackup() async {
+        if let pendingJobStore, let pendingJobId {
+            try? await pendingJobStore.delete(id: pendingJobId)
+        }
+        clearPendingMemory()
+    }
+
+    private func clearPendingMemory() {
+        pendingBackupItems = []
+        pendingProjectId = nil
+        pendingProjectTitle = nil
+        pendingSessionStartedAt = nil
+        pendingDelivery = nil
+        pendingJobId = nil
+        pendingJobStore = nil
     }
 
     private static func defaultSessionName() -> String {

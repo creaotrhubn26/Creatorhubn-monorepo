@@ -13,6 +13,9 @@ struct CardImportView: View {
         NavigationStack {
             content
                 .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .foregroundStyle(CHTheme.textPrimary)
+                .background(CHTheme.bg.ignoresSafeArea())
                 .navigationTitle("Importer fra minnekort")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -39,6 +42,8 @@ struct CardImportView: View {
                     }
                 }
         }
+        .chBranded()
+        .task { await model.restorePendingBackup() }
     }
 
     @ViewBuilder private var content: some View {
@@ -59,12 +64,12 @@ struct CardImportView: View {
             Spacer()
             Image(systemName: "sdcard")
                 .font(.system(size: 64))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CHTheme.accent)
             Text("Importer bilder fra minnekort")
                 .font(.title2.bold())
             Text("Koble til kortleseren, velg så kortet (eller DCIM-mappen). Vi parer RAW + JPEG, hopper over det du allerede har, kobler til prosjekt og sikkerhetskopierer originalene til CreatorHub S3.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CHTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             Button {
@@ -96,20 +101,21 @@ struct CardImportView: View {
                 Divider()
                 statRow("Total størrelse", Self.bytes(model.totalBytes))
             }
-            .background(Color(.secondarySystemBackground))
+            .background(CHTheme.surface)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(CHTheme.border, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Navn på økt")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textMuted)
                 TextField("Økt-navn", text: $model.sessionName)
                     .textFieldStyle(.roundedBorder)
             }
 
             Text("Duplikater (samme fil importert før) hoppes automatisk over.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CHTheme.textMuted)
 
             Spacer()
 
@@ -136,12 +142,12 @@ struct CardImportView: View {
             if model.progressTotal > 0 {
                 Text("\(model.progressDone) av \(model.progressTotal)")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textSecondary)
             }
             if !model.statusLine.isEmpty {
                 Text(model.statusLine)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CHTheme.textMuted)
                     .lineLimit(1)
             }
             Spacer()
@@ -155,14 +161,14 @@ struct CardImportView: View {
             Spacer()
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(.green)
+                .foregroundStyle(CHTheme.success)
             Text("Importert og sikkerhetskopiert")
                 .font(.title2.bold())
             VStack(spacing: 4) {
-                Text("\(model.groups.count - model.duplicateCount) importert til CreatorHub S3.")
+                Text("\(model.successfulImportCount) importert til CreatorHub S3.")
                 if model.duplicateCount > 0 {
                     Text("\(model.duplicateCount) hoppet over (allerede inne).")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CHTheme.textSecondary)
                 }
             }
             .font(.callout)
@@ -182,7 +188,7 @@ struct CardImportView: View {
             }
             Text("Du kan også redigere bildene i Redigering-fanen.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CHTheme.textMuted)
             Button("Ferdig") { dismiss() }
                 .padding(.top, 4)
         }
@@ -195,17 +201,25 @@ struct CardImportView: View {
             Spacer()
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 56))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CHTheme.warning)
             Text("Noe gikk galt")
                 .font(.title3.bold())
             Text(message)
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CHTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             Spacer()
-            Button("Prøv igjen") { model.reset() }
+            if model.canRetryBackup {
+                Button("Fortsett backup") {
+                    Task { await model.retryBackup() }
+                }
                 .buttonStyle(.borderedProminent)
+                Button("Start importen på nytt") { model.reset() }
+            } else {
+                Button("Prøv igjen") { model.reset() }
+                    .buttonStyle(.borderedProminent)
+            }
             Button("Lukk") { dismiss() }
                 .padding(.top, 4)
         }
@@ -215,7 +229,7 @@ struct CardImportView: View {
 
     private func statRow(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).foregroundStyle(.secondary)
+            Text(label).foregroundStyle(CHTheme.textSecondary)
             Spacer()
             Text(value).fontWeight(.semibold)
         }

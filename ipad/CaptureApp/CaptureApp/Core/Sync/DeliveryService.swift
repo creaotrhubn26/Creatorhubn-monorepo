@@ -15,6 +15,8 @@ import Foundation
 /// unreachable — keep tethered, try again" without losing local state.
 actor DeliveryService {
     private let backend: BackendClient
+    private let uploadStore: PersistentUploadStore?
+    private let partUploader: (any MultipartPartUploading)?
     /// Phase 2C — when set, picks carrying a `renderRecipe` are demosaiced
     /// from the camera-original RAW (`?kind=main`) before upload, so the
     /// client gallery receives a true RAW-quality JPEG instead of the
@@ -25,6 +27,9 @@ actor DeliveryService {
     /// delivered. Carried across retries so a partial failure doesn't
     /// double-upload assets that already landed.
     private var idMap: [UUID: UUID] = [:]
+    /// Completed local file variants for in-process retry. `idMap` alone is
+    /// insufficient for RAW+JPEG pairs because both variants share one asset.
+    private var uploadedVariants: Set<String> = []
     /// Backend session id once the session row is mirrored. Read by the
     /// Live Set dashboard so it can fetch the captured-asset listing
     /// from /api/capture/sessions/:id/assets — nil before the first
@@ -40,9 +45,16 @@ actor DeliveryService {
         idMap[localId]
     }
 
-    init(backend: BackendClient, rawExporter: RAWExportService? = nil) {
+    init(
+        backend: BackendClient,
+        rawExporter: RAWExportService? = nil,
+        uploadStore: PersistentUploadStore? = nil,
+        partUploader: (any MultipartPartUploading)? = nil,
+    ) {
         self.backend = backend
         self.rawExporter = rawExporter
+        self.uploadStore = uploadStore
+        self.partUploader = partUploader
     }
 
     /// Snapshot of an asset to upload — pulled from `SessionStore` and
@@ -98,6 +110,7 @@ actor DeliveryService {
 
     enum DeliveryError: Error, Sendable, Equatable {
         case sessionMirrorFailed(String)
+        case projectLinkFailed(String)
         case noUploadablePicks
         case uploadFailed(localAssetId: UUID, reason: String)
         case tokenMintFailed(String)
@@ -126,6 +139,7 @@ actor DeliveryService {
         sendEmail: Bool = false,
         emailBody: String? = nil,
         photographerName: String? = nil,
+        projectId: String? = nil,
     ) async throws -> ShowcaseDeliveryResult {
         // Reuse the existing mirror+upload pipeline so the backend has
         // a real session + assets to bridge from.
@@ -138,6 +152,7 @@ actor DeliveryService {
             clientLabel: nil,
             pin: nil,
             ttlMinutes: nil,
+            projectId: projectId,
         )
         do {
             let response = try await backend.deliverToShowcase(
@@ -172,6 +187,7 @@ actor DeliveryService {
         clientLabel: String?,
         pin: String?,
         ttlMinutes: Int?,
+        projectId: String? = nil,
     ) async throws -> DeliveryResult {
         guard !picks.isEmpty else { throw DeliveryError.noUploadablePicks }
 
@@ -192,6 +208,8 @@ actor DeliveryService {
                 throw DeliveryError.sessionMirrorFailed(String(describing: error))
             }
         }()
+
+        try await requireProjectLink(sessionId: backendSession, projectId: projectId)
 
         var uploaded = 0
         for pick in picks {
@@ -252,70 +270,31 @@ actor DeliveryService {
 
     private func uploadOne(pick: DeliverableAsset, sessionId: UUID) async throws -> UUID {
         let uploadPath = await resolveUploadPath(pick: pick)
-        let data = try Data(contentsOf: URL(fileURLWithPath: uploadPath))
-        let asset = try await backend.registerAsset(
+        let sizeBytes = try fileSize(at: uploadPath)
+        let assetUUID: UUID
+        if let persisted = try await existingBackendAssetId(
+            localAssetId: pick.localId,
             sessionId: sessionId,
-            body: .init(
+        ) {
+            assetUUID = persisted
+        } else {
+            assetUUID = try await registerBackendAsset(
+                sessionId: sessionId,
                 originalFilename: pick.originalFilename,
                 captureTime: pick.captureTime,
                 mime: pick.mime,
-                sizeBytes: Int64(data.count),
+                sizeBytes: sizeBytes,
             )
-        )
-        guard let assetUUID = UUID(uuidString: asset.id) else {
-            throw NSError(domain: "DeliveryService", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "backend returned non-UUID asset id \(asset.id)"
-            ])
         }
 
-        let plan = try await backend.startUpload(
+        try await uploadFile(
+            localAssetId: pick.localId,
+            backendSessionId: sessionId,
             assetId: assetUUID,
-            body: .init(
-                kind: .preview,
-                sizeBytes: Int64(data.count),
-                mime: pick.mime,
-                preferredPartSize: nil,
-            )
-        )
-        let parts = try splitIntoParts(data: data, partSize: plan.partSize, partCount: plan.partCount)
-        let partNumbers = Array(1...parts.count)
-        let signed = try await backend.signPartURLs(
-            assetId: assetUUID,
-            body: .init(uploadId: plan.uploadId, key: plan.key, partNumbers: partNumbers),
-        )
-        guard signed.parts.count == parts.count else {
-            throw NSError(domain: "DeliveryService", code: -2, userInfo: [
-                NSLocalizedDescriptionKey: "signed part count (\(signed.parts.count)) ≠ plan part count (\(parts.count))"
-            ])
-        }
-
-        var completed: [BackendCompletedPart] = []
-        completed.reserveCapacity(parts.count)
-        // Sequential PUTs — each part is small (default 5 MB) so latency
-        // is dominated by setup; parallelism would only matter for full /
-        // RAW exports which are Phase 2C.
-        for (i, part) in parts.enumerated() {
-            let signedPart = signed.parts[i]
-            guard let url = URL(string: signedPart.url) else {
-                throw NSError(domain: "DeliveryService", code: -3, userInfo: [
-                    NSLocalizedDescriptionKey: "invalid signed part url"
-                ])
-            }
-            let etag = try await backend.putPart(url: url, bytes: part)
-            completed.append(.init(partNumber: signedPart.partNumber, etag: etag))
-        }
-
-        let checksum = sha256Hex(of: data)
-        _ = try await backend.completeUpload(
-            assetId: assetUUID,
-            body: .init(
-                kind: .preview,
-                uploadId: plan.uploadId,
-                key: plan.key,
-                parts: completed,
-                checksumSha256: checksum,
-                sizeBytes: Int64(data.count),
-            )
+            path: uploadPath,
+            kind: .preview,
+            mime: pick.mime,
+            sizeBytes: sizeBytes,
         )
 
         // Phase 2B Lag D follow-up: if this upload satisfies a planned
@@ -349,7 +328,7 @@ actor DeliveryService {
     /// and/or the JPEG (.full). Unlike ``DeliverableAsset`` (which ships a
     /// client preview), this carries the camera-original bytes so the card is
     /// safely archived, not just delivered.
-    struct CardBackupItem: Sendable {
+    struct CardBackupItem: Codable, Sendable, Equatable {
         let localId: UUID
         let originalFilename: String
         let captureTime: Date
@@ -373,6 +352,19 @@ actor DeliveryService {
     ) async throws -> DeliveryResult {
         guard !items.isEmpty else { throw DeliveryError.noUploadablePicks }
 
+        // Rehydrate the backend session and asset mapping from SQLite before
+        // creating anything new. This is what turns a fresh DeliveryService
+        // after app relaunch into a real resume instead of a duplicate upload.
+        if backendSessionId == nil, let uploadStore {
+            for item in items {
+                if let context = try await uploadStore.backendContext(for: item.localId) {
+                    backendSessionId = context.backendSessionId
+                    idMap[item.localId] = context.backendAssetId
+                    break
+                }
+            }
+        }
+
         let backendSession: UUID = try await {
             if let existing = backendSessionId { return existing }
             do {
@@ -391,22 +383,31 @@ actor DeliveryService {
             }
         }()
 
-        if let projectId, !projectId.isEmpty {
-            // Best-effort — the bytes are what matter; a link failure shouldn't
-            // fail the backup. The web side reconciles on next sync.
-            do {
-                try await backend.linkSessionToProject(sessionId: backendSession, projectId: projectId)
-            } catch {
-                AppLog.sync.error("[DeliveryService] backupCard linkSessionToProject failed: \(error.localizedDescription, privacy: .public)")
-            }
-        }
+        // The project link must exist before startUpload. The backend derives
+        // the CreatorHub S3 object prefix from capture_sessions.project_id;
+        // continuing after a failed link would archive into "unassigned" and
+        // leave the gallery detached from the selected project.
+        try await requireProjectLink(sessionId: backendSession, projectId: projectId)
 
         var uploaded = 0
         for (index, item) in items.enumerated() {
-            if idMap[item.localId] == nil {
-                let backendAssetId = try await uploadOriginal(item: item, sessionId: backendSession)
-                idMap[item.localId] = backendAssetId
+            let variantKey = "\(item.localId.uuidString.lowercased()):\(item.kind.rawValue)"
+            if uploadedVariants.contains(variantKey) {
+                uploaded += 1
+                onProgress?(index + 1, items.count)
+                continue
             }
+            // RAW+JPEG pairs intentionally share one local/backend asset row,
+            // but each file is a distinct S3 variant. Reuse the asset id while
+            // always uploading the current variant; skipping on idMap here used
+            // to silently drop the RAW half of every pair.
+            let backendAssetId = try await uploadOriginal(
+                item: item,
+                sessionId: backendSession,
+                existingAssetId: idMap[item.localId]
+            )
+            idMap[item.localId] = backendAssetId
+            uploadedVariants.insert(variantKey)
             uploaded += 1
             onProgress?(index + 1, items.count)
         }
@@ -422,86 +423,313 @@ actor DeliveryService {
         }
     }
 
-    private func uploadOriginal(item: CardBackupItem, sessionId: UUID) async throws -> UUID {
-        let data = try Data(contentsOf: URL(fileURLWithPath: item.path))
-        guard !data.isEmpty else {
-            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "empty file")
-        }
-        let asset = try await backend.registerAsset(
+    private func uploadOriginal(
+        item: CardBackupItem,
+        sessionId: UUID,
+        existingAssetId: UUID?
+    ) async throws -> UUID {
+        let sizeBytes = try fileSize(at: item.path)
+        let assetUUID: UUID
+        if let existingAssetId {
+            assetUUID = existingAssetId
+        } else if let persisted = try await existingBackendAssetId(
+            localAssetId: item.localId,
             sessionId: sessionId,
-            body: .init(
+        ) {
+            assetUUID = persisted
+        } else {
+            assetUUID = try await registerBackendAsset(
+                sessionId: sessionId,
                 originalFilename: item.originalFilename,
                 captureTime: item.captureTime,
                 mime: item.mime,
-                sizeBytes: Int64(data.count),
+                sizeBytes: sizeBytes,
             )
-        )
-        guard let assetUUID = UUID(uuidString: asset.id) else {
-            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "backend returned non-UUID asset id \(asset.id)")
         }
-        let plan = try await backend.startUpload(
+
+        try await uploadFile(
+            localAssetId: item.localId,
+            backendSessionId: sessionId,
             assetId: assetUUID,
-            body: .init(kind: item.kind, sizeBytes: Int64(data.count), mime: item.mime, preferredPartSize: nil)
-        )
-        let parts = try splitIntoParts(data: data, partSize: plan.partSize, partCount: plan.partCount)
-        guard !parts.isEmpty else {
-            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "no upload parts")
-        }
-        let partNumbers = Array(1...parts.count)
-        let signed = try await backend.signPartURLs(
-            assetId: assetUUID,
-            body: .init(uploadId: plan.uploadId, key: plan.key, partNumbers: partNumbers),
-        )
-        guard signed.parts.count == parts.count else {
-            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "signed part count mismatch")
-        }
-        var completed: [BackendCompletedPart] = []
-        completed.reserveCapacity(parts.count)
-        for (i, part) in parts.enumerated() {
-            let signedPart = signed.parts[i]
-            guard let url = URL(string: signedPart.url) else {
-                throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "invalid signed part url")
-            }
-            let etag = try await backend.putPart(url: url, bytes: part)
-            completed.append(.init(partNumber: signedPart.partNumber, etag: etag))
-        }
-        _ = try await backend.completeUpload(
-            assetId: assetUUID,
-            body: .init(
-                kind: item.kind,
-                uploadId: plan.uploadId,
-                key: plan.key,
-                parts: completed,
-                checksumSha256: sha256Hex(of: data),
-                sizeBytes: Int64(data.count),
-            )
+            path: item.path,
+            kind: item.kind,
+            mime: item.mime,
+            sizeBytes: sizeBytes,
         )
         return assetUUID
     }
-}
 
-private func splitIntoParts(data: Data, partSize: Int64, partCount: Int) throws -> [Data] {
-    guard partCount > 0 else { return [] }
-    let size = Int(partSize)
-    guard size > 0 else {
-        throw NSError(domain: "DeliveryService", code: -4, userInfo: [
-            NSLocalizedDescriptionKey: "non-positive partSize"
-        ])
+    private func existingBackendAssetId(localAssetId: UUID, sessionId: UUID) async throws -> UUID? {
+        guard let context = try await uploadStore?.backendContext(for: localAssetId),
+              context.backendSessionId == sessionId
+        else { return nil }
+        return context.backendAssetId
     }
-    var parts: [Data] = []
-    parts.reserveCapacity(partCount)
-    var offset = 0
-    while offset < data.count {
-        let end = min(offset + size, data.count)
-        parts.append(data.subdata(in: offset..<end))
-        offset = end
-    }
-    return parts
-}
 
-/// Lower-case hex SHA-256 of the full payload — the backend matches this
-/// against S3's stored checksum during completeUpload.
-private func sha256Hex(of data: Data) -> String {
-    let digest = SHA256.hash(data: data)
-    return digest.map { String(format: "%02x", $0) }.joined()
+    private func registerBackendAsset(
+        sessionId: UUID,
+        originalFilename: String,
+        captureTime: Date,
+        mime: String,
+        sizeBytes: Int64,
+    ) async throws -> UUID {
+        let asset = try await backend.registerAsset(
+            sessionId: sessionId,
+            body: .init(
+                originalFilename: originalFilename,
+                captureTime: captureTime,
+                mime: mime,
+                sizeBytes: sizeBytes,
+            ),
+        )
+        guard let parsed = UUID(uuidString: asset.id) else {
+            throw NSError(domain: "DeliveryService", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "backend returned non-UUID asset id \(asset.id)"
+            ])
+        }
+        return parsed
+    }
+
+    private func requireProjectLink(sessionId: UUID, projectId: String?) async throws {
+        guard let projectId = projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectId.isEmpty
+        else { return }
+        do {
+            try await backend.linkSessionToProject(sessionId: sessionId, projectId: projectId)
+        } catch {
+            throw DeliveryError.projectLinkFailed(String(describing: error))
+        }
+    }
+
+    private func fileSize(at path: String) throws -> Int64 {
+        let values = try URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey])
+        guard let fileSize = values.fileSize, fileSize > 0 else {
+            throw NSError(domain: "DeliveryService", code: -4, userInfo: [
+                NSLocalizedDescriptionKey: "empty or unreadable file at \(path)"
+            ])
+        }
+        return Int64(fileSize)
+    }
+
+    /// Upload one file while retaining only a single multipart chunk in RAM.
+    /// Signed URLs are requested in server-advertised batches, which also
+    /// supports files whose multipart plan contains more than 100 parts.
+    private func uploadFile(
+        localAssetId: UUID,
+        backendSessionId: UUID,
+        assetId: UUID,
+        path: String,
+        kind: BackendUploadKind,
+        mime: String,
+        sizeBytes: Int64
+    ) async throws {
+        let checksum = try sha256(at: path)
+        var checkpoint = try await uploadStore?.prepare(
+            localAssetId: localAssetId,
+            backendAssetId: assetId,
+            backendSessionId: backendSessionId,
+            kind: kind,
+            localPath: path,
+            mime: mime,
+            sizeBytes: sizeBytes,
+            checksumSha256: checksum,
+        )
+        if checkpoint?.status == "completed" { return }
+
+        let resumedPlan = checkpoint?.hasUsablePlan == true
+        var plan = try await resolvePlan(
+            checkpoint: checkpoint,
+            localAssetId: localAssetId,
+            assetId: assetId,
+            kind: kind,
+            mime: mime,
+            sizeBytes: sizeBytes,
+        )
+        checkpoint = try await uploadStore?.checkpoint(localAssetId: localAssetId, kind: kind)
+
+        do {
+            try await uploadPartsAndComplete(
+                localAssetId: localAssetId,
+                assetId: assetId,
+                path: path,
+                kind: kind,
+                sizeBytes: sizeBytes,
+                checksum: checksum,
+                plan: plan,
+                persistedParts: checkpoint?.completedParts ?? [],
+            )
+        } catch let error as BackendError where resumedPlan && Self.isMissingMultipartUpload(error) {
+            // S3 can expire/abort old multipart ids. Start one replacement
+            // exactly once; all other failures retain the checkpoint for retry.
+            try await uploadStore?.resetPlan(localAssetId: localAssetId, kind: kind)
+            plan = try await resolvePlan(
+                checkpoint: nil,
+                localAssetId: localAssetId,
+                assetId: assetId,
+                kind: kind,
+                mime: mime,
+                sizeBytes: sizeBytes,
+            )
+            try await uploadPartsAndComplete(
+                localAssetId: localAssetId,
+                assetId: assetId,
+                path: path,
+                kind: kind,
+                sizeBytes: sizeBytes,
+                checksum: checksum,
+                plan: plan,
+                persistedParts: [],
+            )
+        }
+    }
+
+    private func resolvePlan(
+        checkpoint: PersistentUploadStore.Checkpoint?,
+        localAssetId: UUID,
+        assetId: UUID,
+        kind: BackendUploadKind,
+        mime: String,
+        sizeBytes: Int64,
+    ) async throws -> BackendUploadPlan {
+        if let checkpoint, checkpoint.hasUsablePlan {
+            return BackendUploadPlan(
+                bucket: "",
+                key: checkpoint.objectKey!,
+                uploadId: checkpoint.uploadId!,
+                partSize: checkpoint.partSize!,
+                partCount: checkpoint.partCount!,
+                signedUrlTtlSeconds: 0,
+                partUrlBatchMax: checkpoint.partUrlBatchMax!,
+            )
+        }
+        let plan = try await backend.startUpload(
+            assetId: assetId,
+            body: .init(kind: kind, sizeBytes: sizeBytes, mime: mime, preferredPartSize: nil),
+        )
+        guard plan.partSize > 0, plan.partCount > 0 else {
+            throw NSError(domain: "DeliveryService", code: -5, userInfo: [
+                NSLocalizedDescriptionKey: "backend returned an invalid multipart plan"
+            ])
+        }
+        try await uploadStore?.savePlan(localAssetId: localAssetId, kind: kind, plan: plan)
+        return plan
+    }
+
+    private func uploadPartsAndComplete(
+        localAssetId: UUID,
+        assetId: UUID,
+        path: String,
+        kind: BackendUploadKind,
+        sizeBytes: Int64,
+        checksum: String,
+        plan: BackendUploadPlan,
+        persistedParts: [PersistentUploadStore.Part],
+    ) async throws {
+        var completed = Dictionary(uniqueKeysWithValues: persistedParts.map { ($0.partNumber, $0.etag) })
+        let missing = (1...plan.partCount).filter { completed[$0] == nil }
+        let batchSize = max(1, plan.partUrlBatchMax)
+
+        for batchOffset in stride(from: 0, to: missing.count, by: batchSize) {
+            let requestedNumbers = Array(missing[batchOffset..<min(missing.count, batchOffset + batchSize)])
+            let signed = try await backend.signPartURLs(
+                assetId: assetId,
+                body: .init(uploadId: plan.uploadId, key: plan.key, partNumbers: requestedNumbers),
+            )
+            let signedParts = signed.parts.sorted { $0.partNumber < $1.partNumber }
+            guard signedParts.map(\.partNumber) == requestedNumbers else {
+                throw NSError(domain: "DeliveryService", code: -6, userInfo: [
+                    NSLocalizedDescriptionKey: "signed multipart response did not match requested part numbers"
+                ])
+            }
+
+            for signedPart in signedParts {
+                let offset = Int64(signedPart.partNumber - 1) * plan.partSize
+                let expectedLength = min(plan.partSize, sizeBytes - offset)
+                guard expectedLength > 0, expectedLength <= Int64(Int.max) else {
+                    throw NSError(domain: "DeliveryService", code: -7, userInfo: [
+                        NSLocalizedDescriptionKey: "multipart plan exceeded the local file"
+                    ])
+                }
+                guard let url = URL(string: signedPart.url) else {
+                    throw NSError(domain: "DeliveryService", code: -8, userInfo: [
+                        NSLocalizedDescriptionKey: "invalid signed part URL"
+                    ])
+                }
+                let checkpointId = PersistentUploadStore.key(localAssetId: localAssetId, kind: kind)
+                let etag: String
+                if let partUploader {
+                    etag = try await partUploader.uploadPart(
+                        sourceFile: URL(fileURLWithPath: path),
+                        offset: offset,
+                        length: expectedLength,
+                        destination: url,
+                        checkpointId: checkpointId,
+                        partNumber: signedPart.partNumber,
+                    )
+                } else {
+                    let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+                    defer { try? handle.close() }
+                    try handle.seek(toOffset: UInt64(offset))
+                    guard let bytes = try handle.read(upToCount: Int(expectedLength)),
+                          bytes.count == Int(expectedLength)
+                    else {
+                        throw NSError(domain: "DeliveryService", code: -7, userInfo: [
+                            NSLocalizedDescriptionKey: "file ended before multipart plan was complete"
+                        ])
+                    }
+                    etag = try await backend.putPart(url: url, bytes: bytes)
+                }
+                completed[signedPart.partNumber] = etag
+                try await uploadStore?.savePart(
+                    localAssetId: localAssetId,
+                    kind: kind,
+                    part: .init(partNumber: signedPart.partNumber, etag: etag),
+                )
+                await partUploader?.acknowledgePart(
+                    checkpointId: checkpointId,
+                    partNumber: signedPart.partNumber,
+                )
+            }
+        }
+
+        guard completed.count == plan.partCount else {
+            throw NSError(domain: "DeliveryService", code: -9, userInfo: [
+                NSLocalizedDescriptionKey: "multipart checkpoint is incomplete"
+            ])
+        }
+        let parts = completed
+            .map { BackendCompletedPart(partNumber: $0.key, etag: $0.value) }
+            .sorted { $0.partNumber < $1.partNumber }
+        _ = try await backend.completeUpload(
+            assetId: assetId,
+            body: .init(
+                kind: kind,
+                uploadId: plan.uploadId,
+                key: plan.key,
+                parts: parts,
+                checksumSha256: checksum,
+                sizeBytes: sizeBytes,
+            ),
+        )
+        try await uploadStore?.markCompleted(localAssetId: localAssetId, kind: kind)
+    }
+
+    private func sha256(at path: String) throws -> String {
+        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while true {
+            let data = handle.readData(ofLength: 4 * 1024 * 1024)
+            if data.isEmpty { break }
+            hasher.update(data: data)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func isMissingMultipartUpload(_ error: BackendError) -> Bool {
+        switch error {
+        case .notFound, .httpStatus(404, _): return true
+        default: return false
+        }
+    }
 }

@@ -69,7 +69,7 @@ struct TodayView: View {
     @State private var quickNote = ""
     @State private var requests = TodayRequestsModel()
 
-    var ownerUserId: String = "dev-owner"
+    let ownerUserId: String
 
     private var store: TodayStore? {
         do {
@@ -422,7 +422,27 @@ struct TodayView: View {
         async let deliveryTask: Void = delivery.load()
         async let requestsTask: Void = requests.load()
         if let store {
-            do { snapshot = try await store.load(ownerUserId: ownerUserId); loadError = nil } catch { loadError = String(describing: error) }
+            do {
+                if let signedIn = SignInService.shared.session {
+                    let backend = BackendClient(
+                        baseURL: signedIn.backendBaseURL,
+                        authHeaders: ["Authorization": "Bearer \(signedIn.bearer)"],
+                    )
+                    let response = try await backend.listProjects(limit: 200)
+                    try await store.syncProjects(response.projects, ownerUserId: signedIn.userId)
+                }
+                snapshot = try await store.load(ownerUserId: ownerUserId)
+                loadError = nil
+            } catch {
+                // Offline remains useful: render the most recent local mirror
+                // and only show an error when even that cache cannot be read.
+                do {
+                    snapshot = try await store.load(ownerUserId: ownerUserId)
+                    loadError = nil
+                } catch {
+                    loadError = String(describing: error)
+                }
+            }
         } else {
             loadError = "Database ikke tilgjengelig"
         }

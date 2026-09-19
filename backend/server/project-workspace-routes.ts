@@ -73,6 +73,7 @@ import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
 import { isDeviceRevoked } from "./post-agent-storage";
+import { signCapturePreviewToken } from "./capture-preview-token";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -5480,13 +5481,36 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!r.rows.length) return res.json({ shotList: null, shots: [] });
       const s = r.rows[0];
       const shots = Array.isArray(s.shots_data) ? s.shots_data : [];
+      const requestedAssetIds = Array.from(new Set(
+        shots
+          .map((shot: any) => String(shot?.capturedAssetBackendId || ''))
+          .filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)),
+      ));
+      const authorizedAssetIds = new Set<string>();
+      if (requestedAssetIds.length > 0) {
+        const assets = await pool.query(
+          `SELECT a.id
+             FROM capture_assets a
+             JOIN capture_sessions cs ON cs.id = a.session_id
+            WHERE a.id = ANY($1::uuid[])
+              AND cs.project_id = $2`,
+          [requestedAssetIds, req.params.projectId],
+        );
+        for (const asset of assets.rows as Array<{ id: string }>) authorizedAssetIds.add(asset.id);
+      }
+      const shotsWithPreviewCapabilities = shots.map((shot: any) => {
+        const assetId = String(shot?.capturedAssetBackendId || '');
+        return authorizedAssetIds.has(assetId)
+          ? { ...shot, capturedAssetPreviewToken: signCapturePreviewToken(assetId) }
+          : shot;
+      });
       res.json({
         shotList: {
           id: s.id, name: s.name, templateType: s.template_type, culture: s.culture,
           totalShots: s.total_shots ?? shots.length, completedShots: s.completed_shots ?? 0,
           criticalShots: s.critical_shots ?? 0, completedCriticalShots: s.completed_critical_shots ?? 0,
         },
-        shots,
+        shots: shotsWithPreviewCapabilities,
       });
     } catch (e) { console.error("GET shot-list", e); res.status(500).json({ error: "failed" }); }
   });

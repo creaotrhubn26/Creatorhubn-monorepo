@@ -65,6 +65,9 @@ struct BackendAsset: Decodable, Sendable {
     /// the asset has been registered but no preview has been uploaded
     /// yet, or when the endpoint was hit on an older backend.
     let previewUrl: String?
+    /// Asset-scoped capability for the stable preview redirect. Issued only
+    /// by authenticated listing endpoints; safe to embed in AsyncImage/chat.
+    let previewToken: String?
     /// Optional review fields — populated on the listing endpoint so
     /// the Live Set dashboard can render star-count + pick state
     /// without a second round-trip per asset.
@@ -235,8 +238,10 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
     let scouted: Bool?
     let isCompleted: Bool?
     let capturedAssetId: String?
-    /// Backend asset-id → thumbnail via `/api/capture/assets/:id/preview`.
+    /// Backend asset-id; trenger den separate preview-capabilityen under.
     let capturedAssetBackendId: String?
+    /// HMAC capability bound to ``capturedAssetBackendId``.
+    let capturedAssetPreviewToken: String?
     /// Hvem som tok shotet (team-attribusjon, «Ferdig · Ole»). Optional +
     /// bakoverkompatibel — nil når backend ikke sender feltet.
     let completedBy: String?
@@ -247,12 +252,14 @@ struct BackendShotListItem: Decodable, Sendable, Identifiable, Hashable {
          priority: String? = nil, shotType: String? = nil, locationName: String? = nil,
          notes: String? = nil, scouted: Bool? = nil, isCompleted: Bool? = nil,
          capturedAssetId: String? = nil, capturedAssetBackendId: String? = nil,
+         capturedAssetPreviewToken: String? = nil,
          completedBy: String? = nil) {
         self.id = id; self.scene = scene; self.description = description
         self.estimatedDuration = estimatedDuration; self.priority = priority
         self.shotType = shotType; self.locationName = locationName; self.notes = notes
         self.scouted = scouted; self.isCompleted = isCompleted
         self.capturedAssetId = capturedAssetId; self.capturedAssetBackendId = capturedAssetBackendId
+        self.capturedAssetPreviewToken = capturedAssetPreviewToken
         self.completedBy = completedBy
     }
 }

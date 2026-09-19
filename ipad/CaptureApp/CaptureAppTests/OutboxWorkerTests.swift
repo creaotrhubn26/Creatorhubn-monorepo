@@ -272,6 +272,70 @@ final class OutboxWorkerTests: XCTestCase {
         await worker.stop()
         await worker.stop()    // must not crash
     }
+
+    func testRecoverInterruptedSyncsReturnsClaimedRowsToPending() async throws {
+        let db = try AppDatabase.inMemory()
+        let outbox = Outbox(database: db)
+        let row = try await outbox.enqueue(endpoint: "/api/capture/test", method: .post)
+        try await outbox.markSyncing([row])
+
+        try await outbox.recoverInterruptedSyncs()
+
+        let pending = try await outbox.nextPending()
+        XCTAssertEqual(pending.map(\.clientMutationId), [row.clientMutationId])
+    }
+
+    func testHTTPOutboxSenderForwardsAuthJSONAndIdempotency() async throws {
+        let session = MockURLProtocol.makeSession()
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://creatorhub.example/api/capture/test")
+            XCTAssertEqual(request.httpMethod, "PATCH")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Client-Mutation-Id"), "mutation-1")
+            return MockURLProtocol.jsonResponse(for: request.url!, body: "{\"ok\":true}")
+        }
+        defer { MockURLProtocol.handler = nil }
+        let sender = HTTPOutboxSender(
+            baseURL: URL(string: "https://creatorhub.example")!,
+            bearer: "secret",
+            session: session,
+        )
+        let mutation = OutboxMutation(
+            clientMutationId: "mutation-1",
+            endpoint: "/api/capture/test",
+            method: .patch,
+            bodyJson: "{\"enabled\":true}",
+        )
+
+        let outcome = await sender.send(mutation)
+        guard case .succeeded = outcome else {
+            return XCTFail("Expected successful send, got \(outcome)")
+        }
+    }
+
+    func testHTTPOutboxSenderRejectsAbsoluteEndpointWithoutSending() async {
+        let session = MockURLProtocol.makeSession()
+        MockURLProtocol.handler = { request in
+            XCTFail("Unsafe endpoint must not send: \(request)")
+            return MockURLProtocol.jsonResponse(for: request.url!, body: "{}")
+        }
+        defer { MockURLProtocol.handler = nil }
+        let sender = HTTPOutboxSender(
+            baseURL: URL(string: "https://creatorhub.example")!,
+            bearer: "secret",
+            session: session,
+        )
+        let mutation = OutboxMutation(
+            clientMutationId: "mutation-2",
+            endpoint: "https://attacker.example/collect",
+            method: .post,
+        )
+
+        let outcome = await sender.send(mutation)
+        guard case .failedPermanent = outcome else {
+            return XCTFail("Expected permanent rejection, got \(outcome)")
+        }
+    }
 }
 
 /// Small reference-typed holder used to pass mutable test state
