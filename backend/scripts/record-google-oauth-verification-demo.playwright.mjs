@@ -283,7 +283,7 @@ async function runDemo(page, env) {
   await showTitleCard(page, {
     subtitle: 'CreatorHub Norge · Google OAuth verification',
     title: 'Google Workspace access — consent and use',
-    body: 'Google Cloud project <code>creatorhubn-com</code>. This recording shows a user granting CreatorHub access to their own Google account, and the three restricted scope groups being used: Drive, Gmail and Google Chat. Every scope is granted per user, by that user, for data in their own account.',
+    body: 'Google Cloud project <code>creatorhubn-com</code>. This recording shows a user granting CreatorHub access to their own Google account, and the three restricted scope groups being used: Drive, Gmail and Google Chat. Every scope is granted per user, by that user, for data in their own account.<br><br>CreatorHub serves the Norwegian film and content industry, so the product interface is in Norwegian. Each step is captioned in English as it happens. The Google consent screen is shown in English.',
   });
   await beat(page, 6000);
   await hideTitleCard(page);
@@ -316,6 +316,9 @@ async function runDemo(page, env) {
     terminal:
       'Samtykkeskjermen viser nå scopene.\n'
       + '   1) SJEKK SPRÅKVELGEREN nede til venstre — den MÅ stå på English.\n'
+      + '      Dette gjelder KUN Googles samtykkeskjerm. CreatorHub har ingen\n'
+      + '      engelsk modus, og Google krever det heller ikke — skjermteksten\n'
+      + '      i opptaket er fortellerstemmen de ber om.\n'
       + '      Google avviser videoer der samtykkeskjermen ikke er på engelsk.\n'
       + '   2) SCROLL SAKTE gjennom hele listen slik at Drive-, Gmail- og\n'
       + '      Chat-tilgangene er lesbare. Scopene må matche nøyaktig de vi ber om.\n'

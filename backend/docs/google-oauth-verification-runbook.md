@@ -277,13 +277,28 @@ Fra <https://support.google.com/cloud/answer/13804565>:
 - Alle integrasjonspunkter mot Google-API-ene det bes om
 - Komplett samtykkeskjerm med **nøyaktig** de scopene vi ber om
 - **Språkvelgeren nederst til venstre satt til English** — dette er en vanlig
-  avvisningsgrunn for nordiske utviklere
+  avvisningsgrunn for nordiske utviklere. Det gjelder **kun samtykkeskjermen**
 - Hver forespurte scope demonstrert i bruk
 - Fortellerstemme (tale eller tekst) som peker på hvor kravene oppfylles
 - Samme app som er sendt inn, med samme navn og branding
 
 Skjermteksten i skriptet dekker tekst-varianten av fortellerstemmen, og
 skriptet pauser på uverifisert-app-skjermen i stedet for å klikke forbi.
+
+### Må CreatorHub være på engelsk?
+
+Nei. Googles dokumentasjon stiller språkkrav kun til samtykkeskjermen.
+Appen selv har ingen engelsk modus — det finnes ingen i18n i kodebasen
+(verken `i18next`, `react-intl` eller en locales-mappe), grensesnittet er
+hardkodet norsk.
+
+Det dekkes av kravet om fortellerstemme: skjermteksten i opptaksskriptet er
+på engelsk og forklarer hvert steg mens det skjer. Tittelkortet sier
+uttrykkelig at produktet betjener norsk film- og innholdsbransje, at
+grensesnittet derfor er norsk, og at hvert steg tekstes på engelsk.
+
+I praksis: sett nettleseren til engelsk før opptaket. Det påvirker Googles
+samtykkeskjerm, som er det som teller. CreatorHub ser likt ut uansett.
 
 ### Testkonto — hva Google faktisk ber om
 
