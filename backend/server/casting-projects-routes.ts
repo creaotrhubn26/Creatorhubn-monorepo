@@ -91,6 +91,7 @@ import {
   getProjectItems,
   setProjectItems,
 } from "./_shared";
+import { resolveCastingProjectAccess } from "./casting-project-ownership.js";
 
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 function sanitizeBody(body: Record<string, unknown>): Record<string, unknown> {
@@ -518,6 +519,16 @@ export function setupCastingProjectsRoutes(
     return undefined;
   }
 
+  const CASTING_MEMBER_PROJECT_FIELDS = ["roles", "candidates", "schedules"] as const;
+
+  function pickCastingMemberProjectFields(payload: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      CASTING_MEMBER_PROJECT_FIELDS
+        .filter((key) => Array.isArray(payload[key]))
+        .map((key) => [key, payload[key]]),
+    );
+  }
+
   // ── Projects: CRUD ────────────────────────────────────────────────
 
   app.get("/api/casting/projects", async (req, res) => {
@@ -600,37 +611,39 @@ export function setupCastingProjectsRoutes(
     // Nye prosjekter (ingen existing-eier) og selv-eide oppdateringer passerer.
     const existingOwnerPost =
       typeof existingRecord.created_by === "string" ? existingRecord.created_by : null;
-    if (
-      (canonicalOwnerPost && canonicalOwnerPost !== session.userId)
-      || (
-        existingOwnerPost
-        && existingOwnerPost !== "demo-user"
-        && existingOwnerPost !== session.userId
-      )
+    let isCastingMemberPost = false;
+    if (canonicalOwnerPost && canonicalOwnerPost !== session.userId) {
+      const access = await resolveCastingProjectAccess(pool, id, session.userId);
+      if (!access.grants.canEditCasting) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      isCastingMemberPost = true;
+    } else if (
+      existingOwnerPost
+      && existingOwnerPost !== "demo-user"
+      && existingOwnerPost !== session.userId
     ) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
     const payloadRecord = payload as Record<string, unknown>;
     const ownerId = readString(
-      payloadRecord.ownerId,
-      payloadRecord.owner_id,
+      ...(isCastingMemberPost ? [] : [payloadRecord.ownerId, payloadRecord.owner_id]),
       existingRecord.ownerId,
       existingRecord.owner_id,
-      payloadRecord.createdBy,
-      payloadRecord.created_by,
+      ...(isCastingMemberPost ? [] : [payloadRecord.createdBy, payloadRecord.created_by]),
       existingRecord.createdBy,
       existingRecord.created_by,
+      canonicalOwnerPost,
     );
     const ownerEmail = readString(
-      payloadRecord.ownerEmail,
-      payloadRecord.owner_email,
+      ...(isCastingMemberPost ? [] : [payloadRecord.ownerEmail, payloadRecord.owner_email]),
       existingRecord.ownerEmail,
       existingRecord.owner_email,
     );
     const ownerLabel = readString(
-      payloadRecord.ownerLabel,
-      payloadRecord.owner_label,
+      ...(isCastingMemberPost ? [] : [payloadRecord.ownerLabel, payloadRecord.owner_label]),
       existingRecord.ownerLabel,
       existingRecord.owner_label,
       ownerEmail,
@@ -643,22 +656,21 @@ export function setupCastingProjectsRoutes(
     // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
     // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
     // seg selv direkte etter opprettelse/oppdatering.
-    // Eierskap avledes ALLTID fra sesjonen — aldri fra body. Ellers kunne en
-    // angriper opprette et prosjekt med created_by satt til en annen bruker,
-    // som så dukket opp i offerets GET /api/casting/projects-liste (spoofing).
-    // For selv-eide oppdateringer er dette en no-op (overwrite-gaten over
-    // krever allerede existing.created_by === session.userId).
-    const createdBy = session.userId;
+    // Eierskap avledes aldri fra body: eieren bruker sesjonsidentiteten, mens
+    // et autorisert castingmedlem beholder canonical/eksisterende eier. Ellers
+    // kunne en angriper endre created_by og få prosjektet til å dukke opp hos
+    // feil bruker (spoofing).
+    const createdBy = isCastingMemberPost
+      ? readString(existingRecord.created_by, existingRecord.createdBy, canonicalOwnerPost)
+      : session.userId;
     const createdByEmail = readString(
-      payloadRecord.createdByEmail,
-      payloadRecord.created_by_email,
+      ...(isCastingMemberPost ? [] : [payloadRecord.createdByEmail, payloadRecord.created_by_email]),
       existingRecord.createdByEmail,
       existingRecord.created_by_email,
       ownerEmail,
     );
     const createdByLabel = readString(
-      payloadRecord.createdByLabel,
-      payloadRecord.created_by_label,
+      ...(isCastingMemberPost ? [] : [payloadRecord.createdByLabel, payloadRecord.created_by_label]),
       existingRecord.createdByLabel,
       existingRecord.created_by_label,
       ownerLabel,
@@ -675,11 +687,13 @@ export function setupCastingProjectsRoutes(
       "sceneBreakdowns", "userRoles", "equipment", "manuscripts",
       "consents",
     ] as const;
-    const mergedPayload = { ...payload } as Record<string, unknown>;
+    const mergedPayload = isCastingMemberPost
+      ? pickCastingMemberProjectFields(payloadRecord)
+      : { ...payload } as Record<string, unknown>;
     for (const key of nestedArrayKeys) {
       const incoming = (payload as Record<string, unknown>)[key];
       const existingArr = (existing as Record<string, unknown>)[key];
-      if (Array.isArray(incoming) && incoming.length === 0 && Array.isArray(existingArr) && existingArr.length > 0) {
+      if (!isCastingMemberPost && Array.isArray(incoming) && incoming.length === 0 && Array.isArray(existingArr) && existingArr.length > 0) {
         delete mergedPayload[key];
       }
     }
@@ -789,37 +803,39 @@ export function setupCastingProjectsRoutes(
     // overskrive/stjele et annet tenant sitt prosjekt via `:projectId`.
     const existingOwnerPut =
       typeof existingRecord.created_by === "string" ? existingRecord.created_by : null;
-    if (
-      (canonicalOwnerPut && canonicalOwnerPut !== session.userId)
-      || (
-        existingOwnerPut
-        && existingOwnerPut !== "demo-user"
-        && existingOwnerPut !== session.userId
-      )
+    let isCastingMemberPut = false;
+    if (canonicalOwnerPut && canonicalOwnerPut !== session.userId) {
+      const access = await resolveCastingProjectAccess(pool, id, session.userId);
+      if (!access.grants.canEditCasting) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      isCastingMemberPut = true;
+    } else if (
+      existingOwnerPut
+      && existingOwnerPut !== "demo-user"
+      && existingOwnerPut !== session.userId
     ) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
     const payloadRecord = (req.body || {}) as Record<string, unknown>;
     const ownerId = readString(
-      payloadRecord.ownerId,
-      payloadRecord.owner_id,
+      ...(isCastingMemberPut ? [] : [payloadRecord.ownerId, payloadRecord.owner_id]),
       existingRecord.ownerId,
       existingRecord.owner_id,
-      payloadRecord.createdBy,
-      payloadRecord.created_by,
+      ...(isCastingMemberPut ? [] : [payloadRecord.createdBy, payloadRecord.created_by]),
       existingRecord.createdBy,
       existingRecord.created_by,
+      canonicalOwnerPut,
     );
     const ownerEmail = readString(
-      payloadRecord.ownerEmail,
-      payloadRecord.owner_email,
+      ...(isCastingMemberPut ? [] : [payloadRecord.ownerEmail, payloadRecord.owner_email]),
       existingRecord.ownerEmail,
       existingRecord.owner_email,
     );
     const ownerLabel = readString(
-      payloadRecord.ownerLabel,
-      payloadRecord.owner_label,
+      ...(isCastingMemberPut ? [] : [payloadRecord.ownerLabel, payloadRecord.owner_label]),
       existingRecord.ownerLabel,
       existingRecord.owner_label,
       ownerEmail,
@@ -832,30 +848,30 @@ export function setupCastingProjectsRoutes(
     // verification-flowen retry'er 5 ganger og gir opp. Defaulter nå til
     // brukeren som faktisk gjør request'en så prosjektet blir hentbart av
     // seg selv direkte etter opprettelse/oppdatering.
-    // Eierskap avledes ALLTID fra sesjonen — aldri fra body. Ellers kunne en
-    // angriper opprette et prosjekt med created_by satt til en annen bruker,
-    // som så dukket opp i offerets GET /api/casting/projects-liste (spoofing).
-    // For selv-eide oppdateringer er dette en no-op (overwrite-gaten over
-    // krever allerede existing.created_by === session.userId).
-    const createdBy = session.userId;
+    // Eierskap avledes aldri fra body: eieren bruker sesjonsidentiteten, mens
+    // et autorisert castingmedlem beholder canonical/eksisterende eier.
+    const createdBy = isCastingMemberPut
+      ? readString(existingRecord.created_by, existingRecord.createdBy, canonicalOwnerPut)
+      : session.userId;
     const createdByEmail = readString(
-      payloadRecord.createdByEmail,
-      payloadRecord.created_by_email,
+      ...(isCastingMemberPut ? [] : [payloadRecord.createdByEmail, payloadRecord.created_by_email]),
       existingRecord.createdByEmail,
       existingRecord.created_by_email,
       ownerEmail,
     );
     const createdByLabel = readString(
-      payloadRecord.createdByLabel,
-      payloadRecord.created_by_label,
+      ...(isCastingMemberPut ? [] : [payloadRecord.createdByLabel, payloadRecord.created_by_label]),
       existingRecord.createdByLabel,
       existingRecord.created_by_label,
       ownerLabel,
     );
     const updatedAtIso = new Date().toISOString();
+    const sanitizedPayload = isCastingMemberPut
+      ? pickCastingMemberProjectFields(payloadRecord)
+      : sanitizeBody(payloadRecord);
     const updated = {
       ...existing,
-      ...sanitizeBody(req.body),
+      ...sanitizedPayload,
       id,
       ownerId,
       owner_id: ownerId,

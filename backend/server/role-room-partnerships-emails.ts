@@ -451,3 +451,203 @@ export async function sendCandidateStatusUpdate(
   });
   return { sent: r.sent, reason: r.reason ?? null };
 }
+
+// ── 8. talent request created → agency ─────────────────────────────
+export async function sendTalentRequestCreated(
+  pool: Pool,
+  args: {
+    requestId: string;
+    agencyName: string;
+    projectName: string;
+    roleName: string;
+    talentDisplayName: string;
+    brief: string;
+    responseDeadline: string;
+    recipientEmail: string;
+    sentByUserId: string;
+  },
+): Promise<{ sent: boolean; reason: string | null }> {
+  const ctaUrl = `${appBaseUrl()}/talents/partnerships?tab=requests`;
+  const deadline = new Date(args.responseDeadline).toLocaleDateString("nb-NO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const headline = `Ny talentforespørsel til ${args.agencyName}`;
+  const intro = `${args.projectName} ber byrået vurdere ${args.talentDisplayName} for rollen ${args.roleName}.`;
+  const body = `
+    <h1 style="color: #f5f3ff; font-size: 22px; font-weight: 800; margin: 0 0 16px;">
+      ${escapeHtml(headline)}
+    </h1>
+    <p style="color: #c4b5fd; line-height: 1.6;">${escapeHtml(intro)}</p>
+    <div style="margin: 18px 0; padding: 16px; background: #2a3d56; border-radius: 10px;">
+      <div style="color:#8b7ec4; font-size:12px; margin-bottom:6px;">Castingbrief</div>
+      <div style="color:#f5f3ff; line-height:1.55;">${escapeHtml(args.brief)}</div>
+      <div style="color:#fbbf24; font-size:13px; margin-top:12px;">Svarfrist: ${escapeHtml(deadline)}</div>
+    </div>
+    <p style="color:#c4b5fd; font-size:14px; line-height:1.55;">
+      Forespørselen deler ikke nye talentdata og oppretter ingen kandidat. Byrået velger selv om det vil sende et formelt forslag.
+    </p>
+    <a href="${escapeHtml(ctaUrl)}" style="${PRIMARY_BTN}">Behandle forespørselen</a>
+  `;
+  const text = `${headline}\n\n${intro}\n\nBrief: ${args.brief}\nSvarfrist: ${deadline}\n\nÅpne: ${ctaUrl}`;
+  const result = await sendTransactionalEmail({
+    to: args.recipientEmail,
+    subject: `${args.projectName} ber om ${args.talentDisplayName} til ${args.roleName}`,
+    html: shellHtml("Ny talentforespørsel", body),
+    text,
+    fromLabel: "The Role Room",
+    kind: "partnership_talent_request_created",
+    sentByUserId: args.sentByUserId,
+    pool,
+  });
+  return { sent: result.sent, reason: result.reason ?? null };
+}
+
+export type TalentRequestAgencyNotificationKind =
+  | "deadline_48h"
+  | "deadline_24h"
+  | "deadline_overdue"
+  | "cancelled";
+
+// ── 9. talent request deadline/cancellation → agency ────────────────
+export async function sendTalentRequestAgencyNotification(
+  pool: Pool,
+  args: {
+    notificationKind: TalentRequestAgencyNotificationKind;
+    requestId: string;
+    agencyName: string;
+    projectName: string;
+    roleName: string;
+    talentDisplayName: string;
+    responseDeadline: string;
+    recipientEmail: string;
+    sentByUserId?: string | null;
+  },
+): Promise<{ sent: boolean; reason: string | null }> {
+  const deadline = new Date(args.responseDeadline).toLocaleString("nb-NO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const copy: Record<TalentRequestAgencyNotificationKind, {
+    eyebrow: string;
+    headline: string;
+    intro: string;
+    subject: string;
+    cta: string;
+  }> = {
+    deadline_48h: {
+      eyebrow: "48 timer igjen",
+      headline: `Svarfristen nærmer seg for ${args.talentDisplayName}`,
+      intro: `${args.projectName} venter på svar om rollen ${args.roleName}. Fristen er ${deadline}.`,
+      subject: `48 timer igjen: ${args.talentDisplayName} til ${args.roleName}`,
+      cta: "Behandle forespørselen",
+    },
+    deadline_24h: {
+      eyebrow: "24 timer igjen",
+      headline: `Svarfrist i løpet av 24 timer`,
+      intro: `${args.projectName} venter fortsatt på svar om ${args.talentDisplayName} til rollen ${args.roleName}. Fristen er ${deadline}.`,
+      subject: `24 timer igjen: ${args.talentDisplayName} til ${args.roleName}`,
+      cta: "Svar produksjonen",
+    },
+    deadline_overdue: {
+      eyebrow: "Svarfristen er utløpt",
+      headline: `Talentforespørselen ble ikke besvart innen fristen`,
+      intro: `Fristen for ${args.talentDisplayName} til rollen ${args.roleName} i ${args.projectName} var ${deadline}. Forespørselen er nå markert som utløpt.`,
+      subject: `Frist utløpt: ${args.talentDisplayName} til ${args.roleName}`,
+      cta: "Se forespørselskøen",
+    },
+    cancelled: {
+      eyebrow: "Forespørsel avbrutt",
+      headline: `${args.projectName} har avbrutt talentforespørselen`,
+      intro: `Dere trenger ikke lenger vurdere ${args.talentDisplayName} for rollen ${args.roleName}.`,
+      subject: `Avbrutt: ${args.talentDisplayName} til ${args.roleName}`,
+      cta: "Se forespørselskøen",
+    },
+  };
+  const selected = copy[args.notificationKind];
+  const ctaUrl = `${appBaseUrl()}/talents/partnerships?tab=requests`;
+  const body = `
+    <h1 style="color:#f5f3ff; font-size:22px; font-weight:800; margin:0 0 16px;">
+      ${escapeHtml(selected.headline)}
+    </h1>
+    <p style="color:#c4b5fd; line-height:1.6;">${escapeHtml(selected.intro)}</p>
+    <a href="${escapeHtml(ctaUrl)}" style="${PRIMARY_BTN}">${escapeHtml(selected.cta)}</a>
+  `;
+  const result = await sendTransactionalEmail({
+    to: args.recipientEmail,
+    subject: selected.subject,
+    html: shellHtml(selected.eyebrow, body),
+    text: `${selected.headline}\n\n${selected.intro}\n\nÅpne: ${ctaUrl}`,
+    fromLabel: "The Role Room",
+    kind: `partnership_talent_request_${args.notificationKind}`,
+    projectId: null,
+    sentByUserId: args.sentByUserId ?? null,
+    pool,
+  });
+  return { sent: result.sent, reason: result.reason ?? null };
+}
+
+// ── 10. talent request status → production ─────────────────────────
+export async function sendTalentRequestResponded(
+  pool: Pool,
+  args: {
+    requestId: string;
+    action: "acknowledge" | "decline" | "fulfill";
+    agencyName: string;
+    productionName: string;
+    projectId: string;
+    projectName: string;
+    roleName: string;
+    talentDisplayName: string;
+    responseNote: string | null;
+    recipientEmail: string;
+    sentByUserId: string;
+  },
+): Promise<{ sent: boolean; reason: string | null }> {
+  const actionCopy = {
+    acknowledge: {
+      eyebrow: "Forespørsel mottatt",
+      headline: `${args.agencyName} har sett forespørselen`,
+      intro: `Byrået vurderer ${args.talentDisplayName} for rollen ${args.roleName}.`,
+    },
+    decline: {
+      eyebrow: "Forespørsel avslått",
+      headline: `${args.agencyName} avslår forespørselen`,
+      intro: `Byrået foreslår ikke ${args.talentDisplayName} for rollen ${args.roleName} denne gangen.`,
+    },
+    fulfill: {
+      eyebrow: "Talent foreslått",
+      headline: `${args.agencyName} har sendt et forslag`,
+      intro: `${args.talentDisplayName} er nå foreslått til rollen ${args.roleName} og venter på behandling i castingrommet.`,
+    },
+  }[args.action];
+  const ctaUrl = `${appBaseUrl()}/casting?project=${encodeURIComponent(args.projectId)}&tab=kandidater&lens=casting&surface=talents`;
+  const body = `
+    <h1 style="color:#f5f3ff; font-size:22px; font-weight:800; margin:0 0 16px;">
+      ${escapeHtml(actionCopy.headline)}
+    </h1>
+    <p style="color:#c4b5fd; line-height:1.6;">${escapeHtml(actionCopy.intro)}</p>
+    ${args.responseNote ? `
+      <div style="margin:18px 0; padding:14px 18px; background:#2a3d56; border-left:3px solid #5d76cb; border-radius:0 8px 8px 0;">
+        <div style="color:#8b7ec4; font-size:12px; margin-bottom:4px;">Kommentar fra byrået</div>
+        <div style="color:#f5f3ff; line-height:1.55;">${escapeHtml(args.responseNote)}</div>
+      </div>` : ""}
+    <a href="${escapeHtml(ctaUrl)}" style="${PRIMARY_BTN}">Åpne castingrommet</a>
+  `;
+  const text = `${actionCopy.headline}\n\n${actionCopy.intro}${args.responseNote ? `\n\nKommentar: ${args.responseNote}` : ""}\n\nÅpne: ${ctaUrl}`;
+  const result = await sendTransactionalEmail({
+    to: args.recipientEmail,
+    subject: `${args.projectName}: ${actionCopy.headline}`,
+    html: shellHtml(actionCopy.eyebrow, body),
+    text,
+    fromLabel: `${args.agencyName} via The Role Room`,
+    kind: `partnership_talent_request_${args.action}`,
+    sentByUserId: args.sentByUserId,
+    pool,
+  });
+  return { sent: result.sent, reason: result.reason ?? null };
+}

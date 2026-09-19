@@ -33,10 +33,21 @@ interface QueryablePool {
  * access once and every API answers from the same resolution.
  */
 export const CASTING_GRANT_RULES = {
+  canEditCasting: {
+    roles: [
+      "director",
+      "producer",
+      "casting_director",
+      "local_casting_director",
+      "extras_casting_director",
+    ],
+    permissionKeys: ["canEditCasting"],
+  },
   canEditProduction: {
     roles: [
       "director",
       "producer",
+      "line_producer",
       "production_manager",
       "content_producer",
       "first_ad",
@@ -45,19 +56,30 @@ export const CASTING_GRANT_RULES = {
       "second_ad",
       "second_assistant_director",
       "2nd_ad",
+      "second_second_assistant_director",
+      "2nd_2nd_ad",
     ],
     permissionKeys: ["canEditProduction"],
   },
   canManageProduction: {
-    roles: ["producer", "production_manager"],
+    roles: ["producer", "line_producer", "production_manager"],
     permissionKeys: ["canManageProduction"],
   },
   canCoordinateProduction: {
-    roles: ["producer", "production_manager", "production_coordinator"],
+    roles: [
+      "producer",
+      "line_producer",
+      "production_manager",
+      "production_coordinator",
+      "production_secretary",
+      "office_production_assistant",
+      "office_pa",
+      "production_assistant",
+    ],
     permissionKeys: ["canCoordinateProduction"],
   },
   canManageLocations: {
-    roles: ["producer", "production_manager", "location_manager", "location_scout"],
+    roles: ["producer", "line_producer", "production_manager", "location_manager", "location_scout"],
     permissionKeys: ["canManageLocations"],
   },
   canManageContinuity: {
@@ -75,6 +97,10 @@ export const CASTING_GRANT_RULES = {
       "second_ad",
       "second_assistant_director",
       "2nd_ad",
+      "second_second_assistant_director",
+      "2nd_2nd_ad",
+      "set_production_assistant",
+      "set_pa",
     ],
     permissionKeys: ["canManageContinuity", "canComment"],
   },
@@ -306,6 +332,16 @@ export async function userCanEditCastingProduction(
 ): Promise<boolean> {
   const access = await resolveCastingProjectAccess(pool, projectId, userId);
   return access.grants.canEditProduction;
+}
+
+/** True when the caller owns the casting lane: roles, candidates and auditions. */
+export async function userCanEditCasting(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canEditCasting;
 }
 
 /**

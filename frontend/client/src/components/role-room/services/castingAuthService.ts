@@ -52,10 +52,24 @@ export const castingAuthService = {
       // recognises loses the role the roster still lists.
       return access.isOwner ? matched : null;
     }
+    const accessPermissions = Object.fromEntries(
+      Object.entries({ ...access.permissions, ...access.grants })
+        .filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
+    ) as UserRole['permissions'];
+    const additionalRoles = access.roles.filter((role) => role !== access.role);
     if (matched) {
-      return matched.role === access.role
-        ? matched
-        : { ...matched, role: access.role as UserRoleType };
+      const effectiveRole = access.role as UserRoleType;
+      return {
+        ...matched,
+        role: effectiveRole,
+        additionalRoles,
+        serverGrants: access.grants,
+        permissions: {
+          ...this.getDefaultPermissions(effectiveRole),
+          ...(matched.permissions ?? {}),
+          ...accessPermissions,
+        },
+      };
     }
     const now = new Date().toISOString();
     return {
@@ -63,7 +77,12 @@ export const castingAuthService = {
       projectId,
       userId: String(targetUserId),
       role: access.role,
-      permissions: this.getDefaultPermissions(access.role as UserRoleType),
+      additionalRoles,
+      serverGrants: access.grants,
+      permissions: {
+        ...this.getDefaultPermissions(access.role as UserRoleType),
+        ...accessPermissions,
+      },
       createdAt: now,
       updatedAt: now,
     } as UserRole;
@@ -273,6 +292,41 @@ export const castingAuthService = {
           canRequestChanges: true,
           canViewEconomy: true,
         };
+      case 'executive_producer':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: true,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: true,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: true,
+        };
+      case 'line_producer':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: true,
+          canCoordinateProduction: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: true,
+          canManageLocations: true,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: true,
+        };
       case 'content_producer':
         return {
           canViewAll: true,
@@ -308,6 +362,8 @@ export const castingAuthService = {
           canViewEconomy: true,
         };
       case 'casting_director':
+      case 'local_casting_director':
+      case 'extras_casting_director':
         return {
           canViewAll: true,
           canEditCasting: true,
@@ -320,7 +376,7 @@ export const castingAuthService = {
           canEditScript: false,
           canLockScript: false,
           canRunTableRead: false,
-          canComment: false,
+          canComment: true,
           canRequestChanges: false,
           canViewEconomy: false,
         };
@@ -341,7 +397,26 @@ export const castingAuthService = {
           canRequestChanges: false,
           canViewEconomy: false,
         };
+      case 'production_accountant':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
+          canViewEconomy: true,
+        };
       case 'production_coordinator':
+      case 'production_secretary':
+      case 'office_production_assistant':
         return {
           canViewAll: true,
           canEditCasting: false,
@@ -415,6 +490,7 @@ export const castingAuthService = {
         };
       case 'first_ad':
       case 'second_ad':
+      case 'second_second_assistant_director':
         return {
           canViewAll: true,
           canEditCasting: false,
@@ -429,6 +505,23 @@ export const castingAuthService = {
           canRunTableRead: false,
           canComment: true,
           canRequestChanges: true,
+          canViewEconomy: false,
+        };
+      case 'set_production_assistant':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
           canViewEconomy: false,
         };
       case 'camera_team':
