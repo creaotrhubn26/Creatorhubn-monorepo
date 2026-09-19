@@ -103,7 +103,13 @@ impl IpadPairingState {
     /// port + visningsnavn fra iPad-appens "Settings → Vis pairing-info"-
     /// skjerm. Vi konstruerer en fullname-key som ikke kolliderer med
     /// ekte Bonjour-oppføringer (suffiks "—manual").
-    pub fn add_manual(&self, device_name: String, ip: String, port: u16, device_id: Option<String>) -> DiscoveredIpad {
+    pub fn add_manual(
+        &self,
+        device_name: String,
+        ip: String,
+        port: u16,
+        device_id: Option<String>,
+    ) -> DiscoveredIpad {
         let fullname = format!("{}._creatorhubcap._tcp.local.—manual", device_name);
         let entry = DiscoveredIpad {
             fullname: fullname.clone(),
@@ -113,7 +119,10 @@ impl IpadPairingState {
             addresses: vec![ip],
             port,
         };
-        self.discovered.lock().unwrap().insert(fullname, entry.clone());
+        self.discovered
+            .lock()
+            .unwrap()
+            .insert(fullname, entry.clone());
         entry
     }
 }
@@ -200,11 +209,8 @@ pub fn spawn_browser(app: AppHandle, state: Arc<IpadPairingState>) -> Result<(),
                                 _ => {}
                             }
                         }
-                        let addresses: Vec<String> = info
-                            .get_addresses()
-                            .iter()
-                            .map(|a| a.to_string())
-                            .collect();
+                        let addresses: Vec<String> =
+                            info.get_addresses().iter().map(|a| a.to_string()).collect();
                         let entry = DiscoveredIpad {
                             fullname: fullname.clone(),
                             device_id,
@@ -253,7 +259,10 @@ pub fn spawn_browser(app: AppHandle, state: Arc<IpadPairingState>) -> Result<(),
                 let elapsed_secs = started_at.elapsed().as_secs();
                 let _ = app_for_browser.emit(
                     "bonjour-status",
-                    BonjourStatus { discovered_count, elapsed_secs },
+                    BonjourStatus {
+                        discovered_count,
+                        elapsed_secs,
+                    },
                 );
                 last_status_emit = Instant::now();
             }
@@ -287,6 +296,7 @@ pub async fn send_pair_request(
     desk_id: &str,
     desk_name: &str,
     pin: &str,
+    bridge_access_token: &str,
 ) -> PairResponse {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
@@ -299,7 +309,11 @@ pub async fn send_pair_request(
     let safe_id = sanitize_field(desk_id);
     let safe_name = sanitize_field(desk_name);
     let safe_pin = sanitize_field(pin);
-    let payload = format!("PAIR\t{}\t{}\t{}\n", safe_id, safe_name, safe_pin);
+    let safe_token = sanitize_field(bridge_access_token);
+    let payload = format!(
+        "PAIR\t{}\t{}\t{}\t{}\n",
+        safe_id, safe_name, safe_pin, safe_token
+    );
 
     let mut last_err = String::from("no_connect");
     for addr in addresses {
@@ -338,7 +352,9 @@ pub async fn send_pair_request(
             Ok(Err(e)) => return PairResponse::Err(format!("read: {}", e)),
             Err(_) => return PairResponse::Err("timeout".into()),
         };
-        let line = String::from_utf8_lossy(&buf[..n]).trim_end_matches('\n').to_string();
+        let line = String::from_utf8_lossy(&buf[..n])
+            .trim_end_matches('\n')
+            .to_string();
         let parts: Vec<&str> = line.split('\t').collect();
         match parts.as_slice() {
             ["OK", device_id, ..] => {

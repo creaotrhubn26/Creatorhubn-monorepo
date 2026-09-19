@@ -24,6 +24,20 @@ final class BackendClientTests: XCTestCase {
         BackendClient(baseURL: baseURL, session: session, authHeaders: ["x-user-id": "owner-1"])
     }
 
+    func testStablePreviewURLRequiresAndCarriesAssetCapability() throws {
+        let client = makeClient()
+        XCTAssertNil(client.assetPreviewURL(backendAssetId: "asset-1", token: nil))
+
+        let url = try XCTUnwrap(
+            client.assetPreviewURL(backendAssetId: "asset-1", token: "scoped_token-1")
+        )
+        XCTAssertEqual(url.path, "/api/capture/assets/asset-1/preview")
+        XCTAssertEqual(
+            URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+            [URLQueryItem(name: "t", value: "scoped_token-1")]
+        )
+    }
+
     func testRealtimeTicketIdentifiesCaptureBuildWithoutPuttingBearerInURL() async throws {
         let captured = Box<URLRequest>()
         MockURLProtocol.handler = { request in

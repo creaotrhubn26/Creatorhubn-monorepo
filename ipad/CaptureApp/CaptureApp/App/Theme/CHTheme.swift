@@ -2,37 +2,42 @@ import SwiftUI
 
 /// CreatorHub dark brand palette for the native iPad surfaces — the single
 /// source of truth so Galleri/Admin/Tilbud/Pris/Meldinger all read as one
-/// branded product, not default iOS chrome. Mirrors the web brand
-/// (`creatorHubTheme.ts` primary #FF6B35) in its dark/"cinematic"
-/// expression: warm near-black backdrops, cream text, amber accent.
+/// branded product, not default iOS chrome. These values mirror the canonical
+/// `WorkspaceShell.tsx` / `workspaceTheme.ts` fallbacks on web.
 enum CHTheme {
-    // Accent — CreatorHub amber/orange (matches web primary.main).
-    static let accent = Color(hex: 0xFF6B35)
-    static let accentSoft = Color(hex: 0xFF8F5C)
-    static let accentDark = Color(hex: 0xE85A24)
+    // Accent — CreatorHub orange.
+    static let accent = Color(hex: 0xFF8C00)
+    static let accentSoft = Color(hex: 0xFF8C00)
+    static let accentDark = Color(hex: 0xE67E00)
+    static let accentFill = accent.opacity(0.14)
+    static let accentBorder = accent.opacity(0.42)
+    static let accentContrast = Color(hex: 0x150D05)
 
-    // Backdrops — warm neutral black (no blue undertone).
-    static let bg = Color(hex: 0x0B0B0C)
-    static let bgDeep = Color(hex: 0x070707)
+    // Backdrops — the same deep navy family as WorkspaceShell.
+    static let bg = Color(hex: 0x0A0F1A)
+    static let bgDeep = Color(hex: 0x0B1120)
 
     // Surfaces (cards, rows, sheets).
-    static let surface = Color(hex: 0x141416)
-    static let surfaceElevated = Color(hex: 0x1B1B1F)
+    static let surface = Color(hex: 0x0F1729).opacity(0.72)
+    static let surfaceSolid = Color(hex: 0x0F1729)
+    static let surfaceElevated = Color(hex: 0x111C30)
+    static let input = Color.white.opacity(0.04)
 
     // Hairlines.
-    static let border = Color.white.opacity(0.08)
-    static let borderStrong = Color.white.opacity(0.14)
+    static let border = Color.white.opacity(0.12)
+    static let borderSoft = Color.white.opacity(0.07)
+    static let borderStrong = Color.white.opacity(0.18)
 
-    // Text — warm off-white / cream.
-    static let textPrimary = Color(hex: 0xF5F2EA)
-    static let textSecondary = Color.white.opacity(0.68)
-    static let textMuted = Color.white.opacity(0.42)
+    // Text.
+    static let textPrimary = Color.white.opacity(0.95)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textMuted = Color.white.opacity(0.40)
 
-    // Muted status colors (never neon).
-    static let success = Color(hex: 0x10B981)
-    static let danger = Color(hex: 0xE0606A)
-    static let warning = Color(hex: 0xE0A955)
-    static let info = Color(hex: 0x6366F1)
+    // WorkspaceShell status colors.
+    static let success = Color(hex: 0x34D399)
+    static let danger = Color(hex: 0xF87171)
+    static let warning = Color(hex: 0xFBBF24)
+    static let info = Color(hex: 0x60A5FA)
 }
 
 extension Color {
@@ -46,7 +51,7 @@ extension Color {
 }
 
 extension View {
-    /// Brand the whole subtree: amber tint + forced dark scheme so the
+    /// Brand the whole subtree: orange tint + forced dark scheme so the
     /// CreatorHub One shell reads consistently regardless of device
     /// appearance.
     func chBranded() -> some View {

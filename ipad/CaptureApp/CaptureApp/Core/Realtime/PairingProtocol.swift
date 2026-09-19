@@ -7,7 +7,7 @@ import Network
 /// connection lukkes.
 ///
 /// Wire-format (UTF-8, `\t`-separert, `\n`-terminert):
-///   Desk → iPad:  `PAIR\t<desk_id>\t<desk_name>\t<pin>\n`
+///   Desk → iPad:  `PAIR\t<desk_id>\t<desk_name>\t<pin>\t<bridge_token>\n`
 ///   iPad → Desk:  `OK\t<ipad_device_id>\n`     (bruker godkjente i prompt)
 ///   iPad → Desk:  `ERR\t<reason>\n`            (avvist eller timeout)
 ///
@@ -27,6 +27,7 @@ enum PairingProtocol {
         let deskId: String
         let deskName: String
         let pin: String
+        let bridgeAccessToken: String?
     }
 
     enum DecodeError: Error, CustomStringConvertible {
@@ -59,10 +60,14 @@ enum PairingProtocol {
         switch command {
         case "PAIR":
             guard parts.count >= 4 else { throw DecodeError.missingField }
+            let bridgeToken = parts.count >= 5
+                ? parts[4].trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
             return PairRequest(
                 deskId: parts[1].trimmingCharacters(in: .whitespacesAndNewlines),
                 deskName: parts[2].trimmingCharacters(in: .whitespacesAndNewlines),
                 pin: parts[3].trimmingCharacters(in: .whitespacesAndNewlines),
+                bridgeAccessToken: bridgeToken.isEmpty ? nil : bridgeToken,
             )
         default:
             throw DecodeError.unknownCommand(command)

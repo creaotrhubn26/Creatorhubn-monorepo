@@ -6,6 +6,9 @@
 //! F4+ legger til backend-rapportering, iPad-paring, live mirror.
 
 mod b2_uploader;
+mod blackmagic_camera;
+mod bridge;
+mod bridge_preview;
 mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
@@ -15,7 +18,11 @@ mod device_auth;
 mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
+mod local_endpoint;
 mod mount_watcher;
+mod ndi_preview;
+mod ndi_runtime;
+mod obs_control;
 mod prefs;
 mod projects;
 mod session_log;
@@ -53,9 +60,116 @@ fn default_api_base() -> String {
     helper_client::default_api_base().to_string()
 }
 
+// ── CreatorHub Bridge camera/control layer ─────────────────────────
+
+#[tauri::command]
+fn bridge_status() -> bridge::BridgeStatus {
+    bridge::status()
+}
+
+#[tauri::command]
+fn bridge_preview_status(
+    state: tauri::State<Arc<bridge_preview::BridgePreviewState>>,
+) -> bridge_preview::BridgePreviewStatus {
+    state.status()
+}
+
+#[tauri::command]
+fn save_bridge_preview_sources(
+    state: tauri::State<Arc<bridge_preview::BridgePreviewState>>,
+    sources: Vec<bridge_preview::BridgePreviewSource>,
+) -> Result<bridge_preview::BridgePreviewStatus, String> {
+    state.replace_sources(sources)
+}
+
+#[tauri::command]
+async fn probe_blackmagic_camera(
+    base_url: String,
+) -> Result<blackmagic_camera::BlackmagicProbe, String> {
+    blackmagic_camera::probe(&base_url).await
+}
+
+#[tauri::command]
+async fn set_blackmagic_recording(
+    base_url: String,
+    recording: bool,
+    clip_name: Option<String>,
+) -> Result<blackmagic_camera::RecordState, String> {
+    blackmagic_camera::set_recording(&base_url, recording, clip_name.as_deref()).await
+}
+
+#[tauri::command]
+async fn probe_obs(
+    endpoint: String,
+    password: Option<String>,
+) -> Result<obs_control::ObsProbe, String> {
+    obs_control::probe(&endpoint, password.as_deref()).await
+}
+
+#[tauri::command]
+async fn run_obs_action(
+    endpoint: String,
+    password: Option<String>,
+    action: String,
+    scene_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let action = obs_control::ObsAction::parse(&action)?;
+    obs_control::run_action(
+        &endpoint,
+        password.as_deref(),
+        action,
+        scene_name.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn discover_ndi_sources(
+    timeout_ms: Option<u32>,
+) -> Result<ndi_runtime::NdiDiscoveryResult, String> {
+    tauri::async_runtime::spawn_blocking(move || ndi_runtime::discover(timeout_ms.unwrap_or(1_500)))
+        .await
+        .map_err(|error| format!("NDI discovery task: {error}"))?
+}
+
+#[tauri::command]
+fn ndi_preview_status(
+    state: tauri::State<Arc<ndi_preview::NdiPreviewState>>,
+) -> ndi_preview::NdiPreviewStatus {
+    state.status()
+}
+
+#[tauri::command]
+async fn start_ndi_preview(
+    state: tauri::State<'_, Arc<ndi_preview::NdiPreviewState>>,
+    bridge: tauri::State<'_, Arc<bridge_preview::BridgePreviewState>>,
+    source_name: String,
+    url_address: Option<String>,
+) -> Result<ndi_preview::NdiPreviewStatus, String> {
+    let state = state.inner().clone();
+    let bridge = bridge.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.start(source_name, url_address, bridge))
+        .await
+        .map_err(|error| format!("Start NDI preview task: {error}"))?
+}
+
+#[tauri::command]
+async fn stop_ndi_preview(
+    state: tauri::State<'_, Arc<ndi_preview::NdiPreviewState>>,
+    bridge: tauri::State<'_, Arc<bridge_preview::BridgePreviewState>>,
+) -> Result<ndi_preview::NdiPreviewStatus, String> {
+    let state = state.inner().clone();
+    let bridge = bridge.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.stop(&bridge))
+        .await
+        .map_err(|error| format!("Stopp NDI preview task: {error}"))?
+}
+
 #[tauri::command]
 fn load_stored_config() -> Result<Option<StoredConfig>, String> {
-    Ok(helper_client::load_config()?.as_ref().map(StoredConfig::from))
+    Ok(helper_client::load_config()?
+        .as_ref()
+        .map(StoredConfig::from))
 }
 
 #[tauri::command]
@@ -101,11 +215,13 @@ struct DeviceTokenStatus {
 
 #[tauri::command]
 fn device_token_status() -> Result<Option<DeviceTokenStatus>, String> {
-    Ok(device_auth::load_device_token()?.map(|t| DeviceTokenStatus {
-        user_email: t.user_email,
-        user_name: t.user_name,
-        api_base: t.api_base,
-    }))
+    Ok(
+        device_auth::load_device_token()?.map(|t| DeviceTokenStatus {
+            user_email: t.user_email,
+            user_name: t.user_name,
+            api_base: t.api_base,
+        }),
+    )
 }
 
 #[tauri::command]
@@ -366,10 +482,7 @@ struct DestCapacity {
 }
 
 #[tauri::command]
-fn check_destinations_capacity(
-    dest_paths: Vec<String>,
-    bytes_needed: u64,
-) -> Vec<DestCapacity> {
+fn check_destinations_capacity(dest_paths: Vec<String>, bytes_needed: u64) -> Vec<DestCapacity> {
     dest_paths
         .into_iter()
         .map(|path| {
@@ -427,10 +540,7 @@ async fn start_copy_session(
 }
 
 #[tauri::command]
-fn cancel_copy_session(
-    state: tauri::State<Arc<CopySessionState>>,
-    session_id: String,
-) -> bool {
+fn cancel_copy_session(state: tauri::State<Arc<CopySessionState>>, session_id: String) -> bool {
     state.cancel(&session_id)
 }
 
@@ -521,11 +631,15 @@ fn generate_pairing_pin(
     let pin = state.generate_pin(&fullname, &device_name);
 
     // Slå opp iPad's adresser/port for å kunne sende TCP PAIR-request
-    let target = state.list_discovered().into_iter().find(|d| d.fullname == fullname);
+    let target = state
+        .list_discovered()
+        .into_iter()
+        .find(|d| d.fullname == fullname);
     let Some(target) = target else {
         return Err(format!("iPad ikke i discovered-state: {}", fullname));
     };
     let identity = desk_identity::load_or_create()?;
+    let bridge_access_token = desk_identity::load_or_create_bridge_secret()?;
     let app_clone = app.clone();
     let state_clone: Arc<IpadPairingState> = state.inner().clone();
     let pin_value = pin.pin.clone();
@@ -544,6 +658,7 @@ fn generate_pairing_pin(
             &identity.desk_id,
             &identity.desk_name,
             &pin_value,
+            &bridge_access_token,
         )
         .await;
         match response {
@@ -615,8 +730,7 @@ fn confirm_pair_ipad(device_id: String, device_name: String) -> Result<Vec<Paire
 
 #[tauri::command]
 async fn list_capture_sessions() -> Result<Vec<CaptureSessionSummary>, String> {
-    let cfg = helper_client::load_config()?
-        .ok_or_else(|| "Ingen lagret config".to_string())?;
+    let cfg = helper_client::load_config()?.ok_or_else(|| "Ingen lagret config".to_string())?;
     helper_client::list_capture_sessions(&cfg).await
 }
 
@@ -649,10 +763,7 @@ fn enable_mirror_for_session(
 }
 
 #[tauri::command]
-fn disable_mirror_for_session(
-    state: tauri::State<Arc<MirrorState>>,
-    session_id: String,
-) -> bool {
+fn disable_mirror_for_session(state: tauri::State<Arc<MirrorState>>, session_id: String) -> bool {
     state.disable(&session_id)
 }
 
@@ -690,7 +801,9 @@ fn chrono_now_iso() -> String {
     // Bruk samme ISO-formatter som dit_reporter, men inline her for å unngå
     // public re-export. SystemTime → UTC, sekund-presisjon er nok.
     use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let total_secs = now.as_secs();
     let secs_today = total_secs % 86400;
     let days = total_secs / 86400;
@@ -725,7 +838,13 @@ fn setup_tray(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
 
-    let show_main = MenuItem::with_id(handle, "show-main", "Vis Creatorhub One Desk", true, None::<&str>)?;
+    let show_main = MenuItem::with_id(
+        handle,
+        "show-main",
+        "Vis Creatorhub One Desk",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(handle, "quit", "Avslutt", true, None::<&str>)?;
     let menu = Menu::with_items(handle, &[&show_main, &quit])?;
 
@@ -747,7 +866,12 @@ fn setup_tray(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
         })
         .on_tray_icon_event(|tray, event| {
             // Click på selve ikonet (utenom menu) → focus hovedvindu.
-            if let tauri::tray::TrayIconEvent::Click { button, button_state, .. } = event {
+            if let tauri::tray::TrayIconEvent::Click {
+                button,
+                button_state,
+                ..
+            } = event
+            {
                 if matches!(button, tauri::tray::MouseButton::Left)
                     && matches!(button_state, tauri::tray::MouseButtonState::Up)
                 {
@@ -770,14 +894,15 @@ fn setup_tray(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
 fn set_tray_status(app: tauri::AppHandle, tooltip: String) -> Result<(), String> {
     use tauri::tray::TrayIcon;
     if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
-        TrayIcon::set_tooltip(&tray, Some(tooltip))
-            .map_err(|e| format!("set_tooltip: {}", e))?;
+        TrayIcon::set_tooltip(&tray, Some(tooltip)).map_err(|e| format!("set_tooltip: {}", e))?;
     }
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let bridge_preview_state = Arc::new(bridge_preview::BridgePreviewState::new_loaded());
+    let ndi_preview_state = Arc::new(ndi_preview::NdiPreviewState::default());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -788,15 +913,23 @@ pub fn run() {
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
         .manage(Arc::new(MirrorState::new_loaded()))
+        .manage(bridge_preview_state.clone())
+        .manage(ndi_preview_state)
         .manage(Arc::new(projects::ProjectStore::default()))
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
             if let Err(err) = mount_watcher::spawn_watcher(handle.clone()) {
                 eprintln!("Mount-watcher kunne ikke starte: {err}");
             }
             let pairing_state: tauri::State<Arc<IpadPairingState>> = app.state();
-            if let Err(err) = ipad_pairing::spawn_browser(handle.clone(), pairing_state.inner().clone()) {
+            if let Err(err) =
+                ipad_pairing::spawn_browser(handle.clone(), pairing_state.inner().clone())
+            {
                 eprintln!("iPad Bonjour-browser kunne ikke starte: {err}");
+            }
+            if let Err(err) = bridge_preview::start(bridge_preview_state.clone()) {
+                bridge_preview_state.fail(format!("Bridge preview kunne ikke starte: {err}"));
+                eprintln!("Bridge preview kunne ikke starte: {err}");
             }
 
             // Deep-link-handler: når macOS sender appen
@@ -819,7 +952,12 @@ pub fn run() {
                     let dt_clone = dt.clone();
                     tauri::async_runtime::spawn(async move {
                         let store: tauri::State<Arc<projects::ProjectStore>> = h.state();
-                        match device_auth::fetch_projects_for_token(&dt_clone.api_base, &dt_clone.token).await {
+                        match device_auth::fetch_projects_for_token(
+                            &dt_clone.api_base,
+                            &dt_clone.token,
+                        )
+                        .await
+                        {
                             Ok(entries) => {
                                 if let Err(e) = store.replace_all(entries) {
                                     eprintln!("Lagre prosjekter feilet: {e}");
@@ -852,6 +990,17 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             default_api_base,
+            bridge_status,
+            bridge_preview_status,
+            save_bridge_preview_sources,
+            probe_blackmagic_camera,
+            set_blackmagic_recording,
+            probe_obs,
+            run_obs_action,
+            discover_ndi_sources,
+            ndi_preview_status,
+            start_ndi_preview,
+            stop_ndi_preview,
             load_stored_config,
             save_helper_config,
             clear_helper_config,

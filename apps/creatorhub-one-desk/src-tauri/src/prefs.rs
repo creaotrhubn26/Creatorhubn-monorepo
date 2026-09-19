@@ -135,6 +135,9 @@ mod tests {
         fs::write(prefs_path(), br#"{"auto_eject":true}"#).unwrap();
         let p = load().expect("load");
         assert!(p.auto_eject);
-        assert!(p.default_dest_ids.is_empty(), "default-feltet skal være tom");
+        assert!(
+            p.default_dest_ids.is_empty(),
+            "default-feltet skal være tom"
+        );
     }
 }

@@ -52,7 +52,8 @@ struct FoundationDebugView: View {
             db = nil
         }
         self.database = db
-        let outbox = db.map { Outbox(database: $0) }
+        let debugOwner = SignInService.shared.session?.userId ?? "foundation-debug"
+        let outbox = db.map { Outbox(database: $0, ownerUserId: debugOwner) }
         self.outbox = outbox
         // Worker uses a stub sender (random success/failure) so the
         // debug surface can visualise the drain loop end-to-end

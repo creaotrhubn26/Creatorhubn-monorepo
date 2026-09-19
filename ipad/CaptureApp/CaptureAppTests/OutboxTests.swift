@@ -21,9 +21,11 @@ import GRDB
 ///   - Encoding bodies through the type-erased ``AnyEncodable`` works
 ///     for mixed payload shapes.
 final class OutboxTests: XCTestCase {
+    private let owner = "test-owner"
+
     private func makeOutbox() async throws -> (Outbox, AppDatabase) {
         let database = try AppDatabase.inMemory()
-        return (Outbox(database: database), database)
+        return (Outbox(database: database, ownerUserId: owner), database)
     }
 
     func testEnqueuePersistsMutationWithGeneratedId() async throws {
@@ -36,11 +38,45 @@ final class OutboxTests: XCTestCase {
             entityId: "abc",
         )
         XCTAssertFalse(mutation.clientMutationId.isEmpty)
+        XCTAssertEqual(mutation.ownerUserId, owner)
         XCTAssertEqual(mutation.status, .pending)
         XCTAssertEqual(mutation.attemptCount, 0)
         XCTAssertEqual(mutation.entityTable, "asset")
         XCTAssertEqual(mutation.entityId, "abc")
         XCTAssertNotNil(mutation.bodyJson)
+    }
+
+    func testMigrationQuarantinesLegacyUnscopedMutation() throws {
+        let database = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(database, upTo: "v8_persistent_capture_uploads")
+        try database.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO outboxMutation
+                      (clientMutationId, endpoint, method, status, attemptCount, createdAt, updatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    "legacy-mutation",
+                    "/api/capture/test",
+                    "POST",
+                    "pending",
+                    0,
+                    Date(),
+                    Date()
+                ]
+            )
+        }
+
+        try AppDatabase.migrator.migrate(database)
+
+        let mutation = try database.read { db in
+            try OutboxMutation.fetchOne(db, key: 1)
+        }
+        XCTAssertEqual(mutation?.ownerUserId, "__legacy_unscoped__")
+        XCTAssertEqual(mutation?.status, .failed)
+        XCTAssertEqual(mutation?.attemptCount, OutboxMutation.maxAttempts)
+        XCTAssertEqual(mutation?.lastError, "Legacy unscoped mutation quarantined")
     }
 
     func testEnqueueGeneratesUniqueIdempotencyTokens() async throws {

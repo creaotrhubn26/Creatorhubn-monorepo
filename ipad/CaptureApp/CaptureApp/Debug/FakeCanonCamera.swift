@@ -112,6 +112,12 @@ final class FakeCanonCamera: @unchecked Sendable {
              "/ccapi/ver100/shooting/control/shutterbutton":
             return shutterResponse(for: request, url: url)
 
+        case "/ccapi/ver100/shooting/liveview":
+            return MockURLProtocol.jsonResponse(for: url, body: "{}")
+
+        case "/ccapi/ver100/shooting/liveview/flip":
+            return MockURLProtocol.binaryResponse(for: url, body: Self.makePreviewJPEG(seed: 42))
+
         default:
             // Contents-directory pagination: /ccapi/ver120/contents/sd/100CANON
             // with optional ?kind=number or ?kind=list&page=N.
@@ -230,7 +236,9 @@ final class FakeCanonCamera: @unchecked Sendable {
     private static let inventoryJSON = """
     {
       "ver100": [
-        {"path":"/ccapi/ver100/deviceinformation","get":true,"post":false,"put":false,"delete":false}
+        {"path":"/ccapi/ver100/deviceinformation","get":true,"post":false,"put":false,"delete":false},
+        {"path":"/ccapi/ver100/shooting/liveview","get":false,"post":true,"put":false,"delete":true},
+        {"path":"/ccapi/ver100/shooting/liveview/flip","get":true,"post":false,"put":false,"delete":false}
       ],
       "ver110": [
         {"path":"/ccapi/ver110/devicestatus/storage","get":true,"post":false,"put":false,"delete":false},

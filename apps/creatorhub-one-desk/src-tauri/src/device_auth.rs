@@ -109,9 +109,14 @@ pub async fn start_google_login_v2(api_base: &str) -> Result<StartLoginResult, S
         state: Option<String>,
     }
     let parsed: R = resp.json().await.map_err(|e| format!("Parse: {}", e))?;
-    let authorization_url = parsed.url.ok_or_else(|| "Mangler authorizationUrl".to_string())?;
+    let authorization_url = parsed
+        .url
+        .ok_or_else(|| "Mangler authorizationUrl".to_string())?;
     let state = parsed.state.ok_or_else(|| "Mangler state".to_string())?;
-    Ok(StartLoginResult { authorization_url, state })
+    Ok(StartLoginResult {
+        authorization_url,
+        state,
+    })
 }
 
 /// GET /api/desktop/auth/google/complete/:stateId — poll for completion.
@@ -270,7 +275,10 @@ pub fn parse_oauth_callback_url(url_str: &str) -> Option<DeviceToken> {
     }
     // host eller path kan være "oauth-callback" avhengig av OS-parsing
     let is_callback = url.host_str() == Some("oauth-callback")
-        || url.path().trim_start_matches('/').starts_with("oauth-callback");
+        || url
+            .path()
+            .trim_start_matches('/')
+            .starts_with("oauth-callback");
     if !is_callback {
         return None;
     }

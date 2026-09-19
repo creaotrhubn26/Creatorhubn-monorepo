@@ -54,7 +54,7 @@ fn is_transient(status_code: u16, err_msg: &str) -> bool {
         || lower.contains("temporary failure")
         || lower.contains("eof")
         || lower.contains("os error 60")  // ETIMEDOUT på macOS
-        || lower.contains("os error 54")  // ECONNRESET på macOS
+        || lower.contains("os error 54") // ECONNRESET på macOS
 }
 
 /// Wrapper som retry'er en async-operasjon ved transient feil.
@@ -181,7 +181,10 @@ pub async fn authorize(key_id: &str, application_key: &str) -> Result<B2Auth, St
 
 /// b2_get_upload_url — krever auth-URL + token fra authorize.
 pub async fn get_upload_url(auth: &B2Auth, bucket_id: &str) -> Result<B2UploadUrl, String> {
-    let url = format!("{}/b2api/v3/b2_get_upload_url", auth.api_info.storage_api.api_url);
+    let url = format!(
+        "{}/b2api/v3/b2_get_upload_url",
+        auth.api_info.storage_api.api_url
+    );
     retry_transient("b2_get_upload_url", || async {
         let client = reqwest::Client::new();
         let resp = client
@@ -323,7 +326,10 @@ pub async fn test_connection(
     bucket_id: &str,
 ) -> Result<String, String> {
     let auth = authorize(key_id, application_key).await?;
-    let url = format!("{}/b2api/v3/b2_list_buckets", auth.api_info.storage_api.api_url);
+    let url = format!(
+        "{}/b2api/v3/b2_list_buckets",
+        auth.api_info.storage_api.api_url
+    );
     let client = reqwest::Client::new();
     let body = serde_json::json!({
         "accountId": auth.account_id,
@@ -351,7 +357,12 @@ pub async fn test_connection(
         .into_iter()
         .next()
         .map(|b| b.bucket_name)
-        .ok_or_else(|| format!("Bucket {} finnes ikke (eller key mangler tilgang)", bucket_id))
+        .ok_or_else(|| {
+            format!(
+                "Bucket {} finnes ikke (eller key mangler tilgang)",
+                bucket_id
+            )
+        })
 }
 
 // ── Multipart upload for filer > 5 GB ────────────────────────────
@@ -764,8 +775,7 @@ fn b2_url_encode(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for b in name.as_bytes() {
         let c = *b;
-        let safe = c.is_ascii_alphanumeric()
-            || matches!(c, b'/' | b'.' | b'_' | b'-' | b'~');
+        let safe = c.is_ascii_alphanumeric() || matches!(c, b'/' | b'.' | b'_' | b'-' | b'~');
         if safe {
             out.push(c as char);
         } else {
@@ -850,6 +860,9 @@ mod tests {
         let auth: B2Auth = serde_json::from_str(json).unwrap();
         assert_eq!(auth.account_id, "abc123");
         assert_eq!(auth.auth_token, "tok_xyz");
-        assert_eq!(auth.api_info.storage_api.api_url, "https://api001.backblazeb2.com");
+        assert_eq!(
+            auth.api_info.storage_api.api_url,
+            "https://api001.backblazeb2.com"
+        );
     }
 }

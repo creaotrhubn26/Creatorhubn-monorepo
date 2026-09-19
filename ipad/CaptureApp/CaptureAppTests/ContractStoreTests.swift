@@ -32,7 +32,7 @@ final class ContractStoreTests: XCTestCase {
 
     private func makeStack() async throws -> (ContractStore, Outbox, AppDatabase, SignatureStorage) {
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let storage = SignatureStorage(rootDirectory: tempDir)
         let store = ContractStore(
             database: db,

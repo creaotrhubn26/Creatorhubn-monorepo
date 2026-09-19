@@ -274,9 +274,17 @@ enum LearnedStyle {
         // (0.04) så den ikke rører normalt eksponerte bilder — ingen global
         // eksponerings-endring lenger (den kjempet mot den lærte looken).
         if let outCg = smallCG(out, ctx: ctx, side: 64) {
-            let (_, clipHi) = lumaStats(outCg)
-            if clipHi > 0.04 {
-                out = HighlightRecoveryFilter.apply(to: out, strength: min(1.0, clipHi * 6))
+            let (mean, clipHi) = lumaStats(outCg)
+            // A nearly-flat LUT can lift the whole frame to ~0.90 without a
+            // single pixel crossing the 252/255 clipping threshold. Guard that
+            // absolute over-brightening as well as literal clipping.
+            if clipHi > 0.04 || mean > 0.88 {
+                let clippingStrength = min(1.0, clipHi * 6)
+                let absoluteStrength = min(1.0, max(0, (mean - 0.82) / 0.10))
+                out = HighlightRecoveryFilter.apply(
+                    to: out,
+                    strength: max(clippingStrength, absoluteStrength)
+                )
             }
         }
 

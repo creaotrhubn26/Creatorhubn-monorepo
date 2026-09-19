@@ -18,6 +18,7 @@ import XCTest
 ///   - Empty queue drain returns zero.
 ///   - Start/stop lifecycle is idempotent.
 final class OutboxWorkerTests: XCTestCase {
+    private let owner = "test-owner"
 
     // MARK: - Mock sender
 
@@ -52,7 +53,7 @@ final class OutboxWorkerTests: XCTestCase {
         clock: @escaping @Sendable () -> Date = { Date() },
     ) async throws -> (Outbox, MockSender, OutboxWorker) {
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let sender = MockSender(script: script)
         // pollInterval = 60 so background poll doesn't kick in; we
         // only exercise drainOnce explicitly.
@@ -133,7 +134,7 @@ final class OutboxWorkerTests: XCTestCase {
         let nowBox = MutableBox(baseline)
         let clock: @Sendable () -> Date = { nowBox.value }
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let sender = MockSender(script: Array(
             repeating: OutboxSendOutcome.failedTransient("net"),
             count: OutboxMutation.maxAttempts,
@@ -209,7 +210,7 @@ final class OutboxWorkerTests: XCTestCase {
         let clock: @Sendable () -> Date = { nowBox.value }
 
         let db = try AppDatabase.inMemory()
-        let outbox = Outbox(database: db)
+        let outbox = Outbox(database: db, ownerUserId: owner)
         let sender = MockSender(script: [
             .failedTransient("net"),
             .succeeded,
@@ -271,6 +272,90 @@ final class OutboxWorkerTests: XCTestCase {
         await worker.start()   // must not spawn a second task
         await worker.stop()
         await worker.stop()    // must not crash
+    }
+
+    func testRecoverInterruptedSyncsReturnsClaimedRowsToPending() async throws {
+        let db = try AppDatabase.inMemory()
+        let outbox = Outbox(database: db, ownerUserId: owner)
+        let row = try await outbox.enqueue(endpoint: "/api/capture/test", method: .post)
+        try await outbox.markSyncing([row])
+
+        try await outbox.recoverInterruptedSyncs()
+
+        let pending = try await outbox.nextPending()
+        XCTAssertEqual(pending.map(\.clientMutationId), [row.clientMutationId])
+    }
+
+    func testWorkerOnlyDrainsAuthenticatedOwnersRows() async throws {
+        let db = try AppDatabase.inMemory()
+        let outboxA = Outbox(database: db, ownerUserId: "owner-a")
+        let outboxB = Outbox(database: db, ownerUserId: "owner-b")
+        let rowA = try await outboxA.enqueue(endpoint: "/api/a", method: .post)
+        let rowB = try await outboxB.enqueue(endpoint: "/api/b", method: .post)
+        let sender = MockSender(script: [.succeeded])
+        let workerB = OutboxWorker(outbox: outboxB, sender: sender, pollInterval: 60)
+
+        let attempted = await workerB.drainOnce()
+        let sentIds = await sender.snapshot().map(\.clientMutationId)
+        let pendingIds = try await outboxA.nextPending().map(\.clientMutationId)
+
+        XCTAssertEqual(attempted, 1)
+        XCTAssertEqual(sentIds, [rowB.clientMutationId])
+        XCTAssertEqual(pendingIds, [rowA.clientMutationId])
+    }
+
+    func testHTTPOutboxSenderForwardsAuthJSONAndIdempotency() async throws {
+        let session = MockURLProtocol.makeSession()
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://creatorhub.example/api/capture/test")
+            XCTAssertEqual(request.httpMethod, "PATCH")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Client-Mutation-Id"), "mutation-1")
+            return MockURLProtocol.jsonResponse(for: request.url!, body: "{\"ok\":true}")
+        }
+        defer { MockURLProtocol.handler = nil }
+        let sender = HTTPOutboxSender(
+            baseURL: URL(string: "https://creatorhub.example")!,
+            bearer: "secret",
+            session: session,
+        )
+        let mutation = OutboxMutation(
+            clientMutationId: "mutation-1",
+            ownerUserId: owner,
+            endpoint: "/api/capture/test",
+            method: .patch,
+            bodyJson: "{\"enabled\":true}",
+        )
+
+        let outcome = await sender.send(mutation)
+        guard case .succeeded = outcome else {
+            return XCTFail("Expected successful send, got \(outcome)")
+        }
+    }
+
+    func testHTTPOutboxSenderRejectsAbsoluteEndpointWithoutSending() async {
+        let session = MockURLProtocol.makeSession()
+        MockURLProtocol.handler = { request in
+            XCTFail("Unsafe endpoint must not send: \(request)")
+            return MockURLProtocol.jsonResponse(for: request.url!, body: "{}")
+        }
+        defer { MockURLProtocol.handler = nil }
+        let sender = HTTPOutboxSender(
+            baseURL: URL(string: "https://creatorhub.example")!,
+            bearer: "secret",
+            session: session,
+        )
+        let mutation = OutboxMutation(
+            clientMutationId: "mutation-2",
+            ownerUserId: owner,
+            endpoint: "https://attacker.example/collect",
+            method: .post,
+        )
+
+        let outcome = await sender.send(mutation)
+        guard case .failedPermanent = outcome else {
+            return XCTFail("Expected permanent rejection, got \(outcome)")
+        }
     }
 }
 
