@@ -8,10 +8,18 @@
  * en video som viser samtykkeflyten med gjeldende scopes, og at de
  * restricted scopene faktisk brukes i produktet.
  *
- * Google krever eksplisitt at UVERIFISERT-APP-SKJERMEN vises i videoen
- * («Note: The unverified app screen will appear for your test account.
- * This is expected and must be shown in the video.»). Skriptet pauser
- * derfor på samtykkeskjermen i stedet for å klikke forbi den.
+ * Krav verifisert mot kilde, ikke hukommelse:
+ *
+ * - Konsollen (Data Access → Demo video) sier: «Note: The unverified app
+ *   screen will appear for your test account. This is expected and must be
+ *   shown in the video.» Skriptet pauser derfor der i stedet for å klikke
+ *   forbi.
+ * - support.google.com/cloud/answer/13804565 krever i tillegg: hele
+ *   OAuth-samtykkeflyten, komplett samtykkeskjerm med NØYAKTIG de scopene
+ *   vi ber om, språkvelgeren nederst til venstre satt til English, hver
+ *   forespurte scope demonstrert i bruk, og fortellerstemme (tale eller
+ *   tekst) som peker på hvor kravene oppfylles. Skjermteksten i dette
+ *   skriptet dekker tekst-varianten.
  *
  * Videoen dekker:
  *   1. Tittelkort: app, prosjekt-ID, hva som demonstreres
@@ -271,8 +279,12 @@ async function runDemo(page, env) {
     step: 'Step 3',
     canInject: false,
     terminal:
-      'Samtykkeskjermen viser nå scopene. SCROLL SAKTE gjennom hele listen slik at\n'
-      + '   Drive-, Gmail- og Chat-tilgangene er lesbare i videoen. Godkjenn deretter.',
+      'Samtykkeskjermen viser nå scopene.\n'
+      + '   1) SJEKK SPRÅKVELGEREN nede til venstre — den MÅ stå på English.\n'
+      + '      Google avviser videoer der samtykkeskjermen ikke er på engelsk.\n'
+      + '   2) SCROLL SAKTE gjennom hele listen slik at Drive-, Gmail- og\n'
+      + '      Chat-tilgangene er lesbare. Scopene må matche nøyaktig de vi ber om.\n'
+      + '   3) Godkjenn deretter.',
   });
 
   // ── 6. Tilbake i produktet ─────────────────────────────────────────────

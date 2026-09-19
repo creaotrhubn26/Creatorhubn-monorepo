@@ -25,7 +25,8 @@ Begge er løst. Dette dokumentet er sannhetskilden for gjenopptakelsen.
 | Scope-begrunnelser | ✅ | Fire felter på Data Access, 936/897/800/635 tegn |
 | Feature-kategorier | ✅ | Drive: productivity + sync client. Gmail: client + productivity. Chat: Chat app |
 | Demo-video | ⬜ | Tas opp med skriptet under |
-| Testbruker til Trust & Safety | ⬜ | Må opprettes |
+| Innlogging til appen for reviewer | ⬜ | CreatorHub-konto, ikke Google-konto — se «Testkonto» under |
+| Egen Google-konto til opptaket | ⬜ | Ikke et Google-krav, men personvern: unngå ekte kundedata i videoen |
 | Svar på e-posttråden | ⬜ | Ingenting starter uten dette |
 
 ## Hvorfor personvernsiden ble avvist
@@ -87,12 +88,42 @@ Skriptet er operatør-styrt: det legger på skjermtekst og pauser mellom hvert
 steg til du trykker ENTER. Skjermteksten blir samtidig fortellerstemmen for
 reviewer.
 
-**Logg inn som testbrukeren du oppgir til Google, ikke din egen konto.**
-Google skal kunne gjenta flyten med de samme legitimasjonene.
+**Bruk en ren konto i opptaket**, ikke et produksjonsprosjekt med ekte
+kundedata — se «Testkonto» under.
 
-**Uverifisert-app-skjermen må være med.** Google skriver eksplisitt at den
-vil dukke opp for testkontoen, at det er forventet, og at den må vises i
-videoen. Skriptet pauser der i stedet for å klikke forbi.
+### Googles krav til videoen — verifisert mot kilde
+
+Fra konsollen (Data Access → «Demo video: how will the scopes will be used?»):
+
+> Note: The unverified app screen will appear for your test account. This is
+> expected and must be shown in the video.
+
+Fra <https://support.google.com/cloud/answer/13804565>:
+
+- Hele ende-til-ende-flyten inkludert OAuth-godkjenningen
+- Alle integrasjonspunkter mot Google-API-ene det bes om
+- Komplett samtykkeskjerm med **nøyaktig** de scopene vi ber om
+- **Språkvelgeren nederst til venstre satt til English** — dette er en vanlig
+  avvisningsgrunn for nordiske utviklere
+- Hver forespurte scope demonstrert i bruk
+- Fortellerstemme (tale eller tekst) som peker på hvor kravene oppfylles
+- Samme app som er sendt inn, med samme navn og branding
+
+Skjermteksten i skriptet dekker tekst-varianten av fortellerstemmen, og
+skriptet pauser på uverifisert-app-skjermen i stedet for å klikke forbi.
+
+### Testkonto — hva Google faktisk ber om
+
+Googles dokumentasjon krever **ikke** at du oppretter en egen Google-konto.
+Reviewer bruker sin egen Google-konto til selve samtykket — det er derfor
+uverifisert-app-skjermen dukker opp for dem. Det de trenger fra oss er
+innlogging til **applikasjonen**, så de kommer inn i CreatorHub og kan følge
+flyten.
+
+Grunnen til å likevel bruke en egen konto i opptaket er personvern, ikke
+Googles krav: videoen viser ekte Gmail-, Drive- og Chat-innhold, og skal
+lastes opp til YouTube og sendes til Google. Et produksjonsprosjekt med
+ekte kundedata hører ikke hjemme der.
 
 Konverter før opplasting:
 
