@@ -132,14 +132,49 @@ Se på hver rendrede PNG. Disse fire feilene kommer igjen og igjen:
 Lever som faktiske filer (`SendUserFile`) + én artefakt-side med bildetekster for
 Instagram og LinkedIn per post.
 
-## 8. Kjente hull og hva som bør forbedres
+## 8. Lever som redigerbare Mockup Studio-prosjekter
+
+Flate PNG-er er en blindvei når markedsfolk skal endre tekst eller bytte
+skjermbilde selv. Samme layout kan leveres som `MockupDoc`-prosjekter.
+
+Skjema: `apps/resolve-script-manager/src/components/mockup-studio/mockupStudioModel.ts`
+
+```
+MockupDoc { id, name, version:1, template, canvas, devices[], texts[], images?[], updatedAt, status? }
+MockupCanvasSpec { w, h, accent, accent2, background:'light'|'dark'|'brand',
+                   bgStyle:'clean'|'gradient'|'atmospheric', bgColor?, bgImage? }
+MockupTextSlot  { id, role:'eyebrow'|'title'|'body'|'tag', text, x, y, w, size,
+                  weight, color ('accent' | hex), align, lineHeight, tracking, uppercase }
+MockupImageSlot { id, image, x, y, w, h, radius, fit:'cover'|'contain', rotation, shadow, altText }
+```
+
+Tre parallelle typede arrays, ikke én lagliste. **Z-rekkefølge = rekkefølge i
+arrayet** — bakgrunnen må ligge først i `images`.
+
+Import: `PUT /api/role-room/mockup-projects/:id` med body `{ project: <doc> }` og
+`Authorization: Bearer <session-token>`. Endepunktet oppretter hvis prosjektet
+ikke finnes. Alternativt skrives arrayet rett til `localStorage`-nøkkelen
+`trrpa.mockup.projects` i Tauri-appen.
+
+Feller som koster tid:
+- **Ingen opplastings-endepunkt.** `image` må være `data:`, `http(s):`,
+  `/assets/…` eller `mockup-cloud-file:` — lokale filstier avvises med 400.
+  Bak inn som data-URI, og hold deg under **6,5 MB per prosjekt**.
+- **Ingen knapp-primitiv.** En CTA-pille må bli tekstlag eller form.
+- **Bildelag har kun z-rotasjon.** 3D-perspektivet fra HTML-versjonen finnes ikke.
+- **Én farge per tekstlag.** En overskrift med aksentfarget andrelinje må splittes
+  i to tekstlag.
+- **1080 × 1350 er en innebygd preset** (`MOCKUP_FORMATS` → `portrait`,
+  `CHANNEL_FORMATS` → `ig-feed`), så kanvaset trenger ingen spesialbehandling.
+- Mockup Studio bor i **Tauri-appen** (`apps/resolve-script-manager`), ikke i
+  web-frontenden. Web-siden kan bare lenke til og kommentere prosjekter.
+
+## 9. Kjente hull og hva som bør forbedres
 
 Dette er ikke ferdig. Ta tak i punktene når oppgaven gir anledning:
 
 **Format og rekkevidde**
-- Malen lager kun 1:1 (1080×1080). **4:5 (1080×1350) tar mer plass i feeden**
-  på både Instagram og LinkedIn og bør bli standard — malen trenger bare
-  variabel `--canvas-h` og justerte y-posisjoner.
+- 4:5 (1080×1350) er nå standard — det tar merkbart mer plass i feeden enn 1:1.
 - Story/Reels 1080×1920 og carousel (flere slides med felles tekstlogikk)
   finnes ikke ennå.
 - `leadgrid/app/tour-*.mp4` er ubrukt. `ffmpeg` følger med Playwright-installasjonen
@@ -154,6 +189,15 @@ Dette er ikke ferdig. Ta tak i punktene når oppgaven gir anledning:
 - Device-en plasseres med håndtunede `rotateY/rotateX`-verdier. En
   4-punkts homografi (`matrix3d`) mot skjermhjørnene i et ekte foto ville
   gitt riktigere perspektiv — krever at man løser et 8×8-system i Python.
+
+**Skjermbildene**
+- App-skjermbildene i repoet henger etter UI-et. De kan ikke skytes på nytt
+  herfra: iPad-appen krever macOS/Xcode, leadgrid.no er ikke nåbar gjennom
+  proxyen, og en lokal web-kjøring gir grå kartflater (karttjenesten er
+  eksternt blokkert) på et UI som uansett ikke er identisk med iPad-appen.
+  Ferske bilder må komme fra noen med appen — legg dem i
+  `frontend/client/public/leadgrid/app/` med samme filnavn, så bygger
+  pipelinen alt på nytt.
 
 **Innhold**
 - Alle tall i bildene er demodata. Ett ekte kundecase med reelle tall ville
