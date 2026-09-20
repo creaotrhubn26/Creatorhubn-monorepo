@@ -42,6 +42,20 @@ const CATALOG_TO_PROJECT_ROLE: Partial<Record<ProductionRoleId, UserRoleType>> =
   location_scout: 'location_scout',
   location_security: 'location_security',
   script_supervisor: 'script_supervisor',
+  production_designer: 'production_designer',
+  set_designer: 'production_designer',
+  concept_illustrator: 'production_designer',
+  storyboard_artist: 'production_designer',
+  costume_designer: 'production_designer',
+  wardrobe_supervisor: 'production_designer',
+  set_decorator: 'production_designer',
+  on_set_dresser: 'production_designer',
+  greensperson: 'production_designer',
+  property_master: 'production_designer',
+  assistant_property_master: 'production_designer',
+  key_hair_stylist: 'production_designer',
+  key_makeup_artist: 'production_designer',
+  construction_coordinator: 'production_designer',
 };
 
 /**

@@ -22,6 +22,7 @@ describe('resolveSessionProjectRole', () => {
     expect(resolveSessionProjectRole('set_pa')).toBe('set_production_assistant');
     expect(resolveSessionProjectRole('office_pa')).toBe('office_production_assistant');
     expect(resolveSessionProjectRole('local_casting_director')).toBe('local_casting_director');
+    expect(resolveSessionProjectRole('property_master')).toBe('production_designer');
   });
 
   it('tåler skitne verdier fra sesjonen', () => {
@@ -73,5 +74,10 @@ describe('katalogen og linseregisteret er enige', () => {
     expect((entry?.projectRoles ?? []).map(resolveSessionProjectRole)).toEqual([
       'location_manager', 'location_scout', 'location_security',
     ]);
+  });
+
+  it('samler art-avdelingens fagroller under produksjonsdesignerens prosjektrolle', () => {
+    const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'art-department');
+    expect(new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole))).toEqual(new Set(['production_designer']));
   });
 });

@@ -133,6 +133,28 @@ export const WORKSPACE_LENS_REGISTRY = [
     usesSceneParam: false,
   },
   {
+    lens: 'art-department',
+    workspaceKind: 'art_department',
+    projectRoles: [
+      'production_designer',
+      'set_designer',
+      'concept_illustrator',
+      'storyboard_artist',
+      'costume_designer',
+      'wardrobe_supervisor',
+      'set_decorator',
+      'on_set_dresser',
+      'greensperson',
+      'property_master',
+      'assistant_property_master',
+      'key_hair_stylist',
+      'key_makeup_artist',
+      'construction_coordinator',
+    ],
+    surfaceSource: 'own',
+    usesSceneParam: false,
+  },
+  {
     // The Admin Room as a lens. No project role selects it — `projectRoles` is
     // empty on purpose — so it opens only on an explicit choice, and only for a
     // caller the panel considers super admin. It is also the one lens that does

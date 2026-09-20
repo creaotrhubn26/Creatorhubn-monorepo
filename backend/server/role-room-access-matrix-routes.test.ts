@@ -51,6 +51,8 @@ describe('access matrix endpoint', () => {
     expect(byRole.producer.canManageProduction).toBe(true);
     expect(byRole.script_supervisor.canManageProduction).toBe(false);
     expect(byRole.script_supervisor.canManageContinuity).toBe(true);
+    expect(byRole.production_designer.canManageArtDepartment).toBe(true);
+    expect(byRole.producer.canManageArtDepartment).toBe(false);
   });
 
   it('carries the explicit permission keys so the UI need not hardcode them', async () => {
@@ -59,6 +61,7 @@ describe('access matrix endpoint', () => {
 
     expect(keys).toContain('canComment');
     expect(keys).toContain('canManageContinuity');
+    expect(keys).toContain('canManageArtDepartment');
   });
 
   it('refuses without an admin session', async () => {

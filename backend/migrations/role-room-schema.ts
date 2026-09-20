@@ -231,6 +231,26 @@ export const roleRoomLocationOperations = pgTable('role_room_location_operations
   index('role_room_location_operations_project_updated_idx').using('btree', table.projectId, table.updatedAt),
 ]);
 
+/**
+ * Project-wide Production Design lane. This deliberately references the
+ * shared project instead of copying scene, prop or storyboard entities into
+ * an art-specific silo.
+ */
+export const roleRoomArtDepartmentOperations = pgTable('role_room_art_department_operations', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  operations: jsonb('operations').default({}).notNull(),
+  version: integer('version').default(0).notNull(),
+  updatedBy: varchar('updated_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  unique('role_room_art_department_operations_project_unique').on(table.projectId),
+  index('role_room_art_department_operations_updated_idx').using('btree', table.projectId, table.updatedAt),
+  check('role_room_art_department_operations_payload_object', sql`jsonb_typeof(${table.operations}) = 'object'`),
+  check('role_room_art_department_operations_version_nonnegative', sql`${table.version} >= 0`),
+]);
+
 /** Private, checksum-verified and retry-safe scout evidence in the Role Room S3 bucket. */
 export const castingLocationScoutMedia = pgTable('casting_location_scout_media', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),

@@ -488,6 +488,24 @@ export const castingAuthService = {
           canRequestChanges: false,
           canViewEconomy: false,
         };
+      case 'production_designer':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canManageArtDepartment: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
       case 'first_ad':
       case 'second_ad':
       case 'second_second_assistant_director':

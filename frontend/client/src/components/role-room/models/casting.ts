@@ -22,6 +22,7 @@ export type UserRoleType =
   | 'location_scout'
   | 'location_security'
   | 'script_supervisor'
+  | 'production_designer'
   | 'first_ad'
   | 'second_ad'
   | 'second_second_assistant_director'
@@ -40,6 +41,7 @@ export interface UserRolePermissions {
   canEditProduction?: boolean;
   canCoordinateProduction?: boolean;
   canManageContinuity?: boolean;
+  canManageArtDepartment?: boolean;
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
@@ -1363,6 +1365,75 @@ export interface ProductionDay {
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
+}
+
+export type ArtDepartmentPhase = 'concept' | 'design' | 'build' | 'shoot' | 'wrap';
+export type ArtSceneStatus = 'not_started' | 'researching' | 'designing' | 'ready_for_review' | 'blocked';
+export type ArtSetStrategy = 'unknown' | 'location' | 'build' | 'hybrid';
+export type ArtDepartmentId = 'art' | 'sets' | 'props' | 'costume' | 'hair_makeup' | 'construction' | 'sfx' | 'vfx';
+export type ArtDecisionStatus = 'draft' | 'ready_for_review' | 'changes_requested';
+export type ArtDecisionImpact = 'creative' | 'schedule' | 'budget' | 'safety' | 'continuity';
+export type ArtHandoffStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+
+export interface ArtDepartmentScenePlan {
+  sceneId: string;
+  status: ArtSceneStatus;
+  setStrategy: ArtSetStrategy;
+  departments: ArtDepartmentId[];
+  owner?: string;
+  dueAt?: string;
+  designIntent?: string;
+  blocker?: string;
+  updatedAt?: string;
+}
+
+export interface ArtDepartmentDecision {
+  id: string;
+  title: string;
+  status: ArtDecisionStatus;
+  impact: ArtDecisionImpact;
+  sceneIds: string[];
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ArtDepartmentHandoff {
+  id: string;
+  department: ArtDepartmentId;
+  title: string;
+  status: ArtHandoffStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ArtDepartmentActivityEntry {
+  id: string;
+  type: 'workspace_saved';
+  message: string;
+  actorUserId: string;
+  createdAt: string;
+}
+
+export interface ArtDepartmentOperations {
+  phase: ArtDepartmentPhase;
+  visualDirection?: string;
+  palette: string[];
+  scenePlans: ArtDepartmentScenePlan[];
+  decisions: ArtDepartmentDecision[];
+  handoffs: ArtDepartmentHandoff[];
+  activity?: ArtDepartmentActivityEntry[];
+}
+
+export interface ArtDepartmentRecord {
+  projectId: string;
+  operations: ArtDepartmentOperations;
+  version: number;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export type ProductionManagementDayStatus = 'not_started' | 'ready' | 'at_risk' | 'completed';

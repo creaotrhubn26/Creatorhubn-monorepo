@@ -332,6 +332,8 @@ export function bottomNavConfigForRole(role: UserRoleType | null | undefined): s
       return ['shooting', 'schedule', 'crew', 'roles'];
     case 'camera_team':
       return ['shooting', 'shotlist', 'schedule', 'crew'];
+    case 'production_designer':
+      return ['brief', 'shooting', 'shotlist', 'schedule'];
     case 'content_producer':
       return ['candidates', 'brief', 'planner', 'approval'];
     case 'client_reviewer':

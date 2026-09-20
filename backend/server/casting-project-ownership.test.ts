@@ -71,6 +71,7 @@ describe("resolveCastingProjectAccess", () => {
       canManageLocations: true,
       canManageContinuity: false,
       canCommentContinuity: false,
+      canManageArtDepartment: false,
     });
   });
 

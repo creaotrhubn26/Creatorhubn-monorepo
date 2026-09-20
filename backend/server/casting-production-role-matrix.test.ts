@@ -35,6 +35,7 @@ const PERSONAS: Persona[] = [
   { label: 'produksjonsleder', role: 'production_manager' },
   { label: 'location manager', role: 'location_manager' },
   { label: 'script supervisor', role: 'script_supervisor' },
+  { label: 'produksjonsdesigner', role: 'production_designer' },
   { label: '1st AD', role: 'first_ad' },
   { label: 'leser', role: 'viewer' },
   { label: 'utenforstående', role: null },
@@ -81,18 +82,25 @@ const PROBES: Probe[] = [
       .post(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity/comments`)
       .send({}),
   },
+  {
+    key: 'art department',
+    send: (agent) => agent
+      .patch(`/api/role-room/projects/${PROJECT_ID}/art-department`)
+      .send({}),
+  },
 ];
 
 // true = past the guard, false = refused.
 const EXPECTED: Record<string, Record<string, boolean>> = {
-  'eier':               { les: true,  lokasjon: true,  dagskontroll: true,  koordinering: true,  kontinuitet: true,  kommentar: true },
-  'produsent':          { les: true,  lokasjon: true,  dagskontroll: true,  koordinering: true,  kontinuitet: false, kommentar: true },
-  'produksjonsleder':   { les: true,  lokasjon: true,  dagskontroll: true,  koordinering: true,  kontinuitet: false, kommentar: false },
-  'location manager':   { les: true,  lokasjon: true,  dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false },
-  'script supervisor':  { les: true,  lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: true,  kommentar: true },
-  '1st AD':             { les: true,  lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: true },
-  'leser':              { les: true,  lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false },
-  'utenforstående':     { les: false, lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false },
+  'eier':               { les: true,  lokasjon: true,  dagskontroll: true,  koordinering: true,  kontinuitet: true,  kommentar: true,  'art department': true },
+  'produsent':          { les: true,  lokasjon: true,  dagskontroll: true,  koordinering: true,  kontinuitet: false, kommentar: true,  'art department': false },
+  'produksjonsleder':   { les: true,  lokasjon: true,  dagskontroll: true,  koordinering: true,  kontinuitet: false, kommentar: false, 'art department': false },
+  'location manager':   { les: true,  lokasjon: true,  dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false, 'art department': false },
+  'script supervisor':  { les: true,  lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: true,  kommentar: true,  'art department': false },
+  'produksjonsdesigner': { les: true, lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false, 'art department': true },
+  '1st AD':             { les: true,  lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: true,  'art department': false },
+  'leser':              { les: true,  lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false, 'art department': false },
+  'utenforstående':     { les: false, lokasjon: false, dagskontroll: false, koordinering: false, kontinuitet: false, kommentar: false, 'art department': false },
 };
 
 function createApp(persona: Persona) {

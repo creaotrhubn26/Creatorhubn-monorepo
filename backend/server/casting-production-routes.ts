@@ -52,6 +52,13 @@ import {
   type CastingGrant,
 } from './casting-project-ownership.js';
 import {
+  ArtDepartmentValidationError,
+  emptyArtDepartmentOperations,
+  normalizeArtDepartmentOperations,
+  readArtDepartmentActivity,
+  summarizeArtDepartmentChanges,
+} from './casting-production-art-department.js';
+import {
   continuityObject,
   normalizeContinuityComment,
   normalizeProductionContinuityOperations,
@@ -237,6 +244,19 @@ async function ensureSchema(pool: Pool): Promise<void> {
     ON role_room_location_operations(project_id, location_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS role_room_location_operations_project_updated_idx
     ON role_room_location_operations(project_id, updated_at DESC)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS role_room_art_department_operations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+    operations JSONB NOT NULL DEFAULT '{}'::jsonb,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT role_room_art_department_operations_project_unique UNIQUE (project_id),
+    CONSTRAINT role_room_art_department_operations_payload_object CHECK (jsonb_typeof(operations) = 'object')
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS role_room_art_department_operations_updated_idx
+    ON role_room_art_department_operations(project_id, updated_at DESC)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS casting_location_scout_media (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
@@ -366,6 +386,12 @@ const CONFLICT_LANES = {
     versionField: 'continuityVersion',
     updatedByField: 'continuityUpdatedBy',
     updatedAtField: 'continuityUpdatedAt',
+  },
+  art_department: {
+    payloadKey: 'artDepartment',
+    versionField: 'version',
+    updatedByField: 'updatedBy',
+    updatedAtField: 'updatedAt',
   },
 } as const satisfies Record<string, {
   payloadKey: string;
@@ -1304,6 +1330,9 @@ export function createCastingProductionRouter(
     mode === 'manage' ? 'canManageContinuity' : 'canCommentContinuity',
   );
 
+  const ensureArtDepartmentAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canManageArtDepartment');
+
   async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
     const access = await resolveCastingProjectAccess(pool, projectId, userId);
     // A project missing from the canonical table has no decision authority,
@@ -1334,6 +1363,16 @@ export function createCastingProductionRouter(
     version: Number(row.version ?? 0),
     updatedBy: row.updated_by ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+  });
+
+  const mapArtDepartmentRow = (projectId: string, row?: Record<string, any>) => ({
+    projectId,
+    operations: row
+      ? { ...normalizeArtDepartmentOperations(row.operations), activity: readArtDepartmentActivity(row.operations) }
+      : { ...emptyArtDepartmentOperations(), activity: [] },
+    version: Number(row?.version ?? 0),
+    updatedBy: row?.updated_by ?? undefined,
+    updatedAt: row?.updated_at ?? undefined,
   });
 
   // ────────────── CHANGE IMPACT ──────────────
@@ -1519,6 +1558,121 @@ export function createCastingProductionRouter(
       });
     } catch {
       res.status(500).json({ error: 'Kunne ikke hente prosjekttilgang', detail: 'internal_error' });
+    }
+  });
+
+  // ────────────── PRODUCTION DESIGN / ART DEPARTMENT ──────────────
+  router.get('/projects/:projectId/art-department', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensureProductionAccess(req, res, projectId, 'read'))) return;
+      const result = await pool.query(
+        `SELECT operations, version, updated_by, updated_at
+           FROM role_room_art_department_operations
+          WHERE project_id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      res.json({ artDepartment: mapArtDepartmentRow(projectId, result.rows[0]) });
+    } catch (error) {
+      if (error instanceof ArtDepartmentValidationError) {
+        res.status(500).json({ error: 'invalid_persisted_state', message: 'Produksjonsdesigngrunnlaget må repareres.' });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke hente produksjonsdesigngrunnlaget', detail: 'internal_error' });
+    }
+  });
+
+  router.patch('/projects/:projectId/art-department', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensureArtDepartmentAccess(req, res, projectId))) return;
+
+      const body = asObject(req.body);
+      if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 512 * 1024) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Produksjonsdesigngrunnlaget er ugyldig eller for stort.' });
+        return;
+      }
+      const expectedVersion = Number(body.expectedVersion);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        res.status(400).json({ error: 'invalid_payload', message: 'expectedVersion må være et ikke-negativt heltall.' });
+        return;
+      }
+      const operations = normalizeArtDepartmentOperations(body.operations);
+      const currentResult = await pool.query(
+        `SELECT operations, version, updated_by, updated_at
+           FROM role_room_art_department_operations
+          WHERE project_id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      const currentRow = currentResult.rows[0] as Record<string, any> | undefined;
+      const currentVersion = Number(currentRow?.version ?? 0);
+      if (currentVersion !== expectedVersion) {
+        sendVersionConflict(
+          res,
+          'art_department',
+          'Produksjonsdesigngrunnlaget er endret av en annen bruker.',
+          mapArtDepartmentRow(projectId, currentRow),
+        );
+        return;
+      }
+
+      const actorUserId = (req as AuthedRequest).userId;
+      const savedAt = new Date().toISOString();
+      const previousOperations = currentRow
+        ? normalizeArtDepartmentOperations(currentRow.operations)
+        : null;
+      const activity = [
+        ...readArtDepartmentActivity(currentRow?.operations),
+        {
+          id: genId('art-activity'),
+          type: 'workspace_saved' as const,
+          message: summarizeArtDepartmentChanges(previousOperations, operations),
+          actorUserId,
+          createdAt: savedAt,
+        },
+      ].slice(-100);
+      const auditedOperations = { ...operations, activity };
+
+      const saveResult = await pool.query(
+        `INSERT INTO role_room_art_department_operations
+           (project_id, operations, version, updated_by, created_at, updated_at)
+         VALUES ($1, $2::jsonb, 1, $3, NOW(), NOW())
+         ON CONFLICT (project_id) DO UPDATE
+           SET operations = EXCLUDED.operations,
+               version = role_room_art_department_operations.version + 1,
+               updated_by = EXCLUDED.updated_by,
+               updated_at = NOW()
+         WHERE role_room_art_department_operations.version = $4
+         RETURNING operations, version, updated_by, updated_at`,
+        [projectId, JSON.stringify(auditedOperations), actorUserId, expectedVersion],
+      );
+      if (saveResult.rowCount === 0) {
+        const latest = await pool.query(
+          `SELECT operations, version, updated_by, updated_at
+             FROM role_room_art_department_operations
+            WHERE project_id = $1
+            LIMIT 1`,
+          [projectId],
+        );
+        sendVersionConflict(
+          res,
+          'art_department',
+          'Produksjonsdesigngrunnlaget er endret av en annen bruker.',
+          mapArtDepartmentRow(projectId, latest.rows[0]),
+        );
+        return;
+      }
+      res.json({ artDepartment: mapArtDepartmentRow(projectId, saveResult.rows[0]) });
+    } catch (error) {
+      if (error instanceof ArtDepartmentValidationError) {
+        res.status(400).json({ error: 'invalid_payload', message: error.message });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke lagre produksjonsdesigngrunnlaget', detail: 'internal_error' });
     }
   });
 

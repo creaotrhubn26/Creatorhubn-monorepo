@@ -55,6 +55,8 @@ describe('productionRoleCatalog', () => {
     expect(getProductionWorkspaceForRole('location_manager')).toBe('location_management');
     expect(getProductionWorkspaceForRole('location_scout')).toBe('location_management');
     expect(getProductionWorkspaceForRole('script_supervisor')).toBe('continuity');
+    expect(getProductionWorkspaceForRole('production_designer')).toBe('art_department');
+    expect(getProductionWorkspaceForRole('property_master')).toBe('art_department');
     expect(getProductionRoleDefinition('DoP')?.reportsTo).toBe('director');
     expect(PRODUCTION_WORKSPACE_DELIVERY_ORDER.slice(0, 2)).toEqual([
       'director',
