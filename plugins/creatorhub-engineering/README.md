@@ -18,11 +18,15 @@ dyrekjøpte feilklasser — ikke generiske råd.
 | `skills/security-review` | Org-isolasjon, RBAC-feller, webhooks/CORS/OAuth, secrets, GDPR |
 | `skills/regression-check` | Kjente feilklasser: whitescreen, «grønn CI lyver», migrasjonsdrift, rute-skygging |
 | `skills/release-readiness` | Deploy-topologi (Render/Netlify/TestFlight/Tauri) + GO/NO-GO-sjekkliste |
+| `skills/marketing-visuals` | Postbilder/kampanjebilder: ekte app-skjermbilder + merkevare-tokens, rendret til PNG med headless Chromium |
 | `commands/ship-check` | `/creatorhub-engineering:ship-check` — full leveransesjekk av gjeldende branch |
 
 Arbeidsflyten skillsene er bygget rundt:
 repo-intelligence → dependency-audit → architecture-plan → implement →
 e2e-verify → security-review → regression-check → release-readiness.
+
+`marketing-visuals` står utenfor den kjeden — den brukes når leveransen er et
+bilde (sosiale medier, kampanje, app-store), ikke kode.
 
 ## Installasjon
 
