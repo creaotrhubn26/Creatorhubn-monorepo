@@ -8,8 +8,9 @@ Produces, per post:
 
 Chromium is also the resizer here — there is no PIL/ImageMagick in this box.
 """
+import glob
 import os
-import pathlib, subprocess, sys
+import pathlib, shutil, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from poster_series import POSTS, place, src_width  # noqa: E402
@@ -17,14 +18,61 @@ from poster_series import POSTS, place, src_width  # noqa: E402
 # assets/, fonts/, layers/ and output land here; default is CWD
 ROOT = pathlib.Path(os.environ.get("LEADGRID_WORK", ".")).resolve()
 LAYERS = ROOT / "layers"
-LAYERS.mkdir(exist_ok=True)
 TMP = ROOT / "build/layers"
-TMP.mkdir(parents=True, exist_ok=True)
-SHELL = "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"
 
-# Target size for each exported detail. Wide/short elements get a wide, short
-# image; the aspect always follows the crop so nothing is stretched.
-DETAIL_W = 1080
+CHROMIUM_CANDIDATES = (
+    "/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/headless_shell",
+    "/opt/pw-browsers/chromium-*/chrome-linux/chrome",
+)
+
+
+def find_chromium() -> str:
+    """Chromium doubles as the resizer here — there is no PIL/ImageMagick.
+
+    Resolved at runtime so the pipeline is not pinned to one machine image:
+    CHROMIUM_PATH wins, then any Playwright revision under /opt/pw-browsers,
+    then whatever is on PATH.
+    """
+    override = os.environ.get("CHROMIUM_PATH")
+    if override:
+        if not pathlib.Path(override).exists():
+            sys.exit(f"CHROMIUM_PATH peker på noe som ikke finnes: {override}")
+        return override
+    for pattern in CHROMIUM_CANDIDATES:
+        found = sorted(glob.glob(pattern))
+        if found:
+            return found[-1]
+    for name in ("chromium", "chromium-browser", "google-chrome", "chrome"):
+        found = shutil.which(name)
+        if found:
+            return found
+    sys.exit("fant ingen Chromium. Sett CHROMIUM_PATH, eller installer "
+             "Playwright-nettlesere (npx playwright install chromium).")
+
+
+def check_sources() -> None:
+    """Fail before rendering if an input is missing.
+
+    Chromium happily exits 0 after painting a broken-image placeholder, and the
+    E2E downstream probes the baked layer rather than the source — so a missing
+    screenshot would sail through as a silently corrupted poster.
+    """
+    missing = []
+    for post in POSTS:
+        wanted = [post["shot"]] + ([post["photo"]] if post.get("photo") else [])
+        missing += [name for name in wanted if not (ROOT / "assets" / name).exists()]
+    if missing:
+        sys.exit(
+            f"Mangler kildebilder i {ROOT / 'assets'}:\n  "
+            + "\n  ".join(sorted(set(missing)))
+            + "\n\nApp-skjermbildene kopieres flatt fra "
+              "frontend/client/public/leadgrid/app/ (og hero/).\n"
+              "person-*.jpg er lisensierte stockfoto som ikke ligger i repoet — "
+              "legg inn egne, eller fjern de foto-baserte postene fra "
+              "poster_series.py.")
+
+
+SHELL = find_chromium()
 
 
 def shoot(html: str, out: pathlib.Path, w: int, h: int) -> None:
@@ -88,6 +136,9 @@ def export_bg(post) -> None:
 
 
 def main() -> None:
+    check_sources()
+    LAYERS.mkdir(parents=True, exist_ok=True)
+    TMP.mkdir(parents=True, exist_ok=True)
     for post in POSTS:
         export_detail(post)
         if post.get("photo"):
