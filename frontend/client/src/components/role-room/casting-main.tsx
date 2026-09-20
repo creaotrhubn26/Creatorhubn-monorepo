@@ -165,6 +165,7 @@ const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
 // for klient-portal-brukere (de som ikke logger inn med Google).
 const RrLoginPage = React.lazy(() => import('@/pages/LoginPageSimple'));
 const RrResetPassword = React.lazy(() => import('@/pages/reset-passord'));
+import { resetRoutePathFor } from './leadgridRoutes';
 // Personvern — offentlig privacy-URL kreves for Google OAuth-verifisering
 // (dekker Google Ads/Workspace-data). Var KUN App.tsx-rute → død på theroleroom.
 const RrPrivacyPolicy = React.lazy(() => import('@/pages/privacy-policy'));
@@ -377,12 +378,17 @@ function CastingStandaloneAppContent() {
     );
   }
   if (/^\/leadgrid\/reset-passord\/[^/]+\/?$/.test(leadgridPath)) {
+    // Ruten må matche adressen brukeren faktisk står på, ikke hvilken host
+    // hen er på. `leadgridPath` normaliserer «/reset-passord/x» til
+    // «/leadgrid/reset-passord/x» på leadgrid.no, og da traff mønsteret
+    // «/reset-passord/:token» ingenting for den som åpnet den prefiksede
+    // lenken på samme host: Route rendret null, og siden ble blank. En
+    // passordlenke som viser ingenting er verre enn en som sier at den er
+    // ugyldig.
+    const resetRoutePath = resetRoutePathFor(localeCtx.pathname);
     return (
       <React.Suspense fallback={null}>
-        <Route
-          path={leadgridHost ? '/reset-passord/:token' : '/leadgrid/reset-passord/:token'}
-          component={RrResetPassword}
-        />
+        <Route path={resetRoutePath} component={RrResetPassword} />
       </React.Suspense>
     );
   }
