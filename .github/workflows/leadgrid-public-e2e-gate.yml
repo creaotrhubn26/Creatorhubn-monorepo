@@ -1,0 +1,71 @@
+# Leadgrid-flaten kundene faktisk ser: landing, innlogging, juridiske sider,
+# gratis registrering og passordtilbakestilling.
+#
+# Speccen har eksistert siden august og har aldri vært kjørt av CI. Den fanget
+# en blank passordtilbakestillingsside i produksjon første gang noen kjørte
+# den mot leadgrid.no (PR #2436). En testfil ingen kjører er ikke et
+# sikkerhetsnett — den er en påstand om at noen en gang testet dette.
+name: Leadgrid Public E2E Gate
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/client/src/components/leadgrid/**'
+      - 'frontend/client/src/pages/leadgrid-*.tsx'
+      - 'frontend/client/src/pages/reset-passord.tsx'
+      - 'frontend/client/src/components/role-room/casting-main.tsx'
+      - 'frontend/client/src/components/role-room/leadgridRoutes.ts'
+      - 'frontend/client/src/components/auth/LoginModal.tsx'
+      - 'frontend/client/src/lib/creatorhubLinkedInAuth.ts'
+      - 'frontend/client/src/main-app.tsx'
+      - 'frontend/e2e/leadgrid-public-runtime.spec.ts'
+      - 'netlify/host-routes.json'
+      - '.github/workflows/leadgrid-public-e2e-gate.yml'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Kjør mot denne adressen i stedet for dev-serveren (f.eks. https://leadgrid.no)'
+        required: false
+        type: string
+
+jobs:
+  leadgrid-public-runtime:
+    name: Leadgrid public runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        env:
+          CHROMEDRIVER_SKIP_DOWNLOAD: 'true'
+        run: npm ci --workspaces=false
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Leadgrid public runtime suite
+        env:
+          # Tom verdi lar playwright.config starte sin egen dev-server.
+          PLAYWRIGHT_BASE_URL: ${{ inputs.base_url || '' }}
+        run: npx playwright test e2e/leadgrid-public-runtime.spec.ts --project=chromium
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-leadgrid-public
+          path: frontend/playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
