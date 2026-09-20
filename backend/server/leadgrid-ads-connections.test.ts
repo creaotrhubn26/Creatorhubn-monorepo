@@ -18,7 +18,7 @@ import {
 
 const modul = readFileSync(join(__dirname, "leadgrid-ads-connections.ts"), "utf8");
 const migrasjon = readFileSync(
-  join(__dirname, "../migrations/0654_leadgrid_ads_connections.sql"),
+  join(__dirname, "../migrations/0656_leadgrid_ads_connections.sql"),
   "utf8",
 );
 const byraaOauth = readFileSync(join(__dirname, "role-room-ads-oauth.ts"), "utf8");
@@ -114,7 +114,7 @@ describe("lagring av tokens", () => {
   });
 });
 
-describe("migrasjon 0654", () => {
+describe("migrasjon 0656", () => {
   const sqlOnly = migrasjon
     .split("\n")
     .filter((l) => !l.trimStart().startsWith("--"))
