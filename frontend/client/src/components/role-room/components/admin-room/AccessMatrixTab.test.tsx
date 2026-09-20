@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Fanen skal tegne alle states, ikke bare den som virker.
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AccessMatrixTab } from './AccessMatrixTab';
@@ -27,8 +27,18 @@ describe('AccessMatrixTab', () => {
 
     render(<AccessMatrixTab />);
 
-    await waitFor(() => expect(screen.getByText('producer')).toBeInTheDocument());
-    expect(screen.getByText('script_supervisor')).toBeInTheDocument();
+    // Rollenavnet står i første kolonne, og linsen i den andre. Siden
+    // producer-linsen kom til (#2433) heter de to det samme for enkelte
+    // roller, så et fritt tekstsøk treffer begge. Vi spør om rollekolonnen.
+    const roleColumn = async (): Promise<string[]> => {
+      const rows = await screen.findAllByRole('row');
+      return rows
+        .map((row) => within(row).queryAllByRole('cell')[0]?.textContent ?? '')
+        .filter(Boolean);
+    };
+
+    await waitFor(async () => expect(await roleColumn()).toContain('producer'));
+    expect(await roleColumn()).toContain('script_supervisor');
     expect(screen.getByText('Dagskontroll')).toBeInTheDocument();
   });
 
