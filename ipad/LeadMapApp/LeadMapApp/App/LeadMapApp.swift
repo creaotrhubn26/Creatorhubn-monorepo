@@ -380,11 +380,30 @@ struct RootView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .bottomTrailing) {
+        // Kortet lå i samme hjørne som kartets knappekolonne og dekket
+        // «Hva vil du finne?» — inngangen til Discovery. Knappen fantes, men
+        // var ikke trykkbar, og et hjelpekort som stenger hovedhandlingen er
+        // verre enn intet hjelpekort.
+        //
+        // Venstre side er ikke et alternativ på iPad: der ligger sidepanelet,
+        // og kortet dekket «Flere funksjoner» i stedet. Det blir derfor
+        // værende i høyre hjørne, men løftet over hele knappekolonnen
+        // (zoom, posisjon, kartlag, målebånd og Discovery-knappen).
+        // iPhone har knappene i samme hjørne, men der ligger kortet over
+        // fanelinjen (76 pt) og kommer ikke i veien.
+        // Hjørnene er opptatt på iPad: sidepanelet eier venstre side, og
+        // kartets knappekolonne står langs høyre kant med Discovery-knappen
+        // nederst i den. Kortet lå i det hjørnet og dekket «Hva vil du
+        // finne?» — inngangen til Discovery fantes, men kunne ikke trykkes.
+        //
+        // Bunn-midten er den eneste kanten uten kontroller, så der ligger det
+        // nå. iPhone beholder høyre hjørne over fanelinjen, der det ikke er i
+        // veien for noe.
+        .overlay(alignment: DeviceIdiom.isPhone ? .bottomTrailing : .bottom) {
             if appState.isAuthenticated {
                 LeadgridProductOnboardingGuide()
                     .padding(.horizontal, DeviceIdiom.isPhone ? 12 : 20)
-                    .padding(.bottom, DeviceIdiom.isPhone ? 76 : 20)
+                    .padding(.bottom, DeviceIdiom.isPhone ? 76 : 24)
             }
         }
         #if DEBUG
