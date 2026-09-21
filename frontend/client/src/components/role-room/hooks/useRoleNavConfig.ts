@@ -53,6 +53,13 @@ export interface RoleNavConfigEntry {
  * ordnede listen — telefon tar 4 første som primære + Mer.
  */
 export const DEFAULT_TABS_BY_ROLE: Record<UserRoleType, SubTabValue[]> = {
+  production_sound_mixer: [
+    'shooting', 'schedule', 'brief', 'crew', 'planner',
+  ],
+  production_designer: [
+    'brief', 'shooting', 'shotlist', 'schedule',
+    'crew', 'planner',
+  ],
   director: [
     'roles', 'candidates', 'schedule', 'brief',
     'crew', 'approval', 'shooting', 'shotlist', 'planner', 'agent',
@@ -148,6 +155,8 @@ export const DEFAULT_TABS_BY_ROLE: Record<UserRoleType, SubTabValue[]> = {
 };
 
 export const ALL_USER_ROLES: UserRoleType[] = [
+  'production_sound_mixer',
+  'production_designer',
   'director',
   'producer',
   'executive_producer',
@@ -178,6 +187,8 @@ export const ALL_USER_ROLES: UserRoleType[] = [
 ];
 
 export const USER_ROLE_LABELS: Record<UserRoleType, string> = {
+  production_sound_mixer: 'Produksjonslydmikser / boom',
+  production_designer: 'Produksjonsdesigner',
   director: 'Regissør',
   producer: 'Produsent',
   executive_producer: 'Eksekutiv produsent',
