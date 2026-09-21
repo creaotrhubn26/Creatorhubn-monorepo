@@ -22,6 +22,17 @@ export type UserRoleType =
   | 'location_scout'
   | 'location_security'
   | 'script_supervisor'
+  | 'production_designer'
+  | 'production_sound_mixer'
+  | 'post_supervisor'
+  | 'post_coordinator'
+  | 'sound_designer'
+  | 'sound_editor'
+  | 'foley_artist'
+  | 'adr_engineer'
+  | 'supervising_editor'
+  | 'video_editor'
+  | 'assistant_editor'
   | 'first_ad'
   | 'second_ad'
   | 'second_second_assistant_director'
@@ -40,6 +51,11 @@ export interface UserRolePermissions {
   canEditProduction?: boolean;
   canCoordinateProduction?: boolean;
   canManageContinuity?: boolean;
+  canManageArtDepartment?: boolean;
+  canManageProductionSound?: boolean;
+  canPreparePostTurnover?: boolean;
+  canReviewPostTurnover?: boolean;
+  canManagePostProduction?: boolean;
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
@@ -1352,6 +1368,11 @@ export interface ProductionDay {
   continuityVersion?: number;
   continuityUpdatedAt?: string;
   continuityUpdatedBy?: string;
+  productionSound?: ProductionSoundOperations;
+  /** Server-owned optimistic concurrency counter for production-sound edits. */
+  soundVersion?: number;
+  soundUpdatedAt?: string;
+  soundUpdatedBy?: string;
   lastModifiedBy?: string;
   createdBy?: string;
   changeLog?: Array<{
@@ -1363,6 +1384,75 @@ export interface ProductionDay {
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
+}
+
+export type ArtDepartmentPhase = 'concept' | 'design' | 'build' | 'shoot' | 'wrap';
+export type ArtSceneStatus = 'not_started' | 'researching' | 'designing' | 'ready_for_review' | 'blocked';
+export type ArtSetStrategy = 'unknown' | 'location' | 'build' | 'hybrid';
+export type ArtDepartmentId = 'art' | 'sets' | 'props' | 'costume' | 'hair_makeup' | 'construction' | 'sfx' | 'vfx';
+export type ArtDecisionStatus = 'draft' | 'ready_for_review' | 'changes_requested';
+export type ArtDecisionImpact = 'creative' | 'schedule' | 'budget' | 'safety' | 'continuity';
+export type ArtHandoffStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+
+export interface ArtDepartmentScenePlan {
+  sceneId: string;
+  status: ArtSceneStatus;
+  setStrategy: ArtSetStrategy;
+  departments: ArtDepartmentId[];
+  owner?: string;
+  dueAt?: string;
+  designIntent?: string;
+  blocker?: string;
+  updatedAt?: string;
+}
+
+export interface ArtDepartmentDecision {
+  id: string;
+  title: string;
+  status: ArtDecisionStatus;
+  impact: ArtDecisionImpact;
+  sceneIds: string[];
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ArtDepartmentHandoff {
+  id: string;
+  department: ArtDepartmentId;
+  title: string;
+  status: ArtHandoffStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ArtDepartmentActivityEntry {
+  id: string;
+  type: 'workspace_saved';
+  message: string;
+  actorUserId: string;
+  createdAt: string;
+}
+
+export interface ArtDepartmentOperations {
+  phase: ArtDepartmentPhase;
+  visualDirection?: string;
+  palette: string[];
+  scenePlans: ArtDepartmentScenePlan[];
+  decisions: ArtDepartmentDecision[];
+  handoffs: ArtDepartmentHandoff[];
+  activity?: ArtDepartmentActivityEntry[];
+}
+
+export interface ArtDepartmentRecord {
+  projectId: string;
+  operations: ArtDepartmentOperations;
+  version: number;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export type ProductionManagementDayStatus = 'not_started' | 'ready' | 'at_risk' | 'completed';
@@ -1661,6 +1751,255 @@ export interface ProductionContinuityOperations extends ProductionContinuitySnap
   comments: ProductionContinuityComment[];
   revisions: ProductionContinuityRevision[];
   activity: ProductionContinuityActivityEntry[];
+}
+
+export type ProductionSoundDayStatus = 'setup' | 'recording' | 'wrapped';
+export type ProductionSoundSourceType = 'boom' | 'lav' | 'plant' | 'mix' | 'other';
+export type ProductionSoundTrackStatus = 'ready' | 'active' | 'issue' | 'off';
+export type ProductionSoundQuality = 'clean' | 'usable' | 'compromised' | 'unusable';
+export type ProductionSoundIssue =
+  | 'clothing_rustle'
+  | 'radio_hit'
+  | 'boom_shadow'
+  | 'handling_noise'
+  | 'background_noise'
+  | 'distortion'
+  | 'sync'
+  | 'other';
+export type ProductionSoundRecordingType = 'room_tone' | 'wild_track' | 'ambience' | 'sfx';
+export type ProductionSoundRecordingStatus = 'planned' | 'recorded' | 'delivered';
+export type ProductionSoundHandoffStatus = 'draft' | 'ready_for_review';
+export type ProductionSoundTimecodeMode = 'free_run' | 'record_run' | 'external';
+
+export interface ProductionSoundSetup {
+  recorder?: string;
+  soundRoll?: string;
+  sampleRate: 48000 | 96000;
+  bitDepth: 24 | 32;
+  frameRate?: string;
+  timecodeMode: ProductionSoundTimecodeMode;
+  timecodeSource?: string;
+  planNotes?: string;
+  acousticRisks?: string;
+}
+
+export interface ProductionSoundTrack {
+  id: string;
+  trackName: string;
+  sourceType: ProductionSoundSourceType;
+  subject?: string;
+  channel?: string;
+  transmitter?: string;
+  frequency?: string;
+  status: ProductionSoundTrackStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionSoundTakeReport {
+  id: string;
+  continuityTakeId: string;
+  fileName?: string;
+  recordingFileIds?: string[];
+  trackIds: string[];
+  quality: ProductionSoundQuality;
+  issueTags: ProductionSoundIssue[];
+  needsAdr: boolean;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionSoundUnmatchedRecording {
+  id: string;
+  fileName: string;
+  sceneLabel?: string;
+  takeLabel?: string;
+  soundRoll?: string;
+  timecodeStart?: string;
+  durationSeconds?: number;
+  notes?: string;
+  recordedAt?: string;
+}
+
+export interface ProductionSoundRecorderTrackMetadata {
+  channelIndex?: number;
+  interleaveIndex?: number;
+  name?: string;
+  function?: string;
+}
+
+export interface ProductionSoundRecorderMetadata {
+  container: 'RIFF' | 'RF64';
+  audioFormat: number;
+  channels: number;
+  sampleRate: number;
+  byteRate: number;
+  blockAlign: number;
+  bitDepth: number;
+  dataSizeBytes: number;
+  durationSeconds?: number;
+  timecodeStart?: string;
+  recordedAtLocal?: string;
+  bext?: {
+    description?: string;
+    originator?: string;
+    originatorReference?: string;
+    originationDate?: string;
+    originationTime?: string;
+    timeReferenceSamples: string;
+    version: number;
+    codingHistory?: string;
+  };
+  ixml?: {
+    version?: string;
+    project?: string;
+    scene?: string;
+    take?: string;
+    tape?: string;
+    note?: string;
+    fileUid?: string;
+    circled?: boolean;
+    timecodeRate?: string;
+    timecodeFlag?: string;
+    tracks: ProductionSoundRecorderTrackMetadata[];
+  };
+  warnings: string[];
+}
+
+export interface ProductionSoundMedia {
+  id: string;
+  projectId: string;
+  productionDayId: string;
+  storageObjectId: string;
+  uploadedBy?: string;
+  displayName: string;
+  contentType: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  recorderMetadata: ProductionSoundRecorderMetadata;
+  reconciliationStatus: 'unmatched' | 'matched';
+  continuityTakeId?: string;
+  reconciledBy?: string;
+  reconciledAt?: string;
+  createdAt: string;
+}
+
+export type PostTurnoverStatus = 'draft' | 'ready' | 'received' | 'qc_issues' | 'accepted' | 'superseded';
+export type PostQcSeverity = 'note' | 'warning' | 'blocker';
+
+export interface PostTurnoverMediaSnapshot {
+  mediaId: string;
+  storageObjectId: string;
+  displayName: string;
+  checksumSha256: string;
+  sizeBytes: number;
+  reconciliationStatus: 'unmatched' | 'matched';
+  continuityTakeId?: string;
+  createdAt: string;
+}
+
+export interface PostTurnoverSourceSnapshot {
+  productionDayId: string;
+  soundVersion: number;
+  capturedAt: string;
+  availableMediaIds: string[];
+  media: PostTurnoverMediaSnapshot[];
+}
+
+export interface PostQcIssue {
+  id: string;
+  severity: PostQcSeverity;
+  message: string;
+  status: 'open' | 'resolved';
+  createdBy: string;
+  createdAt: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+}
+
+export interface PostTurnoverEvent {
+  id: string;
+  type: 'created' | 'status_changed' | 'source_refreshed' | 'qc_issue_added' | 'qc_issue_resolved';
+  message: string;
+  actorUserId: string;
+  createdAt: string;
+}
+
+export interface PostTurnoverImpactItem {
+  code: 'production_day_missing' | 'sound_report_changed' | 'media_missing' | 'media_changed' | 'media_reconciliation_changed' | 'new_media_available';
+  severity: 'warning' | 'blocking';
+  message: string;
+  mediaId?: string;
+}
+
+export interface PostTurnoverImpact {
+  stale: boolean;
+  blocking: boolean;
+  items: PostTurnoverImpactItem[];
+}
+
+export interface PostTurnoverManifest {
+  id: string;
+  label: string;
+  recipient?: string;
+  notes?: string;
+  status: PostTurnoverStatus;
+  source: PostTurnoverSourceSnapshot;
+  issues: PostQcIssue[];
+  events: PostTurnoverEvent[];
+  impact: PostTurnoverImpact;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface PostProductionRecord {
+  projectId: string;
+  operations: { turnovers: PostTurnoverManifest[] };
+  version: number;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionSoundAdditionalRecording {
+  id: string;
+  type: ProductionSoundRecordingType;
+  sceneId?: string;
+  name: string;
+  fileName?: string;
+  timecodeStart?: string;
+  durationSeconds?: number;
+  status: ProductionSoundRecordingStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionSoundHandoff {
+  status: ProductionSoundHandoffStatus;
+  recipient?: string;
+  mediaDestination?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionSoundActivityEntry {
+  id: string;
+  type: 'workspace_saved' | 'recording_reconciled';
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionSoundOperations {
+  dayStatus: ProductionSoundDayStatus;
+  setup: ProductionSoundSetup;
+  tracks: ProductionSoundTrack[];
+  takeReports: ProductionSoundTakeReport[];
+  unmatchedRecordings: ProductionSoundUnmatchedRecording[];
+  additionalRecordings: ProductionSoundAdditionalRecording[];
+  handoff: ProductionSoundHandoff;
+  activity: ProductionSoundActivityEntry[];
 }
 
 export type SecondAdMovementStatus =

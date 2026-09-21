@@ -438,6 +438,100 @@ function buildScriptSupervisorTrollSeedProject(): CastingProject {
   } as CastingProject;
 }
 
+function buildProductionDesignerTrollSeedProject(): CastingProject {
+  const project = buildSecondAssistantDirectorTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for produksjonsdesign og art department',
+    props: [
+      { id: 'troll-prop-hammer', projectId: project.id, name: 'Tors hammer', assignedScenes: ['troll-scene-1'] },
+      { id: 'troll-prop-torch', projectId: project.id, name: 'Fakkel', assignedScenes: [] },
+    ],
+    sceneBreakdowns: (project.sceneBreakdowns ?? []).map((scene) => ({
+      ...scene,
+      propsNeeded: ['Tors hammer'],
+      vehicles: ['Snøscooter'],
+      storyboardFrames: [{
+        id: 'troll-frame-1', title: 'Trollet mellom furutrærne',
+        imageUrl: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+      }],
+    })),
+    crew: [{
+      id: 'troll-production-designer', projectId: project.id, name: 'Ada Design',
+      role: 'production_designer', department: 'art', status: 'confirmed',
+      contactInfo: { email: 'ada.design@example.test' },
+    }],
+    userRoles: [{
+      id: 'troll-production-designer-user-role', projectId: project.id,
+      userId: 'e2e-test-user', role: 'production_designer',
+    }],
+  } as CastingProject;
+}
+
+function buildProductionSoundTrollSeedProject(): CastingProject {
+  const project = buildScriptSupervisorTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for Production Sound Mixer og boomoperatør',
+    crew: [
+      {
+        id: 'troll-sound-mixer', projectId: project.id, name: 'Sanna Lyd',
+        role: 'production_sound_mixer', department: 'sound', status: 'confirmed',
+        contactInfo: { email: 'sanna.sound@example.test' },
+      },
+      {
+        id: 'troll-boom-operator', projectId: project.id, name: 'Bjørn Boom',
+        role: 'boom_operator', department: 'sound', status: 'confirmed',
+        contactInfo: { email: 'bjorn.boom@example.test' },
+      },
+    ],
+    productionDays: (project.productionDays ?? []).map((day) => ({
+      ...day,
+      crew: ['troll-sound-mixer', 'troll-boom-operator'],
+      soundVersion: 0,
+      productionSound: {
+        dayStatus: 'setup',
+        setup: { recorder: 'Sound Devices 833', soundRoll: 'A001', sampleRate: 48000, bitDepth: 24, frameRate: '25', timecodeMode: 'external', timecodeSource: 'Master TC fra lyd' },
+        tracks: [
+          { id: 'troll-track-mix', trackName: 'Mix L', sourceType: 'mix', status: 'ready' },
+          { id: 'troll-track-boom', trackName: 'Boom 1', sourceType: 'boom', subject: 'Dialog', status: 'ready' },
+        ],
+        takeReports: [], unmatchedRecordings: [], additionalRecordings: [],
+        handoff: { status: 'draft' }, activity: [],
+      },
+    })),
+    userRoles: [{
+      id: 'troll-production-sound-user-role', projectId: project.id,
+      userId: 'e2e-test-user', role: 'production_sound_mixer',
+    }],
+  } as CastingProject;
+}
+
+function buildPostProductionTrollSeedProject(): CastingProject {
+  const project = buildProductionSoundTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for Post Supervisor og Post Sound',
+    crew: [
+      ...(project.crew ?? []),
+      {
+        id: 'troll-post-supervisor', projectId: project.id, name: 'Pia Post',
+        role: 'post_supervisor', department: 'post_management', status: 'confirmed',
+        contactInfo: { email: 'pia.post@example.test' },
+      },
+      {
+        id: 'troll-sound-designer', projectId: project.id, name: 'Lars Lyddesign',
+        role: 'sound_designer', department: 'post_sound', status: 'confirmed',
+        contactInfo: { email: 'lars.sound@example.test' },
+      },
+    ],
+    userRoles: [{
+      id: 'troll-post-supervisor-user-role', projectId: project.id,
+      userId: 'e2e-test-user', role: 'post_supervisor',
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -466,6 +560,9 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const isProductionCoordinatorSession = sessionMode === 'production-coordinator';
       const isLocationManagerSession = sessionMode === 'location-manager';
       const isScriptSupervisorSession = sessionMode === 'script-supervisor';
+      const isProductionDesignerSession = sessionMode === 'production-designer';
+      const isProductionSoundSession = sessionMode === 'production-sound';
+      const isPostSupervisorSession = sessionMode === 'post-supervisor';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
@@ -483,6 +580,12 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             ? 'location_manager'
           : isScriptSupervisorSession
             ? 'script_supervisor'
+          : isProductionDesignerSession
+            ? 'production_designer'
+          : isProductionSoundSession
+            ? 'production_sound_mixer'
+          : isPostSupervisorSession
+            ? 'post_supervisor'
           : isProducerSession
             ? 'producer'
           : isCastingDirectorSession
@@ -493,7 +596,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isProducerSession || isCastingDirectorSession || isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession
+          : isProducerSession || isCastingDirectorSession || isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession || isProductionDesignerSession || isProductionSoundSession || isPostSupervisorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -512,6 +615,12 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'location_manager'
                 : isScriptSupervisorSession
                   ? 'script_supervisor'
+                : isProductionDesignerSession
+                  ? 'production_designer'
+                : isProductionSoundSession
+                  ? 'production_sound_mixer'
+                : isPostSupervisorSession
+                  ? 'post_supervisor'
                 : isProducerSession
                   ? 'producer'
                 : isCastingDirectorSession
@@ -536,7 +645,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, location_manager: true, script_supervisor: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, location_manager: true, script_supervisor: true, production_designer: true, production_sound_mixer: true, post_supervisor: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -545,7 +654,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll' || seedFlag === 'script-supervisor-troll') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll' || seedFlag === 'script-supervisor-troll' || seedFlag === 'production-designer-troll' || seedFlag === 'production-sound-troll' || seedFlag === 'post-production-troll') {
         try {
           const seedProject = seedFlag === 'director'
             ? buildDirectorSeedProject()
@@ -561,6 +670,12 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                 ? buildProductionCoordinatorTrollSeedProject()
               : seedFlag === 'script-supervisor-troll'
                 ? buildScriptSupervisorTrollSeedProject()
+              : seedFlag === 'production-designer-troll'
+                ? buildProductionDesignerTrollSeedProject()
+              : seedFlag === 'production-sound-troll'
+                ? buildProductionSoundTrollSeedProject()
+              : seedFlag === 'post-production-troll'
+                ? buildPostProductionTrollSeedProject()
               : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
@@ -580,6 +695,12 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'production-coordination'
                 : seedFlag === 'script-supervisor-troll'
                   ? 'continuity'
+                : seedFlag === 'production-designer-troll'
+                  ? 'art-department'
+                : seedFlag === 'production-sound-troll'
+                  ? 'production-sound'
+                : seedFlag === 'post-production-troll'
+                  ? 'post-production'
                   : undefined,
               firstAssistantDirectorSurface: seedFlag === 'second-ad-troll' ? 'today' : undefined,
               storyArcView: 'main',
