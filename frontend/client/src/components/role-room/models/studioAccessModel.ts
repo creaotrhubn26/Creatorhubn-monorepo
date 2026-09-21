@@ -486,6 +486,22 @@ export const PRODUCTION_ROLES: readonly ProductionRoleDef[] = [
     },
   },
   {
+    key: 'post_supervisor', label: 'Post Supervisor', department: 'post',
+    description: 'Eier postflyt, turnover, QC, versjoner og godkjenningsgrunnlag.',
+    preset: {
+      oversikt: V, workspace: M, timeline: M, delivery: M, approval: M,
+      economy: V, 'story-arc': V, storyboard: V,
+    },
+  },
+  {
+    key: 'post_coordinator', label: 'Postkoordinator', department: 'post',
+    description: 'Koordinerer postkø, frister, grunnlag og leveranser.',
+    preset: {
+      oversikt: V, workspace: M, timeline: M, delivery: M, approval: V,
+      storyboard: V,
+    },
+  },
+  {
     key: 'editor', label: 'Klipper / Editor', department: 'post',
     description: 'Eier historien i etterarbeidet.',
     preset: {
@@ -497,7 +513,7 @@ export const PRODUCTION_ROLES: readonly ProductionRoleDef[] = [
     key: 'assistant_editor', label: 'Assistant Editor', department: 'post',
     description: 'Organiserer materiale og støtter klipp.',
     preset: {
-      oversikt: V, workspace: M, delivery: V, timeline: V,
+      oversikt: V, workspace: M, delivery: V, timeline: V, storyboard: V,
     },
   },
   {
@@ -511,42 +527,42 @@ export const PRODUCTION_ROLES: readonly ProductionRoleDef[] = [
     key: 'sound_designer', label: 'Sound Designer', department: 'post',
     description: 'Designer lydbildet i post.',
     preset: {
-      oversikt: V, delivery: M, workspace: V, timeline: V,
+      oversikt: V, delivery: M, workspace: V, timeline: V, storyboard: V,
     },
   },
   {
     key: 'dialogue_editor', label: 'Dialogue Editor', department: 'post',
     description: 'Redigerer dialog i post.',
     preset: {
-      oversikt: V, workspace: V, delivery: V, timeline: V,
+      oversikt: V, workspace: V, delivery: V, timeline: V, storyboard: V,
     },
   },
   {
     key: 'foley_artist', label: 'Foley Artist', department: 'post',
     description: 'Lager foley-lyd.',
     preset: {
-      oversikt: V, workspace: V, delivery: V,
+      oversikt: V, workspace: V, delivery: V, storyboard: V,
     },
   },
   {
     key: 'rerecording_mixer', label: 'Re-recording Mixer / Lydmikser', department: 'post',
     description: 'Eier sluttlyden (miks).',
     preset: {
-      oversikt: V, delivery: M, workspace: V, timeline: V,
+      oversikt: V, delivery: M, workspace: V, timeline: V, storyboard: V,
     },
   },
   {
     key: 'composer', label: 'Komponist', department: 'post',
     description: 'Komponerer musikk.',
     preset: {
-      oversikt: V, workspace: V, 'story-arc': V, delivery: V,
+      oversikt: V, workspace: V, 'story-arc': V, delivery: V, storyboard: V,
     },
   },
   {
     key: 'music_supervisor', label: 'Music Supervisor', department: 'post',
     description: 'Kuraterer og klarerer musikk.',
     preset: {
-      oversikt: V, workspace: V, delivery: V, approval: V,
+      oversikt: V, workspace: V, delivery: V, approval: V, storyboard: V,
     },
   },
   {
@@ -575,7 +591,7 @@ export const PRODUCTION_ROLES: readonly ProductionRoleDef[] = [
     key: 'online_editor', label: 'Online Editor', department: 'post',
     description: 'Eier den endelige masteren og leveransen.',
     preset: {
-      oversikt: V, delivery: M, workspace: V, timeline: V,
+      oversikt: V, delivery: M, workspace: V, timeline: V, storyboard: V,
     },
   },
 
@@ -662,6 +678,10 @@ const PRODUCTION_ROLE_PRESET_ALIASES: Readonly<Record<string, string>> = {
   'director of photography': 'dop',
   dp: 'dop',
   filmfotograf: 'dop',
+  supervising_editor: 'editor',
+  video_editor: 'editor',
+  sound_editor: 'sound_designer',
+  adr_engineer: 'dialogue_editor',
 };
 
 export function normalizeProductionRolePresetKey(roleKey: string | null | undefined): string | null {

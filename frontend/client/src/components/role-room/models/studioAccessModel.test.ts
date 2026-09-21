@@ -20,4 +20,14 @@ describe('studioAccessModel production role aliases', () => {
     expect(presetForRole('camera_team')['story-arc']).toBeUndefined();
     expect(presetForRole('dop')['story-arc']).toBe('view');
   });
+
+  it.each([
+    ['post_supervisor', 'post_supervisor'],
+    ['post_coordinator', 'post_coordinator'],
+    ['supervising_editor', 'editor'],
+    ['video_editor', 'editor'],
+  ] as const)('gives %s the canonical %s storyboard access', (role, canonical) => {
+    expect(normalizeProductionRolePresetKey(role)).toBe(canonical);
+    expect(presetForRole(role).storyboard).toBe('view');
+  });
 });

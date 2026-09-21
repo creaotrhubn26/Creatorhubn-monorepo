@@ -2,6 +2,8 @@ import type {
   PostPictureSourceCatalog,
   PostProductionRecord,
   PostQcSeverity,
+  PostStoryboardSourceCatalog,
+  PostStoryboardSourceDetail,
   PostTurnoverStatus,
 } from '../models/casting';
 import { roleRoomAgentDefaultHeaders } from './roleRoomAgentService';
@@ -14,6 +16,8 @@ export type PostProductionCommand =
       notes?: string;
       productionDayId: string;
       mediaIds: string[];
+      storyboardReviewRoundId?: string;
+      storyboardFrameIds?: string[];
     }
   | {
       type: 'create_picture_turnover';
@@ -21,6 +25,8 @@ export type PostProductionCommand =
       recipient?: string;
       notes?: string;
       pictureVersionId: string;
+      storyboardReviewRoundId?: string;
+      storyboardFrameIds?: string[];
     }
   | { type: 'transition_turnover'; turnoverId: string; status: PostTurnoverStatus }
   | { type: 'refresh_turnover'; turnoverId: string }
@@ -32,6 +38,8 @@ type PostProductionPayload = {
   message?: string;
   postProduction?: PostProductionRecord;
   pictureSources?: PostPictureSourceCatalog;
+  storyboardSources?: PostStoryboardSourceCatalog;
+  storyboardSource?: PostStoryboardSourceDetail;
 };
 
 export class PostProductionConflictError extends Error {
@@ -75,6 +83,30 @@ export const postProductionService = {
       throw new Error(body.message || body.error || 'Kunne ikke hente picture-kilder.');
     }
     return body.pictureSources;
+  },
+
+  async getStoryboardSources(projectId: string): Promise<PostStoryboardSourceCatalog> {
+    const response = await fetch(`${base(projectId)}/storyboard-sources`, {
+      credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
+    });
+    const body = await payload(response);
+    if (!response.ok || !body.storyboardSources) {
+      throw new Error(body.message || body.error || 'Kunne ikke hente storyboardgrunnlaget.');
+    }
+    return body.storyboardSources;
+  },
+
+  async getStoryboardSource(projectId: string, roundId: string): Promise<PostStoryboardSourceDetail> {
+    const response = await fetch(`${base(projectId)}/storyboard-sources/${encodeURIComponent(roundId)}`, {
+      credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
+    });
+    const body = await payload(response);
+    if (!response.ok || !body.storyboardSource) {
+      throw new Error(body.message || body.error || 'Kunne ikke hente storyboardrevisjonen.');
+    }
+    return body.storyboardSource;
   },
 
   async command(
