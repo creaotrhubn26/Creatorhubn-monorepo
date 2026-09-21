@@ -8,6 +8,7 @@ components:
       - { name: "@emotion/styled", declared: "^11.14.1", resolved: "11.14.1" }
       - { name: "@mui/icons-material", declared: "^9.0.1", resolved: "9.0.1" }
       - { name: "@mui/material", declared: "^9.0.1", resolved: "9.0.1" }
+      - { name: "@playwright/test", declared: "^1.63.0", resolved: "1.63.0" }
       - { name: "@tauri-apps/api", declared: "^2", resolved: "2.11.0" }
       - { name: "@tauri-apps/cli", declared: "^2", resolved: "2.11.2" }
       - { name: "@tauri-apps/plugin-dialog", declared: "^2.7.1", resolved: "2.7.1" }
@@ -16,11 +17,15 @@ components:
       - { name: "@tauri-apps/plugin-updater", declared: "^2", resolved: "2.10.1" }
       - { name: "@types/react", declared: "^19.1.8", resolved: "19.2.15" }
       - { name: "@types/react-dom", declared: "^19.1.6", resolved: "19.2.3" }
+      - { name: "@types/three", declared: "^0.169.0", resolved: "0.169.0" }
       - { name: "@vitejs/plugin-react", declared: "^4.6.0", resolved: "4.7.0" }
+      - { name: "gifenc", declared: "^1.0.3", resolved: "1.0.3" }
       - { name: "react", declared: "^19.1.0", resolved: "19.2.6" }
       - { name: "react-dom", declared: "^19.1.0", resolved: "19.2.6" }
+      - { name: "three", declared: "^0.169.0", resolved: "0.169.0" }
       - { name: "typescript", declared: "~5.8.3", resolved: "5.8.3" }
       - { name: "vite", declared: "^7.0.4", resolved: "7.3.3" }
+      - { name: "vitest", declared: "^4.0.8", resolved: "4.1.11" }
       - { name: "zustand", declared: "^5.0.14", resolved: "5.0.14" }
   - manifest: src-tauri/Cargo.toml
     ecosystem: cargo
