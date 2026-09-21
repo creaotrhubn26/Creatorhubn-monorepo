@@ -20,15 +20,15 @@ const CHARACTER_FIELDS: ProfileField[] = [
   { key: 'changeAction', label: 'Handling som viser endring', multiline: true },
   { key: 'observable', label: 'Hva spillerne kan observere', multiline: true },
   { key: 'establishNow', label: 'Etableres nå', multiline: true },
-  { key: 'firstPersonalScene', label: 'Første personlige scene' },
+  { key: 'firstPersonalScene', label: 'Første personlige scene', multiline: true },
   { key: 'revealLater', label: 'Avsløres senere', multiline: true },
-  { key: 'sourceStatus', label: 'Kildestatus' },
+  { key: 'sourceStatus', label: 'Kildestatus', multiline: true },
   { key: 'authorTruth', label: 'Forfatterfasit', multiline: true, internal: true, help: 'Intern — vises aldri i spillerflater.' },
   { key: 'notes', label: 'Notater', multiline: true },
 ];
 const LOCATION_FIELDS: ProfileField[] = [
   { key: 'continuity', label: 'Kontinuitetskrav', multiline: true },
-  { key: 'geometryStatus', label: 'Geometri-status' },
+  { key: 'geometryStatus', label: 'Geometri-status', multiline: true },
   { key: 'notes', label: 'Notater', multiline: true },
 ];
 const GENERIC_FIELDS: ProfileField[] = [{ key: 'summary', label: 'Sammendrag', multiline: true }, { key: 'notes', label: 'Notater', multiline: true }];
@@ -93,7 +93,7 @@ export function ComponentGalleryPanel({ projectId, kind, graph, store, refreshKe
             <Button size="small" startIcon={<AddIcon />} disabled={!newName.trim()} onClick={() => void create()} sx={{ color: narrativeColors.accent, whiteSpace: 'nowrap' }} data-testid={`narrative-gallery-create-${kind}`}>Opprett</Button>
           </Stack>
         </Box>
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }} tabIndex={0} aria-label={`Liste over ${KIND_PLURAL[kind]}`}>
           {items.length === 0 ? <EmptyHint title={`Ingen ${KIND_PLURAL[kind]} ennå`} body={kind === 'character' ? 'Opprett karakterene fra manuset så replikker og scener kan kobles til dem.' : 'Opprett stedene scenene foregår på, med epoke og kontinuitetskrav.'} testId={`narrative-gallery-empty-${kind}`} /> : null}
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
             {items.map((c) => (
@@ -109,7 +109,7 @@ export function ComponentGalleryPanel({ projectId, kind, graph, store, refreshKe
         </Box>
       </Box>
 
-      <Box sx={{ flex: 1, minWidth: 0, p: { xs: 2, md: 3 }, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, p: { xs: 2, md: 3 }, overflowY: 'auto' }} tabIndex={0} aria-label={`Detaljer for valgt ${KIND_LABEL[kind].toLowerCase()}`}>
         {!selected ? (
           <EmptyHint title={`Velg en ${KIND_LABEL[kind].toLowerCase()}`} body={kind === 'character' ? 'Drivkraft, forfatterfasit vs. det spillerne ser, stemmecast, minnespor, krefter, scener og replikker.' : 'Epoker, kontinuitet, geometri-status, rekvisitter og scenene stedet brukes i.'} testId={`narrative-gallery-none-${kind}`} />
         ) : (
