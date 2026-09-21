@@ -42,6 +42,11 @@ final class QASweepTests: XCTestCase {
             app.launchEnvironment[key] = value
         }
         app.launch()
+        // Tilgjengelighetsrevisjonen slår feil med «Invalid target app <pid>»
+        // (com.apple.accessibilityAudit -902) hvis appen ennå ikke er
+        // registrert som forgrunnsapp — skjer når forrige test forlot
+        // simulatoren midt i en rotasjon.
+        _ = app.wait(for: .runningForeground, timeout: 20)
         // La bootstrap + refresh lande før snapshot (kald Render kan bruke tid).
         sleep(10)
         return app
@@ -154,10 +159,63 @@ final class QASweepTests: XCTestCase {
                   (frame.width < 44 || frame.height < 44) else { return nil }
             let name = button.identifier.isEmpty ? button.label : button.identifier
             // OS-eid sidebar-kontroll er 54×36 på iPadOS 26 og kan ikke
-            // styles av appen. Vi måler bare Leadgrid sine egne knapper.
-            guard name != "Hide Sidebar" else { return nil }
+            // styles av appen. Den bytter etikett med tilstanden — «Hide
+            // Sidebar» når sidefeltet vises, «Show Sidebar» når det er
+            // skjult — så begge må filtreres, ellers avhenger funnene av
+            // hvilken tilstand forrige test etterlot.
+            guard name != "Hide Sidebar", name != "Show Sidebar" else { return nil }
             return "\(name.isEmpty ? "ukjent knapp" : name) \(Int(frame.width))×\(Int(frame.height))"
         }
+    }
+
+    /// Preflight (treffområder) + Apples handlingsbare revisjon på én flate.
+    ///
+    /// `performAccessibilityAudit` svarer av og til
+    /// «Invalid target app <pid>» (com.apple.accessibilityAudit -902) når
+    /// flere tester deler runner-prosessen: AX-tjenesten peker på en
+    /// app-instans som allerede er avsluttet. Appen feiler ikke — revisjonen
+    /// gjør det. Vi starter appen på nytt og prøver én gang til, og hopper
+    /// over testen hvis tjenesten fortsatt nekter, framfor å melde rødt på
+    /// noe som ikke er en feil i produktet.
+    @available(iOS 17.0, *)
+    private func actionableAuditLines(
+        tab: Int,
+        environment: [String: String]
+    ) throws -> [String] {
+        let actionable: XCUIAccessibilityAuditType = [
+            .contrast, .hitRegion, .sufficientElementDescription, .textClipped,
+        ]
+        var sisteFeil: NSError?
+        for _ in 1...2 {
+            let app = launchApp(tab: tab, environment: environment)
+            let rapport = A11yRapport()
+            rapport.linjer.append(
+                contentsOf: undersizedVisibleButtons(in: app).map { "Preflight hit area: \($0)" }
+            )
+            do {
+                try app.performAccessibilityAudit(for: actionable) { issue in
+                    // Simulatoren returnerer også funn uten elementreferanse
+                    // for systemmaterialet rundt split view. Vi melder bare
+                    // konkrete Leadgrid-elementer som kan rettes.
+                    if let element = issue.element {
+                        rapport.linjer.append(
+                            "\(issue.auditType): \(issue.compactDescription) — \(String(describing: element))"
+                        )
+                    }
+                    return true
+                }
+                app.terminate()
+                return rapport.linjer
+            } catch let feil as NSError
+                where feil.domain == "com.apple.accessibilityAudit" && feil.code == -902 {
+                sisteFeil = feil
+                app.terminate()
+            }
+        }
+        throw XCTSkip(
+            "Tilgjengelighetsrevisjonen nådde ikke appen to ganger på rad: "
+                + (sisteFeil?.localizedDescription ?? "ukjent")
+        )
     }
 
     private func pondusUsageCount(
@@ -2222,6 +2280,9 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(button(in: leadbook, containing: "Cheat note").isHittable)
         snap(leadbook, "ipad-pondus-landskap")
         XCUIDevice.shared.orientation = .portrait
+        // Uten pausen avsluttes testen mens rotasjonen er underveis, og neste
+        // test starter appen i en skjerm som fortsatt snur seg.
+        sleep(2)
         #endif
         leadbook.terminate()
     }
@@ -2510,31 +2571,13 @@ final class QASweepTests: XCTestCase {
         guard #available(iOS 17.0, *), UIDevice.current.userInterfaceIdiom == .pad else {
             throw XCTSkip("Denne auditen krever iPad med iOS 17 eller nyere")
         }
-        let app = launchApp(
+        let linjer = try actionableAuditLines(
             tab: 3,
             environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
         )
-        let rapport = A11yRapport()
-        rapport.linjer.append(contentsOf: undersizedVisibleButtons(in: app).map { "Preflight hit area: \($0)" })
-        let actionable: XCUIAccessibilityAuditType = [
-            .contrast, .hitRegion, .sufficientElementDescription, .textClipped,
-        ]
-        try app.performAccessibilityAudit(for: actionable) { issue in
-            // iPadOS 26-simulatoren returnerer også kontrast-/klippfunn
-            // uten elementreferanse for systemmaterialet rundt split view.
-            // Den brede rapport-auditen under beholder disse; denne testen
-            // feiler på konkrete Leadgrid-elementer som kan rettes.
-            if let element = issue.element {
-                rapport.linjer.append(
-                    "\(issue.auditType): \(issue.compactDescription) — \(String(describing: element))"
-                )
-            }
-            return true
-        }
-        app.terminate()
         XCTAssertTrue(
-            rapport.linjer.isEmpty,
-            "Møter har handlingsbare tilgjengelighetsfunn:\n\(rapport.linjer.joined(separator: "\n"))"
+            linjer.isEmpty,
+            "Møter har handlingsbare tilgjengelighetsfunn:\n\(linjer.joined(separator: "\n"))"
         )
     }
 
@@ -2542,27 +2585,13 @@ final class QASweepTests: XCTestCase {
         guard #available(iOS 17.0, *), UIDevice.current.userInterfaceIdiom == .pad else {
             throw XCTSkip("Denne auditen krever iPad med iOS 17 eller nyere")
         }
-        let app = launchApp(
+        let linjer = try actionableAuditLines(
             tab: 5,
             environment: ["QA_TOUR": "profile", "QA_DEMO": "1"]
         )
-        let rapport = A11yRapport()
-        rapport.linjer.append(contentsOf: undersizedVisibleButtons(in: app).map { "Preflight hit area: \($0)" })
-        let actionable: XCUIAccessibilityAuditType = [
-            .contrast, .hitRegion, .sufficientElementDescription, .textClipped,
-        ]
-        try app.performAccessibilityAudit(for: actionable) { issue in
-            if let element = issue.element {
-                rapport.linjer.append(
-                    "\(issue.auditType): \(issue.compactDescription) — \(String(describing: element))"
-                )
-            }
-            return true
-        }
-        app.terminate()
         XCTAssertTrue(
-            rapport.linjer.isEmpty,
-            "Leadbook har handlingsbare tilgjengelighetsfunn:\n\(rapport.linjer.joined(separator: "\n"))"
+            linjer.isEmpty,
+            "Leadbook har handlingsbare tilgjengelighetsfunn:\n\(linjer.joined(separator: "\n"))"
         )
     }
 
