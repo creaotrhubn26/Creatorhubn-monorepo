@@ -20,6 +20,8 @@ const GRANT_LABELS: Record<string, string> = {
   canManageLocations: 'Lokasjoner',
   canManageContinuity: 'Kontinuitet',
   canCommentContinuity: 'Kommenter kontinuitet',
+  canManageArtDepartment: 'Produksjonsdesign og art department',
+  canManageProductionSound: 'Opptakslyd og lydrapport',
 };
 
 export interface AccessMatrixDeps {

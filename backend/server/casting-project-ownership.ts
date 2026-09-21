@@ -104,6 +104,29 @@ export const CASTING_GRANT_RULES = {
     ],
     permissionKeys: ["canManageContinuity", "canComment"],
   },
+  canManageArtDepartment: {
+    roles: [
+      "production_designer",
+      "set_designer",
+      "concept_illustrator",
+      "storyboard_artist",
+      "set_decorator",
+      "on_set_dresser",
+      "greensperson",
+      "property_master",
+      "assistant_property_master",
+      "costume_designer",
+      "wardrobe_supervisor",
+      "key_hair_stylist",
+      "key_makeup_artist",
+      "construction_coordinator",
+    ],
+    permissionKeys: ["canManageArtDepartment"],
+  },
+  canManageProductionSound: {
+    roles: ["production_sound_mixer", "sound_mixer", "audio_mixer", "sound_engineer", "boom_operator"],
+    permissionKeys: ["canManageProductionSound"],
+  },
 } as const satisfies Record<string, { roles: readonly string[]; permissionKeys: readonly string[] }>;
 
 export type CastingGrant = keyof typeof CASTING_GRANT_RULES;
