@@ -457,6 +457,10 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     const m = (re: RegExp) => path.match(re);
 
     if (m(/\/projects\/[^/]+\/graph$/) && method === 'GET') return route.fulfill(ok(g));
+    if (m(/\/projects\/[^/]+\/scenes\/export\.pdf$/) && method === 'GET') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'export_pdf', planSlug: 'solo' }) });
+      return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'content-disposition': 'attachment; filename="demo-spill-manus.pdf"' }, body: Buffer.from('%PDF-1.4\n%mock manus\n') });
+    }
     if (m(/\/projects\/[^/]+\/export\.pdf$/) && method === 'GET') {
       if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'export_pdf', planSlug: 'solo' }) });
       const locale = url.searchParams.get('locale');

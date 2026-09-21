@@ -106,6 +106,19 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       const isRoleRoomLogin =
         loginAs === "production_team" || loginAs === "content_producer";
       const isProductionEnv = process.env.NODE_ENV === "production";
+      // Spillstudio (Story Graph, Solo gratis): eksplisitt registrering fra
+      // login-dialogen. Krever signup=true + loginAs=game_studio; passord ≥ 8
+      // tegn. Ingen kommersiell gate (Stripe skjer inne i workspacet).
+      const isGameStudioSignup =
+        req.body?.signup === true && loginAs === "game_studio";
+      if (
+        isGameStudioSignup &&
+        (typeof password !== "string" || password.trim().length < 8)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Passordet må ha minst 8 tegn." });
+      }
       const roleRoomGuestPassword =
         process.env.ROLE_ROOM_GUEST_PASSWORD ||
         process.env.PROTOTYPE_GUEST_PASSWORD ||
@@ -169,8 +182,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
 
       if (
         (!result.rowCount || !result.rows.length) &&
-        isRoleRoomLogin &&
-        !isProductionEnv
+        ((isRoleRoomLogin && !isProductionEnv) || isGameStudioSignup)
       ) {
         const bcrypt = await import("bcrypt");
         const safePassword =

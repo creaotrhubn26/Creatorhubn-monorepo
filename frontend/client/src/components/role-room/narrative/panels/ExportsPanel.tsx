@@ -152,6 +152,22 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
     downloadText(toCsv(graph, { locale: exportLocale }), `${fileStem}${localeSuffix}.csv`, 'text/csv;charset=utf-8');
     onNotice('CSV lastet ned — åpnes rett i Excel/Numbers (skilletegn «;»).', 'success');
   };
+  const exportScenesPdf = async () => {
+    setBusy('scenes-pdf');
+    try {
+      const { blob, filename } = await api.exportScenesPdf(projectId);
+      downloadBlob(blob, filename ?? `${fileStem}-manus.pdf`);
+      onNotice('Manus-PDF lastet ned.', 'success');
+    } catch (err) {
+      if (err instanceof api.NarrativeApiError && err.code === 'plan_required') {
+        onNotice('PDF-eksport krever Pro eller Studio — se «Pris»-fanen.', 'warning');
+      } else {
+        onNotice(err instanceof Error ? err.message : 'Manus-PDF feilet.', 'error');
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
   const exportPdf = async () => {
     setBusy('pdf');
     try {
@@ -329,12 +345,19 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
               Spillbar HTML
             </Button>
             <Button variant="outlined" startIcon={<PdfIcon />} onClick={() => void exportPdf()} disabled={empty || busy === 'pdf' || !canPdf} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-pdf" data-locked={canPdf ? undefined : 'plan'}>
-              {busy === 'pdf' ? 'Lager PDF…' : 'PDF (manus)'}
+              {busy === 'pdf' ? 'Lager PDF…' : 'PDF (Story Graph)'}
+            </Button>
+            <Button variant="outlined" startIcon={<PdfIcon />} onClick={() => void exportScenesPdf()} disabled={busy === 'scenes-pdf' || !canPdf} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-scenes-pdf" data-locked={canPdf ? undefined : 'plan'}>
+              {busy === 'scenes-pdf' ? 'Lager manus…' : 'Manus-PDF (scener)'}
             </Button>
           </Stack>
           <Box sx={{ mt: 1.5 }}><PlanGateBanner feature="export_html" compact /></Box>
           <Box><PlanGateBanner feature="export_pdf" compact /></Box>
-          {empty ? <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mt: 1 }}>Grafen er tom — legg til elementer før du eksporterer.</Typography> : null}
+          {empty ? (
+            <Alert severity="info" sx={{ mt: 1.5, bgcolor: 'rgba(59,130,246,0.08)', color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` }} data-testid="narrative-exports-empty-graph">
+              Eksporten her gjelder Story Graph-brettene (elementer, forgreninger, variabler), og prosjektet har ingen brett ennå. Scener, replikker og gater ligger under «Scener &amp; gameplay» — åpne Brett for å tegne historien, eller start fra en mal på Hjem.
+            </Alert>
+          ) : null}
         </Section>
 
         <Section
