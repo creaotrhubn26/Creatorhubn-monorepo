@@ -58,6 +58,7 @@ export type ProductionWorkspaceKind =
   | 'continuity'
   | 'art_department'
   | 'production_sound'
+  | 'post_production'
   | 'department';
 
 interface ProductionRoleDefinitionBase {
@@ -145,18 +146,18 @@ export const PRODUCTION_ROLES = [
   { id: 'key_makeup_artist', label: 'Sminkeansvarlig', departmentId: 'hair_makeup', reportsTo: 'production_designer', aliases: ['makeup_artist'], workspace: 'art_department' },
   { id: 'construction_coordinator', label: 'Konstruksjonskoordinator', departmentId: 'construction', reportsTo: 'production_designer', workspace: 'art_department' },
   { id: 'studio_teacher', label: 'Studio teacher', departmentId: 'other', reportsTo: 'production_manager', workspace: 'department' },
-  { id: 'post_supervisor', label: 'Post supervisor', departmentId: 'post_management', reportsTo: 'producer', workspace: 'department' },
-  { id: 'post_coordinator', label: 'Postkoordinator', departmentId: 'post_management', reportsTo: 'post_supervisor', workspace: 'department' },
+  { id: 'post_supervisor', label: 'Post supervisor', departmentId: 'post_management', reportsTo: 'producer', workspace: 'post_production' },
+  { id: 'post_coordinator', label: 'Postkoordinator', departmentId: 'post_management', reportsTo: 'post_supervisor', workspace: 'post_production' },
   { id: 'music_supervisor', label: 'Musikkansvarlig', departmentId: 'music', reportsTo: 'post_supervisor', workspace: 'department' },
   { id: 'composer', label: 'Komponist', departmentId: 'music', reportsTo: 'music_supervisor', workspace: 'department' },
   { id: 'musician', label: 'Musiker', departmentId: 'music', reportsTo: 'composer', workspace: 'department' },
-  { id: 'sound_designer', label: 'Lyddesigner', departmentId: 'post_sound', reportsTo: 'post_supervisor', workspace: 'department' },
-  { id: 'sound_editor', label: 'Lydklipper', departmentId: 'post_sound', reportsTo: 'sound_designer', workspace: 'department' },
-  { id: 'foley_artist', label: 'Foleyartist', departmentId: 'post_sound', reportsTo: 'sound_designer', workspace: 'department' },
-  { id: 'adr_engineer', label: 'ADR-tekniker', departmentId: 'post_sound', reportsTo: 'sound_designer', workspace: 'department' },
-  { id: 'supervising_editor', label: 'Klippeansvarlig', departmentId: 'editorial', reportsTo: 'post_supervisor', workspace: 'department' },
-  { id: 'video_editor', label: 'Klipper', departmentId: 'editorial', reportsTo: 'supervising_editor', aliases: ['editor'], workspace: 'department' },
-  { id: 'assistant_editor', label: 'Klippeassistent', departmentId: 'editorial', reportsTo: 'video_editor', workspace: 'department' },
+  { id: 'sound_designer', label: 'Lyddesigner', departmentId: 'post_sound', reportsTo: 'post_supervisor', workspace: 'post_production' },
+  { id: 'sound_editor', label: 'Lydklipper', departmentId: 'post_sound', reportsTo: 'sound_designer', workspace: 'post_production' },
+  { id: 'foley_artist', label: 'Foleyartist', departmentId: 'post_sound', reportsTo: 'sound_designer', workspace: 'post_production' },
+  { id: 'adr_engineer', label: 'ADR-tekniker', departmentId: 'post_sound', reportsTo: 'sound_designer', workspace: 'post_production' },
+  { id: 'supervising_editor', label: 'Klippeansvarlig', departmentId: 'editorial', reportsTo: 'post_supervisor', workspace: 'post_production' },
+  { id: 'video_editor', label: 'Klipper', departmentId: 'editorial', reportsTo: 'supervising_editor', aliases: ['editor'], workspace: 'post_production' },
+  { id: 'assistant_editor', label: 'Klippeassistent', departmentId: 'editorial', reportsTo: 'video_editor', workspace: 'post_production' },
   { id: 'colorist', label: 'Colorist', departmentId: 'editorial', reportsTo: 'supervising_editor', workspace: 'department' },
   { id: 'vfx_supervisor', label: 'VFX supervisor', departmentId: 'visual_effects', reportsTo: 'post_supervisor', workspace: 'department' },
   { id: 'vfx_artist', label: 'VFX-artist', departmentId: 'visual_effects', reportsTo: 'vfx_supervisor', workspace: 'department' },

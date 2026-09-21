@@ -524,6 +524,53 @@ export const castingAuthService = {
           canRequestChanges: true,
           canViewEconomy: false,
         };
+      case 'post_supervisor':
+      case 'post_coordinator':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canPreparePostTurnover: true,
+          canReviewPostTurnover: true,
+          canManagePostProduction: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
+      case 'sound_designer':
+      case 'sound_editor':
+      case 'foley_artist':
+      case 'adr_engineer':
+      case 'supervising_editor':
+      case 'video_editor':
+      case 'assistant_editor':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canPreparePostTurnover: false,
+          canReviewPostTurnover: true,
+          canManagePostProduction: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
       case 'first_ad':
       case 'second_ad':
       case 'second_second_assistant_director':

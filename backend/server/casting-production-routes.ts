@@ -15,6 +15,8 @@
  *   • PATCH  /projects/:projectId/production-days/:dayId/continuity
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-sound
  *   • DELETE /projects/:projectId/production-days/:dayId/production-sound/media/:mediaId
+ *   • GET    /projects/:projectId/post-production
+ *   • POST   /projects/:projectId/post-production/commands
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/comments
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/media
  *   • GET    /projects/:projectId/production-days/:dayId/continuity/media/:fileId/url
@@ -60,6 +62,18 @@ import {
   readArtDepartmentActivity,
   summarizeArtDepartmentChanges,
 } from './casting-production-art-department.js';
+import {
+  applyPostProductionCommand,
+  collectPostTurnoverImpact,
+  emptyPostProductionOperations,
+  normalizePostProductionOperations,
+  parsePostProductionCommand,
+  PostProductionTransitionError,
+  PostProductionValidationError,
+  type PostProductionCommand,
+  type PostProductionOperations,
+  type PostTurnoverSourceSnapshot,
+} from './casting-production-post-production.js';
 import {
   continuityObject,
   normalizeContinuityComment,
@@ -226,6 +240,18 @@ const productionSoundMediaActionLimiter = rateLimit({
     }),
 });
 
+const postProductionActionLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthedRequest).userId || 'unauthenticated',
+  handler: (_req, res) => res.status(429).json({
+    error: 'rate_limited',
+    message: 'For mange post-produksjonshandlinger på kort tid. Vent litt og prøv igjen.',
+  }),
+});
+
 async function resolveUser(
   pool: Pool,
   activeSessions: Map<string, SessionData> | undefined,
@@ -298,6 +324,20 @@ async function ensureSchema(pool: Pool): Promise<void> {
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS role_room_art_department_operations_updated_idx
     ON role_room_art_department_operations(project_id, updated_at DESC)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS role_room_post_production_operations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+    operations JSONB NOT NULL DEFAULT '{"turnovers":[]}'::jsonb,
+    version INTEGER NOT NULL DEFAULT 0,
+    updated_by VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_role_room_post_production_project UNIQUE (project_id),
+    CONSTRAINT chk_role_room_post_production_payload CHECK (jsonb_typeof(operations) = 'object'),
+    CONSTRAINT chk_role_room_post_production_version CHECK (version >= 0)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_role_room_post_production_updated
+    ON role_room_post_production_operations(project_id, updated_at DESC)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS casting_location_scout_media (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
@@ -499,6 +539,12 @@ const CONFLICT_LANES = {
   },
   art_department: {
     payloadKey: 'artDepartment',
+    versionField: 'version',
+    updatedByField: 'updatedBy',
+    updatedAtField: 'updatedAt',
+  },
+  post_production: {
+    payloadKey: 'postProduction',
     versionField: 'version',
     updatedByField: 'updatedBy',
     updatedAtField: 'updatedAt',
@@ -1451,6 +1497,24 @@ export function createCastingProductionRouter(
     return true;
   }
 
+  async function ensureAnyProjectGrant(
+    req: Request,
+    res: Response,
+    projectId: unknown,
+    grants: readonly CastingGrant[],
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    const access = normalizedProjectId
+      ? await resolveCastingProjectAccess(pool, normalizedProjectId, userId)
+      : null;
+    if (!access || !grants.some((grant) => access.grants[grant])) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
   const ensureProductionAccess = (
     req: Request,
     res: Response,
@@ -1487,6 +1551,20 @@ export function createCastingProductionRouter(
     res: Response,
     projectId: unknown,
   ) => ensureProjectGrant(req, res, projectId, "canManageProductionSound");
+
+  const ensurePostProductionAccess = (
+    req: Request,
+    res: Response,
+    projectId: unknown,
+    mode: 'prepare' | 'review' | 'either',
+  ) => mode === 'either'
+    ? ensureAnyProjectGrant(req, res, projectId, ['canPreparePostTurnover', 'canReviewPostTurnover'])
+    : ensureProjectGrant(
+        req,
+        res,
+        projectId,
+        mode === 'prepare' ? 'canPreparePostTurnover' : 'canReviewPostTurnover',
+      );
 
   async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
     const access = await resolveCastingProjectAccess(pool, projectId, userId);
@@ -1529,6 +1607,142 @@ export function createCastingProductionRouter(
     updatedBy: row?.updated_by ?? undefined,
     updatedAt: row?.updated_at ?? undefined,
   });
+
+  const mapPostProductionRow = (
+    projectId: string,
+    row?: Record<string, any>,
+    impacts: Record<string, ReturnType<typeof collectPostTurnoverImpact>> = {},
+  ) => {
+    const operations = row
+      ? normalizePostProductionOperations(row.operations)
+      : emptyPostProductionOperations();
+    return {
+      projectId,
+      operations: {
+        ...operations,
+        turnovers: operations.turnovers.map((turnover) => ({
+          ...turnover,
+          impact: impacts[turnover.id] ?? { stale: false, blocking: false, items: [] },
+        })),
+      },
+      version: Number(row?.version ?? 0),
+      updatedBy: row?.updated_by ?? undefined,
+      updatedAt: row?.updated_at ?? undefined,
+    };
+  };
+
+  async function loadPostTurnoverSource(
+    projectId: string,
+    productionDayId: string,
+    mediaIds?: readonly string[],
+  ): Promise<PostTurnoverSourceSnapshot | null> {
+    const dayResult = await pool.query(
+      `SELECT id, sound_version
+         FROM casting_production_days
+        WHERE project_id = $1 AND id = $2
+        LIMIT 1`,
+      [projectId, productionDayId],
+    );
+    if (dayResult.rowCount === 0) return null;
+    if (mediaIds?.some((id) => !isUuid(id))) {
+      throw new PostProductionValidationError('En valgt recorderfil har ugyldig ID.');
+    }
+    const mediaResult = await pool.query(
+      `SELECT media.id, media.storage_object_id, media.display_name,
+              media.checksum_sha256, media.size_bytes,
+              media.reconciliation_status, media.continuity_take_id,
+              media.created_at
+         FROM casting_production_sound_media media
+        WHERE media.project_id = $1
+          AND media.production_day_id = $2
+          AND media.deleted_at IS NULL
+        ORDER BY media.created_at ASC, media.id ASC`,
+      [projectId, productionDayId],
+    );
+    const selectedIds = mediaIds && mediaIds.length > 0 ? new Set(mediaIds) : null;
+    const selectedRows = selectedIds
+      ? mediaResult.rows.filter((row: Record<string, any>) => selectedIds.has(String(row.id)))
+      : mediaResult.rows;
+    if (selectedIds && selectedRows.length !== selectedIds.size) {
+      throw new PostProductionValidationError('En eller flere valgte recorderfiler finnes ikke lenger.');
+    }
+    return {
+      productionDayId,
+      soundVersion: Number(dayResult.rows[0].sound_version ?? 0),
+      capturedAt: new Date().toISOString(),
+      availableMediaIds: mediaResult.rows.map((row: Record<string, any>) => String(row.id)),
+      media: selectedRows.map((row: Record<string, any>) => ({
+        mediaId: String(row.id),
+        storageObjectId: String(row.storage_object_id),
+        displayName: String(row.display_name),
+        checksumSha256: String(row.checksum_sha256),
+        sizeBytes: Number(row.size_bytes),
+        reconciliationStatus: row.reconciliation_status === 'matched' ? 'matched' : 'unmatched',
+        continuityTakeId: row.continuity_take_id ?? undefined,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      })),
+    };
+  }
+
+  async function loadPostTurnoverImpacts(projectId: string, operations: PostProductionOperations) {
+    const impacts: Record<string, ReturnType<typeof collectPostTurnoverImpact>> = {};
+    const productionDayIds = [...new Set(
+      operations.turnovers.map((turnover) => String(turnover.source.productionDayId)),
+    )];
+    if (productionDayIds.length === 0) return impacts;
+
+    const [dayResult, mediaResult] = await Promise.all([
+      pool.query(
+        `SELECT id, sound_version
+           FROM casting_production_days
+          WHERE project_id = $1
+            AND id = ANY($2::varchar[])`,
+        [projectId, productionDayIds],
+      ),
+      pool.query(
+        `SELECT media.id, media.production_day_id, media.storage_object_id,
+                media.display_name, media.checksum_sha256, media.size_bytes,
+                media.reconciliation_status, media.continuity_take_id,
+                media.created_at
+           FROM casting_production_sound_media media
+          WHERE media.project_id = $1
+            AND media.production_day_id = ANY($2::varchar[])
+            AND media.deleted_at IS NULL
+          ORDER BY media.created_at ASC, media.id ASC`,
+        [projectId, productionDayIds],
+      ),
+    ]);
+    const daysById = new Map(dayResult.rows.map((row: Record<string, any>) => [String(row.id), row]));
+    const mediaByDay = new Map<string, Record<string, any>[]>();
+    for (const row of mediaResult.rows as Record<string, any>[]) {
+      const dayId = String(row.production_day_id);
+      mediaByDay.set(dayId, [...(mediaByDay.get(dayId) ?? []), row]);
+    }
+
+    for (const turnover of operations.turnovers) {
+      const productionDayId = String(turnover.source.productionDayId);
+      const day = daysById.get(productionDayId);
+      const rows = mediaByDay.get(productionDayId) ?? [];
+      const current: PostTurnoverSourceSnapshot | null = day ? {
+        productionDayId,
+        soundVersion: Number(day.sound_version ?? 0),
+        capturedAt: new Date().toISOString(),
+        availableMediaIds: rows.map((row) => String(row.id)),
+        media: rows.map((row) => ({
+          mediaId: String(row.id),
+          storageObjectId: String(row.storage_object_id),
+          displayName: String(row.display_name),
+          checksumSha256: String(row.checksum_sha256),
+          sizeBytes: Number(row.size_bytes),
+          reconciliationStatus: row.reconciliation_status === 'matched' ? 'matched' : 'unmatched',
+          continuityTakeId: row.continuity_take_id ?? undefined,
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+        })),
+      } : null;
+      impacts[turnover.id] = collectPostTurnoverImpact(turnover.source, current);
+    }
+    return impacts;
+  }
 
   // ────────────── CHANGE IMPACT ──────────────
   /**
@@ -1828,6 +2042,169 @@ export function createCastingProductionRouter(
         return;
       }
       res.status(500).json({ error: 'Kunne ikke lagre produksjonsdesigngrunnlaget', detail: 'internal_error' });
+    }
+  });
+
+  // ────────────── POST-PRODUCTION TURNOVER ──────────────
+  router.get('/projects/:projectId/post-production', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensureProductionAccess(req, res, projectId, 'read'))) return;
+      const result = await pool.query(
+        `SELECT operations, version, updated_by, updated_at
+           FROM role_room_post_production_operations
+          WHERE project_id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      const operations = result.rows[0]
+        ? normalizePostProductionOperations(result.rows[0].operations)
+        : emptyPostProductionOperations();
+      const impacts = await loadPostTurnoverImpacts(projectId, operations);
+      res.json({ postProduction: mapPostProductionRow(projectId, result.rows[0], impacts) });
+    } catch (error) {
+      if (error instanceof PostProductionValidationError) {
+        res.status(500).json({ error: 'invalid_persisted_state', message: 'Post-produksjonsgrunnlaget må repareres.' });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke hente post-produksjonsgrunnlaget', detail: 'internal_error' });
+    }
+  });
+
+  router.post('/projects/:projectId/post-production/commands', auth, postProductionActionLimiter, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      const body = asObject(req.body);
+      if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 128 * 1024) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Post-produksjonskommandoen er ugyldig eller for stor.' });
+        return;
+      }
+      const expectedVersion = Number(body.expectedVersion);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        res.status(400).json({ error: 'invalid_payload', message: 'expectedVersion må være et ikke-negativt heltall.' });
+        return;
+      }
+      const parsed = parsePostProductionCommand(body.command);
+      const authority = parsed.type === 'create_turnover' || parsed.type === 'refresh_turnover'
+        ? 'prepare'
+        : parsed.type === 'add_qc_issue' || parsed.type === 'resolve_qc_issue'
+          ? 'review'
+          : parsed.status === 'ready'
+            ? 'prepare'
+            : parsed.status === 'superseded'
+              ? 'either'
+              : 'review';
+      if (!(await ensurePostProductionAccess(req, res, projectId, authority))) return;
+
+      const currentResult = await pool.query(
+        `SELECT operations, version, updated_by, updated_at
+           FROM role_room_post_production_operations
+          WHERE project_id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      const currentRow = currentResult.rows[0] as Record<string, any> | undefined;
+      const currentVersion = Number(currentRow?.version ?? 0);
+      const currentOperations = currentRow
+        ? normalizePostProductionOperations(currentRow.operations)
+        : emptyPostProductionOperations();
+      if (currentVersion !== expectedVersion) {
+        const impacts = await loadPostTurnoverImpacts(projectId, currentOperations);
+        sendVersionConflict(
+          res,
+          'post_production',
+          'Post-produksjonsgrunnlaget er endret av en annen bruker.',
+          mapPostProductionRow(projectId, currentRow, impacts),
+        );
+        return;
+      }
+
+      let command: PostProductionCommand;
+      if (parsed.type === 'create_turnover') {
+        const source = await loadPostTurnoverSource(projectId, parsed.productionDayId, parsed.mediaIds);
+        if (!source) {
+          res.status(404).json({ error: 'production_day_not_found', message: 'Produksjonsdagen finnes ikke.' });
+          return;
+        }
+        command = { ...parsed, source };
+      } else if (parsed.type === 'refresh_turnover') {
+        const turnover = currentOperations.turnovers.find((item) => item.id === parsed.turnoverId);
+        if (!turnover) throw new PostProductionValidationError('Turnover-manifestet finnes ikke.');
+        const source = await loadPostTurnoverSource(
+          projectId,
+          turnover.source.productionDayId,
+          turnover.source.media.map((media) => media.mediaId),
+        );
+        if (!source) {
+          throw new PostProductionTransitionError('Produksjonsdagen finnes ikke lenger. Manifestet kan bare erstattes.');
+        }
+        command = { ...parsed, source };
+      } else if (parsed.type === 'transition_turnover') {
+        const turnover = currentOperations.turnovers.find((item) => item.id === parsed.turnoverId);
+        if (!turnover) throw new PostProductionValidationError('Turnover-manifestet finnes ikke.');
+        const currentSource = await loadPostTurnoverSource(projectId, turnover.source.productionDayId);
+        command = {
+          ...parsed,
+          impact: collectPostTurnoverImpact(turnover.source, currentSource),
+        };
+      } else {
+        command = parsed;
+      }
+
+      const actorUserId = (req as AuthedRequest).userId;
+      const operations = applyPostProductionCommand(currentOperations, command, {
+        actorUserId,
+        now: new Date().toISOString(),
+        createId: genId,
+      });
+      const saveResult = await pool.query(
+        `INSERT INTO role_room_post_production_operations
+           (project_id, operations, version, updated_by, created_at, updated_at)
+         VALUES ($1, $2::jsonb, 1, $3, NOW(), NOW())
+         ON CONFLICT (project_id) DO UPDATE
+           SET operations = EXCLUDED.operations,
+               version = role_room_post_production_operations.version + 1,
+               updated_by = EXCLUDED.updated_by,
+               updated_at = NOW()
+         WHERE role_room_post_production_operations.version = $4
+         RETURNING operations, version, updated_by, updated_at`,
+        [projectId, JSON.stringify(operations), actorUserId, expectedVersion],
+      );
+      if (saveResult.rowCount === 0) {
+        const latest = await pool.query(
+          `SELECT operations, version, updated_by, updated_at
+             FROM role_room_post_production_operations
+            WHERE project_id = $1
+            LIMIT 1`,
+          [projectId],
+        );
+        const latestOperations = latest.rows[0]
+          ? normalizePostProductionOperations(latest.rows[0].operations)
+          : emptyPostProductionOperations();
+        const impacts = await loadPostTurnoverImpacts(projectId, latestOperations);
+        sendVersionConflict(
+          res,
+          'post_production',
+          'Post-produksjonsgrunnlaget er endret av en annen bruker.',
+          mapPostProductionRow(projectId, latest.rows[0], impacts),
+        );
+        return;
+      }
+      const savedOperations = normalizePostProductionOperations(saveResult.rows[0].operations);
+      const impacts = await loadPostTurnoverImpacts(projectId, savedOperations);
+      res.json({ postProduction: mapPostProductionRow(projectId, saveResult.rows[0], impacts) });
+    } catch (error) {
+      if (error instanceof PostProductionValidationError) {
+        res.status(400).json({ error: 'invalid_payload', message: error.message });
+        return;
+      }
+      if (error instanceof PostProductionTransitionError) {
+        res.status(409).json({ error: 'invalid_transition', message: error.message });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke oppdatere post-produksjonsgrunnlaget', detail: 'internal_error' });
     }
   });
 

@@ -5010,6 +5010,53 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRequestChanges: true,
           canViewEconomy: false,
         };
+      case 'post_supervisor':
+      case 'post_coordinator':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canPreparePostTurnover: true,
+          canReviewPostTurnover: true,
+          canManagePostProduction: true,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
+      case 'sound_designer':
+      case 'sound_editor':
+      case 'foley_artist':
+      case 'adr_engineer':
+      case 'supervising_editor':
+      case 'video_editor':
+      case 'assistant_editor':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canPreparePostTurnover: false,
+          canReviewPostTurnover: true,
+          canManagePostProduction: true,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
       case 'first_ad':
       case 'first_assistant_director':
       case '1st_ad':

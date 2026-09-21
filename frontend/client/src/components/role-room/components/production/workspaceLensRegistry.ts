@@ -13,6 +13,7 @@
 
 import type { ProductionWorkspaceKind } from '../../config/productionRoleCatalog';
 import type { RoleRoomWorkspaceLens } from './productionWorkspaceLens';
+import type { WorkspaceLensComponentKey } from './workspaceLensComponents';
 
 /** Lenses that map to a dedicated role workspace. `full` is the fallback. */
 export type RoleWorkspaceLens = Exclude<RoleRoomWorkspaceLens, 'full'>;
@@ -28,6 +29,8 @@ export type LensSurfaceSource = 'own' | 'none' | 'planner';
 
 export interface WorkspaceLensEntry {
   readonly lens: RoleWorkspaceLens;
+  /** Lazy component owned by workspaceLensComponents.ts. */
+  readonly componentKey: WorkspaceLensComponentKey;
   /**
    * Bridge to `PRODUCTION_ROLES[].workspace` in the role catalogue. Absent for
    * a lens that is a platform surface rather than a production role.
@@ -50,6 +53,7 @@ export interface WorkspaceLensEntry {
 export const WORKSPACE_LENS_REGISTRY = [
   {
     lens: 'producer',
+    componentKey: 'producer',
     workspaceKind: 'producer',
     projectRoles: ['executive_producer', 'producer', 'line_producer'],
     surfaceSource: 'none',
@@ -57,6 +61,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'director',
+    componentKey: 'director',
     workspaceKind: 'director',
     projectRoles: ['director'],
     surfaceSource: 'own',
@@ -64,6 +69,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'casting',
+    componentKey: 'casting',
     workspaceKind: 'casting',
     projectRoles: ['casting_director', 'local_casting_director', 'extras_casting_director'],
     surfaceSource: 'own',
@@ -71,6 +77,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'cinematography',
+    componentKey: 'cinematography',
     workspaceKind: 'cinematography',
     projectRoles: ['cinematographer', 'director_of_photography', 'dop', 'dp'],
     surfaceSource: 'own',
@@ -78,6 +85,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'assistant-direction',
+    componentKey: 'firstAssistantDirection',
     workspaceKind: 'assistant_direction',
     projectRoles: [
       'first_ad',
@@ -96,6 +104,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'production-management',
+    componentKey: 'productionManagement',
     workspaceKind: 'production_management',
     projectRoles: ['production_manager', 'production_accountant'],
     surfaceSource: 'none',
@@ -103,6 +112,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'production-coordination',
+    componentKey: 'productionCoordination',
     workspaceKind: 'production_coordination',
     projectRoles: [
       'production_coordinator',
@@ -116,6 +126,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'location-management',
+    componentKey: 'locationManagement',
     workspaceKind: 'location_management',
     projectRoles: ['location_manager', 'location_scout', 'location_security'],
     surfaceSource: 'none',
@@ -127,6 +138,7 @@ export const WORKSPACE_LENS_REGISTRY = [
     // planner surface. Give continuity an own surface only together with a
     // deliberate URL-contract change.
     lens: 'continuity',
+    componentKey: 'continuity',
     workspaceKind: 'continuity',
     projectRoles: ['script_supervisor'],
     surfaceSource: 'planner',
@@ -134,6 +146,7 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'art-department',
+    componentKey: 'artDepartment',
     workspaceKind: 'art_department',
     projectRoles: [
       'production_designer',
@@ -156,8 +169,28 @@ export const WORKSPACE_LENS_REGISTRY = [
   },
   {
     lens: 'production-sound',
+    componentKey: 'productionSound',
     workspaceKind: 'production_sound',
     projectRoles: ['production_sound_mixer', 'sound_mixer', 'audio_mixer', 'sound_engineer', 'boom_operator'],
+    surfaceSource: 'own',
+    usesSceneParam: false,
+  },
+  {
+    lens: 'post-production',
+    componentKey: 'postProduction',
+    workspaceKind: 'post_production',
+    projectRoles: [
+      'post_supervisor',
+      'post_coordinator',
+      'sound_designer',
+      'sound_editor',
+      'foley_artist',
+      'adr_engineer',
+      'supervising_editor',
+      'video_editor',
+      'editor',
+      'assistant_editor',
+    ],
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -167,6 +200,7 @@ export const WORKSPACE_LENS_REGISTRY = [
     // caller the panel considers super admin. It is also the one lens that does
     // not need an open project.
     lens: 'admin',
+    componentKey: 'admin',
     projectRoles: [],
     surfaceSource: 'none',
     usesSceneParam: false,

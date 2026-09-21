@@ -55,6 +55,10 @@ describe('access matrix endpoint', () => {
     expect(byRole.producer.canManageArtDepartment).toBe(false);
     expect(byRole.production_sound_mixer.canManageProductionSound).toBe(true);
     expect(byRole.boom_operator.canManageProductionSound).toBe(true);
+    expect(byRole.production_sound_mixer.canPreparePostTurnover).toBe(true);
+    expect(byRole.post_supervisor.canPreparePostTurnover).toBe(true);
+    expect(byRole.post_supervisor.canReviewPostTurnover).toBe(true);
+    expect(byRole.sound_designer.canReviewPostTurnover).toBe(true);
   });
 
   it('carries the explicit permission keys so the UI need not hardcode them', async () => {
@@ -65,6 +69,8 @@ describe('access matrix endpoint', () => {
     expect(keys).toContain('canManageContinuity');
     expect(keys).toContain('canManageArtDepartment');
     expect(keys).toContain('canManageProductionSound');
+    expect(keys).toContain('canPreparePostTurnover');
+    expect(keys).toContain('canReviewPostTurnover');
   });
 
   it('refuses without an admin session', async () => {

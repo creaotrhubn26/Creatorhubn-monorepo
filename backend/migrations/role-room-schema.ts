@@ -253,6 +253,25 @@ export const roleRoomArtDepartmentOperations = pgTable('role_room_art_department
   check('role_room_art_department_operations_version_nonnegative', sql`${table.version} >= 0`),
 ]);
 
+/**
+ * Project-wide post-production turnover/QC ledger. Stored manifests reference
+ * canonical production-sound media and never duplicate the private S3 object.
+ */
+export const roleRoomPostProductionOperations = pgTable('role_room_post_production_operations', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  operations: jsonb('operations').default({ turnovers: [] }).notNull(),
+  version: integer('version').default(0).notNull(),
+  updatedBy: varchar('updated_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  unique('uq_role_room_post_production_project').on(table.projectId),
+  index('idx_role_room_post_production_updated').using('btree', table.projectId, table.updatedAt),
+  check('chk_role_room_post_production_payload', sql`jsonb_typeof(${table.operations}) = 'object'`),
+  check('chk_role_room_post_production_version', sql`${table.version} >= 0`),
+]);
+
 /** Private, checksum-verified and retry-safe scout evidence in the Role Room S3 bucket. */
 export const castingLocationScoutMedia = pgTable('casting_location_scout_media', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
