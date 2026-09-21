@@ -215,6 +215,16 @@ final class QASweepTests: XCTestCase {
                 XCUIDevice.shared.orientation = .portrait
                 sleep(3)
             }
+            // …og måles flaten mens den fortsatt animerer (app-switcher,
+            // rotasjon), rapporteres hver knapp i halv størrelse. Vent til
+            // rammen står stille i to avlesninger før revisjonen kjøres.
+            var forrigeRamme = mål.frame
+            for _ in 0..<10 {
+                sleep(1)
+                let nå = mål.frame
+                if nå == forrigeRamme, nå.height > 0 { break }
+                forrigeRamme = nå
+            }
             do {
                 try mål.performAccessibilityAudit(for: actionable) { issue in
                     // Simulatoren returnerer også funn uten elementreferanse
