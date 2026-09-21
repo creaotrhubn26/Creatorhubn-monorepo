@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItemButton, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Add as AddIcon, ArrowBack as ArrowBackIcon, Search as SearchIcon } from '@mui/icons-material';
 import { narrativeColors } from '../narrativeTheme';
 import type { NarrativeGraph, NarrativeSceneStatus, NarrativeSceneSummary } from '../narrativeTypes';
 import { NarrativeApiError } from '../narrativeService';
@@ -129,9 +129,9 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
   };
 
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - 150px)', color: narrativeColors.text }} data-testid="narrative-scenes-panel">
-      {/* ── Liste ─────────────────────────────────────────────────────── */}
-      <Box sx={{ width: 320, flexShrink: 0, borderRight: `1px solid ${narrativeColors.borderStrong}`, bgcolor: narrativeColors.bgPanel, overflowY: 'auto', minHeight: 0 }}>
+    <Box sx={{ display: 'flex', height: { xs: 'auto', md: 'calc(100vh - 150px)' }, minHeight: { xs: 'calc(100vh - 220px)', md: 0 }, color: narrativeColors.text }} data-testid="narrative-scenes-panel" data-mobile-view={scenes.selectedId ? 'card' : 'list'}>
+      {/* ── Liste ── på mobil vises liste ELLER scenekort (UX-21) ───────── */}
+      <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, borderRight: { md: `1px solid ${narrativeColors.borderStrong}` }, bgcolor: narrativeColors.bgPanel, overflowY: { md: 'auto' }, minHeight: 0, display: { xs: scenes.selectedId ? 'none' : 'block', md: 'block' } }}>
         <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}`, position: 'sticky', top: 0, zIndex: 1, bgcolor: narrativeColors.bgPanel }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 14, flex: 1 }}>Scener <Typography component="span" sx={{ fontSize: 12, color: narrativeColors.textDim }}>({scenes.scenes.length})</Typography></Typography>
@@ -178,7 +178,12 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
       </Box>
 
       {/* ── Kort ──────────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: { md: 'auto' }, display: { xs: scenes.selectedId ? 'block' : 'none', md: 'block' } }}>
+        {scenes.selectedId ? (
+          <Button size="small" startIcon={<ArrowBackIcon />} onClick={() => scenes.select(null)} data-testid="narrative-scene-back" sx={{ display: { xs: 'inline-flex', md: 'none' }, m: 1, color: narrativeColors.textDim, minHeight: 40 }}>
+            Tilbake til scener
+          </Button>
+        ) : null}
         {!scenes.selectedId ? (
           <Box sx={{ p: 6, textAlign: 'center', color: narrativeColors.textDim }} data-testid="narrative-scene-none">
             <Typography sx={{ fontSize: 14, fontWeight: 700, color: narrativeColors.text }}>Velg en scene</Typography>
