@@ -11545,10 +11545,12 @@ type RoleRoomProjectWorkspaceState = {
               activeSurface={postProductionSurface}
               canPrepare={canPreparePostTurnover}
               canReview={canReviewPostTurnover}
+              canViewStoryboard={canAccessTab(STORYBOARD_TAB_INDEX)}
               dataLoading={canonicalProductionDataProjectId !== currentProject.id}
               onNavigate={handlePostProductionNavigate}
               onOpenProductionSound={handleOpenProductionSoundWorkspace}
               onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenStoryboard={() => navigateToTab(STORYBOARD_TAB_INDEX)}
               onOpenFullWorkspace={handleOpenFullWorkspace}
             />
           ) : (

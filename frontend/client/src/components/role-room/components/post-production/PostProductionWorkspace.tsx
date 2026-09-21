@@ -3,6 +3,7 @@ import {
   AddTaskOutlined as AddIcon,
   ArrowBack as FullWorkspaceIcon,
   AssignmentTurnedInOutlined as AcceptedIcon,
+  CollectionsBookmarkOutlined as StoryboardIcon,
   FactCheckOutlined as QcIcon,
   HistoryOutlined as ActivityIcon,
   Inventory2Outlined as TurnoverIcon,
@@ -33,6 +34,8 @@ import type {
   PostPictureSourceCatalog,
   PostProductionRecord,
   PostQcSeverity,
+  PostStoryboardSourceCatalog,
+  PostStoryboardSourceDetail,
   PostTurnoverManifest,
   ProductionSoundMedia,
 } from '../../models/casting';
@@ -55,10 +58,12 @@ interface Props {
   activeSurface: PostProductionSurface;
   canPrepare: boolean;
   canReview: boolean;
+  canViewStoryboard: boolean;
   dataLoading?: boolean;
   onNavigate: (surface: PostProductionSurface) => void;
   onOpenProductionSound: () => void;
   onOpenSchedule: () => void;
+  onOpenStoryboard: () => void;
   onOpenFullWorkspace: () => void;
 }
 
@@ -98,6 +103,8 @@ const emptyPictureCatalog: PostPictureSourceCatalog = {
   versions: [],
 };
 
+const emptyStoryboardCatalog: PostStoryboardSourceCatalog = { rounds: [] };
+
 function formatTime(value: string): string {
   const date = new Date(value);
   return Number.isFinite(date.getTime())
@@ -115,10 +122,12 @@ export function PostProductionWorkspace({
   activeSurface,
   canPrepare,
   canReview,
+  canViewStoryboard,
   dataLoading = false,
   onNavigate,
   onOpenProductionSound,
   onOpenSchedule,
+  onOpenStoryboard,
   onOpenFullWorkspace,
 }: Props) {
   const { isMobile } = useScreenTier();
@@ -137,6 +146,12 @@ export function PostProductionWorkspace({
   const [pictureCatalog, setPictureCatalog] = useState<PostPictureSourceCatalog>(emptyPictureCatalog);
   const [pictureLoading, setPictureLoading] = useState(false);
   const [selectedPictureVersionId, setSelectedPictureVersionId] = useState('');
+  const [storyboardCatalog, setStoryboardCatalog] = useState<PostStoryboardSourceCatalog>(emptyStoryboardCatalog);
+  const [storyboardLoading, setStoryboardLoading] = useState(false);
+  const [selectedStoryboardRoundId, setSelectedStoryboardRoundId] = useState('');
+  const [storyboardDetail, setStoryboardDetail] = useState<PostStoryboardSourceDetail | null>(null);
+  const [storyboardDetailLoading, setStoryboardDetailLoading] = useState(false);
+  const [selectedStoryboardFrameIds, setSelectedStoryboardFrameIds] = useState<string[]>([]);
   const [label, setLabel] = useState('');
   const [recipient, setRecipient] = useState('Post Sound');
   const [notes, setNotes] = useState('');
@@ -176,6 +191,58 @@ export function PostProductionWorkspace({
   }, [canPrepare, project.id]);
 
   useEffect(() => {
+    if (!canViewStoryboard || (!canPrepare && !canReview)) {
+      setStoryboardCatalog(emptyStoryboardCatalog);
+      setSelectedStoryboardRoundId('');
+      return undefined;
+    }
+    let active = true;
+    setStoryboardLoading(true);
+    postProductionService.getStoryboardSources(project.id)
+      .then((catalog) => {
+        if (!active) return;
+        setStoryboardCatalog(catalog);
+        const approved = [...catalog.rounds]
+          .filter((round) => round.status === 'approved')
+          .sort((left, right) => Date.parse(right.approvedAt ?? right.submittedAt) - Date.parse(left.approvedAt ?? left.submittedAt));
+        setSelectedStoryboardRoundId((current) => (
+          approved.some((round) => round.id === current) ? current : ''
+        ));
+      })
+      .catch((error) => {
+        if (active) setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke hente storyboardgrunnlaget.' });
+      })
+      .finally(() => { if (active) setStoryboardLoading(false); });
+    return () => { active = false; };
+  }, [canPrepare, canReview, canViewStoryboard, project.id]);
+
+  useEffect(() => {
+    if (!selectedStoryboardRoundId || !canViewStoryboard) {
+      setStoryboardDetail(null);
+      setSelectedStoryboardFrameIds([]);
+      return undefined;
+    }
+    let active = true;
+    setStoryboardDetail(null);
+    setSelectedStoryboardFrameIds([]);
+    setStoryboardDetailLoading(true);
+    postProductionService.getStoryboardSource(project.id, selectedStoryboardRoundId)
+      .then((detail) => {
+        if (!active) return;
+        setStoryboardDetail(detail);
+        setSelectedStoryboardFrameIds(detail.scenes.flatMap((scene) => scene.frames.map((frame) => frame.id)));
+      })
+      .catch((error) => {
+        if (!active) return;
+        setStoryboardDetail(null);
+        setSelectedStoryboardFrameIds([]);
+        setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke hente storyboardrevisjonen.' });
+      })
+      .finally(() => { if (active) setStoryboardDetailLoading(false); });
+    return () => { active = false; };
+  }, [canViewStoryboard, project.id, selectedStoryboardRoundId]);
+
+  useEffect(() => {
     if (sourceKind !== 'production_sound') return undefined;
     if (!selectedDayId) {
       setMedia([]);
@@ -209,6 +276,13 @@ export function PostProductionWorkspace({
 
   const brief = useMemo(() => buildPostProductionBrief(record), [record]);
   const turnovers = record?.operations.turnovers ?? [];
+  const approvedStoryboardRounds = useMemo(
+    () => storyboardCatalog.rounds.filter((round) => round.status === 'approved'),
+    [storyboardCatalog.rounds],
+  );
+  const latestApprovedStoryboardRound = useMemo(() => [...approvedStoryboardRounds]
+    .sort((left, right) => Date.parse(right.approvedAt ?? right.submittedAt) - Date.parse(left.approvedAt ?? left.submittedAt))[0],
+  [approvedStoryboardRounds]);
 
   const run = async (command: PostProductionCommand, success: string) => {
     if (!record || busy) return false;
@@ -234,6 +308,16 @@ export function PostProductionWorkspace({
 
   const createTurnover = async () => {
     if (!canPrepare || !label.trim()) return;
+    if (selectedStoryboardRoundId && selectedStoryboardFrameIds.length === 0) {
+      setFeedback({ type: 'error', text: 'Velg minst ett storyboardpanel, eller fjern storyboardkoblingen.' });
+      return;
+    }
+    const storyboardSelection = selectedStoryboardRoundId && selectedStoryboardFrameIds.length > 0
+      ? {
+          storyboardReviewRoundId: selectedStoryboardRoundId,
+          storyboardFrameIds: selectedStoryboardFrameIds,
+        }
+      : {};
     const command: PostProductionCommand = sourceKind === 'picture'
       ? {
           type: 'create_picture_turnover',
@@ -241,6 +325,7 @@ export function PostProductionWorkspace({
           recipient: recipient.trim() || undefined,
           notes: notes.trim() || undefined,
           pictureVersionId: selectedPictureVersionId,
+          ...storyboardSelection,
         }
       : {
           type: 'create_turnover',
@@ -249,6 +334,7 @@ export function PostProductionWorkspace({
           notes: notes.trim() || undefined,
           productionDayId: selectedDayId,
           mediaIds: selectedMediaIds,
+          ...storyboardSelection,
         };
     const sourceReady = sourceKind === 'picture'
       ? Boolean(selectedPictureVersionId)
@@ -278,6 +364,15 @@ export function PostProductionWorkspace({
                   sx={{ color: '#c4b5fd', borderColor: 'rgba(167,139,250,.38)' }}
                 />
                 <Chip size="small" label={POST_TURNOVER_STATUS_LABELS[turnover.status]} sx={{ color: statusColor[turnover.status], border: `1px solid ${statusColor[turnover.status]}66`, bgcolor: `${statusColor[turnover.status]}14` }} />
+                {turnover.storyboardReference ? (
+                  <Chip
+                    size="small"
+                    icon={<StoryboardIcon />}
+                    label={`Storyboard v${turnover.storyboardReference.version}`}
+                    variant="outlined"
+                    sx={{ color: '#67e8f9', borderColor: 'rgba(34,211,238,.38)' }}
+                  />
+                ) : null}
                 {turnover.impact.stale ? <Chip size="small" icon={<WarningIcon />} label="Kilden er endret" color="warning" variant="outlined" /> : null}
               </Stack>
               <Typography sx={{ mt: .7, color: 'rgba(226,232,240,.68)', fontSize: '.82rem' }}>
@@ -317,6 +412,42 @@ export function PostProductionWorkspace({
               ) : null}
             </Stack>
           </Stack>
+
+          {turnover.storyboardReference ? (
+            <Box
+              data-testid={`post-storyboard-reference-${turnover.id}`}
+              sx={{ mt: 1.5, p: 1.25, borderRadius: 1.75, bgcolor: 'rgba(8,145,178,.07)', border: '1px solid rgba(34,211,238,.22)' }}
+            >
+              <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ color: '#cffafe', fontWeight: 800, fontSize: '.84rem' }}>
+                    {turnover.storyboardReference.manuscriptTitle} · {turnover.storyboardReference.label}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(207,250,254,.65)', fontSize: '.72rem' }}>
+                    {turnover.storyboardReference.frames.length} valgte paneler · låst hash {turnover.storyboardReference.snapshotHash.slice(0, 8)}
+                  </Typography>
+                </Box>
+                {canViewStoryboard ? (
+                  <Button size="small" variant="outlined" startIcon={<StoryboardIcon />} onClick={onOpenStoryboard} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>
+                    Åpne Storyboard Room
+                  </Button>
+                ) : null}
+              </Stack>
+              <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: .65 }}>
+                {turnover.storyboardReference.frames.slice(0, 8).map((frame) => (
+                  <Chip
+                    key={frame.frameId}
+                    size="small"
+                    label={`${frame.sceneNumber ? `Scene ${frame.sceneNumber} · ` : ''}${frame.shotNumber || frame.description || frame.sceneHeading}`}
+                    sx={{ color: '#e0f2fe', bgcolor: 'rgba(14,116,144,.2)', maxWidth: '100%' }}
+                  />
+                ))}
+                {turnover.storyboardReference.frames.length > 8 ? (
+                  <Chip size="small" label={`+${turnover.storyboardReference.frames.length - 8}`} />
+                ) : null}
+              </Box>
+            </Box>
+          ) : null}
 
           {turnover.impact.items.length > 0 ? (
             <Alert severity={turnover.impact.blocking ? 'error' : 'warning'} sx={{ mt: 1.5 }}>
@@ -410,6 +541,35 @@ export function PostProductionWorkspace({
 
   const renderOverview = () => (
     <Stack gap={2}>
+      {canViewStoryboard ? (
+        <Card variant="outlined" sx={panelSx} data-testid="post-storyboard-summary">
+          <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} gap={1.5} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box>
+                <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+                  <StoryboardIcon sx={{ color: '#22d3ee' }} />
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 850 }}>Storyboardgrunnlag</Typography>
+                  {latestApprovedStoryboardRound ? <Chip size="small" color="success" variant="outlined" label={`Godkjent v${latestApprovedStoryboardRound.version}`} /> : null}
+                </Stack>
+                {storyboardLoading ? (
+                  <Typography sx={{ mt: .65, color: 'rgba(226,232,240,.58)', fontSize: '.8rem' }}>Henter låste revisjoner …</Typography>
+                ) : latestApprovedStoryboardRound ? (
+                  <Typography sx={{ mt: .65, color: 'rgba(226,232,240,.68)', fontSize: '.8rem' }}>
+                    {latestApprovedStoryboardRound.manuscriptTitle} · {latestApprovedStoryboardRound.label} · {latestApprovedStoryboardRound.frameCount} paneler
+                  </Typography>
+                ) : (
+                  <Typography sx={{ mt: .65, color: 'rgba(226,232,240,.62)', fontSize: '.8rem' }}>
+                    Ingen godkjent storyboard-revisjon er publisert ennå. Post kan se arbeidsflaten, men en revisjon må godkjennes før den kan bindes til levering.
+                  </Typography>
+                )}
+              </Box>
+              <Button variant="outlined" startIcon={<StoryboardIcon />} onClick={onOpenStoryboard} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>
+                Åpne Storyboard Room
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      ) : null}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2,minmax(0,1fr))', md: 'repeat(6,minmax(0,1fr))' }, gap: 1.25 }}>
         {[
           ['Aktive', brief.activeCount, '#c4b5fd'],
@@ -545,6 +705,108 @@ export function PostProductionWorkspace({
                 </Box>
               )}
             </Box>}
+            {canViewStoryboard ? (
+              <Box
+                data-testid="post-storyboard-linker"
+                sx={{ mt: 1.5, p: { xs: 1.25, sm: 1.5 }, borderRadius: 2, bgcolor: 'rgba(8,145,178,.055)', border: '1px solid rgba(34,211,238,.2)' }}
+              >
+                <Stack direction={{ xs: 'column', md: 'row' }} gap={1.25} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+                  <Box>
+                    <Typography sx={{ color: '#cffafe', fontWeight: 850, fontSize: '.9rem' }}>Storyboardreferanse</Typography>
+                    <Typography sx={{ mt: .3, color: 'rgba(207,250,254,.62)', fontSize: '.75rem' }}>
+                      Velg en godkjent, låst revisjon og panelene denne leveransen skal følge. Referanser lagres – ingen bilder kopieres.
+                    </Typography>
+                  </Box>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} sx={{ minWidth: { md: 390 } }}>
+                    <FormControl size="small" sx={{ flex: 1, ...fieldSx }} disabled={storyboardLoading}>
+                      <InputLabel id="post-storyboard-round-label">Storyboard-revisjon</InputLabel>
+                      <Select
+                        data-testid="post-storyboard-round"
+                        labelId="post-storyboard-round-label"
+                        label="Storyboard-revisjon"
+                        value={selectedStoryboardRoundId}
+                        onChange={(event) => setSelectedStoryboardRoundId(event.target.value)}
+                      >
+                        <MenuItem value="">Ingen kobling</MenuItem>
+                        {approvedStoryboardRounds.map((round) => (
+                          <MenuItem key={round.id} value={round.id}>
+                            {round.manuscriptTitle} · v{round.version} · {round.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button variant="outlined" startIcon={<StoryboardIcon />} onClick={onOpenStoryboard} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>
+                      Storyboard Room
+                    </Button>
+                  </Stack>
+                </Stack>
+
+                {!storyboardLoading && approvedStoryboardRounds.length === 0 ? (
+                  <Alert severity="info" sx={{ mt: 1.25 }}>Publiser og godkjenn en review-revisjon i Storyboard Room før den kan brukes som postgrunnlag.</Alert>
+                ) : null}
+                {selectedStoryboardRoundId && storyboardDetailLoading ? (
+                  <Box sx={{ minHeight: 96, display: 'grid', placeItems: 'center' }}><CircularProgress size={22} sx={{ color: '#22d3ee' }} /></Box>
+                ) : null}
+                {selectedStoryboardRoundId && storyboardDetail && !storyboardDetailLoading ? (
+                  <Box sx={{ mt: 1.4 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }}>
+                      <Typography sx={{ color: '#e0f2fe', fontSize: '.8rem', fontWeight: 750 }}>
+                        {selectedStoryboardFrameIds.length}/{storyboardDetail.frameCount} paneler valgt
+                      </Typography>
+                      <Stack direction="row" gap={.75}>
+                        <Button
+                          size="small"
+                          onClick={() => setSelectedStoryboardFrameIds(storyboardDetail.scenes.flatMap((scene) => scene.frames.map((frame) => frame.id)))}
+                          sx={{ minHeight: targetSize, ...focusVisibleStyles }}
+                        >Velg alle</Button>
+                        <Button size="small" onClick={() => setSelectedStoryboardFrameIds([])} sx={{ minHeight: targetSize, ...focusVisibleStyles }}>Fjern alle</Button>
+                      </Stack>
+                    </Stack>
+                    <Stack gap={1.25} sx={{ mt: 1 }}>
+                      {storyboardDetail.scenes.map((scene) => (
+                        <Box key={scene.id}>
+                          <Typography sx={{ color: 'rgba(207,250,254,.72)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: .5 }}>
+                            {scene.sceneNumber ? `Scene ${scene.sceneNumber} · ` : ''}{scene.heading}
+                          </Typography>
+                          <Box sx={{ mt: .6, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,minmax(0,1fr))', lg: 'repeat(3,minmax(0,1fr))' }, gap: .8 }}>
+                            {scene.frames.map((frame) => {
+                              const selected = selectedStoryboardFrameIds.includes(frame.id);
+                              const preview = frame.thumbnailUrl || frame.imageUrl;
+                              return (
+                                <Box
+                                  component="button"
+                                  type="button"
+                                  key={frame.id}
+                                  aria-pressed={selected}
+                                  data-testid={`post-storyboard-frame-${frame.id}`}
+                                  onClick={() => setSelectedStoryboardFrameIds((current) => current.includes(frame.id)
+                                    ? current.filter((id) => id !== frame.id)
+                                    : [...current, frame.id])}
+                                  sx={{ display: 'grid', gridTemplateColumns: preview ? '72px minmax(0,1fr)' : 'minmax(0,1fr)', alignItems: 'center', gap: .8, p: .75, textAlign: 'left', color: 'inherit', font: 'inherit', cursor: 'pointer', borderRadius: 1.5, bgcolor: selected ? 'rgba(8,145,178,.2)' : 'rgba(255,255,255,.02)', border: selected ? '1px solid rgba(34,211,238,.62)' : '1px solid rgba(148,163,184,.16)', minHeight: targetSize, ...focusVisibleStyles }}
+                                >
+                                  {preview ? <Box component="img" src={preview} alt="" sx={{ width: 72, height: 48, borderRadius: 1, objectFit: 'cover', bgcolor: '#020617' }} /> : null}
+                                  <Stack direction="row" gap={.6} alignItems="center" sx={{ minWidth: 0 }}>
+                                    <Checkbox checked={selected} tabIndex={-1} size="small" sx={{ p: 0, pointerEvents: 'none' }} />
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography sx={{ color: '#ecfeff', fontSize: '.76rem', fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {frame.shotNumber ? `Shot ${frame.shotNumber}` : 'Panel'}
+                                      </Typography>
+                                      <Typography sx={{ color: 'rgba(207,250,254,.56)', fontSize: '.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {frame.description || 'Ingen beskrivelse'}{frame.durationSeconds !== undefined ? ` · ${frame.durationSeconds}s` : ''}
+                                      </Typography>
+                                    </Box>
+                                  </Stack>
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : null}
+              </Box>
+            ) : null}
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="flex-end" gap={1} sx={{ mt: 1.5 }}>
               {sourceKind === 'picture' && pictureCatalog.binding.workspaceProjectId ? (
                 <Button component="a" href={`/workspace/${encodeURIComponent(pictureCatalog.binding.workspaceProjectId)}/video-room`} variant="outlined" startIcon={<PictureIcon />} sx={{ minHeight: targetSize, ...focusVisibleStyles }}>Åpne Video Room</Button>
@@ -555,7 +817,9 @@ export function PostProductionWorkspace({
                 data-testid="create-post-turnover"
                 variant="contained"
                 startIcon={busy ? <CircularProgress size={17} /> : <AddIcon />}
-                disabled={busy || !label.trim() || (sourceKind === 'picture' ? !selectedPictureVersionId : !selectedDayId || selectedMediaIds.length === 0)}
+                disabled={busy || !label.trim()
+                  || (sourceKind === 'picture' ? !selectedPictureVersionId : !selectedDayId || selectedMediaIds.length === 0)
+                  || Boolean(selectedStoryboardRoundId && (storyboardDetailLoading || selectedStoryboardFrameIds.length === 0))}
                 onClick={() => void createTurnover()}
                 sx={{ minHeight: targetSize, bgcolor: '#6366f1', ...focusVisibleStyles }}
               >Opprett utkast</Button>
@@ -604,6 +868,7 @@ export function PostProductionWorkspace({
           </Box>
           <Stack direction="row" gap={1} sx={{ overflowX: 'auto', pb: .25 }}>
             <Button variant="outlined" startIcon={<FullWorkspaceIcon />} onClick={onOpenFullWorkspace} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>Full arbeidsflate</Button>
+            {canViewStoryboard ? <Button variant="outlined" startIcon={<StoryboardIcon />} onClick={onOpenStoryboard} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>Storyboard Room</Button> : null}
             <Button variant="outlined" onClick={onOpenSchedule} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>Opptaksplan</Button>
           </Stack>
         </Stack>

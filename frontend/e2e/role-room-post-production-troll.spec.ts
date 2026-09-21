@@ -7,6 +7,7 @@ const storageObjectId = '92e76092-2716-4e26-8b77-b26a331919bb';
 const workspaceProjectId = '6cae5551-4d32-4b22-8c26-79fa61f8c7b1';
 const pictureVersionId = 'b70ea5f0-06a4-4a1b-b357-83d7872bdf9f';
 const pictureStorageObjectId = 'f48ba060-ebf0-4509-b77a-e889716495ab';
+const storyboardRoundId = '0f4813b2-ed6c-47c4-a982-7d8e9093c0a1';
 
 async function installPostApi(page: Page) {
   let storedProject: Record<string, any> | null = null;
@@ -14,6 +15,7 @@ async function installPostApi(page: Page) {
   let turnovers: Array<Record<string, any>> = [];
   let counter = 0;
   const commands: string[] = [];
+  const commandBodies: Array<Record<string, any>> = [];
   const authenticatedRequests: string[] = [];
   const time = () => `2026-09-21T${String(12 + counter).padStart(2, '0')}:00:00.000Z`;
   const media = {
@@ -52,6 +54,26 @@ async function installPostApi(page: Page) {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith(`/storyboard-sources/${storyboardRoundId}`) && request.method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ storyboardSource: {
+        id: storyboardRoundId, manuscriptId: 'troll-manus', manuscriptTitle: 'Troll', version: 3,
+        label: 'Regigodkjent', summary: 'Låst visuelt grunnlag.', status: 'approved', snapshotHash: 'c'.repeat(64),
+        frameCount: 2, totalDurationSeconds: 8, latestApprovedVersion: 3,
+        submittedAt: '2026-09-21T08:00:00.000Z', approvedAt: '2026-09-21T09:00:00.000Z',
+        scenes: [{ id: 'scene-1', heading: 'EXT. FJELL – NATT', sceneNumber: '1', frames: [
+          { id: 'frame-1', shotNumber: '1A', description: 'Trollet reiser seg.', durationSeconds: 4 },
+          { id: 'frame-2', shotNumber: '1B', description: 'Nora rygger.', durationSeconds: 4 },
+        ] }],
+      } }) });
+    }
+    if (pathname.endsWith('/storyboard-sources') && request.method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ storyboardSources: { rounds: [{
+        id: storyboardRoundId, manuscriptId: 'troll-manus', manuscriptTitle: 'Troll', version: 3,
+        label: 'Regigodkjent', summary: 'Låst visuelt grunnlag.', status: 'approved', snapshotHash: 'c'.repeat(64),
+        frameCount: 2, totalDurationSeconds: 8, latestApprovedVersion: 3,
+        submittedAt: '2026-09-21T08:00:00.000Z', approvedAt: '2026-09-21T09:00:00.000Z',
+      }] } }) });
+    }
     if (pathname.endsWith('/picture-sources') && request.method() === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pictureSources: {
         binding: { status: 'linked', workspaceProjectId },
@@ -68,6 +90,7 @@ async function installPostApi(page: Page) {
     const { expectedVersion, command } = request.postDataJSON() as { expectedVersion: number; command: Record<string, any> };
     expect(expectedVersion).toBe(version);
     commands.push(String(command.type));
+    commandBodies.push(command);
     counter += 1;
     if (command.type === 'create_turnover') {
       turnovers = [{
@@ -76,6 +99,16 @@ async function installPostApi(page: Page) {
           sourceType: 'production_sound', productionDayId: command.productionDayId, soundVersion: 2, capturedAt: time(), availableMediaIds: [mediaId],
           media: [{ mediaId, storageObjectId, displayName: media.displayName, checksumSha256: media.checksumSha256, sizeBytes: media.sizeBytes, reconciliationStatus: 'matched', continuityTakeId: 'troll-take-1', createdAt: media.createdAt }],
         },
+        storyboardReference: command.storyboardReviewRoundId ? {
+          reviewRoundId: storyboardRoundId, manuscriptId: 'troll-manus', manuscriptTitle: 'Troll',
+          version: 3, label: 'Regigodkjent', snapshotHash: 'c'.repeat(64), scriptFingerprint: 'd'.repeat(64),
+          status: 'approved', frameCount: 2, totalDurationSeconds: 8, latestApprovedVersionAtCapture: 3,
+          capturedAt: time(),
+          frames: (command.storyboardFrameIds as string[]).map((frameId) => ({
+            frameId, sceneId: 'scene-1', sceneHeading: 'EXT. FJELL – NATT', sceneNumber: '1',
+            shotNumber: frameId === 'frame-1' ? '1A' : '1B',
+          })),
+        } : undefined,
         issues: [],
         events: [{ id: 'created', type: 'created', message: `Opprettet turnover «${command.label}».`, actorUserId: 'e2e-test-user', createdAt: time() }],
         createdBy: 'e2e-test-user', createdAt: time(), updatedBy: 'e2e-test-user', updatedAt: time(),
@@ -90,6 +123,16 @@ async function installPostApi(page: Page) {
           contentType: 'video/mp4', durationSeconds: 92, latestVersionNumberAtCapture: 2,
           versionCreatedAt: '2026-09-21T09:30:00.000Z', capturedAt: time(),
         },
+        storyboardReference: command.storyboardReviewRoundId ? {
+          reviewRoundId: storyboardRoundId, manuscriptId: 'troll-manus', manuscriptTitle: 'Troll',
+          version: 3, label: 'Regigodkjent', snapshotHash: 'c'.repeat(64), scriptFingerprint: 'd'.repeat(64),
+          status: 'approved', frameCount: 2, totalDurationSeconds: 8, latestApprovedVersionAtCapture: 3,
+          capturedAt: time(),
+          frames: (command.storyboardFrameIds as string[]).map((frameId) => ({
+            frameId, sceneId: 'scene-1', sceneHeading: 'EXT. FJELL – NATT', sceneNumber: '1',
+            shotNumber: frameId === 'frame-1' ? '1A' : '1B',
+          })),
+        } : undefined,
         issues: [],
         events: [{ id: 'picture-created', type: 'created', message: `Opprettet turnover «${command.label}».`, actorUserId: 'e2e-test-user', createdAt: time() }],
         createdBy: 'e2e-test-user', createdAt: time(), updatedBy: 'e2e-test-user', updatedAt: time(),
@@ -141,7 +184,7 @@ async function installPostApi(page: Page) {
   await page.route('**/api/role-room/casting-roles/*/selftapes', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route('**/api/presence/heartbeat', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
 
-  return { commands, authenticatedRequests, record };
+  return { commands, commandBodies, authenticatedRequests, record };
 }
 
 test.describe('Autentisert Troll-flyt · Post Supervisor, Post Sound og Editorial', () => {
@@ -241,6 +284,15 @@ test.describe('Autentisert Troll-flyt · Post Supervisor, Post Sound og Editoria
     await page.getByRole('option', { name: 'Picture / klipp' }).click();
 
     await expect(page.getByText('TROLL_picture_v2.mp4').first()).toBeVisible();
+    await expect(page.getByTestId('post-storyboard-linker')).toBeVisible();
+    await page.getByLabel('Storyboard-revisjon').click();
+    await page.getByRole('option', { name: /Troll · v3 · Regigodkjent/ }).click();
+    await expect(page.getByText('2/2 paneler valgt')).toBeVisible();
+    await page.getByTestId('post-storyboard-linker').getByRole('button', { name: 'Fjern alle' }).click();
+    await expect(page.getByTestId('create-post-turnover')).toBeDisabled();
+    expect(api.commands).toEqual([]);
+    await page.getByTestId('post-storyboard-frame-frame-1').click();
+    await expect(page.getByText('1/2 paneler valgt')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Åpne Video Room' })).toHaveAttribute(
       'href',
       `/workspace/${workspaceProjectId}/video-room`,
@@ -252,6 +304,7 @@ test.describe('Autentisert Troll-flyt · Post Supervisor, Post Sound og Editoria
     await page.getByRole('button', { name: 'Bekreft mottatt' }).click();
     await page.getByRole('button', { name: 'Godkjenn turnover' }).click();
     await expect(page.getByTestId('post-turnover-picture-turnover-1').getByText('Godkjent', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('post-storyboard-reference-picture-turnover-1')).toContainText('Regigodkjent');
 
     expect(api.commands).toEqual([
       'create_picture_turnover', 'transition_turnover', 'transition_turnover', 'transition_turnover',
@@ -259,6 +312,10 @@ test.describe('Autentisert Troll-flyt · Post Supervisor, Post Sound og Editoria
     const source = api.record().operations.turnovers[0].source;
     expect(source).toEqual(expect.objectContaining({ sourceType: 'picture', versionId: pictureVersionId, storageObjectId: pictureStorageObjectId }));
     expect(JSON.stringify(api.record())).not.toContain('objectKey');
+    expect(api.commandBodies[0]).toEqual(expect.objectContaining({
+      storyboardReviewRoundId: storyboardRoundId,
+      storyboardFrameIds: ['frame-1'],
+    }));
     expect(runtimeErrors).toEqual([]);
   });
 });

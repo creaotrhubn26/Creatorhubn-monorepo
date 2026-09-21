@@ -153,6 +153,26 @@ UI-en har fortsatt bare Oversikt, Turnovers, QC og Historikk. I Turnovers velges
 
 Dette gjenbruker migrasjon `0660`; ingen ny tabell eller parallell asset-identitet er nødvendig. Målrettede domene-, API- og frontendtester samt en autentisert Troll-E2E dekker både historisk lydkompatibilitet og picture-flyten.
 
+### Tillegg 21. september 2026: Storyboard Room som postgrunnlag
+
+Postproduksjon er koblet til Storyboard Room gjennom kanoniske, uforanderlige `storyboard_review_rounds` – ikke gjennom kopierte storyboardfiler eller en ny reviewmodell. Post Supervisor, Post Coordinator, editorial, lydetterarbeid og VFX får `view` som standard i rollepresets; prosjektlederens eksplisitte faneoverstyring gjelder fortsatt både i UI og API.
+
+Post-linsen viser låste revisjoner i Oversikt og Turnovers. Brukeren kan åpne Storyboard Room, velge en **godkjent** revisjon og deretter velge konkrete paneler som picture- eller lydturnoveren skal følge. Valget er bevisst: ingen revisjon velges automatisk. Serveren løser manus, scene, panel, snapshot-hash og siste godkjente revisjon fra prosjektets egen review-tabell. Klienten kan ikke sende egen hash, status, sceneinformasjon eller storyboardmetadata.
+
+Manifestet lagrer bare stabile referanser og et audit-snapshot av etiketter som trengs for å forstå historikken. Preview hentes separat fra den autoriserte post-ruten. Change impact blokkerer neste statusovergang dersom revisjonen mangler, ikke lenger er godkjent, hash er endret eller valgte paneler mangler; en nyere godkjent revisjon gir et eksplisitt varsel som må behandles før videre levering.
+
+Dataflyten er dermed:
+
+```text
+casting_manuscripts
+  -> storyboard_review_rounds (immutable snapshot + hash + approval)
+  -> valgte scene-/frame-ID-er
+  -> storyboardReference i eksisterende turnover-manifest
+  -> picture/lyd-QC og historikk
+```
+
+Ingen migrasjon eller ny Drizzle-tabell er nødvendig: koblingen ligger bakoverkompatibelt i den eksisterende JSONB-ledgeren fra `0660`, mens review-tabellene og deres FK-er forblir sannhetskilden. Neste trinn er panel→picture-timecode, side-by-side compare, post notes/tasks mot samme frame-ID og change-impact frem til picture lock – fortsatt uten parallelle panel- eller asset-ID-er.
+
 ## Levert i den avsluttede lokasjonsrunden
 
 ### Gyldige adresser i Troll
@@ -409,7 +429,7 @@ Disse er dokumentert og skal ikke tolkes som ferdige:
 - Production Graph og automatisk, forhåndsvisbar change impact er ikke ferdig.
 - Art-linsen har versjonert fagdata og eksisterende storyboardreferanser, men mangler egne S3-opplastinger, tegningsrevisjoner, før/etter-sammenligning, formell regissør-/produsentgodkjenning og automatisk konsekvensanalyse mot budsjett og opptaksplan.
 - Production Sound har versjonert metadata, direkte/resumable recorder-opplasting til privat Role Room-S3, server-side BWF/iXML-analyse og eksplisitt, transaksjonell continuity-avstemming. Mottakende post-sound-linse og turnover-manifest er implementert på arbeidsgren. Produksjonsgodkjent live-smoke av CORS/IAM og feltvalidering med faktiske recorderfiler mangler fortsatt. Avstemming skal forbli eksplisitt; metadataforslag skal ikke automatisk endre take-data.
-- Post Production dekker Production Sound- og picture-turnover, men EDL/XML/AAF, proxy-/masterlinje, picture lock, VFX pulls, color, musikkrettigheter, final masters og eksterne vendor-portaler er ikke implementert.
+- Post Production dekker Production Sound- og picture-turnover samt godkjent storyboardreferanse per manifest. Panel→picture-timecode, side-by-side compare, post notes/tasks, EDL/XML/AAF, proxy-/masterlinje, picture lock, VFX pulls, color, musikkrettigheter, final masters og eksterne vendor-portaler er ikke implementert.
 
 Det finnes ingen kjent blokkering igjen for Troll-adressenes gyldighet eller for å åpne og lagre en konservativ lokasjonsanalyse uten property-ID.
 
@@ -518,8 +538,8 @@ Status betyr:
 
 | Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
 | --- | --- | --- | --- |
-| Etterarbeidsledelse | Post supervisor (`post_supervisor`) | Levert | Dedikert post-linse med Production Sound- og picture-manifest, mottak, QC, change impact, godkjenning og historikk. Postplan, vendor, budsjett og final delivery er neste moduler. |
-| Etterarbeidsledelse | Postkoordinator (`post_coordinator`) | Levert | Rutes til samme post-linse med prepare/review-grants og sporbar kø. Frister, vendor-kommunikasjon og bredere leveransetyper mangler. |
+| Etterarbeidsledelse | Post supervisor (`post_supervisor`) | Levert | Dedikert post-linse med Production Sound- og picture-manifest, godkjent Storyboard Room-grunnlag, panelvalg, mottak, QC, change impact, godkjenning og historikk. Postplan, vendor, budsjett og final delivery er neste moduler. |
+| Etterarbeidsledelse | Postkoordinator (`post_coordinator`) | Levert | Rutes til samme post-linse med prepare/review-grants, Storyboard Room-lesetilgang og sporbar kø. Frister, vendor-kommunikasjon og bredere leveransetyper mangler. |
 | Musikk | Musikkansvarlig (`music_supervisor`) | Katalog | Planlagt cue-/rights-register, brief, kilde, lisens, kost, review og leveranse mot scene/timecode. |
 | Musikk | Komponist (`composer`) | Katalog | Planlagt cue-brief, versjon, stems, timecode, review, godkjenning og levering uten tilgang til øvrig økonomi. |
 | Musikk | Musiker (`musician`) | Katalog | Planlagt avgrenset session-, materiale-, call-, rettighets- og filoverleveringsflate. |
@@ -527,9 +547,9 @@ Status betyr:
 | Lydetterarbeid | Lydklipper (`sound_editor`) | Delvis | Rutes til post-linsen for mottak og QC. Oppgave-/cueflate med timecode, kilde og versjon er neste modul. |
 | Lydetterarbeid | Foleyartist (`foley_artist`) | Delvis | Rutes til post-linsen for turnoverinnsyn og QC. Cue sheet, prop, surface, performance og levering per timecode mangler. |
 | Lydetterarbeid | ADR-tekniker (`adr_engineer`) | Delvis | Rutes til post-linsen for turnoverinnsyn og QC. ADR-cue, talent, studio, take, sync og filmanifest mangler. |
-| Klipp og farge | Klippeansvarlig (`supervising_editor`) | Delvis | Rutes til post-linsen og kan motta/QC-behandle picture- og lydturnover fra de kanoniske kildene. Editorial status, cut lineage og picture-lock mangler. |
-| Klipp og farge | Klipper (`video_editor`) | Delvis | Rutes til post-linsen med Video Room-versjoner som picture-kilde. Timeline/timecode-oppgaver, cut lineage og lock mangler. |
-| Klipp og farge | Klippeassistent (`assistant_editor`) | Delvis | Rutes til post-linsen for ingest-/QC-arbeid. Sync, bins, proxies, EDL/XML/AAF og teknisk leveransekontroll mangler. |
+| Klipp og farge | Klippeansvarlig (`supervising_editor`) | Delvis | Rutes til post-linsen, kan lese Storyboard Room og motta/QC-behandle picture- og lydturnover fra de kanoniske kildene. Editorial status, cut lineage og picture-lock mangler. |
+| Klipp og farge | Klipper (`video_editor`) | Delvis | Rutes til post-linsen med Storyboard Room som lesbart visuelt grunnlag og Video Room-versjoner som picture-kilde. Panel→timecode, timelineoppgaver, cut lineage og lock mangler. |
+| Klipp og farge | Klippeassistent (`assistant_editor`) | Delvis | Rutes til post-linsen for storyboardinnsyn og ingest-/QC-arbeid. Sync, bins, proxies, EDL/XML/AAF og teknisk leveransekontroll mangler. |
 | Klipp og farge | Colorist (`colorist`) | Katalog | Planlagt color brief, reference stills, version, review, QC og masterleveranse. |
 | Visuelle effekter | VFX supervisor (`vfx_supervisor`) | Katalog | Planlagt shot-register, plate/elementer, vendor, bid, version, review, status og final. |
 | Visuelle effekter | VFX-artist (`vfx_artist`) | Katalog | Planlagt avgrenset shot-task, input, version, notes, QC og levering. |

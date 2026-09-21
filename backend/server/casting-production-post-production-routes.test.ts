@@ -13,6 +13,7 @@ const STORAGE_ID = '22222222-2222-4222-8222-222222222222';
 const WORKSPACE_PROJECT_ID = '6cae5551-4d32-4b22-8c26-79fa61f8c7b1';
 const PICTURE_VERSION_ID = 'b70ea5f0-06a4-4a1b-b357-83d7872bdf9f';
 const PICTURE_STORAGE_ID = 'f48ba060-ebf0-4509-b77a-e889716495ab';
+const STORYBOARD_ROUND_ID = '0f4813b2-ed6c-47c4-a982-7d8e9093c0a1';
 
 function appFor(query: ReturnType<typeof vi.fn>) {
   const app = express();
@@ -75,6 +76,45 @@ const pictureRow = {
   checksum_sha256: 'b'.repeat(64),
   latest_version_number: 2,
 };
+
+const storyboardRow = {
+  id: STORYBOARD_ROUND_ID,
+  project_id: PROJECT_ID,
+  manuscript_id: 'troll-manus',
+  manuscript_title: 'Troll',
+  version: 3,
+  label: 'Regigodkjent',
+  summary: 'Låst visuelt grunnlag.',
+  snapshot_hash: 'c'.repeat(64),
+  script_fingerprint: 'd'.repeat(64),
+  status: 'approved',
+  frame_count: 1,
+  total_duration_seconds: 4,
+  latest_approved_version: 3,
+  submitted_at: '2026-09-21T08:00:00.000Z',
+  approved_at: '2026-09-21T09:00:00.000Z',
+  snapshot: {
+    schemaVersion: 'storyboard-review-snapshot-v1',
+    manuscript: { id: 'troll-manus', title: 'Troll' },
+    scenes: [{
+      id: 'scene-1', heading: 'EXT. FJELL – NATT', sceneNumber: 1,
+      storyboardFrames: [{
+        id: 'frame-1', shotNumber: '1A', description: 'Trollet reiser seg.', duration: 4,
+        thumbnailUrl: 'https://images.example.test/frame-1.jpg',
+      }],
+    }],
+    dialogue: [],
+  },
+};
+
+function storyboardTabAccessResult(text: string) {
+  if (text.includes('SELECT 1 FROM casting_projects')) return { rows: [], rowCount: 0 };
+  if (text.includes('FROM role_room_project_tab_overrides')) return { rows: [], rowCount: 0 };
+  if (text.includes('SELECT role FROM casting_user_roles')) {
+    return { rows: [{ role: 'post_supervisor' }], rowCount: 1 };
+  }
+  return null;
+}
 
 describe('Post-production turnover API', () => {
   it('returns an empty version-zero ledger to a project member', async () => {
@@ -174,6 +214,58 @@ describe('Post-production turnover API', () => {
     expect(JSON.stringify(response.body)).not.toContain('object_key');
   });
 
+  it('lists locked storyboard revisions for post without exposing the full snapshot', async () => {
+    const query = vi.fn(async (text: string) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      const tabAccess = storyboardTabAccessResult(text);
+      if (tabAccess) return tabAccess;
+      if (text.includes('FROM storyboard_review_rounds review_round') && text.includes('ORDER BY manuscript.title')) {
+        return { rows: [storyboardRow], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .get(`${PATH}/storyboard-sources`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.storyboardSources.rounds).toEqual([
+      expect.objectContaining({ id: STORYBOARD_ROUND_ID, status: 'approved', frameCount: 1 }),
+    ]);
+    expect(JSON.stringify(response.body)).not.toContain('storyboardFrames');
+    expect(JSON.stringify(response.body)).not.toContain('thumbnailUrl');
+  });
+
+  it('returns a selected storyboard revision as a read-only post preview', async () => {
+    const query = vi.fn(async (text: string) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      const tabAccess = storyboardTabAccessResult(text);
+      if (tabAccess) return tabAccess;
+      if (text.includes('FROM storyboard_review_rounds review_round') && text.includes('review_round.id = $2::uuid')) {
+        return { rows: [storyboardRow], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .get(`${PATH}/storyboard-sources/${STORYBOARD_ROUND_ID}`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.storyboardSource).toEqual(expect.objectContaining({
+      id: STORYBOARD_ROUND_ID,
+      scenes: [expect.objectContaining({
+        id: 'scene-1',
+        frames: [expect.objectContaining({ id: 'frame-1', shotNumber: '1A' })],
+      })],
+    }));
+  });
+
   it('fails closed when the linked CreatorHub project is not owned by the Role Room owner', async () => {
     const query = vi.fn(async (text: string) => {
       const schema = schemaResult(text);
@@ -239,6 +331,96 @@ describe('Post-production turnover API', () => {
       checksumSha256: pictureRow.checksum_sha256,
     }));
     expect(JSON.stringify(written)).not.toContain('object_key');
+  });
+
+  it('binds only selected panels from an approved storyboard revision', async () => {
+    let written: Record<string, any> | null = null;
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      const tabAccess = storyboardTabAccessResult(text);
+      if (tabAccess) return tabAccess;
+      if (text.includes('FROM role_room_post_production_operations') && text.includes('SELECT operations')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('FROM casting_projects casting')) {
+        return { rows: [{ creatorhub_project_id: WORKSPACE_PROJECT_ID, workspace_project_id: WORKSPACE_PROJECT_ID }], rowCount: 1 };
+      }
+      if (text.includes('WITH eligible AS')) return { rows: [pictureRow], rowCount: 1 };
+      if (text.includes('FROM storyboard_review_rounds review_round')) {
+        return { rows: [storyboardRow], rowCount: 1 };
+      }
+      if (text.includes('INSERT INTO role_room_post_production_operations')) {
+        written = JSON.parse(String(params?.[1]));
+        return {
+          rows: [{ operations: written, version: 1, updated_by: 'sound-1', updated_at: '2026-09-21T10:00:00.000Z' }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .post(`${PATH}/commands`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 0,
+        command: {
+          type: 'create_picture_turnover',
+          label: 'Picture V2 · Editorial',
+          pictureVersionId: PICTURE_VERSION_ID,
+          storyboardReviewRoundId: STORYBOARD_ROUND_ID,
+          storyboardFrameIds: ['frame-1'],
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.postProduction.operations.turnovers[0].storyboardReference).toEqual(expect.objectContaining({
+      reviewRoundId: STORYBOARD_ROUND_ID,
+      snapshotHash: storyboardRow.snapshot_hash,
+      frames: [expect.objectContaining({ frameId: 'frame-1', sceneId: 'scene-1' })],
+    }));
+    expect(JSON.stringify(written)).not.toContain('thumbnailUrl');
+  });
+
+  it('refuses to bind a storyboard revision that is not approved', async () => {
+    const query = vi.fn(async (text: string) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      const tabAccess = storyboardTabAccessResult(text);
+      if (tabAccess) return tabAccess;
+      if (text.includes('FROM role_room_post_production_operations') && text.includes('SELECT operations')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('FROM casting_projects casting')) {
+        return { rows: [{ creatorhub_project_id: WORKSPACE_PROJECT_ID, workspace_project_id: WORKSPACE_PROJECT_ID }], rowCount: 1 };
+      }
+      if (text.includes('WITH eligible AS')) return { rows: [pictureRow], rowCount: 1 };
+      if (text.includes('FROM storyboard_review_rounds review_round')) {
+        return { rows: [{ ...storyboardRow, status: 'changes_requested' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .post(`${PATH}/commands`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 0,
+        command: {
+          type: 'create_picture_turnover',
+          label: 'Ikke godkjent',
+          pictureVersionId: PICTURE_VERSION_ID,
+          storyboardReviewRoundId: STORYBOARD_ROUND_ID,
+          storyboardFrameIds: ['frame-1'],
+        },
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('storyboard_source_not_approved');
+    expect(query.mock.calls.some(([text]) => String(text).includes('INSERT INTO role_room_post_production_operations'))).toBe(false);
   });
 
   it('hides command routes from members without a post grant', async () => {

@@ -51,6 +51,41 @@ export interface PostPictureSourceSnapshot {
   capturedAt: string;
 }
 
+export interface PostStoryboardFrameReference {
+  frameId: string;
+  sceneId: string;
+  sceneHeading: string;
+  sceneNumber?: string;
+  shotNumber?: string;
+  description?: string;
+  durationSeconds?: number;
+}
+
+export interface PostStoryboardReferenceSnapshot {
+  reviewRoundId: string;
+  manuscriptId: string;
+  manuscriptTitle: string;
+  version: number;
+  label: string;
+  snapshotHash: string;
+  scriptFingerprint: string;
+  status: 'approved';
+  frameCount: number;
+  totalDurationSeconds: number;
+  latestApprovedVersionAtCapture: number;
+  capturedAt: string;
+  frames: PostStoryboardFrameReference[];
+}
+
+export interface PostStoryboardCurrentState {
+  reviewRoundId: string;
+  version: number;
+  status: string;
+  snapshotHash: string;
+  latestApprovedVersion: number;
+  availableFrameIds: string[];
+}
+
 export type PostTurnoverSourceSnapshot =
   | PostProductionSoundSourceSnapshot
   | PostPictureSourceSnapshot;
@@ -81,6 +116,7 @@ export interface PostTurnoverManifest {
   notes?: string;
   status: PostTurnoverStatus;
   source: PostTurnoverSourceSnapshot;
+  storyboardReference?: PostStoryboardReferenceSnapshot;
   issues: PostQcIssue[];
   events: PostTurnoverEvent[];
   createdBy: string;
@@ -104,7 +140,12 @@ export type PostTurnoverImpactCode =
   | 'picture_version_missing'
   | 'picture_asset_changed'
   | 'picture_status_changed'
-  | 'new_picture_version_available';
+  | 'new_picture_version_available'
+  | 'storyboard_round_missing'
+  | 'storyboard_snapshot_changed'
+  | 'storyboard_status_changed'
+  | 'storyboard_frames_missing'
+  | 'new_storyboard_revision_available';
 
 export interface PostTurnoverImpactItem {
   code: PostTurnoverImpactCode;
@@ -126,6 +167,7 @@ export type PostProductionCommand =
       recipient?: string;
       notes?: string;
       source: PostTurnoverSourceSnapshot;
+      storyboardReference?: PostStoryboardReferenceSnapshot;
     }
   | {
       type: 'transition_turnover';
@@ -137,6 +179,7 @@ export type PostProductionCommand =
       type: 'refresh_turnover';
       turnoverId: string;
       source: PostTurnoverSourceSnapshot;
+      storyboardReference?: PostStoryboardReferenceSnapshot;
     }
   | {
       type: 'add_qc_issue';
@@ -158,6 +201,8 @@ export type ParsedPostProductionCommand =
       notes?: string;
       productionDayId: string;
       mediaIds: string[];
+      storyboardReviewRoundId?: string;
+      storyboardFrameIds?: string[];
     }
   | {
       type: 'create_picture_turnover';
@@ -165,6 +210,8 @@ export type ParsedPostProductionCommand =
       recipient?: string;
       notes?: string;
       pictureVersionId: string;
+      storyboardReviewRoundId?: string;
+      storyboardFrameIds?: string[];
     }
   | { type: 'transition_turnover'; turnoverId: string; status: PostTurnoverStatus }
   | { type: 'refresh_turnover'; turnoverId: string }
@@ -268,6 +315,86 @@ function limitedArray(value: unknown, field: string, maxLength: number): unknown
     throw new PostProductionValidationError(`${field} kan maksimalt inneholde ${maxLength} elementer.`);
   }
   return value;
+}
+
+function normalizeStoryboardReference(value: unknown, field: string): PostStoryboardReferenceSnapshot {
+  const input = asObject(value);
+  if (!input) throw new PostProductionValidationError(`${field} må være et objekt.`);
+  const frames = limitedArray(input.frames, `${field}.frames`, 2_000).map((entry, index) => {
+    const item = asObject(entry);
+    if (!item) throw new PostProductionValidationError(`${field}.frames[${index}] er ugyldig.`);
+    return {
+      frameId: requiredString(item.frameId, `${field}.frames[${index}].frameId`, 255),
+      sceneId: requiredString(item.sceneId, `${field}.frames[${index}].sceneId`, 255),
+      sceneHeading: requiredString(item.sceneHeading, `${field}.frames[${index}].sceneHeading`, 500),
+      sceneNumber: optionalString(item.sceneNumber, `${field}.frames[${index}].sceneNumber`, 80),
+      shotNumber: optionalString(item.shotNumber, `${field}.frames[${index}].shotNumber`, 80),
+      description: optionalString(item.description, `${field}.frames[${index}].description`, 2_000),
+      durationSeconds: optionalNonNegativeNumber(
+        item.durationSeconds,
+        `${field}.frames[${index}].durationSeconds`,
+      ),
+    };
+  });
+  if (frames.length === 0) {
+    throw new PostProductionValidationError(`${field}.frames må inneholde minst ett valgt panel.`);
+  }
+  if (new Set(frames.map((frame) => frame.frameId)).size !== frames.length) {
+    throw new PostProductionValidationError(`${field}.frames inneholder duplikater.`);
+  }
+  const version = positiveInteger(input.version, `${field}.version`);
+  const latestApprovedVersionAtCapture = positiveInteger(
+    input.latestApprovedVersionAtCapture,
+    `${field}.latestApprovedVersionAtCapture`,
+  );
+  if (latestApprovedVersionAtCapture < version) {
+    throw new PostProductionValidationError(`${field}.latestApprovedVersionAtCapture kan ikke være eldre enn valgt revisjon.`);
+  }
+  if (input.status !== 'approved') {
+    throw new PostProductionValidationError(`${field}.status må være approved.`);
+  }
+  return {
+    reviewRoundId: uuid(input.reviewRoundId, `${field}.reviewRoundId`),
+    manuscriptId: requiredString(input.manuscriptId, `${field}.manuscriptId`, 255),
+    manuscriptTitle: requiredString(input.manuscriptTitle, `${field}.manuscriptTitle`, 255),
+    version,
+    label: requiredString(input.label, `${field}.label`, 180),
+    snapshotHash: sha256(input.snapshotHash, `${field}.snapshotHash`),
+    scriptFingerprint: sha256(input.scriptFingerprint, `${field}.scriptFingerprint`),
+    status: 'approved',
+    frameCount: integer(input.frameCount, `${field}.frameCount`),
+    totalDurationSeconds: optionalNonNegativeNumber(
+      input.totalDurationSeconds,
+      `${field}.totalDurationSeconds`,
+    ) ?? 0,
+    latestApprovedVersionAtCapture,
+    capturedAt: timestamp(input.capturedAt, `${field}.capturedAt`),
+    frames,
+  };
+}
+
+function parseStoryboardSelection(input: Record<string, unknown>): {
+  storyboardReviewRoundId?: string;
+  storyboardFrameIds?: string[];
+} {
+  const hasRound = input.storyboardReviewRoundId !== undefined && input.storyboardReviewRoundId !== null
+    && input.storyboardReviewRoundId !== '';
+  const hasFrames = input.storyboardFrameIds !== undefined && input.storyboardFrameIds !== null;
+  if (!hasRound && !hasFrames) return {};
+  if (!hasRound || !hasFrames) {
+    throw new PostProductionValidationError('Storyboard-revisjon og valgte paneler må sendes sammen.');
+  }
+  const storyboardFrameIds = [...new Set(
+    limitedArray(input.storyboardFrameIds, 'command.storyboardFrameIds', 2_000)
+      .map((id, index) => requiredString(id, `command.storyboardFrameIds[${index}]`, 255)),
+  )];
+  if (storyboardFrameIds.length === 0) {
+    throw new PostProductionValidationError('Velg minst ett storyboardpanel.');
+  }
+  return {
+    storyboardReviewRoundId: uuid(input.storyboardReviewRoundId, 'command.storyboardReviewRoundId'),
+    storyboardFrameIds,
+  };
 }
 
 function normalizeSource(value: unknown, field: string): PostTurnoverSourceSnapshot {
@@ -397,6 +524,9 @@ export function normalizePostProductionOperations(value: unknown): PostProductio
       notes: optionalString(item.notes, `turnovers[${index}].notes`, 5_000),
       status: enumValue<PostTurnoverStatus>(item.status, STATUSES, `turnovers[${index}].status`),
       source: normalizeSource(item.source, `turnovers[${index}].source`),
+      storyboardReference: item.storyboardReference === undefined || item.storyboardReference === null
+        ? undefined
+        : normalizeStoryboardReference(item.storyboardReference, `turnovers[${index}].storyboardReference`),
       issues,
       events,
       createdBy: requiredString(item.createdBy, `turnovers[${index}].createdBy`, 255),
@@ -425,6 +555,7 @@ export function parsePostProductionCommand(value: unknown): ParsedPostProduction
       notes: optionalString(input.notes, 'command.notes', 5_000),
       productionDayId: requiredString(input.productionDayId, 'command.productionDayId', 255),
       mediaIds: [...new Set(mediaIds)],
+      ...parseStoryboardSelection(input),
     };
   }
   if (type === 'create_picture_turnover') {
@@ -434,6 +565,7 @@ export function parsePostProductionCommand(value: unknown): ParsedPostProduction
       recipient: optionalString(input.recipient, 'command.recipient', 240),
       notes: optionalString(input.notes, 'command.notes', 5_000),
       pictureVersionId: uuid(input.pictureVersionId, 'command.pictureVersionId'),
+      ...parseStoryboardSelection(input),
     };
   }
   const turnoverId = requiredString(input.turnoverId, 'command.turnoverId', 120);
@@ -514,6 +646,7 @@ export function applyPostProductionCommand(
       notes: command.notes,
       status: 'draft',
       source: command.source,
+      storyboardReference: command.storyboardReference,
       issues: [],
       events: [event(context, 'created', `Opprettet turnover «${command.label}».`)],
       createdBy: context.actorUserId,
@@ -555,6 +688,7 @@ export function applyPostProductionCommand(
       return {
         ...turnover,
         source: command.source,
+        storyboardReference: command.storyboardReference ?? turnover.storyboardReference,
         status: hasOpenIssues ? 'qc_issues' : 'draft',
         updatedBy: context.actorUserId,
         updatedAt: context.now,
@@ -562,8 +696,8 @@ export function applyPostProductionCommand(
           context,
           'source_refreshed',
           command.source.sourceType === 'picture'
-            ? 'Oppdaterte manifestet mot gjeldende picture-grunnlag.'
-            : 'Oppdaterte manifestet mot gjeldende lydgrunnlag.',
+            ? `Oppdaterte manifestet mot gjeldende picture${turnover.storyboardReference ? '- og storyboard' : ''}-grunnlag.`
+            : `Oppdaterte manifestet mot gjeldende lyd${turnover.storyboardReference ? '- og storyboard' : ''}-grunnlag.`,
         )].slice(-500),
       };
     }
@@ -601,6 +735,57 @@ export function applyPostProductionCommand(
       events: [...turnover.events, event(context, 'qc_issue_resolved', `Løste QC-avvik: ${issue.message}`)].slice(-500),
     };
   });
+}
+
+export function collectPostStoryboardImpact(
+  snapshot: PostStoryboardReferenceSnapshot | undefined,
+  current: PostStoryboardCurrentState | null,
+): PostTurnoverImpact {
+  if (!snapshot) return { stale: false, blocking: false, items: [] };
+  const items: PostTurnoverImpactItem[] = [];
+  if (!current || current.reviewRoundId !== snapshot.reviewRoundId) {
+    items.push({
+      code: 'storyboard_round_missing',
+      severity: 'blocking',
+      message: 'Den låste storyboard-revisjonen finnes ikke lenger.',
+    });
+  } else {
+    if (current.snapshotHash !== snapshot.snapshotHash) {
+      items.push({
+        code: 'storyboard_snapshot_changed',
+        severity: 'blocking',
+        message: 'Storyboard-snapshotet samsvarer ikke lenger med kontrollsummen i manifestet.',
+      });
+    }
+    if (current.status !== 'approved') {
+      items.push({
+        code: 'storyboard_status_changed',
+        severity: 'blocking',
+        message: `Storyboard-revisjonen er ikke lenger godkjent (${current.status}).`,
+      });
+    }
+    const currentFrameIds = new Set(current.availableFrameIds);
+    const missingFrames = snapshot.frames.filter((frame) => !currentFrameIds.has(frame.frameId));
+    if (missingFrames.length > 0) {
+      items.push({
+        code: 'storyboard_frames_missing',
+        severity: 'blocking',
+        message: `${missingFrames.length} valgte storyboardpaneler finnes ikke lenger i den låste revisjonen.`,
+      });
+    }
+    if (current.latestApprovedVersion > snapshot.latestApprovedVersionAtCapture) {
+      items.push({
+        code: 'new_storyboard_revision_available',
+        severity: 'warning',
+        message: `En nyere godkjent storyboard-revisjon (v${current.latestApprovedVersion}) er tilgjengelig.`,
+      });
+    }
+  }
+  return {
+    stale: items.length > 0,
+    blocking: items.some((item) => item.severity === 'blocking'),
+    items,
+  };
 }
 
 export function collectPostTurnoverImpact(
