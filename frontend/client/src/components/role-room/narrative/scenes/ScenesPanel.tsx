@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mui/material';
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItemButton, Skeleton, Stack, TextField, Tooltip, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItem, ListItemButton, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import { Add as AddIcon, ArrowBack as ArrowBackIcon, Search as SearchIcon } from '@mui/icons-material';
 import { narrativeColors } from '../narrativeTheme';
@@ -101,14 +101,13 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
     const overdue = isOverdue(s.dueAt, s.status);
     const selected = s.id === scenes.selectedId;
     return (
+      <ListItem key={s.id} disablePadding sx={{ mb: 0.5 }}>
       <ListItemButton
-        key={s.id}
         selected={selected}
         onClick={() => scenes.select(s.id)}
-        component="li"
         data-testid={`narrative-scene-row-${s.id}`}
         sx={{
-          borderRadius: 1.5, mb: 0.5, alignItems: 'flex-start', gap: 1, py: 1,
+          borderRadius: 1.5, alignItems: 'flex-start', gap: 1, py: 1,
           borderLeft: `3px solid ${selected ? narrativeColors.accent : 'transparent'}`,
           '&.Mui-selected': { bgcolor: 'rgba(34,197,94,0.08)' },
           '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
@@ -127,6 +126,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
         </Box>
         {assignee ? <Tooltip title={assignee.displayName}><Box><MemberAvatar member={assignee} size={24} /></Box></Tooltip> : null}
       </ListItemButton>
+      </ListItem>
     );
   };
 

@@ -53,6 +53,7 @@ export function GameShell({ tabs, activeTabId, onSelectTab, labels, header, head
     '& .MuiTabs-flexContainer': { gap: 0 },
     '& .MuiTab-root': {
       textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 36, py: 0.5, px: 1.5, fontSize: '0.84rem',
+      opacity: 1, // MUI textColorInherit setter 0.6 → 3,5:1 sammen med textDim (UX-16)
       justifyContent: 'flex-start', alignItems: 'center', flexDirection: 'row', gap: 1.25, borderRadius: 1.5, mx: 1,
       '&:hover': { bgcolor: 'rgba(255,255,255,0.04)', color: narrativeColors.text },
     },
@@ -164,7 +165,7 @@ export function GameShell({ tabs, activeTabId, onSelectTab, labels, header, head
         {/* pb reserverer plass under siste innholdsrad slik at den fastlåste
             hjelpe-FAB-en (shared/HelpButton, ~56px nederst til høyre) ikke
             dekker den (UX-13). */}
-        <Box role="tabpanel" sx={{ flex: 1, minHeight: 0, pb: { xs: 12, md: 10 }, '@media (max-width:899.95px)': { '& .MuiButton-sizeSmall': { minHeight: 36 }, '& .MuiIconButton-sizeSmall': { minWidth: 36, minHeight: 36 }, '& .MuiChip-clickable': { minHeight: 32 } } }}>{children}</Box>
+        <Box role="tabpanel" sx={{ flex: 1, minHeight: 0, pb: { xs: 12, md: 10 }, '@media (max-width:899.95px)': { '& .MuiButton-sizeSmall': { minHeight: 36 }, '& .MuiIconButton-sizeSmall': { minWidth: 36, minHeight: 36 }, '& .MuiChip-clickable': { minHeight: 32 }, '& .MuiAutocomplete-popupIndicator, & .MuiAutocomplete-clearIndicator': { width: 36, height: 36 } } }}>{children}</Box>
       </Box>
     </Box>
   );
