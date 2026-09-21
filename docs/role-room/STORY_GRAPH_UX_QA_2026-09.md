@@ -53,6 +53,89 @@ Produktet er funksjonelt komplett og de tunge flytene (review-runder, gjesterevi
 
 Skjermbildene ligger i QA-kjøringens scratchpad (`uxqa/shots/<desktop|mobile>/<område>/<navn>.png`) og er sendt i chatten; de committes ikke.
 
+<!-- status:start -->
+## Status etter fiks (2026-09-21)
+
+Alle tre PR-delene er levert på samme branch og går i én PR mot `main` (A → B → C var rekkefølgen i arbeidet, ikke i leveransen — de deler filer).
+
+| PR | Levert | Commits |
+|---|---|---|
+| A (småfiks) | UX-03, UX-04, UX-05, UX-06, UX-08, UX-09, UX-10, UX-11, UX-12, UX-13, UX-14, UX-15, UX-16, UX-17, UX-18, UX-19, UX-20, UX-22, UX-23, UX-24, UX-25, UX-26, UX-27, UX-30, UX-31, UX-32, UX-33, UX-34, UX-36 | `d5ceeb98`, `a3d17bec`, `fb89bf4b`, `1f37013d` + oppfølging |
+| B («Nytt prosjekt») | UX-01: ProjectPicker oppretter prosjekt (`POST /api/role-room/projects` med `role_room_auth_token`), velger det og lander på første-gangs-hero | `fb89bf4b` |
+| C (større) | UX-02 registrering (`signup: true` + `loginAs: game_studio` → Solo-konto uten Stripe; «Opprett gratis konto» i dialogen), UX-21 mobil liste/kort med «Tilbake til scener», UX-28 «Manus-PDF (scener)» (`GET /projects/:id/scenes/export.pdf`, gated `export_pdf`) + forklaring av brett vs. scener i Eksport, UX-29 team-bootstrap for eier uten rolle (`ensureTeamForOwner` i `GET /me`), UX-35 fanestripe/tabeller på xs | `bb904e80`, `ee9487fb`, `fb89bf4b`, `1f37013d` |
+
+**Ikke fikset / delvis (bevisst):**
+
+- **UX-07** (hero-bilde fra fal.media): ikke flyttet — kjøremiljøet kan ikke laste ned bildet, og det er film-landingens flate. Egen liten oppgave.
+- **UX-35** delvis: scenekortet er nå én visning på mobil (UX-21), fanestripen scroller og små knapper/chips/Autocomplete-piler har minstemål på xs. Replikk-tabellen er fortsatt en tabell (scroller horisontalt i kortet, ikke på siden).
+- Landingssiden/login: «Story Arc»-tekst er film-produktets navn (harness-regelen var for streng), og lav kontrast på markedsføringstekst («Manifest») ligger utenfor Story Graph-omfanget.
+- `PostCommentLayer` (Post Agent-komponent, gjenbrukt i review): «✓»/«Svar» 12–16 px høye — ikke endret; bør tas i komponenten, ikke per bruk.
+- MUI `Switch size="small"` (24 px) på Replikker («KI-stemmer»): standard MUI-geometri, ikke endret (bryteren har nå aria-label).
+- MUI `Autocomplete` med grupper (element-velgeren på Gameplay): axe `list`/`listitem`/`aria-required-parent` kommer fra MUIs gruppert listbox-struktur, ikke vår kode.
+- Scenekortets valgte fane: MUI `textColorPrimary` overstyrte fargen vår (spesifisitet) — rettet i siste commit, ikke målt på nytt i tabellen under.
+- Harness-regelen «Ukjent projectId gir ingen forklarende melding» slår fortsatt ut, men banneret viser nå «Du har ikke tilgang til dette prosjektet» + «Velg et annet prosjekt» (skjermbilde `desktop/errors/01-unknown-project.png`); regexen i harnessen matchet ikke ordlyden.
+
+### Regresjon — full kjøring (alle 8 specs, desktop + mobil)
+
+Tellinger per sidetilstand (siste kjøring per tilstand; «info» utelatt). Før = `main` `888c8770`, etter = branchen etter PR A/B/C (`fb89bf4b`), 201 → 156 tilstander (færre fordi blindveier og dubletter forsvant).
+
+| Måling | Før | Etter |
+|---|---|---|
+| Konsollfeil/-advarsler | 339 | 78 |
+| axe color-contrast | 145 | 104 |
+| Nettverkskall ≥ 400 / feilet | 119 | 36 |
+| axe aria-prohibited-attr | 143 | 0 |
+| Klikkmål < 32 px (mobil) | 69 | 70 |
+| axe list (ul med ikke-li) | 67 | 41 |
+| Horisontal overflow (side bredere enn viewport) | 25 | 3 |
+| Tekst-sjekk («Story Arc», «undefined», «NaN») | 11 | 10 |
+| axe aria-input-field-name | 13 | 4 |
+| axe aria-progressbar-name | 14 | 2 |
+| Avkuttet tekst (ellipsis) | 11 | 4 |
+| axe scrollable-region-focusable | 10 | 0 |
+| Blindvei (handling uten vei videre) | 8 | 0 |
+| axe label | 4 | 3 |
+| Manglende tilbakemelding | 2 | 2 |
+| axe document-title | 2 | 2 |
+| axe html-has-lang | 2 | 2 |
+| axe button-name | 2 | 0 |
+| axe listitem | 1 | 1 |
+| axe aria-required-parent | 1 | 1 |
+| axe aria-required-children | 1 | 1 |
+| Manglende element | 1 | 1 |
+| Flyt | 1 | 0 |
+| Feilforebygging | 1 | 0 |
+| Manglende tilgjengelig navn | 1 | 0 |
+
+Klikkmål-telleren gikk ikke ned i full kjøring fordi flere sider nå rendres helt (scenekortet på mobil var før ~60 px bredt og ble ikke målt); oppfølgingsrunden under tar den ned. Gjenværende horisontal overflow etter full kjøring: `desktop/tabs/boards`, `mobile/tabs/boards`, `mobile/tabs/platform` (Brett = react-flow-lerret på desktop, forventet).
+
+### Regresjon — oppfølgingsrunde (scenekort, onboarding, feiltilstander; desktop + mobil)
+
+Etter regresjonen ble seks nye funn rettet (`1f37013d` + oppfølging: betinget rendering av liste/kort, én feilboks ved 403, kompakt cookie-pille, DOM-nesting, episode-select, fane-opasitet/kontrast, `ListItem`-struktur, «Idé»-chip 6:1, Autocomplete-piler 36 px). Tabellen sammenligner de samme 13 sidetilstandene (sceneliste + scenekort P01, desktop og mobil) over tre kjøringer; onboarding- og feiltilstandene ble også kjørt på nytt og er dekket av full-tabellen over.
+
+| Måling | Før | Etter A/B/C | Etter oppfølging |
+|---|---|---|---|
+| axe color-contrast | 11 | 10 | 5 |
+| Konsollfeil/-advarsler | 14 | 1 | 1 |
+| Nettverkskall ≥ 400 / feilet | 12 | 0 | 0 |
+| axe list (ul med ikke-li) | 11 | 8 | 1 |
+| axe aria-prohibited-attr | 11 | 0 | 0 |
+| axe label | 3 | 3 | 3 |
+| Klikkmål < 32 px (mobil) | 3 | 2 | 2 |
+| axe document-title | 2 | 2 | 2 |
+| axe html-has-lang | 2 | 2 | 2 |
+| Horisontal overflow (side bredere enn viewport) | 3 | 0 | 0 |
+| axe aria-input-field-name | 3 | 0 | 0 |
+| axe listitem | 1 | 1 | 1 |
+| axe aria-required-parent | 1 | 1 | 1 |
+| Avkuttet tekst (ellipsis) | 1 | 1 | 1 |
+| axe aria-required-children | 1 | 1 | 1 |
+
+Nettverks- og konsolltallene som står igjen er de bevisste feilprobene (backend nede, 401/403/500/503) — de skal feile. Gjenværende overflow i delmengden: —.
+
+**Modellvalg:** verdikt, prioritering og alt med produksjonskonsekvens (auth-provisjonering, team-bootstrap, PDF-rute, hook-rekkefølge) er gjort med Fable 5.1; de mekaniske PR A-rettelsene (tekster, aria, testids, kontrast) ble delegert til tre Sonnet-subagenter på disjunkte filsett og verifisert med tsc, vitest, e2e og harness-kjøring.
+<!-- status:end -->
+
 ## Automatiske observasjoner
 
 ### Tilgjengelighet (axe, kun serious/critical)
