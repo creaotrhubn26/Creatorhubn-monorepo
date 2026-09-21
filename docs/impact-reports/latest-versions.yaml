@@ -7,53 +7,63 @@
 # Do not hand-edit version numbers — they come from the pinned Tier 1/2
 # sources named per entry. Update `checked_at` only via the agent run.
 
-bootstrap: true
-bootstrap_note: >
-  First run of this tracker (2026-08-09). No prior state existed, so no
-  impact assessment was performed this run — see 2026-08-09-impact.md.
-  Future runs diff against this file.
-
 vendors:
   blackmagic-resolve:
     product: DaVinci Resolve
-    version: "21.0.4"
+    version: "21.1"
+    previous_version: "21.0.4"
     source: "https://www.blackmagicdesign.com/api/support/latest-stable-version/davinci-resolve/mac"
     source_note: >
-      Primary source blocked by this session's network egress policy
-      (www.blackmagicdesign.com) at run time; version corroborated via
-      WebSearch (toolfarm.com, newsshooter.com, 2026-08-05 release coverage)
-      and matches the version already on record in
-      docs/evidence/2026-08-resolve-21-impact.yaml. Confidence: strong_evidence,
-      not Verified, per Freshness Rule (no live Tier 1 fetch this run).
-    checked_at: "2026-08-09"
+      Primary source blocked again by this session's network egress policy
+      (www.blackmagicdesign.com); version corroborated via WebSearch
+      (cined.com, newsshooter.com, provideocoalition.com — 2026-09-07/08
+      release coverage of Resolve 21.1). Confidence: strong_evidence, not
+      Verified, per Freshness Rule (no live Tier 1 fetch this run, same gap
+      as 2026-08-09).
+    checked_at: "2026-09-21"
 
   xcode-apple-sdk:
     product: Xcode / Apple SDK
     channel: stable
-    version: "Xcode 26.6 (17F113)"
+    version: "Xcode 27 (27A266a)"
+    previous_version: "Xcode 26.6 (17F113)"
     source: "https://developer.apple.com/news/releases/rss/releases.rss (first Stable/GA title matching /Xcode \\d/, excluding beta/RC per release-monitor/SKILL.md Stable-vs-Preview rule)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-21"
+    promotion_note: >
+      Xcode 27 left beta and shipped GA 2026-09-14 (27A266a) — promoted from
+      preview_channel_note to the primary version field per the instruction
+      left in the 2026-08-09 run. Full impact assessment already exists in
+      docs/evidence/2026-09-ios27-ga-foundationmodels-ci.yaml (2026-09-18,
+      3 days before this run) — see that file rather than re-deriving; it
+      also marks docs/evidence/2026-07-ios27-fm-symbols.yaml stale/replaced.
     preview_channel_note: >
-      Xcode 27 beta 4 (27A5228h) is the current preview build (same feed).
-      Tracked here for awareness only, NOT as the diff-triggering baseline —
-      docs/evidence/2026-07-ios27-fm-symbols.yaml pins the project to the
-      iOS 26 / Xcode 26 FM surface until Xcode 27 ships stable. Promote to
-      the primary `version` field once Xcode 27 leaves beta.
+      Xcode 27.1 beta (27A9269) and 27.2 beta (27B5019j) are the current
+      preview builds (same feed) as of this run. Informational only.
 
   moodle:
     product: Moodle LMS
-    version: "v5.2.2"
-    source: "https://api.github.com/repos/moodle/moodle/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    version: "v5.2.3"
+    previous_version: "v5.2.2"
+    source: "https://api.github.com/repos/moodle/moodle/tags (GitHub API blocked for this repo in-session; WebFetch of https://github.com/moodle/moodle/tags used instead, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$ — excludes v5.3.0-beta)"
+    checked_at: "2026-09-21"
 
   blender:
     product: Blender
-    version: "v5.2.0"
-    source: "https://api.github.com/repos/blender/blender/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    version: "v5.2.2"
+    previous_version: "v5.2.0"
+    source: "https://api.github.com/repos/blender/blender/tags (GitHub API blocked for this repo in-session; WebFetch of https://github.com/blender/blender/tags used instead, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
+    checked_at: "2026-09-21"
+    note: >
+      v5.2.1 (2026-08-24) also released between checks; v5.2.2 supersedes it
+      as the current LTS patch.
 
   stripe-node:
     product: Stripe Node SDK
-    version: "v22.4.0"
-    source: "https://api.github.com/repos/stripe/stripe-node/releases/latest"
-    checked_at: "2026-08-09"
+    version: "v22.6.2"
+    previous_version: "v22.4.0"
+    source: "https://api.github.com/repos/stripe/stripe-node/releases/latest (GitHub API blocked for this repo in-session; WebFetch of the releases page used instead)"
+    checked_at: "2026-09-21"
+    repo_usage_gap_note: >
+      backend/package.json pins "stripe": "^19.3.0" — three majors behind
+      the v22.x line tracked here. See
+      docs/evidence/2026-09-stripe-node-sdk-drift.yaml.

@@ -1,0 +1,72 @@
+claim: >
+  backend/package.json pins "stripe": "^19.3.0" while stripe/stripe-node's
+  latest release is v22.6.2 (2026-09-09) — three major versions of drift.
+  No breaking-change intersection was found against our actual usage
+  (webhooks.constructEvent, subscriptions, Connect), because we explicitly
+  pin the Stripe *API* version per-client ('2025-01-27.acacia' in
+  backend/server/lead-map-routes.ts) independently of the SDK major
+  version, but the SDK gap means we cannot use v22-only surface
+  (EventNotificationHandler, Billing.FeedbackOption, discriminated-union
+  V2 schema coercion) without an upgrade.
+source_type: changelog
+source: >
+  https://raw.githubusercontent.com/stripe/stripe-node/master/CHANGELOG.md
+  (v22.4.0 2026-07-29 through v22.6.2 2026-09-09); repo check:
+  backend/package.json:274, backend/server/lead-map-routes.ts:128
+  (apiVersion '2025-01-27.acacia'), git grep of `stripe.webhooks.constructEvent`
+  across backend/server/{index,dance-billing-service,game-billing-service,
+  academy-stripe-webhook-routes,post-agent-stripe-webhook}.ts.
+authority_tier: 1
+vendor: Stripe
+product: stripe-node (Node SDK)
+version_scope: "installed ^19.3.0; upstream latest v22.6.2"
+publication_date: "2026-09-21"
+valid_from: "2026-09"
+valid_to: >
+  until backend/package.json's stripe dependency changes, or Stripe
+  announces deprecation of the pinned API version '2025-01-27.acacia'
+  (check https://docs.stripe.com/upgrades for sunset notices)
+evidence_summary: >
+  v22.4.0→v22.6.2 changelog shows no removals affecting our call sites
+  (webhooks.constructEvent signature unchanged; subscription/Connect
+  resources unchanged). v22.6.0 pinned the SDK's default API version to
+  2026-08-26.dahlia, but our code always passes an explicit apiVersion, so
+  the SDK's default does not apply to us. This is genuine SDK/feature drift,
+  not a compatibility break: we are missing v22-only additions (typed
+  EventNotificationHandler, Billing.FeedbackOption, V2 discriminated-union
+  coercion for int64/decimal) but nothing currently in use is at risk.
+interpretation: >
+  Safe to stay on ^19.3.0 short-term (GO on the current pin). Upgrading is
+  a deliberate, scoped SDK bump (GO_WITH_TESTS when scheduled) to unlock
+  the v22 surface described in the Produktmuligheter section of
+  docs/impact-reports/2026-09-21-impact.md, not an urgent or forced
+  migration.
+project_impact: >
+  backend/server/{index,dance-billing-service,game-billing-service,
+  academy-stripe-webhook-routes,post-agent-stripe-webhook}.ts — five
+  separate constructEvent call sites are upgrade/refactor candidates for
+  EventNotificationHandler once the SDK is bumped.
+  backend/server/customer-success-service.ts — churn signal today is
+  subscription-status-only; Billing.FeedbackOption would add structured
+  cancellation reasons, but requires the v22 SDK.
+confidence: strong_evidence
+decision: >
+  HOLD on forcing an SDK bump this run — no compatibility risk justifies
+  urgency. Flag as a tracked gap so the next vendor check that finds a
+  stripe-node breaking change (e.g. an API version sunset notice) is not a
+  surprise, and so the EventNotificationHandler/FeedbackOption opportunity
+  in the impact report has a place to point back to.
+affected:
+  - backend/package.json
+  - backend/server/index.ts
+  - backend/server/dance-billing-service.ts
+  - backend/server/game-billing-service.ts
+  - backend/server/academy-stripe-webhook-routes.ts
+  - backend/server/post-agent-stripe-webhook.ts
+  - backend/server/customer-success-service.ts
+lesson: >
+  "Latest upstream version" and "version actually installed" are two
+  different facts the weekly check conflates unless repo-intelligence is
+  run on the SDK itself, not just its API surface. Add an SDK-version grep
+  (package.json, not just symbol usage) to the routine for any vendor with
+  a versioned client library, not only for API-shaped vendors like Resolve.
