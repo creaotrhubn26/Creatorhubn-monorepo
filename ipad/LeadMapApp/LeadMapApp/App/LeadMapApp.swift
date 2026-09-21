@@ -807,7 +807,8 @@ private struct LeadgridProductOnboardingGuide: View {
                 Text("Prøv igjen").frame(minHeight: 44)
             }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.66, green: 0.32, blue: 0.99))
+                // Merkelilla gir 3,98:1 mot hvit tekst; nedtonet til 5,9:1.
+                .tint(Color(red: 0.52, green: 0.24, blue: 0.82))
                 .disabled(isBusy)
                 .accessibilityIdentifier("product-onboarding.retry-load")
         }

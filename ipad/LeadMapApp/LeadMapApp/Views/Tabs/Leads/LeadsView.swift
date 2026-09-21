@@ -658,6 +658,7 @@ struct LeadsView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .controlSize(.large)
             .frame(maxWidth: 360)
             .accessibilityIdentifier("leads-workspace-scope")
             Spacer(minLength: 0)
@@ -1053,6 +1054,7 @@ struct LeadsView: View {
                     .stroke(active ? LdBrand.purple.opacity(0.5) : LdBrand.stroke,
                             lineWidth: active ? 1.5 : 1)
             )
+            .trykkflate()
         }
         .buttonStyle(.plain)
     }
@@ -1373,6 +1375,7 @@ struct LeadsView: View {
                 .padding(.horizontal, 10).padding(.vertical, 7)
                 .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(LdBrand.stroke, lineWidth: 1))
+                .trykkflate()
             }
         }
     }
@@ -1385,6 +1388,7 @@ struct LeadsView: View {
                 .frame(width: 28, height: 28)
                 .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).stroke(LdBrand.stroke, lineWidth: 1))
+                .trykkflate()
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -1412,6 +1416,7 @@ struct LeadsView: View {
                     RoundedRectangle(cornerRadius: 7)
                         .stroke(isCurrent ? Color.clear : LdBrand.stroke, lineWidth: 1)
                 )
+                .trykkflate()
         }
         .buttonStyle(.plain)
     }
