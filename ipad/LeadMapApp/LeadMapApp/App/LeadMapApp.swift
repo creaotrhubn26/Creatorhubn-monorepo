@@ -800,7 +800,12 @@ private struct LeadgridProductOnboardingGuide: View {
                 .font(.appScaled(size: 11))
                 .foregroundStyle(Color.white.opacity(0.68))
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Prøv igjen") { Task { await load() } }
+            // Rammen ligger på etiketten: på .borderedProminent er det
+            // etiketten som bestemmer knappens flate, så en ytre .frame
+            // ville bare sentrert en 34pt knapp i et 44pt felt.
+            Button { Task { await load() } } label: {
+                Text("Prøv igjen").frame(minHeight: 44)
+            }
                 .buttonStyle(.borderedProminent)
                 .tint(Color(red: 0.66, green: 0.32, blue: 0.99))
                 .disabled(isBusy)
