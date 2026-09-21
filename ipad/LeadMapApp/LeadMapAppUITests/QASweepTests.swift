@@ -50,6 +50,13 @@ final class QASweepTests: XCTestCase {
     // MARK: - Add lead: responsiv iPhone-layout
 
     func testAddLeadMobileLayout() throws {
+        // Denne kontrollerer iPhone-layouten: ett «Avbryt» i navigasjonslinjen
+        // og et skjema som skal kunne sveipes. iPad har en annen, like riktig
+        // layout, så på pad målte testen feil flate og feilet uten at noe var
+        // galt. iPad-varianten dekkes av testIPad*-testene.
+        guard UIDevice.current.userInterfaceIdiom == .phone else {
+            throw XCTSkip("Kontrollen gjelder iPhone-layouten.")
+        }
         let app = launchApp(
             tab: 2,
             environment: ["QA_TOUR": "add-lead", "QA_DEMO": "1"]
