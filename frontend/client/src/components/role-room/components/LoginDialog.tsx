@@ -3436,6 +3436,7 @@ export default function LoginDialog({
     selectedRole,
     loginPersona,
     isLandingPage,
+    signupMode,
     onLoginSuccess,
     persistCommercialSetup,
     isCommercialPaymentRequired,
