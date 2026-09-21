@@ -23,7 +23,8 @@ export interface PostTurnoverMediaSnapshot {
   createdAt: string;
 }
 
-export interface PostTurnoverSourceSnapshot {
+export interface PostProductionSoundSourceSnapshot {
+  sourceType: 'production_sound';
   productionDayId: string;
   soundVersion: number;
   capturedAt: string;
@@ -31,6 +32,28 @@ export interface PostTurnoverSourceSnapshot {
   availableMediaIds: string[];
   media: PostTurnoverMediaSnapshot[];
 }
+
+export interface PostPictureSourceSnapshot {
+  sourceType: 'picture';
+  workspaceProjectId: string;
+  versionId: string;
+  versionNumber: number;
+  versionLabel: string;
+  versionStatus: string;
+  storageObjectId: string;
+  displayName: string;
+  checksumSha256: string;
+  sizeBytes: number;
+  contentType?: string;
+  durationSeconds?: number;
+  latestVersionNumberAtCapture: number;
+  versionCreatedAt: string;
+  capturedAt: string;
+}
+
+export type PostTurnoverSourceSnapshot =
+  | PostProductionSoundSourceSnapshot
+  | PostPictureSourceSnapshot;
 
 export interface PostQcIssue {
   id: string;
@@ -76,7 +99,12 @@ export type PostTurnoverImpactCode =
   | 'media_missing'
   | 'media_changed'
   | 'media_reconciliation_changed'
-  | 'new_media_available';
+  | 'new_media_available'
+  | 'picture_project_changed'
+  | 'picture_version_missing'
+  | 'picture_asset_changed'
+  | 'picture_status_changed'
+  | 'new_picture_version_available';
 
 export interface PostTurnoverImpactItem {
   code: PostTurnoverImpactCode;
@@ -130,6 +158,13 @@ export type ParsedPostProductionCommand =
       notes?: string;
       productionDayId: string;
       mediaIds: string[];
+    }
+  | {
+      type: 'create_picture_turnover';
+      label: string;
+      recipient?: string;
+      notes?: string;
+      pictureVersionId: string;
     }
   | { type: 'transition_turnover'; turnoverId: string; status: PostTurnoverStatus }
   | { type: 'refresh_turnover'; turnoverId: string }
@@ -195,6 +230,23 @@ function positiveInteger(value: unknown, field: string): number {
   return number;
 }
 
+function optionalNonNegativeNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    throw new PostProductionValidationError(`${field} må være et ikke-negativt tall.`);
+  }
+  return number;
+}
+
+function uuid(value: unknown, field: string): string {
+  const normalized = requiredString(value, field, 36).toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(normalized)) {
+    throw new PostProductionValidationError(`${field} må være en gyldig UUID.`);
+  }
+  return normalized;
+}
+
 function sha256(value: unknown, field: string): string {
   const normalized = requiredString(value, field, 64).toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(normalized)) {
@@ -221,6 +273,35 @@ function limitedArray(value: unknown, field: string, maxLength: number): unknown
 function normalizeSource(value: unknown, field: string): PostTurnoverSourceSnapshot {
   const input = asObject(value);
   if (!input) throw new PostProductionValidationError(`${field} må være et objekt.`);
+  if (input.sourceType === 'picture') {
+    const source: PostPictureSourceSnapshot = {
+      sourceType: 'picture',
+      workspaceProjectId: uuid(input.workspaceProjectId, `${field}.workspaceProjectId`),
+      versionId: uuid(input.versionId, `${field}.versionId`),
+      versionNumber: positiveInteger(input.versionNumber, `${field}.versionNumber`),
+      versionLabel: requiredString(input.versionLabel, `${field}.versionLabel`, 240),
+      versionStatus: requiredString(input.versionStatus, `${field}.versionStatus`, 60),
+      storageObjectId: uuid(input.storageObjectId, `${field}.storageObjectId`),
+      displayName: requiredString(input.displayName, `${field}.displayName`, 255),
+      checksumSha256: sha256(input.checksumSha256, `${field}.checksumSha256`),
+      sizeBytes: positiveInteger(input.sizeBytes, `${field}.sizeBytes`),
+      contentType: optionalString(input.contentType, `${field}.contentType`, 120),
+      durationSeconds: optionalNonNegativeNumber(input.durationSeconds, `${field}.durationSeconds`),
+      latestVersionNumberAtCapture: positiveInteger(
+        input.latestVersionNumberAtCapture,
+        `${field}.latestVersionNumberAtCapture`,
+      ),
+      versionCreatedAt: timestamp(input.versionCreatedAt, `${field}.versionCreatedAt`),
+      capturedAt: timestamp(input.capturedAt, `${field}.capturedAt`),
+    };
+    if (source.latestVersionNumberAtCapture < source.versionNumber) {
+      throw new PostProductionValidationError(`${field}.latestVersionNumberAtCapture kan ikke være eldre enn valgt versjon.`);
+    }
+    return source;
+  }
+  if (input.sourceType !== undefined && input.sourceType !== 'production_sound') {
+    throw new PostProductionValidationError(`${field}.sourceType har en ugyldig verdi.`);
+  }
   const media = limitedArray(input.media, `${field}.media`, 2_000).map((entry, index) => {
     const item = asObject(entry);
     if (!item) throw new PostProductionValidationError(`${field}.media[${index}] er ugyldig.`);
@@ -251,6 +332,9 @@ function normalizeSource(value: unknown, field: string): PostTurnoverSourceSnaps
     throw new PostProductionValidationError(`${field}.media inneholder en fil som ikke var tilgjengelig ved snapshot.`);
   }
   return {
+    // Old manifests predate the discriminator. Treating them as sound keeps
+    // persisted ledgers readable while every subsequent save makes it explicit.
+    sourceType: 'production_sound',
     productionDayId: requiredString(input.productionDayId, `${field}.productionDayId`, 255),
     soundVersion: integer(input.soundVersion, `${field}.soundVersion`),
     capturedAt: timestamp(input.capturedAt, `${field}.capturedAt`),
@@ -343,6 +427,15 @@ export function parsePostProductionCommand(value: unknown): ParsedPostProduction
       mediaIds: [...new Set(mediaIds)],
     };
   }
+  if (type === 'create_picture_turnover') {
+    return {
+      type,
+      label: requiredString(input.label, 'command.label', 240),
+      recipient: optionalString(input.recipient, 'command.recipient', 240),
+      notes: optionalString(input.notes, 'command.notes', 5_000),
+      pictureVersionId: uuid(input.pictureVersionId, 'command.pictureVersionId'),
+    };
+  }
   const turnoverId = requiredString(input.turnoverId, 'command.turnoverId', 120);
   if (type === 'transition_turnover') {
     return {
@@ -411,7 +504,7 @@ export function applyPostProductionCommand(
   context: PostCommandContext,
 ): PostProductionOperations {
   if (command.type === 'create_turnover') {
-    if (command.source.media.length === 0) {
+    if (command.source.sourceType === 'production_sound' && command.source.media.length === 0) {
       throw new PostProductionValidationError('Velg minst én aktiv recorderfil til turnoveren.');
     }
     const manifest: PostTurnoverManifest = {
@@ -465,7 +558,13 @@ export function applyPostProductionCommand(
         status: hasOpenIssues ? 'qc_issues' : 'draft',
         updatedBy: context.actorUserId,
         updatedAt: context.now,
-        events: [...turnover.events, event(context, 'source_refreshed', 'Oppdaterte manifestet mot gjeldende lydgrunnlag.')].slice(-500),
+        events: [...turnover.events, event(
+          context,
+          'source_refreshed',
+          command.source.sourceType === 'picture'
+            ? 'Oppdaterte manifestet mot gjeldende picture-grunnlag.'
+            : 'Oppdaterte manifestet mot gjeldende lydgrunnlag.',
+        )].slice(-500),
       };
     }
     if (command.type === 'add_qc_issue') {
@@ -509,13 +608,66 @@ export function collectPostTurnoverImpact(
   current: PostTurnoverSourceSnapshot | null,
 ): PostTurnoverImpact {
   const items: PostTurnoverImpactItem[] = [];
+  if (snapshot.sourceType === 'picture') {
+    if (!current) {
+      items.push({
+        code: 'picture_version_missing',
+        severity: 'blocking',
+        message: 'Picture-versjonen eller den sikre prosjektkoblingen finnes ikke lenger.',
+      });
+    } else if (current.sourceType !== 'picture') {
+      items.push({
+        code: 'picture_project_changed',
+        severity: 'blocking',
+        message: 'Kildetypen samsvarer ikke lenger med picture-manifestet.',
+      });
+    } else {
+      if (snapshot.workspaceProjectId !== current.workspaceProjectId) {
+        items.push({
+          code: 'picture_project_changed',
+          severity: 'blocking',
+          message: 'Role Room-prosjektet er koblet til et annet CreatorHub-prosjekt.',
+        });
+      }
+      if (
+        snapshot.storageObjectId !== current.storageObjectId
+        || snapshot.checksumSha256 !== current.checksumSha256
+        || snapshot.sizeBytes !== current.sizeBytes
+      ) {
+        items.push({
+          code: 'picture_asset_changed',
+          severity: 'blocking',
+          message: `${snapshot.displayName} samsvarer ikke med lagringsreferansen og kontrollsummen i manifestet.`,
+        });
+      }
+      if (snapshot.versionStatus !== current.versionStatus) {
+        items.push({
+          code: 'picture_status_changed',
+          severity: 'warning',
+          message: `Picture-status er endret fra ${snapshot.versionStatus} til ${current.versionStatus}.`,
+        });
+      }
+      if (current.latestVersionNumberAtCapture > snapshot.latestVersionNumberAtCapture) {
+        items.push({
+          code: 'new_picture_version_available',
+          severity: 'warning',
+          message: `En nyere picture-versjon (V${current.latestVersionNumberAtCapture}) er tilgjengelig.`,
+        });
+      }
+    }
+    return {
+      stale: items.length > 0,
+      blocking: items.some((item) => item.severity === 'blocking'),
+      items,
+    };
+  }
   if (!current) {
     items.push({
       code: 'production_day_missing',
       severity: 'blocking',
       message: 'Produksjonsdagen finnes ikke lenger.',
     });
-  } else {
+  } else if (current.sourceType === 'production_sound') {
     if (snapshot.soundVersion !== current.soundVersion) {
       items.push({
         code: 'sound_report_changed',
@@ -561,6 +713,12 @@ export function collectPostTurnoverImpact(
         message: `${newMediaCount} ny${newMediaCount === 1 ? '' : 'e'} recorderfil${newMediaCount === 1 ? '' : 'er'} er tilgjengelig for dagen.`,
       });
     }
+  } else {
+    items.push({
+      code: 'production_day_missing',
+      severity: 'blocking',
+      message: 'Lydgrunnlaget samsvarer ikke lenger med manifestet.',
+    });
   }
   return {
     stale: items.length > 0,

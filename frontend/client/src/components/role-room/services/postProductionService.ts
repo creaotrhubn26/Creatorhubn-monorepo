@@ -1,4 +1,5 @@
 import type {
+  PostPictureSourceCatalog,
   PostProductionRecord,
   PostQcSeverity,
   PostTurnoverStatus,
@@ -14,6 +15,13 @@ export type PostProductionCommand =
       productionDayId: string;
       mediaIds: string[];
     }
+  | {
+      type: 'create_picture_turnover';
+      label: string;
+      recipient?: string;
+      notes?: string;
+      pictureVersionId: string;
+    }
   | { type: 'transition_turnover'; turnoverId: string; status: PostTurnoverStatus }
   | { type: 'refresh_turnover'; turnoverId: string }
   | { type: 'add_qc_issue'; turnoverId: string; severity: PostQcSeverity; message: string }
@@ -23,6 +31,7 @@ type PostProductionPayload = {
   error?: string;
   message?: string;
   postProduction?: PostProductionRecord;
+  pictureSources?: PostPictureSourceCatalog;
 };
 
 export class PostProductionConflictError extends Error {
@@ -54,6 +63,18 @@ export const postProductionService = {
       throw new Error(body.message || body.error || 'Kunne ikke hente post-produksjonsgrunnlaget.');
     }
     return body.postProduction;
+  },
+
+  async getPictureSources(projectId: string): Promise<PostPictureSourceCatalog> {
+    const response = await fetch(`${base(projectId)}/picture-sources`, {
+      credentials: 'include',
+      headers: roleRoomAgentDefaultHeaders(),
+    });
+    const body = await payload(response);
+    if (!response.ok || !body.pictureSources) {
+      throw new Error(body.message || body.error || 'Kunne ikke hente picture-kilder.');
+    }
+    return body.pictureSources;
   },
 
   async command(

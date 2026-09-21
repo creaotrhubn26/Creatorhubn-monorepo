@@ -4,6 +4,9 @@ import { openCastingPlanner, selectFirstProject } from './helpers/role-room';
 const projectId = 'e2e-troll-production';
 const mediaId = '8b49da36-ff43-4d8f-98dc-20ce0e39218d';
 const storageObjectId = '92e76092-2716-4e26-8b77-b26a331919bb';
+const workspaceProjectId = '6cae5551-4d32-4b22-8c26-79fa61f8c7b1';
+const pictureVersionId = 'b70ea5f0-06a4-4a1b-b357-83d7872bdf9f';
+const pictureStorageObjectId = 'f48ba060-ebf0-4509-b77a-e889716495ab';
 
 async function installPostApi(page: Page) {
   let storedProject: Record<string, any> | null = null;
@@ -48,6 +51,17 @@ async function installPostApi(page: Page) {
   await page.route(`**/api/role-room/projects/${projectId}/post-production**`, async (route) => {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
     const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith('/picture-sources') && request.method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pictureSources: {
+        binding: { status: 'linked', workspaceProjectId },
+        versions: [{
+          id: pictureVersionId, versionNumber: 2, versionLabel: 'Director cut', status: 'under_review',
+          displayName: 'TROLL_picture_v2.mp4', sizeBytes: 512_000_000, contentType: 'video/mp4',
+          durationSeconds: 92, createdAt: '2026-09-21T09:30:00.000Z', isLatest: true,
+        }],
+      } }) });
+    }
     if (request.method() === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ postProduction: record() }) });
     }
@@ -59,11 +73,25 @@ async function installPostApi(page: Page) {
       turnovers = [{
         id: 'turnover-1', label: command.label, recipient: command.recipient, notes: command.notes, status: 'draft',
         source: {
-          productionDayId: command.productionDayId, soundVersion: 2, capturedAt: time(), availableMediaIds: [mediaId],
+          sourceType: 'production_sound', productionDayId: command.productionDayId, soundVersion: 2, capturedAt: time(), availableMediaIds: [mediaId],
           media: [{ mediaId, storageObjectId, displayName: media.displayName, checksumSha256: media.checksumSha256, sizeBytes: media.sizeBytes, reconciliationStatus: 'matched', continuityTakeId: 'troll-take-1', createdAt: media.createdAt }],
         },
         issues: [],
         events: [{ id: 'created', type: 'created', message: `Opprettet turnover «${command.label}».`, actorUserId: 'e2e-test-user', createdAt: time() }],
+        createdBy: 'e2e-test-user', createdAt: time(), updatedBy: 'e2e-test-user', updatedAt: time(),
+      }];
+    } else if (command.type === 'create_picture_turnover') {
+      turnovers = [{
+        id: 'picture-turnover-1', label: command.label, recipient: command.recipient, notes: command.notes, status: 'draft',
+        source: {
+          sourceType: 'picture', workspaceProjectId, versionId: pictureVersionId, versionNumber: 2,
+          versionLabel: 'Director cut', versionStatus: 'under_review', storageObjectId: pictureStorageObjectId,
+          displayName: 'TROLL_picture_v2.mp4', checksumSha256: 'b'.repeat(64), sizeBytes: 512_000_000,
+          contentType: 'video/mp4', durationSeconds: 92, latestVersionNumberAtCapture: 2,
+          versionCreatedAt: '2026-09-21T09:30:00.000Z', capturedAt: time(),
+        },
+        issues: [],
+        events: [{ id: 'picture-created', type: 'created', message: `Opprettet turnover «${command.label}».`, actorUserId: 'e2e-test-user', createdAt: time() }],
         createdBy: 'e2e-test-user', createdAt: time(), updatedBy: 'e2e-test-user', updatedAt: time(),
       }];
     } else {
@@ -116,7 +144,7 @@ async function installPostApi(page: Page) {
   return { commands, authenticatedRequests, record };
 }
 
-test.describe('Autentisert Troll-flyt · Post Supervisor og Post Sound', () => {
+test.describe('Autentisert Troll-flyt · Post Supervisor, Post Sound og Editorial', () => {
   test('går fra privat recorderreferanse via mottak og QC til sporbar godkjenning', async ({ page }) => {
     const runtimeErrors: string[] = [];
     const targetedApiFailures: string[] = [];
@@ -194,5 +222,43 @@ test.describe('Autentisert Troll-flyt · Post Supervisor og Post Sound', () => {
     await page.setViewportSize({ width: 1180, height: 820 });
     await expect(page.getByLabel('Manifestnavn')).toBeVisible();
     await expect.poll(() => workspace.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  });
+
+  test('leverer en S3-verifisert Video Room-versjon gjennom samme picture-QC-flyt', async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    page.on('pageerror', (error) => runtimeErrors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error' && /TypeError|ReferenceError|Rendered fewer hooks|Minified React error/i.test(message.text())) runtimeErrors.push(message.text());
+    });
+    const api = await installPostApi(page);
+    await openCastingPlanner(page, {
+      urlFlags: { seed: 'post-production-troll', session: 'post-supervisor', lens: 'post-production' },
+    });
+    await selectFirstProject(page);
+    await expect(page.getByTestId('post-production-workspace')).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId('post-surface-turnovers').click();
+    await page.getByLabel('Kildetype').click();
+    await page.getByRole('option', { name: 'Picture / klipp' }).click();
+
+    await expect(page.getByText('TROLL_picture_v2.mp4').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Åpne Video Room' })).toHaveAttribute(
+      'href',
+      `/workspace/${workspaceProjectId}/video-room`,
+    );
+    await page.getByLabel('Leveringsnotat').fill('Picture V2 med verifisert kontrollsum og privat lagringsreferanse.');
+    await page.getByTestId('create-post-turnover').click();
+    await expect(page.getByText('Turnover-manifestet er opprettet som et sporbart utkast.')).toBeVisible();
+    await page.getByRole('button', { name: 'Gjør klar' }).click();
+    await page.getByRole('button', { name: 'Bekreft mottatt' }).click();
+    await page.getByRole('button', { name: 'Godkjenn turnover' }).click();
+    await expect(page.getByTestId('post-turnover-picture-turnover-1').getByText('Godkjent', { exact: true })).toBeVisible();
+
+    expect(api.commands).toEqual([
+      'create_picture_turnover', 'transition_turnover', 'transition_turnover', 'transition_turnover',
+    ]);
+    const source = api.record().operations.turnovers[0].source;
+    expect(source).toEqual(expect.objectContaining({ sourceType: 'picture', versionId: pictureVersionId, storageObjectId: pictureStorageObjectId }));
+    expect(JSON.stringify(api.record())).not.toContain('objectKey');
+    expect(runtimeErrors).toEqual([]);
   });
 });
