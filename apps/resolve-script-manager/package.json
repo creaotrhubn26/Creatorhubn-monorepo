@@ -11,7 +11,8 @@
     "test:mcp": "node mcp/test-post-agent-resolve-mcp.mjs",
     "test:mcp:live": "node mcp/test-post-agent-resolve-mcp.mjs --live",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "e2e:leadgrid-posters": "node scripts/e2e-leadgrid-posters.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -30,6 +31,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
