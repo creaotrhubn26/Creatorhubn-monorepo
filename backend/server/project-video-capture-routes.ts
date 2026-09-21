@@ -174,7 +174,7 @@ const assetSelect = `
          take.take_number, take.status AS take_status, take.circled,
          take.continuity_notes, take.performance_notes, take.technical_notes,
          COALESCE(account.user_id, project.user_id) AS storage_owner_user_id,
-         object_row.status AS storage_status
+         object_row.status AS storage_status, object_row.object_key AS storage_object_key
     FROM project_video_assets asset
     JOIN projects project ON project.id = asset.project_id
     LEFT JOIN project_video_takes take ON take.asset_id = asset.id
@@ -466,10 +466,14 @@ export function setupProjectVideoCaptureRoutes(input: {
         asset = await loadAsset(req.params.projectId, req.params.assetId);
       }
     }
+    const playbackUrl = asset.stream_uid && asset.stream_state === "ready"
+      ? await signStreamPlaybackUrl(asset.stream_uid, 15 * 60)
+      : asset.storage_status === "active" && asset.storage_object_key
+        ? await createSoundRoomObjectDownloadUrl(asset.storage_object_key, 15 * 60)
+        : null;
     return res.json({
       asset: mapAsset(asset),
-      playbackUrl: asset.stream_uid && asset.stream_state === "ready"
-        ? await signStreamPlaybackUrl(asset.stream_uid, 15 * 60) : null,
+      playbackUrl,
       thumbnailUrl: asset.stream_uid && asset.stream_state === "ready"
         ? await signStreamThumbnailUrl(asset.stream_uid, 15 * 60) : null,
     });

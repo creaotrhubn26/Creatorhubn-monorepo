@@ -3,7 +3,11 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProjectAccess } from "./project-team-routes.js";
-import { initiateVideoCaptureUpload, resumeVideoRoomUpload } from "./sound-room-storage-service.js";
+import {
+  createSoundRoomObjectDownloadUrl,
+  initiateVideoCaptureUpload,
+  resumeVideoRoomUpload,
+} from "./sound-room-storage-service.js";
 import { setupProjectVideoCaptureRoutes } from "./project-video-capture-routes.js";
 
 vi.mock("./project-team-routes.js", () => ({
@@ -183,5 +187,44 @@ describe("project video capture authorization", () => {
     );
     expect(inserts).toHaveLength(1);
     expect(initiateVideoCaptureUpload).not.toHaveBeenCalled();
+  });
+
+  it("returns a signed CreatorHub original when Stream playback is not ready", async () => {
+    vi.mocked(getProjectAccess).mockResolvedValue({
+      canRead: true, canEdit: true, isOwner: true, source: "owner", role: "owner",
+    } as any);
+    vi.mocked(createSoundRoomObjectDownloadUrl).mockResolvedValue(
+      "https://creatorhub-storage.test/signed-original",
+    );
+    const state = appWithPool({
+      id: validBody.assetId,
+      project_id: "10000000-0000-4000-8000-000000000002",
+      storage_object_id: "30000000-0000-4000-8000-000000000004",
+      storage_owner_user_id: "owner-1",
+      storage_status: "active",
+      storage_object_key: "projects/project/video-capture/original.mov",
+      original_filename: validBody.fileName,
+      content_type: validBody.contentType,
+      size_bytes: String(validBody.sizeBytes),
+      checksum_sha256: validBody.checksumSha256,
+      source_type: validBody.sourceType,
+      recorded_at: validBody.recordedAt,
+      capture_state: "ready",
+      stream_uid: null,
+      stream_state: "processing",
+      created_at: validBody.recordedAt,
+      updated_at: validBody.recordedAt,
+    });
+
+    const response = await request(state.app).get(
+      "/api/projects/10000000-0000-4000-8000-000000000002/video-capture/assets/20000000-0000-4000-8000-000000000003",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.playbackUrl).toBe("https://creatorhub-storage.test/signed-original");
+    expect(createSoundRoomObjectDownloadUrl).toHaveBeenCalledWith(
+      "projects/project/video-capture/original.mov",
+      15 * 60,
+    );
   });
 });

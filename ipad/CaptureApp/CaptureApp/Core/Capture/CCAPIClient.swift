@@ -246,6 +246,59 @@ actor CCAPIClient {
         throw CCAPIError.invalidResponse("liveview endpoint did not return JPEG")
     }
 
+    /// Reads Canon's detailed finite Live View packet and extracts the image
+    /// coordinate space required by `afframeposition`. The packet starts with
+    /// a 7-byte metadata header (`FF 00 01` + big-endian JSON length), followed
+    /// by JSON and then the JPEG packet.
+    func liveViewGeometry() async throws -> CCAPILiveViewGeometry {
+        let path = try advertisedEndpoint(
+            containing: "/shooting/liveview/flipdetail",
+            exactSuffix: "/shooting/liveview/flipdetail",
+            method: .get
+        )
+        let (data, _) = try await getBinary(path: path + "?kind=both", timeout: 3)
+        return try Self.parseLiveViewGeometry(data)
+    }
+
+    static func parseLiveViewGeometry(_ data: Data) throws -> CCAPILiveViewGeometry {
+        guard data.count >= 7,
+              data[data.startIndex] == 0xff,
+              data[data.index(data.startIndex, offsetBy: 1)] == 0x00,
+              data[data.index(data.startIndex, offsetBy: 2)] == 0x01
+        else { throw CCAPIError.invalidResponse("invalid flipdetail metadata header") }
+        let lengthBytes = (3...6).map { UInt32(data[data.index(data.startIndex, offsetBy: $0)]) }
+        let jsonLength = Int(
+            (lengthBytes[0] << 24)
+                | (lengthBytes[1] << 16)
+                | (lengthBytes[2] << 8)
+                | lengthBytes[3]
+        )
+        guard jsonLength > 0, data.count >= 7 + jsonLength else {
+            throw CCAPIError.invalidResponse("truncated flipdetail metadata")
+        }
+        let json = data.subdata(in: 7..<(7 + jsonLength))
+        let envelope: CCAPILiveViewDetailEnvelope
+        do {
+            envelope = try JSONDecoder().decode(CCAPILiveViewDetailEnvelope.self, from: json)
+        } catch {
+            throw CCAPIError.decode(String(describing: error))
+        }
+        let detail = envelope.liveviewdata
+        guard detail.image.sizex > 0,
+              detail.image.sizey > 0,
+              detail.visible.positionwidth > 0,
+              detail.visible.positionheight > 0
+        else { throw CCAPIError.invalidResponse("empty flipdetail geometry") }
+        return CCAPILiveViewGeometry(
+            imageWidth: detail.image.sizex,
+            imageHeight: detail.image.sizey,
+            visibleX: detail.visible.positionx,
+            visibleY: detail.visible.positiony,
+            visibleWidth: detail.visible.positionwidth,
+            visibleHeight: detail.visible.positionheight
+        )
+    }
+
     /// Stops the exact Live View lifecycle the body advertises. Some Canon
     /// bodies, including the verified R6 Mark II, expose POST-only on the
     /// general endpoint and use Canon's documented `liveviewsize: off` body.
@@ -285,7 +338,19 @@ actor CCAPIClient {
         })
         return CCAPIVideoCapabilities(
             canRecordMovie: canRecordMovie,
-            writableSettings: writableSettings
+            writableSettings: writableSettings,
+            canDriveFocus: supportsAdvertisedEndpoint(
+                suffix: "/shooting/control/drivefocus",
+                method: .post
+            ),
+            canAutoFocus: supportsAdvertisedEndpoint(
+                suffix: "/shooting/control/af",
+                method: .post
+            ),
+            canSetAFFrame: supportsAdvertisedEndpoint(
+                suffix: "/shooting/liveview/afframeposition",
+                method: .put
+            )
         )
     }
 
@@ -297,9 +362,21 @@ actor CCAPIClient {
         var settings: [CCAPIShootingSettingKey: CCAPIChoiceSetting] = [:]
         for key in CCAPIShootingSettingKey.allCases {
             guard let path = readableSettingEndpoint(key) else { continue }
-            let setting: CCAPIChoiceSetting = try await get(path: path)
-            guard !setting.ability.isEmpty, setting.ability.contains(setting.value) else { continue }
-            settings[key] = setting
+            do {
+                let setting: CCAPIChoiceSetting = try await get(path: path)
+                guard !setting.ability.isEmpty, setting.ability.contains(setting.value) else { continue }
+                settings[key] = setting
+            } catch CCAPIError.cameraBusy {
+                continue
+            } catch CCAPIError.httpStatus(let code, _) where code == 503 {
+                // A setting can be advertised by the body but unavailable in
+                // the active shooting mode. Keep the other controls visible.
+                continue
+            } catch CCAPIError.decode {
+                // Some optional settings use camera-specific object payloads.
+                // They must not make TV/AV/ISO disappear from the whole panel.
+                continue
+            }
         }
         return settings
     }
@@ -317,7 +394,12 @@ actor CCAPIClient {
         guard current.ability.contains(value) else {
             throw CCAPIError.invalidResponse("value is not advertised for \(key.rawValue)")
         }
-        try await put(path: path, body: ["value": value])
+        let wireValue: any Sendable = if key == .colortemperature, let integer = Int(value) {
+            integer
+        } else {
+            value
+        }
+        try await put(path: path, body: ["value": wireValue])
         let confirmed: CCAPIChoiceSetting = try await get(path: path)
         guard confirmed.value == value else {
             throw CCAPIError.invalidResponse("camera did not confirm \(key.rawValue)")
@@ -336,12 +418,44 @@ actor CCAPIClient {
         try await post(path: path, body: ["action": recording ? "start" : "stop"])
     }
 
+    /// Moves focus by one camera-defined step. Canon exposes relative drive
+    /// amounts rather than an absolute lens-distance scale.
+    func driveFocus(_ drive: CCAPIFocusDrive) async throws {
+        let path = try advertisedEndpoint(
+            containing: "/shooting/control/drivefocus",
+            exactSuffix: "/shooting/control/drivefocus",
+            method: .post
+        )
+        try await post(path: path, body: ["value": drive.rawValue])
+    }
+
+    /// Starts or stops Canon's AF instruction. Focus result information is
+    /// delivered with detailed Live View metadata, not by this response.
+    func setAutoFocus(_ active: Bool) async throws {
+        let path = try advertisedEndpoint(
+            containing: "/shooting/control/af",
+            exactSuffix: "/shooting/control/af",
+            method: .post
+        )
+        try await post(path: path, body: ["action": active ? "start" : "stop"])
+    }
+
+    func setAFFramePosition(x: Int, y: Int) async throws {
+        let path = try advertisedEndpoint(
+            containing: "/shooting/liveview/afframeposition",
+            exactSuffix: "/shooting/liveview/afframeposition",
+            method: .put
+        )
+        try await put(path: path, body: ["positionx": x, "positiony": y])
+    }
+
     /// Downloads camera media through URLSession's file-backed download path,
     /// avoiding a full movie in memory. Absolute URLs are accepted only when
     /// they remain on the connected camera origin.
     func downloadContentToDirectory(
         contentPath: String,
-        directory: URL
+        directory: URL,
+        onProgress: (@Sendable (CCAPIMediaTransferProgress) async -> Void)? = nil
     ) async throws -> URL {
         let contentURL = try sameOriginContentURL(contentPath)
         try FileManager.default.createDirectory(
@@ -355,19 +469,98 @@ actor CCAPIClient {
         let destination = Self.uniqueDestination(directory: directory, fileName: originalName)
         var request = URLRequest(url: contentURL)
         request.httpMethod = "GET"
-        let (temporaryURL, response) = try await session.download(for: request)
+        let startedAt = Date()
+        if let onProgress {
+            await onProgress(CCAPIMediaTransferProgress(
+                receivedBytes: 0,
+                totalBytes: nil,
+                elapsedSeconds: 0
+            ))
+        }
+        let response = try await download(
+            request: request,
+            destination: destination,
+            startedAt: startedAt,
+            onProgress: onProgress
+        )
         guard let http = response as? HTTPURLResponse else {
             throw CCAPIError.invalidResponse("not HTTPURLResponse")
         }
         guard (200..<300).contains(http.statusCode) else {
             throw CCAPIError.httpStatus(code: http.statusCode, body: nil)
         }
-        try FileManager.default.moveItem(at: temporaryURL, to: destination)
+        let downloadedBytes = (try? destination.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+            .map(Int64.init) ?? 0
+        let expectedBytes = response.expectedContentLength > 0
+            ? response.expectedContentLength
+            : (downloadedBytes > 0 ? downloadedBytes : nil)
+        if let onProgress {
+            await onProgress(CCAPIMediaTransferProgress(
+                receivedBytes: downloadedBytes,
+                totalBytes: expectedBytes,
+                elapsedSeconds: Date().timeIntervalSince(startedAt)
+            ))
+        }
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         var mutableDestination = destination
         try? mutableDestination.setResourceValues(values)
         return destination
+    }
+
+    private func download(
+        request: URLRequest,
+        destination: URL,
+        startedAt: Date,
+        onProgress: (@Sendable (CCAPIMediaTransferProgress) async -> Void)?
+    ) async throws -> URLResponse {
+        let stream = AsyncThrowingStream<URLResponse, Error> { continuation in
+            let task = session.downloadTask(with: request) { temporaryURL, response, error in
+                if let error {
+                    continuation.finish(throwing: error)
+                    return
+                }
+                guard let temporaryURL, let response else {
+                    continuation.finish(throwing: CCAPIError.invalidResponse("empty download response"))
+                    return
+                }
+                if let http = response as? HTTPURLResponse,
+                   !(200..<300).contains(http.statusCode) {
+                    continuation.finish(throwing: CCAPIError.httpStatus(code: http.statusCode, body: nil))
+                    return
+                }
+                do {
+                    try FileManager.default.moveItem(at: temporaryURL, to: destination)
+                    continuation.yield(response)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            let progressTask = Task {
+                while !Task.isCancelled, task.state != .completed {
+                    let received = max(0, task.countOfBytesReceived)
+                    let expected = task.countOfBytesExpectedToReceive > 0
+                        ? task.countOfBytesExpectedToReceive
+                        : nil
+                    if let onProgress {
+                        await onProgress(CCAPIMediaTransferProgress(
+                            receivedBytes: received,
+                            totalBytes: expected,
+                            elapsedSeconds: Date().timeIntervalSince(startedAt)
+                        ))
+                    }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+            continuation.onTermination = { @Sendable reason in
+                progressTask.cancel()
+                if case .cancelled = reason { task.cancel() }
+            }
+            task.resume()
+        }
+        for try await response in stream { return response }
+        throw CCAPIError.invalidResponse("download completed without a response")
     }
 
     private enum HTTPMethod {
@@ -399,6 +592,13 @@ actor CCAPIClient {
         case .put: endpoint.put == true
         case .delete: endpoint.delete == true
         }
+    }
+
+    private func supportsAdvertisedEndpoint(suffix: String, method: HTTPMethod) -> Bool {
+        guard let inventory else { return false }
+        return inventory.versions
+            .flatMap(\.apis)
+            .contains { $0.path.hasSuffix(suffix) && supports(endpoint: $0, method: method) }
     }
 
     private func readableSettingEndpoint(_ key: CCAPIShootingSettingKey) -> String? {

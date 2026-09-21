@@ -14,6 +14,8 @@ import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service";
+import { sendCapturePush } from "./capture-push";
+import { broadcastUserEvent } from "./realtime-user-events.js";
 
 const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
 const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -187,18 +189,25 @@ export function setupContactFormsRoutes(deps: ContactFormsDeps): void {
         if (f.mapTo && STD_COLS.has(f.mapTo)) col[f.mapTo] = val;
         else custom[f.label || f.id] = val;
       }
-      const name = col.name || "Ukjent";
-      const email = col.email;
-      if (!email) return res.status(400).json({ error: "email_required" });
+      const name = String(col.name || "Ukjent").trim().slice(0, 255) || "Ukjent";
+      const email = String(col.email || "").trim().toLowerCase().slice(0, 320);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: "valid_email_required" });
+      }
+      const projectType = String(col.projectType || "annet").trim().slice(0, 100) || "annet";
+      const description = String(col.description || "Forespørsel via kontaktskjema")
+        .trim().slice(0, 20_000) || "Forespørsel via kontaktskjema";
 
       const ins = await pool.query(
         `INSERT INTO client_submissions
            (id, name, email, phone, project_type, event_date, location, budget, description,
-            form_data, vendor_email, priority, category, status, submission_type, data, submitted_at, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'medium','inquiry','new','inquiry','{}',NOW(),NOW(),NOW())
+            form_data, owner_user_id, vendor_id, vendor_email, priority, category, status,
+            submission_type, source_channel, data, submitted_at, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,
+                 'medium','inquiry','new','inquiry','contact_form','{}',NOW(),NOW(),NOW())
          RETURNING id`,
-        [name, email, col.phone || null, col.projectType || null, col.eventDate || null, col.location || null,
-         col.budget || null, col.description || null, JSON.stringify(custom), form.vendor_email],
+        [name, email, col.phone || null, projectType, col.eventDate || null, col.location || null,
+         col.budget || null, description, JSON.stringify(custom), form.owner_user_id, form.vendor_email],
       );
       await pool.query(`UPDATE contact_forms SET submission_count = submission_count + 1 WHERE id = $1::uuid`, [form.id]).catch(() => undefined);
 
@@ -208,7 +217,7 @@ export function setupContactFormsRoutes(deps: ContactFormsDeps): void {
           const toEmail = form.vendor_email;
           if (!toEmail) return;
           const rows: [string, string][] = [
-            col.projectType ? ["Type", col.projectType] : null,
+            projectType ? ["Type", projectType] : null,
             col.eventDate ? ["Dato", col.eventDate] : null,
             col.budget ? ["Budsjett", String(col.budget)] : null,
             col.location ? ["Sted", col.location] : null,
@@ -216,11 +225,24 @@ export function setupContactFormsRoutes(deps: ContactFormsDeps): void {
             ...Object.entries(custom).map(([k, v]) => [k, String(v)] as [string, string]),
           ].filter(Boolean) as [string, string][];
           const table = rows.map(([k, v]) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666">${escH(k)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${escH(v)}</td></tr>`).join("");
-          const html = `<div style="font-family:-apple-system,sans-serif;max-width:540px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Ny forespørsel 🎉</h2><p style="font-size:15px;color:#333;line-height:1.6"><b>${escH(name)}</b> (${escH(email)}) sendte deg en forespørsel via «${escH(form.title)}».</p>${table ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:14px">${table}</table>` : ""}${col.description ? `<blockquote style="border-left:3px solid #ff8c00;margin:12px 0;padding:8px 16px;color:#333">«${escH(col.description)}»</blockquote>` : ""}<div style="margin:20px 0"><a href="${APP_URL}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Se forespørselen</a></div><p style="font-size:12px;color:#999">Du finner den under «Forespørsler» i workspacet.</p></div>`;
-          const text = `Ny forespørsel fra ${name} (${email}) via «${form.title}».` + rows.map(([k, v]) => ` ${k}: ${v}.`).join("") + (col.description ? ` «${col.description}»` : "");
-          await sendTransactionalEmail({ to: toEmail, subject: `Ny forespørsel fra ${name}${col.projectType ? " – " + col.projectType : ""}`, html, text, fromLabel: "CreatorHub", kind: "inquiry_received", pool });
+          const html = `<div style="font-family:-apple-system,sans-serif;max-width:540px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Ny forespørsel 🎉</h2><p style="font-size:15px;color:#333;line-height:1.6"><b>${escH(name)}</b> (${escH(email)}) sendte deg en forespørsel via «${escH(form.title)}».</p>${table ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:14px">${table}</table>` : ""}<blockquote style="border-left:3px solid #ff8c00;margin:12px 0;padding:8px 16px;color:#333">«${escH(description)}»</blockquote><div style="margin:20px 0"><a href="${APP_URL}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Se forespørselen</a></div><p style="font-size:12px;color:#999">Du finner den under «Forespørsler» i workspacet.</p></div>`;
+          const text = `Ny forespørsel fra ${name} (${email}) via «${form.title}».` + rows.map(([k, v]) => ` ${k}: ${v}.`).join("") + ` «${description}»`;
+          await sendTransactionalEmail({ to: toEmail, subject: `Ny forespørsel fra ${name} – ${projectType}`, html, text, fromLabel: "CreatorHub", credentialScope: "creatorhub", kind: "inquiry_received", pool });
         } catch (e: any) { console.warn("[contact-form] notify failed:", e?.message); }
       })();
+      void sendCapturePush(
+        pool,
+        String(form.owner_user_id),
+        "Ny forespørsel",
+        `${name} · ${projectType}`,
+        { type: "inquiry", inquiryId: String(ins.rows[0].id) },
+      ).catch((e) => console.warn("[contact-form] Capture push failed:", e));
+      broadcastUserEvent(String(form.owner_user_id), {
+        kind: "inquiry.updated",
+        inquiryId: String(ins.rows[0].id),
+        reason: "created",
+        timestamp: new Date().toISOString(),
+      });
 
       const thanks = (form.branding && form.branding.thankYouMessage) || "Takk! Vi tar kontakt snart.";
       res.status(201).json({ ok: true, id: ins.rows[0].id, message: thanks });

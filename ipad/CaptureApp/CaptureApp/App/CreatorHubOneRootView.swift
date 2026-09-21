@@ -58,6 +58,7 @@ struct CreatorHubOneRootView: View {
     }
 
     @State private var selected: Tab = .today
+    @State private var deepLinks = CaptureDeepLinkRouter.shared
     private let isScreenshotHarness = ProcessInfo.processInfo.arguments.contains("--screenshot-demo-fixtures")
 
     init() {
@@ -186,6 +187,9 @@ struct CreatorHubOneRootView: View {
                     .tag(Tab.debug)
             }
             #endif
+        }
+        .onChange(of: deepLinks.inquiryId) { _, inquiryId in
+            if inquiryId != nil { selected = .today }
         }
         .toolbarBackground(CHTheme.bgDeep, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)

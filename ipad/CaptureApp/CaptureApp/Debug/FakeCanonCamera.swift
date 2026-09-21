@@ -72,6 +72,13 @@ final class FakeCanonCamera: @unchecked Sendable {
         return url
     }
 
+    func simulateMovieCapture(filename: String = "MVI_EXTERNAL.MP4", body: Data? = nil) -> String {
+        simulateCapture(
+            filename: filename,
+            body: body ?? Data("fake-external-canon-movie-\(filename)".utf8)
+        )
+    }
+
     /// Install this fake as the active MockURLProtocol handler.
     func install() {
         MockURLProtocol.handler = { [weak self] request in
@@ -103,6 +110,10 @@ final class FakeCanonCamera: @unchecked Sendable {
 
         if pathWithQuery == "/ccapi/ver100/shooting/control/recbutton" {
             return movieRecordingResponse(for: request, url: url)
+        }
+        if pathWithQuery == "/ccapi/ver100/shooting/control/drivefocus"
+            || pathWithQuery == "/ccapi/ver100/shooting/control/af" {
+            return MockURLProtocol.jsonResponse(for: url, body: "{}")
         }
         if pathWithQuery.hasPrefix("/ccapi/ver100/shooting/settings/") {
             return shootingSettingResponse(for: request, url: url)
@@ -312,6 +323,8 @@ final class FakeCanonCamera: @unchecked Sendable {
         {"path":"/ccapi/ver100/shooting/liveview/flip","get":true,"post":false,"put":false,"delete":false},
         {"path":"/ccapi/ver100/shooting/liveview/scroll","get":true,"post":false,"put":false,"delete":true},
         {"path":"/ccapi/ver100/shooting/control/recbutton","get":false,"post":true,"put":false,"delete":false},
+        {"path":"/ccapi/ver100/shooting/control/drivefocus","get":false,"post":true,"put":false,"delete":false},
+        {"path":"/ccapi/ver100/shooting/control/af","get":false,"post":true,"put":false,"delete":false},
         {"path":"/ccapi/ver100/shooting/settings/tv","get":true,"post":false,"put":true,"delete":false},
         {"path":"/ccapi/ver100/shooting/settings/av","get":true,"post":false,"put":true,"delete":false},
         {"path":"/ccapi/ver100/shooting/settings/iso","get":true,"post":false,"put":true,"delete":false}

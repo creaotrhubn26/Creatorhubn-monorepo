@@ -24,6 +24,7 @@ struct ProjectSelectionView: View {
     @State private var projects: [BackendProjectSummary] = []
     @State private var isLoading: Bool = false
     @State private var loadError: String?
+    @State private var usingCachedProjects = false
 
     @State private var isCreatingSimple: Bool = false
     @State private var simpleTitle: String = "Photo session"
@@ -81,6 +82,13 @@ struct ProjectSelectionView: View {
 
     private var projectList: some View {
         List {
+            if usingCachedProjects {
+                Section {
+                    Label("Frakoblet · viser prosjekter som allerede er lagret på iPaden", systemImage: "externaldrive.badge.checkmark")
+                        .font(.footnote)
+                        .foregroundStyle(CHTheme.warning)
+                }
+            }
             Section {
                 Button {
                     isCreatingSimple = true
@@ -167,6 +175,7 @@ struct ProjectSelectionView: View {
         guard let session = auth.session else { return }
         isLoading = true
         loadError = nil
+        usingCachedProjects = false
         defer { isLoading = false }
         let client = BackendClient(
             baseURL: session.backendBaseURL,
@@ -175,9 +184,46 @@ struct ProjectSelectionView: View {
         do {
             let response = try await client.listProjects()
             projects = response.projects
+            if let database = try? AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()) {
+                try? await TodayStore(database: database).syncProjects(
+                    response.projects,
+                    ownerUserId: session.userId
+                )
+            }
         } catch {
-            loadError = error.localizedDescription
+            do {
+                let database = try AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
+                let cached = try await TodayStore(database: database).cachedProjects(
+                    ownerUserId: session.userId
+                )
+                guard !cached.isEmpty else { throw error }
+                projects = cached.map(Self.summary)
+                usingCachedProjects = true
+            } catch {
+                loadError = error.localizedDescription
+            }
         }
+    }
+
+    private static func summary(_ project: Project) -> BackendProjectSummary {
+        BackendProjectSummary(
+            id: project.id,
+            title: project.title,
+            clientName: project.clientName,
+            eventDate: project.eventDate.map { ISO8601DateFormatter.dateOnly.string(from: $0) },
+            location: project.location,
+            projectType: project.projectType,
+            status: project.status,
+            shotListSummary: .init(
+                listId: nil,
+                totalShots: project.totalShots,
+                completedShots: project.completedShots,
+                mustHaveShots: project.mustHaveShots,
+                completedMustHave: project.completedMustHave
+            ),
+            memoryCardConfigs: TodayStore.memoryCardConfigs(from: project.metadataJson),
+            updatedAt: ISO8601DateFormatter.capture.string(from: project.updatedAt)
+        )
     }
 
     private func createSimpleSession() async {
@@ -210,6 +256,7 @@ struct ProjectSelectionView: View {
                 projectType: simpleType,
                 status: "active",
                 shotListSummary: nil,
+                memoryCardConfigs: [],
                 updatedAt: created.createdAt,
             )
             isCreatingSimple = false

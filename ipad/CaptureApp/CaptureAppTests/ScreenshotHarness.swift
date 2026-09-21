@@ -18,6 +18,7 @@ import XCTest
 /// Run from fastlane:
 ///   fastlane snapshot --scheme CaptureApp \
 ///       --test-without-building --output_directory fastlane/screenshots
+@MainActor
 final class ScreenshotHarness: XCTestCase {
     override class var runsForEachTargetApplicationUIConfiguration: Bool { false }
 
@@ -232,6 +233,11 @@ final class ScreenshotHarness: XCTestCase {
         ]
         app.launch()
 
+        XCTAssertTrue(
+            app.descendants(matching: .any)["video-storage-menu"].waitForExistence(timeout: 10),
+            "Videoarbeidsflaten må vise brukt lokal lagring og lagringsvalg"
+        )
+
         let camera = app.buttons["canon-camera-fake2"]
         XCTAssertTrue(camera.waitForExistence(timeout: 15))
         camera.tap()
@@ -249,8 +255,160 @@ final class ScreenshotHarness: XCTestCase {
         app.buttons["Stopp opptak"].tap()
         XCTAssertTrue(app.buttons["Start opptak"].waitForExistence(timeout: 15))
         XCTAssertTrue(
-            app.staticTexts["Klippet er hentet fra kameraet og sikres i CreatorHub."]
+            app.staticTexts["Klippet er hentet fra kameraet og lagret på iPaden."]
                 .waitForExistence(timeout: 15)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["video-transfer-confirmation"]
+                .waitForExistence(timeout: 5),
+            "En lagret Canon-fil må bekreftes uten å stoppe arbeidsflyten"
+        )
+        XCTAssertTrue(
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "video-take-")).firstMatch
+                .waitForExistence(timeout: 10),
+            "Det importerte Canon-klippet må bli synlig i filmstripen"
+        )
+    }
+
+    func testCanonVideoRecordedOnCameraAppearsInFilmstrip() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "--tab-video",
+            "--fake-cameras",
+            "--canon-video-demo",
+            "--canon-external-movie-demo",
+            "--canon-hardware-smoke",
+        ]
+        app.launch()
+
+        let camera = app.buttons["canon-camera-fake2"]
+        XCTAssertTrue(camera.waitForExistence(timeout: 15))
+        camera.tap()
+        XCTAssertTrue(app.images["Canon CCAPI live monitor"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.staticTexts["MVI_EXTERNAL.MP4"].waitForExistence(timeout: 15),
+            "Et klipp tatt med kameraets fysiske REC-knapp må importeres automatisk"
+        )
+    }
+
+    /// Går gjennom den virkelige redigeringsflaten med et fotografisk portrett,
+    /// ikke den gamle syntetiske sirkel-fixturen. Testen beskytter samtidig
+    /// landscape/portrait, presetvalg, eksponering, crop og undo/redo.
+    func testPortraitEditingWorkflow() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += ["--demo-redigering", "--portrait-fixture"]
+        app.launch()
+        rotate(.landscapeLeft, app: app, landscape: true)
+
+        XCTAssertTrue(
+            app.staticTexts["Portrett QA"].waitForExistence(timeout: 15),
+            "Portrett-fixturen må bli seedet og valgt i redigeringsflaten",
+        )
+        XCTAssertTrue(app.staticTexts["Før"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Etter"].waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["redigering-image-loaded"]
+                .waitForExistence(timeout: 8),
+            "Editoren må ha dekodet selve portrettet, ikke bare vist rammen",
+        )
+        let presetMenu = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Preset:")
+        ).firstMatch
+        XCTAssertTrue(presetMenu.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["redigering-reset"].exists)
+        XCTAssertTrue(app.staticTexts["Lys og farge"].exists)
+        XCTAssertTrue(app.sliders["redigering-slider-eksponering"].exists)
+        snap(app, name: "QA_Redigering_Portrett_Landscape")
+
+        // Portrett-fixturen kan allerede ha Portrett som aktiv recipe. I så fall
+        // åpner ikke alle iOS-versjoner SwiftUI-menyen deterministisk via den
+        // generiske accessibility-knappen; det er heller ingen grunn til å velge
+        // samme preset på nytt. Velg kun når den ikke allerede er aktiv.
+        if !app.buttons["Preset: Portrett"].exists {
+            presetMenu.tap()
+            let portraitPreset = app.buttons["Portrett"]
+            XCTAssertTrue(portraitPreset.waitForExistence(timeout: 4))
+            portraitPreset.tap()
+        }
+        XCTAssertTrue(app.buttons["Preset: Portrett"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Tilpass tone til motiv"].exists)
+
+        let exposure = app.sliders.firstMatch
+        XCTAssertTrue(exposure.waitForExistence(timeout: 4))
+        // En liten, synlig EV-endring uten å blåse ut hudtonene i den visuelle
+        // regresjonen. XCUITest-posisjonen er med vilje nær midtpunktet.
+        exposure.adjust(toNormalizedSliderPosition: 0.515)
+
+        let crop = app.buttons["Beskjær"].firstMatch
+        XCTAssertTrue(crop.waitForExistence(timeout: 4))
+        crop.tap()
+        XCTAssertTrue(app.navigationBars["Beskjær"].waitForExistence(timeout: 4))
+        let canvas = app.descendants(matching: .any)["redigering-crop-canvas"]
+        XCTAssertTrue(canvas.waitForExistence(timeout: 4))
+        let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.20))
+        let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.82))
+        start.press(forDuration: 0.1, thenDragTo: end)
+        let applyCrop = app.navigationBars["Beskjær"].buttons["Beskjær"]
+        XCTAssertTrue(applyCrop.isEnabled)
+        applyCrop.tap()
+
+        let undo = app.buttons["Angre"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 8))
+        XCTAssertTrue(undo.isEnabled)
+        undo.tap()
+        let redo = app.buttons["Gjør om"]
+        XCTAssertEqual(
+            XCTWaiter().wait(
+                for: [XCTNSPredicateExpectation(
+                    predicate: NSPredicate(format: "enabled == true"),
+                    object: redo,
+                )],
+                timeout: 8
+            ),
+            .completed,
+        )
+        redo.tap()
+
+        rotate(.portrait, app: app, landscape: false)
+        XCTAssertTrue(app.staticTexts["Før"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Etter"].waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            app.buttons["Preset: Portrett"].waitForExistence(timeout: 8),
+            "Smart Edit-panelet må fortsatt være tilgjengelig i portrait",
+        )
+        // Verifiser den eksplisitte sammenligningsmodellen, ikke bare splitten:
+        // Delt → Før → Etter. Det fanger knapper som finnes visuelt men ikke gjør
+        // noe, og gir et rent helbilde av den ferdige redigeringen til QA.
+        let splitMode = app.buttons["Delt"]
+        XCTAssertTrue(splitMode.waitForExistence(timeout: 4))
+        splitMode.tap()
+        let beforeMode = app.buttons["Før"]
+        XCTAssertTrue(beforeMode.waitForExistence(timeout: 4))
+        beforeMode.tap()
+        XCTAssertTrue(app.buttons["Etter"].waitForExistence(timeout: 4))
+        snap(app, name: "QA_Redigering_Portrett_Portrait")
+    }
+
+    private func rotate(_ orientation: UIDeviceOrientation, app: XCUIApplication, landscape: Bool) {
+        XCUIDevice.shared.orientation = orientation
+        let window = app.windows.firstMatch
+        XCTAssertEqual(
+            XCTWaiter().wait(
+                for: [XCTNSPredicateExpectation(
+                    predicate: NSPredicate { object, _ in
+                        guard let element = object as? XCUIElement else { return false }
+                        return landscape
+                            ? element.frame.width > element.frame.height
+                            : element.frame.height > element.frame.width
+                    },
+                    object: window,
+                )],
+                timeout: 8
+            ),
+            .completed,
+            "Redigeringsflaten roterte ikke til forventet orientering",
         )
     }
 

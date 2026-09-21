@@ -51,6 +51,27 @@ describe('decodeUserEventFrame', () => {
     });
   });
 
+  it('decodes the shared inquiry invalidation used by Workspace and Capture', () => {
+    expect(
+      decodeUserEventFrame(
+        JSON.stringify({
+          version: USER_EVENTS_PROTOCOL_VERSION,
+          type: 'user_event',
+          event: {
+            kind: 'inquiry.updated',
+            inquiryId: 'inquiry-42',
+            reason: 'replied',
+            timestamp: '2026-09-21T10:00:00.000Z',
+          },
+        }),
+      ),
+    ).toMatchObject({
+      kind: 'inquiry.updated',
+      inquiryId: 'inquiry-42',
+      reason: 'replied',
+    });
+  });
+
   it('drops unsupported protocol versions and malformed control frames', () => {
     expect(
       decodeUserEventFrame(

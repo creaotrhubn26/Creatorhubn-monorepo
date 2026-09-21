@@ -39,6 +39,29 @@ actor DashboardClient {
         )
     }
 
+    /// Exchange the signed-in HTTPS session for the same short-lived,
+    /// single-use WebSocket ticket used by Capture's production realtime
+    /// channel. WorkspaceShell and the native inbox therefore observe one
+    /// user-scoped event stream without exposing the bearer in the URL.
+    func createRealtimeTicket() async throws -> BackendRealtimeTicket {
+        struct EmptyBody: Encodable {}
+        return try await postJSON(
+            path: "/api/realtime/user-events-ticket",
+            body: EmptyBody(),
+            additionalHeaders: [
+                "X-CreatorHub-Client": "capture-ios",
+                "X-CreatorHub-Client-Version": Self.realtimeClientVersion,
+            ]
+        )
+    }
+
+    private static var realtimeClientVersion: String {
+        let info = Bundle.main.infoDictionary
+        let marketing = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "unknown"
+        return "\(marketing)+\(build)"
+    }
+
     // MARK: - Galleri
 
     func listGalleries() async throws -> [GallerySummary] {
@@ -120,7 +143,11 @@ actor DashboardClient {
 
     /// POST a JSON body and decode the response — for mutations whose ack
     /// carries data we need (e.g. a Google Meet join link).
-    func postJSON<Body: Encodable, Response: Decodable>(path: String, body: Body) async throws -> Response {
+    func postJSON<Body: Encodable, Response: Decodable>(
+        path: String,
+        body: Body,
+        additionalHeaders: [String: String] = [:]
+    ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw DashboardError.transport("invalid path \(path)")
         }
@@ -130,6 +157,9 @@ actor DashboardClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         applyAuth(&request)
+        for (name, value) in additionalHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         request.httpBody = try JSONEncoder().encode(body)
         let (data, response) = try await data(for: request)
         try check(response, data)

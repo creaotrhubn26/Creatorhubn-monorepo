@@ -42,6 +42,12 @@ final class TodayStoreTests: XCTestCase {
                 mustHaveShots: 4,
                 completedMustHave: 2,
             ),
+            memoryCardConfigs: [
+                BackendMemoryCardConfig(
+                    label: "A", type: "CFexpress", capacity: "512 GB",
+                    dayNumber: 1, dayName: "Dag 1"
+                )
+            ],
             updatedAt: "2027-01-10T12:00:00Z",
         )
 
@@ -56,6 +62,10 @@ final class TodayStoreTests: XCTestCase {
         XCTAssertEqual(project?.completedMustHave, 2)
         XCTAssertEqual(project?.lastSyncedAt, syncedAt)
         XCTAssertNotNil(project?.eventDate)
+        XCTAssertEqual(
+            project.map { TodayStore.memoryCardConfigs(from: $0.metadataJson).map(\.label) },
+            ["A"]
+        )
     }
 
     // MARK: - Fixtures

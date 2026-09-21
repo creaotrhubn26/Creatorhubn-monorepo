@@ -5338,12 +5338,49 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   app.get("/api/projects/:projectId/capture-status", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      const s = await pool.query(
-        `SELECT id, name, status, starts_at, ends_at FROM capture_sessions WHERE project_id = $1 ORDER BY created_at DESC`,
-        [req.params.projectId],
-      ).catch(() => ({ rows: [] }));
+      const [s, cardResult] = await Promise.all([
+        pool.query(
+          `SELECT id, name, status, starts_at, ends_at FROM capture_sessions WHERE project_id = $1 ORDER BY created_at DESC`,
+          [req.params.projectId],
+        ).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT id, card_name, planned_card_label, capacity_bytes, available_bytes,
+                  photo_count, video_count, audio_count, unsupported_count, asset_count,
+                  duplicate_count, failed_count, total_bytes, copied_bytes, manifest_sha256,
+                  storage_policy, status, local_verified_at, cloud_verified_at,
+                  source_device, updated_at
+             FROM capture_card_transfers
+            WHERE project_id = $1
+            ORDER BY updated_at DESC
+            LIMIT 30`,
+          [req.params.projectId],
+        ).catch(() => ({ rows: [] })),
+      ]);
+      const cardTransfers = cardResult.rows.map((card: any) => ({
+        id: card.id,
+        cardName: card.card_name,
+        plannedCardLabel: card.planned_card_label,
+        capacityBytes: card.capacity_bytes == null ? null : Number(card.capacity_bytes),
+        availableBytes: card.available_bytes == null ? null : Number(card.available_bytes),
+        photoCount: card.photo_count || 0,
+        videoCount: card.video_count || 0,
+        audioCount: card.audio_count || 0,
+        unsupportedCount: card.unsupported_count || 0,
+        assetCount: card.asset_count || 0,
+        duplicateCount: card.duplicate_count || 0,
+        failedCount: card.failed_count || 0,
+        totalBytes: Number(card.total_bytes || 0),
+        copiedBytes: Number(card.copied_bytes || 0),
+        manifestSha256: card.manifest_sha256,
+        storagePolicy: card.storage_policy,
+        status: card.status,
+        locallyVerifiedAt: card.local_verified_at,
+        cloudVerifiedAt: card.cloud_verified_at,
+        sourceDevice: card.source_device,
+        updatedAt: card.updated_at,
+      }));
       const sessions = s.rows;
-      if (sessions.length === 0) return res.json({ hasSession: false });
+      if (sessions.length === 0) return res.json({ hasSession: false, cardTransfers });
       const ids = sessions.map((x: any) => x.id);
       const stats = await pool.query(
         `SELECT count(*)::int AS total,
@@ -5368,6 +5405,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         session: { id: active.id, name: active.name, status: active.status, startsAt: active.starts_at, endsAt: active.ends_at },
         sessionCount: sessions.length,
         shootingNow,
+        cardTransfers,
         assets: {
           total,
           securedToCreatorHubS3: secured,

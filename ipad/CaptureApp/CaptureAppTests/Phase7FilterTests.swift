@@ -180,6 +180,127 @@ final class SkinToneUnifyFilterTests: XCTestCase {
         XCTAssertEqual(output.extent, input.extent,
                        "must no-op when no faces — never apply random shift")
     }
+
+    func testSkinProbabilityAcceptsDiverseSkinAndRejectsClothingColours() {
+        let lightSkin = SkinToneUnifyFilter.skinProbability(r: 0.86, g: 0.66, b: 0.54)
+        let darkSkin = SkinToneUnifyFilter.skinProbability(r: 0.34, g: 0.20, b: 0.14)
+        let blueFabric = SkinToneUnifyFilter.skinProbability(r: 0.12, g: 0.28, b: 0.72)
+        let blackKnit = SkinToneUnifyFilter.skinProbability(r: 0.045, g: 0.04, b: 0.04)
+        let neutralGrey = SkinToneUnifyFilter.skinProbability(r: 0.45, g: 0.45, b: 0.45)
+
+        XCTAssertGreaterThan(lightSkin, 0.15, "lys hud falt ut av kroppsmasken")
+        XCTAssertGreaterThan(darkSkin, 0.15, "mørk hud falt ut av kroppsmasken")
+        XCTAssertEqual(blueFabric, 0, accuracy: 0.001)
+        XCTAssertEqual(blackKnit, 0, accuracy: 0.001)
+        XCTAssertEqual(neutralGrey, 0, accuracy: 0.001)
+    }
+
+    func testSkinColourCubeProducesTheExpectedMaskValues() throws {
+        func maskValue(_ color: CIColor) throws -> Double {
+            let extent = CGRect(x: 0, y: 0, width: 8, height: 8)
+            let image = CIImage(color: color).cropped(to: extent)
+            let mask = try XCTUnwrap(
+                SkinToneUnifyFilter.plausibleSkinMask(for: image, extent: extent)
+            )
+            var pixel = [UInt8](repeating: 0, count: 4)
+            CIContext(options: [.useSoftwareRenderer: true]).render(
+                mask,
+                toBitmap: &pixel,
+                rowBytes: 4,
+                bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                format: .RGBA8,
+                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+            )
+            return Double(pixel[0]) / 255
+        }
+
+        let skin = try maskValue(CIColor(red: 0.86, green: 0.66, blue: 0.54))
+        let blue = try maskValue(CIColor(red: 0.12, green: 0.28, blue: 0.72))
+        let grey = try maskValue(CIColor(red: 0.45, green: 0.45, blue: 0.45))
+        XCTAssertGreaterThan(skin, 0.12, "GPU-masken mistet hud etter LUT-oppslag")
+        XCTAssertLessThan(blue, 0.02, "GPU-masken tok med blå klær")
+        XCTAssertLessThan(grey, 0.02, "GPU-masken tok med nøytrale klær")
+    }
+}
+
+// MARK: - Detailed portrait retouch + subject-adaptive tone
+
+final class PortraitRetouchFilterTests: XCTestCase {
+    func testDetailedRetouchNoOpsSafelyWithoutFace() {
+        var recipe = MagicRecipe.portrait
+        recipe.blemishCleanup = 1
+        recipe.dodgeBurn = 1
+        recipe.shineControl = 1
+        recipe.underEyeLift = 1
+        let input = makeSyntheticImage(width: 240, height: 180)
+        let output = SkinFinishFilter.applyPortraitRetouch(recipe: recipe, to: input)
+        XCTAssertEqual(output.extent, input.extent)
+        XCTAssertNil(SkinFinishFilter.retouchMap(recipe: recipe, to: input))
+    }
+
+    /// Small deterministic QA matrix representing dark, mid and bright faces
+    /// plus the common mixed-light casts. This catches overexposure, non-finite
+    /// output and direction errors without pretending synthetic colours replace
+    /// real R6 Mark II portrait validation.
+    func testAdaptivePortraitToneMatrixStaysBoundedAndCorrectsDirection() {
+        let cases: [(luma: Double, cast: ImageAnalysis.SkinReading.Cast, expectedEVSign: Double)] = [
+            (0.16, .neutral, 1),
+            (0.36, .tooGreen, 1),
+            (0.68, .tooWarm, -1),
+            (0.48, .tooCool, 0),
+            (0.50, .tooMagenta, 0),
+        ]
+        for item in cases {
+            let analysis = makeAnalysis(faceLuma: item.luma, cast: item.cast)
+            let result = PortraitToneAdvisor.adjust(recipe: .portrait, exposureEV: 0, analysis: analysis)
+            XCTAssertTrue(result.exposureEV.isFinite)
+            XCTAssertTrue((-2...2).contains(result.exposureEV))
+            if item.expectedEVSign > 0 { XCTAssertGreaterThan(result.exposureEV, 0) }
+            if item.expectedEVSign < 0 { XCTAssertLessThan(result.exposureEV, 0) }
+            XCTAssertGreaterThanOrEqual(result.recipe.skinGuard, 0.6)
+            XCTAssertTrue((0...1).contains(result.recipe.blemishCleanup))
+            XCTAssertTrue((0...1).contains(result.recipe.dodgeBurn))
+        }
+    }
+
+    func testAdaptiveToneCorrectsSkinCastOnExpectedAxis() {
+        let green = PortraitToneAdvisor.adjust(
+            recipe: .portrait, exposureEV: 0,
+            analysis: makeAnalysis(faceLuma: 0.48, cast: .tooGreen)
+        )
+        XCTAssertGreaterThan(green.recipe.tint, MagicRecipe.portrait.tint)
+        let warm = PortraitToneAdvisor.adjust(
+            recipe: .portrait, exposureEV: 0,
+            analysis: makeAnalysis(faceLuma: 0.48, cast: .tooWarm)
+        )
+        XCTAssertLessThan(warm.recipe.warmth, MagicRecipe.portrait.warmth)
+    }
+
+    private func makeAnalysis(faceLuma: Double, cast: ImageAnalysis.SkinReading.Cast) -> AssetAnalysis {
+        AssetAnalysis(
+            version: AssetAnalysis.currentVersion,
+            medianLuma: 0.42,
+            p5Luma: 0.05,
+            p95Luma: 0.91,
+            highlightClip: 0.01,
+            shadowClip: 0.02,
+            subjectHighlightClip: 0.015,
+            globalSharpness: 0.004,
+            subjectSharpness: 0.004,
+            skinCast: cast,
+            faces: [FaceAnalysis(
+                rect: CGRect(x: 0.3, y: 0.2, width: 0.4, height: 0.55),
+                sizeFraction: 0.22,
+                luma: faceLuma,
+                eyesOpen: true,
+                captureQuality: 0.9,
+                sharpness: 0.004,
+                skinCast: cast
+            )],
+            sceneFeature: Array(repeating: 0, count: 12),
+            perceptualHash: 1
+        )
+    }
 }
 
 // MARK: - SubjectType + recipe overlay

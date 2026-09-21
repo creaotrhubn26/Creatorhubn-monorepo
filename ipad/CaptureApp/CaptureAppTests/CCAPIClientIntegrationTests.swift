@@ -92,7 +92,9 @@ final class CCAPIClientIntegrationTests: XCTestCase {
 
         let capabilities = try await client.videoCapabilities()
         XCTAssertTrue(capabilities.canRecordMovie)
-        XCTAssertEqual(capabilities.writableSettings, Set(CCAPIShootingSettingKey.allCases))
+        XCTAssertEqual(capabilities.writableSettings, Set([.tv, .av, .iso]))
+        XCTAssertTrue(capabilities.canDriveFocus)
+        XCTAssertTrue(capabilities.canAutoFocus)
 
         var settings = try await client.videoShootingSettings()
         XCTAssertEqual(settings[.tv]?.value, "1/50")
@@ -112,13 +114,33 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ccapi-video-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let recorder = TransferProgressRecorder()
         let fileURL = try await client.downloadContentToDirectory(
             contentPath: contentPath,
-            directory: directory
+            directory: directory,
+            onProgress: { progress in await recorder.append(progress) }
         )
         XCTAssertEqual(fileURL.lastPathComponent, "MVI_0001.MP4")
         XCTAssertGreaterThan((try Data(contentsOf: fileURL)).count, 0)
+        let progress = await recorder.values()
+        XCTAssertEqual(progress.last?.receivedBytes, Int64(try Data(contentsOf: fileURL).count))
+        XCTAssertEqual(progress.last?.percentCompleted, 100)
         XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/control/recbutton"))
+    }
+
+    func testCapabilityGatedFocusCommandsUseAdvertisedEndpoints() async throws {
+        let client = CCAPIClient(baseURL: FakeCanonCamera.baseURL, session: camera.makeSession())
+        _ = try await client.connect()
+
+        try await client.driveFocus(.near1)
+        try await client.setAutoFocus(true)
+        try await client.setAutoFocus(false)
+
+        XCTAssertTrue(camera.seenRequests.contains("/ccapi/ver100/shooting/control/drivefocus"))
+        XCTAssertEqual(
+            camera.seenRequests.filter { $0 == "/ccapi/ver100/shooting/control/af" }.count,
+            2
+        )
     }
 
     func testSettingWriteRejectsValueOutsideCameraAbilityBeforePUT() async throws {
@@ -194,4 +216,14 @@ final class CCAPIClientIntegrationTests: XCTestCase {
             // expected
         }
     }
+}
+
+private actor TransferProgressRecorder {
+    private var recorded: [CCAPIMediaTransferProgress] = []
+
+    func append(_ progress: CCAPIMediaTransferProgress) {
+        recorded.append(progress)
+    }
+
+    func values() -> [CCAPIMediaTransferProgress] { recorded }
 }

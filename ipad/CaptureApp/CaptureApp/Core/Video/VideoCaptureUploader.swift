@@ -41,7 +41,7 @@ actor VideoCaptureUploader {
                 frameRate: asset.frameRate,
                 width: asset.width,
                 height: asset.height,
-                timecodeStart: nil,
+                timecodeStart: asset.timecodeStart,
                 cameraManufacturer: nil,
                 cameraModel: asset.cameraName,
                 cameraSerial: nil,

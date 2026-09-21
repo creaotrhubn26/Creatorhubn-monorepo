@@ -11,6 +11,7 @@ struct CapturedVideoRecording: Sendable {
     let frameRate: Double?
     let width: Int?
     let height: Int?
+    let timecodeStart: String?
     let sourceType: VideoCaptureAsset.SourceType
     let cameraName: String
 
@@ -42,6 +43,7 @@ struct CapturedVideoRecording: Sendable {
         let track = try? await media.loadTracks(withMediaType: .video).first
         let size = try? await track?.load(.naturalSize)
         let frameRate = try? await track?.load(.nominalFrameRate)
+        let timecodeStart = await readSourceTimecode(from: media)
         let measuredDurationMs = duration.flatMap { value in
             value.isFinite && value > 0 ? Int64(value * 1000) : nil
         }
@@ -52,8 +54,86 @@ struct CapturedVideoRecording: Sendable {
             frameRate: frameRate.map(Double.init),
             width: size.map { Int(abs($0.width)) },
             height: size.map { Int(abs($0.height)) },
+            timecodeStart: timecodeStart,
             sourceType: sourceType,
             cameraName: cameraName
+        )
+    }
+
+    /// Reads the first QuickTime/SMPTE timecode sample when the camera wrote
+    /// a real `tmcd`/`tc64` track. Files without a timecode track remain nil;
+    /// CreatorHub never invents a source timecode from file creation time.
+    private static func readSourceTimecode(from asset: AVURLAsset) async -> String? {
+        guard let track = try? await asset.loadTracks(withMediaType: .timecode).first,
+              let reader = try? AVAssetReader(asset: asset)
+        else { return nil }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading(),
+              let sample = output.copyNextSampleBuffer(),
+              let format = CMSampleBufferGetFormatDescription(sample),
+              let block = CMSampleBufferGetDataBuffer(sample)
+        else { return nil }
+
+        let length = CMBlockBufferGetDataLength(block)
+        guard length >= 4 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: min(length, 8))
+        let copyStatus = bytes.withUnsafeMutableBytes { buffer in
+            CMBlockBufferCopyDataBytes(
+                block,
+                atOffset: 0,
+                dataLength: buffer.count,
+                destination: buffer.baseAddress!
+            )
+        }
+        guard copyStatus == kCMBlockBufferNoErr else { return nil }
+
+        let subtype = CMFormatDescriptionGetMediaSubType(format)
+        let frameNumber: Int64
+        if subtype == kCMTimeCodeFormatType_TimeCode64, bytes.count >= 8 {
+            let bits = bytes.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+            frameNumber = Int64(bitPattern: bits)
+        } else {
+            let bits = bytes.prefix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+            frameNumber = Int64(Int32(bitPattern: bits))
+        }
+        let quanta = Int(CMTimeCodeFormatDescriptionGetFrameQuanta(format))
+        guard quanta > 0 else { return nil }
+        let flags = CMTimeCodeFormatDescriptionGetTimeCodeFlags(format)
+        let dropFrame = flags & UInt32(kCMTimeCodeFlag_DropFrame) != 0
+        return formatTimecode(frameNumber: frameNumber, framesPerSecond: quanta, dropFrame: dropFrame)
+    }
+
+    static func formatTimecode(
+        frameNumber: Int64,
+        framesPerSecond: Int,
+        dropFrame: Bool
+    ) -> String? {
+        guard framesPerSecond > 0 else { return nil }
+        let negative = frameNumber < 0
+        var frames = abs(frameNumber)
+        if dropFrame, framesPerSecond == 30 || framesPerSecond == 60 {
+            let dropped = Int64(framesPerSecond == 60 ? 4 : 2)
+            let fps = Int64(framesPerSecond)
+            let framesPer10Minutes = fps * 600 - dropped * 9
+            let tenMinuteBlocks = frames / framesPer10Minutes
+            let remainder = frames % framesPer10Minutes
+            frames += dropped * 9 * tenMinuteBlocks
+            if remainder >= dropped {
+                frames += dropped * ((remainder - dropped) / (fps * 60 - dropped))
+            }
+        }
+        let fps = Int64(framesPerSecond)
+        let frame = frames % fps
+        let totalSeconds = frames / fps
+        let seconds = totalSeconds % 60
+        let minutes = (totalSeconds / 60) % 60
+        let hours = (totalSeconds / 3600) % 24
+        let separator = dropFrame ? ";" : ":"
+        return String(
+            format: "%@%02lld:%02lld:%02lld%@%02lld",
+            negative ? "-" : "", hours, minutes, seconds, separator, frame
         )
     }
 }

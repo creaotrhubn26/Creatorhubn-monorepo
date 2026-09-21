@@ -6,6 +6,7 @@ import CoreImage
 struct RedigeringView: View {
     @State private var model = RedigeringModel()
     @State private var zoom: CGFloat = 1
+    @State private var comparisonMode: RedigeringComparisonMode = .split
     @State private var showCrop = false
     @State private var showMask = false
     /// Kvalitetssjekk-review (steg 4) — flagg leveranse-blokkere over serien.
@@ -48,6 +49,8 @@ struct RedigeringView: View {
                                 .foregroundStyle(model.localFaceMode ? CHTheme.accent : CHTheme.textSecondary)
                         }
                         .help("Trykk-på-ansikt (lokal justering)")
+                        .accessibilityLabel("Personer")
+                        .accessibilityHint("Velg ansikt for lokal lys- og fargejustering")
                         Button {
                             showMaskOverlay.toggle()
                             Task { await updateMaskOverlay() }
@@ -55,7 +58,8 @@ struct RedigeringView: View {
                             Image(systemName: "person.crop.rectangle.stack")
                                 .foregroundStyle(showMaskOverlay ? CHTheme.accent : CHTheme.textSecondary)
                         }
-                        .help("Vis motiv-maske (per-region)")
+                        .help("Vis retusjeringskart (hud og underøyne)")
+                        .accessibilityLabel("Retusjeringskart")
                         Button {
                             showDiff.toggle()
                             Task { await updateDiffOverlay() }
@@ -64,6 +68,7 @@ struct RedigeringView: View {
                                 .foregroundStyle(showDiff ? CHTheme.accent : CHTheme.textSecondary)
                         }
                         .help("Vis AI-endringer (heatmap)")
+                        .accessibilityLabel("Vis endringer")
                         Button {
                             showHistogram.toggle()
                         } label: {
@@ -71,6 +76,7 @@ struct RedigeringView: View {
                                 .foregroundStyle(showHistogram ? CHTheme.accent : CHTheme.textSecondary)
                         }
                         .help("Histogram + clipping")
+                        .accessibilityLabel("Histogram")
                         Button {
                             withAnimation(.easeInOut(duration: 0.22)) { inspectorOpen.toggle() }
                         } label: {
@@ -78,6 +84,7 @@ struct RedigeringView: View {
                                 .foregroundStyle(inspectorOpen ? CHTheme.textSecondary : CHTheme.accent)
                         }
                         .help(inspectorOpen ? "Skjul panel (større bilde)" : "Vis verktøy-panel")
+                        .accessibilityLabel(inspectorOpen ? "Skjul redigeringspanel" : "Vis redigeringspanel")
                         sessionMenu
                     }
                 }
@@ -93,9 +100,8 @@ struct RedigeringView: View {
         }
         .sheet(isPresented: $showMask) {
             if let path = model.selected?.displayPreviewKey {
-                RectMarqueeSheet(imagePath: path, title: "Masker — marker for fjerning", applyLabel: "Fjern område",
-                                 initialRect: nil, allowReset: false, onReset: {}) { rect in
-                    Task { await model.runManualInpaint(normalizedRect: rect) }
+                RetouchBrushSheet(imagePath: path) { strokes, diameter in
+                    Task { await model.runManualInpaint(strokes: strokes, brushDiameter: diameter) }
                 }
             }
         }
@@ -118,34 +124,69 @@ struct RedigeringView: View {
 
     private var content: some View {
         GeometryReader { geo in
-            // Bildet dominerer: ~70 % av høyden med inspector åpen, ~82 % lukket.
-            let imageH = geo.size.height * (inspectorOpen ? 0.70 : 0.82)
+            let wide = geo.size.width >= 980
+            Group {
+                if wide {
+                    wideWorkspace(in: geo.size)
+                } else {
+                    compactWorkspace(in: geo.size)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: wide)
+        }
+    }
+
+    /// Landscape / full-screen iPad: image and inspector share the primary row.
+    private func wideWorkspace(in size: CGSize) -> some View {
+        let imageH = max(360, size.height * (inspectorOpen ? 0.60 : 0.70))
+        return VStack(alignment: .leading, spacing: 12) {
+            subtitle
+            HStack(alignment: .top, spacing: 14) {
+                VStack(spacing: 10) {
+                    compareCard(height: imageH)
+                    if model.localFaceMode, let fi = model.activeFace { localFaceControl(fi) }
+                    toolbarRow
+                }
+                .frame(maxWidth: .infinity)
+                if inspectorOpen {
+                    ScrollView { SmartEditPanel(model: model) }
+                        .frame(width: 360, height: imageH + 58)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            ScrollView(.vertical, showsIndicators: false) {
+                secondaryWorkspace
+            }
+        }
+        .padding(16)
+    }
+
+    /// Portrait / split view: the photo keeps the full available width and the
+    /// inspector moves below it. The previous fixed 340 pt side panel squeezed a
+    /// portrait into a narrow sliver and hid controls below the viewport.
+    private func compactWorkspace(in size: CGSize) -> some View {
+        let imageH = min(max(420, size.width * 0.82), size.height * 0.58)
+        return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 12) {
                 subtitle
-                HStack(alignment: .top, spacing: 14) {
-                    VStack(spacing: 10) {
-                        compareCard(height: imageH)
-                        if model.localFaceMode, let fi = model.activeFace { localFaceControl(fi) }
-                        toolbarRow
-                    }
-                    .frame(maxWidth: .infinity)
-                    if inspectorOpen {
-                        ScrollView { SmartEditPanel(model: model) }
-                            .frame(width: 340)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
+                compareCard(height: imageH)
+                if model.localFaceMode, let fi = model.activeFace { localFaceControl(fi) }
+                toolbarRow
+                if inspectorOpen {
+                    SmartEditPanel(model: model)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                // Sekundært (prosjekt/status) — komprimert nederst, ikke i veien.
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        queueStrip
-                        StepFlow(qualityDone: model.qualityDidRun) { showQualityReview = true }
-                        bottomCards
-                    }
-                }
-                .frame(maxHeight: geo.size.height * 0.22)
+                secondaryWorkspace
             }
-            .padding(16)
+            .padding(14)
+        }
+    }
+
+    private var secondaryWorkspace: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            queueStrip
+            StepFlow(qualityDone: model.qualityDidRun) { showQualityReview = true }
+            bottomCards
         }
     }
 
@@ -160,9 +201,11 @@ struct RedigeringView: View {
     private func compareCard(height: CGFloat) -> some View {
         BeforeAfterCompare(
             beforePath: model.selected?.previewKey ?? model.selected?.displayPreviewKey,
+            beforeCrop: model.currentCrop,
             after: model.afterImage,
             rendering: model.rendering,
             zoom: $zoom,
+            comparisonMode: comparisonMode,
             showHistogram: showHistogram,
             maskOverlay: showMaskOverlay ? maskOverlay : nil,
             diffOverlay: showDiff ? diffOverlay : nil,
@@ -250,19 +293,27 @@ struct RedigeringView: View {
         VStack(alignment: .leading, spacing: 1) {
             Label("\(title)  \(String(format: "%+.0f", value * 100))", systemImage: systemImage)
                 .font(.caption2).foregroundStyle(CHTheme.textSecondary)
-            Slider(value: Binding(get: { value }, set: onChange), in: -1...1)
+            Slider(
+                value: Binding(get: { value }, set: onChange),
+                in: -1...1,
+                onEditingChanged: { editing in if editing { model.beginEdit() } }
+            )
                 .tint(CHTheme.accent).frame(width: 150)
         }
     }
 
-    /// Beregn motiv-maske-overlegget fra «Etter»-bildet (Vision, off-main).
+    /// Beregn semantisk retusjeringskart fra «Etter»-bildet (off-main).
     private func updateMaskOverlay() async {
         guard showMaskOverlay, let after = model.afterImage, let cg = after.cgImage else {
             maskOverlay = nil; return
         }
+        let recipe = model.recipe
         maskOverlay = await Task.detached(priority: .userInitiated) {
-            SubjectSegmentation.subjectOverlay(
-                for: cg, extent: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+            let input = CIImage(cgImage: cg)
+            guard let overlay = SkinFinishFilter.retouchMap(recipe: recipe, to: input),
+                  let rendered = CIContext(options: [.useSoftwareRenderer: false])
+                    .createCGImage(overlay, from: input.extent) else { return nil }
+            return UIImage(cgImage: rendered)
         }.value
     }
 
@@ -270,13 +321,23 @@ struct RedigeringView: View {
         HStack(spacing: 0) {
             toolButton("Zoom", "plus.magnifyingglass", active: zoom > 1) { withAnimation { zoom = zoom > 1 ? 1 : 2 } }
             toolButton("Beskjær", "crop", active: model.currentCrop != nil) { showCrop = true }
-            toolButton("Sammenlign", "rectangle.split.2x1", active: true) {}
-            toolButton("Masker", "paintbrush.pointed") { showMask = true }
+            toolButton(comparisonMode.label, comparisonIcon, active: true) {
+                comparisonMode.advance()
+            }
+            toolButton("Pensel", "paintbrush.pointed") { showMask = true }
             toolButton("Angre", "arrow.uturn.backward", enabled: model.canUndo) { model.undoEdit() }
             toolButton("Gjør om", "arrow.uturn.forward", enabled: model.canRedo) { model.redoEdit() }
         }
         .padding(.vertical, 8)
         .background(CHTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var comparisonIcon: String {
+        switch comparisonMode {
+        case .split: "rectangle.split.2x1"
+        case .before: "photo"
+        case .after: "wand.and.stars"
+        }
     }
 
     private func toolButton(_ title: String, _ icon: String, active: Bool = false, enabled: Bool = true, _ action: @escaping () -> Void) -> some View {
@@ -312,8 +373,11 @@ struct RedigeringView: View {
     }
 
     private var bottomCards: some View {
-        HStack(alignment: .top, spacing: 12) {
-            batchCard; qualityCard; suggestionsCard; deliveryCard
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
+            batchCard
+            qualityCard
+            suggestionsCard
+            deliveryCard
         }
     }
 

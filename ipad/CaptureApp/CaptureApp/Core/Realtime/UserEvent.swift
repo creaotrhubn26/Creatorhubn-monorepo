@@ -19,6 +19,7 @@ enum UserEvent: Equatable {
     case presenceJoined(PresenceInfo)
     case presenceLeft(PresenceLeft)
     case assetLabelsChanged(AssetLabelsChange)
+    case inquiryUpdated(InquiryUpdated)
     case unknown(kind: String)
 
     struct AssetHearted: Equatable {
@@ -108,6 +109,15 @@ enum UserEvent: Equatable {
         let colorLabel: String?
         let flaggedForClient: Bool?
         let rejected: Bool?
+        let timestamp: Date
+    }
+
+    /// Invalidation hint shared by WorkspaceShell and Capture. The REST inbox
+    /// remains authoritative; receivers re-fetch so no inquiry content is
+    /// duplicated or leaked through the realtime channel.
+    struct InquiryUpdated: Equatable {
+        let inquiryId: String
+        let reason: String
         let timestamp: Date
     }
 
@@ -237,6 +247,17 @@ enum UserEvent: Equatable {
                 colorLabel: event["colorLabel"] as? String,
                 flaggedForClient: event["flaggedForClient"] as? Bool,
                 rejected: event["rejected"] as? Bool,
+                timestamp: ts,
+            ))
+        case "inquiry.updated":
+            guard let inquiryId = event["inquiryId"] as? String, !inquiryId.isEmpty,
+                  let reason = event["reason"] as? String,
+                  ["created", "updated", "replied", "converted"].contains(reason),
+                  let ts = decodeTimestamp(event["timestamp"])
+            else { return nil }
+            return .inquiryUpdated(.init(
+                inquiryId: inquiryId,
+                reason: reason,
                 timestamp: ts,
             ))
         default:

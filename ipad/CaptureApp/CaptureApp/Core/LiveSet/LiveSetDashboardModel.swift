@@ -122,7 +122,8 @@ final class LiveSetDashboardModel {
         // we ignore them here — the photographer's separate Galleri /
         // Admin tabs handle those.
         case .assetHearted, .assetCommented, .quoteSigned, .contractSigned,
-             .presenceJoined, .presenceLeft, .assetLabelsChanged, .unknown:
+             .presenceJoined, .presenceLeft, .assetLabelsChanged,
+             .inquiryUpdated, .unknown:
             return false
         }
     }

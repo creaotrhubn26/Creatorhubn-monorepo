@@ -416,6 +416,261 @@ extension AppDatabase {
                 columns: ["ownerUserId", "takeMetadataDirty", "updatedAt"]
             )
         }
+        migrator.registerMigration("v12_video_capture_storage_policy") { db in
+            try db.alter(table: "videoCaptureAsset") { table in
+                table.add(column: "storagePolicy", .text)
+                    .notNull()
+                    .defaults(to: VideoCaptureAsset.StoragePolicy.keepLocalAndCloud.rawValue)
+            }
+            try db.create(
+                indexOn: "videoCaptureAsset",
+                columns: ["ownerUserId", "storagePolicy", "captureState"]
+            )
+        }
+        migrator.registerMigration("v13_photo_capture_storage_policy") { db in
+            try db.alter(table: "asset") { table in
+                table.add(column: "storagePolicy", .text)
+                    .notNull()
+                    .defaults(to: Asset.StoragePolicy.keepLocalAndCloud.rawValue)
+                table.add(column: "cloudState", .text)
+                    .notNull()
+                    .defaults(to: Asset.CloudState.local.rawValue)
+                table.add(column: "backendAssetId", .text)
+                table.add(column: "cloudVerifiedAt", .datetime)
+                table.add(column: "cloudLastError", .text)
+                table.add(column: "localOriginalReleased", .boolean)
+                    .notNull()
+                    .defaults(to: false)
+            }
+            try db.create(
+                indexOn: "asset",
+                columns: ["storagePolicy", "cloudState", "updatedAt"]
+            )
+            try db.create(indexOn: "asset", columns: ["backendAssetId"])
+        }
+        migrator.registerMigration("v14_unified_card_ingest") { db in
+            // Extends the existing durable card job instead of creating a
+            // parallel queue. Empty project fields mean that all bytes are
+            // locally verified but project binding/cloud backup is deferred.
+            try db.alter(table: "cardBackupJob") { table in
+                table.add(column: "videoAssetIdsJson", .text)
+                    .notNull()
+                    .defaults(to: "[]")
+                table.add(column: "storagePolicy", .text)
+                    .notNull()
+                    .defaults(to: Asset.StoragePolicy.keepLocalAndCloud.rawValue)
+                table.add(column: "failedCount", .integer)
+                    .notNull()
+                    .defaults(to: 0)
+                table.add(column: "totalBytes", .integer)
+                    .notNull()
+                    .defaults(to: 0)
+                table.add(column: "locallyVerifiedAt", .datetime)
+            }
+        }
+        migrator.registerMigration("v15_card_import_fingerprints") { db in
+            // `asset` has one legacy checksum column although a photo asset can
+            // contain both a JPEG and a RAW original. Keep every source-file
+            // fingerprint here so reinserting a card never creates a second
+            // copy merely because the RAW checksum won the legacy column.
+            try db.create(table: "cardImportedFile") { table in
+                table.column("ownerUserId", .text).notNull()
+                table.column("checksumSha256", .text).notNull()
+                table.column("assetId", .text)
+                table.column("videoAssetId", .text)
+                table.column("originalFilename", .text).notNull()
+                table.column("sizeBytes", .integer).notNull()
+                table.column("importedAt", .datetime).notNull()
+                table.primaryKey(["ownerUserId", "checksumSha256"])
+            }
+            try db.create(indexOn: "cardImportedFile", columns: ["assetId"])
+            try db.create(indexOn: "cardImportedFile", columns: ["videoAssetId"])
+        }
+        migrator.registerMigration("v16_card_identity") { db in
+            try db.alter(table: "cardBackupJob") { table in
+                table.add(column: "cardIdentifier", .text).notNull().defaults(to: "unknown")
+                table.add(column: "cardName", .text).notNull().defaults(to: "Minnekort")
+                table.add(column: "plannedCardLabel", .text).notNull().defaults(to: "")
+                table.add(column: "cardCapacityBytes", .integer)
+                table.add(column: "cardAvailableBytes", .integer)
+                table.add(column: "photoCount", .integer).notNull().defaults(to: 0)
+                table.add(column: "videoCount", .integer).notNull().defaults(to: 0)
+                table.add(column: "unsupportedCount", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(
+                indexOn: "cardBackupJob",
+                columns: ["ownerUserId", "cardIdentifier", "updatedAt"]
+            )
+        }
+        migrator.registerMigration("v17_card_transfer_report_checkpoint") { db in
+            // Upload completion and the Workspace ledger acknowledgement are
+            // separate network operations. Keep the latter durable so an app
+            // termination cannot turn a verified S3 backup into an ambiguous
+            // status in the project overview.
+            try db.alter(table: "cardBackupJob") { table in
+                table.add(column: "cloudVerifiedAt", .datetime)
+                table.add(column: "reportPending", .boolean)
+                    .notNull()
+                    .defaults(to: false)
+            }
+        }
+        migrator.registerMigration("v18_video_source_timecode") { db in
+            try db.alter(table: "videoCaptureAsset") { table in
+                table.add(column: "timecodeStart", .text)
+            }
+        }
+        migrator.registerMigration("v19_production_audio_ingest") { db in
+            try db.create(table: "productionAudioAsset") { table in
+                table.primaryKey("id", .text)
+                table.column("ownerUserId", .text).notNull()
+                table.column("projectId", .text).notNull().defaults(to: "")
+                table.column("localPath", .text).notNull()
+                table.column("fileName", .text).notNull()
+                table.column("contentType", .text).notNull()
+                table.column("sizeBytes", .integer).notNull()
+                table.column("checksumSha256", .text)
+                table.column("recordedAt", .datetime).notNull()
+                table.column("durationMs", .integer)
+                table.column("sampleRate", .integer)
+                table.column("bitDepth", .integer)
+                table.column("channelCount", .integer)
+                table.column("channelNamesJson", .text).notNull().defaults(to: "[]")
+                table.column("timecodeStart", .text)
+                table.column("timeReferenceSamples", .integer)
+                table.column("frameRate", .double)
+                table.column("dropFrame", .boolean)
+                table.column("scene", .text)
+                table.column("take", .text)
+                table.column("tape", .text)
+                table.column("circled", .boolean)
+                table.column("recorderManufacturer", .text)
+                table.column("recorderModel", .text)
+                table.column("recorderSerial", .text)
+                table.column("notes", .text)
+                table.column("metadataJson", .text).notNull().defaults(to: "{}")
+                table.column("captureState", .text).notNull().defaults(to: "local")
+                table.column("uploadObjectId", .text)
+                table.column("lastError", .text)
+                table.column("storagePolicy", .text).notNull()
+                    .defaults(to: ProductionAudioAsset.StoragePolicy.keepLocalAndCloud.rawValue)
+                table.column("createdAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                indexOn: "productionAudioAsset",
+                columns: ["ownerUserId", "projectId", "recordedAt"]
+            )
+            try db.create(
+                indexOn: "productionAudioAsset",
+                columns: ["ownerUserId", "captureState", "updatedAt"]
+            )
+            try db.alter(table: "cardImportedFile") { table in
+                table.add(column: "audioAssetId", .text)
+            }
+            try db.create(indexOn: "cardImportedFile", columns: ["audioAssetId"])
+            try db.alter(table: "cardBackupJob") { table in
+                table.add(column: "audioAssetIdsJson", .text).notNull().defaults(to: "[]")
+                table.add(column: "audioCount", .integer).notNull().defaults(to: 0)
+            }
+        }
+
+        migrator.registerMigration("v20_card_import_manifest") { db in
+            // Written immediately after card access is granted, before the
+            // first byte is copied. Completed rows remain as audit receipts.
+            try db.create(table: "cardImportRun") { table in
+                table.primaryKey("id", .text)
+                table.column("ownerUserId", .text).notNull()
+                table.column("sessionId", .text)
+                table.column("projectId", .text)
+                table.column("projectTitle", .text)
+                table.column("cardIdentifier", .text).notNull()
+                table.column("cardName", .text).notNull()
+                table.column("plannedCardLabel", .text)
+                table.column("cardCapacityBytes", .integer)
+                table.column("cardAvailableBytes", .integer)
+                table.column("sourceBookmark", .blob)
+                table.column("sourceDisplayPath", .text)
+                table.column("storagePolicy", .text).notNull()
+                table.column("status", .text).notNull()
+                table.column("totalFiles", .integer).notNull().defaults(to: 0)
+                table.column("totalBytes", .integer).notNull().defaults(to: 0)
+                table.column("copiedBytes", .integer).notNull().defaults(to: 0)
+                table.column("completedFiles", .integer).notNull().defaults(to: 0)
+                table.column("duplicateFiles", .integer).notNull().defaults(to: 0)
+                table.column("failedFiles", .integer).notNull().defaults(to: 0)
+                table.column("manifestSha256", .text)
+                table.column("locallyVerifiedAt", .datetime)
+                table.column("cloudVerifiedAt", .datetime)
+                table.column("completedAt", .datetime)
+                table.column("createdAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.check(sql: "storagePolicy IN ('local_only','local_and_cloud','creatorhub_only')")
+                table.check(sql: "status IN ('ready','importing','localVerified','uploading','cloudVerified','completed','paused')")
+                table.check(sql: "totalFiles >= 0 AND totalBytes >= 0 AND copiedBytes >= 0 AND copiedBytes <= totalBytes")
+                table.check(sql: "completedFiles >= 0 AND duplicateFiles >= 0 AND failedFiles >= 0")
+                table.check(sql: "manifestSha256 IS NULL OR length(manifestSha256) = 64")
+            }
+            try db.create(indexOn: "cardImportRun", columns: ["ownerUserId", "status", "updatedAt"])
+            try db.create(indexOn: "cardImportRun", columns: ["ownerUserId", "cardIdentifier", "updatedAt"])
+
+            try db.create(table: "cardImportManifestItem") { table in
+                table.primaryKey("id", .text)
+                table.column("runId", .text).notNull()
+                    .references("cardImportRun", onDelete: .cascade)
+                table.column("sourceRelativePath", .text).notNull()
+                table.column("sourceFingerprint", .text).notNull()
+                table.column("mediaKind", .text).notNull()
+                table.column("filename", .text).notNull()
+                table.column("fileExtension", .text).notNull()
+                table.column("sizeBytes", .integer).notNull()
+                table.column("recordedAt", .datetime).notNull()
+                table.column("selected", .boolean).notNull().defaults(to: true)
+                table.column("status", .text).notNull().defaults(to: "waiting")
+                table.column("copiedBytes", .integer).notNull().defaults(to: 0)
+                table.column("checksumSha256", .text)
+                table.column("localPath", .text)
+                table.column("photoAssetId", .text)
+                table.column("videoAssetId", .text)
+                table.column("audioAssetId", .text)
+                table.column("lastError", .text)
+                table.column("updatedAt", .datetime).notNull()
+                table.uniqueKey(["runId", "sourceFingerprint"])
+                table.check(sql: "mediaKind IN ('photo','raw','video','audio')")
+                table.check(sql: "status IN ('waiting','copying','localVerified','duplicate','uploading','cloudVerified','failed','skipped')")
+                table.check(sql: "sizeBytes >= 0 AND copiedBytes >= 0 AND copiedBytes <= sizeBytes")
+            }
+            try db.create(indexOn: "cardImportManifestItem", columns: ["runId", "selected", "status"])
+            try db.create(indexOn: "cardImportManifestItem", columns: ["photoAssetId"])
+            try db.create(indexOn: "cardImportManifestItem", columns: ["videoAssetId"])
+            try db.create(indexOn: "cardImportManifestItem", columns: ["audioAssetId"])
+        }
+
+        migrator.registerMigration("v21_card_import_inspection_profiles") { db in
+            try db.alter(table: "cardImportManifestItem") { table in
+                table.add(column: "inspectionJson", .text).notNull().defaults(to: "{}")
+            }
+            try db.create(table: "cardImportProfile") { table in
+                table.primaryKey("id", .text)
+                table.column("ownerUserId", .text).notNull()
+                table.column("name", .text).notNull()
+                table.column("scope", .text).notNull()
+                table.column("scopeKey", .text).notNull()
+                table.column("mediaKindsJson", .text).notNull().defaults(to: "[]")
+                table.column("extensionsJson", .text).notNull().defaults(to: "[]")
+                table.column("includedFoldersJson", .text).notNull().defaults(to: "[]")
+                table.column("includeProxies", .boolean).notNull().defaults(to: false)
+                table.column("storagePolicy", .text).notNull()
+                table.column("createdAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.uniqueKey(["ownerUserId", "scope", "scopeKey", "name"])
+                table.check(sql: "scope IN ('card','project')")
+                table.check(sql: "storagePolicy IN ('local_only','local_and_cloud','creatorhub_only')")
+            }
+            try db.create(
+                indexOn: "cardImportProfile",
+                columns: ["ownerUserId", "scope", "scopeKey", "updatedAt"]
+            )
+        }
 
         return migrator
     }()
@@ -435,6 +690,12 @@ extension Asset: FetchableRecord, PersistableRecord {
     static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
     static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
     static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy { .uppercaseString }
+}
+
+extension ProductionAudioAsset: FetchableRecord, PersistableRecord {
+    static var databaseTableName: String { "productionAudioAsset" }
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
 }
 
 extension Review: FetchableRecord, PersistableRecord {

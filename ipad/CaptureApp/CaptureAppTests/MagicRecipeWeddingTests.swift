@@ -15,9 +15,29 @@ final class MagicRecipeWeddingTests: XCTestCase {
         XCTAssertGreaterThan(w.highlightRecovery, 0.3, "bryllup skal gjenopprette høylys")
         XCTAssertLessThanOrEqual(w.saturation, 0, "bryllup skal ikke øke global metning (temmer oransje hud)")
         XCTAssertGreaterThan(w.vibrance, 0, "bryllup bruker vibrance som beskytter hud")
-        // Standard-oppførsel bevart for fangst-presets.
-        XCTAssertTrue(MagicRecipe.portrait.autoEnhance)
+        // Portrett er også korrigerende: ferdige kamera-JPEG-er skal ikke få en
+        // ny opaque scene-grade før hudbehandlingen.
+        XCTAssertFalse(MagicRecipe.portrait.autoEnhance)
         XCTAssertTrue(MagicRecipe.neutral.autoEnhance)
+    }
+
+    func testPortraitPresetIsNaturalAndSkinSafeByDefault() {
+        let p = MagicRecipe.portrait
+        XCTAssertLessThanOrEqual(p.warmth, -0.12, "portrett skal aktivt nøytralisere global oransje varme")
+        XCTAssertLessThanOrEqual(p.saturation, 0, "portrett skal bruke glød fremfor global metning")
+        XCTAssertGreaterThanOrEqual(p.vibrance, 0.10, "selektiv vibrance skal gi fargedybde uten aggressive grønnfarger")
+        XCTAssertGreaterThanOrEqual(p.contrast, 0.15, "portrett må beholde dybde uten å klippe kjole eller hud")
+        XCTAssertLessThanOrEqual(p.shadowLift, 0.05, "standardportrett skal ikke løfte skyggene til et melkeaktig uttrykk")
+        XCTAssertGreaterThanOrEqual(p.highlightRecovery, 0.50, "standardportrett skal hente tilbake harde kjole-/trappehøylys")
+        XCTAssertGreaterThanOrEqual(p.defringe, 0.50, "standardportrett skal rydde lilla kanter")
+        XCTAssertGreaterThanOrEqual(p.greenControl, 0.25, "standardportrett skal roe dominerende løvverk")
+        XCTAssertGreaterThanOrEqual(p.subjectSeparation, 0.25, "standardportrett skal separere motivet diskret")
+        XCTAssertGreaterThanOrEqual(p.skinGuard, 0.8, "selektiv farge skal ikke gjøre huden rød/oransje")
+        XCTAssertLessThanOrEqual(p.skinLowFreq, 0.25, "standardresultatet skal beholde naturlig hudtekstur")
+        XCTAssertLessThanOrEqual(p.teethWhiten, 0.15, "tenner skal ikke bli kunstig hvite som standard")
+        XCTAssertLessThanOrEqual(p.blemishCleanup, 0.20, "standardportrett skal ikke over-retusjere urenheter")
+        XCTAssertLessThanOrEqual(p.dodgeBurn, 0.15, "standardportrett skal beholde ansiktsmodellering")
+        XCTAssertGreaterThanOrEqual(p.makeupProtection, 0.8, "øyne, bryn og lepper skal beskyttes")
     }
 
     /// REGRESJON: `merging(baseline:)` MÅ videreføre autoEnhance/skinGuard/
@@ -45,10 +65,34 @@ final class MagicRecipeWeddingTests: XCTestCase {
         let enc = try JSONEncoder().encode(MagicRecipe.wedding)
         let dec = try JSONDecoder().decode(MagicRecipe.self, from: enc)
         XCTAssertFalse(dec.autoEnhance)
+        var tinted = MagicRecipe.wedding
+        tinted.tint = 0.27
+        let decodedTint = try JSONDecoder().decode(
+            MagicRecipe.self,
+            from: JSONEncoder().encode(tinted)
+        )
+        XCTAssertEqual(decodedTint.tint, 0.27, accuracy: 0.0001)
+        XCTAssertEqual(dec.blemishCleanup, MagicRecipe.wedding.blemishCleanup, accuracy: 0.0001)
+        var detailed = MagicRecipe.portrait
+        detailed.blemishCleanup = 0.31
+        detailed.dodgeBurn = 0.22
+        detailed.shineControl = 0.18
+        detailed.underEyeLift = 0.12
+        detailed.makeupProtection = 0.93
+        let decodedDetail = try JSONDecoder().decode(MagicRecipe.self, from: JSONEncoder().encode(detailed))
+        XCTAssertEqual(decodedDetail.blemishCleanup, 0.31, accuracy: 0.0001)
+        XCTAssertEqual(decodedDetail.dodgeBurn, 0.22, accuracy: 0.0001)
+        XCTAssertEqual(decodedDetail.shineControl, 0.18, accuracy: 0.0001)
+        XCTAssertEqual(decodedDetail.underEyeLift, 0.12, accuracy: 0.0001)
+        XCTAssertEqual(decodedDetail.makeupProtection, 0.93, accuracy: 0.0001)
         // Gamle recipes uten feltet dekoder til true (bakoverkompat).
         let legacy = "{\"warmth\":0,\"shadowLift\":0,\"contrast\":0,\"saturation\":0}"
         let old = try JSONDecoder().decode(MagicRecipe.self, from: Data(legacy.utf8))
         XCTAssertTrue(old.autoEnhance, "manglende autoEnhance skal falle til true")
+        XCTAssertEqual(old.tint, 0, "gamle recipes uten tint skal forbli nøytrale")
+        XCTAssertEqual(old.defringe, 0, "gamle recipes uten defringe skal forbli nøytrale")
+        XCTAssertEqual(old.greenControl, 0, "gamle recipes uten grønnkontroll skal forbli nøytrale")
+        XCTAssertEqual(old.subjectSeparation, 0, "gamle recipes uten motivseparasjon skal forbli nøytrale")
     }
 
     /// Begge grenene av auto-enhance-gaten rendrer et gyldig bilde (koden
@@ -89,6 +133,22 @@ final class MagicRecipeWeddingTests: XCTestCase {
                           "highlightRecovery dempet ikke høylysene (tone-kurve ikke aktiv)")
     }
 
+    func testPortraitHighlightRecoveryKeepsWhitesWhite() throws {
+        let extent = CGRect(x: 0, y: 0, width: 64, height: 64)
+        let white = CIImage(color: .white).cropped(to: extent)
+        let recovered = RAWExportPipeline.applyHighlightRecovery(
+            amount: MagicRecipe.portrait.highlightRecovery,
+            to: white
+        )
+        let context = CIContext(options: [.useSoftwareRenderer: true])
+        let rendered = try XCTUnwrap(context.createCGImage(recovered, from: extent))
+        XCTAssertGreaterThan(
+            Self.meanLuma(rendered),
+            0.94,
+            "høylysgjenoppretting gjorde hvitpunktet grått"
+        )
+    }
+
     private func makeImage(_ side: CGFloat = 256) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
             let cs = CGColorSpaceCreateDeviceRGB()
@@ -107,16 +167,22 @@ final class MagicRecipeWeddingTests: XCTestCase {
     /// isNeutral» permanent (sett hver akse enkeltvis, assert IKKE nøytral).
     func testIsNeutralIsFalseForEachSingleAxis() {
         XCTAssertTrue(MagicRecipe().isNeutral, "en urørt recipe skal være nøytral")
-        var mutators: [(String, (inout MagicRecipe) -> Void)] = [
-            ("warmth", { $0.warmth = 0.2 }), ("skinHighFreq", { $0.skinHighFreq = 0.2 }),
+        let mutators: [(String, (inout MagicRecipe) -> Void)] = [
+            ("warmth", { $0.warmth = 0.2 }), ("tint", { $0.tint = 0.2 }),
+            ("skinHighFreq", { $0.skinHighFreq = 0.2 }),
             ("skinLowFreq", { $0.skinLowFreq = 0.2 }), ("skinSmooth", { $0.skinSmooth = 0.2 }),
             ("shadowLift", { $0.shadowLift = 0.2 }), ("contrast", { $0.contrast = 0.2 }),
             ("saturation", { $0.saturation = 0.2 }), ("highlightRecovery", { $0.highlightRecovery = 0.2 }),
             ("vibrance", { $0.vibrance = 0.2 }), ("texture", { $0.texture = 0.2 }),
-            ("dehaze", { $0.dehaze = 0.2 }), ("eyeSharpen", { $0.eyeSharpen = 0.2 }),
+            ("dehaze", { $0.dehaze = 0.2 }), ("defringe", { $0.defringe = 0.2 }),
+            ("greenControl", { $0.greenControl = 0.2 }),
+            ("subjectSeparation", { $0.subjectSeparation = 0.2 }),
+            ("eyeSharpen", { $0.eyeSharpen = 0.2 }),
             ("eyeCatchlight", { $0.eyeCatchlight = 0.2 }), ("autoStraighten", { $0.autoStraighten = true }),
             ("teethWhiten", { $0.teethWhiten = 0.2 }), ("skinUnify", { $0.skinUnify = 0.2 }),
             ("skinGuard", { $0.skinGuard = 0.2 }), ("filmGrain", { $0.filmGrain = 0.2 }),
+            ("blemishCleanup", { $0.blemishCleanup = 0.2 }), ("dodgeBurn", { $0.dodgeBurn = 0.2 }),
+            ("shineControl", { $0.shineControl = 0.2 }), ("underEyeLift", { $0.underEyeLift = 0.2 }),
         ]
         for (name, mutate) in mutators {
             var r = MagicRecipe()

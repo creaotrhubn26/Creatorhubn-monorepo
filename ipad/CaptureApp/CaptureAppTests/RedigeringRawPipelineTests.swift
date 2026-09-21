@@ -12,6 +12,74 @@ import UIKit
 /// into `CaptureAppTests/Resources/_MG_9300.CR2`.
 final class RedigeringRawPipelineTests: XCTestCase {
 
+    /// Optional workstation fixture for validating a specific body/file without
+    /// committing a client's original. Set CREATORHUB_REFERENCE_CR3_PATH when
+    /// running the suite locally; CI skips it.
+    func testExternalCanonReferenceUsesDetectedCameraProfile() throws {
+        let path = ProcessInfo.processInfo.environment["CREATORHUB_REFERENCE_CR3_PATH"]
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("CreatorHubReference.CR3").path
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw XCTSkip("Set CREATORHUB_REFERENCE_CR3_PATH to run the external CR3 check.")
+        }
+        let info = try XCTUnwrap(ExifInfo.read(fromPath: path))
+        let family = try XCTUnwrap(CameraColorProfileCatalog.cameraFamily(for: info.camera))
+        XCTAssertEqual(family, .canonEOSR5)
+
+        let raw = try Data(contentsOf: URL(fileURLWithPath: path))
+        let baseRecipe = MagicRecipe.neutral
+        let matchedRecipe = CameraColorProfileCatalog.effectiveRecipe(
+            userRecipe: baseRecipe,
+            profileID: .creatorHubPortrait,
+            cameraModel: info.camera,
+            hasRaw: true
+        )
+        let embedded = try RAWExportPipeline.render(
+            rawData: raw,
+            recipe: baseRecipe,
+            identifierHint: "cr3",
+            targetMaxDimension: 1600,
+            colorPurpose: .appPreview
+        )
+        let matched = try RAWExportPipeline.render(
+            rawData: raw,
+            recipe: matchedRecipe,
+            identifierHint: "cr3",
+            targetMaxDimension: 1600,
+            colorPurpose: .appPreview
+        )
+        XCTAssertGreaterThan(embedded.count, 10_000)
+        XCTAssertGreaterThan(matched.count, 10_000)
+        XCTAssertNotEqual(embedded, matched, "Selected camera profile did not change rendered pixels")
+
+        // Local visual QA artifacts. This branch only runs when a private
+        // workstation fixture has explicitly been copied into the simulator;
+        // CI skips above and no client original is ever added to the repo.
+        let retouchedRecipe = CameraColorProfileCatalog.effectiveRecipe(
+            userRecipe: .portrait,
+            profileID: .creatorHubPortrait,
+            cameraModel: info.camera,
+            hasRaw: true
+        )
+        let retouched = try RAWExportPipeline.render(
+            rawData: raw,
+            recipe: retouchedRecipe,
+            identifierHint: "cr3",
+            targetMaxDimension: 2400,
+            colorPurpose: .appPreview
+        )
+        let before = try RAWExportPipeline.render(
+            rawData: raw,
+            recipe: baseRecipe,
+            identifierHint: "cr3",
+            targetMaxDimension: 2400,
+            colorPurpose: .appPreview
+        )
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try before.write(to: documents.appendingPathComponent("CreatorHub-R5-before.jpg"), options: .atomic)
+        try retouched.write(to: documents.appendingPathComponent("CreatorHub-R5-after.jpg"), options: .atomic)
+    }
+
     private func rawData() throws -> Data {
         guard let url = Bundle(for: Self.self).url(forResource: "_MG_9300", withExtension: "CR2") else {
             throw XCTSkip("CR2 fixture not bundled — drop _MG_9300.CR2 into CaptureAppTests/Resources to run.")

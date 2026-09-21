@@ -426,17 +426,134 @@ final class DeliveryServiceTests: XCTestCase {
             projectId: "project-1",
             projectTitle: "Bryllup",
             items: [item],
+            videoAssetIds: ["video-1"],
+            audioAssetIds: ["audio-1"],
+            storagePolicy: .creatorHubOnly,
             assetCount: 1,
             duplicateCount: 2,
+            failedCount: 3,
+            totalBytes: 456,
+            locallyVerifiedAt: Date(timeIntervalSince1970: 789),
+            cardIdentifier: "card-1",
+            cardName: "EOS_DIGITAL",
+            plannedCardLabel: "A",
+            cardCapacityBytes: 64_000_000_000,
+            cardAvailableBytes: 32_000_000_000,
+            photoCount: 2,
+            videoCount: 1,
+            audioCount: 1,
+            unsupportedCount: 3,
+            cloudVerifiedAt: Date(timeIntervalSince1970: 999),
+            reportPending: true,
         )
         try await store.save(expected)
         let restored = try await store.latestPending(ownerUserId: "owner-1")
         let otherOwner = try await store.latestPending(ownerUserId: "other-owner")
         XCTAssertEqual(restored, expected)
         XCTAssertNil(otherOwner)
+
+        let prompt = await CardImportPromptModel()
+        await prompt.refresh(ownerUserId: "owner-1", database: database)
+        let pendingPrompt = await prompt.pending
+        XCTAssertEqual(pendingPrompt?.cardName, "EOS_DIGITAL")
+        XCTAssertEqual(pendingPrompt?.fileCount, 1)
+        XCTAssertEqual(pendingPrompt?.failedCount, 3)
+        XCTAssertEqual(pendingPrompt?.totalBytes, 456)
+        XCTAssertEqual(pendingPrompt?.projectBindingRequired, false)
+        XCTAssertEqual(pendingPrompt?.cloudVerified, true)
+
         try await store.delete(id: jobId)
+        await prompt.refresh(ownerUserId: "owner-1", database: database)
+        let clearedPrompt = await prompt.pending
+        XCTAssertNil(clearedPrompt)
         let deleted = try await store.latestPending(ownerUserId: "owner-1")
         XCTAssertNil(deleted)
+    }
+
+    func testPhotoBackupUploadsPreviewAndOriginalWithoutCreatingClientShareToken() async throws {
+        let backendSessionId = "00000000-0000-4000-8000-000000000510"
+        let backendAssetId = "00000000-0000-4000-8000-000000000520"
+        let recorder = Recorder()
+        let session = MockURLProtocol.makeSession()
+        MockURLProtocol.handler = { request in
+            let body = request.capturedBodyData()
+            recorder.append(request, body: body)
+            let path = request.url!.path
+            if request.httpMethod == "PUT" {
+                return (
+                    HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 200,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: ["ETag": "photo-etag"]
+                    )!,
+                    Data()
+                )
+            }
+            if path == "/api/capture/sessions" {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"id":"\(backendSessionId)","name":"Live","status":"active","ownerUserId":"owner","createdAt":"2026-09-19T10:00:00Z","startsAt":null,"endsAt":null}
+                """, status: 201)
+            }
+            if path.hasSuffix("/project") {
+                return MockURLProtocol.binaryResponse(for: request.url!, body: Data(), status: 204)
+            }
+            if path.hasSuffix("/assets") {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"id":"\(backendAssetId)","sessionId":"\(backendSessionId)","originalFilename":"IMG_5.JPG","mime":"image/jpeg","sizeBytes":3,"previewKey":null,"fullKey":null,"rawKey":null,"state":"registered","checksumSha256":null,"previewUrl":null,"previewToken":null,"rating":null,"flaggedForClient":null,"rejected":null}
+                """, status: 201)
+            }
+            if path.hasSuffix("/upload/start") {
+                let json = try JSONSerialization.jsonObject(with: body ?? Data()) as! [String: Any]
+                let kind = json["kind"] as! String
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"bucket":"creatorhub-private","key":"photo/\(kind)","uploadId":"photo-\(kind)","partSize":5,"partCount":1,"signedUrlTtlSeconds":900,"partUrlBatchMax":10}
+                """)
+            }
+            if path.hasSuffix("/upload/parts") {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"parts":[{"partNumber":1,"url":"https://s3.example/photo-part"}],"expiresInSeconds":900}
+                """)
+            }
+            if path.hasSuffix("/upload/complete") {
+                return MockURLProtocol.jsonResponse(for: request.url!, body: """
+                {"id":"\(backendAssetId)","sessionId":"\(backendSessionId)","originalFilename":"IMG_5.JPG","mime":"image/jpeg","sizeBytes":3,"previewKey":"photo/preview","fullKey":"photo/full","rawKey":null,"state":"ready","checksumSha256":null,"previewUrl":null,"previewToken":null,"rating":null,"flaggedForClient":null,"rejected":null}
+                """)
+            }
+            throw URLError(.badServerResponse)
+        }
+
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("photo-backup-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let preview = temp.appendingPathComponent("preview.jpg")
+        let full = temp.appendingPathComponent("full.jpg")
+        try Data("pre".utf8).write(to: preview)
+        try Data("ful".utf8).write(to: full)
+
+        let localId = UUID()
+        let service = DeliveryService(backend: BackendClient(
+            baseURL: URL(string: "https://creatorhub.example")!,
+            session: session,
+            authHeaders: ["Authorization": "Bearer token"]
+        ))
+        let result = try await service.backupPhoto(
+            sessionName: "Live",
+            sessionStartedAt: Date(),
+            items: [
+                .init(localId: localId, originalFilename: "IMG_5.JPG", captureTime: Date(), mime: "image/jpeg", path: preview.path, kind: .preview),
+                .init(localId: localId, originalFilename: "IMG_5.JPG", captureTime: Date(), mime: "image/jpeg", path: full.path, kind: .full),
+            ],
+            projectId: "project-1"
+        )
+
+        let requests = recorder.snapshot()
+        XCTAssertEqual(result.backendAssetId.uuidString.lowercased(), backendAssetId)
+        XCTAssertEqual(result.uploadedCount, 2)
+        XCTAssertEqual(requests.filter { $0.path.hasSuffix("/assets") }.count, 1)
+        XCTAssertEqual(requests.filter { $0.path.hasSuffix("/upload/complete") }.count, 2)
+        XCTAssertTrue(requests.allSatisfy { !$0.path.hasSuffix("/client-tokens") })
     }
 }
 

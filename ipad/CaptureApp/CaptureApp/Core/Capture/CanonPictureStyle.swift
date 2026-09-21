@@ -208,6 +208,174 @@ enum CanonPictureStyle: String, Sendable, Equatable {
     }
 }
 
+// MARK: - Camera colour profiles
+
+/// The camera-profile choice shown in Redigering. These are deliberately
+/// identifiers, not embedded Adobe/Canon profile payloads: neither vendor's
+/// downloaded DCP/PF2 files may be redistributed merely because their desktop
+/// tools are free to download.
+enum CameraColorProfileID: String, Codable, CaseIterable, Sendable {
+    case appleEmbedded
+    case creatorHubStandard
+    case creatorHubPortrait
+    case creatorHubLandscape
+    case creatorHubNeutral
+    case creatorHubFaithful
+}
+
+struct CameraColorProfileDefinition: Identifiable, Sendable, Equatable {
+    let id: CameraColorProfileID
+    let displayName: String
+    let detail: String
+    /// Residual look applied after Apple's camera-aware RAW conversion.
+    /// `nil` means that Apple's embedded-camera rendering is used untouched.
+    let renderAdjustment: MagicRecipe?
+    let isBeta: Bool
+}
+
+/// Safe, model-gated camera matching on top of Apple's RAW decoder.
+///
+/// Apple's public `CIRAWFilter` API does not expose a DCP/ICC camera-profile
+/// selector. It already converts sensor RGB through a camera-dependent input
+/// transform. Consequently a LibRaw `cam_xyz` matrix MUST NOT be applied to
+/// `filter.outputImage`: that output is no longer sensor RGB and doing so would
+/// double-profile the image. The open LibRaw R6 Mark II matrix is retained here
+/// as calibration provenance only; it is not part of the render graph.
+///
+/// CreatorHub profiles are small, owned residual looks. They are intentionally
+/// marked beta until measured against ColorChecker captures and Canon DPP
+/// references from the physical body under D65 and tungsten illumination.
+enum CameraColorProfileCatalog {
+    enum CameraFamily: String, Sendable {
+        case canonEOSR5
+        case canonEOSR6MarkII
+
+        var displayName: String {
+            switch self {
+            case .canonEOSR5: return "Canon EOS R5"
+            case .canonEOSR6MarkII: return "Canon EOS R6 Mark II"
+            }
+        }
+    }
+
+    /// LibRaw `colordata.cpp` entry for Canon EOS R6 Mark II. Informational
+    /// calibration input only — see the double-profile warning above.
+    static let canonEOSR6MarkIILibRawCameraMatrix: [Int] = [
+        9539, -2795, -1224,
+        -4175, 11998, 2458,
+        -465, 1755, 6048,
+    ]
+
+    static func cameraFamily(for model: String?) -> CameraFamily? {
+        guard let model else { return nil }
+        let normalized = model
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+
+        switch normalized {
+        case "canon eos r5", "eos r5":
+            return .canonEOSR5
+        case "canon eos r6 mark ii", "eos r6 mark ii",
+             "canon eos r6m2", "eos r6m2", "canon eos r6 mk ii", "eos r6 mk ii":
+            return .canonEOSR6MarkII
+        default:
+            return nil
+        }
+    }
+
+    static func profiles(cameraModel: String?, hasRaw: Bool) -> [CameraColorProfileDefinition] {
+        let embedded = CameraColorProfileDefinition(
+            id: .appleEmbedded,
+            displayName: "Apple innebygd",
+            detail: hasRaw
+                ? "Kameraets RAW-data tolkes av Apples kameratilpassede dekoder."
+                : "Ingen RAW-original — den innebygde JPEG-fargen beholdes.",
+            renderAdjustment: nil,
+            isBeta: false
+        )
+        guard hasRaw, let family = cameraFamily(for: cameraModel) else { return [embedded] }
+
+        let prefix = "\(family.displayName) · CreatorHub matching"
+        return [
+            embedded,
+            .init(
+                id: .creatorHubStandard,
+                displayName: "Kamera Standard",
+                detail: "\(prefix): tydelig kontrast og balansert farge.",
+                renderAdjustment: MagicRecipe(
+                    warmth: -0.04, contrast: 0.06, saturation: 0.01,
+                    highlightRecovery: 0.04, vibrance: 0.07,
+                    autoEnhance: false
+                ),
+                isBeta: true
+            ),
+            .init(
+                id: .creatorHubPortrait,
+                displayName: "Kamera Portrett",
+                detail: "\(prefix): kontrollert hudfarge uten global oransje varme.",
+                renderAdjustment: MagicRecipe(
+                    warmth: -0.03, tint: 0.01, contrast: 0.03,
+                    saturation: -0.02, highlightRecovery: 0.08,
+                    vibrance: 0.06, autoEnhance: false, skinGuard: 0.70
+                ),
+                isBeta: true
+            ),
+            .init(
+                id: .creatorHubLandscape,
+                displayName: "Kamera Landskap",
+                detail: "\(prefix): mer separasjon og fargedybde uten neonfarger.",
+                renderAdjustment: MagicRecipe(
+                    warmth: -0.04, contrast: 0.09, saturation: 0.03,
+                    highlightRecovery: 0.08, vibrance: 0.09, texture: 0.04,
+                    dehaze: 0.03, autoEnhance: false
+                ),
+                isBeta: true
+            ),
+            .init(
+                id: .creatorHubNeutral,
+                displayName: "Kamera Nøytral",
+                detail: "\(prefix): ingen ekstra farge-look; auto-forbedring er av.",
+                renderAdjustment: MagicRecipe(autoEnhance: false),
+                isBeta: true
+            ),
+            .init(
+                id: .creatorHubFaithful,
+                displayName: "Kamera Troverdig",
+                detail: "\(prefix): dempet metning og nøktern tone for videre arbeid.",
+                renderAdjustment: MagicRecipe(
+                    warmth: -0.02, contrast: 0.02, saturation: -0.03,
+                    highlightRecovery: 0.05, autoEnhance: false
+                ),
+                isBeta: true
+            ),
+        ]
+    }
+
+    static func profile(
+        _ id: CameraColorProfileID,
+        cameraModel: String?,
+        hasRaw: Bool
+    ) -> CameraColorProfileDefinition {
+        let available = profiles(cameraModel: cameraModel, hasRaw: hasRaw)
+        return available.first(where: { $0.id == id }) ?? available[0]
+    }
+
+    static func effectiveRecipe(
+        userRecipe: MagicRecipe,
+        profileID: CameraColorProfileID,
+        cameraModel: String?,
+        hasRaw: Bool
+    ) -> MagicRecipe {
+        guard let adjustment = profile(profileID, cameraModel: cameraModel, hasRaw: hasRaw)
+            .renderAdjustment
+        else { return userRecipe }
+        return userRecipe.merging(baseline: adjustment)
+    }
+}
+
 extension MagicRecipe {
     /// Sum each axis with another recipe and clamp to the field's
     /// natural range. Used by ``CanonPictureStyle.baselineRecipeAdjustment``
@@ -219,6 +387,7 @@ extension MagicRecipe {
     func merging(baseline: MagicRecipe) -> MagicRecipe {
         MagicRecipe(
             warmth: clampSigned(warmth + baseline.warmth),
+            tint: clampSigned(tint + baseline.tint),
             skinHighFreq: clampSigned(skinHighFreq + baseline.skinHighFreq),
             skinLowFreq: clampSigned(skinLowFreq + baseline.skinLowFreq),
             skinSmooth: clampUnit(skinSmooth + baseline.skinSmooth),
@@ -229,6 +398,9 @@ extension MagicRecipe {
             vibrance: clampSigned(vibrance + baseline.vibrance),
             texture: clampUnit(texture + baseline.texture),
             dehaze: clampUnit(dehaze + baseline.dehaze),
+            defringe: clampUnit(defringe + baseline.defringe),
+            greenControl: clampUnit(greenControl + baseline.greenControl),
+            subjectSeparation: clampUnit(subjectSeparation + baseline.subjectSeparation),
             eyeSharpen: clampUnit(eyeSharpen + baseline.eyeSharpen),
             eyeCatchlight: clampUnit(eyeCatchlight + baseline.eyeCatchlight),
             autoStraighten: autoStraighten || baseline.autoStraighten,
@@ -249,6 +421,12 @@ extension MagicRecipe {
             // Picture-Style baseline shouldn't impose a subject type.
             subjectType: subjectType != .none ? subjectType : baseline.subjectType,
             skinUnify: clampUnit(skinUnify + baseline.skinUnify),
+            blemishCleanup: clampUnit(blemishCleanup + baseline.blemishCleanup),
+            dodgeBurn: clampUnit(dodgeBurn + baseline.dodgeBurn),
+            shineControl: clampUnit(shineControl + baseline.shineControl),
+            underEyeLift: clampUnit(underEyeLift + baseline.underEyeLift),
+            // Protection is a policy strength, not an additive visual effect.
+            makeupProtection: max(makeupProtection, baseline.makeupProtection),
         )
     }
 

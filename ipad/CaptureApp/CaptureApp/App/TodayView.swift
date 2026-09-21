@@ -53,6 +53,58 @@ final class TodayDeliveryModel {
     var active: Int { galleries.filter { ($0.status ?? "") == "active" }.count }
 }
 
+/// Lightweight dashboard state for the durable memory-card queue. This reads
+/// the same SQLite job that CardImportModel restores, so the dashboard never
+/// guesses that a physical card is attached or claims that cloud backup is
+/// complete before the persisted job says so.
+@MainActor
+@Observable
+final class CardImportPromptModel {
+    struct Pending: Equatable {
+        let cardName: String
+        let projectTitle: String?
+        let fileCount: Int
+        let totalBytes: Int64
+        let failedCount: Int
+        let projectBindingRequired: Bool
+        let cloudVerified: Bool
+    }
+
+    private(set) var pending: Pending?
+
+    func refresh(ownerUserId: String) async {
+        do {
+            let database = try AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
+            await refresh(ownerUserId: ownerUserId, database: database)
+        } catch {
+            pending = nil
+            AppLog.sync.warning("[CardImport] dashboard status unavailable: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func refresh(ownerUserId: String, database: AppDatabase) async {
+        do {
+            let job = try await CardBackupJobStore(database: database).latestPending(ownerUserId: ownerUserId)
+            pending = job.map {
+                Pending(
+                    cardName: $0.cardName,
+                    projectTitle: $0.projectTitle,
+                    fileCount: $0.assetCount,
+                    totalBytes: $0.totalBytes,
+                    failedCount: $0.failedCount,
+                    projectBindingRequired: $0.projectId == nil,
+                    cloudVerified: $0.cloudVerifiedAt != nil
+                )
+            }
+        } catch {
+            // The card importer remains available even if the status chip
+            // cannot read SQLite. Avoid presenting a misleading queue state.
+            pending = nil
+            AppLog.sync.warning("[CardImport] dashboard status unavailable: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+}
+
 struct TodayView: View {
     @State private var snapshot: TodayStore.Snapshot?
     @State private var loadError: String?
@@ -64,10 +116,13 @@ struct TodayView: View {
     @State private var layout = DashboardLayout()
     @State private var showCustomize = false
     @State private var showCardImport = false
+    @State private var presentCardPickerOnOpen = false
+    @State private var cardImportPrompt = CardImportPromptModel()
     @State private var showRevisions = false
     @State private var notes = NotesStore.shared
     @State private var quickNote = ""
     @State private var requests = TodayRequestsModel()
+    @State private var deepLinks = CaptureDeepLinkRouter.shared
 
     let ownerUserId: String
 
@@ -84,6 +139,7 @@ struct TodayView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     syncStatusRow
+                    memoryCardEntryCard
                     if layout.columns == 2 {
                         LazyVGrid(
                             columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
@@ -108,7 +164,7 @@ struct TodayView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showCardImport = true } label: {
+                    Button { openCardImport(startPicker: cardImportPrompt.pending == nil) } label: {
                         Label("Importer fra minnekort", systemImage: "sdcard")
                     }
                 }
@@ -131,13 +187,25 @@ struct TodayView: View {
             .sheet(isPresented: $showCustomize) {
                 CustomizeTodaySheet(layout: layout)
             }
-            .sheet(isPresented: $showCardImport) {
-                CardImportView()
+            .sheet(isPresented: $showCardImport, onDismiss: {
+                Task { await cardImportPrompt.refresh(ownerUserId: ownerUserId) }
+            }) {
+                CardImportView(presentPickerOnOpen: presentCardPickerOnOpen)
             }
             .sheet(isPresented: $showRevisions) {
                 RevisionsEntryView()
             }
+            .navigationDestination(item: inquiryDeepLinkBinding) { inquiryId in
+                RequestsInboxView(initialInquiryId: inquiryId)
+            }
         }
+    }
+
+    private var inquiryDeepLinkBinding: Binding<String?> {
+        Binding(
+            get: { deepLinks.inquiryId },
+            set: { deepLinks.inquiryId = $0 }
+        )
     }
 
     // MARK: - Sync
@@ -152,6 +220,74 @@ struct TodayView: View {
                 .foregroundStyle(CHTheme.textMuted)
             Spacer()
         }
+    }
+
+    // MARK: - Memory card
+
+    private var memoryCardEntryCard: some View {
+        Button {
+            openCardImport(startPicker: cardImportPrompt.pending == nil)
+        } label: {
+            CHCard {
+                HStack(spacing: 14) {
+                    Image(systemName: cardImportPrompt.pending == nil ? "sdcard" : "arrow.clockwise.icloud.fill")
+                        .font(.title2)
+                        .foregroundStyle(cardImportPrompt.pending == nil ? CHTheme.accent : CHTheme.warning)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            (cardImportPrompt.pending == nil ? CHTheme.accent : CHTheme.warning).opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 10)
+                        )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let pending = cardImportPrompt.pending {
+                            Text(pending.failedCount > 0 ? "Fortsett import fra \(pending.cardName)" : "Fullfør minnekort-jobben")
+                                .font(.headline)
+                                .foregroundStyle(CHTheme.textPrimary)
+                            Text(cardImportDetail(pending))
+                                .font(.caption)
+                                .foregroundStyle(CHTheme.textSecondary)
+                                .lineLimit(2)
+                        } else {
+                            Text("Importer fra minnekort")
+                                .font(.headline)
+                                .foregroundStyle(CHTheme.textPrimary)
+                            Text("Foto, video og ekstern lyd · lokal verifisering før skybackup")
+                                .font(.caption)
+                                .foregroundStyle(CHTheme.textSecondary)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CHTheme.textMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("today-card-import-entry")
+        .accessibilityHint(cardImportPrompt.pending == nil
+            ? "Åpner iPadOS-filvelgeren slik at du kan gi CreatorHub tilgang til kortet."
+            : "Åpner den uferdige minnekort-jobben.")
+    }
+
+    private func cardImportDetail(_ pending: CardImportPromptModel.Pending) -> String {
+        let size = ByteCountFormatter.string(fromByteCount: pending.totalBytes, countStyle: .file)
+        if pending.failedCount > 0 {
+            return "\(pending.failedCount) filer må leses på nytt · sett inn samme kort"
+        }
+        if pending.cloudVerified {
+            return "\(pending.fileCount) filer · sikret i CreatorHub · prosjektkvittering venter"
+        }
+        if pending.projectBindingRequired {
+            return "\(pending.fileCount) filer (\(size)) · lokalt verifisert · velg prosjekt"
+        }
+        return "\(pending.fileCount) filer (\(size)) · backup fortsetter når nettet er tilgjengelig"
+    }
+
+    private func openCardImport(startPicker: Bool) {
+        presentCardPickerOnOpen = startPicker
+        showCardImport = true
     }
 
     // MARK: - Dagens shoots
@@ -421,6 +557,7 @@ struct TodayView: View {
         async let envTask: Void = env.load()
         async let deliveryTask: Void = delivery.load()
         async let requestsTask: Void = requests.load()
+        async let cardImportTask: Void = cardImportPrompt.refresh(ownerUserId: ownerUserId)
         if let store {
             do {
                 if let signedIn = SignInService.shared.session {
@@ -446,7 +583,7 @@ struct TodayView: View {
         } else {
             loadError = "Database ikke tilgjengelig"
         }
-        _ = await (envTask, deliveryTask, requestsTask)
+        _ = await (envTask, deliveryTask, requestsTask, cardImportTask)
     }
 }
 

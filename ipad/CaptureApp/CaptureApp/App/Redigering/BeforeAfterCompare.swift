@@ -3,11 +3,37 @@ import CoreImage
 
 // MARK: - Before/After compare
 
+enum RedigeringComparisonMode: CaseIterable {
+    case split
+    case before
+    case after
+
+    var label: String {
+        switch self {
+        case .split: "Delt"
+        case .before: "Før"
+        case .after: "Etter"
+        }
+    }
+
+    mutating func advance() {
+        switch self {
+        case .split: self = .before
+        case .before: self = .after
+        case .after: self = .split
+        }
+    }
+}
+
 struct BeforeAfterCompare: View {
     let beforePath: String?
+    /// Samme normaliserte crop som er brukt på `after`. Før og etter må ha
+    /// identisk geometri; ellers sammenligner deleren ulike bildepartier.
+    let beforeCrop: CGRect?
     let after: UIImage?
     let rendering: Bool
     @Binding var zoom: CGFloat
+    let comparisonMode: RedigeringComparisonMode
     var showHistogram: Bool = false
     var maskOverlay: UIImage?
     var diffOverlay: UIImage?
@@ -25,36 +51,49 @@ struct BeforeAfterCompare: View {
             // «Før» (original) = VENSTRE, «Etter» (resultat) = HØYRE — matcher
             // etikettene. `after` avsløres til HØYRE for deleren. Hold-for-original
             // → skjul Etter helt (deler helt til høyre → kun original synlig).
-            let effSplit = holdingOriginal ? 1 : split
+            let effSplit: CGFloat = {
+                if holdingOriginal { return 1 }
+                switch comparisonMode {
+                case .split: return split
+                case .before: return 1
+                case .after: return 0
+                }
+            }()
+            let imageRect = fittedImageRect(in: geo.size)
             ZStack(alignment: .topLeading) {
-                CHTheme.surfaceElevated
+                Color.black
                 if let before = beforeImage {
-                    Image(uiImage: before).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                    Image(uiImage: before).resizable().scaledToFit()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier("redigering-image-loaded")
+                        .accessibilityLabel("Redigeringsbildet er lastet")
                 }
                 if let after {
-                    Image(uiImage: after).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                    Image(uiImage: after).resizable().scaledToFit()
+                        .frame(width: geo.size.width, height: geo.size.height)
                         .mask(alignment: .trailing) {
                             Rectangle().frame(width: geo.size.width * (1 - effSplit))
                         }
                 }
                 if let maskOverlay {
-                    Image(uiImage: maskOverlay).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                    Image(uiImage: maskOverlay).resizable().scaledToFit()
+                        .frame(width: geo.size.width, height: geo.size.height)
                         .opacity(0.4).allowsHitTesting(false)
                 }
                 if let diffOverlay {
-                    Image(uiImage: diffOverlay).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height).clipped()
+                    Image(uiImage: diffOverlay).resizable().scaledToFit()
+                        .frame(width: geo.size.width, height: geo.size.height)
                         .opacity(0.7).allowsHitTesting(false)
                 }
                 // Tappbare ansikts-prikker (lokal justering). CI-koord (nede-
                 // venstre) → SwiftUI (topp-venstre): flipp Y.
                 ForEach(faceDots.indices, id: \.self) { i in
                     let r = faceDots[i]
-                    let cx = r.midX * geo.size.width
-                    let cy = (1 - r.midY) * geo.size.height
+                    let cx = imageRect.minX + r.midX * imageRect.width
+                    let cy = imageRect.minY + (1 - r.midY) * imageRect.height
                     Circle()
                         .stroke(activeFace == i ? CHTheme.accent : .white, lineWidth: activeFace == i ? 3 : 2)
                         .background(Circle().fill((activeFace == i ? CHTheme.accent : .black).opacity(0.35)))
@@ -64,7 +103,7 @@ struct BeforeAfterCompare: View {
                         .onTapGesture { onTapFace(i) }
                 }
                 labels
-                if !holdingOriginal { handle(in: geo) }
+                if !holdingOriginal, comparisonMode == .split { handle(in: geo) }
                 if showHistogram, let after {
                     HistogramOverlay(image: after)
                         .frame(height: 84).padding(10)
@@ -78,6 +117,7 @@ struct BeforeAfterCompare: View {
             .scaleEffect(max(1, zoom * pinch))
             .contentShape(Rectangle())
             .gesture(DragGesture().onChanged { v in
+                guard comparisonMode == .split else { return }
                 split = min(1, max(0, v.location.x / geo.size.width))
             })
             .simultaneousGesture(
@@ -86,22 +126,55 @@ struct BeforeAfterCompare: View {
                     .onEnded { value in zoom = min(4, max(1, zoom * value)) }
             )
         }
-        .task(id: beforePath) {
+        .task(id: beforeLoadKey) {
             let path = beforePath
+            let crop = beforeCrop
             beforeImage = await Task.detached(priority: .userInitiated) {
-                path.flatMap { UIImage(contentsOfFile: $0) }
+                guard let image = path.flatMap({ UIImage(contentsOfFile: $0) }) else { return nil }
+                return crop.map { RedigeringPipeline.cropped(image, to: $0) } ?? image
             }.value
+            split = 0.5
         }
+    }
+
+    private var beforeLoadKey: String {
+        guard let crop = beforeCrop else { return "\(beforePath ?? "")|full" }
+        return "\(beforePath ?? "")|\(crop.origin.x),\(crop.origin.y),\(crop.width),\(crop.height)"
+    }
+
+    private func fittedImageRect(in container: CGSize) -> CGRect {
+        guard let image = beforeImage, image.size.width > 0, image.size.height > 0 else {
+            return CGRect(origin: .zero, size: container)
+        }
+        let scale = min(container.width / image.size.width, container.height / image.size.height)
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        return CGRect(
+            x: (container.width - size.width) / 2,
+            y: (container.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 
     private var labels: some View {
         VStack {
-            HStack {
-                tag(holdingOriginal ? "Original" : "Før"); Spacer()
-                holdButton
-                Spacer()
-                tag("Etter")
-            }.padding(10)
+            Group {
+                if comparisonMode == .split, !holdingOriginal {
+                    HStack {
+                        tag("Før"); Spacer()
+                        holdButton
+                        Spacer()
+                        tag("Etter")
+                    }
+                } else {
+                    HStack {
+                        tag(holdingOriginal || comparisonMode == .before ? "Original" : "Etter")
+                        Spacer()
+                        holdButton
+                    }
+                }
+            }
+            .padding(10)
             Spacer()
         }
     }

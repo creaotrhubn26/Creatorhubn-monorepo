@@ -12,6 +12,30 @@ enum FaceLocalAdjustFilter {
         var isActive: Bool { abs(brightness) > 0.01 || abs(warmth) > 0.01 }
     }
 
+    /// Persistable local edit. Keeping the normalised face rectangle with the
+    /// values makes preview, crash recovery and full-resolution export share the
+    /// same source of truth instead of relying on a transient face-array index.
+    struct Entry: Equatable, Codable, Sendable {
+        var normalizedRect: CGRect
+        var adjustment: Adjust
+    }
+
+    static func apply(to image: CIImage, entries: [Entry]) -> CIImage {
+        let extent = image.extent
+        return apply(to: image, faces: entries.map { entry in
+            let n = entry.normalizedRect
+            return (
+                CGRect(
+                    x: extent.minX + n.minX * extent.width,
+                    y: extent.minY + n.minY * extent.height,
+                    width: n.width * extent.width,
+                    height: n.height * extent.height
+                ),
+                entry.adjustment
+            )
+        })
+    }
+
     /// `faces`: (ansikts-rekt i BILDE-piksler, justering). Uvirksomme hoppes over.
     static func apply(to image: CIImage, faces: [(rect: CGRect, adj: Adjust)]) -> CIImage {
         let extent = image.extent
@@ -25,11 +49,11 @@ enum FaceLocalAdjustFilter {
                 corrected = e.outputImage ?? corrected
             }
             if abs(adj.warmth) > 0.01 {
-                let t = CIFilter.temperatureAndTint()
-                t.inputImage = corrected
-                t.neutral = CIVector(x: 6500, y: 0)
-                t.targetNeutral = CIVector(x: 6500 + CGFloat(adj.warmth) * 900, y: 0)
-                corrected = t.outputImage ?? corrected
+                corrected = PhotographicTemperatureFilter.apply(
+                    to: corrected,
+                    warmth: adj.warmth,
+                    kelvinScale: 900
+                )
             }
             guard let mask = faceMask(extent: extent, faceRect: rect) else { continue }
             let blend = CIFilter.blendWithMask()

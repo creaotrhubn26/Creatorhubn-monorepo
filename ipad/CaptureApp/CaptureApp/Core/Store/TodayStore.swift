@@ -47,6 +47,10 @@ struct TodayStore: Sendable {
             for summary in summaries {
                 let existing = try Project.fetchOne(db, key: summary.id)
                 let counters = summary.shotListSummary
+                let metadataJson = Self.mergedMetadataJson(
+                    existing: existing?.ownerUserId == ownerUserId ? existing?.metadataJson : nil,
+                    memoryCardConfigs: summary.memoryCardConfigs
+                )
                 var project = Project(
                     id: summary.id,
                     ownerUserId: ownerUserId,
@@ -57,7 +61,7 @@ struct TodayStore: Sendable {
                     location: summary.location,
                     projectType: summary.projectType,
                     status: summary.status,
-                    metadataJson: existing?.ownerUserId == ownerUserId ? existing?.metadataJson ?? "{}" : "{}",
+                    metadataJson: metadataJson,
                     totalShots: counters?.totalShots ?? 0,
                     completedShots: counters?.completedShots ?? 0,
                     mustHaveShots: counters?.mustHaveShots ?? 0,
@@ -67,6 +71,18 @@ struct TodayStore: Sendable {
                 )
                 try project.save(db)
             }
+        }
+    }
+
+    /// Offline project picker source. Returns the complete local mirror for
+    /// this account, not only today's jobs, so field ingest can bind media to
+    /// an already-known project without internet access.
+    func cachedProjects(ownerUserId: String) async throws -> [Project] {
+        try await database.dbWriter.read { db in
+            try Project
+                .filter(Column("ownerUserId") == ownerUserId)
+                .order(Column("eventDate").desc, Column("updatedAt").desc)
+                .fetchAll(db)
         }
     }
 
@@ -156,6 +172,34 @@ struct TodayStore: Sendable {
             return date
         }
         return dateOnly.date(from: raw)
+    }
+
+    static func memoryCardConfigs(from metadataJson: String) -> [BackendMemoryCardConfig] {
+        guard let data = metadataJson.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = root["memoryCardConfigs"],
+              let configsData = try? JSONSerialization.data(withJSONObject: raw)
+        else { return [] }
+        return (try? JSONDecoder().decode([BackendMemoryCardConfig].self, from: configsData)) ?? []
+    }
+
+    private static func mergedMetadataJson(
+        existing: String?,
+        memoryCardConfigs: [BackendMemoryCardConfig]
+    ) -> String {
+        var root: [String: Any] = [:]
+        if let existing,
+           let data = existing.data(using: .utf8),
+           let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            root = decoded
+        }
+        if let encoded = try? JSONEncoder().encode(memoryCardConfigs),
+           let value = try? JSONSerialization.jsonObject(with: encoded) {
+            root["memoryCardConfigs"] = value
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+        else { return existing ?? "{}" }
+        return String(decoding: data, as: UTF8.self)
     }
 
     private nonisolated(unsafe) static let isoFractional: ISO8601DateFormatter = {

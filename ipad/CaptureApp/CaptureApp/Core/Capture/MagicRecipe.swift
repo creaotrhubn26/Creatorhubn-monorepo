@@ -15,6 +15,11 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Real-world range: -500K…+500K. We display as "Warmth ±%".
     var warmth: Double
 
+    /// Green↔magenta white-balance correction. Temperature cannot remove the
+    /// green cast from fluorescent/LED fixtures on its own, so tint is a
+    /// separate, reversible axis. Range -1…+1 (green…magenta).
+    var tint: Double = 0
+
     /// **Phase 7 (Evoto parity)** — High-frequency skin axis. Controls
     /// pore + micro-texture *detail* independent of tone smoothing.
     /// Bidirectional like Evoto's "High Frequency" slider:
@@ -120,6 +125,26 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// shift toward face reference (industry: 0.30–0.50 typical).
     var skinUnify: Double = 0
 
+    /// Selective small-spot cleanup inside detected facial skin. Unlike the
+    /// low-frequency skin control this only blends pixels that differ markedly
+    /// from a local median, so pores and stable facial features remain intact.
+    var blemishCleanup: Double = 0
+
+    /// Local dodge & burn: compresses uneven facial illumination with a soft,
+    /// feature-protected mask while retaining the overall exposure and shape.
+    var dodgeBurn: Double = 0
+
+    /// Tames specular forehead/cheek/nose highlights inside the skin mask.
+    var shineControl: Double = 0
+
+    /// Subtle lift beneath detected eyes. The eye itself, brows and lashes are
+    /// excluded; this is not eye enlargement or identity manipulation.
+    var underEyeLift: Double = 0
+
+    /// Expands protection around eyes, brows and lips when smoothing or local
+    /// tone work is active. Useful for preserving makeup colour and edges.
+    var makeupProtection: Double = 0.75
+
     /// **Phase 7C** — Auto-straighten via `VNDetectHorizonRequest`.
     /// When true, detection runs on a 1024-px-downsample of the image
     /// and `CIStraightenFilter` applies the result. When detection
@@ -192,6 +217,20 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// produces the over-cooked / HDR-disaster look).
     var dehaze: Double = 0
 
+    /// Removes residual purple/magenta chromatic aberration only where colour
+    /// coincides with a luminance edge. This deliberately leaves broad purple
+    /// objects alone; it is a cleanup tool, not a global hue replacement.
+    var defringe: Double = 0
+
+    /// Selectively restrains dominant foliage greens without reducing skin or
+    /// neutral colours. Useful for outdoor portraits where global vibrance can
+    /// otherwise make grass and leaves compete with the subject.
+    var greenControl: Double = 0
+
+    /// Non-generative person separation. Vision supplies a soft person mask;
+    /// only the background receives a small exposure/saturation reduction.
+    var subjectSeparation: Double = 0
+
     /// Subject-specific factory presets. Picked automatically by
     /// `MagicPipeline` based on Vision classification results, overridable
     /// via the Tune panel. Each recipe's intensities are tuned to what a
@@ -215,21 +254,30 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// positions with ImageMagick, compute mean RGB delta. Repeat
     /// per-body for camera-specific bias (R5 / R5 mkII may differ).
 
-    /// Portraits: vibrance preferred over saturation for skin (lifts
-    /// background/clothing without overdriving lip/cheek redness).
-    /// Mild texture for hair/fabric; zero dehaze (no atmospheric
-    /// haze indoors).
-    /// **Phase 7**: skin uses bidirectional freq-sep — `skinLowFreq
-    /// +0.30` smooths tone (acne / blotchy areas) while `skinHighFreq
-    /// +0.15` rebuilds pore detail so the result reads as "natural"
-    /// rather than "plastic", matching Evoto's "Textured Smoothing"
-    /// approach (preserves natural highlights/shadows).
+    /// Portrait Natural — deliberately conservative. Camera/display JPEGs have
+    /// already received a picture style, so Apple's scene auto-enhance used to
+    /// grade them a second time before adding positive warmth. On real faces that
+    /// stacked into the orange result caught by the portrait visual regression.
+    ///
+    /// The factory look now protects identity and skin texture by default while
+    /// still landing like a professionally finished portrait:
+    ///   - no opaque scene auto-enhance / double white-balance
+    ///   - cool-neutral global colour with a masked skin guard
+    ///   - a deliberate black/midtone anchor instead of lifted, milky shadows
+    ///   - selective vibrance for colour separation without orange skin
+    ///   - modest low-frequency evening and a smaller pore-detail restore
+    ///
+    /// Stronger beauty work remains available as explicit, reversible controls in
+    /// the Portrait section of the editor rather than being baked into one click.
     static let portrait = MagicRecipe(
-        warmth: 0.10, skinHighFreq: 0.15, skinLowFreq: 0.30, shadowLift: 0.20,
-        contrast: 0.05, saturation: 0.05,
-        highlightRecovery: 0.10, vibrance: 0.10, texture: 0.05, dehaze: 0,
-        eyeSharpen: 0.30, eyeCatchlight: 0.20, skinGuard: 0.5,
-        teethWhiten: 0.20, skinUnify: 0.30
+        warmth: -0.18, skinHighFreq: 0.12, skinLowFreq: 0.20, shadowLift: 0.02,
+        contrast: 0.27, saturation: 0,
+        highlightRecovery: 0.58, vibrance: 0.18, texture: 0.07, dehaze: 0.03,
+        defringe: 0.85, greenControl: 0.48, subjectSeparation: 0.42,
+        eyeSharpen: 0.20, eyeCatchlight: 0.11, autoEnhance: false, skinGuard: 0.82,
+        teethWhiten: 0.10, skinUnify: 0.18,
+        blemishCleanup: 0.16, dodgeBurn: 0.12, shineControl: 0.10,
+        underEyeLift: 0.08, makeupProtection: 0.85
     )
 
     /// **Bryllup / varmt lys** — KORRIGERENDE reportasje-grade for tungsten- og
@@ -424,6 +472,10 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             let pct = Int((warmth * 100).rounded())
             chips.append("Warmth \(pct > 0 ? "+" : "")\(pct)%")
         }
+        if abs(tint) >= 0.05 {
+            let pct = Int((tint * 100).rounded())
+            chips.append("Tint \(pct > 0 ? "+" : "")\(pct)%")
+        }
         if abs(skinHighFreq) >= 0.05 {
             let pct = Int((skinHighFreq * 100).rounded())
             chips.append("Skin Detail \(pct > 0 ? "+" : "")\(pct)%")
@@ -461,6 +513,15 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if dehaze >= 0.05 {
             chips.append("Dehaze +\(Int((dehaze * 100).rounded()))%")
         }
+        if defringe >= 0.05 {
+            chips.append("Defringe \(Int((defringe * 100).rounded()))%")
+        }
+        if greenControl >= 0.05 {
+            chips.append("Green control \(Int((greenControl * 100).rounded()))%")
+        }
+        if subjectSeparation >= 0.05 {
+            chips.append("Subject separation \(Int((subjectSeparation * 100).rounded()))%")
+        }
         if eyeSharpen >= 0.05 {
             chips.append("Eye Sharpen +\(Int((eyeSharpen * 100).rounded()))%")
         }
@@ -481,6 +542,18 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if skinUnify >= 0.05 {
             chips.append("Skin Unify +\(Int((skinUnify * 100).rounded()))%")
         }
+        if blemishCleanup >= 0.05 {
+            chips.append("Blemishes −\(Int((blemishCleanup * 100).rounded()))%")
+        }
+        if dodgeBurn >= 0.05 {
+            chips.append("Dodge & Burn +\(Int((dodgeBurn * 100).rounded()))%")
+        }
+        if shineControl >= 0.05 {
+            chips.append("Shine −\(Int((shineControl * 100).rounded()))%")
+        }
+        if underEyeLift >= 0.05 {
+            chips.append("Under-eye +\(Int((underEyeLift * 100).rounded()))%")
+        }
         if skinGuard >= 0.05 {
             chips.append("Skin Guard +\(Int((skinGuard * 100).rounded()))%")
         }
@@ -494,12 +567,15 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     }
 
     var isNeutral: Bool {
-        warmth == 0 && skinHighFreq == 0 && skinLowFreq == 0 && skinSmooth == 0
+        warmth == 0 && tint == 0 && skinHighFreq == 0 && skinLowFreq == 0 && skinSmooth == 0
             && shadowLift == 0 && contrast == 0 && saturation == 0
             && highlightRecovery == 0 && vibrance == 0 && texture == 0
-            && dehaze == 0 && eyeSharpen == 0 && eyeCatchlight == 0
+            && dehaze == 0 && defringe == 0 && greenControl == 0 && subjectSeparation == 0
+            && eyeSharpen == 0 && eyeCatchlight == 0
             && !autoStraighten && straightenAngle == 0
             && teethWhiten == 0 && subjectType == .none && skinUnify == 0
+            && blemishCleanup == 0 && dodgeBurn == 0 && shineControl == 0
+            && underEyeLift == 0
             // skinGuard/filmGrain manglet → en recipe med KUN én av dem ble regnet
             // nøytral, og RAWExportPipeline merget inn Picture Style-baselinen selv
             // om fotografen hadde rørt en slider (mot den dokumenterte regelen).
@@ -516,6 +592,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         warmth = try c.decode(Double.self, forKey: .warmth)
+        tint = try c.decodeIfPresent(Double.self, forKey: .tint) ?? 0
         shadowLift = try c.decode(Double.self, forKey: .shadowLift)
         contrast = try c.decode(Double.self, forKey: .contrast)
         saturation = try c.decode(Double.self, forKey: .saturation)
@@ -526,6 +603,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         vibrance = try c.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0
         texture = try c.decodeIfPresent(Double.self, forKey: .texture) ?? 0
         dehaze = try c.decodeIfPresent(Double.self, forKey: .dehaze) ?? 0
+        defringe = try c.decodeIfPresent(Double.self, forKey: .defringe) ?? 0
+        greenControl = try c.decodeIfPresent(Double.self, forKey: .greenControl) ?? 0
+        subjectSeparation = try c.decodeIfPresent(Double.self, forKey: .subjectSeparation) ?? 0
         eyeSharpen = try c.decodeIfPresent(Double.self, forKey: .eyeSharpen) ?? 0
         eyeCatchlight = try c.decodeIfPresent(Double.self, forKey: .eyeCatchlight) ?? 0
         autoStraighten = try c.decodeIfPresent(Bool.self, forKey: .autoStraighten) ?? false
@@ -536,6 +616,11 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         teethWhiten = try c.decodeIfPresent(Double.self, forKey: .teethWhiten) ?? 0
         subjectType = try c.decodeIfPresent(SubjectType.self, forKey: .subjectType) ?? .none
         skinUnify = try c.decodeIfPresent(Double.self, forKey: .skinUnify) ?? 0
+        blemishCleanup = try c.decodeIfPresent(Double.self, forKey: .blemishCleanup) ?? 0
+        dodgeBurn = try c.decodeIfPresent(Double.self, forKey: .dodgeBurn) ?? 0
+        shineControl = try c.decodeIfPresent(Double.self, forKey: .shineControl) ?? 0
+        underEyeLift = try c.decodeIfPresent(Double.self, forKey: .underEyeLift) ?? 0
+        makeupProtection = try c.decodeIfPresent(Double.self, forKey: .makeupProtection) ?? 0.75
     }
 
     /// Memberwise init — synthesized Codable would consume this slot, so
@@ -543,6 +628,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// `magicRecipe(from wire:)`, `merging`) that build recipes directly.
     init(
         warmth: Double = 0,
+        tint: Double = 0,
         skinHighFreq: Double = 0,
         skinLowFreq: Double = 0,
         skinSmooth: Double = 0,
@@ -553,6 +639,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         vibrance: Double = 0,
         texture: Double = 0,
         dehaze: Double = 0,
+        defringe: Double = 0,
+        greenControl: Double = 0,
+        subjectSeparation: Double = 0,
         eyeSharpen: Double = 0,
         eyeCatchlight: Double = 0,
         autoStraighten: Bool = false,
@@ -562,9 +651,15 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         straightenAngle: Double = 0,
         teethWhiten: Double = 0,
         subjectType: SubjectType = .none,
-        skinUnify: Double = 0
+        skinUnify: Double = 0,
+        blemishCleanup: Double = 0,
+        dodgeBurn: Double = 0,
+        shineControl: Double = 0,
+        underEyeLift: Double = 0,
+        makeupProtection: Double = 0.75
     ) {
         self.warmth = warmth
+        self.tint = tint
         self.skinHighFreq = skinHighFreq
         self.skinLowFreq = skinLowFreq
         self.skinSmooth = skinSmooth
@@ -575,6 +670,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.vibrance = vibrance
         self.texture = texture
         self.dehaze = dehaze
+        self.defringe = defringe
+        self.greenControl = greenControl
+        self.subjectSeparation = subjectSeparation
         self.eyeSharpen = eyeSharpen
         self.eyeCatchlight = eyeCatchlight
         self.autoStraighten = autoStraighten
@@ -585,13 +683,20 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.teethWhiten = teethWhiten
         self.subjectType = subjectType
         self.skinUnify = skinUnify
+        self.blemishCleanup = blemishCleanup
+        self.dodgeBurn = dodgeBurn
+        self.shineControl = shineControl
+        self.underEyeLift = underEyeLift
+        self.makeupProtection = makeupProtection
     }
 
     private enum CodingKeys: String, CodingKey {
-        case warmth, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
+        case warmth, tint, skinHighFreq, skinLowFreq, skinSmooth, shadowLift
         case contrast, saturation, highlightRecovery, vibrance, texture, dehaze
+        case defringe, greenControl, subjectSeparation
         case eyeSharpen, eyeCatchlight
         case autoStraighten, autoEnhance, skinGuard, filmGrain, straightenAngle
         case teethWhiten, subjectType, skinUnify
+        case blemishCleanup, dodgeBurn, shineControl, underEyeLift, makeupProtection
     }
 }

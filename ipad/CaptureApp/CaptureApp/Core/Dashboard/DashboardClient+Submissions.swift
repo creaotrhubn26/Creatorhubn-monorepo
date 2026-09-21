@@ -2,10 +2,59 @@ import Foundation
 
 extension DashboardClient {
     /// Inbound client requests for the photographer.
-    func listSubmissions() async throws -> [Submission] {
-        var comps = URLComponents(string: "/api/submissions")!
-        comps.queryItems = [.init(name: "profession", value: "photographer")]
-        return try await getJSON(path: comps.string ?? "/api/submissions")
+    func listSubmissions(status: String = "open", search: String? = nil) async throws -> [Submission] {
+        var comps = URLComponents(string: "/api/inquiries")!
+        var query: [URLQueryItem] = [
+            .init(name: "status", value: status),
+            .init(name: "limit", value: "200"),
+        ]
+        if let search, !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            query.append(.init(name: "search", value: search))
+        }
+        comps.queryItems = query
+        let response: InquiryListResponse = try await getJSON(path: comps.string ?? "/api/inquiries?status=open")
+        return response.items
+    }
+
+    func updateInquiry(
+        id: String,
+        isRead: Bool? = nil,
+        isStarred: Bool? = nil,
+        status: String? = nil,
+        priority: String? = nil,
+        followUpDate: Date? = nil,
+        internalNotes: String? = nil
+    ) async throws {
+        struct Body: Encodable {
+            let isRead: Bool?
+            let isStarred: Bool?
+            let status: String?
+            let priority: String?
+            let followUpDate: String?
+            let internalNotes: String?
+        }
+        let formatter = ISO8601DateFormatter()
+        try await send(
+            path: "/api/inquiries/\(Self.inquiryPathComponent(id))",
+            method: "PATCH",
+            body: Body(
+                isRead: isRead,
+                isStarred: isStarred,
+                status: status,
+                priority: priority,
+                followUpDate: followUpDate.map(formatter.string),
+                internalNotes: internalNotes
+            )
+        )
+    }
+
+    func replyToInquiry(id: String, subject: String?, body: String) async throws -> Submission {
+        struct Body: Encodable { let subject: String?; let body: String }
+        let response: InquiryReplyResponse = try await postJSON(
+            path: "/api/inquiries/\(Self.inquiryPathComponent(id))/reply",
+            body: Body(subject: subject, body: body)
+        )
+        return response.inquiry
     }
 
     /// Convert a request into a project. The backend links the submission to
@@ -47,5 +96,11 @@ extension DashboardClient {
         )
         guard let id = resp.id else { throw DashboardError.decode("create from submission: no id") }
         return id
+    }
+
+    private static func inquiryPathComponent(_ value: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }

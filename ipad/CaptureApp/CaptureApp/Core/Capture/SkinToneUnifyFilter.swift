@@ -129,9 +129,11 @@ enum SkinToneUnifyFilter {
         return readSinglePixel(out)
     }
 
-    /// Kropps-maske = person-maske (Vision) ∧ ¬ansikt. Person-masken hentes fra en
-    /// nedskalering (masker trenger ikke full res) og multipliseres med ansikts-
-    /// eksklusjonen (svart i ansiktet) → hvit KUN på synlig kropp utenfor ansiktet.
+    /// Kropps-hudmaske = person ∧ plausibel hudfarge ∧ ¬ansikt. A person mask on
+    /// its own also contains hair, knitwear and jackets; averaging those pixels
+    /// made the sampled "body colour" too dark/cool and could push a neck orange.
+    /// The colour cube is deliberately broad enough for diverse skin tones, but
+    /// rejects neutral fabric, blue/green clothes and the dark background.
     private static func bodyMask(for image: CIImage, extent: CGRect, faceRect: CGRect) -> CIImage? {
         let side: CGFloat = 1024
         let scale = min(1, side / max(extent.width, extent.height))
@@ -139,12 +141,76 @@ enum SkinToneUnifyFilter {
         let ctx = CIContext(options: [.useSoftwareRenderer: false])
         guard let cg = ctx.createCGImage(small, from: small.extent),
               let person = SubjectSegmentation.personMask(for: cg, extent: extent),
-              let faceExcl = makeBodyMask(extent: extent, faceRect: faceRect) else { return nil }
-        let mult = CIFilter.multiplyCompositing()
-        mult.inputImage = person
-        mult.backgroundImage = faceExcl
-        return mult.outputImage?.cropped(to: extent)
+              let faceExcl = makeBodyMask(extent: extent, faceRect: faceRect),
+              let skin = plausibleSkinMask(for: image, extent: extent) else { return nil }
+        let personWithoutFace = CIFilter.multiplyCompositing()
+        personWithoutFace.inputImage = person
+        personWithoutFace.backgroundImage = faceExcl
+        guard let body = personWithoutFace.outputImage?.cropped(to: extent) else { return nil }
+        let skinOnly = CIFilter.multiplyCompositing()
+        skinOnly.inputImage = body
+        skinOnly.backgroundImage = skin
+        return skinOnly.outputImage?.cropped(to: extent)
     }
+
+    /// GPU-friendly skin likelihood mask implemented as a small deterministic
+    /// 3D LUT. RGB is converted to YCbCr and scored against a broad skin locus;
+    /// luminance and red-vs-blue gates reject black clothing and neutral/blue
+    /// materials without assuming a light skin tone.
+    static func plausibleSkinMask(for image: CIImage, extent: CGRect? = nil) -> CIImage? {
+        let cube = CIFilter.colorCubeWithColorSpace()
+        cube.inputImage = image
+        cube.cubeDimension = Float(skinCubeDimension)
+        cube.cubeData = skinCubeData
+        cube.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+        return cube.outputImage?.cropped(to: extent ?? image.extent)
+    }
+
+    /// Testable scalar form of the LUT. Returns 0…1, not a hard ethnicity-
+    /// specific threshold, so feathering remains natural at mask boundaries.
+    static func skinProbability(r: Double, g: Double, b: Double) -> Double {
+        let y = 0.299 * r + 0.587 * g + 0.114 * b
+        let chroma = max(r, max(g, b)) - min(r, min(g, b))
+        guard y > 0.055, y < 0.985, chroma > 0.025,
+              r > b * 1.025, r > g * 0.90 else { return 0 }
+
+        let cb = -0.168736 * r - 0.331264 * g + 0.5 * b
+        let cr = 0.5 * r - 0.418688 * g - 0.081312 * b
+        let dx = (cb + 0.075) / 0.135
+        let dy = (cr - 0.105) / 0.165
+        let distance = sqrt(dx * dx + dy * dy)
+        guard distance < 1 else { return 0 }
+        // Smooth falloff avoids visible mask contours on jaw/neck transitions.
+        let locus = 1 - distance
+        let lumaGate = min(1, max(0, (y - 0.055) / 0.10))
+        return min(1, max(0, locus * 1.7 * lumaGate))
+    }
+
+    private static let skinCubeDimension = 32
+    private static let skinCubeData: Data = {
+        let dimension = skinCubeDimension
+        let inverse = 1.0 / Double(dimension - 1)
+        var values = [Float](repeating: 0, count: dimension * dimension * dimension * 4)
+        var offset = 0
+        // CIColorCube layout: red varies fastest, then green, then blue.
+        for blue in 0..<dimension {
+            for green in 0..<dimension {
+                for red in 0..<dimension {
+                    let probability = Float(skinProbability(
+                        r: Double(red) * inverse,
+                        g: Double(green) * inverse,
+                        b: Double(blue) * inverse
+                    ))
+                    values[offset] = probability
+                    values[offset + 1] = probability
+                    values[offset + 2] = probability
+                    values[offset + 3] = 1
+                    offset += 4
+                }
+            }
+        }
+        return values.withUnsafeBufferPointer { Data(buffer: $0) }
+    }()
 
     /// Snitt-RGB av bildet OVER et maske-område: mean(bilde·maske) / mean(maske).
     /// No-op-signal når masken dekker < ~1% (for lite kropp → ikke nok signal).

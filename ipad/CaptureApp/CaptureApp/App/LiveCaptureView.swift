@@ -402,7 +402,11 @@ struct LiveCaptureView: View {
                 unreadReviewCount: model.unreadReviewCount,
                 clientReviewsEnabled: model.clientReviewsEnabled,
                 presentPeers: model.presentPeers,
+                storagePolicy: model.captureStoragePolicy,
+                storageUsedLabel: model.photoStorageUsedLabel,
+                storageUsageDetail: model.photoStorageUsageDetail,
                 onTogglePin: { model.pinnedFocus.toggle() },
+                onSetStoragePolicy: { model.captureStoragePolicy = $0 },
                 onPickProject: { isProjectSelectionPresented = true },
                 onShotList: { isShotListPresented = true },
                 onCoverageDashboard: {
@@ -458,12 +462,20 @@ struct LiveCaptureView: View {
                     .frame(height: layout.filmstripHeight)
             }
             }
-            .overlay(alignment: .top) {
-                if let err = model.errorMessage, model.phase == .connected {
-                    ErrorToast(message: err) { model.errorMessage = nil }
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+            .overlay(alignment: .topTrailing) {
+                VStack(alignment: .trailing, spacing: 8) {
+                    if let confirmation = model.photoTransferConfirmation {
+                        PhotoTransferConfirmationBanner(confirmation: confirmation)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .allowsHitTesting(false)
+                    }
+                    if let err = model.errorMessage, model.phase == .connected {
+                        ErrorToast(message: err) { model.errorMessage = nil }
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
+                .padding(.top, 8)
+                .padding(.trailing, 16)
             }
         }
     }
@@ -558,6 +570,10 @@ struct LiveCaptureView: View {
                     onDismissNotes: {
                         guard let id = model.focusedAsset?.id else { return }
                         model.dismissNotes(assetId: id)
+                    },
+                    onRetryCloudBackup: {
+                        guard let id = model.focusedAsset?.id else { return }
+                        Task { await model.retryPhotoBackup(assetId: id) }
                     }
                 )
                 .onChange(of: model.focusedAssetId) { _, _ in
@@ -1260,7 +1276,11 @@ private struct StatusBar: View {
     let unreadReviewCount: Int
     let clientReviewsEnabled: Bool
     let presentPeers: [LiveCaptureModel.PresentPeer]
+    let storagePolicy: Asset.StoragePolicy
+    let storageUsedLabel: String
+    let storageUsageDetail: String
     let onTogglePin: () -> Void
+    let onSetStoragePolicy: (Asset.StoragePolicy) -> Void
     let onPickProject: () -> Void
     let onShotList: () -> Void
     let onCoverageDashboard: () -> Void
@@ -1374,6 +1394,37 @@ private struct StatusBar: View {
             if !presentPeers.isEmpty {
                 PresenceAvatarRow(peers: presentPeers)
             }
+
+            Menu {
+                Section("Lagring for nye bilder") {
+                    ForEach(Asset.StoragePolicy.allCases, id: \.self) { policy in
+                        Button {
+                            onSetStoragePolicy(policy)
+                        } label: {
+                            if storagePolicy == policy {
+                                Label(policy.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(policy.displayName)
+                            }
+                        }
+                    }
+                }
+                Section {
+                    Text(storageUsageDetail)
+                    Text(storagePolicy.detail)
+                }
+            } label: {
+                Label(storageUsedLabel, systemImage: "internaldrive.fill")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.captureChipBG, in: Capsule())
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Lagring")
+            .accessibilityValue(storageUsageDetail)
+            .help(storagePolicy.displayName)
 
             // Client review inbox — peripheral surface for hearts +
             // comments arriving from the delivered web gallery while
@@ -1643,6 +1694,7 @@ private struct HeroStage: View {
     let onTranscribeVoiceMemo: () -> Void
     let voiceMemoTranscript: String?
     let onDismissNotes: () -> Void
+    let onRetryCloudBackup: () -> Void
 
     var body: some View {
         Group {
@@ -1759,6 +1811,7 @@ private struct HeroStage: View {
                                 .background(Color.purple.opacity(0.15), in: Capsule())
                         }
                         AssetStateBadge(state: asset.state)
+                        PhotoCloudStateBadge(asset: asset, onRetry: onRetryCloudBackup)
                     }
                     .padding(.bottom, 16)
                 }
@@ -4098,6 +4151,9 @@ private struct PresetChipRow: View {
             && abs(r1.contrast - r2.contrast) < tolerance
             && abs(r1.saturation - r2.saturation) < tolerance
             && abs(r1.highlightRecovery - r2.highlightRecovery) < tolerance
+            && abs(r1.defringe - r2.defringe) < tolerance
+            && abs(r1.greenControl - r2.greenControl) < tolerance
+            && abs(r1.subjectSeparation - r2.subjectSeparation) < tolerance
             && abs(r1.eyeSharpen - r2.eyeSharpen) < tolerance
             && abs(r1.eyeCatchlight - r2.eyeCatchlight) < tolerance
             && r1.autoStraighten == r2.autoStraighten
@@ -4259,6 +4315,66 @@ private struct AssetStateBadge: View {
         case .syncComplete, .verified:              return .green
         case .failedTransient:                      return .yellow
         case .failedPermanent:                      return .red
+        }
+    }
+}
+
+private struct PhotoCloudStateBadge: View {
+    let asset: Asset
+    let onRetry: () -> Void
+
+    var body: some View {
+        if asset.cloudState == .failed {
+            Button(action: onRetry) {
+                Label("Prøv opplasting igjen", systemImage: "arrow.clockwise.icloud")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .foregroundStyle(.orange)
+                    .background(Color.orange.opacity(0.15), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(asset.cloudLastError ?? "Originalen er beholdt på iPaden")
+        } else {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundStyle(color)
+                .background(color.opacity(0.15), in: Capsule())
+        }
+    }
+
+    private var title: String {
+        switch asset.cloudState {
+        case .local: "Kun iPad"
+        case .waitingForProject: "Velg prosjekt"
+        case .queued: "Venter på original"
+        case .uploading: "Laster opp"
+        case .secured:
+            asset.localOriginalReleased ? "Sikret · lokal original frigitt" : "Sikret i CreatorHub"
+        case .failed: "Ikke lastet opp ennå"
+        }
+    }
+
+    private var icon: String {
+        switch asset.cloudState {
+        case .local: "internaldrive.fill"
+        case .waitingForProject: "folder.badge.plus"
+        case .queued: "clock.arrow.circlepath"
+        case .uploading: "icloud.and.arrow.up.fill"
+        case .secured: "checkmark.icloud.fill"
+        case .failed: "icloud.slash.fill"
+        }
+    }
+
+    private var color: Color {
+        switch asset.cloudState {
+        case .local: .secondary
+        case .waitingForProject, .queued: .orange
+        case .uploading: .blue
+        case .secured: .green
+        case .failed: .orange
         }
     }
 }
@@ -4631,11 +4747,33 @@ private struct FilmstripTile: View {
                 }
 
                 // Top-right: error, enhanced, or reject marker
-                if asset.state == .failedTransient || asset.state == .failedPermanent {
+                if asset.cloudState == .failed {
+                    Image(systemName: "icloud.slash.fill")
+                        .font(.caption)
+                        .foregroundStyle(.white, .orange)
+                        .padding(6)
+                        .accessibilityLabel("Ikke lastet opp ennå")
+                } else if asset.state == .failedTransient || asset.state == .failedPermanent {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.white, .red)
                         .padding(6)
+                } else if asset.cloudState == .secured {
+                    Image(systemName: "checkmark.icloud.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white, .green)
+                        .padding(4)
+                        .background(.green.opacity(0.82), in: Circle())
+                        .padding(6)
+                        .accessibilityLabel("Sikret i CreatorHub")
+                } else if asset.cloudState == .uploading || asset.cloudState == .queued {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.white)
+                        .padding(6)
+                        .background(.blue.opacity(0.75), in: Circle())
+                        .padding(6)
+                        .accessibilityLabel("Laster opp til CreatorHub")
                 } else if asset.rejected {
                     Image(systemName: "xmark.seal.fill")
                         .font(.caption.weight(.semibold))
@@ -4995,6 +5133,111 @@ private struct PressableScale: ButtonStyle {
 }
 
 // MARK: - Error toast
+
+struct PhotoTransferConfirmation: Equatable {
+    enum Stage: Equatable {
+        case storedLocally
+        case storedLocallyOnly
+        case securedInCreatorHub
+        case uploadFailed
+    }
+
+    let id = UUID()
+    let fileName: String
+    let stage: Stage
+    let storageSummary: String?
+    let localCopyReleased: Bool
+    let localReleaseFailed: Bool
+
+    init(
+        fileName: String,
+        stage: Stage,
+        storageSummary: String? = nil,
+        localCopyReleased: Bool = false,
+        localReleaseFailed: Bool = false
+    ) {
+        self.fileName = fileName
+        self.stage = stage
+        self.storageSummary = storageSummary
+        self.localCopyReleased = localCopyReleased
+        self.localReleaseFailed = localReleaseFailed
+    }
+
+    var title: String {
+        switch stage {
+        case .storedLocally, .storedLocallyOnly: "Lagret på iPaden"
+        case .securedInCreatorHub: "Sikret i CreatorHub"
+        case .uploadFailed: "Ikke lastet opp ennå"
+        }
+    }
+
+    var detail: String {
+        let status = switch stage {
+        case .storedLocally:
+            "\(fileName) er lagret lokalt · opplasting fortsetter i bakgrunnen"
+        case .storedLocallyOnly:
+            "\(fileName) beholdes kun lokalt etter ditt valg"
+        case .securedInCreatorHub:
+            if localReleaseFailed {
+                "\(fileName) er verifisert i CreatorHub · lokal original kunne ikke frigjøres"
+            } else if localCopyReleased {
+                "\(fileName) er verifisert i CreatorHub · lokal original er frigitt"
+            } else {
+                "\(fileName) er lastet opp og verifisert"
+            }
+        case .uploadFailed:
+            "\(fileName) ligger trygt på iPaden og kan prøves igjen"
+        }
+        return storageSummary.map { "\(status) · \($0)" } ?? status
+    }
+
+    var icon: String {
+        switch stage {
+        case .storedLocally, .storedLocallyOnly: "internaldrive.fill"
+        case .securedInCreatorHub: "checkmark.icloud.fill"
+        case .uploadFailed: "icloud.slash.fill"
+        }
+    }
+
+    var tint: Color {
+        switch stage {
+        case .storedLocally: .blue
+        case .storedLocallyOnly: .green
+        case .securedInCreatorHub: .green
+        case .uploadFailed: .orange
+        }
+    }
+}
+
+private struct PhotoTransferConfirmationBanner: View {
+    let confirmation: PhotoTransferConfirmation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: confirmation.icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(confirmation.tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(confirmation.title)
+                    .font(.subheadline.weight(.bold))
+                Text(confirmation.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: 390, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(confirmation.tint.opacity(0.45), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 16, y: 7)
+        .accessibilityElement(children: .combine)
+    }
+}
 
 private struct ErrorToast: View {
     let message: String
@@ -5670,14 +5913,16 @@ final class LiveCaptureModel {
             // da hoppes alle de tunge hookene (5× O(N) → 1× O(N)). Portene speiler
             // hver hooks NØYAKTIGE trigger (verifisert mot hook-koden), så oppførsel
             // er uendret — dette dropper kun arbeid som uansett ville funnet ingenting.
-            var previewGained = false, rawGained = false, flagGained = false
+            var previewGained = false, fullGained = false, rawGained = false, flagGained = false
             let prev = Dictionary(uniqueKeysWithValues: oldValue.map {
-                ($0.id, (hasPreview: $0.previewKey != nil, hasRaw: $0.rawKey != nil,
+                ($0.id, (hasPreview: $0.previewKey != nil, hasFull: $0.fullKey != nil,
+                         hasRaw: $0.rawKey != nil,
                          flagged: $0.flaggedForClient))
             })
             for a in assets {
                 guard let p = prev[a.id] else { previewGained = true; continue }  // ny id
                 if a.previewKey != nil, !p.hasPreview { previewGained = true }
+                if a.fullKey != nil, !p.hasFull { fullGained = true }
                 if a.rawKey != nil, !p.hasRaw { rawGained = true }
                 if a.flaggedForClient, !p.flagged { flagGained = true }
             }
@@ -5700,9 +5945,28 @@ final class LiveCaptureModel {
                 // CIRAWFilter så heroen viser ekte demosaic, ikke Canons JPEG.
                 scheduleRAWPreviewRenders(previous: oldValue)
             }
+            if previewGained || fullGained || rawGained {
+                schedulePhotoStorageFlow(previous: oldValue)
+                schedulePhotoStorageUsageRefresh()
+            }
         }
     }
     var errorMessage: String?
+    private static let photoStoragePolicyDefaultsKey = "photo.capture.storagePolicy"
+    var captureStoragePolicy: Asset.StoragePolicy = UserDefaults.standard.string(
+        forKey: LiveCaptureModel.photoStoragePolicyDefaultsKey
+    ).flatMap(Asset.StoragePolicy.init(rawValue:)) ?? .keepLocalAndCloud {
+        didSet {
+            UserDefaults.standard.set(
+                captureStoragePolicy.rawValue,
+                forKey: Self.photoStoragePolicyDefaultsKey
+            )
+            Task { await cameraSession?.setStoragePolicy(captureStoragePolicy) }
+        }
+    }
+    var photoStorageUsedBytes: Int64 = 0
+    var deviceStorageAvailableBytes: Int64?
+    var photoTransferConfirmation: PhotoTransferConfirmation?
     var isConnecting: Bool = false
     var phase: Phase = .disconnected
     var deviceSummary: DeviceSummary?
@@ -6041,6 +6305,10 @@ final class LiveCaptureModel {
     private var client: CCAPIClient?
     private var store: SessionStore?
     private var currentSessionId: UUID?
+    private var photoBackupTasks: [UUID: Task<Void, Never>] = [:]
+    private var photoOriginalFetchRequested: Set<UUID> = []
+    private var photoStorageUsageTask: Task<Void, Never>?
+    private var photoTransferConfirmationTask: Task<Void, Never>?
     private let analyser = ImageAnalyser()
     /// Samlet per-bilde-analyse (ansikter/motiv-klipp/skarphet/scene) — kjøres
     /// sammen med histogram-HUD-en, persisteres på signals, deles av cull/QC.
@@ -6398,10 +6666,9 @@ final class LiveCaptureModel {
         return dir
     }
 
-    /// Retensjon: rydd gamle økt-kataloger + DB-rader så persistent lagring ikke
-    /// vokser ubegrenset. Sletter alt eldre enn `maxAgeDays`, og — hvis totalen
-    /// fortsatt overstiger `capBytes` — de ELDSTE til under taket. Rører ALDRI den
-    /// aktive økten (`keeping`). Kjøres fire-and-forget off-main ved connect.
+    /// Retensjon: rydd gamle, verifiserte cloud-only-økter så preview-cachen ikke
+    /// vokser ubegrenset. Lokale originaler, local+cloud og uferdige opplastinger
+    /// er eksplisitt beskyttet. Rører ALDRI den aktive økten (`keeping`).
     nonisolated static func purgeStaleSessions(
         keeping activeId: UUID, ownerUserId: String,
         maxAgeDays: Double = 30, capBytes: Int64 = 25 * 1024 * 1024 * 1024
@@ -6422,19 +6689,25 @@ final class LiveCaptureModel {
                 .contentModificationDate) ?? .distantPast
             dirs.append(Entry(url: url, id: id, mtime: mtime, size: directorySize(url)))
         }
-        let store = try? SessionStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
+        // Fail closed: no database means no way to prove an upload is secured.
+        guard let store = try? SessionStore(
+            database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
+        ) else { return }
         let now = Date()
         var survivors: [Entry] = []
         for e in dirs {                                   // 1) aldersbasert
-            if now.timeIntervalSince(e.mtime) > maxAgeDays * 86_400 {
+            let mayPurge = (try? await store.canAutomaticallyPurgeSession(id: e.id)) == true
+            if mayPurge && now.timeIntervalSince(e.mtime) > maxAgeDays * 86_400 {
                 try? fm.removeItem(at: e.url)
-                try? await store?.deleteSession(id: e.id)
+                try? await store.deleteSession(id: e.id)
             } else { survivors.append(e) }
         }
         var total = survivors.reduce(Int64(0)) { $0 + $1.size }
-        for e in survivors.sorted(by: { $0.mtime < $1.mtime }) where total > capBytes {  // 2) størrelsestak
+        for e in survivors.sorted(by: { $0.mtime < $1.mtime }) {  // 2) størrelsestak
+            guard total > capBytes else { break }
+            guard (try? await store.canAutomaticallyPurgeSession(id: e.id)) == true else { continue }
             try? fm.removeItem(at: e.url)
-            try? await store?.deleteSession(id: e.id)
+            try? await store.deleteSession(id: e.id)
             total -= e.size
         }
     }
@@ -6475,7 +6748,8 @@ final class LiveCaptureModel {
             // picks/voice-memos/tuned recipes en disconnect/omstart og dukker opp
             // i Redigering + Arkiv. `store` + `sessionDir` MÅ opprettes FØR adapteren
             // (den trenger katalogen), så rekkefølgen er snudd vs. den gamle koden.
-            let store = try SessionStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
+            let database = try AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL())
+            let store = SessionStore(database: database)
             let dbSession = try await store.createSession(
                 name: "Live shoot",
                 clientId: nil,
@@ -6493,7 +6767,8 @@ final class LiveCaptureModel {
                 sessionId: dbSession.id,
                 actorUserId: actorUserId,
                 adapter: adapter,
-                store: store
+                store: store,
+                storagePolicy: captureStoragePolicy
             )
 
             self.client = client
@@ -6521,6 +6796,14 @@ final class LiveCaptureModel {
                 store: store,
                 outputDirectory: sessionDir.appendingPathComponent("raw-export"),
             )
+            if let backend = self.backendClient {
+                self.deliveryService = DeliveryService(
+                    backend: backend,
+                    rawExporter: self.rawExportService,
+                    uploadStore: PersistentUploadStore(database: database),
+                    partUploader: BackgroundMultipartUploader.shared
+                )
+            }
             self.voiceMemoService = VoiceMemoService(
                 outputDirectory: sessionDir.appendingPathComponent("voice-memos"),
             )
@@ -6564,6 +6847,7 @@ final class LiveCaptureModel {
             }
 
             try await camera.start()
+            schedulePhotoStorageUsageRefresh()
 
             #if DEBUG
             // Run the demo enhancer for every DEBUG connection — lets us
@@ -6831,7 +7115,7 @@ final class LiveCaptureModel {
                 )
             case .presenceJoined, .presenceLeft, .assetLabelsChanged,
                  .quoteSigned, .contractSigned, .shotCaptured,
-                 .shotCompletionToggled, .unknown:
+                 .shotCompletionToggled, .inquiryUpdated, .unknown:
                 return nil
             }
         }()
@@ -7698,6 +7982,287 @@ final class LiveCaptureModel {
         backendClient != nil && deliverablePicksCount > 0
     }
 
+    var photoStorageUsedLabel: String {
+        "\(Self.formatStorageBytes(photoStorageUsedBytes)) lokalt"
+    }
+
+    var photoStorageUsageDetail: String {
+        let used = "CreatorHub-bilder bruker \(Self.formatStorageBytes(photoStorageUsedBytes)) på iPaden"
+        guard let available = deviceStorageAvailableBytes else { return used }
+        return "\(used) · \(Self.formatStorageBytes(available)) ledig"
+    }
+
+    private static func formatStorageBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useMB, .useGB, .useTB]
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: max(0, bytes))
+    }
+
+    /// Start or resume the storage path for photos whose local preview/original
+    /// changed. Camera ingest remains independent: a network failure never
+    /// blocks shuttering or removes local bytes.
+    private func schedulePhotoStorageFlow(previous: [Asset]) {
+        guard !isTearingDown else { return }
+        let previousOriginal = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, originalVariant(for: $0) != nil) }
+        )
+        if let local = assets.last(where: {
+            $0.storagePolicy == .localOnly
+                && originalVariant(for: $0) != nil
+                && previousOriginal[$0.id] != true
+        }) {
+            showPhotoTransferConfirmation(
+                fileName: local.originalFilename,
+                stage: .storedLocallyOnly,
+                storageSummary: photoStorageUsedLabel
+            )
+        }
+        for asset in assets {
+            guard asset.cloudState != .secured,
+                  asset.cloudState != .uploading,
+                  asset.cloudState != .failed,
+                  photoBackupTasks[asset.id] == nil
+            else { continue }
+            guard asset.previewKey != nil else { continue }
+            if originalVariant(for: asset) == nil {
+                guard !photoOriginalFetchRequested.contains(asset.id) else { continue }
+                photoOriginalFetchRequested.insert(asset.id)
+                let priority: IngestPriority = Self.isRawCapture(filename: asset.originalFilename)
+                    ? .raw
+                    : .full
+                Task { [weak self] in
+                    do {
+                        try await self?.cameraSession?.fetch(assetId: asset.id, priority: priority)
+                    } catch {
+                        self?.photoOriginalFetchRequested.remove(asset.id)
+                    }
+                }
+                continue
+            }
+
+            // Local-only still downloads and retains the camera original; it
+            // merely skips the cloud branch below.
+            guard asset.storagePolicy != .localOnly else { continue }
+
+            guard selectedProject != nil else {
+                if asset.cloudState != .waitingForProject {
+                    Task { [store] in
+                        try? await store?.updateAssetCloudState(id: asset.id, state: .waitingForProject)
+                    }
+                }
+                continue
+            }
+
+            beginPhotoBackup(asset)
+        }
+    }
+
+    func retryPhotoBackup(assetId: UUID) async {
+        guard let asset = assets.first(where: { $0.id == assetId }),
+              asset.storagePolicy != .localOnly
+        else { return }
+        photoOriginalFetchRequested.remove(assetId)
+        try? await store?.updateAssetCloudState(id: assetId, state: .queued)
+        if let refreshed = try? await store?.fetchAsset(id: assetId) {
+            if originalVariant(for: refreshed) == nil {
+                let priority: IngestPriority = Self.isRawCapture(filename: refreshed.originalFilename)
+                    ? .raw
+                    : .full
+                try? await cameraSession?.fetch(assetId: assetId, priority: priority)
+            } else {
+                beginPhotoBackup(refreshed)
+            }
+        }
+    }
+
+    private func beginPhotoBackup(_ asset: Asset) {
+        guard photoBackupTasks[asset.id] == nil else { return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.backUpPhoto(assetId: asset.id)
+        }
+        photoBackupTasks[asset.id] = task
+    }
+
+    private func backUpPhoto(assetId: UUID) async {
+        defer { photoBackupTasks[assetId] = nil }
+        guard let store,
+              let asset = try? await store.fetchAsset(id: assetId)
+        else { return }
+        guard let service = deliveryService,
+              let projectId = selectedProject?.id
+        else {
+            try? await store.updateAssetCloudState(
+                id: assetId,
+                state: .failed,
+                error: "Logg inn og velg et CreatorHub-prosjekt før du prøver igjen."
+            )
+            showPhotoTransferConfirmation(
+                fileName: asset.originalFilename,
+                stage: .uploadFailed,
+                storageSummary: photoStorageUsedLabel
+            )
+            return
+        }
+        guard
+              let previewPath = asset.previewKey,
+              FileManager.default.fileExists(atPath: previewPath),
+              let original = originalVariant(for: asset),
+              FileManager.default.fileExists(atPath: original.path)
+        else { return }
+
+        try? await store.updateAssetCloudState(id: assetId, state: .uploading)
+        showPhotoTransferConfirmation(
+            fileName: asset.originalFilename,
+            stage: .storedLocally,
+            storageSummary: photoStorageUsedLabel
+        )
+
+        var items: [DeliveryService.CardBackupItem] = [
+            .init(
+                localId: asset.id,
+                originalFilename: asset.originalFilename,
+                captureTime: asset.captureTime,
+                mime: "image/jpeg",
+                path: previewPath,
+                kind: .preview
+            )
+        ]
+        if original.path != previewPath || original.kind != .preview {
+            items.append(.init(
+                localId: asset.id,
+                originalFilename: asset.originalFilename,
+                captureTime: asset.captureTime,
+                mime: original.mime,
+                path: original.path,
+                kind: original.kind
+            ))
+        }
+
+        do {
+            let result = try await service.backupPhoto(
+                sessionName: sessionName,
+                sessionStartedAt: assets.first?.captureTime ?? asset.captureTime,
+                items: items,
+                projectId: projectId
+            )
+            let verifiedAt = Date()
+            try await store.updateAssetCloudState(
+                id: assetId,
+                state: .secured,
+                backendAssetId: result.backendAssetId,
+                verifiedAt: verifiedAt
+            )
+
+            var released = false
+            var releaseFailed = false
+            if asset.storagePolicy == .creatorHubOnly,
+               let verified = try await store.fetchAsset(id: assetId) {
+                do {
+                    let managedRoot = try Self.persistentSessionDirectory(for: verified.sessionId)
+                    let paths = try PhotoLocalOriginalRetention.releaseVerifiedOriginals(
+                        for: verified,
+                        managedRoot: managedRoot
+                    )
+                    if !paths.isEmpty {
+                        try await store.markLocalOriginalReleased(id: assetId, releasedPaths: paths)
+                        released = true
+                    }
+                } catch {
+                    releaseFailed = true
+                    try? await store.updateAssetCloudState(
+                        id: assetId,
+                        state: .secured,
+                        error: error.localizedDescription
+                    )
+                }
+            }
+            schedulePhotoStorageUsageRefresh()
+            showPhotoTransferConfirmation(
+                fileName: asset.originalFilename,
+                stage: .securedInCreatorHub,
+                storageSummary: photoStorageUsedLabel,
+                localCopyReleased: released,
+                localReleaseFailed: releaseFailed
+            )
+        } catch {
+            try? await store.updateAssetCloudState(
+                id: assetId,
+                state: .failed,
+                error: error.localizedDescription
+            )
+            showPhotoTransferConfirmation(
+                fileName: asset.originalFilename,
+                stage: .uploadFailed,
+                storageSummary: photoStorageUsedLabel
+            )
+        }
+    }
+
+    private func originalVariant(
+        for asset: Asset
+    ) -> (path: String, kind: BackendUploadKind, mime: String)? {
+        if Self.isRawCapture(filename: asset.originalFilename), let raw = asset.rawKey {
+            return (raw, .raw, asset.mime)
+        }
+        if let full = asset.fullKey {
+            return (full, .full, asset.mime)
+        }
+        return nil
+    }
+
+    private func schedulePhotoStorageUsageRefresh() {
+        photoStorageUsageTask?.cancel()
+        photoStorageUsageTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled,
+                  let documents = try? FileManager.default.url(
+                    for: .documentDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                  )
+            else { return }
+            let root = documents.appendingPathComponent("CaptureApp/sessions", isDirectory: true)
+            let used = await Task.detached {
+                PhotoStorageUsage.allocatedBytes(below: root)
+            }.value
+            let available = PhotoStorageUsage.availableBytes(at: documents)
+            guard !Task.isCancelled else { return }
+            self?.photoStorageUsedBytes = used
+            self?.deviceStorageAvailableBytes = available
+        }
+    }
+
+    private func showPhotoTransferConfirmation(
+        fileName: String,
+        stage: PhotoTransferConfirmation.Stage,
+        storageSummary: String?,
+        localCopyReleased: Bool = false,
+        localReleaseFailed: Bool = false
+    ) {
+        photoTransferConfirmationTask?.cancel()
+        let confirmation = PhotoTransferConfirmation(
+            fileName: fileName,
+            stage: stage,
+            storageSummary: storageSummary,
+            localCopyReleased: localCopyReleased,
+            localReleaseFailed: localReleaseFailed
+        )
+        photoTransferConfirmation = confirmation
+        photoTransferConfirmationTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(stage == .uploadFailed ? 8 : 5))
+            guard !Task.isCancelled,
+                  self?.photoTransferConfirmation?.id == confirmation.id
+            else { return }
+            self?.photoTransferConfirmation = nil
+            self?.photoTransferConfirmationTask = nil
+        }
+    }
+
     func deliverablePicks(filter: PickFilter) -> [Asset] {
         switch filter {
         case .flagged:
@@ -7788,6 +8353,7 @@ final class LiveCaptureModel {
         sessionName = summary.title
         Task { await loadProjectDetail(projectId: summary.id) }
         refreshShotListAutoCheckFlag(projectId: summary.id)
+        schedulePhotoStorageFlow(previous: [])
     }
 
     /// Hent team-flagget for auto-huk fra backend (eier/lead styrer det i web).
@@ -8376,6 +8942,14 @@ final class LiveCaptureModel {
         for task in aiAnalyseTasks.values { task.cancel() }
         aiAnalyseTasks.removeAll()
         aiAnalyseDispatched.removeAll()
+        for task in photoBackupTasks.values { task.cancel() }
+        photoBackupTasks.removeAll()
+        photoOriginalFetchRequested.removeAll()
+        photoStorageUsageTask?.cancel()
+        photoStorageUsageTask = nil
+        photoTransferConfirmationTask?.cancel()
+        photoTransferConfirmationTask = nil
+        photoTransferConfirmation = nil
         // Bakgrunns-analyse (histogram + samlet AssetAnalysis) — ellers lever
         // compute-tasken videre etter frakobling (lekkasje per økt).
         analysisTask?.cancel()

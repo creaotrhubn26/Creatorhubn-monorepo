@@ -96,6 +96,17 @@ actor BackendClient {
         try await postJSON(path: "/api/capture/projects", body: body)
     }
 
+    func upsertCardTransfer(
+        projectId: String,
+        transferId: UUID,
+        body: BackendCardTransferRequest
+    ) async throws -> BackendCardTransferAck {
+        try await putJSON(
+            path: "/api/capture/projects/\(projectId)/card-transfers/\(transferId.uuidString.lowercased())",
+            body: body
+        )
+    }
+
     /// PATCH /sessions/:id/project — link or unlink a capture session to
     /// a project. Returns 204; we model that by decoding into a simple
     /// empty struct via an inline GET-style request to keep typing
@@ -491,6 +502,22 @@ actor BackendClient {
         return response.assets
     }
 
+    /// Request a short-lived, authenticated read URL for a private CreatorHub
+    /// S3 photo variant. No bucket credentials or long-lived URLs are stored on
+    /// the iPad.
+    func assetReadURL(
+        backendAssetId: UUID,
+        kind: BackendUploadKind = .preview
+    ) async throws -> URL {
+        let response: BackendAssetReadURL = try await getJSON(
+            path: "/api/capture/assets/\(backendAssetId.uuidString.lowercased())/read-url?kind=\(kind.rawValue)"
+        )
+        guard let url = URL(string: response.url) else {
+            throw BackendError.decode("invalid asset read URL")
+        }
+        return url
+    }
+
     /// Bygg stabile, asset-scopede capability-URL-er for shot-oppdateringskortet.
     /// Backend re-signerer den private S3-lesingen per kall; UUID uten capability
     /// fungerer ikke. Kun bilder med ferdig preview tas med.
@@ -647,6 +674,49 @@ actor BackendClient {
             throw BackendError.httpStatus(http.statusCode, body: nil)
         }
         return http.value(forHTTPHeaderField: "ETag") ?? http.value(forHTTPHeaderField: "Etag")
+    }
+
+    // MARK: - Dual-system production audio
+
+    func initiateProductionAudio(
+        projectId: String,
+        body: BackendProductionAudioInitiateRequest
+    ) async throws -> BackendProductionAudioInitiateResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/production-audio/assets/initiate",
+            body: body
+        )
+    }
+
+    func signProductionAudioParts(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoSignPartsRequest
+    ) async throws -> BackendVideoSignedPartsResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/production-audio/assets/\(assetId)/upload/parts",
+            body: body
+        )
+    }
+
+    func productionAudioUploadStatus(
+        projectId: String,
+        assetId: String
+    ) async throws -> BackendVideoUploadStatus {
+        try await getJSON(
+            path: "/api/projects/\(projectId)/production-audio/assets/\(assetId)/upload/status"
+        )
+    }
+
+    func completeProductionAudio(
+        projectId: String,
+        assetId: String,
+        body: BackendVideoCompleteRequest
+    ) async throws -> BackendProductionAudioAssetResponse {
+        try await postJSON(
+            path: "/api/projects/\(projectId)/production-audio/assets/\(assetId)/upload/complete",
+            body: body
+        )
     }
 
     /// PUT a single part's bytes to a presigned CreatorHub S3 URL and return
@@ -999,6 +1069,34 @@ actor BackendClient {
         if http.statusCode == 404 {
             throw BackendError.notFound
         }
+        guard (200..<300).contains(http.statusCode) else {
+            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            throw BackendError.decode(String(describing: error))
+        }
+    }
+
+    private func putJSON<RequestBody: Encodable, Response: Decodable>(
+        path: String,
+        body: RequestBody
+    ) async throws -> Response {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await self.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendError.transport("not HTTPURLResponse")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 { throw BackendError.unauthorized }
+        if http.statusCode == 404 { throw BackendError.notFound }
         guard (200..<300).contains(http.statusCode) else {
             throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
         }

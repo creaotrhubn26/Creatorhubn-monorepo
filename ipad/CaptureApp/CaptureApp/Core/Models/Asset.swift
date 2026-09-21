@@ -1,6 +1,40 @@
 import Foundation
 
 struct Asset: Identifiable, Hashable, Sendable, Codable {
+    enum StoragePolicy: String, Codable, Sendable, CaseIterable {
+        case localOnly = "local_only"
+        case keepLocalAndCloud = "local_and_cloud"
+        case creatorHubOnly = "creatorhub_only"
+
+        var displayName: String {
+            switch self {
+            case .localOnly: "Kun iPad"
+            case .keepLocalAndCloud: "iPad + CreatorHub"
+            case .creatorHubOnly: "Kun CreatorHub etter opplasting"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .localOnly:
+                "Originalene blir bare på denne iPaden."
+            case .keepLocalAndCloud:
+                "Originalene beholdes lokalt etter verifisert opplasting."
+            case .creatorHubOnly:
+                "Full/RAW-originaler frigjøres først etter verifisering i CreatorHub. En lett preview beholdes."
+            }
+        }
+    }
+
+    enum CloudState: String, Codable, Sendable, CaseIterable {
+        case local
+        case waitingForProject = "waiting_for_project"
+        case queued
+        case uploading
+        case secured
+        case failed
+    }
+
     let id: UUID
     let sessionId: UUID
     let originalFilename: String
@@ -49,6 +83,20 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     var checksumSha256: String?
     var mime: String
     var sizeBytes: Int64?
+
+    /// Per-photo retention intent, copied from the toolbar selection when the
+    /// camera announces the shot. Changing the toolbar affects future photos;
+    /// it never silently changes the retention contract of an existing one.
+    var storagePolicy: StoragePolicy = .keepLocalAndCloud
+    /// Independent from `state`: camera ingest and cloud backup can run at the
+    /// same time and must not overwrite each other's state machine.
+    var cloudState: CloudState = .local
+    var backendAssetId: UUID? = nil
+    var cloudVerifiedAt: Date? = nil
+    var cloudLastError: String? = nil
+    /// True only when CreatorHub removed a full/RAW original after verified
+    /// upload. The display preview remains as a local cache.
+    var localOriginalReleased: Bool = false
 
     var state: AssetState
     var signals: AssetSignals

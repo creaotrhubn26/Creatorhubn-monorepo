@@ -80,6 +80,12 @@ struct BackendListSessionAssetsResponse: Decodable, Sendable {
     let assets: [BackendAsset]
 }
 
+struct BackendAssetReadURL: Decodable, Sendable {
+    let url: String
+    let kind: BackendUploadKind
+    let expiresInSeconds: Int
+}
+
 // MARK: - Multipart upload
 
 enum BackendUploadKind: String, Codable, Sendable {
@@ -310,6 +316,75 @@ struct BackendVideoPromotionResponse: Decodable, Sendable, Equatable {
     let created: Bool
 }
 
+// MARK: - Dual-system production audio
+
+struct BackendProductionAudioAsset: Decodable, Sendable, Identifiable, Equatable {
+    let id: String
+    let projectId: String
+    let fileName: String
+    let contentType: String
+    let sizeBytes: Int64
+    let checksumSha256: String
+    let sourceType: String
+    let recordedAt: String
+    let durationMs: Int64?
+    let sampleRate: Int?
+    let bitDepth: Int?
+    let channelCount: Int?
+    let channelNames: [String]
+    let timecodeStart: String?
+    let timeReferenceSamples: Int64?
+    let frameRate: Double?
+    let dropFrame: Bool?
+    let scene: String?
+    let take: String?
+    let tape: String?
+    let circled: Bool?
+    let recorderManufacturer: String?
+    let recorderModel: String?
+    let recorderSerial: String?
+    let notes: String?
+    let captureState: String
+}
+
+struct BackendProductionAudioInitiateRequest: Encodable, Sendable {
+    let assetId: String
+    let fileName: String
+    let sizeBytes: Int64
+    let contentType: String
+    let checksumSha256: String
+    let sourceType: String
+    let recordedAt: String
+    let durationMs: Int64?
+    let sampleRate: Int?
+    let bitDepth: Int?
+    let channelCount: Int?
+    let channelNames: [String]
+    let timecodeStart: String?
+    let timeReferenceSamples: Int64?
+    let frameRate: Double?
+    let dropFrame: Bool?
+    let scene: String?
+    let take: String?
+    let tape: String?
+    let circled: Bool?
+    let recorderManufacturer: String?
+    let recorderModel: String?
+    let recorderSerial: String?
+    let notes: String?
+    let metadata: [String: String]
+    let forceMultipart: Bool
+}
+
+struct BackendProductionAudioInitiateResponse: Decodable, Sendable {
+    let asset: BackendProductionAudioAsset
+    let upload: BackendVideoUploadTicket?
+}
+
+struct BackendProductionAudioAssetResponse: Decodable, Sendable {
+    let asset: BackendProductionAudioAsset
+}
+
 struct BackendUploadCompleteRequest: Encodable, Sendable {
     let kind: BackendUploadKind
     let uploadId: String
@@ -380,6 +455,18 @@ struct BackendProjectShotListSummary: Decodable, Sendable {
     let completedMustHave: Int
 }
 
+struct BackendMemoryCardConfig: Codable, Sendable, Hashable, Identifiable {
+    let label: String
+    let type: String?
+    let capacity: String?
+    let dayNumber: Int?
+    let dayName: String?
+
+    var id: String {
+        "\(dayNumber ?? 0):\(label):\(type ?? ""):\(capacity ?? "")"
+    }
+}
+
 struct BackendProjectSummary: Decodable, Sendable, Identifiable {
     let id: String
     let title: String
@@ -389,7 +476,57 @@ struct BackendProjectSummary: Decodable, Sendable, Identifiable {
     let projectType: String?
     let status: String
     let shotListSummary: BackendProjectShotListSummary?
+    let memoryCardConfigs: [BackendMemoryCardConfig]
     let updatedAt: String?
+
+    init(
+        id: String,
+        title: String,
+        clientName: String?,
+        eventDate: String?,
+        location: String?,
+        projectType: String?,
+        status: String,
+        shotListSummary: BackendProjectShotListSummary?,
+        memoryCardConfigs: [BackendMemoryCardConfig] = [],
+        updatedAt: String?
+    ) {
+        self.id = id
+        self.title = title
+        self.clientName = clientName
+        self.eventDate = eventDate
+        self.location = location
+        self.projectType = projectType
+        self.status = status
+        self.shotListSummary = shotListSummary
+        self.memoryCardConfigs = memoryCardConfigs
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, clientName, eventDate, location, projectType, status
+        case shotListSummary, memoryCardConfigs, updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        clientName = try container.decodeIfPresent(String.self, forKey: .clientName)
+        eventDate = try container.decodeIfPresent(String.self, forKey: .eventDate)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        projectType = try container.decodeIfPresent(String.self, forKey: .projectType)
+        status = try container.decode(String.self, forKey: .status)
+        shotListSummary = try container.decodeIfPresent(
+            BackendProjectShotListSummary.self,
+            forKey: .shotListSummary
+        )
+        memoryCardConfigs = try container.decodeIfPresent(
+            [BackendMemoryCardConfig].self,
+            forKey: .memoryCardConfigs
+        ) ?? []
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+    }
 }
 
 struct BackendListProjectsResponse: Decodable, Sendable {
@@ -460,6 +597,34 @@ struct BackendCreatedProject: Decodable, Sendable {
     let id: String
     let title: String
     let createdAt: String
+}
+
+struct BackendCardTransferRequest: Encodable, Sendable {
+    let cardIdentifier: String
+    let cardName: String
+    let plannedCardLabel: String?
+    let capacityBytes: Int64?
+    let availableBytes: Int64?
+    let photoCount: Int
+    let videoCount: Int
+    let audioCount: Int
+    let unsupportedCount: Int
+    let assetCount: Int
+    let duplicateCount: Int
+    let failedCount: Int
+    let totalBytes: Int64
+    let copiedBytes: Int64
+    let manifestSha256: String?
+    let storagePolicy: String
+    let status: String
+    let locallyVerifiedAt: String?
+    let cloudVerifiedAt: String?
+    let sourceDevice: String?
+}
+
+struct BackendCardTransferAck: Decodable, Sendable {
+    let ok: Bool
+    let transferId: String
 }
 
 struct BackendLinkSessionProjectRequest: Encodable, Sendable {

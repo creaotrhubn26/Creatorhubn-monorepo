@@ -1043,6 +1043,7 @@ import { requireProjectAccess } from "./project-access";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
 import { setupProjectVideoCollaborationRoutes } from "./project-video-collaboration-routes";
 import { setupProjectVideoCaptureRoutes } from "./project-video-capture-routes";
+import { setupProjectProductionAudioRoutes } from "./project-production-audio-routes";
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
 import { startProToolsSyncWorker } from "./protools-companion-sync-worker";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
@@ -67998,6 +67999,7 @@ setupSubmissionsRoutes({
   dbCompatSubmissionKey,
   recordAnalyticsEvent,
   compatResolveUserId,
+  requireUserSession,
   readString,
 });
 
@@ -68776,6 +68778,12 @@ setupProjectVideoCollaborationRoutes({
   resolveUserSession: resolveActiveSessionFromRequest,
 });
 setupProjectVideoCaptureRoutes({
+  app,
+  pool,
+  requireUserSession,
+  resolveUserSession: resolveActiveSessionFromRequest,
+});
+setupProjectProductionAudioRoutes({
   app,
   pool,
   requireUserSession,

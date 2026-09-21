@@ -237,13 +237,36 @@ final class MagicPipeline {
         //    that the auto pass just set.
 
         if effectiveRecipe.warmth != 0 {
-            let target = 6500.0 + effectiveRecipe.warmth * 900.0
-            let f = CIFilter(name: "CITemperatureAndTint")!
-            f.setValue(current, forKey: kCIInputImageKey)
-            f.setValue(CIVector(x: 6500, y: 0), forKey: "inputNeutral")
-            f.setValue(CIVector(x: CGFloat(target), y: 0), forKey: "inputTargetNeutral")
-            if let out = f.outputImage { current = out }
+            current = PhotographicTemperatureFilter.apply(
+                to: current,
+                warmth: effectiveRecipe.warmth,
+                kelvinScale: 900
+            )
         }
+        if effectiveRecipe.tint != 0 {
+            let tint = CIFilter(name: "CITemperatureAndTint")!
+            tint.setValue(current, forKey: kCIInputImageKey)
+            tint.setValue(CIVector(x: 6500, y: 0), forKey: "inputNeutral")
+            tint.setValue(
+                // Core Image's positive target-tint direction compensates
+                // magenta by adding green; invert it so the UI follows the
+                // photographic convention: positive = magenta.
+                CIVector(x: 6500, y: CGFloat(-effectiveRecipe.tint * 60)),
+                forKey: "inputTargetNeutral"
+            )
+            if let out = tint.outputImage { current = out }
+        }
+
+        current = ColorArtifactFilter.applyDefringe(
+            amount: effectiveRecipe.defringe,
+            to: current
+        )
+
+        // Protect the photographer's *corrected* white balance through the
+        // later contrast/vibrance/retouch stages. Referencing the pre-WB image
+        // quietly pulled warm casts back into faces and made JPEG preview differ
+        // from RAW, whose reference is already developed at the chosen WB.
+        let skinColorReference = current
 
         if effectiveRecipe.shadowLift > 0 {
             // Kun skygge-løft her. Høylys-gjenoppretting flyttet til en SEN
@@ -253,7 +276,10 @@ final class MagicPipeline {
             let f = CIFilter(name: "CIHighlightShadowAdjust")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(effectiveRecipe.shadowLift, forKey: "inputShadowAmount")
-            f.setValue(0.0, forKey: "inputHighlightAmount")   // 0 = identitet (ingen høylys-endring her)
+            // CIHighlightShadowAdjust uses 1.0 — not 0.0 — as the neutral
+            // highlight value. Zero compressed the complete upper range every
+            // time shadows were lifted, making portraits dark and tonally flat.
+            f.setValue(1.0, forKey: "inputHighlightAmount")
             if let out = f.outputImage { current = out }
         }
 
@@ -276,13 +302,10 @@ final class MagicPipeline {
             }
         }
 
-        if effectiveRecipe.contrast != 0 || effectiveRecipe.saturation != 0 {
-            let f = CIFilter(name: "CIColorControls")!
-            f.setValue(current, forKey: kCIInputImageKey)
-            f.setValue(1.0 + effectiveRecipe.saturation * 0.45, forKey: kCIInputSaturationKey)
-            f.setValue(1.0 + effectiveRecipe.contrast * 0.45, forKey: kCIInputContrastKey)
-            if let out = f.outputImage { current = out }
-        }
+        current = RAWExportPipeline.applyContrastAndSaturation(
+            recipe: effectiveRecipe,
+            to: current
+        )
 
         // Phase 6 — Vibrance (CIVibrance lifts dull colors only).
         if effectiveRecipe.vibrance != 0 {
@@ -292,7 +315,6 @@ final class MagicPipeline {
                 if let out = v.outputImage { current = out }
             }
         }
-
         // Phase 6 — Texture (wide-radius unsharp mask).
         if effectiveRecipe.texture > 0 {
             if let t = CIFilter(name: "CIUnsharpMask") {
@@ -303,73 +325,31 @@ final class MagicPipeline {
             }
         }
 
-        // Phase 7 — frequency-separated skin retouch. Low-freq (tone)
-        // and high-freq (detail) treated independently, matching
-        // Evoto's split-slider model. Legacy `skinSmooth` folds into
-        // the low-freq positive direction so old recipes still smooth.
-        let lowFreqPos = max(0, effectiveRecipe.skinLowFreq)
-            + max(0, effectiveRecipe.skinSmooth)
-        if lowFreqPos > 0 {
-            // Edge-preserving smoothing for tone — CINoiseReduction is
-            // Apple's bilateral filter; smooths flat tonal areas while
-            // preserving edges (eyelashes, lip edges, hair strands).
-            // Sharpness raised from 0.5 → 0.7 vs pre-Phase-7 because
-            // the dedicated high-freq axis now owns detail-rebuild;
-            // we no longer need the sharpen-after-blur kludge.
-            if let nr = CIFilter(name: "CINoiseReduction") {
-                nr.setValue(current, forKey: kCIInputImageKey)
-                nr.setValue(min(1, lowFreqPos) * 0.06, forKey: "inputNoiseLevel")
-                nr.setValue(0.7, forKey: "inputSharpness")
-                if let reduced = nr.outputImage {
-                    current = reduced
-                }
-            }
-        }
-        if effectiveRecipe.skinLowFreq < 0 {
-            // Enhance facial structure (subtle broad-tonal contrast).
-            if let cc = CIFilter(name: "CIColorControls") {
-                cc.setValue(current, forKey: kCIInputImageKey)
-                cc.setValue(1.0 + (-effectiveRecipe.skinLowFreq) * 0.15,
-                            forKey: kCIInputContrastKey)
-                if let out = cc.outputImage { current = out }
-            }
-        }
-        if effectiveRecipe.skinHighFreq > 0 {
-            // Sharpen pore detail (narrow-radius unsharp mask).
-            if let s = CIFilter(name: "CIUnsharpMask") {
-                s.setValue(current, forKey: kCIInputImageKey)
-                s.setValue(1.5, forKey: kCIInputRadiusKey)
-                s.setValue(effectiveRecipe.skinHighFreq * 0.5,
-                           forKey: kCIInputIntensityKey)
-                if let out = s.outputImage { current = out }
-            }
-        } else if effectiveRecipe.skinHighFreq < 0 {
-            // Blur micro-texture (gentle gaussian for portrait soften).
-            if let blur = CIFilter(name: "CIGaussianBlur") {
-                blur.setValue(current, forKey: kCIInputImageKey)
-                blur.setValue((-effectiveRecipe.skinHighFreq) * 1.2,
-                              forKey: kCIInputRadiusKey)
-                if let out = blur.outputImage { current = out }
-            }
-        }
+        // Frequency separation is face-masked. Never blur hair, clothes or the
+        // background merely because a portrait slider is active.
+        current = SkinFinishFilter.applyFrequencySeparation(
+            recipe: effectiveRecipe,
+            to: current
+        )
+        current = SkinFinishFilter.applyPortraitRetouch(recipe: effectiveRecipe, to: current)
 
-        // Høylys-gjenoppretting via CIToneCurve — SAMME filter, kurve OG posisjon
-        // som RAWExportPipeline.applyToneAdjustments (leveransen), så samme slider
-        // gir samme høylys-rulloff i preview og levert bilde. Kjøres etter tone/
-        // hud-frekvens (som i RAW), før ansikts-kjeden. Kurven bøyer kun topp-15 %
-        // ned; knekk ved 65 % (ARRI/Reinhard-shoulder), klipper til 0.92·(1−0.08r).
-        if effectiveRecipe.highlightRecovery > 0 {
-            let r = effectiveRecipe.highlightRecovery
-            if let tc = CIFilter(name: "CIToneCurve") {
-                tc.setValue(current, forKey: kCIInputImageKey)
-                tc.setValue(CIVector(x: 0, y: 0), forKey: "inputPoint0")
-                tc.setValue(CIVector(x: 0.50, y: 0.50), forKey: "inputPoint1")
-                tc.setValue(CIVector(x: 0.65, y: 0.65), forKey: "inputPoint2")
-                tc.setValue(CIVector(x: 0.85, y: 0.85 - 0.07 * r), forKey: "inputPoint3")
-                tc.setValue(CIVector(x: 1.00, y: 0.92 - 0.08 * r), forKey: "inputPoint4")
-                if let out = tc.outputImage { current = out }
-            }
-        }
+        // Use the exact same highlight shoulder as RAW export. Keeping this in
+        // one implementation prevents the live preview from looking flatter
+        // than the delivered file and, crucially, preserves a clean white point.
+        current = RAWExportPipeline.applyHighlightRecovery(
+            amount: effectiveRecipe.highlightRecovery,
+            to: current
+        )
+        let subjectColourReference = current
+        let controlledBackground = ColorArtifactFilter.applyGreenControl(
+            amount: effectiveRecipe.greenControl,
+            to: current
+        )
+        current = SubjectSeparationFilter.apply(
+            amount: effectiveRecipe.subjectSeparation,
+            subject: subjectColourReference,
+            background: controlledBackground
+        )
 
         // Phase 7B — eye-region sharpen + catch-light boost. Detection
         // sees the fully-toned image so the masked filters apply on top
@@ -382,7 +362,11 @@ final class MagicPipeline {
         // Phase 7F — face↔body skin-tone unify.
         current = SkinToneUnifyFilter.apply(recipe: effectiveRecipe, to: current)
         // Hud-tone-guard — forankrer a* mot ~11 (grønn/oransje-guard).
-        current = SkinToneGuardFilter.apply(recipe: effectiveRecipe, to: current)
+        current = SkinToneGuardFilter.apply(
+            recipe: effectiveRecipe,
+            to: current,
+            reference: skinColorReference
+        )
         // Film-korn-finish.
         current = FilmGrainFilter.apply(recipe: effectiveRecipe, to: current)
 

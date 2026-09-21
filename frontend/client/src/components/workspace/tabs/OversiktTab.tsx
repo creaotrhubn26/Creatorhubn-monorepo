@@ -208,6 +208,14 @@ function timeAgo(iso: string, t: (k: string) => string): string {
   if (s < 86400) return `${Math.floor(s / 3600)} ${t('hoursAgo')}`;
   return `${Math.floor(s / 86400)} ${t('daysAgo')}`;
 }
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1000)));
+  const value = bytes / Math.pow(1000, index);
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
 function addMinutes(hhmm: string, mins: number): string {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
   const [h, m] = hhmm.split(':').map(Number);
@@ -568,7 +576,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             </Box>
           </WsCard>
         )}
-        {wsCategory !== 'music' && cap?.hasSession && (
+        {wsCategory !== 'music' && (cap?.hasSession || cap?.cardTransfers?.length > 0) && (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
@@ -591,6 +599,41 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToCreatorHubS3 ?? cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
               </Box>
             </Stack>
+
+            {/* Fysiske minnekort fra CaptureApp. Etiketten speiler navnet
+                fotografen planla i ProjectCreationWithMemoryCards. */}
+            {Array.isArray(cap.cardTransfers) && cap.cardTransfers.length > 0 && (
+              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: ws.textFaint, mb: 0.75 }}>
+                  MINNEKORT · {cap.cardTransfers.length}
+                </Typography>
+                <Stack spacing={0.6}>
+                  {cap.cardTransfers.slice(0, 8).map((card: any) => {
+                    const verified = card.status === 'cloud_verified' || card.status === 'local_verified';
+                    const cloud = card.status === 'cloud_verified';
+                    const progress = card.totalBytes > 0 ? Math.min(100, Math.round((card.copiedBytes / card.totalBytes) * 100)) : 0;
+                    return (
+                      <Stack key={card.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.65, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                        {wsIcon('SdCard', { fontSize: 15, color: verified ? ws.green : card.failedCount ? ws.red : ws.amber })}
+                        <Box sx={{ minWidth: 120 }}>
+                          <Typography sx={{ fontSize: 11.5, fontWeight: 700 }} noWrap>{card.plannedCardLabel || card.cardName}</Typography>
+                          <Typography sx={{ fontSize: 9.5, color: ws.textFaint }} noWrap>{card.plannedCardLabel && card.cardName !== card.plannedCardLabel ? card.cardName : card.sourceDevice || 'CaptureApp'}</Typography>
+                          {card.manifestSha256 && <Typography sx={{ fontSize: 9, color: ws.textFaint }} noWrap>SHA-256 {String(card.manifestSha256).slice(0, 12)}…</Typography>}
+                        </Box>
+                        <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{card.photoCount} foto · {card.videoCount} video · {card.audioCount || 0} lyd</Typography>
+                        <Box sx={{ flex: 1, minWidth: 90 }}>
+                          <WsBar value={progress} color={card.failedCount ? ws.red : verified ? ws.green : ws.amber} height={4} />
+                          <Typography sx={{ fontSize: 9.5, color: ws.textFaint, mt: 0.2 }}>{formatBytes(card.copiedBytes)} / {formatBytes(card.totalBytes)}</Typography>
+                        </Box>
+                        <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: card.failedCount ? ws.red : verified ? ws.green : ws.amber }}>
+                          {cloud ? 'Sikret i CreatorHub' : card.status === 'local_verified' ? 'Lokalt verifisert' : card.status === 'uploading' ? 'Laster opp' : card.status === 'paused' ? 'Pauset' : card.failedCount ? 'Må kontrolleres' : `${progress}%`}
+                        </Typography>
+                      </Stack>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            )}
 
             {/* One Desk DIT — speilings-destinasjoner + hash-verifiserte kopier */}
             {dit?.hasBackup && (

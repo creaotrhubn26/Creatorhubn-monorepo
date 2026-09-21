@@ -159,6 +159,12 @@ export type UserEvent =
       sessionId: string;
       review: Record<string, unknown>;
       timestamp: string;
+    }
+  | {
+      kind: "inquiry.updated";
+      inquiryId: string;
+      reason: "created" | "updated" | "replied" | "converted";
+      timestamp: string;
     };
 
 export type UserEventsFrame =

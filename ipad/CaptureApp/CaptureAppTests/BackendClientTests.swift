@@ -38,6 +38,28 @@ final class BackendClientTests: XCTestCase {
         )
     }
 
+    func testAssetReadURLUsesAuthenticatedShortLivedVariantEndpoint() async throws {
+        let captured = Box<URLRequest>()
+        MockURLProtocol.handler = { request in
+            captured.value = request
+            return MockURLProtocol.jsonResponse(
+                for: request.url!,
+                body: #"{"url":"https://creatorhub-s3.example/signed","kind":"full","expiresInSeconds":300}"#
+            )
+        }
+        let id = UUID()
+        let url = try await makeClient().assetReadURL(backendAssetId: id, kind: .full)
+
+        XCTAssertEqual(url.absoluteString, "https://creatorhub-s3.example/signed")
+        XCTAssertEqual(captured.value?.httpMethod, "GET")
+        XCTAssertEqual(captured.value?.value(forHTTPHeaderField: "x-user-id"), "owner-1")
+        XCTAssertEqual(
+            captured.value?.url?.path,
+            "/api/capture/assets/\(id.uuidString.lowercased())/read-url"
+        )
+        XCTAssertEqual(captured.value?.url?.query, "kind=full")
+    }
+
     func testRealtimeTicketIdentifiesCaptureBuildWithoutPuttingBearerInURL() async throws {
         let captured = Box<URLRequest>()
         MockURLProtocol.handler = { request in
@@ -60,6 +82,20 @@ final class BackendClientTests: XCTestCase {
     }
 
     // MARK: - Sessions
+
+    func testProjectListDecodesPlannedMemoryCardsAndOlderResponses() async throws {
+        MockURLProtocol.handler = { request in
+            MockURLProtocol.jsonResponse(
+                for: request.url!,
+                body: #"{"projects":[{"id":"p1","title":"Film","clientName":null,"eventDate":null,"location":null,"projectType":"film","status":"active","shotListSummary":null,"memoryCardConfigs":[{"label":"A","type":"CFexpress","capacity":"512 GB","dayNumber":1,"dayName":"Dag 1"}],"updatedAt":null},{"id":"p2","title":"Eldre prosjekt","clientName":null,"eventDate":null,"location":null,"projectType":null,"status":"active","shotListSummary":null,"updatedAt":null}]}"#
+            )
+        }
+
+        let response = try await makeClient().listProjects()
+
+        XCTAssertEqual(response.projects[0].memoryCardConfigs.map(\.label), ["A"])
+        XCTAssertTrue(response.projects[1].memoryCardConfigs.isEmpty)
+    }
 
     func testCreateSessionPostsJSONAndDecodesResponse() async throws {
         let captured = Box<URLRequest>()

@@ -1,11 +1,11 @@
 // @ts-nocheck
 /**
  * ForesporslerTab («Forespørsler») — innboks for INNKOMMENDE henvendelser/leads.
- * SAMME kilde som UniversalDashboard sin CustomerInquiryCenter: `client_submissions`
- * (skjema-innsendinger fra potensielle kunder), scopet på vendor_email.
+ * Kanonisk kilde for WorkspaceShell og CaptureApp: `/api/inquiries`, eier-scopet
+ * fra den innloggede sesjonen (aldri fra vendor-id/e-post i klienten).
  *
  * Tre handlinger per henvendelse:
- *   • «Svar»          → e-post til kunden via /api/emails/send (som dashbordet).
+ *   • «Svar»          → e-post til kunden via den kanoniske inquiry-ruten.
  *   • «Opprett prosjekt» → ProjectCreationWithMemoryCards ferdig utfylt; markerer
  *                          henvendelsen booked og SÅR prosjektets workspace-chat
  *                          (project-<id>) med henvendelsen + svar-historikk, slik
@@ -28,6 +28,7 @@ import ContactFormDesigner from '../ContactFormDesigner';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { useUserEventStream } from '@/hooks/useUserEventStream';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). NB: selve
 // e-postinnholdet og chat-seeden går til norske kunder og forblir norsk.
@@ -86,22 +87,47 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
   const [sendErr, setSendErr] = useState('');
   const [replies, setReplies] = useState<Record<string, string[]>>({}); // sendte svar pr. lead (→ chat-seed)
   const [toast, setToast] = useState('');
+  const [loadErr, setLoadErr] = useState('');
 
-  const load = () => {
-    setLoading(true);
-    apiRequest('/api/foresporsler/inbound')
+  const load = React.useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    setLoadErr('');
+    apiRequest('/api/inquiries?status=open&limit=200')
       .then((r: any) => setItems(Array.isArray(r?.items) ? r.items : []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
+      .catch((e: any) => setLoadErr(e?.message || 'Kunne ikke laste forespørsler.'))
+      .finally(() => { if (!silent) setLoading(false); });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useUserEventStream({
+    onEvent: (event) => {
+      if (event.kind === 'inquiry.updated') load(true);
+    },
+    onReconnect: () => load(true),
+  });
+  useEffect(() => {
+    const refreshVisibleInbox = () => {
+      if (document.visibilityState === 'visible') load(true);
+    };
+    window.addEventListener('focus', refreshVisibleInbox);
+    document.addEventListener('visibilitychange', refreshVisibleInbox);
+    return () => {
+      window.removeEventListener('focus', refreshVisibleInbox);
+      document.removeEventListener('visibilitychange', refreshVisibleInbox);
+    };
+  }, [load]);
 
   const sendReply = async () => {
     if (!replyTo || !replyText.trim()) return;
     setSending(true); setSendErr('');
     try {
-      await apiRequest('/api/emails/send', { method: 'POST', body: { to: replyTo.clientEmail, subject: `Re: ${replyTo.title}`, message: replyText.trim() } });
+      const result: any = await apiRequest(`/api/inquiries/${encodeURIComponent(replyTo.id)}/reply`, {
+        method: 'POST',
+        body: { subject: `Re: ${replyTo.title}`, body: replyText.trim() },
+      });
       setReplies((prev) => ({ ...prev, [replyTo.id]: [...(prev[replyTo.id] || []), replyText.trim()] }));
+      if (result?.inquiry) {
+        setItems((prev) => prev.map((item) => item.id === replyTo.id ? result.inquiry : item));
+      }
       setToast(`${t('replySentTo')} ${replyTo.clientName}`);
       setReplyTo(null); setReplyText('');
     } catch (e: any) {
@@ -112,7 +138,7 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
   const handleCreated = async (lead: any, project: any) => {
     const newId = project?.id || project?.projectId || '';
     // 1) marker henvendelsen booked (idempotent backstop)
-    try { await apiRequest(`/api/foresporsler/inbound/${encodeURIComponent(lead.id)}/convert`, { method: 'POST', body: { projectId: newId } }); } catch { /* */ }
+    try { await apiRequest(`/api/submissions/${encodeURIComponent(lead.id)}/mark-converted`, { method: 'POST', body: { projectId: newId } }); } catch { /* idempotent backstop */ }
     // 2) sår prosjektets workspace-chat med henvendelsen + svar-historikk
     if (newId) {
       const sent = replies[lead.id] || [];
@@ -150,6 +176,7 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
       </Stack>
 
       <WsCard>
+        {loadErr && <Alert severity="error" sx={{ mb: 1.5 }}>{loadErr}</Alert>}
         {items.length === 0 ? (
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <MoveToInbox sx={{ fontSize: 36, color: ws.textFaint }} />
@@ -236,6 +263,7 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
               profession={profession || 'photographer'}
               userId={userId}
               initialData={{
+                submissionId: active.id,
                 projectName: active.title && active.title !== active.clientName ? active.title : (active.clientName ? `${active.clientName}${active.eventType ? ' – ' + active.eventType : ''}` : ''),
                 clientName: active.clientName || '',
                 clientEmail: active.clientEmail || '',
@@ -244,6 +272,7 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
                 location: active.venueName || '',
                 description: active.note || '',
                 projectType: toProjectType(active.eventType),
+                budget: active.amount != null ? String(active.amount) : '',
               }}
               onProjectCreated={(project: any) => handleCreated(active, project)}
             />

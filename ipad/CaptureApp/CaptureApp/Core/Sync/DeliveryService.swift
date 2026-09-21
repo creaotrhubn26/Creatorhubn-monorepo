@@ -108,6 +108,15 @@ actor DeliveryService {
         let token: BackendCreatedClientToken
     }
 
+    /// Result from archival backup. Unlike `DeliveryResult`, this does not mint
+    /// a client token or create a gallery: storage and delivery are separate
+    /// product actions.
+    struct BackupResult: Sendable, Equatable {
+        let backendSessionId: UUID
+        let backendAssetId: UUID
+        let uploadedCount: Int
+    }
+
     enum DeliveryError: Error, Sendable, Equatable {
         case sessionMirrorFailed(String)
         case projectLinkFailed(String)
@@ -335,6 +344,80 @@ actor DeliveryService {
         let mime: String
         let path: String
         let kind: BackendUploadKind
+    }
+
+    /// Back up all available variants for one live-captured photo. The preview
+    /// is uploaded alongside the full/RAW original so cloud-only photos remain
+    /// browseable. Completion means every item returned successfully from the
+    /// backend's S3-complete + HEAD verification path.
+    func backupPhoto(
+        sessionName: String,
+        sessionStartedAt: Date,
+        items: [CardBackupItem],
+        projectId: String?,
+        onProgress: (@Sendable (Int, Int) -> Void)? = nil,
+    ) async throws -> BackupResult {
+        guard let first = items.first,
+              items.allSatisfy({ $0.localId == first.localId })
+        else { throw DeliveryError.noUploadablePicks }
+
+        if backendSessionId == nil,
+           let context = try await uploadStore?.backendContext(for: first.localId) {
+            backendSessionId = context.backendSessionId
+            idMap[first.localId] = context.backendAssetId
+        }
+
+        let backendSession: UUID = try await {
+            if let existing = backendSessionId { return existing }
+            do {
+                let row = try await backend.createSession(
+                    .init(name: sessionName, clientId: nil, startsAt: sessionStartedAt)
+                )
+                guard let id = row.uuid else {
+                    throw DeliveryError.sessionMirrorFailed("invalid session id from backend: \(row.id)")
+                }
+                backendSessionId = id
+                return id
+            } catch let error as DeliveryError {
+                throw error
+            } catch {
+                throw DeliveryError.sessionMirrorFailed(String(describing: error))
+            }
+        }()
+
+        try await requireProjectLink(sessionId: backendSession, projectId: projectId)
+
+        var backendAssetId = idMap[first.localId]
+        var uploaded = 0
+        for (index, item) in items.enumerated() {
+            let variantKey = "\(item.localId.uuidString.lowercased()):\(item.kind.rawValue)"
+            if uploadedVariants.contains(variantKey) {
+                uploaded += 1
+                onProgress?(index + 1, items.count)
+                continue
+            }
+            backendAssetId = try await uploadOriginal(
+                item: item,
+                sessionId: backendSession,
+                existingAssetId: backendAssetId
+            )
+            idMap[item.localId] = backendAssetId
+            uploadedVariants.insert(variantKey)
+            uploaded += 1
+            onProgress?(index + 1, items.count)
+        }
+
+        guard let backendAssetId else {
+            throw DeliveryError.uploadFailed(
+                localAssetId: first.localId,
+                reason: "backend asset mapping missing after upload"
+            )
+        }
+        return BackupResult(
+            backendSessionId: backendSession,
+            backendAssetId: backendAssetId,
+            uploadedCount: uploaded
+        )
     }
 
     /// Back up original card files to CreatorHub S3 under a freshly-mirrored backend

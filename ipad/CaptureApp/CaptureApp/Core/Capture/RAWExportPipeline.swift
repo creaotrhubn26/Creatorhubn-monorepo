@@ -31,9 +31,9 @@ enum RAWExportPipeline {
     /// - Parameters:
     ///   - rawData: bytes of the RAW file (`?kind=main`).
     ///   - recipe: enhancement recipe — same shape consumed by ``MagicPipeline``.
-    ///   - identifierHint: file extension or MIME hint so `CIRAWFilter` can
-    ///     pick the right decoder when the bytes don't carry a clean header
-    ///     (e.g. `"cr3"`, `"image/x-canon-cr3"`). Optional.
+    ///   - identifierHint: file extension, MIME type, or UTI. It is normalized
+    ///     to a UTI before reaching `CIRAWFilter` (e.g. `"cr3"` becomes
+    ///     `"com.canon.cr3-raw-image"`). Optional.
     ///   - jpegCompressionQuality: 0…1; default 0.92 — higher than the
     ///     display preview's 0.85 because this output is the deliverable.
     ///   - targetMaxDimension: when set, the demosaic uses
@@ -143,14 +143,29 @@ enum RAWExportPipeline {
 
     /// Build a `CIRAWFilter` from RAW bytes. The class factory
     /// `+filterWithImageData:identifierHint:` (iOS 15+) bridges to Swift as
-    /// the trailing-`init` form below. Passing the extension/MIME hint
-    /// helps the decoder pick the right codepath for ambiguous formats
-    /// like CR3 where the magic bytes alone don't disambiguate.
+    /// the trailing-`init` form below. Core Image expects a UTI here — passing
+    /// the raw extension (`"cr3"`) logs a format error even though byte sniffing
+    /// may still recover. Normalize extension/MIME callers at this boundary.
     static func makeRawFilter(rawData: Data, identifierHint: String?) -> CIRAWFilter? {
-        if let hint = identifierHint, !hint.isEmpty {
+        if let hint = normalizedIdentifierHint(identifierHint) {
             return CIRAWFilter(imageData: rawData, identifierHint: hint)
         }
         return CIRAWFilter(imageData: rawData, identifierHint: nil)
+    }
+
+    static func normalizedIdentifierHint(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        if let type = UTType(filenameExtension: raw.lowercased()) {
+            return type.identifier
+        }
+        if let type = UTType(mimeType: raw.lowercased()) {
+            return type.identifier
+        }
+        // Preserve an already-normalized UTI. Unknown free-form strings are
+        // discarded so Core Image can sniff bytes without noisy false hints.
+        if raw.contains("."), !raw.contains("/") { return raw }
+        return nil
     }
 
     /// Map ``MagicRecipe`` → the parts handled natively by `CIRAWFilter`.
@@ -163,18 +178,13 @@ enum RAWExportPipeline {
     ///     same perceptual change.
     ///   - `shadowLift` 0…1 → `boostShadowAmount` 1.0…2.0 (lighten only;
     ///     CIRAWFilter clamps the range to 0…2 with 1.0 = neutral).
-    ///   - `skinLowFreq` ≥0 → `luminanceNoiseReductionAmount` 0.2…0.7 (RAW
-    ///     carries more sensor noise than the in-camera JPEG, so the floor
-    ///     is biased up). Low-freq skin smoothing on RAW happens natively
-    ///     here so it stacks correctly against the demosaic.
-    ///   - `skinHighFreq` is applied post-output in `applyToneAdjustments`
-    ///     because it needs the demosaiced display-RGB image (CIUnsharpMask
-    ///     for sharpen direction, CIBilateralFilter for blur direction).
-    ///   - `skinSmooth` (legacy) folds into `luminanceNoiseReductionAmount`
-    ///     identically to the pre-Phase-7 mapping when present.
+    ///   - Skin frequency controls are intentionally *not* mapped to RAW-global
+    ///     noise reduction. Both axes run post-demosaic through the same soft
+    ///     face mask as the JPEG preview, preserving hair/fabric/background and
+    ///     keeping preview/export behaviour aligned.
     ///
-    /// White balance + shadow lift + skin smoothing land natively on
-    /// `CIRAWFilter` (pre-demosaic, full sensor precision). Highlight
+    /// White balance + shadow lift land natively on `CIRAWFilter`
+    /// (pre-demosaic, full sensor precision). Highlight
     /// recovery rides Apple's native `isHighlightRecoveryEnabled` plus
     /// a linear-space `CIToneCurve` pull-down for fine control.
     /// Contrast + saturation are applied post-demosaic in
@@ -195,17 +205,11 @@ enum RAWExportPipeline {
         // Shadow boost: absolutt (1.0 = nøytral) så gjenbruk nullstilles.
         filter.boostShadowAmount = recipe.shadowLift > 0 ? 1.0 + Float(recipe.shadowLift) : 1.0
 
-        // Phase 7: low-freq skin smoothing folds in here (CIRAWFilter
-        // luminance NR runs pre-demosaic at full sensor precision —
-        // best place for tone smoothing). Clamp the input to 0…1 since
-        // this axis is bidirectional but luminance NR is unidirectional;
-        // negative skinLowFreq (enhance structure) is handled post-output.
-        // Legacy `skinSmooth` adds in identically for backwards compat.
-        let lowFreqAmt = max(0, recipe.skinLowFreq) + max(0, recipe.skinSmooth)
+        // Sensor noise reduction stays camera-calibrated. Portrait smoothing is
+        // applied later through a face mask; driving this RAW-global control from
+        // a skin slider softened hair, fabric and the entire background.
         if filter.isLuminanceNoiseReductionSupported {
-            filter.luminanceNoiseReductionAmount = lowFreqAmt > 0
-                ? 0.2 + Float(min(1, lowFreqAmt)) * 0.5
-                : defaultLuminanceNR   // gjenopprett sensor-default (ikke 0)
+            filter.luminanceNoiseReductionAmount = defaultLuminanceNR
         }
 
         // Lens correction (vignette, distortion, chromatic aberration)
@@ -214,6 +218,17 @@ enum RAWExportPipeline {
         // the per-lens lookup internally.
         if filter.isLensCorrectionSupported {
             filter.isLensCorrectionEnabled = true
+        }
+
+        // This used to exist only in the documentation below. Enable Apple's
+        // scene-linear RAW recovery for real when the camera format supports it;
+        // the later display-space shoulder remains the photographer's fine
+        // control and keeps JPEG preview/export visually aligned.
+        if #available(iOS 26.0, *), filter.isHighlightRecoverySupported {
+            // CIRAWFilter defaults this to true. Keep native sensor-headroom
+            // recovery enabled for every render; the recipe amount controls the
+            // visible shoulder below without making a neutral render lower quality.
+            filter.isHighlightRecoveryEnabled = true
         }
 
         // Highlight recovery — applied post-output in
@@ -234,10 +249,10 @@ enum RAWExportPipeline {
     }
 
     /// Apply contrast + saturation + highlight-recovery post-demosaic.
-    /// Mirrors the display pipeline's `* 0.45` mapping so live preview
-    /// and final RAW deliverable agree on these axes — a `+0.5 contrast`
-    /// slider produces the same perceived bump in both outputs.
-    ///   - `contrast` -1…+1 → 0.55…1.45 around 1.0 (neutral).
+    /// The shared five-point contrast curve keeps preview and final RAW
+    /// deliverable identical without shifting exposure on low-key portraits.
+    ///   - `contrast` -1…+1 → photographic S-curve around fixed black,
+    ///     middle-grey and white anchors.
     ///   - `saturation` -1…+1 → 0.55…1.45 around 1.0 (neutral).
     ///   - `highlightRecovery` 0…1 → CIToneCurve pulling display 65-100%
     ///     range down. Knee starts at 65% (industry-standard soft-clip
@@ -248,6 +263,27 @@ enum RAWExportPipeline {
     /// itself, not as a post tone-curve nudge.
     static func applyToneAdjustments(recipe: MagicRecipe, to image: CIImage) -> CIImage {
         var current = image
+
+        // Warmth is developed natively by CIRAWFilter. Tint remains a separate
+        // green↔magenta display-space correction so the same slider mapping is
+        // used for RAW and camera-JPEG previews.
+        if recipe.tint != 0 {
+            let tint = CIFilter.temperatureAndTint()
+            tint.inputImage = current
+            tint.neutral = CIVector(x: 6500, y: 0)
+            tint.targetNeutral = CIVector(x: 6500, y: CGFloat(-recipe.tint * 60))
+            current = tint.outputImage ?? current
+        }
+
+        // Remove residual chromatic aberration before saturation/vibrance can
+        // amplify it. Apple's native lens-profile correction has already run on
+        // RAW; this edge-masked stage handles what the profile leaves behind.
+        current = ColorArtifactFilter.applyDefringe(amount: recipe.defringe, to: current)
+
+        // `image` already contains the CIRAWFilter warmth correction; include
+        // the explicit tint correction as well. Skin protection should preserve
+        // the chosen white balance, not pull a source cast back into the face.
+        let skinColorReference = current
 
         // Phase 6 — dehaze first because it adjusts contrast +
         // saturation + shadow simultaneously; subsequent slider
@@ -272,15 +308,11 @@ enum RAWExportPipeline {
             current = shadow.outputImage ?? current
         }
 
-        // Saturation + contrast (post-dehaze).
-        if recipe.contrast != 0 || recipe.saturation != 0 {
-            let controls = CIFilter.colorControls()
-            controls.inputImage = current
-            controls.contrast = 1.0 + Float(recipe.contrast) * 0.45
-            controls.saturation = 1.0 + Float(recipe.saturation) * 0.45
-            controls.brightness = 0
-            current = controls.outputImage ?? current
-        }
+        // Saturation + photographic S-curve (post-dehaze). A plain
+        // CIColorControls contrast multiplier pivots around fixed 50 % grey;
+        // on a low-key portrait that pushes almost the entire subject toward
+        // black and can reduce, rather than add, usable tonal separation.
+        current = applyContrastAndSaturation(recipe: recipe, to: current)
 
         // Phase 6 — Vibrance. CIVibrance only lifts dull pixels;
         // already-saturated areas stay put. Industry favorite for
@@ -306,54 +338,20 @@ enum RAWExportPipeline {
             current = t.outputImage ?? current
         }
 
-        // Phase 7 — skinHighFreq (post-demosaic, since Apple's
-        // CIBilateralFilter / CIUnsharpMask both need display-RGB).
-        // Bidirectional: positive = sharpen pore detail, negative =
-        // blur micro-texture. Narrow radius (1.5) so it ONLY touches
-        // sub-skin texture without bleeding into hair/eye edges. Pair
-        // with skinLowFreq for true frequency-separation behaviour:
-        // smooth tone via low-freq + restore detail via high-freq +.
-        // Negative direction applies a gentle gaussian blur with
-        // radius matched to typical skin micro-texture (~2-3 px on
-        // 5088×3392 sensor, ≈1.5 in CIFilter units after downscale).
-        if recipe.skinHighFreq > 0 {
-            let s = CIFilter.unsharpMask()
-            s.inputImage = current
-            s.radius = 1.5
-            s.intensity = Float(recipe.skinHighFreq) * 0.5
-            current = s.outputImage ?? current
-        } else if recipe.skinHighFreq < 0 {
-            let blur = CIFilter.gaussianBlur()
-            blur.inputImage = current
-            blur.radius = Float(-recipe.skinHighFreq) * 1.2
-            current = blur.outputImage ?? current
-        }
+        current = SkinFinishFilter.applyFrequencySeparation(recipe: recipe, to: current)
+        current = SkinFinishFilter.applyPortraitRetouch(recipe: recipe, to: current)
 
-        // Phase 7 — skinLowFreq negative direction (enhance facial
-        // structure). Positive direction was handled in applyRecipe
-        // via luminance NR. Negative direction is a subtle contrast
-        // boost on broad tonal areas, matching Evoto's "decrease low
-        // frequency = enhance facial structure and depth" guidance.
-        if recipe.skinLowFreq < 0 {
-            let controls = CIFilter.colorControls()
-            controls.inputImage = current
-            controls.contrast = 1.0 + Float(-recipe.skinLowFreq) * 0.15
-            controls.saturation = 1.0
-            controls.brightness = 0
-            current = controls.outputImage ?? current
-        }
-
-        if recipe.highlightRecovery > 0 {
-            let r = recipe.highlightRecovery
-            let toneCurve = CIFilter.toneCurve()
-            toneCurve.inputImage = current
-            toneCurve.point0 = CGPoint(x: 0, y: 0)
-            toneCurve.point1 = CGPoint(x: 0.50, y: 0.50)
-            toneCurve.point2 = CGPoint(x: 0.65, y: 0.65)
-            toneCurve.point3 = CGPoint(x: 0.85, y: 0.85 - 0.07 * r)
-            toneCurve.point4 = CGPoint(x: 1.00, y: 0.92 - 0.08 * r)
-            current = toneCurve.outputImage ?? current
-        }
+        current = applyHighlightRecovery(amount: recipe.highlightRecovery, to: current)
+        let subjectColourReference = current
+        let controlledBackground = ColorArtifactFilter.applyGreenControl(
+            amount: recipe.greenControl,
+            to: current
+        )
+        current = SubjectSeparationFilter.apply(
+            amount: recipe.subjectSeparation,
+            subject: subjectColourReference,
+            background: controlledBackground
+        )
 
         // Phase 7B — eye-region sharpen + catch-light boost.
         current = EyeEffectFilter.apply(recipe: recipe, to: current)
@@ -368,11 +366,65 @@ enum RAWExportPipeline {
         current = SkinToneUnifyFilter.apply(recipe: recipe, to: current)
         // Hud-tone-guard SIST — forankrer a* mot ~11 etter unify/tone (fikser
         // grønn/gjørmete + oransje uten å røre L*/b*).
-        current = SkinToneGuardFilter.apply(recipe: recipe, to: current)
+        current = SkinToneGuardFilter.apply(
+            recipe: recipe,
+            to: current,
+            reference: skinColorReference
+        )
         // Film-korn som aller siste finish (over ferdig tone/farge).
         current = FilmGrainFilter.apply(recipe: recipe, to: current)
 
         return current
+    }
+
+    /// Shared display/RAW tone stage. The five-point curve keeps true black,
+    /// middle grey and white fixed while separating quarter tones. This gives
+    /// portraits depth without the exposure shift caused by CIColorControls'
+    /// hard-coded 50 %-grey contrast pivot.
+    static func applyContrastAndSaturation(recipe: MagicRecipe, to image: CIImage) -> CIImage {
+        var current = image
+
+        if recipe.contrast != 0 {
+            let amount = max(-1, min(1, recipe.contrast))
+            let curve = CIFilter.toneCurve()
+            curve.inputImage = current
+            curve.point0 = CGPoint(x: 0, y: 0)
+            curve.point1 = CGPoint(x: 0.25, y: 0.25 - amount * 0.10)
+            curve.point2 = CGPoint(x: 0.50, y: 0.50)
+            curve.point3 = CGPoint(x: 0.75, y: 0.75 + amount * 0.10)
+            curve.point4 = CGPoint(x: 1, y: 1)
+            current = curve.outputImage ?? current
+        }
+
+        if recipe.saturation != 0 {
+            let controls = CIFilter.colorControls()
+            controls.inputImage = current
+            controls.contrast = 1
+            controls.saturation = 1.0 + Float(recipe.saturation) * 0.45
+            controls.brightness = 0
+            current = controls.outputImage ?? current
+        }
+
+        return current
+    }
+
+    /// Rolls off only the upper highlights while retaining a photographic
+    /// white point. The previous curve ended at `0.92 - 0.08 * amount`, which
+    /// made even a weak recovery setting map pure white to grey and gave the
+    /// complete portrait a milky/washed-out appearance. At zero this curve is
+    /// now the identity; at full strength white still reaches 0.96 while the
+    /// 65–95 % range receives the useful shoulder compression.
+    static func applyHighlightRecovery(amount: Double, to image: CIImage) -> CIImage {
+        let r = max(0, min(1, amount))
+        guard r > 0 else { return image }
+        let toneCurve = CIFilter.toneCurve()
+        toneCurve.inputImage = image
+        toneCurve.point0 = CGPoint(x: 0, y: 0)
+        toneCurve.point1 = CGPoint(x: 0.40, y: 0.40)
+        toneCurve.point2 = CGPoint(x: 0.65, y: 0.65 - 0.02 * r)
+        toneCurve.point3 = CGPoint(x: 0.85, y: 0.85 - 0.15 * r)
+        toneCurve.point4 = CGPoint(x: 1.00, y: 1.00 - 0.08 * r)
+        return toneCurve.outputImage ?? image
     }
 
     // Encoding moved to `ColorManagement.encodeJPEG` so color-space +

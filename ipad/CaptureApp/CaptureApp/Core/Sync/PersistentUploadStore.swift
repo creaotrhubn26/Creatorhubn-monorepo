@@ -265,11 +265,28 @@ actor CardBackupJobStore {
         let ownerUserId: String
         let sessionName: String
         let sessionStartedAt: Date
-        let projectId: String
-        let projectTitle: String
+        let projectId: String?
+        let projectTitle: String?
         let items: [DeliveryService.CardBackupItem]
+        let videoAssetIds: [String]
+        let audioAssetIds: [String]
+        let storagePolicy: Asset.StoragePolicy
         let assetCount: Int
         let duplicateCount: Int
+        let failedCount: Int
+        let totalBytes: Int64
+        let locallyVerifiedAt: Date?
+        let cardIdentifier: String
+        let cardName: String
+        let plannedCardLabel: String?
+        let cardCapacityBytes: Int64?
+        let cardAvailableBytes: Int64?
+        let photoCount: Int
+        let videoCount: Int
+        let audioCount: Int
+        let unsupportedCount: Int
+        let cloudVerifiedAt: Date?
+        let reportPending: Bool
     }
 
     private let database: AppDatabase
@@ -282,6 +299,12 @@ actor CardBackupJobStore {
         guard let itemsJSON = String(
             bytes: try JSONEncoder().encode(job.items),
             encoding: .utf8
+        ), let videoAssetIdsJSON = String(
+            bytes: try JSONEncoder().encode(job.videoAssetIds),
+            encoding: .utf8
+        ), let audioAssetIdsJSON = String(
+            bytes: try JSONEncoder().encode(job.audioAssetIds),
+            encoding: .utf8
         ) else {
             throw CocoaError(.fileWriteInapplicableStringEncoding)
         }
@@ -291,16 +314,36 @@ actor CardBackupJobStore {
                 sql: """
                     INSERT INTO cardBackupJob
                       (id, ownerUserId, sessionName, sessionStartedAt, projectId,
-                       projectTitle, itemsJson, assetCount, duplicateCount,
-                       status, createdAt, updatedAt)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                       projectTitle, itemsJson, videoAssetIdsJson, audioAssetIdsJson, storagePolicy,
+                       assetCount, duplicateCount, failedCount, totalBytes,
+                       locallyVerifiedAt, cardIdentifier, cardName, plannedCardLabel,
+                       cardCapacityBytes, cardAvailableBytes, photoCount, videoCount, audioCount,
+                       unsupportedCount, cloudVerifiedAt, reportPending, status, createdAt, updatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                       sessionName = excluded.sessionName,
                       projectId = excluded.projectId,
                       projectTitle = excluded.projectTitle,
                       itemsJson = excluded.itemsJson,
+                      videoAssetIdsJson = excluded.videoAssetIdsJson,
+                      audioAssetIdsJson = excluded.audioAssetIdsJson,
+                      storagePolicy = excluded.storagePolicy,
                       assetCount = excluded.assetCount,
                       duplicateCount = excluded.duplicateCount,
+                      failedCount = excluded.failedCount,
+                      totalBytes = excluded.totalBytes,
+                      locallyVerifiedAt = excluded.locallyVerifiedAt,
+                      cardIdentifier = excluded.cardIdentifier,
+                      cardName = excluded.cardName,
+                      plannedCardLabel = excluded.plannedCardLabel,
+                      cardCapacityBytes = excluded.cardCapacityBytes,
+                      cardAvailableBytes = excluded.cardAvailableBytes,
+                      photoCount = excluded.photoCount,
+                      videoCount = excluded.videoCount,
+                      audioCount = excluded.audioCount,
+                      unsupportedCount = excluded.unsupportedCount,
+                      cloudVerifiedAt = excluded.cloudVerifiedAt,
+                      reportPending = excluded.reportPending,
                       status = 'pending',
                       updatedAt = excluded.updatedAt
                     """,
@@ -309,11 +352,28 @@ actor CardBackupJobStore {
                     job.ownerUserId,
                     job.sessionName,
                     job.sessionStartedAt,
-                    job.projectId,
-                    job.projectTitle,
+                    job.projectId ?? "",
+                    job.projectTitle ?? "",
                     itemsJSON,
+                    videoAssetIdsJSON,
+                    audioAssetIdsJSON,
+                    job.storagePolicy.rawValue,
                     job.assetCount,
                     job.duplicateCount,
+                    job.failedCount,
+                    job.totalBytes,
+                    job.locallyVerifiedAt,
+                    job.cardIdentifier,
+                    job.cardName,
+                    job.plannedCardLabel ?? "",
+                    job.cardCapacityBytes,
+                    job.cardAvailableBytes,
+                    job.photoCount,
+                    job.videoCount,
+                    job.audioCount,
+                    job.unsupportedCount,
+                    job.cloudVerifiedAt,
+                    job.reportPending,
                     now,
                     now
                 ]
@@ -340,16 +400,46 @@ actor CardBackupJobStore {
                 [DeliveryService.CardBackupItem].self,
                 from: Data(itemsJSON.utf8),
             )
+            let videoAssetIdsJSON: String = row["videoAssetIdsJson"]
+            let videoAssetIds = try JSONDecoder().decode(
+                [String].self,
+                from: Data(videoAssetIdsJSON.utf8)
+            )
+            let audioAssetIdsJSON: String = row["audioAssetIdsJson"]
+            let audioAssetIds = try JSONDecoder().decode(
+                [String].self,
+                from: Data(audioAssetIdsJSON.utf8)
+            )
+            let rawProjectId: String = row["projectId"]
+            let rawProjectTitle: String = row["projectTitle"]
+            let rawStoragePolicy: String = row["storagePolicy"]
             return Job(
                 id: id,
                 ownerUserId: row["ownerUserId"],
                 sessionName: row["sessionName"],
                 sessionStartedAt: row["sessionStartedAt"],
-                projectId: row["projectId"],
-                projectTitle: row["projectTitle"],
+                projectId: rawProjectId.isEmpty ? nil : rawProjectId,
+                projectTitle: rawProjectTitle.isEmpty ? nil : rawProjectTitle,
                 items: items,
+                videoAssetIds: videoAssetIds,
+                audioAssetIds: audioAssetIds,
+                storagePolicy: Asset.StoragePolicy(rawValue: rawStoragePolicy) ?? .keepLocalAndCloud,
                 assetCount: row["assetCount"],
                 duplicateCount: row["duplicateCount"],
+                failedCount: row["failedCount"],
+                totalBytes: row["totalBytes"],
+                locallyVerifiedAt: row["locallyVerifiedAt"],
+                cardIdentifier: row["cardIdentifier"],
+                cardName: row["cardName"],
+                plannedCardLabel: (row["plannedCardLabel"] as String).nilIfEmpty,
+                cardCapacityBytes: row["cardCapacityBytes"],
+                cardAvailableBytes: row["cardAvailableBytes"],
+                photoCount: row["photoCount"],
+                videoCount: row["videoCount"],
+                audioCount: row["audioCount"],
+                unsupportedCount: row["unsupportedCount"],
+                cloudVerifiedAt: row["cloudVerifiedAt"],
+                reportPending: row["reportPending"],
             )
         }
     }
@@ -362,4 +452,8 @@ actor CardBackupJobStore {
             )
         }
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

@@ -27,7 +27,12 @@ struct Submission: Decodable, Sendable, Identifiable, Hashable {
     var contractSent: Bool
     var depositReceived: Bool
     var isStarred: Bool
+    var isRead: Bool
     var submittedAt: String?
+    var followUpDate: String?
+    var internalNotes: String?
+    var sourceChannel: String?
+    var repliedAt: String?
     /// Set once converted to a project (status flips to "converted").
     var projectId: String?
 
@@ -35,7 +40,8 @@ struct Submission: Decodable, Sendable, Identifiable, Hashable {
         case id, name, email, phone, company, projectType, eventDate, location, budget
         case description, message, notes, specialRequests, contactPreference, timeframe
         case referralSource, priority, clientNotes, status
-        case quoteSent, quoteAmount, contractSent, depositReceived, isStarred, submittedAt
+        case quoteSent, quoteAmount, contractSent, depositReceived, isStarred, isRead, submittedAt
+        case followUpDate, internalNotes, sourceChannel, repliedAt
         case projectId
     }
 
@@ -63,10 +69,26 @@ struct Submission: Decodable, Sendable, Identifiable, Hashable {
         contractSent = c.firstBool([.contractSent]) ?? false
         depositReceived = c.firstBool([.depositReceived]) ?? false
         isStarred = c.firstBool([.isStarred]) ?? false
+        isRead = c.firstBool([.isRead]) ?? false
         submittedAt = c.firstString([.submittedAt])
+        followUpDate = c.firstString([.followUpDate])
+        internalNotes = c.firstString([.internalNotes])
+        sourceChannel = c.firstString([.sourceChannel])
+        repliedAt = c.firstString([.repliedAt])
         projectId = c.firstString([.projectId])
     }
 
-    var isNew: Bool { (status ?? "new").lowercased() == "new" }
+    var isNew: Bool { !isRead && !isConverted }
     var isConverted: Bool { (status ?? "").lowercased() == "converted" || (projectId ?? "").isEmpty == false }
+}
+
+struct InquiryListResponse: Decodable, Sendable {
+    let items: [Submission]
+    let unreadCount: Int
+    let total: Int
+}
+
+struct InquiryReplyResponse: Decodable, Sendable {
+    let inquiry: Submission
+    let messageId: String?
 }

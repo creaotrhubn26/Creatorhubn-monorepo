@@ -3,6 +3,7 @@ import AVKit
 import Foundation
 import ImageIO
 import Observation
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -17,8 +18,15 @@ struct VideoCaptureView: View {
     @State private var auth = SignInService.shared
     @State private var showProjectPicker = false
     @State private var auxiliaryPanel: AuxiliaryPanel?
-    @State private var playbackAsset: VideoCaptureAsset?
+    @State private var playbackRequest: VideoPlaybackRequest?
     @State private var canonAddress = ""
+    @State private var referenceImageItem: PhotosPickerItem?
+    @State private var referenceImage: UIImage?
+    @AppStorage("video.monitor.orientation") private var monitorOrientationRaw = VideoMonitorOrientation.automatic.rawValue
+    @AppStorage("video.monitor.guide") private var monitorGuideRaw = VideoFrameGuide.off.rawValue
+    @AppStorage("video.monitor.vectorscope") private var showsVectorscope = false
+    @AppStorage("video.monitor.overlayOpacity") private var referenceOpacity = 0.5
+    @AppStorage("video.monitor.autoSnapshotSeconds") private var autoSnapshotSeconds = 0
 
     var body: some View {
         GeometryReader { proxy in
@@ -46,6 +54,16 @@ struct VideoCaptureView: View {
             .background(CHTheme.bgDeep)
         }
         .chBranded()
+        .overlay(alignment: .topTrailing) {
+            if let confirmation = model.transferConfirmation {
+                VideoTransferConfirmationBanner(confirmation: confirmation)
+                    .padding(.top, 68)
+                    .padding(.trailing, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeOut(duration: 0.24), value: model.transferConfirmation?.id)
         .sheet(isPresented: $showProjectPicker) {
             ProjectSelectionView { project in model.selectProject(project) }
                 .environment(auth)
@@ -64,10 +82,14 @@ struct VideoCaptureView: View {
             .presentationDetents(panel == .take ? [.large] : [.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(item: $playbackAsset) { asset in
-            VideoTakePlaybackView(asset: asset)
+        .fullScreenCover(item: $playbackRequest) { request in
+            VideoTakePlaybackView(request: request)
         }
         .task { await model.activate() }
+        .task(id: autoSnapshotSeconds) { await runAutomaticSnapshots() }
+        .onChange(of: referenceImageItem) { _, item in
+            Task { await loadReferenceImage(item) }
+        }
         .onDisappear { Task { await model.deactivate() } }
         .alert("Videoopptak", isPresented: errorBinding) {
             Button("OK") { model.errorMessage = nil }
@@ -123,6 +145,8 @@ struct VideoCaptureView: View {
             .layoutPriority(1)
             .accessibilityIdentifier("video-project-picker")
 
+            storageMenu(layout: layout)
+
             if !layout.showsTakeInspector {
                 Button {
                     auxiliaryPanel = .take
@@ -154,6 +178,39 @@ struct VideoCaptureView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
         .background(CHTheme.bg)
+    }
+
+    private func storageMenu(layout: VideoWorkspaceLayout) -> some View {
+        Menu {
+            Section("Lagring for nye opptak") {
+                Picker("Lagringssted", selection: $model.captureStoragePolicy) {
+                    ForEach(VideoCaptureAsset.StoragePolicy.allCases, id: \.self) { policy in
+                        Text(policy.displayName).tag(policy)
+                    }
+                }
+            }
+            Section {
+                Text(model.storageUsageDetail)
+                Text(model.captureStoragePolicy.detail)
+            }
+        } label: {
+            if layout.mode == .compact {
+                Image(systemName: "externaldrive.fill")
+                    .frame(width: 34, height: 34)
+                    .background(CHTheme.surface, in: Circle())
+            } else {
+                Label(model.localStorageUsedLabel, systemImage: "externaldrive.fill")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(CHTheme.surface, in: Capsule())
+            }
+        }
+        .foregroundStyle(CHTheme.textSecondary)
+        .accessibilityLabel("Lagring")
+        .accessibilityValue(model.storageUsageDetail)
+        .accessibilityIdentifier("video-storage-menu")
     }
 
     private var sourceRail: some View {
@@ -215,7 +272,8 @@ struct VideoCaptureView: View {
 
                     HStack {
                         Rectangle().fill(CHTheme.borderSoft).frame(height: 1)
-                        Text("CANON CCAPI").font(.caption2.weight(.bold)).tracking(1)
+                        Text("CANON CCAPI · \(model.canon.cameras.count) FUNNET · \(model.canon.selectedCameraId == nil ? 0 : 1) TILKOBLET")
+                            .font(.caption2.weight(.bold)).tracking(0.7)
                         Rectangle().fill(CHTheme.borderSoft).frame(height: 1)
                     }
                     .foregroundStyle(CHTheme.textMuted)
@@ -234,7 +292,10 @@ struct VideoCaptureView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(camera.displayName).lineLimit(2)
                                         .font(.caption.weight(.semibold))
-                                    Text("Direkte CCAPI · lokal Wi-Fi")
+                                    Text(
+                                        camera.firmware.map { "Direkte CCAPI · FW \($0)" }
+                                            ?? "Direkte CCAPI · lokal Wi-Fi"
+                                    )
                                         .font(.caption2).foregroundStyle(CHTheme.textMuted)
                                 }
                                 Spacer(minLength: 0)
@@ -387,10 +448,18 @@ struct VideoCaptureView: View {
             ZStack {
                 Color.black
                 if let canonFrame = model.canon.frame, model.canon.selectedCameraId != nil {
-                    Image(uiImage: canonFrame)
-                        .resizable()
-                        .scaledToFit()
-                        .accessibilityLabel("Canon CCAPI live monitor")
+                    VideoMonitorSurface(
+                        image: canonFrame,
+                        frameID: model.canon.frameSequence,
+                        orientation: monitorOrientation,
+                        guide: monitorGuide,
+                        referenceImage: referenceImage,
+                        referenceOpacity: referenceOpacity,
+                        showsVectorscope: showsVectorscope,
+                        onFocusTap: model.canon.capabilities.canSetAFFrame
+                            ? { point in Task { await model.setCanonFocusPoint(point) } }
+                            : nil
+                    )
                 } else if let player = model.bridgePlayer {
                     VideoPlayer(player: player)
                         .accessibilityLabel("CreatorHub Bridge live monitor")
@@ -435,6 +504,75 @@ struct VideoCaptureView: View {
                     Spacer()
                 }
                 .padding(14)
+
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        monitorOrientationMenu
+                        monitorGuideMenu
+                        Button {
+                            showsVectorscope.toggle()
+                        } label: {
+                            Image(systemName: "scope")
+                        }
+                        .monitorToolStyle(active: showsVectorscope)
+                        .accessibilityLabel(showsVectorscope ? "Skjul vectorscope" : "Vis vectorscope")
+
+                        PhotosPicker(selection: $referenceImageItem, matching: .images) {
+                            Image(systemName: "square.on.square")
+                        }
+                        .monitorToolStyle(active: referenceImage != nil)
+                        .accessibilityLabel("Velg bildeoverlay")
+
+                        if referenceImage != nil {
+                            Menu {
+                                Picker("Overlay-styrke", selection: $referenceOpacity) {
+                                    Text("25 %").tag(0.25)
+                                    Text("50 %").tag(0.5)
+                                    Text("75 %").tag(0.75)
+                                }
+                                Button("Fjern overlay", role: .destructive) {
+                                    referenceImage = nil
+                                    referenceImageItem = nil
+                                }
+                            } label: {
+                                Image(systemName: "circle.lefthalf.filled")
+                            }
+                            .monitorToolStyle(active: true)
+                            .accessibilityLabel("Innstillinger for bildeoverlay")
+                        }
+
+                        Menu {
+                            Button("Av") { autoSnapshotSeconds = 0 }
+                            Button("Hvert 5. sekund") { autoSnapshotSeconds = 5 }
+                            Button("Hvert 15. sekund") { autoSnapshotSeconds = 15 }
+                            Button("Hvert 30. sekund") { autoSnapshotSeconds = 30 }
+                        } label: {
+                            Image(systemName: autoSnapshotSeconds > 0 ? "camera.badge.clock.fill" : "camera.badge.clock")
+                        }
+                        .monitorToolStyle(active: autoSnapshotSeconds > 0)
+                        .accessibilityLabel("Automatisk lagring av snapshots")
+
+                        Button {
+                            model.saveMonitorSnapshot()
+                        } label: {
+                            Image(systemName: "camera.fill")
+                        }
+                        .monitorToolStyle(active: false)
+                        .disabled(model.canon.frame == nil)
+                        .accessibilityLabel("Lagre snapshot nå")
+                        Spacer()
+                        if let message = model.monitorSnapshotMessage {
+                            Text(message)
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.82))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(10)
+                    .background(.black.opacity(0.62), in: Capsule())
+                    .padding(14)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(14)
@@ -529,6 +667,53 @@ struct VideoCaptureView: View {
                 .font(.caption2.weight(battery.isLow ? .bold : .regular))
                 .foregroundStyle(battery.isLow ? CHTheme.danger : CHTheme.textSecondary)
                 .accessibilityIdentifier("canon-battery-detail")
+            }
+
+            Toggle(
+                "Live View",
+                isOn: Binding(
+                    get: { model.canon.isLiveViewEnabled },
+                    set: { enabled in Task { await model.canon.setLiveViewEnabled(enabled) } }
+                )
+            )
+            .font(.caption.weight(.semibold))
+            .tint(CHTheme.accent)
+            .disabled(model.isRecording || model.canon.isImporting)
+            .accessibilityHint("Slå av monitorstrømmen for mer stabil fjernstyring")
+
+            if model.canon.capabilities.canDriveFocus || model.canon.capabilities.canAutoFocus {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("FOKUS")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1)
+                        .foregroundStyle(CHTheme.textMuted)
+                    if model.canon.capabilities.canDriveFocus {
+                        HStack(spacing: 5) {
+                            ForEach(CCAPIFocusDrive.allCases, id: \.self) { drive in
+                                Button {
+                                    Task { await model.driveCanonFocus(drive) }
+                                } label: {
+                                    Image(systemName: drive.rawValue.hasPrefix("near") ? "chevron.left" : "chevron.right")
+                                        .font(.caption2.weight(.bold))
+                                        .frame(maxWidth: .infinity, minHeight: 30)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(model.isRecording)
+                                .accessibilityLabel(drive.displayName)
+                            }
+                        }
+                    }
+                    if model.canon.capabilities.canAutoFocus {
+                        Button {
+                            Task { await model.pulseCanonAutoFocus() }
+                        } label: {
+                            Label("Autofokus", systemImage: "viewfinder")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(model.isRecording || !model.canon.isLiveViewEnabled)
+                    }
+                }
             }
 
             ForEach(CCAPIShootingSettingKey.allCases, id: \.self) { key in
@@ -632,13 +817,34 @@ struct VideoCaptureView: View {
                             .foregroundStyle(CHTheme.textPrimary)
                             .lineLimit(2)
                         Button {
-                            playbackAsset = selected
+                            Task {
+                                playbackRequest = await model.playbackRequest(for: selected)
+                            }
                         } label: {
-                            Label("Spill av take", systemImage: "play.fill")
+                            Label(
+                                FileManager.default.fileExists(atPath: selected.localPath)
+                                    ? "Spill av take"
+                                    : "Spill av fra CreatorHub",
+                                systemImage: "play.fill"
+                            )
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                        .disabled(!FileManager.default.fileExists(atPath: selected.localPath))
+                        .disabled(
+                            !FileManager.default.fileExists(atPath: selected.localPath)
+                                && selected.captureState != .ready
+                        )
+
+                        Label(
+                            FileManager.default.fileExists(atPath: selected.localPath)
+                                ? "Original på iPad" + (selected.captureState == .ready ? " og CreatorHub" : "")
+                                : "Original i CreatorHub",
+                            systemImage: FileManager.default.fileExists(atPath: selected.localPath)
+                                ? "internaldrive.fill"
+                                : "icloud.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(CHTheme.textMuted)
 
                         Text("VURDERING")
                             .font(.caption2.weight(.bold)).tracking(1.1)
@@ -824,7 +1030,20 @@ struct VideoCaptureView: View {
     private var filmstrip: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 10) {
-                if model.assets.isEmpty {
+                if model.canon.isImporting || model.canon.pendingMovieImportCount > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        canonImportProgressCard
+                        Text(model.canon.lastImportMessage ?? "Kameraklipp oppdaget")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CHTheme.textSecondary)
+                            .lineLimit(1)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(model.canon.lastImportMessage ?? "Kameraklipp lastes inn")
+                    .accessibilityValue(canonImportAccessibilityValue)
+                    .accessibilityIdentifier("canon-import-progress")
+                }
+                if model.assets.isEmpty && !model.canon.isImporting && model.canon.pendingMovieImportCount == 0 {
                     Label("Opptakene vises her", systemImage: "film")
                         .font(.subheadline)
                         .foregroundStyle(CHTheme.textMuted)
@@ -854,10 +1073,10 @@ struct VideoCaptureView: View {
                                     HStack {
                                         Text("T\(asset.takeNumber)")
                                         Spacer()
-                                        Image(systemName: stateIcon(asset.captureState))
+                                        Image(systemName: stateIcon(asset))
                                     }
                                     .font(.caption2.weight(.bold))
-                                    .foregroundStyle(stateColor(asset.captureState))
+                                    .foregroundStyle(stateColor(asset))
                                     .padding(6)
                                     .background(.black.opacity(0.72))
                                 }
@@ -880,6 +1099,7 @@ struct VideoCaptureView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Take \(asset.takeNumber), \(asset.captureState.rawValue)")
                     .accessibilityAddTraits(model.selectedAssetId == asset.id ? .isSelected : [])
+                    .accessibilityIdentifier("video-take-\(asset.id)")
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
@@ -887,12 +1107,79 @@ struct VideoCaptureView: View {
         .background(CHTheme.bg)
     }
 
+    private var canonImportProgressCard: some View {
+        let progress = model.canon.importProgress
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(progress?.percentCompleted.map { "\($0) %" } ?? "Venter")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                Spacer()
+                Text(formatDuration(progress?.elapsedSeconds ?? 0))
+                    .font(.caption2.monospacedDigit())
+            }
+            if let fraction = progress?.fractionCompleted {
+                ProgressView(value: fraction)
+                    .tint(CHTheme.accent)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(CHTheme.accent)
+            }
+            Text(formatTransferBytes(progress))
+                .font(.caption2.monospacedDigit())
+                .lineLimit(1)
+            if let remaining = progress?.estimatedRemainingSeconds {
+                Text("ca. \(formatDuration(remaining)) igjen")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(CHTheme.textMuted)
+            }
+        }
+        .foregroundStyle(CHTheme.textPrimary)
+        .padding(9)
+        .frame(width: 180, height: 76, alignment: .leading)
+        .background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(CHTheme.borderSoft))
+    }
+
+    private func formatTransferBytes(_ progress: CCAPIMediaTransferProgress?) -> String {
+        guard let progress else { return "0 B · størrelse ventes" }
+        let received = ByteCountFormatter.string(fromByteCount: progress.receivedBytes, countStyle: .file)
+        guard let total = progress.totalBytes else { return "\(received) · total ukjent" }
+        return "\(received) / \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let value = max(0, Int(seconds.rounded()))
+        if value >= 3_600 {
+            return String(format: "%d:%02d:%02d", value / 3_600, (value % 3_600) / 60, value % 60)
+        }
+        return String(format: "%02d:%02d", value / 60, value % 60)
+    }
+
+    private var canonImportAccessibilityValue: String {
+        guard let progress = model.canon.importProgress else {
+            return "Venter på filstørrelse"
+        }
+        var parts = [
+            progress.percentCompleted.map { "\($0) prosent" } ?? "Ukjent prosent",
+            formatTransferBytes(progress),
+            "\(formatDuration(progress.elapsedSeconds)) brukt",
+        ]
+        if let remaining = progress.estimatedRemainingSeconds {
+            parts.append("omtrent \(formatDuration(remaining)) igjen")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     private var errorBinding: Binding<Bool> {
         Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
     }
 
-    private func stateIcon(_ state: VideoCaptureAsset.CaptureState) -> String {
-        switch state {
+    private func stateIcon(_ asset: VideoCaptureAsset) -> String {
+        if asset.storagePolicy == .localOnly, asset.captureState == .local {
+            return "internaldrive.fill"
+        }
+        return switch asset.captureState {
         case .ready: "checkmark.circle.fill"
         case .failed: "exclamationmark.triangle.fill"
         case .local: "internaldrive"
@@ -900,8 +1187,11 @@ struct VideoCaptureView: View {
         }
     }
 
-    private func stateColor(_ state: VideoCaptureAsset.CaptureState) -> Color {
-        switch state {
+    private func stateColor(_ asset: VideoCaptureAsset) -> Color {
+        if asset.storagePolicy == .localOnly, asset.captureState == .local {
+            return CHTheme.success
+        }
+        return switch asset.captureState {
         case .ready: CHTheme.success
         case .failed: CHTheme.danger
         case .local: CHTheme.warning
@@ -916,6 +1206,87 @@ struct VideoCaptureView: View {
         case .good: CHTheme.success
         case .noGood: CHTheme.danger
         }
+    }
+
+    private var monitorOrientation: VideoMonitorOrientation {
+        VideoMonitorOrientation(rawValue: monitorOrientationRaw) ?? .automatic
+    }
+
+    private var monitorGuide: VideoFrameGuide {
+        VideoFrameGuide(rawValue: monitorGuideRaw) ?? .off
+    }
+
+    private var monitorOrientationMenu: some View {
+        Menu {
+            Picker("Monitorretning", selection: $monitorOrientationRaw) {
+                ForEach(VideoMonitorOrientation.allCases) { orientation in
+                    Text(orientation.label).tag(orientation.rawValue)
+                }
+            }
+        } label: {
+            Image(systemName: monitorOrientation.swapsDimensions ? "rectangle.portrait.rotate" : "rectangle.landscape.rotate")
+        }
+        .monitorToolStyle(active: monitorOrientation != .automatic)
+        .accessibilityLabel("Monitorretning: \(monitorOrientation.label)")
+    }
+
+    private var monitorGuideMenu: some View {
+        Menu {
+            Picker("Bildemarkør", selection: $monitorGuideRaw) {
+                ForEach(VideoFrameGuide.allCases) { guide in
+                    Text(guide.label).tag(guide.rawValue)
+                }
+            }
+        } label: {
+            Image(systemName: "viewfinder.rectangular")
+        }
+        .monitorToolStyle(active: monitorGuide != .off)
+        .accessibilityLabel("Bildemarkør: \(monitorGuide.label)")
+    }
+
+    private func loadReferenceImage(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data)
+            else { throw VideoMonitorInputError.invalidImage }
+            referenceImage = image
+        } catch {
+            model.errorMessage = "Kunne ikke laste overlay-bildet: \(error.localizedDescription)"
+        }
+    }
+
+    private func runAutomaticSnapshots() async {
+        guard autoSnapshotSeconds > 0 else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(autoSnapshotSeconds))
+            guard !Task.isCancelled else { return }
+            model.saveMonitorSnapshot(automatic: true)
+        }
+    }
+
+    private enum VideoMonitorInputError: LocalizedError {
+        case invalidImage
+        var errorDescription: String? { "Filen er ikke et gyldig bilde." }
+    }
+}
+
+private struct MonitorToolModifier: ViewModifier {
+    let active: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(active ? CHTheme.accent : .white.opacity(0.88))
+            .frame(width: 34, height: 34)
+            .background(active ? CHTheme.accentFill : .white.opacity(0.1), in: Circle())
+            .overlay(Circle().stroke(active ? CHTheme.accentBorder : .white.opacity(0.16)))
+    }
+}
+
+private extension View {
+    func monitorToolStyle(active: Bool) -> some View {
+        modifier(MonitorToolModifier(active: active))
     }
 }
 
@@ -971,21 +1342,58 @@ private enum VideoThumbnailRenderer {
     }
 }
 
+struct VideoPlaybackRequest: Identifiable {
+    let id: String
+    let takeNumber: Int
+    let url: URL
+}
+
+enum VideoLocalOriginalRetention {
+    enum Failure: LocalizedError, Equatable {
+        case uploadNotVerified
+        case unmanagedFile
+
+        var errorDescription: String? {
+            switch self {
+            case .uploadNotVerified: "Originalen kan ikke frigjøres før CreatorHub har verifisert opplastingen."
+            case .unmanagedFile: "CreatorHub vil ikke slette en fil utenfor appens opptaksmappe."
+            }
+        }
+    }
+
+    @discardableResult
+    static func releaseVerifiedOriginal(
+        for asset: VideoCaptureAsset,
+        managedRoot: URL,
+        fileManager: FileManager = .default
+    ) throws -> Bool {
+        guard asset.captureState == .ready else { throw Failure.uploadNotVerified }
+        let root = managedRoot.standardizedFileURL.resolvingSymlinksInPath()
+        let file = URL(fileURLWithPath: asset.localPath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard file.path.hasPrefix(root.path + "/") else { throw Failure.unmanagedFile }
+        guard fileManager.fileExists(atPath: file.path) else { return false }
+        try fileManager.removeItem(at: file)
+        return true
+    }
+}
+
 private struct VideoTakePlaybackView: View {
-    let asset: VideoCaptureAsset
+    let request: VideoPlaybackRequest
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer
 
-    init(asset: VideoCaptureAsset) {
-        self.asset = asset
-        _player = State(initialValue: AVPlayer(url: URL(fileURLWithPath: asset.localPath)))
+    init(request: VideoPlaybackRequest) {
+        self.request = request
+        _player = State(initialValue: AVPlayer(url: request.url))
     }
 
     var body: some View {
         NavigationStack {
             VideoPlayer(player: player)
                 .background(Color.black)
-                .navigationTitle("Take \(asset.takeNumber)")
+                .navigationTitle("Take \(request.takeNumber)")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -996,6 +1404,116 @@ private struct VideoTakePlaybackView: View {
                 .onDisappear { player.pause() }
         }
         .chBranded()
+    }
+}
+
+struct VideoTransferConfirmation: Equatable {
+    enum Stage: Equatable {
+        case storedLocally
+        case storedLocallyOnly
+        case securedInCreatorHub
+        case uploadFailed
+    }
+
+    let id = UUID()
+    let fileName: String
+    let stage: Stage
+    let storageSummary: String?
+    let localCopyReleased: Bool
+    let localReleaseFailed: Bool
+
+    init(
+        fileName: String,
+        stage: Stage,
+        storageSummary: String? = nil,
+        localCopyReleased: Bool = false,
+        localReleaseFailed: Bool = false
+    ) {
+        self.fileName = fileName
+        self.stage = stage
+        self.storageSummary = storageSummary
+        self.localCopyReleased = localCopyReleased
+        self.localReleaseFailed = localReleaseFailed
+    }
+
+    var title: String {
+        switch stage {
+        case .storedLocally, .storedLocallyOnly: "Lagret på iPaden"
+        case .securedInCreatorHub: "Sikret i CreatorHub"
+        case .uploadFailed: "Ikke lastet opp ennå"
+        }
+    }
+
+    var detail: String {
+        let status = switch stage {
+        case .storedLocally:
+            "\(fileName) er lagret trygt på iPaden · opplasting fortsetter i bakgrunnen"
+        case .storedLocallyOnly:
+            "\(fileName) beholdes kun lokalt etter ditt valg"
+        case .securedInCreatorHub:
+            if localReleaseFailed {
+                "\(fileName) er lastet opp og verifisert · lokal original kunne ikke frigjøres"
+            } else if localCopyReleased {
+                "\(fileName) er lastet opp og verifisert · lokal original er frigitt"
+            } else {
+                "\(fileName) er lastet opp og verifisert"
+            }
+        case .uploadFailed:
+            "\(fileName) ligger trygt på iPaden og prøves igjen senere"
+        }
+        return storageSummary.map { "\(status) · \($0)" } ?? status
+    }
+
+    var icon: String {
+        switch stage {
+        case .storedLocally, .storedLocallyOnly: "internaldrive.fill"
+        case .securedInCreatorHub: "checkmark.icloud.fill"
+        case .uploadFailed: "icloud.slash.fill"
+        }
+    }
+
+    var tint: Color {
+        switch stage {
+        case .storedLocally: CHTheme.info
+        case .storedLocallyOnly: CHTheme.success
+        case .securedInCreatorHub: CHTheme.success
+        case .uploadFailed: CHTheme.warning
+        }
+    }
+}
+
+private struct VideoTransferConfirmationBanner: View {
+    let confirmation: VideoTransferConfirmation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: confirmation.icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(confirmation.tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(confirmation.title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(CHTheme.textPrimary)
+                Text(confirmation.detail)
+                    .font(.caption)
+                    .foregroundStyle(CHTheme.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 420, alignment: .leading)
+        .background(CHTheme.surfaceElevated.opacity(0.98), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(confirmation.tint.opacity(0.42), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(confirmation.title)
+        .accessibilityValue(confirmation.detail)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityIdentifier("video-transfer-confirmation")
     }
 }
 
@@ -1030,11 +1548,14 @@ struct VideoWorkspaceLayout: Equatable {
 @MainActor
 @Observable
 final class VideoCaptureModel {
+    private static let storagePolicyDefaultsKey = "video.capture.storagePolicy"
     let camera = VideoCameraController()
     let canon = CCAPILiveViewController()
     let bridgeDiscovery = CreatorHubBridgeDiscovery()
     private var store: VideoCaptureStore?
     private var activeUploads: Set<String> = []
+    private var canonMediaImportTask: Task<Void, Never>?
+    private var transferConfirmationTask: Task<Void, Never>?
 
     var selectedProjectId: String?
     var selectedProjectTitle: String?
@@ -1055,11 +1576,26 @@ final class VideoCaptureModel {
     var technicalNotes = ""
     var isSavingTake = false
     var takeSaveMessage: String?
+    var monitorSnapshotMessage: String?
+    fileprivate var transferConfirmation: VideoTransferConfirmation?
+    var captureStoragePolicy: VideoCaptureAsset.StoragePolicy {
+        didSet {
+            UserDefaults.standard.set(
+                captureStoragePolicy.rawValue,
+                forKey: Self.storagePolicyDefaultsKey
+            )
+        }
+    }
+    var localStorageUsedBytes: Int64 = 0
+    var deviceStorageAvailableBytes: Int64?
     var selectedBridgeSourceId: String?
     var bridgePlayer: AVPlayer?
     private var takeDraftAssetId: String?
 
     init() {
+        captureStoragePolicy = UserDefaults.standard.string(forKey: Self.storagePolicyDefaultsKey)
+            .flatMap(VideoCaptureAsset.StoragePolicy.init(rawValue:))
+            ?? .keepLocalAndCloud
         selectedProjectId = UserDefaults.standard.string(forKey: "video.selectedProjectId")
         selectedProjectTitle = UserDefaults.standard.string(forKey: "video.selectedProjectTitle")
         #if DEBUG
@@ -1101,7 +1637,9 @@ final class VideoCaptureModel {
             switch canon.phase {
             case .idle: return "Canon frakoblet"
             case .connecting: return "Kobler til Canon"
+            case .reconnecting(let attempt): return "Kobler til Canon igjen · forsøk \(attempt)"
             case .waitingForFrame: return "Venter på Canon live view"
+            case .controlOnly: return "Canon-kontroll · Live View av"
             case .ready: return "Canon live view klar"
             case .failed(let message): return message
             }
@@ -1158,9 +1696,22 @@ final class VideoCaptureModel {
     }
 
     var pendingUploadLabel: String {
-        let count = assets.filter { ![.ready].contains($0.captureState) }.count
+        let count = assets.filter {
+            $0.storagePolicy != .localOnly && $0.captureState != .ready
+        }.count
         if assets.isEmpty { return "Ingen opptak" }
+        if assets.allSatisfy({ $0.storagePolicy == .localOnly }) { return "Kun lokalt" }
         return count == 0 ? "Alt er sikret" : "\(count) venter"
+    }
+
+    var localStorageUsedLabel: String {
+        "\(Self.formatBytes(localStorageUsedBytes)) lokalt"
+    }
+
+    var storageUsageDetail: String {
+        let used = "Videoopptak bruker \(Self.formatBytes(localStorageUsedBytes)) på iPaden"
+        guard let deviceStorageAvailableBytes else { return used }
+        return "\(used) · \(Self.formatBytes(deviceStorageAvailableBytes)) ledig"
     }
 
     var selectedAsset: VideoCaptureAsset? {
@@ -1175,9 +1726,14 @@ final class VideoCaptureModel {
         await resumePendingUploads()
         await syncPendingTakeMetadata()
         await reload()
+        startCanonMediaImportLoop()
     }
 
     func deactivate() async {
+        canonMediaImportTask?.cancel()
+        canonMediaImportTask = nil
+        transferConfirmationTask?.cancel()
+        transferConfirmationTask = nil
         bridgePlayer?.pause()
         bridgePlayer = nil
         selectedBridgeSourceId = nil
@@ -1192,6 +1748,26 @@ final class VideoCaptureModel {
         }
         await canon.stop()
         if !camera.isRecording { await camera.stop() }
+    }
+
+    private func startCanonMediaImportLoop() {
+        canonMediaImportTask?.cancel()
+        canonMediaImportTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                if self.selectedProjectId != nil, self.canon.pendingMovieImportCount > 0 {
+                    do {
+                        if let recording = try await self.canon.importNextDetectedMovie() {
+                            try await self.register(recording)
+                        }
+                    } catch {
+                        self.errorMessage = "Kameraklippet ble oppdaget, men kunne ikke hentes ennå: \(error.localizedDescription)"
+                        try? await Task.sleep(for: .seconds(3))
+                    }
+                } else {
+                    try? await Task.sleep(for: .milliseconds(350))
+                }
+            }
+        }
     }
 
     func selectProject(_ project: BackendProjectSummary) {
@@ -1274,6 +1850,55 @@ final class VideoCaptureModel {
         }
     }
 
+    func driveCanonFocus(_ drive: CCAPIFocusDrive) async {
+        do {
+            try await canon.driveFocus(drive)
+        } catch {
+            errorMessage = "Kameraet kunne ikke flytte fokus: \(error.localizedDescription)"
+        }
+    }
+
+    func pulseCanonAutoFocus() async {
+        do {
+            try await canon.setAutoFocus(true)
+            try? await Task.sleep(for: .milliseconds(450))
+            try await canon.setAutoFocus(false)
+        } catch {
+            try? await canon.setAutoFocus(false)
+            errorMessage = "Kameraet kunne ikke starte autofokus: \(error.localizedDescription)"
+        }
+    }
+
+    func setCanonFocusPoint(_ point: CGPoint) async {
+        do {
+            try await canon.setFocusPoint(
+                normalizedX: point.x,
+                normalizedY: point.y
+            )
+        } catch {
+            errorMessage = "Kameraet kunne ikke flytte AF-punktet: \(error.localizedDescription)"
+        }
+    }
+
+    func saveMonitorSnapshot(automatic: Bool = false) {
+        guard canon.isReady, canon.isLiveViewEnabled, let image = canon.frame else {
+            if !automatic { errorMessage = "Snapshot krever et aktivt Canon Live View-bilde." }
+            return
+        }
+        do {
+            let url = try VideoSnapshotStore.save(
+                image: image,
+                projectId: selectedProjectId,
+                cameraName: canon.selectedCamera?.displayName
+            )
+            monitorSnapshotMessage = automatic ? "Auto-snapshot lagret" : "Lagret · \(url.lastPathComponent)"
+        } catch {
+            if !automatic {
+                errorMessage = "Kunne ikke lagre snapshot: \(error.localizedDescription)"
+            }
+        }
+    }
+
     func selectAsset(_ id: String) {
         selectedAssetId = id
         promotionMessage = nil
@@ -1351,6 +1976,41 @@ final class VideoCaptureModel {
                 : "Denne taken finnes allerede i Video Room."
         } catch {
             errorMessage = "Kunne ikke sende taken til Video Room: \(error.localizedDescription)"
+        }
+    }
+
+    func playbackRequest(for asset: VideoCaptureAsset) async -> VideoPlaybackRequest? {
+        if FileManager.default.fileExists(atPath: asset.localPath) {
+            return VideoPlaybackRequest(
+                id: asset.id,
+                takeNumber: asset.takeNumber,
+                url: URL(fileURLWithPath: asset.localPath)
+            )
+        }
+        guard asset.captureState == .ready,
+              let session = SignInService.shared.session
+        else {
+            errorMessage = "Originalen er ikke tilgjengelig lokalt eller ferdig sikret i CreatorHub."
+            return nil
+        }
+        do {
+            let backend = BackendClient(
+                baseURL: session.backendBaseURL,
+                authHeaders: SignInService.shared.authHeaders
+            )
+            let response = try await backend.fetchVideoCaptureAsset(
+                projectId: asset.projectId,
+                assetId: asset.id
+            )
+            guard let rawURL = response.playbackUrl,
+                  let url = URL(string: rawURL)
+            else {
+                throw PlaybackFailure.cloudOriginalUnavailable
+            }
+            return VideoPlaybackRequest(id: asset.id, takeNumber: asset.takeNumber, url: url)
+        } catch {
+            errorMessage = "Kunne ikke åpne originalen fra CreatorHub: \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -1440,20 +2100,55 @@ final class VideoCaptureModel {
             takeNumber: takeNumber,
             takeStatus: .unrated,
             circled: false,
+            storagePolicy: captureStoragePolicy,
             createdAt: now,
             updatedAt: now
         )
         try await store.save(asset)
         await reload()
-        await upload(asset)
+        showTransferConfirmation(
+            fileName: asset.fileName,
+            stage: asset.storagePolicy == .localOnly ? .storedLocallyOnly : .storedLocally,
+            storageSummary: localStorageUsedLabel
+        )
         await updateNextTakeNumber()
+        if asset.storagePolicy != .localOnly {
+            Task { [weak self] in
+                await self?.upload(asset)
+            }
+        }
+    }
+
+    private func showTransferConfirmation(
+        fileName: String,
+        stage: VideoTransferConfirmation.Stage,
+        storageSummary: String? = nil,
+        localCopyReleased: Bool = false,
+        localReleaseFailed: Bool = false
+    ) {
+        transferConfirmationTask?.cancel()
+        let confirmation = VideoTransferConfirmation(
+            fileName: fileName,
+            stage: stage,
+            storageSummary: storageSummary,
+            localCopyReleased: localCopyReleased,
+            localReleaseFailed: localReleaseFailed
+        )
+        transferConfirmation = confirmation
+        transferConfirmationTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(stage == .uploadFailed ? 8 : 5))
+            guard !Task.isCancelled, self?.transferConfirmation?.id == confirmation.id else { return }
+            self?.transferConfirmation = nil
+            self?.transferConfirmationTask = nil
+        }
     }
 
     private func resumePendingUploads() async {
         guard let session = SignInService.shared.session, let store else { return }
         do {
             for asset in try await store.pending(ownerUserId: session.userId)
-            where FileManager.default.fileExists(atPath: asset.localPath) {
+            where asset.storagePolicy != .localOnly
+                && FileManager.default.fileExists(atPath: asset.localPath) {
                 await upload(asset)
             }
         } catch {
@@ -1474,10 +2169,29 @@ final class VideoCaptureModel {
         )
         do {
             try await VideoCaptureUploader(backend: backend, store: store).upload(asset)
-            if let latest = try? await store.asset(id: asset.id, ownerUserId: asset.ownerUserId),
-               latest.takeMetadataDirty {
-                _ = await syncTakeMetadata(latest)
+            var localCopyReleased = false
+            var localReleaseFailed = false
+            if let latest = try? await store.asset(id: asset.id, ownerUserId: asset.ownerUserId) {
+                if latest.takeMetadataDirty { _ = await syncTakeMetadata(latest) }
+                if latest.storagePolicy == .creatorHubOnly {
+                    do {
+                        localCopyReleased = try VideoLocalOriginalRetention.releaseVerifiedOriginal(
+                            for: latest,
+                            managedRoot: CapturedVideoRecording.recordingsDirectory()
+                        )
+                    } catch {
+                        localReleaseFailed = true
+                    }
+                }
             }
+            await reload()
+            showTransferConfirmation(
+                fileName: asset.fileName,
+                stage: .securedInCreatorHub,
+                storageSummary: localStorageUsedLabel,
+                localCopyReleased: localCopyReleased,
+                localReleaseFailed: localReleaseFailed
+            )
         } catch {
             try? await store.updateState(
                 id: asset.id,
@@ -1485,9 +2199,13 @@ final class VideoCaptureModel {
                 state: .failed,
                 error: error.localizedDescription
             )
-            errorMessage = "Opptaket ligger trygt på iPaden, men opplastingen stoppet: \(error.localizedDescription)"
+            await reload()
+            showTransferConfirmation(
+                fileName: asset.fileName,
+                stage: .uploadFailed,
+                storageSummary: localStorageUsedLabel
+            )
         }
-        await reload()
     }
 
     private func reload() async {
@@ -1497,12 +2215,14 @@ final class VideoCaptureModel {
             assets = [fixture]
             selectedAssetId = fixture.id
             if takeDraftAssetId != fixture.id { loadTakeDraft(fixture) }
+            refreshStorageUsage(for: assets)
             return
         }
         #endif
         guard let session = SignInService.shared.session, let store else { return }
         do {
             assets = try await store.list(ownerUserId: session.userId, projectId: selectedProjectId)
+            refreshStorageUsage(for: try await store.list(ownerUserId: session.userId))
             if selectedAssetId == nil || !assets.contains(where: { $0.id == selectedAssetId }) {
                 selectedAssetId = assets.first?.id
             }
@@ -1513,6 +2233,34 @@ final class VideoCaptureModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func refreshStorageUsage(for allAssets: [VideoCaptureAsset]) {
+        var seenPaths = Set<String>()
+        localStorageUsedBytes = allAssets.reduce(into: Int64(0)) { total, asset in
+            guard seenPaths.insert(asset.localPath).inserted else { return }
+            let url = URL(fileURLWithPath: asset.localPath)
+            guard let values = try? url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .fileSizeKey,
+                .fileAllocatedSizeKey,
+                .totalFileAllocatedSizeKey,
+            ]), values.isRegularFile == true else { return }
+            total += Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0)
+        }
+        let documents = try? FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        deviceStorageAvailableBytes = (try? documents?.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        ))?.volumeAvailableCapacityForImportantUsage
+    }
+
+    private static func formatBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: max(0, bytes), countStyle: .file)
     }
 
     private func updateNextTakeNumber() async {
@@ -1603,6 +2351,14 @@ final class VideoCaptureModel {
         case takeMissing
 
         var errorDescription: String? { "Taken finnes ikke lenger i den lokale databasen." }
+    }
+
+    enum PlaybackFailure: LocalizedError {
+        case cloudOriginalUnavailable
+
+        var errorDescription: String? {
+            "CreatorHub har originalen, men kunne ikke opprette en sikker avspillingslenke."
+        }
     }
 
     #if DEBUG

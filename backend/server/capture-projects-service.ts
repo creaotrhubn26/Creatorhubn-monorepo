@@ -60,7 +60,33 @@ export interface CaptureProjectSummary {
     completedMustHave: number;
   } | null;
   showcaseSettings: Record<string, unknown> | null;
+  memoryCardConfigs: Array<{
+    label: string;
+    type: string | null;
+    capacity: string | null;
+    dayNumber: number | null;
+    dayName: string | null;
+  }>;
   updatedAt: string | null;
+}
+
+function captureMemoryCardConfigs(value: unknown): CaptureProjectSummary['memoryCardConfigs'] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 100).flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const raw = entry as Record<string, unknown>;
+    const label = typeof raw.label === 'string' ? raw.label.trim().slice(0, 80) : '';
+    if (!label) return [];
+    return [{
+      label,
+      type: typeof raw.type === 'string' ? raw.type.slice(0, 80) : null,
+      capacity: typeof raw.capacity === 'string' ? raw.capacity.slice(0, 40) : null,
+      dayNumber: typeof raw.dayNumber === 'number' && Number.isFinite(raw.dayNumber)
+        ? Math.trunc(raw.dayNumber)
+        : null,
+      dayName: typeof raw.dayName === 'string' ? raw.dayName.slice(0, 80) : null,
+    }];
+  });
 }
 
 /// Full project + shot list returned by GET /api/capture/projects/:id.
@@ -112,6 +138,7 @@ export async function listProjectsForPhotographer(
       projectType: projects.projectType,
       status: projects.status,
       settings: projects.settings,
+      projectData: projects.projectData,
       updatedAt: projects.updatedAt,
     })
     .from(projects)
@@ -140,6 +167,7 @@ export async function listProjectsForPhotographer(
 
   return rows.map((row) => {
     const settings = (row.settings ?? {}) as Record<string, unknown>;
+    const projectData = (row.projectData ?? {}) as Record<string, unknown>;
     const sl = shotListByProject.get(row.id);
     return {
       id: row.id,
@@ -159,6 +187,7 @@ export async function listProjectsForPhotographer(
           }
         : null,
       showcaseSettings: (settings.showcaseSettings as Record<string, unknown> | undefined) ?? null,
+      memoryCardConfigs: captureMemoryCardConfigs(projectData.memoryCardConfigs),
       updatedAt: row.updatedAt ?? null,
     };
   });
@@ -191,6 +220,7 @@ export async function fetchProjectDetail(
     : [];
 
   const settings = (row.settings ?? {}) as Record<string, unknown>;
+  const projectData = (row.projectData ?? {}) as Record<string, unknown>;
   return {
     id: row.id,
     title: (row.title || row.name || 'Untitled project').toString(),
@@ -210,6 +240,7 @@ export async function fetchProjectDetail(
         }
       : null,
     showcaseSettings: (settings.showcaseSettings as Record<string, unknown> | undefined) ?? null,
+    memoryCardConfigs: captureMemoryCardConfigs(projectData.memoryCardConfigs),
     updatedAt: row.updatedAt ?? null,
     shotList: shots,
   };

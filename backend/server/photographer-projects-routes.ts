@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { canAccessProject } from "./project-team-routes";
+import { broadcastUserEvent } from "./realtime-user-events.js";
 
 let photographerProjectsSchemaReadyShared: Promise<void> | null = null;
 export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void> {
@@ -401,6 +402,29 @@ export function setupPhotographerProjectsRoutes(
 
     try {
       await ensurePhotographerProjectsSchema();
+      if (submissionId) {
+        const ownedSubmission = await pool.query(
+          `SELECT project_id
+             FROM client_submissions
+            WHERE id = $1
+              AND (owner_user_id = $2 OR vendor_id = $2 OR assigned_photographer = $2 OR LOWER(vendor_email) = LOWER($3))
+            LIMIT 1`,
+          [String(submissionId), photographerId, session.email],
+        );
+        if (!ownedSubmission.rows.length) {
+          return res.status(403).json({ error: 'submission_not_owned' });
+        }
+        const existingProjectId = ownedSubmission.rows[0]?.project_id;
+        if (existingProjectId) {
+          broadcastUserEvent(photographerId, {
+            kind: 'inquiry.updated',
+            inquiryId: String(submissionId),
+            reason: 'converted',
+            timestamp: new Date().toISOString(),
+          });
+          return res.json({ id: String(existingProjectId), alreadyConverted: true });
+        }
+      }
       let effectiveClientId: string | null = clientId || null;
 
       // Hvis clientId er gitt, sjekk at klienten tilhører fotografen (sikkerhet).
@@ -445,7 +469,56 @@ export function setupPhotographerProjectsRoutes(
       if (submissionId) projectDataJson.submissionId = String(submissionId);
       if (budget !== undefined && budget !== null) projectDataJson.budget = budget;
 
-      const result = await pool.query(
+      const projectValues = [
+        photographerId,
+        trimmedTitle,
+        effectiveClientId,
+        trimmedName || null,
+        typeof projectType === 'string' && projectType.trim() ? projectType.trim() : null,
+        eventDate || null,
+        typeof location === 'string' && location.trim() ? location.trim() : null,
+        typeof description === 'string' && description.trim() ? description.trim() : null,
+        Number.isFinite(Number(servicePrice)) ? Number(servicePrice)
+          : (Number.isFinite(Number(budget)) ? Number(budget) : null),
+        Number.isFinite(Number(hourlyRate)) ? Number(hourlyRate) : null,
+        Number.isFinite(Number(costOverhead)) ? Number(costOverhead) : 0,
+        Number.isFinite(Number(estimatedHours)) ? Number(estimatedHours) : null,
+        Object.keys(projectDataJson).length > 0 ? JSON.stringify(projectDataJson) : null,
+        settings && typeof settings === 'object' ? JSON.stringify(settings) : null,
+        Number.isFinite(Number(budget)) ? Number(budget) : null,
+        trimmedTitle,
+      ];
+      const result = submissionId
+        ? await pool.query(
+          `WITH owned_submission AS (
+             SELECT id
+               FROM client_submissions
+              WHERE id = $17
+                AND (owner_user_id = $1 OR vendor_id = $1 OR assigned_photographer = $1 OR LOWER(vendor_email) = LOWER($18))
+                AND project_id IS NULL
+              FOR UPDATE
+           ), inserted_project AS (
+             INSERT INTO projects
+               (user_id, title, name, profession, client_id, client_name,
+                project_type, status, phase, event_date, location, description,
+                service_price, hourly_rate, cost_overhead, estimated_hours,
+                project_data, settings, budget, created_at, updated_at)
+             SELECT $1, $2, $16, 'photographer', $3, $4,
+                    $5, 'active', 'planning', $6, $7, $8,
+                    $9, $10, $11, $12,
+                    $13::jsonb, $14::jsonb, $15, NOW(), NOW()
+               FROM owned_submission
+             RETURNING id
+           )
+           UPDATE client_submissions s
+              SET project_id = p.id, status = 'converted', converted_at = NOW(),
+                  is_read = TRUE, read_at = COALESCE(read_at, NOW()), updated_at = NOW()
+             FROM inserted_project p, owned_submission o
+            WHERE s.id = o.id
+            RETURNING p.id`,
+          [...projectValues, String(submissionId), session.email],
+        )
+        : await pool.query(
         `INSERT INTO projects
            (user_id, title, name, profession, client_id, client_name,
             project_type, status, phase, event_date, location, description,
@@ -458,29 +531,20 @@ export function setupPhotographerProjectsRoutes(
                  $13::jsonb, $14::jsonb, $15,
                  NOW(), NOW())
          RETURNING id`,
-        [
-          photographerId,
-          trimmedTitle,
-          effectiveClientId,
-          trimmedName || null,
-          typeof projectType === 'string' && projectType.trim() ? projectType.trim() : null,
-          eventDate || null,
-          typeof location === 'string' && location.trim() ? location.trim() : null,
-          typeof description === 'string' && description.trim() ? description.trim() : null,
-          Number.isFinite(Number(servicePrice)) ? Number(servicePrice)
-            : (Number.isFinite(Number(budget)) ? Number(budget) : null),
-          Number.isFinite(Number(hourlyRate)) ? Number(hourlyRate) : null,
-          Number.isFinite(Number(costOverhead)) ? Number(costOverhead) : 0,
-          Number.isFinite(Number(estimatedHours)) ? Number(estimatedHours) : null,
-          Object.keys(projectDataJson).length > 0 ? JSON.stringify(projectDataJson) : null,
-          settings && typeof settings === 'object' ? JSON.stringify(settings) : null,
-          Number.isFinite(Number(budget)) ? Number(budget) : null,
-          // $16 — `name` gets its own placeholder (reusing $2 for title+name
-          // makes Postgres throw "inconsistent types deduced for parameter $2").
-          trimmedTitle,
-        ],
+        projectValues,
       );
       const newProjectId = result.rows[0]?.id;
+      if (!newProjectId) {
+        return res.status(409).json({ error: 'submission_already_converted' });
+      }
+      if (submissionId) {
+        broadcastUserEvent(photographerId, {
+          kind: 'inquiry.updated',
+          inquiryId: String(submissionId),
+          reason: 'converted',
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // Slice 9X.13 — logg prosjekt-opprettelse til client_communications
       // så CRM-historikken viser konvertering (inquiry → project) og
@@ -516,22 +580,8 @@ export function setupPhotographerProjectsRoutes(
       // Marker submission som konvertert hvis fra inquiry-flyt. client_submissions
       // har project_id + status (IKKE converted_to_project_id/converted_at), så
       // den gamle UPDATEn feilet stille og forespørselen ble liggende som «ny».
-      if (newProjectId && submissionId) {
-        try {
-          // Eier-scope: submissionId kommer fra request-body. Uten
-          // vendor_id-filter kunne en fotograf markere EN ANNEN fotografs
-          // innkommende forespørsel som konvertert og om-lenke den til sitt
-          // eget prosjekt (cross-tenant write-IDOR — offeret mister leadet
-          // fra «nye»-listen). vendor_id er eier-kolonnen (jf. submissions-
-          // routes' `WHERE id AND vendor_id`); fremmed id → rowCount 0 = no-op.
-          await pool.query(
-            `UPDATE client_submissions
-                SET project_id = $1, status = 'converted', updated_at = NOW()
-              WHERE id = $2 AND vendor_id = $3`,
-            [newProjectId, submissionId, photographerId],
-          );
-        } catch { /* tabellen finnes kanskje ikke i alle env */ }
-      }
+      // For submission-based creation the CTE above creates the project and
+      // links/converts the owned inquiry in one PostgreSQL statement.
 
       // Slice 9X.22 — auto-opprett wedding_timeline + send invite hvis bryllup.
       if (newProjectId && projectType && String(projectType).toLowerCase() === 'bryllup') {

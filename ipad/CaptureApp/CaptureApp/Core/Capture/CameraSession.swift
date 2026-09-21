@@ -27,6 +27,7 @@ actor CameraSession {
     private let store: SessionStore
     private let sessionId: UUID
     private let actorUserId: String
+    private var storagePolicy: Asset.StoragePolicy
 
     private var pumpTask: Task<Void, Never>?
     private(set) var state: State = .disconnected
@@ -41,11 +42,13 @@ actor CameraSession {
         actorUserId: String,
         adapter: any IngestAdapter,
         store: SessionStore,
+        storagePolicy: Asset.StoragePolicy = .keepLocalAndCloud,
     ) {
         self.sessionId = sessionId
         self.actorUserId = actorUserId
         self.adapter = adapter
         self.store = store
+        self.storagePolicy = storagePolicy
         let (stream, cont) = AsyncStream<State>.makeStream(bufferingPolicy: .unbounded)
         self.stateChanges = stream
         self.stateContinuation = cont
@@ -86,6 +89,10 @@ actor CameraSession {
         try await adapter.fetch(assetId: assetId, priority: priority)
     }
 
+    func setStoragePolicy(_ policy: Asset.StoragePolicy) {
+        storagePolicy = policy
+    }
+
     // MARK: - Event pump
 
     private func pumpAdapterEvents() async {
@@ -106,6 +113,7 @@ actor CameraSession {
                     sessionId: sessionId,
                     descriptor: descriptor,
                     initialState: .previewPending,
+                    storagePolicy: storagePolicy,
                 )
                 try await store.appendEvent(
                     sessionId: sessionId,

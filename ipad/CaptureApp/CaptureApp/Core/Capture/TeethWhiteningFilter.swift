@@ -56,11 +56,11 @@ enum TeethWhiteningFilter {
         //    value, the further from "warm tooth enamel" the output
         //    drifts. CITemperatureAndTint operates on the whole image;
         //    the mask limits where it actually applies.
-        let temp = CIFilter.temperatureAndTint()
-        temp.inputImage = image
-        temp.neutral = CIVector(x: 6500, y: 0)
-        temp.targetNeutral = CIVector(x: 6500 - 800 * amount, y: 0)
-        guard let cooled = temp.outputImage else { return image }
+        let cooled = PhotographicTemperatureFilter.apply(
+            to: image,
+            warmth: -amount,
+            kelvinScale: 800
+        )
 
         // 2. Saturation drop on the cooled output. The temperature
         //    shift took care of most of the yellow, but a cool image

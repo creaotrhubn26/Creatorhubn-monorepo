@@ -119,6 +119,10 @@ describe('listProjectsForPhotographer', () => {
           location: 'Holmenkollen', projectType: 'wedding',
           status: 'active',
           settings: { showcaseSettings: { template: 'wedding-classic' } },
+          projectData: { memoryCardConfigs: [
+            { label: 'A', type: 'CFexpress', capacity: '512 GB', dayNumber: 1, dayName: 'Bryllupsdag' },
+            { label: '  ', type: 'invalid' },
+          ] },
           updatedAt: '2026-04-18T10:00:00Z',
         },
         {
@@ -143,6 +147,10 @@ describe('listProjectsForPhotographer', () => {
     expect(rows[1]!.shotListSummary).toBeNull();
     // Showcase settings extracted from settings JSONB.
     expect(rows[0]!.showcaseSettings).toEqual({ template: 'wedding-classic' });
+    expect(rows[0]!.memoryCardConfigs).toEqual([{
+      label: 'A', type: 'CFexpress', capacity: '512 GB', dayNumber: 1, dayName: 'Bryllupsdag',
+    }]);
+    expect(rows[1]!.memoryCardConfigs).toEqual([]);
   });
 });
 
@@ -160,6 +168,7 @@ describe('fetchProjectDetail', () => {
         description: 'Hovedevent', clientName: 'Anna', eventDate: '2026-06-12',
         location: null, projectType: 'wedding', status: 'active',
         settings: { showcaseSettings: { template: 't' } },
+        projectData: { memoryCardConfigs: [{ label: 'Kamera B', type: 'SDXC', capacity: '128 GB' }] },
         updatedAt: '2026-04-18T10:00:00Z',
       }],
       shotListRows: [{
@@ -178,6 +187,7 @@ describe('fetchProjectDetail', () => {
     expect(detail!.shotList).toHaveLength(2);
     expect(detail!.shotList[0]!.scene).toBe('Bridal portrait');
     expect(detail!.shotListSummary?.totalShots).toBe(2);
+    expect(detail!.memoryCardConfigs[0]?.label).toBe('Kamera B');
   });
 });
 

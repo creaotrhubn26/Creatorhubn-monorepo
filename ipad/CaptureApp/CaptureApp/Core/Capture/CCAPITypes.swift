@@ -70,12 +70,43 @@ enum CCAPIShootingSettingKey: String, CaseIterable, Sendable, Hashable {
     case tv
     case av
     case iso
+    case exposure
+    case wb
+    case colortemperature
+    case afoperation
+    case afmethod
+    case trackingsetting
+    case picturestyle
+    case moviecropping
 
     var displayName: String {
         switch self {
         case .tv: "Lukker"
         case .av: "Blender"
         case .iso: "ISO"
+        case .exposure: "Eksponeringskompensasjon"
+        case .wb: "Hvitbalanse"
+        case .colortemperature: "Fargetemperatur"
+        case .afoperation: "AF-operasjon"
+        case .afmethod: "AF-metode"
+        case .trackingsetting: "Motivsporing"
+        case .picturestyle: "Bildestil"
+        case .moviecropping: "Movie crop"
+        }
+    }
+}
+
+enum CCAPIFocusDrive: String, CaseIterable, Sendable {
+    case near3, near2, near1, far1, far2, far3
+
+    var displayName: String {
+        switch self {
+        case .near3: "Nær · stor"
+        case .near2: "Nær · medium"
+        case .near1: "Nær · fin"
+        case .far1: "Fjern · fin"
+        case .far2: "Fjern · medium"
+        case .far3: "Fjern · stor"
         }
     }
 }
@@ -83,11 +114,135 @@ enum CCAPIShootingSettingKey: String, CaseIterable, Sendable, Hashable {
 struct CCAPIChoiceSetting: Sendable, Decodable, Equatable {
     let value: String
     let ability: [String]
+
+    private enum CodingKeys: String, CodingKey { case value, ability }
+    private struct NumericRange: Decodable {
+        let min: Int
+        let max: Int
+        let step: Int
+    }
+
+    init(value: String, ability: [String]) {
+        self.value = value
+        self.ability = ability
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let string = try? container.decode(String.self, forKey: .value) {
+            value = string
+        } else if let integer = try? container.decode(Int.self, forKey: .value) {
+            value = String(integer)
+        } else if let decimal = try? container.decode(Double.self, forKey: .value) {
+            value = String(decimal)
+        } else {
+            throw DecodingError.typeMismatch(
+                String.self,
+                .init(codingPath: container.codingPath, debugDescription: "CCAPI setting value is not scalar")
+            )
+        }
+
+        if let choices = try? container.decode([String].self, forKey: .ability) {
+            ability = choices
+        } else if let integers = try? container.decode([Int].self, forKey: .ability) {
+            ability = integers.map(String.init)
+        } else if let range = try? container.decode(NumericRange.self, forKey: .ability),
+                  range.step > 0,
+                  range.max >= range.min {
+            ability = stride(from: range.min, through: range.max, by: range.step)
+                .prefix(500)
+                .map(String.init)
+        } else {
+            ability = []
+        }
+    }
 }
 
 struct CCAPIVideoCapabilities: Sendable, Equatable {
     let canRecordMovie: Bool
     let writableSettings: Set<CCAPIShootingSettingKey>
+    let canDriveFocus: Bool
+    let canAutoFocus: Bool
+    let canSetAFFrame: Bool
+
+    init(
+        canRecordMovie: Bool,
+        writableSettings: Set<CCAPIShootingSettingKey>,
+        canDriveFocus: Bool = false,
+        canAutoFocus: Bool = false,
+        canSetAFFrame: Bool = false
+    ) {
+        self.canRecordMovie = canRecordMovie
+        self.writableSettings = writableSettings
+        self.canDriveFocus = canDriveFocus
+        self.canAutoFocus = canAutoFocus
+        self.canSetAFFrame = canSetAFFrame
+    }
+}
+
+struct CCAPIMediaTransferProgress: Sendable, Equatable {
+    let receivedBytes: Int64
+    let totalBytes: Int64?
+    let elapsedSeconds: TimeInterval
+
+    var fractionCompleted: Double? {
+        guard let totalBytes, totalBytes > 0 else { return nil }
+        return min(1, max(0, Double(receivedBytes) / Double(totalBytes)))
+    }
+
+    var percentCompleted: Int? {
+        fractionCompleted.map { Int(($0 * 100).rounded()) }
+    }
+
+    var estimatedRemainingSeconds: TimeInterval? {
+        guard let totalBytes,
+              totalBytes > receivedBytes,
+              receivedBytes > 0,
+              elapsedSeconds > 0
+        else { return nil }
+        let bytesPerSecond = Double(receivedBytes) / elapsedSeconds
+        guard bytesPerSecond > 0 else { return nil }
+        return Double(totalBytes - receivedBytes) / bytesPerSecond
+    }
+}
+
+struct CCAPILiveViewGeometry: Sendable, Equatable {
+    let imageWidth: Int
+    let imageHeight: Int
+    let visibleX: Int
+    let visibleY: Int
+    let visibleWidth: Int
+    let visibleHeight: Int
+
+    func cameraPosition(normalizedX: Double, normalizedY: Double) -> (x: Int, y: Int) {
+        let x = max(0, min(1, normalizedX))
+        let y = max(0, min(1, normalizedY))
+        return (
+            visibleX + Int((Double(visibleWidth) * x).rounded()),
+            visibleY + Int((Double(visibleHeight) * y).rounded())
+        )
+    }
+}
+
+struct CCAPILiveViewDetailEnvelope: Decodable {
+    let liveviewdata: CCAPILiveViewDetailData
+}
+
+struct CCAPILiveViewDetailData: Decodable {
+    let image: CCAPILiveViewImageArea
+    let visible: CCAPILiveViewVisibleArea
+}
+
+struct CCAPILiveViewImageArea: Decodable {
+    let sizex: Int
+    let sizey: Int
+}
+
+struct CCAPILiveViewVisibleArea: Decodable {
+    let positionx: Int
+    let positiony: Int
+    let positionwidth: Int
+    let positionheight: Int
 }
 
 struct CCAPIBatteryStatus: Sendable, Equatable {

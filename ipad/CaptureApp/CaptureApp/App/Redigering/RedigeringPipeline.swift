@@ -41,7 +41,14 @@ enum RedigeringPipeline {
 
     /// Full-resolution web-delivery render for export/persist. RAW when
     /// available, else re-encodes the display JPEG with the recipe.
-    static func renderExport(rawPath: String?, jpegPath: String?, recipe: MagicRecipe, exposureEV: Double, crop: CGRect? = nil) -> Data? {
+    static func renderExport(
+        rawPath: String?,
+        jpegPath: String?,
+        recipe: MagicRecipe,
+        exposureEV: Double,
+        crop: CGRect? = nil,
+        faceEdits: [FaceLocalAdjustFilter.Entry] = []
+    ) -> Data? {
         var out: UIImage?
         var evAppliedInRaw = false
         if let rawPath, let data = try? Data(contentsOf: URL(fileURLWithPath: rawPath)) {
@@ -63,7 +70,20 @@ enum RedigeringPipeline {
         // Kun JPEG-fallback trenger post-EV; RAW-banen har alt påført det nativt.
         if exposureEV != 0, !evAppliedInRaw { img = applyExposure(exposureEV, to: img) ?? img }
         if let crop { img = cropped(img, to: crop) }
-        return img.jpegData(compressionQuality: 0.92)
+        guard !faceEdits.isEmpty, let ci = CIImage(image: img) else {
+            return img.jpegData(compressionQuality: 0.92)
+        }
+        let locallyAdjusted = FaceLocalAdjustFilter.apply(to: ci, entries: faceEdits)
+        guard let cg = ColorManagement.renderCGImage(
+            from: locallyAdjusted,
+            context: ColorManagement.makeContext(for: .webDelivery),
+            purpose: .webDelivery
+        ) else { return img.jpegData(compressionQuality: 0.92) }
+        return try? ColorManagement.encodeJPEG(
+            cgImage: cg,
+            purpose: .webDelivery,
+            quality: 0.92
+        )
     }
 
     /// PLAIN nøytral RAW-develop (bar CIRAWFilter, sRGB) — for «Min stil»-banen.

@@ -35,6 +35,24 @@ struct VideoCaptureStore: Sendable {
         }
     }
 
+    /// Bind a locally imported field clip to a real CreatorHub project before
+    /// upload. Local ingest deliberately permits an empty project while the
+    /// photographer is offline; the uploader itself is never called until this
+    /// binding has succeeded locally.
+    func assignProject(id: String, ownerUserId: String, projectId: String) async throws {
+        let trimmed = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try await database.dbWriter.write { db in
+            guard var asset = try VideoCaptureAsset
+                .filter(Column("id") == id && Column("ownerUserId") == ownerUserId)
+                .fetchOne(db)
+            else { return }
+            asset.projectId = trimmed
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
     func nextTakeNumber(ownerUserId: String, projectId: String, slate: String?) async throws -> Int {
         try await database.dbWriter.read { db in
             let value = try Int.fetchOne(

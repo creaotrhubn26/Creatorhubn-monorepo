@@ -58,6 +58,23 @@ actor SessionStore {
         }
     }
 
+    /// Automatic retention may only remove a session when every photo is a
+    /// verified cloud-only capture. Local-only and local+cloud are explicit
+    /// retention promises, while an unfinished cloud upload is the only copy
+    /// CreatorHub can still guarantee to the photographer.
+    func canAutomaticallyPurgeSession(id: UUID) async throws -> Bool {
+        try await database.dbWriter.read { db in
+            let unsafeAssetCount = try Asset
+                .filter(Column("sessionId") == id.uuidString.uppercased())
+                .filter(
+                    Column("storagePolicy") != Asset.StoragePolicy.creatorHubOnly.rawValue
+                        || Column("cloudState") != Asset.CloudState.secured.rawValue
+                )
+                .fetchCount(db)
+            return unsafeAssetCount == 0
+        }
+    }
+
     func closeSession(id: UUID) async throws {
         try await database.dbWriter.write { db in
             guard var session = try Session.fetchOne(db, key: id.uuidString.uppercased()) else { return }
@@ -85,7 +102,8 @@ actor SessionStore {
     func createAsset(
         sessionId: UUID,
         descriptor: AssetDescriptor,
-        initialState: AssetState = .anticipated
+        initialState: AssetState = .anticipated,
+        storagePolicy: Asset.StoragePolicy = .keepLocalAndCloud
     ) async throws -> Asset {
         let now = Date()
         let asset = Asset(
@@ -104,6 +122,8 @@ actor SessionStore {
             checksumSha256: nil,
             mime: descriptor.mime,
             sizeBytes: descriptor.sizeBytes,
+            storagePolicy: storagePolicy,
+            cloudState: storagePolicy == .localOnly ? .local : .queued,
             state: initialState,
             signals: .empty,
             rating: 0,
@@ -117,6 +137,39 @@ actor SessionStore {
             try asset.insert(db)
         }
         return asset
+    }
+
+    func updateAssetCloudState(
+        id: UUID,
+        state: Asset.CloudState,
+        backendAssetId: UUID? = nil,
+        verifiedAt: Date? = nil,
+        error: String? = nil,
+        localOriginalReleased: Bool? = nil
+    ) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.cloudState = state
+            if let backendAssetId { asset.backendAssetId = backendAssetId }
+            if let verifiedAt { asset.cloudVerifiedAt = verifiedAt }
+            asset.cloudLastError = error
+            if let localOriginalReleased { asset.localOriginalReleased = localOriginalReleased }
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    /// Clear only the local original variants after a verified cloud backup.
+    /// The preview path deliberately remains available for the live filmstrip.
+    func markLocalOriginalReleased(id: UUID, releasedPaths: Set<String>) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            if let full = asset.fullKey, releasedPaths.contains(full) { asset.fullKey = nil }
+            if let raw = asset.rawKey, releasedPaths.contains(raw) { asset.rawKey = nil }
+            asset.localOriginalReleased = true
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
     }
 
     func transitionAssetState(id: UUID, to newState: AssetState) async throws {
@@ -281,6 +334,12 @@ actor SessionStore {
     func fetchAsset(id: UUID) async throws -> Asset? {
         try await database.dbWriter.read { db in
             try Asset.fetchOne(db, key: id.uuidString.uppercased())
+        }
+    }
+
+    func deleteAsset(id: UUID) async throws {
+        try await database.dbWriter.write { db in
+            _ = try Asset.deleteOne(db, key: id.uuidString.uppercased())
         }
     }
 

@@ -1191,6 +1191,7 @@ interface MilestoneData {
 
 // Initial data shape for the component
 interface ProjectInitialData {
+  submissionId?: string;
   projectName?: string;
   clientName?: string;
   clientEmail?: string;
@@ -2155,6 +2156,10 @@ useEffect(() => {
       // så WorkflowIntegrationService + onProjectCreated funker likt.
       return { id: result.id, ...mapped };
     } catch (err) {
+      // A submission-bound create is deliberately atomic: falling back after
+      // 403/409/timeout can create an unlinked duplicate project while the
+      // canonical transaction has already succeeded or rejected ownership.
+      if (submissionId) throw err;
       console.warn('[photographer-project] create via /api/photographer/projects failed, fallback til legacy /api/projects:', err);
       // Fallback til legacy så Stine ikke blir blokkert hvis det nye
       // endepunktet skulle ha en bug. Prosjektet havner i legacy-tabellen

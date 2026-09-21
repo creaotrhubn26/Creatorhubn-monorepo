@@ -13,8 +13,8 @@ final class RedigeringModel {
     var selectedId: UUID?
 
     /// The recipe being tuned for the selected asset (per-asset, kept locally).
-    var recipe: MagicRecipe = .product
-    var presetName: String = "Produkt Clean"
+    var recipe: MagicRecipe = .neutral
+    var presetName: String = "Nøytral"
     /// Exposure in EV stops (-2…+2) — a true exposure control, applied on top
     /// of the recipe so it brightens/darkens the whole frame (not just shadows).
     var exposureEV: Double = 0
@@ -54,6 +54,12 @@ final class RedigeringModel {
         }
     }
 
+    var currentFaceEdits: [FaceLocalAdjustFilter.Entry] {
+        activeFaceAdjustments.map {
+            .init(normalizedRect: $0.norm, adjustment: $0.adj)
+        }
+    }
+
     /// Detektér ansikter i «Etter»-bildet → normaliserte CI-rekter (for tapping
     /// + maskert lokal justering). Kjøres når lokal ansikts-modus slås på.
     func detectFacesForLocal() {
@@ -90,6 +96,7 @@ final class RedigeringModel {
 
     func setFaceAdjust(_ adj: FaceLocalAdjustFilter.Adjust, for index: Int) {
         faceAdjust[index] = adj
+        persistEdit()
         Task { await render() }
     }
 
@@ -106,6 +113,26 @@ final class RedigeringModel {
     /// Kamera-EXIF (ISO/blender/lukker/brennvidde) for det valgte bildet — lest
     /// fra RAW/JPEG ved valg. Vises i editoren; nil når fila mangler metadata.
     private(set) var exif: ExifInfo?
+
+    /// Camera-aware colour base beneath presets and manual sliders. It is
+    /// persisted per asset and participates in undo/redo so preview and export
+    /// can never silently disagree about the selected profile.
+    var cameraColorProfileID: CameraColorProfileID = .appleEmbedded
+
+    var availableCameraColorProfiles: [CameraColorProfileDefinition] {
+        CameraColorProfileCatalog.profiles(
+            cameraModel: exif?.camera,
+            hasRaw: selected?.rawKey != nil
+        )
+    }
+
+    var activeCameraColorProfile: CameraColorProfileDefinition {
+        CameraColorProfileCatalog.profile(
+            cameraColorProfileID,
+            cameraModel: exif?.camera,
+            hasRaw: selected?.rawKey != nil
+        )
+    }
 
     private(set) var loading = true
     var errorMessage: String?
@@ -146,6 +173,26 @@ final class RedigeringModel {
     func applySuggestion(_ s: EditSuggestion) {
         beginEdit()
         s.apply(to: &recipe)
+        recipeChanged()
+    }
+
+    /// One deliberate, undoable auto-tone action for portraits. It uses the
+    /// already persisted per-asset measurements; nothing changes invisibly on
+    /// subsequent renders. The photographer can inspect and tune every result.
+    func applyAdaptivePortraitTone() {
+        guard let analysis = selectedAnalysis, analysis.hasFaces else {
+            statusMessage = "Fant ikke et sikkert ansikt for motivtilpasset tone."
+            return
+        }
+        beginEdit()
+        let result = PortraitToneAdvisor.adjust(
+            recipe: recipe,
+            exposureEV: exposureEV,
+            analysis: analysis
+        )
+        recipe = result.recipe
+        exposureEV = result.exposureEV
+        statusMessage = "Lys og hudtone er tilpasset motivet — alle verdier kan finjusteres."
         recipeChanged()
     }
 
@@ -293,32 +340,69 @@ final class RedigeringModel {
 
     private func loadRecipeForSelection() {
         guard let id = selectedId else { return }
+        // Selection state must never leak from the previous image. Start from a
+        // complete known baseline, then restore only this asset's persisted edit.
+        recipe = .neutral
+        presetName = "Nøytral"
+        exposureEV = 0
+        cameraColorProfileID = .appleEmbedded
+        faceRectsNorm = []
+        faceAdjust = [:]
+        activeFace = nil
+        reflectionRemoval = false
         // Restore persisted edit (survives crash/teardown), else the in-memory
         // cache, else defaults.
         if let saved = RedigeringEditStore.load(id) {
             recipe = saved.recipe; exposureEV = saved.exposureEV
             crops[id] = saved.crop
             applied[id] = saved.recipe
+            restoreFaceEdits(saved.faceEdits ?? [])
+            reflectionRemoval = saved.reflectionRemoval ?? false
+            cameraColorProfileID = saved.cameraColorProfileID ?? .appleEmbedded
             syncPresetName(to: saved.recipe)
         } else if let r = applied[id] {
             recipe = r
             syncPresetName(to: r)
-        } else {
-            exposureEV = 0
         }
+    }
+
+    private func restoreFaceEdits(_ entries: [FaceLocalAdjustFilter.Entry]) {
+        faceRectsNorm = entries.map(\.normalizedRect)
+        faceAdjust = Dictionary(uniqueKeysWithValues: entries.enumerated().map {
+            ($0.offset, $0.element.adjustment)
+        })
+        activeFace = entries.isEmpty ? nil : 0
     }
 
     /// Hold preset-etiketten i takt med recipen som lastes (persistert edit) så
     /// UI-en viser «Bryllup» i stedet for standard-navnet når recipen matcher.
     private func syncPresetName(to r: MagicRecipe) {
-        if let match = Self.presets.first(where: { $0.1 == r }) { presetName = match.0 }
+        presetName = Self.presets.first(where: { $0.1 == r })?.0 ?? "Tilpasset"
     }
 
     /// Persist the selected asset's current edit state to disk.
     private func persistEdit() {
         guard let id = selectedId else { return }
         applied[id] = recipe
-        RedigeringEditStore.save(id, .init(recipe: recipe, exposureEV: exposureEV, crop: crops[id]))
+        RedigeringEditStore.save(
+            id,
+            .init(
+                recipe: recipe,
+                exposureEV: exposureEV,
+                crop: crops[id],
+                faceEdits: currentFaceEdits,
+                reflectionRemoval: reflectionRemoval,
+                cameraColorProfileID: cameraColorProfileID
+            )
+        )
+    }
+
+    func applyCameraColorProfile(_ id: CameraColorProfileID) {
+        guard availableCameraColorProfiles.contains(where: { $0.id == id }) else { return }
+        pushUndo()
+        cameraColorProfileID = id
+        persistEdit()
+        Task { await render() }
     }
 
     func applyPreset(_ name: String, _ r: MagicRecipe) {
@@ -328,19 +412,51 @@ final class RedigeringModel {
     }
 
     /// Call when a slider commits (on release) — renders the real pipeline.
-    func recipeChanged() { persistEdit(); Task { await render() } }
+    func recipeChanged() {
+        syncPresetName(to: recipe)
+        persistEdit()
+        Task { await render() }
+    }
     func beginEdit() { pushUndo() }
+
+    /// Return the selected asset to the calibrated neutral starting point. This
+    /// is intentionally undoable and clears every local edit, not just sliders.
+    func resetSelectedEdit() {
+        guard let id = selectedId else { return }
+        pushUndo()
+        recipe = .neutral
+        presetName = "Nøytral"
+        exposureEV = 0
+        cameraColorProfileID = .appleEmbedded
+        crops[id] = nil
+        faceRectsNorm = []
+        faceAdjust = [:]
+        activeFace = nil
+        reflectionRemoval = false
+        persistEdit()
+        Task { await render() }
+    }
 
     /// Øyeblikksbilde av HELE redigeringstilstanden (recipe + eksponering + crop)
     /// — undo dekket før bare `recipe`, så Angre etter en beskjæring/eksponering
     /// hoppet feil verdi.
     private func snapshot() -> RedigeringEditStore.EditState {
-        .init(recipe: recipe, exposureEV: exposureEV, crop: selectedId.flatMap { crops[$0] })
+        .init(
+            recipe: recipe,
+            exposureEV: exposureEV,
+            crop: selectedId.flatMap { crops[$0] },
+            faceEdits: currentFaceEdits,
+            reflectionRemoval: reflectionRemoval,
+            cameraColorProfileID: cameraColorProfileID
+        )
     }
     private func restore(_ s: RedigeringEditStore.EditState) {
         recipe = s.recipe
         exposureEV = s.exposureEV
         if let id = selectedId { crops[id] = s.crop }
+        restoreFaceEdits(s.faceEdits ?? [])
+        reflectionRemoval = s.reflectionRemoval ?? false
+        cameraColorProfileID = s.cameraColorProfileID ?? .appleEmbedded
         syncPresetName(to: s.recipe)
         persistEdit(); Task { await render() }
     }
@@ -368,7 +484,9 @@ final class RedigeringModel {
         guard let svc = services() else { return }
         working = true; seriesTotal = assets.count; seriesProgress = 0
         defer { working = false; seriesTotal = 0 }
-        let baseRecipe = effectiveRecipe(); let ev = exposureEV
+        let seriesRecipe = recipe
+        let seriesProfileID = cameraColorProfileID
+        let ev = exposureEV
         var failed: [String] = []
         for a in assets {
             // #4: SAMME base-valg som interaktiv render (server-sky → cleaned →
@@ -376,20 +494,44 @@ final class RedigeringModel {
             // bilde ble eksportert fra RAW med full recipe mens previewen viste
             // server-basen flat. Nå matcher det fotografen ser det som leveres.
             let base = workingBase(for: a)
-            // Gradet base (server-sky) → flat recipe, akkurat som render(). Ellers
-            // brukerens effektive recipe.
-            let exportRecipe = base.graded ? Self.flatGradedRecipe : baseRecipe
+            // Camera matching resolves PER ASSET. A mixed-camera series must not
+            // inherit the selected image's model profile. Unsupported bodies
+            // safely fall back to Apple embedded.
+            let storedRecipe = base.graded ? Self.flatGradedRecipe : seriesRecipe
+            let storedProfileID: CameraColorProfileID = base.graded
+                ? .appleEmbedded
+                : seriesProfileID
+            let exportRecipe = base.graded
+                ? Self.flatGradedRecipe
+                : effectiveRecipe(
+                    for: a,
+                    userRecipe: seriesRecipe,
+                    profileID: seriesProfileID
+                )
             // #3a: crop fra minne ELLER persistert edit — etter app-restart er
             // in-memory-dictet tomt for alle unntatt valgt asset, så batch mistet
             // ellers beskjæringene.
             let crop = crops[a.id] ?? RedigeringEditStore.load(a.id)?.crop
-            // #3b: PERSISTÉR DET VI RENDRER (exportRecipe), ikke rå-recipen — ellers
-            // matcher ikke lagret oppskrift den eksporterte JPEG-en etter restart.
-            applied[a.id] = exportRecipe
-            RedigeringEditStore.save(a.id, .init(recipe: exportRecipe, exposureEV: ev, crop: crop))
+            // Persist the user recipe and profile separately. Persisting the
+            // already-merged export recipe would apply the profile twice after
+            // an app restart.
+            applied[a.id] = storedRecipe
+            let faceEdits = RedigeringEditStore.load(a.id)?.faceEdits ?? []
+            RedigeringEditStore.save(
+                a.id,
+                .init(
+                    recipe: storedRecipe,
+                    exposureEV: ev,
+                    crop: crop,
+                    faceEdits: faceEdits,
+                    reflectionRemoval: reflectionRemoval,
+                    cameraColorProfileID: storedProfileID
+                )
+            )
             let data = await Task.detached(priority: .utility) {
                 RedigeringPipeline.renderExport(rawPath: base.rawPath, jpegPath: base.jpegPath,
-                                                recipe: exportRecipe, exposureEV: ev, crop: crop)
+                                                recipe: exportRecipe, exposureEV: ev, crop: crop,
+                                                faceEdits: faceEdits)
             }.value
             var ok = false
             if let data {
@@ -492,8 +634,16 @@ final class RedigeringModel {
         let useRaw = asset.autoCleanedKey == nil ? asset.rawKey : nil
         let jpeg = asset.displayPreviewKey
         let r = effectiveRecipe(); let ev = exposureEV; let crop = crops[asset.id]
+        let faceEdits = currentFaceEdits
         let data = await Task.detached(priority: .userInitiated) {
-            RedigeringPipeline.renderExport(rawPath: useRaw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop)
+            RedigeringPipeline.renderExport(
+                rawPath: useRaw,
+                jpegPath: jpeg,
+                recipe: r,
+                exposureEV: ev,
+                crop: crop,
+                faceEdits: faceEdits
+            )
         }.value
         guard let data else { statusMessage = "Kunne ikke lagre — bildet lot seg ikke dekode/rendre."; return }
         let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-enhanced.jpg")
@@ -533,6 +683,62 @@ final class RedigeringModel {
             statusMessage = "Område fjernet."
             await render()
         } catch { statusMessage = "Inpaint feilet." }
+    }
+
+    /// Freehand counterpart to the legacy rectangle tool. The PNG mask is made
+    /// at source resolution, with round joins/caps, then sent through the same
+    /// access-controlled inpaint endpoint. Original bytes remain untouched.
+    func runManualInpaint(strokes: [NormalizedBrushStroke], brushDiameter: CGFloat) async {
+        guard !strokes.isEmpty, let asset = selected, let svc = services() else { return }
+        guard let srcPath = asset.displayPreviewKey,
+              let imageData = try? Data(contentsOf: URL(fileURLWithPath: srcPath)),
+              let img = UIImage(data: imageData), let cg = img.cgImage else { return }
+        working = true; statusMessage = "Fjerner penslet område…"; defer { working = false }
+        let w = cg.width, h = cg.height
+        let format = UIGraphicsImageRendererFormat.default(); format.scale = 1; format.opaque = true
+        let maskPng = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { renderer in
+            let context = renderer.cgContext
+            context.setFillColor(UIColor.black.cgColor)
+            context.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            context.setStrokeColor(UIColor.white.cgColor)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            context.setLineWidth(max(2, brushDiameter * CGFloat(min(w, h))))
+            for stroke in strokes where !stroke.points.isEmpty {
+                let first = stroke.points[0]
+                context.beginPath()
+                context.move(to: CGPoint(x: first.x * CGFloat(w), y: first.y * CGFloat(h)))
+                if stroke.points.count == 1 {
+                    context.addLine(to: CGPoint(x: first.x * CGFloat(w) + 0.1, y: first.y * CGFloat(h)))
+                } else {
+                    for point in stroke.points.dropFirst() {
+                        context.addLine(to: CGPoint(x: point.x * CGFloat(w), y: point.y * CGFloat(h)))
+                    }
+                }
+                context.strokePath()
+            }
+        }.pngData()
+        guard let maskPng else { return }
+        do {
+            let resp = try await svc.backend.requestPhotoEnhancerInpaint(
+                imageData: imageData,
+                imageMimeType: "image/jpeg",
+                maskPngData: maskPng,
+                intensity: 1.0
+            )
+            guard let bytes = Data(base64Encoded: resp.imageBase64) else {
+                statusMessage = "Penselretusj feilet. Originalen er beholdt."
+                return
+            }
+            let dest = svc.dir.appendingPathComponent("\(asset.id.uuidString)-brush-retouched.jpg")
+            try bytes.write(to: dest, options: .atomic)
+            try await svc.store.attachAutoCleanedKey(id: asset.id, key: dest.path, detectionCount: strokes.count)
+            await reloadSelected(svc.store, assetId: asset.id)
+            statusMessage = "Penselretusj fullført. Originalen er beholdt."
+            await render()
+        } catch {
+            statusMessage = "Penselretusj feilet. Originalen er beholdt — prøv igjen."
+        }
     }
 
     private func reloadSelected(_ store: SessionStore, assetId: UUID) async {
@@ -649,8 +855,22 @@ final class RedigeringModel {
     /// Reflection removal isn't a separate model — it's a strong highlight/
     /// specular tame layered on the recipe (recovers blown reflections +
     /// a touch of dehaze for glare).
-    private func effectiveRecipe() -> MagicRecipe {
-        var r = recipe
+    private func effectiveRecipe(
+        for asset: Asset? = nil,
+        userRecipe: MagicRecipe? = nil,
+        profileID: CameraColorProfileID? = nil
+    ) -> MagicRecipe {
+        let target = asset ?? selected
+        let targetExif: ExifInfo? = {
+            if target?.id == selectedId { return exif }
+            return ExifInfo.read(fromPath: target?.rawKey ?? target?.displayPreviewKey)
+        }()
+        var r = CameraColorProfileCatalog.effectiveRecipe(
+            userRecipe: userRecipe ?? recipe,
+            profileID: profileID ?? cameraColorProfileID,
+            cameraModel: targetExif?.camera,
+            hasRaw: target?.rawKey != nil
+        )
         if reflectionRemoval {
             r.highlightRecovery = max(r.highlightRecovery, 0.7)
             r.dehaze = max(r.dehaze, 0.2)
@@ -667,5 +887,57 @@ final class RedigeringModel {
         if let rect { crops[id] = rect } else { crops[id] = nil }
         persistEdit()
         Task { await render() }
+    }
+}
+
+/// Pure, deterministic portrait auto-tone policy. Kept independent of Vision
+/// and UI so it can be regression-tested with representative skin/light data.
+enum PortraitToneAdvisor {
+    struct Result: Equatable {
+        var recipe: MagicRecipe
+        var exposureEV: Double
+    }
+
+    static func adjust(
+        recipe: MagicRecipe,
+        exposureEV: Double,
+        analysis: AssetAnalysis
+    ) -> Result {
+        var r = recipe
+        let faceLuma = max(0.08, analysis.primaryFace?.luma ?? analysis.medianLuma)
+        // Partial correction keeps the scene's lighting intent; a night portrait
+        // must not be normalized into daylight.
+        let desiredFaceLuma = 0.48
+        let correction = log2(desiredFaceLuma / faceLuma) * 0.45
+        let ev = max(-2, min(2, exposureEV + max(-0.65, min(0.75, correction))))
+
+        let subjectClip = analysis.subjectHighlightClip ?? analysis.highlightClip
+        if subjectClip > 0.005 {
+            r.highlightRecovery = max(r.highlightRecovery, min(0.62, 0.22 + subjectClip * 5.5))
+        }
+        if analysis.p5Luma < 0.08 {
+            r.shadowLift = max(r.shadowLift, min(0.42, 0.12 + (0.08 - analysis.p5Luma) * 3.0))
+        }
+        let spread = analysis.p95Luma - analysis.p5Luma
+        if spread < 0.36 { r.contrast = max(r.contrast, min(0.28, (0.36 - spread) * 0.9)) }
+
+        switch analysis.skinCast {
+        case .tooWarm: r.warmth = max(-1, r.warmth - 0.12)
+        case .tooCool: r.warmth = min(1, r.warmth + 0.12)
+        case .tooGreen:
+            r.tint = min(1, r.tint + 0.10)
+            r.skinGuard = max(r.skinGuard, 0.60)
+        case .tooMagenta: r.tint = max(-1, r.tint - 0.10)
+        case .neutral, .none: break
+        }
+
+        // Conservative natural-retouch baseline. Existing stronger manual
+        // choices win; this action never reduces a photographer's setting.
+        r.skinGuard = max(r.skinGuard, 0.60)
+        r.blemishCleanup = max(r.blemishCleanup, 0.14)
+        r.dodgeBurn = max(r.dodgeBurn, 0.10)
+        r.shineControl = max(r.shineControl, 0.08)
+        r.underEyeLift = max(r.underEyeLift, 0.06)
+        return Result(recipe: r, exposureEV: ev)
     }
 }

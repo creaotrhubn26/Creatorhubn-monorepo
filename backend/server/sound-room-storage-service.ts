@@ -19,6 +19,7 @@ import { getCreatorHubObjectStorage } from "./creatorhub-object-storage.js";
 import { ensureRoleRoomUserStorageAccount } from "./role-room-storage-billing.js";
 import type { PrivateObjectStorage } from "./private-object-storage.js";
 import { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
+import { buildProductionAudioObjectKey } from "./production-audio-storage-contract.js";
 import { buildVideoCaptureObjectKey } from "./video-capture-storage-contract.js";
 import { buildVideoRoomObjectKey } from "./video-room-storage-contract.js";
 export { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
@@ -108,10 +109,26 @@ export interface VideoCaptureUploadInput {
   forceMultipart?: boolean;
 }
 
+export interface ProductionAudioUploadInput {
+  /** Storage is charged to the project owner, even when a crew member imports. */
+  userId: string;
+  organizationId?: string | null;
+  createdByUserId: string;
+  projectId: string;
+  assetId: string;
+  fileName: string;
+  sizeBytes: number;
+  contentType: string;
+  checksumSha256: string;
+  channel: "capture-ios" | "browser" | "migration";
+  forceMultipart?: boolean;
+}
+
 type RoleRoomMediaUploadInput =
   | (SoundRoomUploadInput & { mediaKind: "audio" })
   | (VideoRoomUploadInput & { mediaKind: "video" })
-  | (VideoCaptureUploadInput & { mediaKind: "video_capture" });
+  | (VideoCaptureUploadInput & { mediaKind: "video_capture" })
+  | (ProductionAudioUploadInput & { mediaKind: "production_audio" });
 
 export interface SoundRoomUploadTicket {
   objectId: string;
@@ -251,7 +268,7 @@ async function initiateCreatorHubMediaUpload(
   if (input.sizeBytes > MAX_UPLOAD_BYTES) throw new Error("file_too_large");
   if (!validChecksum(input.checksumSha256)) throw new Error("invalid_checksum");
   const contentType = normalizeContentType(input.contentType);
-  const isVideo = input.mediaKind !== "audio";
+  const isVideo = input.mediaKind === "video" || input.mediaKind === "video_capture";
   const allowedTypes = isVideo ? VIDEO_ROOM_VIDEO_TYPES : SOUND_ROOM_AUDIO_TYPES;
   if (!allowedTypes.has(contentType)) {
     throw new Error(isVideo ? "unsupported_video_type" : "unsupported_audio_type");
@@ -260,7 +277,7 @@ async function initiateCreatorHubMediaUpload(
     contentType === "application/octet-stream" &&
     !(isVideo
       ? /\.(?:m4v|mov|mp4|mpeg|mpg|webm)$/i.test(input.fileName)
-      : /\.(?:aac|aif|aiff|flac|m4a|mp3|oga|ogg|wav|wave|webm)$/i.test(input.fileName))
+      : /\.(?:aac|aif|aiff|bwf|flac|m4a|mp3|oga|ogg|wav|wave|webm)$/i.test(input.fileName))
   ) {
     throw new Error(isVideo ? "unsupported_video_type" : "unsupported_audio_type");
   }
@@ -279,6 +296,8 @@ async function initiateCreatorHubMediaUpload(
     ? buildVideoRoomObjectKey(input.organizationId, input.userId, input.projectId, objectId, input.fileName)
     : input.mediaKind === "video_capture"
       ? buildVideoCaptureObjectKey(input.organizationId, input.userId, input.projectId, objectId, input.fileName)
+      : input.mediaKind === "production_audio"
+        ? buildProductionAudioObjectKey(input.organizationId, input.userId, input.projectId, objectId, input.fileName)
       : buildSoundRoomObjectKey({
         organizationId: input.organizationId,
         userId: input.userId,
@@ -291,15 +310,20 @@ async function initiateCreatorHubMediaUpload(
       });
   const sourceModule = input.mediaKind === "video"
     ? "video-room"
-    : input.mediaKind === "video_capture" ? "video-capture" : "sound-room";
+    : input.mediaKind === "video_capture"
+      ? "video-capture"
+      : input.mediaKind === "production_audio" ? "production-audio" : "sound-room";
   const multipart = input.forceMultipart === true || input.sizeBytes > SINGLE_PUT_LIMIT;
   const strategy = multipart ? "multipart" : "single";
   const partSize = multipart ? partSizeFor(input.sizeBytes) : null;
   const metadata = {
     entityType: input.mediaKind === "video"
       ? "video_review_project"
-      : input.mediaKind === "video_capture" ? "video_capture_asset" : "audio_review_project",
-    entityId: input.mediaKind === "video_capture" ? input.assetId : input.projectId,
+      : input.mediaKind === "video_capture"
+        ? "video_capture_asset"
+        : input.mediaKind === "production_audio" ? "production_audio_asset" : "audio_review_project",
+    entityId: input.mediaKind === "video_capture" || input.mediaKind === "production_audio"
+      ? input.assetId : input.projectId,
     sessionId: input.mediaKind === "audio" ? input.sessionId || null : null,
     clientEventId: input.mediaKind === "audio" ? input.clientEventId || null : null,
     originalChecksumSha256: input.checksumSha256.toLowerCase(),
@@ -423,6 +447,14 @@ export async function initiateVideoCaptureUpload(
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
   return initiateCreatorHubMediaUpload(pool, { ...input, mediaKind: "video_capture" }, deps);
+}
+
+export async function initiateProductionAudioUpload(
+  pool: Pool,
+  input: ProductionAudioUploadInput,
+  deps: SoundRoomStorageDeps = {},
+): Promise<SoundRoomUploadTicket> {
+  return initiateCreatorHubMediaUpload(pool, { ...input, mediaKind: "production_audio" }, deps);
 }
 
 export async function resumeSoundRoomUpload(

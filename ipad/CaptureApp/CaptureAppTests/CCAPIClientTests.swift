@@ -88,6 +88,49 @@ final class CCAPIInventoryTests: XCTestCase {
         XCTAssertEqual(stop.movieRecording, false)
     }
 
+    func testChoiceSettingDecodesNumericValueAndRangeAbility() throws {
+        let data = Data(#"{"value":5600,"ability":{"min":2500,"max":10000,"step":100}}"#.utf8)
+        let setting = try JSONDecoder().decode(CCAPIChoiceSetting.self, from: data)
+        XCTAssertEqual(setting.value, "5600")
+        XCTAssertEqual(setting.ability.first, "2500")
+        XCTAssertEqual(setting.ability.last, "10000")
+        XCTAssertEqual(setting.ability.count, 76)
+    }
+
+    func testMediaTransferProgressCalculatesPercentAndRemainingTime() {
+        let progress = CCAPIMediaTransferProgress(
+            receivedBytes: 25_000_000,
+            totalBytes: 100_000_000,
+            elapsedSeconds: 5
+        )
+
+        XCTAssertEqual(progress.fractionCompleted, 0.25)
+        XCTAssertEqual(progress.percentCompleted, 25)
+        XCTAssertEqual(progress.estimatedRemainingSeconds, 15)
+    }
+
+    func testFlipDetailGeometryParsesAndMapsTouchCoordinates() throws {
+        let json = Data(#"{"liveviewdata":{"image":{"positionx":0,"positiony":312,"positionwidth":6000,"positionheight":3375,"sizex":6000,"sizey":3999},"visible":{"positionx":0,"positiony":313,"positionwidth":6000,"positionheight":3375}}}"#.utf8)
+        let length = UInt32(json.count)
+        var packet = Data([
+            0xff, 0x00, 0x01,
+            UInt8((length >> 24) & 0xff),
+            UInt8((length >> 16) & 0xff),
+            UInt8((length >> 8) & 0xff),
+            UInt8(length & 0xff),
+        ])
+        packet.append(json)
+        packet.append(contentsOf: [0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd8])
+
+        let geometry = try CCAPIClient.parseLiveViewGeometry(packet)
+        XCTAssertEqual(geometry.imageWidth, 6000)
+        XCTAssertEqual(geometry.imageHeight, 3999)
+        XCTAssertEqual(geometry.cameraPosition(normalizedX: 0.5, normalizedY: 0.5).x, 3000)
+        XCTAssertEqual(geometry.cameraPosition(normalizedX: 0.5, normalizedY: 0.5).y, 2001)
+        XCTAssertEqual(geometry.cameraPosition(normalizedX: -1, normalizedY: 2).x, 0)
+        XCTAssertEqual(geometry.cameraPosition(normalizedX: -1, normalizedY: 2).y, 3688)
+    }
+
     func testPollingResponseAndBatteryPresentationHandlePercentAndNamedLevels() throws {
         let response = try JSONDecoder().decode(
             CCAPIPollingResponse.self,
@@ -139,5 +182,41 @@ final class CCAPIInventoryTests: XCTestCase {
         XCTAssertTrue(variants.contains("http:8080"))
         XCTAssertTrue(variants.contains("https:443"))
         XCTAssertTrue(variants.contains("https:8443"))
+    }
+
+    @MainActor
+    func testLiveViewControllerQueuesUniqueMoviesFromCameraEvents() {
+        let controller = CCAPILiveViewController()
+        let movie = "/ccapi/ver120/contents/sd/100CANON/MVI_0042.MP4"
+        controller.applyTelemetry(CCAPIPollingResponse(addedcontents: [
+            movie,
+            "/ccapi/ver120/contents/sd/100CANON/IMG_0042.JPG",
+        ]))
+        controller.applyTelemetry(CCAPIPollingResponse(addedcontents: [movie]))
+
+        XCTAssertEqual(controller.pendingMovieImportCount, 1)
+    }
+
+    func testTransferConfirmationSeparatesLocalStorageFromVerifiedCreatorHubUpload() {
+        let local = VideoTransferConfirmation(
+            fileName: "MVI_0042.MP4",
+            stage: .storedLocally
+        )
+        XCTAssertEqual(local.title, "Lagret på iPaden")
+        XCTAssertTrue(local.detail.contains("opplasting fortsetter i bakgrunnen"))
+
+        let localOnly = VideoTransferConfirmation(
+            fileName: "MVI_0042.MP4",
+            stage: .storedLocallyOnly
+        )
+        XCTAssertEqual(localOnly.title, "Lagret på iPaden")
+        XCTAssertTrue(localOnly.detail.contains("kun lokalt"))
+
+        let remote = VideoTransferConfirmation(
+            fileName: "MVI_0042.MP4",
+            stage: .securedInCreatorHub
+        )
+        XCTAssertEqual(remote.title, "Sikret i CreatorHub")
+        XCTAssertTrue(remote.detail.contains("lastet opp og verifisert"))
     }
 }

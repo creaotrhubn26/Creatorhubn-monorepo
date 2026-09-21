@@ -10,22 +10,80 @@ final class RequestsModel {
     private(set) var submissions: [Submission] = []
     private(set) var loading = true
     private(set) var errorMessage: String?
+    private var realtimeService: RealtimeEventService?
+    private var realtimeObserverId: UUID?
+    private var realtimeRefreshTask: Task<Void, Never>?
+    private var currentStatus = "open"
+    private var currentSearch: String?
 
     var newCount: Int { submissions.filter(\.isNew).count }
 
-    func load() async {
+    func load(status: String = "open", search: String? = nil) async {
+        currentStatus = status
+        currentSearch = search
         guard let client = DashboardClient.make() else {
             errorMessage = DashboardError.signedOut.localizedDescription; loading = false; return
         }
         loading = submissions.isEmpty
         errorMessage = nil
-        do { submissions = try await client.listSubmissions() } catch { if submissions.isEmpty { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription } }
+        do {
+            submissions = try await client.listSubmissions(status: status, search: search)
+        } catch {
+            errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
         loading = false
+    }
+
+    func startRealtime() async {
+        guard realtimeService == nil,
+              let client = DashboardClient.make(),
+              let backendURL = SignInService.shared.session?.backendBaseURL
+        else { return }
+        let service = RealtimeEventService()
+        realtimeService = service
+        realtimeObserverId = await service.addObserver { [weak self] event in
+            guard case .inquiryUpdated = event else { return }
+            Task { @MainActor [weak self] in self?.scheduleRealtimeRefresh() }
+        }
+        let websocketURL = backendURL.appendingPathComponent("/api/ipad/ws/events")
+        await service.start(url: websocketURL) {
+            try await client.createRealtimeTicket()
+        }
+    }
+
+    func stopRealtime() async {
+        realtimeRefreshTask?.cancel()
+        realtimeRefreshTask = nil
+        if let service = realtimeService, let observerId = realtimeObserverId {
+            await service.removeObserver(observerId)
+        }
+        await realtimeService?.stop()
+        realtimeObserverId = nil
+        realtimeService = nil
+    }
+
+    private func scheduleRealtimeRefresh() {
+        realtimeRefreshTask?.cancel()
+        realtimeRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, let self else { return }
+            await self.load(status: self.currentStatus, search: self.currentSearch)
+        }
     }
 }
 
 struct RequestsInboxView: View {
     @State private var model = RequestsModel()
+    @State private var searchText = ""
+    @State private var showClosed = false
+    @State private var deepLinkedSubmission: Submission?
+    @State private var openedInitial = false
+
+    var initialInquiryId: String?
+
+    init(initialInquiryId: String? = nil) {
+        self.initialInquiryId = initialInquiryId
+    }
 
     var body: some View {
         Group {
@@ -37,9 +95,15 @@ struct RequestsInboxView: View {
                 ContentUnavailableView("Ingen forespørsler", systemImage: "tray", description: Text("Nye kundehenvendelser dukker opp her."))
             } else {
                 List {
+                    if let message = model.errorMessage {
+                        Label(message, systemImage: "wifi.exclamationmark")
+                            .font(.caption)
+                            .foregroundStyle(CHTheme.warning)
+                            .listRowBackground(CHTheme.surface)
+                    }
                     ForEach(model.submissions) { s in
                         NavigationLink {
-                            RequestDetailView(submission: s) { await model.load() }
+                            RequestDetailView(submission: s) { await reload() }
                         } label: {
                             RequestRow(submission: s)
                         }
@@ -49,14 +113,67 @@ struct RequestsInboxView: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
-                .refreshable { await model.load() }
+                .refreshable { await reload() }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CHTheme.bg.ignoresSafeArea())
         .navigationTitle("Forespørsler")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        .searchable(text: $searchText, prompt: "Søk navn, e-post eller melding")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showClosed = false
+                    } label: {
+                        Label("Åpne", systemImage: showClosed ? "circle" : "checkmark.circle.fill")
+                    }
+                    Button {
+                        showClosed = true
+                    } label: {
+                        Label("Alle", systemImage: showClosed ? "checkmark.circle.fill" : "circle")
+                    }
+                } label: {
+                    Label(showClosed ? "Alle" : "Åpne", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
+        }
+        .navigationDestination(item: $deepLinkedSubmission) { submission in
+            RequestDetailView(submission: submission) { await reload() }
+        }
+        .task(id: "\(showClosed)-\(searchText)") {
+            if !searchText.isEmpty {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+            }
+            await reload()
+            openInitialInquiryIfAvailable()
+        }
+        .task {
+            await model.startRealtime()
+            // Fallback reconciliation for sleep, transient WebSocket failure,
+            // or an event missed while iPadOS suspended the process.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                await reload()
+            }
+        }
+        .onDisappear {
+            Task { await model.stopRealtime() }
+        }
+    }
+
+    private func reload() async {
+        await model.load(status: showClosed ? "" : "open", search: searchText)
+    }
+
+    private func openInitialInquiryIfAvailable() {
+        guard !openedInitial, let initialInquiryId,
+              let match = model.submissions.first(where: { $0.id == initialInquiryId }) else { return }
+        openedInitial = true
+        deepLinkedSubmission = match
     }
 }
 
@@ -95,13 +212,22 @@ private struct RequestRow: View {
 
 /// Full request detail — everything the client submitted + actions.
 struct RequestDetailView: View {
-    let submission: Submission
+    @State private var submission: Submission
     var onChanged: () async -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var working = false
     @State private var errorMessage: String?
     @State private var createdProjectId: String?
+    @State private var showReply = false
+    @State private var replySubject = ""
+    @State private var replyBody = ""
+    @State private var pendingStatus: String?
+
+    init(submission: Submission, onChanged: @escaping () async -> Void = {}) {
+        _submission = State(initialValue: submission)
+        self.onChanged = onChanged
+    }
 
     var body: some View {
         ScrollView {
@@ -114,7 +240,7 @@ struct RequestDetailView: View {
                     detailsCard
                 }
                 statusCard
-                createButton
+                actionButtons
                 if let errorMessage {
                     Text(errorMessage).font(.caption).foregroundStyle(CHTheme.danger)
                 }
@@ -127,6 +253,50 @@ struct RequestDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $createdProjectId) { pid in
             ProjectDetailView(projectId: pid, title: submission.name)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { Task { await toggleStar() } } label: {
+                    Image(systemName: submission.isStarred ? "star.fill" : "star")
+                        .foregroundStyle(submission.isStarred ? CHTheme.warning : CHTheme.textSecondary)
+                }
+                if !submission.isConverted {
+                    Menu {
+                        Button { pendingStatus = "declined" } label: {
+                            Label("Avslå", systemImage: "hand.thumbsdown")
+                        }
+                        Button { pendingStatus = "archived" } label: {
+                            Label("Arkiver", systemImage: "archivebox")
+                        }
+                        Button(role: .destructive) { pendingStatus = "spam" } label: {
+                            Label("Marker som søppel", systemImage: "exclamationmark.shield")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
+        .task { await markReadIfNeeded() }
+        .sheet(isPresented: $showReply) {
+            replyComposer
+        }
+        .confirmationDialog(
+            "Oppdater forespørselen?",
+            isPresented: Binding(
+                get: { pendingStatus != nil },
+                set: { if !$0 { pendingStatus = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(statusActionTitle, role: pendingStatus == "spam" ? .destructive : nil) {
+                guard let status = pendingStatus else { return }
+                pendingStatus = nil
+                Task { await updateStatus(status) }
+            }
+            Button("Avbryt", role: .cancel) { pendingStatus = nil }
+        } message: {
+            Text("Forespørselen forsvinner fra listen over åpne henvendelser, men beholdes i historikken.")
         }
     }
 
@@ -260,7 +430,7 @@ struct RequestDetailView: View {
     }
 
     @ViewBuilder
-    private var createButton: some View {
+    private var actionButtons: some View {
         if submission.isConverted, let pid = submission.projectId, !pid.isEmpty {
             NavigationLink {
                 ProjectDetailView(projectId: pid, title: submission.name)
@@ -271,6 +441,16 @@ struct RequestDetailView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
         } else {
+            Button {
+                openReplyComposer()
+            } label: {
+                Label("Svar kunden", systemImage: "arrowshape.turn.up.left.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(working || (submission.email ?? "").isEmpty)
+
             Button {
                 Task { await create() }
             } label: {
@@ -293,6 +473,114 @@ struct RequestDetailView: View {
             let pid = try await client.createProjectFromSubmission(submission)
             await onChanged()
             createdProjectId = pid
+        } catch {
+            errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
+    }
+
+    private var replyComposer: some View {
+        NavigationStack {
+            Form {
+                Section("Til") {
+                    Text(submission.email ?? "Ingen e-postadresse")
+                        .foregroundStyle(CHTheme.textSecondary)
+                }
+                Section("Emne") {
+                    TextField("Emne", text: $replySubject)
+                }
+                Section("Svar") {
+                    TextEditor(text: $replyBody)
+                        .frame(minHeight: 180)
+                }
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(CHTheme.danger)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(CHTheme.bg)
+            .navigationTitle("Svar kunden")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { showReply = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(working ? "Sender…" : "Send") { Task { await sendReply() } }
+                        .disabled(working || replyBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var statusActionTitle: String {
+        switch pendingStatus {
+        case "declined": return "Avslå forespørselen"
+        case "spam": return "Marker som søppel"
+        default: return "Arkiver forespørselen"
+        }
+    }
+
+    private func openReplyComposer() {
+        errorMessage = nil
+        replySubject = "Re: \(submission.projectType.map { "Forespørsel om \($0)" } ?? "Din forespørsel")"
+        replyBody = ""
+        showReply = true
+    }
+
+    private func markReadIfNeeded() async {
+        guard !submission.isRead, let client = DashboardClient.make() else { return }
+        do {
+            try await client.updateInquiry(id: submission.id, isRead: true)
+            submission.isRead = true
+            await onChanged()
+        } catch {
+            errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
+    }
+
+    private func toggleStar() async {
+        guard let client = DashboardClient.make() else { return }
+        let next = !submission.isStarred
+        do {
+            try await client.updateInquiry(id: submission.id, isStarred: next)
+            submission.isStarred = next
+            await onChanged()
+        } catch {
+            errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
+    }
+
+    private func updateStatus(_ status: String) async {
+        guard let client = DashboardClient.make() else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await client.updateInquiry(id: submission.id, isRead: true, status: status)
+            submission.status = status
+            submission.isRead = true
+            await onChanged()
+            dismiss()
+        } catch {
+            errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
+        }
+    }
+
+    private func sendReply() async {
+        guard let client = DashboardClient.make() else { return }
+        working = true
+        errorMessage = nil
+        defer { working = false }
+        do {
+            submission = try await client.replyToInquiry(
+                id: submission.id,
+                subject: replySubject.trimmingCharacters(in: .whitespacesAndNewlines),
+                body: replyBody.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            showReply = false
+            await onChanged()
         } catch {
             errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription
         }

@@ -9,10 +9,10 @@ struct VideoCaptureAsset: Codable, Sendable, Equatable, Identifiable {
 
         var displayName: String {
             switch self {
-            case .unrated: "Ikke vurdert"
-            case .hold: "Hold"
-            case .good: "God"
-            case .noGood: "Ikke bruk"
+            case .unrated: "Umerket"
+            case .hold: "KEEP · Hold"
+            case .good: "OK · God"
+            case .noGood: "NG · Ikke bruk"
             }
         }
 
@@ -45,6 +45,31 @@ struct VideoCaptureAsset: Codable, Sendable, Equatable, Identifiable {
         case failed
     }
 
+    enum StoragePolicy: String, Codable, Sendable, CaseIterable {
+        case localOnly = "local_only"
+        case keepLocalAndCloud = "local_and_cloud"
+        case creatorHubOnly = "creatorhub_only"
+
+        var displayName: String {
+            switch self {
+            case .localOnly: "Kun iPad"
+            case .keepLocalAndCloud: "iPad + CreatorHub"
+            case .creatorHubOnly: "Kun CreatorHub etter opplasting"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .localOnly:
+                "Ingen skyopplasting. Originalen blir bare på denne iPaden."
+            case .keepLocalAndCloud:
+                "Beholder originalen på iPaden etter verifisert opplasting."
+            case .creatorHubOnly:
+                "Frigjør lokal plass først etter at CreatorHub har verifisert originalen."
+            }
+        }
+    }
+
     var id: String
     var ownerUserId: String
     var projectId: String
@@ -59,6 +84,7 @@ struct VideoCaptureAsset: Codable, Sendable, Equatable, Identifiable {
     var frameRate: Double?
     var width: Int?
     var height: Int?
+    var timecodeStart: String? = nil
     var recordedAt: Date
     var captureState: CaptureState
     var streamState: String
@@ -75,6 +101,7 @@ struct VideoCaptureAsset: Codable, Sendable, Equatable, Identifiable {
     var performanceNotes: String? = nil
     var technicalNotes: String? = nil
     var takeMetadataDirty: Bool = false
+    var storagePolicy: StoragePolicy = .keepLocalAndCloud
     var createdAt: Date
     var updatedAt: Date
 }

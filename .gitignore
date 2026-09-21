@@ -82,6 +82,7 @@ docker/
 !CONTRIBUTING.md
 !docs/creatorhub-workspace-tasklist.md
 !docs/prototype-tester-legal-release-checklist.md
+!docs/capture/MEMORY_CARD_IMPORT_QA.md
 !ipad/CaptureApp/TESTFLIGHT.md
 !ipad/Reiseguide/TESTFLIGHT.md
 !ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md

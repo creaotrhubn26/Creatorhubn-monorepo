@@ -103,7 +103,7 @@ struct ShotListDemoView: View {
             id: "demo-project", title: "Nordic Skin — kampanje",
             clientName: "Nordic Skin", eventDate: "2026-08-14",
             location: "Aker Brygge", projectType: "commercial",
-            status: "active", shotListSummary: summary, updatedAt: nil)
+            status: "active", shotListSummary: summary, memoryCardConfigs: [], updatedAt: nil)
         let pd = BackendProjectDetail(
             id: "demo-project", title: "Nordic Skin — kampanje",
             description: nil, clientName: "Nordic Skin", eventDate: "2026-08-14",

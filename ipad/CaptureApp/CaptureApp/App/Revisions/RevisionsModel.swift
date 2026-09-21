@@ -115,7 +115,12 @@ final class RevisionsModel {
         var backupItems: [DeliveryService.CardBackupItem] = []
         for (revisionId, group) in matchedGroups {
             do {
-                let result = try await service.importGroup(group, into: importSession.id, seenChecksums: seen)
+                let result = try await service.importGroup(
+                    group,
+                    into: importSession.id,
+                    ownerUserId: owner,
+                    seenChecksums: seen
+                )
                 if let checksum = result.checksum { seen.insert(checksum) }
                 if let importedAsset = result.imported {
                     backupItems.append(contentsOf: importedAsset.backupItems)

@@ -13,12 +13,32 @@ enum RedigeringEditStore {
         var recipe: MagicRecipe
         var exposureEV: Double
         var crop: CGRect?
+        /// Local per-face edits are part of the deliverable, not preview-only UI.
+        /// Optional keeps v1 UserDefaults payloads decodable.
+        var faceEdits: [FaceLocalAdjustFilter.Entry]?
+        /// Optional keeps v1/v2 payloads decodable. This toggle changes the
+        /// rendered recipe and must survive selection changes and undo/redo.
+        var reflectionRemoval: Bool?
+        /// Explicit camera-colour base. Optional keeps all pre-v4 edit payloads
+        /// decodable; missing means Apple's embedded camera rendering.
+        var cameraColorProfileID: CameraColorProfileID?
 
-        init(recipe: MagicRecipe, exposureEV: Double, crop: CGRect?, version: Int? = 1) {
+        init(
+            recipe: MagicRecipe,
+            exposureEV: Double,
+            crop: CGRect?,
+            faceEdits: [FaceLocalAdjustFilter.Entry] = [],
+            reflectionRemoval: Bool = false,
+            cameraColorProfileID: CameraColorProfileID = .appleEmbedded,
+            version: Int? = 4
+        ) {
             self.version = version
             self.recipe = recipe
             self.exposureEV = exposureEV
             self.crop = crop
+            self.faceEdits = faceEdits
+            self.reflectionRemoval = reflectionRemoval
+            self.cameraColorProfileID = cameraColorProfileID
         }
     }
 

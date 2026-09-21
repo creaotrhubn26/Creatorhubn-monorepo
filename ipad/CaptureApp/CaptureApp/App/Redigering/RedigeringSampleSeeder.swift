@@ -10,7 +10,14 @@ import UIKit
 /// klient-bilder), og ingenting av dette havner i Release (`#if DEBUG`).
 /// No-ops når sample-økten alt finnes.
 enum RedigeringSampleSeeder {
-    static let sessionName = "CR2 testbilde"
+    /// Hold den genererte portrett-QA-en adskilt fra eldre demoøkter. Da får
+    /// UI-testen alltid den nyeste fixture-filen selv på en simulator som har
+    /// kjørt `--demo-redigering` tidligere.
+    static var sessionName: String {
+        ProcessInfo.processInfo.arguments.contains("--portrait-fixture")
+            ? "Portrett QA"
+            : "CR2 testbilde"
+    }
 
     /// Finn et bundlet RAW-testbilde. Foretrekk demo-bryllupsbildet (CR3), fall
     /// tilbake til den eldre `_MG_9300.CR2`. Begge dekodes direkte via CIRAWFilter.
@@ -27,7 +34,15 @@ enum RedigeringSampleSeeder {
         let store = SessionStore(database: db)
 
         let existing = (try? await store.listSessions(ownerUserId: ownerUserId)) ?? []
-        if existing.contains(where: { $0.name == sessionName }) { return }
+        if let existingSession = existing.first(where: { $0.name == sessionName }) {
+            // XCUITest re-installer app-bundlen. DB-en kan overleve, men gamle
+            // absolutte Documents-stier inneholder da en utgått container-UUID.
+            // Reparér fixture-kopien + DB-pekeren ved hver portrett-QA-start.
+            if ProcessInfo.processInfo.arguments.contains("--portrait-fixture") {
+                await repairPortraitFixture(in: existingSession, store: store)
+            }
+            return
+        }
 
         // Ingen RAW-fixture bundlet (enhet/CI/frisk installasjon) → seed et syntetisk
         // demo-bilde så editoren ikke står tom. Kun preview (ingen rawKey).
@@ -72,14 +87,24 @@ enum RedigeringSampleSeeder {
                 id: asset.id, kind: .preview, key: previewDest.path, checksumSha256: "", sizeBytes: size ?? 0)
         }
 
-        // Åpne demoen med «Bryllup»-graden alt påført, så «Etter» viser den
-        // korrigerende redigeringen live (fotografen kan bytte preset derfra).
-        RedigeringEditStore.save(asset.id, .init(recipe: .wedding, exposureEV: 0, crop: nil))
+        // Portrett-QA bruker den naturlige portrettoppskriften; den generelle
+        // RAW-demoen beholder bryllupsgraden som før.
+        RedigeringEditStore.save(
+            asset.id,
+            .init(
+                recipe: ProcessInfo.processInfo.arguments.contains("--portrait-fixture") ? .portrait : .wedding,
+                exposureEV: 0,
+                crop: nil
+            )
+        )
     }
 
-    /// Seed en økt + asset fra et generert syntetisk bilde (kun preview, ingen RAW).
+    /// Seed en økt + asset fra den bundlete, AI-genererte portrett-fixturen.
+    /// Den syntetiske tegningen beholdes som siste fallback slik at DEBUG-ruten
+    /// fortsatt virker dersom noen bygger uten ressursfilen.
     private static func seedSynthetic(store: SessionStore, ownerUserId: String) async {
-        guard let jpg = syntheticSampleJPEG() else { return }
+        let bundledPortrait = bundledPortraitJPEG()
+        guard let jpg = bundledPortrait ?? syntheticSampleJPEG() else { return }
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("sample", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -90,13 +115,62 @@ enum RedigeringSampleSeeder {
               let asset = try? await store.createAsset(
                 sessionId: session.id,
                 descriptor: AssetDescriptor(
-                    id: UUID(), originalFilename: "demo_sample.jpg", captureTime: Date(),
+                    id: UUID(),
+                    originalFilename: bundledPortrait == nil
+                        ? "demo_sample.jpg"
+                        : "creatorhub-editor-portrait.jpg",
+                    captureTime: Date(),
                     mime: "image/jpeg", sizeBytes: Int64(jpg.count)),
                 initialState: .previewReady) else { return }
         try? await store.attachStorageKey(
             id: asset.id, kind: .preview, key: previewDest.path,
             checksumSha256: "", sizeBytes: Int64(jpg.count))
-        RedigeringEditStore.save(asset.id, .init(recipe: .wedding, exposureEV: 0, crop: nil))
+        RedigeringEditStore.save(
+            asset.id,
+            .init(
+                recipe: ProcessInfo.processInfo.arguments.contains("--portrait-fixture") ? .portrait : .wedding,
+                exposureEV: 0,
+                crop: nil
+            )
+        )
+    }
+
+    private static func bundledPortraitJPEG() -> Data? {
+        Bundle.main.url(
+            forResource: "creatorhub-editor-portrait",
+            withExtension: "jpg"
+        ).flatMap { try? Data(contentsOf: $0) }
+    }
+
+    /// Rebind et eksisterende QA-asset til DEN NÅVÆRENDE app-containeren.
+    /// Dette er kun DEBUG/demo-data; ekte importer flyttes aldri på denne måten.
+    private static func repairPortraitFixture(in session: Session, store: SessionStore) async {
+        guard let jpg = bundledPortraitJPEG(),
+              let assets = try? await store.listAssets(sessionId: session.id),
+              let asset = assets.first else { return }
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("sample", isDirectory: true)
+        let destination = dir.appendingPathComponent("demo_sample_preview.jpg")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try jpg.write(to: destination, options: .atomic)
+            try await store.attachStorageKey(
+                id: asset.id,
+                kind: .preview,
+                key: destination.path,
+                checksumSha256: "",
+                sizeBytes: Int64(jpg.count)
+            )
+            // En QA-kjøring skal starte fra samme, naturlige portrettoppskrift
+            // hver gang. Ellers ligger crop/EV fra forrige simulatorrunde igjen
+            // i UserDefaults og skjermbildet tester ikke lenger fabrikktilstanden.
+            RedigeringEditStore.save(
+                asset.id,
+                .init(recipe: .portrait, exposureEV: 0, crop: nil)
+            )
+        } catch {
+            NSLog("RedigeringSampleSeeder: kunne ikke reparere portrett-fixture: %@", String(describing: error))
+        }
     }
 
     /// Generer et tydelig SYNTETISK portrett (varm gradient + mykt motiv-lys i

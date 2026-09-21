@@ -26,6 +26,30 @@ enum SkinToneGuardFilter {
         apply(strength: recipe.skinGuard, to: image)
     }
 
+    /// Protect the subject's captured skin colour while global tone/colour
+    /// adjustments run. Luminance is allowed to change; chromatic drift is
+    /// pulled part-way back toward the source skin. This prevents a global
+    /// warmth/vibrance pass from turning a face orange without forcing every
+    /// ethnicity and lighting situation toward one fixed RGB value.
+    static func apply(
+        recipe: MagicRecipe,
+        to image: CIImage,
+        reference: CIImage
+    ) -> CIImage {
+        guard recipe.skinGuard > 0,
+              image.extent.integral == reference.extent.integral else {
+            return apply(recipe: recipe, to: image)
+        }
+        let faces = detectFaces(in: image, extent: image.extent)
+        guard !faces.isEmpty else { return image }
+        return preserveReferenceColor(
+            strength: recipe.skinGuard,
+            image: image,
+            reference: reference,
+            faces: faces
+        )
+    }
+
     /// Direkte styrke-inngang (for LearnedStyle-banen som ikke har en recipe).
     /// PER-ANSIKT + MASKERT: hvert ansikt måles og korrigeres UAVHENGIG (ulik hud/
     /// lys → «Ansikt 1 vs Ansikt 2»), maskert til sitt eget område så bakgrunnen
@@ -67,6 +91,56 @@ enum SkinToneGuardFilter {
         return out
     }
 
+    /// Internal/testable reference-colour protection with explicit faces.
+    static func preserveReferenceColor(
+        strength: Double,
+        image: CIImage,
+        reference: CIImage,
+        faces: [CGRect]
+    ) -> CIImage {
+        guard strength > 0, !faces.isEmpty else { return image }
+        let extent = image.extent
+        var out = image
+        for faceRect in faces {
+            let inner = faceRect.insetBy(dx: faceRect.width * 0.2, dy: faceRect.height * 0.2)
+            let sampleRect = inner.width > 2 ? inner : faceRect
+            guard let current = areaAverage(of: out, in: sampleRect),
+                  let source = areaAverage(of: reference, in: sampleRect) else { continue }
+
+            // Match source chroma at the CURRENT luminance so exposure and tone
+            // remain intentional. Clamp prevents abrupt colour seams on mixed
+            // lighting or imperfect face detections.
+            let currentY = max(0.01, 0.2126 * current.r + 0.7152 * current.g + 0.0722 * current.b)
+            let sourceY = max(0.01, 0.2126 * source.r + 0.7152 * source.g + 0.0722 * source.b)
+            let scale = currentY / sourceY
+            let amount = CGFloat(min(1, strength) * 0.62)
+            func correction(_ now: CGFloat, _ original: CGFloat) -> CGFloat {
+                let target = min(1, max(0, original * scale))
+                return min(0.035, max(-0.035, (target - now) * amount))
+            }
+            let dr = correction(current.r, source.r)
+            let dg = correction(current.g, source.g)
+            let db = correction(current.b, source.b)
+            guard max(abs(dr), max(abs(dg), abs(db))) > 0.001 else { continue }
+
+            let matrix = CIFilter.colorMatrix()
+            matrix.inputImage = out
+            matrix.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
+            matrix.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
+            matrix.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
+            matrix.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
+            matrix.biasVector = CIVector(x: dr, y: dg, z: db, w: 0)
+            guard let corrected = matrix.outputImage,
+                  let mask = faceMask(extent: extent, faceRect: faceRect) else { continue }
+            let blend = CIFilter.blendWithMask()
+            blend.inputImage = corrected
+            blend.backgroundImage = out
+            blend.maskImage = mask
+            out = blend.outputImage?.cropped(to: extent) ?? out
+        }
+        return out
+    }
+
     // MARK: - Deteksjon + prøvetaking (samme primitiver som SkinToneUnifyFilter)
 
     private static func detectFaces(in image: CIImage, extent: CGRect) -> [CGRect] {
@@ -78,20 +152,21 @@ enum SkinToneGuardFilter {
             .filter { $0.width > 2 && $0.height > 2 }
     }
 
-    /// Myk ansikts-/hals-oval (hvit inni → svart ute) for maskert korreksjon.
+    /// Myk ansiktsoval (hvit inni → svart ute) for maskert korreksjon.
     private static func faceMask(extent: CGRect, faceRect: CGRect) -> CIImage? {
-        let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: extent)
         let g = CIFilter.radialGradient()
-        g.center = CGPoint(x: faceRect.midX, y: faceRect.midY)
-        g.radius0 = Float(min(faceRect.width, faceRect.height) * 0.5)
-        g.radius1 = Float(max(faceRect.width, faceRect.height) * 0.85)
+        g.center = .zero
+        g.radius0 = 0.70
+        g.radius1 = 1
         g.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 1)
         g.color1 = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
-        guard let grad = g.outputImage?.cropped(to: extent) else { return nil }
-        let comp = CIFilter.sourceOverCompositing()
-        comp.inputImage = grad
-        comp.backgroundImage = black
-        return comp.outputImage?.cropped(to: extent)
+        let transform = CGAffineTransform(
+            a: max(1, faceRect.width * 0.48), b: 0,
+            c: 0, d: max(1, faceRect.height * 0.57),
+            tx: faceRect.midX,
+            ty: faceRect.midY - faceRect.height * 0.03
+        )
+        return g.outputImage?.transformed(by: transform).cropped(to: extent)
     }
 
     private static func areaAverage(of image: CIImage, in rect: CGRect) -> (r: CGFloat, g: CGFloat, b: CGFloat)? {

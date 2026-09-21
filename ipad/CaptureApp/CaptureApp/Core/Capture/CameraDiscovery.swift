@@ -226,6 +226,9 @@ final class CameraDiscovery: ObservableObject {
                 await MainActor.run {
                     if !self.cameras.contains(where: { $0.baseURL.host == host }) {
                         self.cameras.append(found)
+                        self.cameras.sort {
+                            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+                        }
                     }
                 }
             }

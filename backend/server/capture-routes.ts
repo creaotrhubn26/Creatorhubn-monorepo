@@ -175,6 +175,29 @@ const setShotCompletionBody = z.object({
   isCompleted: z.boolean(),
 });
 
+const cardTransferBody = z.object({
+  cardIdentifier: z.string().min(1).max(512),
+  cardName: z.string().min(1).max(255),
+  plannedCardLabel: z.string().max(255).nullable().optional(),
+  capacityBytes: z.number().int().nonnegative().nullable().optional(),
+  availableBytes: z.number().int().nonnegative().nullable().optional(),
+  photoCount: z.number().int().nonnegative(),
+  videoCount: z.number().int().nonnegative(),
+  audioCount: z.number().int().nonnegative().default(0),
+  unsupportedCount: z.number().int().nonnegative(),
+  assetCount: z.number().int().nonnegative(),
+  duplicateCount: z.number().int().nonnegative(),
+  failedCount: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+  copiedBytes: z.number().int().nonnegative(),
+  manifestSha256: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
+  storagePolicy: z.enum(['local_only', 'local_and_cloud', 'creatorhub_only']),
+  status: z.enum(['copying', 'local_verified', 'waiting_for_project', 'uploading', 'cloud_verified', 'paused', 'failed']),
+  locallyVerifiedAt: z.string().datetime().nullable().optional(),
+  cloudVerifiedAt: z.string().datetime().nullable().optional(),
+  sourceDevice: z.string().max(255).nullable().optional(),
+});
+
 const deliverToShowcaseBody = z.object({
   filter: z.enum(['flagged', 'rating_at_least_4', 'picks_or_4plus', 'all_non_rejected'])
     .default('picks_or_4plus'),
@@ -593,6 +616,75 @@ export function createCaptureRouter(
     res.status(201).json(created);
   });
 
+  // Project-visible evidence for a physical memory-card ingest. The iPad
+  // updates one stable row as local verification and CreatorHub S3 backup
+  // progress. The source card itself is always read-only.
+  router.put('/projects/:projectId/card-transfers/:transferId', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const transferId = z.string().uuid().safeParse(req.params.transferId);
+    const parsed = cardTransferBody.safeParse(req.body);
+    if (!transferId.success || !handleZod(res, parsed)) return;
+    const project = await fetchProjectDetail(db, userId, req.params.projectId);
+    if (!project) {
+      res.status(404).json({ error: 'project_not_found' });
+      return;
+    }
+    const body = parsed.data;
+    const result = await pool.query(
+      `INSERT INTO capture_card_transfers (
+         id, owner_user_id, project_id, card_identifier, card_name,
+         planned_card_label, capacity_bytes, available_bytes, photo_count,
+         video_count, audio_count, unsupported_count, asset_count, duplicate_count,
+         failed_count, total_bytes, copied_bytes, manifest_sha256, storage_policy, status,
+         local_verified_at, cloud_verified_at, source_device, created_at, updated_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+         $15, $16, $17, $18, $19, $20, $21, $22, $23, now(), now()
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         card_identifier = EXCLUDED.card_identifier,
+         card_name = EXCLUDED.card_name,
+         planned_card_label = EXCLUDED.planned_card_label,
+         capacity_bytes = EXCLUDED.capacity_bytes,
+         available_bytes = EXCLUDED.available_bytes,
+         photo_count = EXCLUDED.photo_count,
+         video_count = EXCLUDED.video_count,
+         audio_count = EXCLUDED.audio_count,
+         unsupported_count = EXCLUDED.unsupported_count,
+         asset_count = EXCLUDED.asset_count,
+         duplicate_count = EXCLUDED.duplicate_count,
+         failed_count = EXCLUDED.failed_count,
+         total_bytes = EXCLUDED.total_bytes,
+         copied_bytes = EXCLUDED.copied_bytes,
+         manifest_sha256 = EXCLUDED.manifest_sha256,
+         storage_policy = EXCLUDED.storage_policy,
+         status = EXCLUDED.status,
+         local_verified_at = EXCLUDED.local_verified_at,
+         cloud_verified_at = EXCLUDED.cloud_verified_at,
+         source_device = EXCLUDED.source_device,
+         updated_at = now()
+       WHERE capture_card_transfers.owner_user_id = EXCLUDED.owner_user_id
+         AND capture_card_transfers.project_id = EXCLUDED.project_id`,
+      [
+        transferId.data, userId, req.params.projectId, body.cardIdentifier,
+        body.cardName, body.plannedCardLabel ?? null, body.capacityBytes ?? null,
+        body.availableBytes ?? null, body.photoCount, body.videoCount, body.audioCount,
+        body.unsupportedCount, body.assetCount, body.duplicateCount,
+        body.failedCount, body.totalBytes, body.copiedBytes, body.manifestSha256 ?? null,
+        body.storagePolicy, body.status, body.locallyVerifiedAt ?? null,
+        body.cloudVerifiedAt ?? null, body.sourceDevice ?? null,
+      ],
+    );
+    if (result.rowCount !== 1) {
+      // A UUID already owned by another project/account must never receive a
+      // plausible success acknowledgement. No row was changed by the scoped
+      // ON CONFLICT predicate above.
+      res.status(409).json({ error: 'transfer_id_conflict' });
+      return;
+    }
+    res.json({ ok: true, transferId: transferId.data });
+  });
+
   // ── Client-requested revisions ──────────────────────────────────────────
   // The gallery "be om endringer" flow posts here when a client wants changes
   // on a delivered photo; the iPad "Revisjoner" inbox reads + resolves them.
@@ -858,6 +950,40 @@ export function createCaptureRouter(
       return;
     }
     res.json(row);
+  });
+
+  // Authenticated, short-lived access to private CreatorHub S3 originals.
+  // The asset lookup is owner-scoped before a key is selected; callers never
+  // receive bucket credentials or a persistent public URL.
+  router.get('/assets/:id/read-url', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const kind = typeof req.query.kind === 'string' ? req.query.kind : 'preview';
+    if (!['preview', 'full', 'raw'].includes(kind)) {
+      res.status(400).json({ error: 'invalid_kind' });
+      return;
+    }
+    const row = await fetchAsset(db, userId, req.params.id);
+    if (!row) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    const key = kind === 'raw'
+      ? row.rawKey
+      : kind === 'full'
+        ? row.fullKey
+        : row.previewKey;
+    if (!key) {
+      res.status(409).json({ error: 'variant_not_ready' });
+      return;
+    }
+    const url = await signAssetReadUrl(key);
+    if (!url) {
+      res.status(503).json({ error: 'storage_unavailable' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.json({ url, kind, expiresInSeconds: 300 });
   });
 
   router.patch('/assets/:id', auth, async (req, res) => {

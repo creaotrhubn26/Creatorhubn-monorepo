@@ -66,6 +66,67 @@ struct VideoCaptureStoreTests {
         #expect(try await store.pendingTakeMetadata(ownerUserId: "owner").isEmpty)
     }
 
+    @Test func persistsStoragePolicyPerTake() async throws {
+        let store = try VideoCaptureStore(database: .inMemory())
+        var asset = sample(id: "cloud", projectId: "project", take: 1, state: .ready)
+        asset.storagePolicy = .creatorHubOnly
+        try await store.save(asset)
+
+        let stored = try #require(await store.asset(id: asset.id, ownerUserId: asset.ownerUserId))
+        #expect(stored.storagePolicy == .creatorHubOnly)
+    }
+
+    @Test func persistsSourceTimecodeAndFormatsDropFrame() async throws {
+        let store = try VideoCaptureStore(database: .inMemory())
+        var asset = sample(id: "timecode", projectId: "project", take: 1, state: .local)
+        asset.timecodeStart = "01:00:00;00"
+        try await store.save(asset)
+
+        let stored = try #require(await store.asset(id: asset.id, ownerUserId: asset.ownerUserId))
+        #expect(stored.timecodeStart == "01:00:00;00")
+        #expect(CapturedVideoRecording.formatTimecode(
+            frameNumber: 107_892,
+            framesPerSecond: 30,
+            dropFrame: true
+        ) == "01:00:00;00")
+        #expect(CapturedVideoRecording.formatTimecode(
+            frameNumber: 90_000,
+            framesPerSecond: 25,
+            dropFrame: false
+        ) == "01:00:00:00")
+    }
+
+    @Test func localOriginalCanOnlyBeReleasedAfterVerificationAndInsideManagedRoot() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("verified.mov")
+        try Data("video".utf8).write(to: file)
+
+        var pending = sample(id: "pending", projectId: "project", take: 1, state: .uploading)
+        pending.localPath = file.path
+        #expect(throws: VideoLocalOriginalRetention.Failure.uploadNotVerified) {
+            try VideoLocalOriginalRetention.releaseVerifiedOriginal(for: pending, managedRoot: root)
+        }
+        #expect(FileManager.default.fileExists(atPath: file.path))
+
+        var outside = sample(id: "outside", projectId: "project", take: 2, state: .ready)
+        outside.localPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("outside.mov").path
+        #expect(throws: VideoLocalOriginalRetention.Failure.unmanagedFile) {
+            try VideoLocalOriginalRetention.releaseVerifiedOriginal(for: outside, managedRoot: root)
+        }
+
+        var verified = sample(id: "verified", projectId: "project", take: 3, state: .ready)
+        verified.localPath = file.path
+        #expect(try VideoLocalOriginalRetention.releaseVerifiedOriginal(
+            for: verified,
+            managedRoot: root
+        ))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+
     private func sample(
         id: String,
         projectId: String,

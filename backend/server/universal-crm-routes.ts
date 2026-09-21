@@ -1,6 +1,9 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import type { Pool } from "pg";
 import { sendSms, smsConfigured } from "./crm-sms";
+import { sendCapturePush } from "./capture-push";
+import { broadcastUserEvent } from "./realtime-user-events.js";
 
 export interface UniversalCrmRoutesDeps {
   app: express.Application;
@@ -10,6 +13,13 @@ export interface UniversalCrmRoutesDeps {
 
 export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
+  const publicLeadRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "too_many_requests" },
+  });
 
   // ── Self-applying, idempotent schema for the CRM workflow-gap features.
   // Mirrors the CREATE TABLE IF NOT EXISTS pattern used across the codebase
@@ -1547,7 +1557,7 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
 
   // Public: a website inquiry form posts here. No auth — the token maps the
   // lead to its photographer. Creates a lead (source='website') + an SLA task.
-  app.post("/api/public/lead/:formToken", async (req, res) => {
+  app.post("/api/public/lead/:formToken", publicLeadRateLimit, async (req, res) => {
     try {
       const tokenRow = await pool.query(
         `SELECT * FROM lead_form_tokens WHERE token = $1`,
@@ -1558,37 +1568,87 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       }
       const owner = tokenRow.rows[0];
       const { name, email, phone, projectType, budget, notes } = req.body;
-      if (!name || !email) {
-        return res.status(400).json({ error: "Name and email are required" });
+      const normalizedName = String(name || "").trim().slice(0, 255);
+      const normalizedEmail = String(email || "").trim().toLowerCase().slice(0, 320);
+      if (!normalizedName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return res.status(400).json({ error: "Valid name and email are required" });
       }
-      const inserted = await pool.query(
+      const db = await pool.connect();
+      try {
+      await db.query("BEGIN");
+      const inserted = await db.query(
         `INSERT INTO crm_customers (id, name, email, phone, profession, project_type, budget, status, notes, source, owner_user_id, email_normalized, consent_status, consent_at, custom_fields, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'lead', $7, 'website', $8, $9, 'form_submitted', now(), '{}'::jsonb, now(), now()) RETURNING id`,
         [
-          name,
-          email,
+          normalizedName,
+          normalizedEmail,
           phone || null,
           owner.profession || null,
           projectType || null,
           budget || null,
           notes || null,
           owner.owner_user_id,
-          normalizeEmail(email),
+          normalizeEmail(normalizedEmail),
         ],
       );
       const customerId = inserted.rows[0].id;
       // SLA: follow up within 24h.
-      await pool.query(
-        `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, assigned_to, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, 'high', 'pending', now() + interval '24 hours', $4, now(), now())`,
+      await db.query(
+        `INSERT INTO crm_tasks (id, customer_id, title, description, priority, status, due_date, assigned_to, owner_user_id, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'high', 'pending', now() + interval '24 hours', $4, $4, now(), now())`,
         [
           customerId,
-          `Følg opp ny henvendelse: ${name}`,
+          `Følg opp ny henvendelse: ${normalizedName}`,
           `Innkommet via nettside-skjema. ${notes || ""}`.trim(),
           owner.owner_user_id,
         ],
       ).catch((e) => console.warn("Lead SLA task insert skipped:", e));
+      const ownerEmailResult = await db.query(
+        `SELECT email FROM users WHERE id::text = $1 LIMIT 1`,
+        [String(owner.owner_user_id)],
+      ).catch(() => ({ rows: [] as any[] }));
+      const ownerEmail = ownerEmailResult.rows[0]?.email || null;
+      const inquiry = await db.query(
+        `INSERT INTO client_submissions
+           (id, name, email, phone, project_type, budget, description,
+            owner_user_id, vendor_id, vendor_email, status, submission_type,
+            category, source_channel, data, submitted_at, created_at, updated_at)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$7,$8,'new','inquiry',
+                 'inquiry','public_lead_form',$9::jsonb,NOW(),NOW(),NOW())
+         RETURNING id`,
+        [
+          normalizedName,
+          normalizedEmail,
+          phone || null,
+          projectType || owner.profession || "annet",
+          budget || null,
+          notes || "Forespørsel via nettside",
+          String(owner.owner_user_id),
+          ownerEmail,
+          JSON.stringify({ crmCustomerId: customerId }),
+        ],
+      );
+      await db.query("COMMIT");
+      void sendCapturePush(
+        pool,
+        String(owner.owner_user_id),
+        "Ny forespørsel",
+        `${normalizedName}${projectType ? ` · ${projectType}` : ""}`,
+        { type: "inquiry", inquiryId: String(inquiry.rows[0].id) },
+      ).catch((e) => console.warn("Public lead Capture push skipped:", e));
+      broadcastUserEvent(String(owner.owner_user_id), {
+        kind: "inquiry.updated",
+        inquiryId: String(inquiry.rows[0].id),
+        reason: "created",
+        timestamp: new Date().toISOString(),
+      });
       return res.status(201).json({ ok: true, message: "Takk! Vi tar kontakt snart." });
+      } catch (error) {
+        await db.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        db.release();
+      }
     } catch (error) {
       console.error("Public lead intake error:", error);
       return res.status(500).json({ error: "Failed to submit lead" });
