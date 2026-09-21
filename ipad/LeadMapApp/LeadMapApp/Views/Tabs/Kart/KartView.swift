@@ -1924,6 +1924,7 @@ struct KartView: View {
             .fixedSize()
             .foregroundStyle(.white)
             .padding(.horizontal, 11).padding(.vertical, 8)
+            .frame(minHeight: 44)
             .background(.ultraThinMaterial, in: Capsule())
             .background(KrBrand.purple.opacity(0.45), in: Capsule())
             .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
@@ -2098,6 +2099,8 @@ struct KartView: View {
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(KrBrand.cardHi, in: Capsule())
                         .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+                        .frame(minHeight: 44)
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -2588,6 +2591,7 @@ struct KartView: View {
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
+            .frame(minHeight: 44)
             .background(
                 active ? KrBrand.purple.opacity(0.15) : KrBrand.card,
                 in: RoundedRectangle(cornerRadius: 9)
@@ -2659,6 +2663,9 @@ struct KartView: View {
                         } label: {
                             KartStatusPin(status: lead.status, isSelected: selectedLead.id == lead.id)
                                 .overlay(measureRingFor(lead))
+                                // Nåla er 41pt bred — treffområdet skal være 44.
+                                .frame(minWidth: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("kart.lead.\(lead.id)")
@@ -4789,6 +4796,7 @@ struct KartView: View {
             .fixedSize()
             .foregroundStyle(.white)
             .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(minHeight: 44)
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
         }
@@ -6289,6 +6297,8 @@ struct KartView: View {
                     // (lå bak ⋯ før).
                     Button { showStatusChange = true } label: {
                         statusBadge(selectedLead.status)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     Button {
@@ -6298,6 +6308,9 @@ struct KartView: View {
                         Image(systemName: favorited ? "star.fill" : "star")
                             .font(.appScaled(size: 12))
                             .foregroundStyle(favorited ? KrBrand.yellow : KrBrand.textTertiary)
+                            // Glyfen er 12pt — uten dette er treffområdet 13×13.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -6331,6 +6344,8 @@ struct KartView: View {
                         .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8)
                             .stroke(KrBrand.stroke, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -6343,6 +6358,8 @@ struct KartView: View {
                     .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8)
                         .stroke(KrBrand.stroke, lineWidth: 1))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -6360,6 +6377,7 @@ struct KartView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 9)
+                    .frame(minHeight: 44)
                     .background(
                         LinearGradient(
                             colors: [KrBrand.purple, KrBrand.purpleLight],
@@ -6381,6 +6399,7 @@ struct KartView: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10).padding(.vertical, 9)
+                .frame(minHeight: 44)
                 .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
             }
@@ -6397,6 +6416,7 @@ struct KartView: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10).padding(.vertical, 9)
+                .frame(minHeight: 44)
                 .background(KrBrand.purple.opacity(0.22), in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
             }
@@ -6436,6 +6456,8 @@ struct KartView: View {
                     .frame(width: 32, height: 32)
                     .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             Spacer(minLength: 0)
             }
@@ -6450,6 +6472,9 @@ struct KartView: View {
                 .frame(width: 32, height: 32)
                 .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                // Brikken forblir 32pt; treffområdet rundt den er 44.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -6699,6 +6724,9 @@ struct KartView: View {
                     .frame(height: 2)
             }
             .padding(.horizontal, 11)
+            // Teksten + understreken er 26pt; treffområdet skal være 44.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
