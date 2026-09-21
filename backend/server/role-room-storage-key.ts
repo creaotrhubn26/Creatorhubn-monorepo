@@ -143,6 +143,34 @@ export function roleRoomContinuityMediaKey(input: {
   ].join('/');
 }
 
+/** Canonical private key for original production-sound recorder files. */
+export function roleRoomProductionSoundMediaKey(input: {
+  organizationId?: string | null;
+  userId: string;
+  projectId: string;
+  productionDayId: string;
+  objectId: string;
+  fileName: string;
+}): string {
+  const user = storageSegment(input.userId, 'unknown-user');
+  const organization = storageSegment(input.organizationId, `personal-${user}`);
+  return [
+    'organizations',
+    organization,
+    'projects',
+    storageSegment(input.projectId, 'unassigned'),
+    'production',
+    'sound',
+    'production-days',
+    storageSegment(input.productionDayId, 'unknown-day'),
+    'recorder-files',
+    'uploads',
+    user,
+    storageSegment(input.objectId, 'object'),
+    `original.${safeExtension(input.fileName, 'wav')}`,
+  ].join('/');
+}
+
 /** Canonical private key for location-scout photos in The Role Room's S3 bucket. */
 export function roleRoomLocationScoutMediaKey(input: {
   organizationId?: string | null;

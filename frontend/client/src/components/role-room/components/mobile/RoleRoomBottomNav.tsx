@@ -318,6 +318,8 @@ export const RoleRoomBottomNav: React.FC<RoleRoomBottomNavProps> = ({
  */
 export function bottomNavConfigForRole(role: UserRoleType | null | undefined): string[] {
   switch (role) {
+    case 'production_sound_mixer':
+      return ['shooting', 'schedule', 'brief', 'crew'];
     case 'casting_director':
     case 'director':
       return ['roles', 'candidates', 'schedule', 'brief'];
@@ -332,6 +334,8 @@ export function bottomNavConfigForRole(role: UserRoleType | null | undefined): s
       return ['shooting', 'schedule', 'crew', 'roles'];
     case 'camera_team':
       return ['shooting', 'shotlist', 'schedule', 'crew'];
+    case 'production_designer':
+      return ['brief', 'shooting', 'shotlist', 'schedule'];
     case 'content_producer':
       return ['candidates', 'brief', 'planner', 'approval'];
     case 'client_reviewer':
