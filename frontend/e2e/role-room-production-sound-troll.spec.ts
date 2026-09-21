@@ -9,6 +9,7 @@ async function installAuthenticatedProductionSoundApi(page: Page) {
   const authenticatedRequests: string[] = [];
   let soundMedia: Array<Record<string, any>> = [];
   let mediaReconciliations = 0;
+  let mediaDeletions = 0;
   let rejectNextSaveWithConflict = false;
 
   await page.route("**/api/casting/**", async (route) => {
@@ -295,6 +296,27 @@ async function installAuthenticatedProductionSoundApi(page: Page) {
         });
         return;
       }
+      if (
+        request.method() === "DELETE" &&
+        pathname.endsWith("/8b49da36-ff43-4d8f-98dc-20ce0e39218d")
+      ) {
+        if (soundMedia[0]?.reconciliationStatus === "matched") {
+          await route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: "media_reconciled",
+              message:
+                "Fjern koblingen til continuity-taken før recorderfilen slettes.",
+            }),
+          });
+          return;
+        }
+        soundMedia = [];
+        mediaDeletions += 1;
+        await route.fulfill({ status: 204, body: "" });
+        return;
+      }
       await route.fulfill({
         status: 404,
         contentType: "application/json",
@@ -399,6 +421,7 @@ async function installAuthenticatedProductionSoundApi(page: Page) {
     authenticatedRequests,
     savedVersions,
     mediaReconciliations: () => mediaReconciliations,
+    mediaDeletions: () => mediaDeletions,
     conflictOnNextSave() {
       rejectNextSaveWithConflict = true;
     },
@@ -501,6 +524,15 @@ test.describe("Autentisert Troll-flyt · Production Sound", () => {
     await expect(importedMedia).toContainText("Avstemt");
     await expect(importedMedia).toContainText("Koblet til Scene 1");
     expect(api.mediaReconciliations()).toBe(1);
+    await importedMedia
+      .getByRole("button", { name: "Slett TROLL_1A_001.wav permanent" })
+      .click();
+    await expect(
+      page.getByText(
+        "Fjern koblingen til continuity-taken før recorderfilen slettes.",
+      ),
+    ).toBeVisible();
+    expect(api.mediaDeletions()).toBe(0);
 
     await page.getByRole("button", { name: "Handoff" }).click();
     await page.getByLabel("Mottaker").fill("DIT / klipp");
@@ -572,6 +604,56 @@ test.describe("Autentisert Troll-flyt · Production Sound", () => {
         ),
       )
       .toBe(true);
+  });
+
+  test("sletter en uavstemt recorderfil først etter eksplisitt bekreftelse", async ({
+    page,
+  }) => {
+    const api = await installAuthenticatedProductionSoundApi(page);
+    await openCastingPlanner(page, {
+      urlFlags: {
+        seed: "production-sound-troll",
+        session: "production-sound",
+        lens: "production-sound",
+      },
+    });
+    await selectFirstProject(page);
+    const workspace = page.getByTestId("production-sound-workspace");
+    await expect(workspace).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Ekstraopptak" }).click();
+
+    const waveHeader = Buffer.from([
+      0x52, 0x49, 0x46, 0x46, 0x28, 0, 0, 0, 0x57, 0x41, 0x56, 0x45, 0x66,
+      0x6d, 0x74, 0x20, 0x10, 0, 0, 0, 1, 0, 2, 0, 0x80, 0xbb, 0, 0, 0, 0x65,
+      4, 0, 6, 0, 24, 0, 0x64, 0x61, 0x74, 0x61, 4, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+    await workspace
+      .locator('input[type="file"][accept*=".wav"]')
+      .setInputFiles({
+        name: "TROLL_1A_001.wav",
+        mimeType: "audio/wav",
+        buffer: waveHeader,
+      });
+    const importedMedia = page.getByTestId(
+      "production-sound-media-8b49da36-ff43-4d8f-98dc-20ce0e39218d",
+    );
+    await expect(importedMedia).toBeVisible();
+    await importedMedia
+      .getByRole("button", { name: "Slett TROLL_1A_001.wav permanent" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Slett recorderfil permanent?" }),
+    ).toBeVisible();
+    expect(api.mediaDeletions()).toBe(0);
+    await page.getByTestId("production-sound-delete-confirm").click();
+
+    await expect(importedMedia).toHaveCount(0);
+    await expect(
+      page.getByText(
+        "TROLL_1A_001.wav er slettet permanent fra privat lagring.",
+      ),
+    ).toBeVisible();
+    expect(api.mediaDeletions()).toBe(1);
   });
 
   test("beholder lokalt lydutkast ved konflikt til serverversjonen velges", async ({

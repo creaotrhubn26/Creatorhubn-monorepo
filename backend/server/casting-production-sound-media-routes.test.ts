@@ -175,6 +175,79 @@ describe("production sound recorder media routes", () => {
     expect(JSON.stringify(response.body)).not.toContain("objectKey");
   });
 
+  it("permanently deletes an unmatched recorder file through the scoped service", async () => {
+    const state = accessPool();
+    const deleteProductionSoundMedia = vi.fn(async () => true);
+
+    const response = await request(
+      createApp(state.pool, { deleteProductionSoundMedia }),
+    )
+      .delete(`${BASE_PATH}/${MEDIA_ID}`)
+      .set("authorization", `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(204);
+    expect(deleteProductionSoundMedia).toHaveBeenCalledWith(expect.anything(), {
+      mediaId: MEDIA_ID,
+      projectId: PROJECT_ID,
+      productionDayId: "day-1",
+    });
+  });
+
+  it("requires an explicit unlink before a reconciled recorder file is deleted", async () => {
+    const state = accessPool();
+    const deleteProductionSoundMedia = vi.fn(async () => {
+      throw new Error("media_reconciled");
+    });
+
+    const response = await request(
+      createApp(state.pool, { deleteProductionSoundMedia }),
+    )
+      .delete(`${BASE_PATH}/${MEDIA_ID}`)
+      .set("authorization", `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: "media_reconciled",
+      message: "Fjern koblingen til continuity-taken før recorderfilen slettes.",
+    });
+  });
+
+  it("aborts only the current user's scoped unfinished upload", async () => {
+    const state = accessPool();
+    const abortProductionSoundMediaUpload = vi.fn(async () => true);
+
+    const response = await request(
+      createApp(state.pool, { abortProductionSoundMediaUpload }),
+    )
+      .delete(`${BASE_PATH}/uploads/${OBJECT_ID}`)
+      .set("authorization", `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(204);
+    expect(abortProductionSoundMediaUpload).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        objectId: OBJECT_ID,
+        userId: "sound-mixer-1",
+        projectId: PROJECT_ID,
+        productionDayId: "day-1",
+      },
+    );
+  });
+
+  it("does not call a storage action for forged non-UUID media ids", async () => {
+    const state = accessPool();
+    const deleteProductionSoundMedia = vi.fn(async () => true);
+
+    const response = await request(
+      createApp(state.pool, { deleteProductionSoundMedia }),
+    )
+      .delete(`${BASE_PATH}/not-a-uuid`)
+      .set("authorization", `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+    expect(deleteProductionSoundMedia).not.toHaveBeenCalled();
+  });
+
   it("atomically reconciles one recorder file to a canonical continuity take", async () => {
     const dayData = {
       productionContinuity: {
