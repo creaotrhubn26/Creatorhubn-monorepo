@@ -540,6 +540,57 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
     }
   });
 
+  // ── POST /takes/:takeId/bruk-som-showreel ────────────────────────
+  //
+  // Casting gjøres på bevegelse og stemme. Et opptak som allerede ligger her
+  // er den korteste veien til en showreel for et talent som ikke har en —
+  // alternativet er at de aldri får en, fordi terskelen for å lage noe nytt
+  // er høyere enn terskelen for å gjenbruke noe de alt har spilt inn.
+  app.post("/api/role-room/talents/selftapes/takes/:takeId/bruk-som-showreel", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      // talent_id i WHERE-en ER eierskapssjekken: et gjettet take-id fra et
+      // annet talent treffer ingenting.
+      const take = await pool.query(
+        `SELECT t.id::text, t.video_url, t.stream_uid, t.external_url, t.status
+           FROM talent_selftape_takes t
+           JOIN talent_selftape_projects p ON p.id = t.project_id
+          WHERE t.id = $1::uuid AND p.talent_id = $2::uuid
+          LIMIT 1`,
+        [req.params.takeId, talentId],
+      );
+      const rad = take.rows[0];
+      if (!rad) return res.status(404).json({ error: "Take ikke funnet" });
+
+      // Et opptak uten spillbar kilde ville gitt en showreel-lenke som ikke
+      // virker — verre enn ingen showreel, fordi ingen oppdager at den er død.
+      const kilde: string | null = rad.video_url
+        ?? rad.external_url
+        ?? (rad.stream_uid ? `https://customer-stream.cloudflarestream.com/${rad.stream_uid}/watch` : null);
+      if (!kilde) {
+        return res.status(409).json({
+          error: "Opptaket har ingen spillbar video ennå. Vent til det er ferdig behandlet.",
+        });
+      }
+
+      const oppdatert = await pool.query(
+        `UPDATE talents
+            SET showreel_url = $1, showreel_updated_at = NOW(), updated_at = NOW()
+          WHERE id = $2::uuid
+          RETURNING showreel_url, showreel_updated_at`,
+        [kilde, talentId],
+      );
+      return res.json({ showreel: oppdatert.rows[0] });
+    } catch (err) {
+      console.error("[selftapes/takes showreel] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å sette showreel" });
+    }
+  });
+
   // ── PATCH /takes/:takeId — oppdater notes/metadata ───────────────
   app.patch("/api/role-room/talents/selftapes/takes/:takeId", async (req, res) => {
     const session = getActiveSession(req);

@@ -146,12 +146,23 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
                   '& .MuiLinearProgress-bar': { background: palette.accentGradient },
                 }}
               />
+              {/* Manglene tar deg dit de peker. En brikke som bare NEVNER at
+                  showreel mangler, lar deg lete etter hvor showreel fylles ut —
+                  og da blir den stående. */}
               <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
-                {completeness.missing.slice(0, 6).map((m) => (
-                  <Chip key={m} label={m} size="small" sx={{
-                    bgcolor: 'rgba(245, 158, 11, 0.14)', color: palette.warning,
-                    fontWeight: 600, fontSize: '0.72rem', height: 22,
-                  }} />
+                {completeness.missingSteps.slice(0, 6).map((m) => (
+                  <Chip
+                    key={m.label}
+                    label={m.label}
+                    size="small"
+                    clickable
+                    onClick={() => onNavigate(m.target)}
+                    sx={{
+                      bgcolor: 'rgba(245, 158, 11, 0.14)', color: palette.warning,
+                      fontWeight: 600, fontSize: '0.72rem', height: 22,
+                      '&:hover': { bgcolor: 'rgba(245, 158, 11, 0.24)' },
+                    }}
+                  />
                 ))}
               </Stack>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mt: 0.6 }}>
