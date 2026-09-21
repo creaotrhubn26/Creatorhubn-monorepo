@@ -42,6 +42,10 @@ interface Tilstand {
   utsending?: Record<string, unknown>[];
   /** Lar «marker som åpnet»-spørringen feile, for å teste at kortet vises likevel. */
   feilPåMerking?: boolean;
+  kandidater?: Record<string, unknown>[];
+  mineKort?: Record<string, unknown>[];
+  /** null = innlogget bruker har ingen talent-profil. */
+  egetTalent?: string | null;
 }
 
 function byggApp(t: Tilstand, innlogget = true) {
@@ -52,6 +56,15 @@ function byggApp(t: Tilstand, innlogget = true) {
     query: async (sql: string, params?: unknown[]) => {
       t.spørringer.push({ sql, params: params ?? [] });
 
+      if (sql.includes("FROM casting_candidates c")) {
+        return { rows: t.kandidater ?? [], rowCount: (t.kandidater ?? []).length };
+      }
+      if (sql.includes("SELECT id FROM talents WHERE owner_user_id")) {
+        return { rows: t.egetTalent === null ? [] : [{ id: t.egetTalent ?? "talent-1" }], rowCount: t.egetTalent === null ? 0 : 1 };
+      }
+      if (sql.includes("WHERE c.talent_id = $1")) {
+        return { rows: t.mineKort ?? [], rowCount: (t.mineKort ?? []).length };
+      }
       if (sql.includes("SET response")) {
         return { rows: t.oppdaterteRader ? [{ id: KORT_ID }] : [], rowCount: t.oppdaterteRader };
       }
@@ -304,6 +317,55 @@ describe("statistens side", () => {
     expect(b.status).toBe(404);
     // Ulik ordlyd ville latt noen prøve seg fram til hvilke lenker som finnes.
     expect(a.body.error).toBe(b.body.error);
+  });
+});
+
+describe("folkene i produksjonen", () => {
+  it("henter kandidatene med talent-kobling og profil-e-post", async () => {
+    const t: Tilstand = {
+      spørringer: [], oppdaterteRader: 1, offentligRad: null,
+      kandidater: [{ id: "k1", name: "Kari", email: "kari@eksempel.test", talent_id: "talent-1" }],
+    };
+    const res = await request(byggApp(t)).get(`/api/role-room/projects/${PROSJEKT}/rollekort-kandidater?q=kar`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.kandidater[0].talent_id).toBe("talent-1");
+    const q = t.spørringer.find((s) => s.sql.includes("FROM casting_candidates c"));
+    // Profilens e-post vinner: da har vi én kilde i stedet for to som kan sprike.
+    expect(q?.sql).toContain("COALESCE(t.email, c.email)");
+    expect(q?.params[0]).toBe(PROSJEKT);
+  });
+
+  it("krever prosjekt-tilgang", async () => {
+    const t: Tilstand = { spørringer: [], oppdaterteRader: 1, offentligRad: null };
+    const res = await request(byggApp(t)).get("/api/role-room/projects/annet/rollekort-kandidater");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("mine rollekort", () => {
+  const basis = (over: Partial<Tilstand> = {}): Tilstand =>
+    ({ spørringer: [], oppdaterteRader: 1, offentligRad: null, ...over });
+
+  it("krever innlogging", async () => {
+    const res = await request(byggApp(basis(), false)).get("/api/role-room/talents/me/rollekort");
+    expect(res.status).toBe(401);
+  });
+
+  it("krever talent-profil, ikke bare konto", async () => {
+    const res = await request(byggApp(basis({ egetTalent: null }))).get("/api/role-room/talents/me/rollekort");
+    expect(res.status).toBe(401);
+  });
+
+  it("gir bare mine egne kort, og ikke de tilbaketrukne", async () => {
+    const t = basis({ mineKort: [{ id: "kort-1", person_name: "Kari", token: "t" }] });
+    const res = await request(byggApp(t)).get("/api/role-room/talents/me/rollekort");
+
+    expect(res.status).toBe(200);
+    expect(res.body.kort).toHaveLength(1);
+    const q = t.spørringer.find((s) => s.sql.includes("WHERE c.talent_id = $1"));
+    expect(q?.sql).toContain("c.revoked_at IS NULL");
+    expect(q?.params[0]).toBe("talent-1");
   });
 });
 

@@ -31,7 +31,8 @@ import VideocamIcon from '@mui/icons-material/VideocamOutlined';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircleOutlined';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import roleCardService, { roleCardLink, type RoleCard, type SceneBlocking, type StoryboardFrame } from '../../services/roleCardService';
+import roleCardService, {
+  type Kandidat, roleCardLink, type RoleCard, type SceneBlocking, type StoryboardFrame } from '../../services/roleCardService';
 import { palette, radius } from '../../talents-app/theme';
 
 interface Props {
@@ -85,6 +86,11 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, pr
   // Hvilket kort velger ramme akkurat nå. Null = ingen.
   const [velgerRamme, setVelgerRamme] = useState<string | null>(null);
   const [epost, setEpost] = useState('');
+  // Folkene som alt er i produksjonen. Uten dette skrev produsenten navn og
+  // e-post på nytt for hvert kort — og kortet ble aldri koblet til
+  // talent-profilen, så personen kunne ikke se det innlogget.
+  const [kandidater, setKandidater] = useState<Kandidat[]>([]);
+  const [valgtTalentId, setValgtTalentId] = useState<string | null>(null);
   const [sender, setSender] = useState(false);
   const [sendtMelding, setSendtMelding] = useState<string | null>(null);
   const planRef = useRef<HTMLDivElement>(null);
@@ -101,6 +107,13 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, pr
   }, [projectId, sceneId]);
 
   useEffect(() => { void last(); }, [last]);
+
+  // Kandidatlista er kort og endrer seg sjelden — hentes én gang per prosjekt.
+  useEffect(() => {
+    let avbrutt = false;
+    void roleCardService.kandidater(projectId).then((k) => { if (!avbrutt) setKandidater(k); });
+    return () => { avbrutt = true; };
+  }, [projectId]);
 
   /** Klikk på plantegningen → normalisert punkt. */
   const punktFra = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -143,6 +156,7 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, pr
       cue: signal.trim() || null,
       person_kind: rolle,
       contact_email: epost.trim() || null,
+      talent_id: valgtTalentId,
       position: utkast,
       scene_id: sceneId,
       production_day_id: productionDayId ?? null,
@@ -151,6 +165,7 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, pr
     if ('error' in r) { setFeil(r.error); return; }
     setKort((prev) => [...prev, r]);
     setUtkast(null); setNavn(''); setHandling(''); setSignal(''); setEpost(''); setFeil(null);
+    setValgtTalentId(null);
   };
 
   const slett = async (id: string) => {
@@ -372,6 +387,32 @@ export default function SceneBlockingEditor({ projectId, sceneId, sceneTitle, pr
                 Ny person her
               </Typography>
               <Stack spacing={1.6} sx={{ mt: 1.4 }}>
+                {kandidater.length > 0 && (
+                  <TextField
+                    size="small"
+                    select
+                    label="Hent fra produksjonen"
+                    value=""
+                    onChange={(e) => {
+                      const k = kandidater.find((x) => x.id === e.target.value);
+                      if (!k) return;
+                      setNavn(k.name);
+                      if (k.email) setEpost(k.email);
+                      // Koblingen er hele poenget: med talent_id ser personen
+                      // kortet når hen logger inn, uten å lete etter lenken.
+                      setValgtTalentId(k.talent_id);
+                    }}
+                    sx={feltSx}
+                    fullWidth
+                    helperText="Fyller navn og e-post, og knytter kortet til profilen når personen har en."
+                  >
+                    {kandidater.map((k) => (
+                      <MenuItem key={k.id} value={k.id}>
+                        {k.name}{k.talent_id ? ' · har profil' : ''}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
                 <TextField size="small" label="Navn" value={navn} onChange={(e) => setNavn(e.target.value)} sx={feltSx} fullWidth />
                 <TextField
                   size="small" select label="Rolle" value={rolle}

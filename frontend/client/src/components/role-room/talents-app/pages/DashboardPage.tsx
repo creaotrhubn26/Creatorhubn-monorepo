@@ -36,6 +36,7 @@ import roleRoomTalentsService, {
 import { palette, radius } from '../theme';
 import TalentsHowItWorksCard from '../components/TalentsHowItWorksCard';
 import { calcProfileStrength } from '../profileStrength';
+import MineRollekort from '../components/MineRollekort';
 import type { TalentsAppPage } from '../TalentsAppShell';
 
 interface DashboardPageProps {
@@ -205,6 +206,11 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
           ctaText="Se alle →"
         />
       </Box>
+
+      {/* Kortene du er satt opp på. Seksjonen tegner seg ikke når du ikke har
+          noen — de fleste kort går til folk uten konto, og en tom ramme ser ut
+          som at noe mangler. */}
+      <MineRollekort />
 
       {/* Siste aktivitet */}
       <Box sx={cardSx}>
