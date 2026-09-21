@@ -720,11 +720,16 @@ struct LeadbookView: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, isCompact ? 12 : 14).padding(.vertical, 12)
+            // 12pt vertikal padding + 12pt tekst gir 38pt — under 44pt-kravet.
+            // Samme minHeight som søsknene i headeren (jf. subTabButtons).
+            // Ligger før .background slik at flaten dekker hele treffområdet.
+            .frame(minHeight: 44)
             .background(
                 LinearGradient(colors: [LBrand.purple, LBrand.purpleLight], startPoint: .leading, endPoint: .trailing),
                 in: RoundedRectangle(cornerRadius: 11)
             )
             .shadow(color: LBrand.purple.opacity(0.35), radius: 6, y: 2)
+            .contentShape(RoundedRectangle(cornerRadius: 11))
         }
     }
 
