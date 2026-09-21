@@ -1,61 +1,91 @@
 claim: >
   DaVinci Resolve 21.1 (released 2026-09-07/08) makes advanced/external
-  scripting a Resolve Studio-only feature and drops Python 2 support
-  entirely; neither change affects Post Agent because bridge.py already
-  hard-requires "DaVinci Resolve Studio.app" install paths and is already
-  spawned with system python3. 21.1 also adds ~20 new scripting APIs
-  (multicam create/flatten, SmartSwitch, timeline clip auto-align, Media
-  Pool transcription w/ speaker+timing, codec/audio render-setting queries,
-  keyboard/render presets, built-in console) that are pure opportunity.
+  scripting a Resolve Studio-only feature and drops Python 2 support.
+  bridge.py already spawns with system python3, so the Python 2 removal is
+  a non-issue — but bridge.py does NOT hard-require Resolve Studio: it
+  probes free-edition ("DaVinci Resolve.app") install paths ahead of the
+  Studio path, and health_check.py only warns rather than blocking when a
+  free-edition install is found. Whether 21.1 breaks Post Agent for a given
+  host therefore depends on which edition is actually installed there,
+  which this evidence run did not verify. 21.1 also adds ~20 new scripting
+  APIs (multicam create/flatten, SmartSwitch, timeline clip auto-align,
+  Media Pool transcription w/ speaker+timing, codec/audio render-setting
+  queries, keyboard/render presets, built-in console) that are opportunity
+  work regardless of edition.
 source_type: release_notes
 source: >
   Release coverage 2026-09-07/08 (cined.com "DaVinci Resolve 21.1 Released –
   AI Assistant Integration via MCP, Individual HDR Trims, and Python
   Scripting Moves to Studio", provideocoalition.com, newsshooter.com,
-  digitalproduction.com); repo check: apps/resolve-script-manager/python/bridge.py
-  (RESOLVE_SCRIPT_LIB fallback paths, python3 spawn) and health_check.py
-  (Studio-required warning strings).
+  digitalproduction.com); repo check:
+  apps/resolve-script-manager/python/bridge.py:22-45
+  (FUSIONSCRIPT_PATHS_MAC / MCP_PACKAGE_PATHS_MAC probe both
+  "DaVinci Resolve.app" and "DaVinci Resolve Studio.app" paths, Studio
+  listed alongside, not instead of, the free-edition paths) and
+  health_check.py:142-190 (warn-only on missing module/app, no hard block);
+  no README/docs/onboarding text in apps/resolve-script-manager/ requiring
+  or documenting a Studio purchase.
 authority_tier: 2
 vendor: Blackmagic Design
 product: DaVinci Resolve (scripting API)
 version_scope: "21.1"
 publication_date: "2026-09-21"
 valid_from: "2026-09"
-valid_to: "until the next Resolve minor/point release changes the scripting surface again (watch weekly via doc-intel-impact-vurdering)"
+valid_to: "until we verify installed edition on Post Agent hosts, or the next Resolve release changes the scripting-tier gate again"
 evidence_summary: >
-  bridge.py:36 and :44 already only search "DaVinci Resolve Studio.app"
-  paths for fusionscript.so/DaVinciResolve.mcpb; health_check.py:147/190
-  already warn "Install Resolve Studio" when the module or app isn't
-  reachable. Post Agent has never supported the free edition, so 21.1's
-  new Studio-only gate on advanced scripting is a no-op for us. bridge.py:156
-  confirms Tauri already spawns scripts with system python3 — the removed
-  Python 2 support is likewise a non-issue. Blackmagic's own VERSION API
+  Corrected after PR review (Codex, 2026-09-21): the original version of
+  this record claimed bridge.py "already hard-requires DaVinci Resolve
+  Studio.app" — false. FUSIONSCRIPT_PATHS_MAC (bridge.py:34-37) lists three
+  generic/free-edition paths plus one Studio path, tried in that order;
+  MCP_PACKAGE_PATHS_MAC (bridge.py:42-44) does the same. health_check.py:147
+  and :190 only call bridge.warn(...) on a missing module or unreachable
+  Resolve — they never exit or refuse to run. No file in
+  apps/resolve-script-manager/{README.md,docs/} tells an operator Resolve
+  Studio is required or how to buy it. So Post Agent's actual behavior
+  today is "works with whichever edition is installed," not "Studio-only by
+  design." If any Post Agent host runs the free edition, DaVinci Resolve
+  21.1's new "advanced/external scripting requires Studio" gate would break
+  external scripting there entirely (bridge.py's whole integration mode),
+  not just narrow a feature. Blackmagic's own VERSION API
   (www.blackmagicdesign.com) was blocked by this session's egress proxy
   again, so version confirmation is WebSearch-corroborated (Tier 3
   corroborating Tier 2 release coverage), not a live Tier 1 fetch —
-  strong_evidence, not Verified.
+  strong_evidence, not Verified, on the version fact itself; the edition
+  question below is unverified, full stop, since no host inventory exists
+  in this repo to check against.
 interpretation: >
-  No migration or gating work needed for the version bump itself. The new
-  scripting surface (multicam, transcription-with-timing, render-setting
-  queries) is additive opportunity work, not a compatibility requirement —
-  see project_impact and the Produktmuligheter section of
-  docs/impact-reports/2026-09-21-impact.md.
+  The 21.1 Studio-only scripting gate is a real, unresolved compatibility
+  question, not a no-op. It cannot be closed by reading source code alone —
+  it requires knowing which Resolve edition is actually installed on the
+  machine(s) running apps/resolve-script-manager (dev machines, any
+  customer/on-prem installs). The new scripting surface (multicam,
+  transcription-with-timing, render-setting queries) remains additive
+  opportunity work independent of this question — see project_impact and
+  the Produktmuligheter section of docs/impact-reports/2026-09-21-impact.md.
 project_impact: >
-  apps/resolve-script-manager/python/scripts/timeline/edit_assistants.py
+  apps/resolve-script-manager/python/bridge.py and health_check.py — add an
+  explicit edition check (health_check.py already computes
+  supportsResolve21_1; extend it to surface installed edition) so a free-
+  edition host fails loudly instead of silently losing scripting on next
+  Resolve update. apps/resolve-script-manager/python/scripts/timeline/edit_assistants.py
   (multicam + auto-align fit wedding/highlight curation flows),
   apps/resolve-script-manager/python/scripts/export/delivery_manager.py
   (codec/audio render-setting queries, keyboard/render presets),
   apps/resolve-script-manager/python/scripts/qc/technical_qc.py
-  (transcription w/ speaker+timing as a QC data source).
-confidence: strong_evidence
+  (transcription w/ speaker+timing as a QC data source) — opportunity work,
+  independent of the edition question.
+confidence: probable
 decision: >
-  GO — stay current with Resolve 21.1; no migration work, no code change
-  required by the version bump itself. Supersedes the "no version gap"
-  framing in docs/evidence/2026-08-resolve-21-impact.yaml (that file was
-  written against 21.0.4; the Studio-only scripting gate introduced in 21.1
-  is the first version-bump that could in principle have broken us, and it
-  didn't, because we were already Studio-only by our own design, not by
-  Blackmagic's).
+  GO_WITH_TESTS, not GO — corrected from this record's first version.
+  Before treating Resolve 21.1 as safe: (1) verify which edition each
+  Post Agent host runs (health_check.py output, or manual check), (2) if
+  any host runs the free edition, either upgrade it to Studio or hold that
+  host back on 21.0.4 until confirmed, (3) add an edition surface to
+  health_check.py's status payload so this doesn't require a manual check
+  again next release. Supersedes the "no version gap" / "Studio-only by our
+  own design" framing in this record's first draft and in
+  docs/evidence/2026-08-resolve-21-impact.yaml (written against 21.0.4,
+  before the Studio-only gate existed).
 affected:
   - apps/resolve-script-manager/python/bridge.py
   - apps/resolve-script-manager/python/health_check.py
@@ -63,8 +93,12 @@ affected:
   - apps/resolve-script-manager/python/scripts/export/delivery_manager.py
   - apps/resolve-script-manager/python/scripts/qc/technical_qc.py
 lesson: >
-  A vendor tightening a paid-tier gate is only a compatibility risk if the
-  project was relying on the looser (free-tier) behavior. Repo-intelligence
-  before version-intelligence caught that we weren't — checking our own
-  fallback/error-message strings settled this faster than reading the full
-  21.1 release notes for scripting-tier language.
+  Don't infer a hard requirement from a fallback-path list that happens to
+  include the stricter option — FUSIONSCRIPT_PATHS_MAC tries free-edition
+  paths FIRST, Studio last, which is the opposite of "Studio required."
+  Reading an error message string ("Install Resolve Studio") as proof of a
+  code-level gate was the actual mistake: it's operator guidance in a
+  warning, not a check. A PR reviewer (Codex) caught this by reading the
+  same file more literally than the first pass did — verify claims about
+  "the code already does X" by finding the actual conditional that would
+  make X true, not by finding an adjacent string that mentions X.
