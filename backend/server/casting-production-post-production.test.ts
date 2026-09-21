@@ -6,10 +6,12 @@ import {
   emptyPostProductionOperations,
   normalizePostProductionOperations,
   type PostCommandContext,
-  type PostTurnoverSourceSnapshot,
+  type PostPictureSourceSnapshot,
+  type PostProductionSoundSourceSnapshot,
 } from './casting-production-post-production.js';
 
-const source = (overrides: Partial<PostTurnoverSourceSnapshot> = {}): PostTurnoverSourceSnapshot => ({
+const source = (overrides: Partial<PostProductionSoundSourceSnapshot> = {}): PostProductionSoundSourceSnapshot => ({
+  sourceType: 'production_sound',
   productionDayId: 'day-1',
   soundVersion: 4,
   capturedAt: '2026-09-21T10:00:00.000Z',
@@ -24,6 +26,25 @@ const source = (overrides: Partial<PostTurnoverSourceSnapshot> = {}): PostTurnov
     continuityTakeId: 'take-3',
     createdAt: '2026-09-21T09:00:00.000Z',
   }],
+  ...overrides,
+});
+
+const pictureSource = (overrides: Partial<PostPictureSourceSnapshot> = {}): PostPictureSourceSnapshot => ({
+  sourceType: 'picture',
+  workspaceProjectId: '6cae5551-4d32-4b22-8c26-79fa61f8c7b1',
+  versionId: 'b70ea5f0-06a4-4a1b-b357-83d7872bdf9f',
+  versionNumber: 2,
+  versionLabel: 'Director cut',
+  versionStatus: 'under_review',
+  storageObjectId: 'f48ba060-ebf0-4509-b77a-e889716495ab',
+  displayName: 'troll-v2.mp4',
+  checksumSha256: 'b'.repeat(64),
+  sizeBytes: 4096,
+  contentType: 'video/mp4',
+  durationSeconds: 92,
+  latestVersionNumberAtCapture: 2,
+  versionCreatedAt: '2026-09-21T09:30:00.000Z',
+  capturedAt: '2026-09-21T10:00:00.000Z',
   ...overrides,
 });
 
@@ -118,6 +139,28 @@ describe('post-production turnover state machine', () => {
       'media_reconciliation_changed',
       'new_media_available',
     ]);
+  });
+
+  it('tracks picture storage drift and a newer editorial version', () => {
+    const impact = collectPostTurnoverImpact(pictureSource(), pictureSource({
+      checksumSha256: 'c'.repeat(64),
+      latestVersionNumberAtCapture: 3,
+    }));
+
+    expect(impact).toEqual(expect.objectContaining({ stale: true, blocking: true }));
+    expect(impact.items.map((item) => item.code)).toEqual([
+      'picture_asset_changed',
+      'new_picture_version_available',
+    ]);
+  });
+
+  it('normalizes historic sound manifests without a discriminator', () => {
+    const historic = structuredClone(createdOperations()) as unknown as {
+      turnovers: Array<{ source: Record<string, unknown> }>;
+    };
+    delete historic.turnovers[0].source.sourceType;
+
+    expect(normalizePostProductionOperations(historic).turnovers[0].source.sourceType).toBe('production_sound');
   });
 
   it('refuses acceptance when the source has drifted', () => {

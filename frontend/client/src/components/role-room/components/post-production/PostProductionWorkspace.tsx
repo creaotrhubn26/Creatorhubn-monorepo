@@ -6,6 +6,7 @@ import {
   FactCheckOutlined as QcIcon,
   HistoryOutlined as ActivityIcon,
   Inventory2Outlined as TurnoverIcon,
+  MovieOutlined as PictureIcon,
   RefreshOutlined as RefreshIcon,
   SendOutlined as SendIcon,
   WarningAmberOutlined as WarningIcon,
@@ -29,6 +30,7 @@ import {
 } from '@mui/material';
 import type {
   CastingProject,
+  PostPictureSourceCatalog,
   PostProductionRecord,
   PostQcSeverity,
   PostTurnoverManifest,
@@ -89,6 +91,13 @@ const fieldSx = {
   '& fieldset': { borderColor: 'rgba(129,140,248,.24)' },
 };
 
+type TurnoverSourceKind = 'production_sound' | 'picture';
+
+const emptyPictureCatalog: PostPictureSourceCatalog = {
+  binding: { status: 'unlinked' },
+  versions: [],
+};
+
 function formatTime(value: string): string {
   const date = new Date(value);
   return Number.isFinite(date.getTime())
@@ -121,9 +130,13 @@ export function PostProductionWorkspace({
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [selectedDayId, setSelectedDayId] = useState(days[0]?.id ?? '');
+  const [sourceKind, setSourceKind] = useState<TurnoverSourceKind>('production_sound');
   const [media, setMedia] = useState<ProductionSoundMedia[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
+  const [pictureCatalog, setPictureCatalog] = useState<PostPictureSourceCatalog>(emptyPictureCatalog);
+  const [pictureLoading, setPictureLoading] = useState(false);
+  const [selectedPictureVersionId, setSelectedPictureVersionId] = useState('');
   const [label, setLabel] = useState('');
   const [recipient, setRecipient] = useState('Post Sound');
   const [notes, setNotes] = useState('');
@@ -142,6 +155,28 @@ export function PostProductionWorkspace({
   }, [project.id]);
 
   useEffect(() => {
+    if (!canPrepare) return undefined;
+    let active = true;
+    setPictureLoading(true);
+    postProductionService.getPictureSources(project.id)
+      .then((catalog) => {
+        if (!active) return;
+        setPictureCatalog(catalog);
+        setSelectedPictureVersionId((current) => (
+          catalog.versions.some((version) => version.id === current)
+            ? current
+            : catalog.versions[0]?.id ?? ''
+        ));
+      })
+      .catch((error) => {
+        if (active) setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke hente picture-kilder.' });
+      })
+      .finally(() => { if (active) setPictureLoading(false); });
+    return () => { active = false; };
+  }, [canPrepare, project.id]);
+
+  useEffect(() => {
+    if (sourceKind !== 'production_sound') return undefined;
     if (!selectedDayId) {
       setMedia([]);
       setSelectedMediaIds([]);
@@ -163,7 +198,14 @@ export function PostProductionWorkspace({
     return () => { active = false; };
   // Label should only be seeded when the day changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id, selectedDayId]);
+  }, [project.id, selectedDayId, sourceKind]);
+
+  useEffect(() => {
+    if (sourceKind !== 'picture') return;
+    const selected = pictureCatalog.versions.find((version) => version.id === selectedPictureVersionId);
+    if (!selected) return;
+    setLabel(`${selected.versionLabel} · Picture`);
+  }, [pictureCatalog.versions, selectedPictureVersionId, sourceKind]);
 
   const brief = useMemo(() => buildPostProductionBrief(record), [record]);
   const turnovers = record?.operations.turnovers ?? [];
@@ -191,15 +233,28 @@ export function PostProductionWorkspace({
   };
 
   const createTurnover = async () => {
-    if (!canPrepare || !selectedDayId || selectedMediaIds.length === 0 || !label.trim()) return;
-    const saved = await run({
-      type: 'create_turnover',
-      label: label.trim(),
-      recipient: recipient.trim() || undefined,
-      notes: notes.trim() || undefined,
-      productionDayId: selectedDayId,
-      mediaIds: selectedMediaIds,
-    }, 'Turnover-manifestet er opprettet som et sporbart utkast.');
+    if (!canPrepare || !label.trim()) return;
+    const command: PostProductionCommand = sourceKind === 'picture'
+      ? {
+          type: 'create_picture_turnover',
+          label: label.trim(),
+          recipient: recipient.trim() || undefined,
+          notes: notes.trim() || undefined,
+          pictureVersionId: selectedPictureVersionId,
+        }
+      : {
+          type: 'create_turnover',
+          label: label.trim(),
+          recipient: recipient.trim() || undefined,
+          notes: notes.trim() || undefined,
+          productionDayId: selectedDayId,
+          mediaIds: selectedMediaIds,
+        };
+    const sourceReady = sourceKind === 'picture'
+      ? Boolean(selectedPictureVersionId)
+      : Boolean(selectedDayId && selectedMediaIds.length > 0);
+    if (!sourceReady) return;
+    const saved = await run(command, 'Turnover-manifestet er opprettet som et sporbart utkast.');
     if (saved) setNotes('');
   };
 
@@ -215,11 +270,20 @@ export function PostProductionWorkspace({
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
                 <Typography sx={{ color: '#f8fafc', fontWeight: 800, overflowWrap: 'anywhere' }}>{turnover.label}</Typography>
+                <Chip
+                  size="small"
+                  icon={turnover.source.sourceType === 'picture' ? <PictureIcon /> : <TurnoverIcon />}
+                  label={turnover.source.sourceType === 'picture' ? 'Picture' : 'Opptakslyd'}
+                  variant="outlined"
+                  sx={{ color: '#c4b5fd', borderColor: 'rgba(167,139,250,.38)' }}
+                />
                 <Chip size="small" label={POST_TURNOVER_STATUS_LABELS[turnover.status]} sx={{ color: statusColor[turnover.status], border: `1px solid ${statusColor[turnover.status]}66`, bgcolor: `${statusColor[turnover.status]}14` }} />
                 {turnover.impact.stale ? <Chip size="small" icon={<WarningIcon />} label="Kilden er endret" color="warning" variant="outlined" /> : null}
               </Stack>
               <Typography sx={{ mt: .7, color: 'rgba(226,232,240,.68)', fontSize: '.82rem' }}>
-                {productionDayLabel(project, turnover.source.productionDayId)} · {turnover.source.media.length} filer · versjon {turnover.source.soundVersion}
+                {turnover.source.sourceType === 'picture'
+                  ? `${turnover.source.versionLabel} · V${turnover.source.versionNumber} · ${turnover.source.displayName}`
+                  : `${productionDayLabel(project, turnover.source.productionDayId)} · ${turnover.source.media.length} filer · versjon ${turnover.source.soundVersion}`}
                 {turnover.recipient ? ` · ${turnover.recipient}` : ''}
               </Typography>
               {turnover.notes ? <Typography sx={{ mt: .75, color: 'rgba(226,232,240,.78)', fontSize: '.86rem' }}>{turnover.notes}</Typography> : null}
@@ -230,7 +294,7 @@ export function PostProductionWorkspace({
                   variant="outlined"
                   startIcon={<RefreshIcon />}
                   disabled={busy}
-                  onClick={() => void run({ type: 'refresh_turnover', turnoverId: turnover.id }, 'Manifestet er oppdatert mot gjeldende lydgrunnlag.')}
+                  onClick={() => void run({ type: 'refresh_turnover', turnoverId: turnover.id }, 'Manifestet er oppdatert mot gjeldende kildegrunnlag.')}
                   sx={{ minHeight: targetSize, ...focusVisibleStyles }}
                 >Oppdater kilde</Button>
               ) : null}
@@ -261,7 +325,15 @@ export function PostProductionWorkspace({
           ) : null}
 
           <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,minmax(0,1fr))', xl: 'repeat(3,minmax(0,1fr))' }, gap: 1 }}>
-            {turnover.source.media.map((item) => (
+            {turnover.source.sourceType === 'picture' ? (
+              <Box sx={{ p: 1.1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.025)', border: '1px solid rgba(148,163,184,.14)', minWidth: 0 }}>
+                <Typography sx={{ color: '#e2e8f0', fontSize: '.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{turnover.source.displayName}</Typography>
+                <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.72rem' }}>
+                  {formatBytes(turnover.source.sizeBytes)} · {turnover.source.contentType || 'video'}
+                  {turnover.source.durationSeconds !== undefined ? ` · ${Math.round(turnover.source.durationSeconds)} sek` : ''}
+                </Typography>
+              </Box>
+            ) : turnover.source.media.map((item) => (
               <Box key={item.mediaId} sx={{ p: 1.1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.025)', border: '1px solid rgba(148,163,184,.14)', minWidth: 0 }}>
                 <Typography sx={{ color: '#e2e8f0', fontSize: '.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.displayName}</Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.72rem' }}>
@@ -372,19 +444,83 @@ export function PostProductionWorkspace({
         <Card variant="outlined" sx={panelSx} data-testid="post-turnover-create">
           <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
             <Typography sx={{ color: '#f8fafc', fontWeight: 850, fontSize: '1rem' }}>Nytt turnover-manifest</Typography>
-            <Typography sx={{ mt: .4, color: 'rgba(226,232,240,.62)', fontSize: '.8rem' }}>Refererer private recorderfiler i Role Room-lagringen. Ingen filer kopieres eller flyttes.</Typography>
-            <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(220px,.7fr) minmax(260px,1fr) minmax(220px,.7fr)' }, gap: 1.25 }}>
+            <Typography sx={{ mt: .4, color: 'rgba(226,232,240,.62)', fontSize: '.8rem' }}>Refererer verifiserte private filer fra opptakslyd eller Video Room. Ingen filer kopieres eller flyttes.</Typography>
+            <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(190px,.65fr) minmax(230px,.85fr) minmax(250px,1fr) minmax(210px,.7fr)' }, gap: 1.25 }}>
               <FormControl size="small" sx={fieldSx}>
-                <InputLabel id="post-day-label">Produksjonsdag</InputLabel>
-                <Select labelId="post-day-label" label="Produksjonsdag" value={selectedDayId} onChange={(event) => { setSelectedDayId(event.target.value); setLabel(''); }}>
-                  {days.map((day) => <MenuItem key={day.id} value={day.id}>{productionDayLabel(project, day.id)}</MenuItem>)}
+                <InputLabel id="post-source-kind-label">Kildetype</InputLabel>
+                <Select
+                  data-testid="post-source-kind"
+                  labelId="post-source-kind-label"
+                  label="Kildetype"
+                  value={sourceKind}
+                  onChange={(event) => {
+                    const next = event.target.value as TurnoverSourceKind;
+                    setSourceKind(next);
+                    setLabel('');
+                    setRecipient(next === 'picture' ? 'Editorial' : 'Post Sound');
+                  }}
+                >
+                  <MenuItem value="production_sound">Opptakslyd</MenuItem>
+                  <MenuItem value="picture">Picture / klipp</MenuItem>
                 </Select>
               </FormControl>
+              {sourceKind === 'picture' ? (
+                <FormControl size="small" sx={fieldSx} disabled={pictureLoading || pictureCatalog.versions.length === 0}>
+                  <InputLabel id="post-picture-version-label">Video Room-versjon</InputLabel>
+                  <Select
+                    data-testid="post-picture-version"
+                    labelId="post-picture-version-label"
+                    label="Video Room-versjon"
+                    value={selectedPictureVersionId}
+                    onChange={(event) => setSelectedPictureVersionId(event.target.value)}
+                  >
+                    {pictureCatalog.versions.map((version) => (
+                      <MenuItem key={version.id} value={version.id}>
+                        V{version.versionNumber} · {version.versionLabel}{version.isLatest ? ' · Nyeste' : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              ) : (
+                <FormControl size="small" sx={fieldSx}>
+                  <InputLabel id="post-day-label">Produksjonsdag</InputLabel>
+                  <Select labelId="post-day-label" label="Produksjonsdag" value={selectedDayId} onChange={(event) => { setSelectedDayId(event.target.value); setLabel(''); }}>
+                    {days.map((day) => <MenuItem key={day.id} value={day.id}>{productionDayLabel(project, day.id)}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              )}
               <TextField size="small" label="Manifestnavn" value={label} onChange={(event) => setLabel(event.target.value)} sx={fieldSx} />
               <TextField size="small" label="Mottaker" value={recipient} onChange={(event) => setRecipient(event.target.value)} sx={fieldSx} />
             </Box>
             <TextField multiline minRows={2} fullWidth label="Leveringsnotat" value={notes} onChange={(event) => setNotes(event.target.value)} sx={{ mt: 1.25, ...fieldSx }} />
-            <Box sx={{ mt: 1.5 }}>
+            {sourceKind === 'picture' ? (
+              <Box sx={{ mt: 1.5 }}>
+                {pictureLoading ? <CircularProgress size={22} />
+                  : pictureCatalog.binding.status === 'unlinked' ? (
+                    <Alert severity="info">Koble Role Room-prosjektet til et CreatorHub-prosjekt før picture kan leveres.</Alert>
+                  ) : pictureCatalog.binding.status === 'unavailable' ? (
+                    <Alert severity="warning">Prosjektkoblingen kan ikke brukes til en sikker picture-turnover. Kontroller prosjektets CreatorHub-kobling.</Alert>
+                  ) : pictureCatalog.versions.length === 0 ? (
+                    <Alert severity="info">Video Room har ingen aktiv, S3-verifisert versjon med kontrollsum og filstørrelse ennå.</Alert>
+                  ) : (
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2,minmax(0,1fr))' }, gap: 1 }}>
+                      {pictureCatalog.versions.map((version) => (
+                        <Box
+                          component="button"
+                          type="button"
+                          key={version.id}
+                          aria-pressed={selectedPictureVersionId === version.id}
+                          onClick={() => setSelectedPictureVersionId(version.id)}
+                          sx={{ textAlign: 'left', color: 'inherit', font: 'inherit', p: 1.2, borderRadius: 1.5, cursor: 'pointer', bgcolor: selectedPictureVersionId === version.id ? 'rgba(99,102,241,.12)' : 'rgba(255,255,255,.02)', border: '1px solid rgba(129,140,248,.18)', minHeight: targetSize, ...focusVisibleStyles }}
+                        >
+                          <Typography sx={{ color: '#e2e8f0', fontSize: '.82rem', fontWeight: 750 }}>V{version.versionNumber} · {version.versionLabel}</Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,.52)', fontSize: '.71rem' }}>{version.displayName} · {formatBytes(version.sizeBytes)} · {version.status}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+              </Box>
+            ) : <Box sx={{ mt: 1.5 }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 750, fontSize: '.83rem' }}>Recorderfiler ({selectedMediaIds.length}/{media.length})</Typography>
                 {media.length > 0 ? (
@@ -408,10 +544,21 @@ export function PostProductionWorkspace({
                   ))}
                 </Box>
               )}
-            </Box>
+            </Box>}
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="flex-end" gap={1} sx={{ mt: 1.5 }}>
-              <Button variant="outlined" onClick={onOpenProductionSound} sx={{ minHeight: targetSize, ...focusVisibleStyles }}>Åpne opptakslyd</Button>
-              <Button data-testid="create-post-turnover" variant="contained" startIcon={busy ? <CircularProgress size={17} /> : <AddIcon />} disabled={busy || !selectedDayId || !label.trim() || selectedMediaIds.length === 0} onClick={() => void createTurnover()} sx={{ minHeight: targetSize, bgcolor: '#6366f1', ...focusVisibleStyles }}>Opprett utkast</Button>
+              {sourceKind === 'picture' && pictureCatalog.binding.workspaceProjectId ? (
+                <Button component="a" href={`/workspace/${encodeURIComponent(pictureCatalog.binding.workspaceProjectId)}/video-room`} variant="outlined" startIcon={<PictureIcon />} sx={{ minHeight: targetSize, ...focusVisibleStyles }}>Åpne Video Room</Button>
+              ) : sourceKind === 'production_sound' ? (
+                <Button variant="outlined" onClick={onOpenProductionSound} sx={{ minHeight: targetSize, ...focusVisibleStyles }}>Åpne opptakslyd</Button>
+              ) : null}
+              <Button
+                data-testid="create-post-turnover"
+                variant="contained"
+                startIcon={busy ? <CircularProgress size={17} /> : <AddIcon />}
+                disabled={busy || !label.trim() || (sourceKind === 'picture' ? !selectedPictureVersionId : !selectedDayId || selectedMediaIds.length === 0)}
+                onClick={() => void createTurnover()}
+                sx={{ minHeight: targetSize, bgcolor: '#6366f1', ...focusVisibleStyles }}
+              >Opprett utkast</Button>
             </Stack>
           </CardContent>
         </Card>
@@ -453,7 +600,7 @@ export function PostProductionWorkspace({
         <Stack direction={{ xs: 'column', lg: 'row' }} gap={1.5} justifyContent="space-between" alignItems={{ xs: 'stretch', lg: 'center' }}>
           <Box>
             <Typography sx={{ color: '#f8fafc', fontSize: { xs: '1.1rem', sm: '1.35rem' }, fontWeight: 900 }}>Post Supervisor · {project.name}</Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,.62)', fontSize: '.78rem' }}>Production Sound → mottak → QC → sporbar godkjenning</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,.62)', fontSize: '.78rem' }}>Opptakslyd og picture → mottak → QC → sporbar godkjenning</Typography>
           </Box>
           <Stack direction="row" gap={1} sx={{ overflowX: 'auto', pb: .25 }}>
             <Button variant="outlined" startIcon={<FullWorkspaceIcon />} onClick={onOpenFullWorkspace} sx={{ minHeight: targetSize, flexShrink: 0, ...focusVisibleStyles }}>Full arbeidsflate</Button>

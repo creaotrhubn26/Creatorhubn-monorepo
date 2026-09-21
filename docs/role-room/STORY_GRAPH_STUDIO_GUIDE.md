@@ -17,6 +17,15 @@ Alt ligger bak `?mode=game_studio` (beta).
 
 Låste funksjoner viser et banner med «Se planer»; ingenting skrives før planen har funksjonen.
 
+## 0.5 Konto og første prosjekt
+
+1. Landingssiden → kortet «Spillstudio — Story Graph» → «Utforsk». I login-dialogen: «Ny her? Opprett gratis Solo-konto»
+   → e-post + passord (minst 8 tegn) → «Send bekreftelseskode» → skriv inn koden fra e-posten → «Opprett gratis konto».
+   Ingen betaling; Pro/Studio kjøpes senere under «Pris».
+2. Prosjektvelgeren i spillstudio-modus har «Nytt prosjekt» (navn → «Opprett prosjekt»). Prosjektet åpnes med
+   første-gangs-hero og «Start fra mal». Solo tillater tre prosjekter med Story Graph-innhold.
+3. Team-fanen: eieren får Eier-rollen og standardrollene automatisk ved første besøk, og kan invitere (Studio: seter fra planen).
+
 ## 1. Start fra mal (Hjem → «Start fra mal»)
 
 - **Tomt** — bare skallet.
@@ -34,6 +43,10 @@ mangler i dokumentet). Ingenting slettes — det som mangler blir åpne spørsm�
 Kilderegisteret får SHA-256 og verifisert-stempel. Formatkrav: `STORY_GRAPH_MANUSCRIPT_IMPORT.md`.
 
 ## 3. Scenekort og gater
+
+> **Manus-PDF:** Eksport → «Manus-PDF (scener)» gir hele manuset (Før/Handling/Kontroll/Etter/Lyd, replikker, gater)
+> som PDF uten at prosjektet trenger brett. «PDF (Story Graph)» dekker brettene. Krever Pro/Studio.
+
 
 Hver scene har Manus (Før/Handling/Kontroll/Etter/Lyd, kildemerker, epoke, episode), Replikker
 (cue-ID, taler, EN/NB, opptaksstatus, «Les opp scenen»), Storyboard (rammer, KI-referansebilde),

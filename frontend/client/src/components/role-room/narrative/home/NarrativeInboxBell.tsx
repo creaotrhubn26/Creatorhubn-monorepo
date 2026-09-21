@@ -41,7 +41,7 @@ export function NarrativeInboxBell({ projectId, refreshKey = 0, onOpenScene }: {
   return (
     <>
       <Tooltip title={unread ? `${unread} uleste varsler` : 'Varsler'}>
-        <IconButton size="small" onClick={(e) => setAnchor(e.currentTarget)} sx={{ color: narrativeColors.textDim }} aria-label="Varsler" data-testid="narrative-inbox-bell" data-unread={unread}>
+        <IconButton size="small" onClick={(e) => setAnchor(e.currentTarget)} sx={{ color: narrativeColors.textDim, width: { xs: 40, md: 30 }, height: { xs: 40, md: 30 } }} aria-label="Varsler" data-testid="narrative-inbox-bell" data-unread={unread}>
           <Badge badgeContent={unread} color="success" max={99} overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 800 } }}>
             <BellIcon fontSize="small" />
           </Badge>

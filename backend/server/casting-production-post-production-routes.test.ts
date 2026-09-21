@@ -10,6 +10,9 @@ const PROJECT_ID = 'troll';
 const PATH = `/api/role-room/projects/${PROJECT_ID}/post-production`;
 const MEDIA_ID = '11111111-1111-4111-8111-111111111111';
 const STORAGE_ID = '22222222-2222-4222-8222-222222222222';
+const WORKSPACE_PROJECT_ID = '6cae5551-4d32-4b22-8c26-79fa61f8c7b1';
+const PICTURE_VERSION_ID = 'b70ea5f0-06a4-4a1b-b357-83d7872bdf9f';
+const PICTURE_STORAGE_ID = 'f48ba060-ebf0-4509-b77a-e889716495ab';
 
 function appFor(query: ReturnType<typeof vi.fn>) {
   const app = express();
@@ -55,6 +58,22 @@ const mediaRow = {
   reconciliation_status: 'matched',
   continuity_take_id: 'take-3',
   created_at: '2026-09-21T09:00:00.000Z',
+};
+
+const pictureRow = {
+  id: PICTURE_VERSION_ID,
+  project_id: WORKSPACE_PROJECT_ID,
+  version_label: 'Director cut',
+  version_number: 2,
+  version_status: 'under_review',
+  storage_object_id: PICTURE_STORAGE_ID,
+  duration: 92,
+  created_at: '2026-09-21T09:30:00.000Z',
+  display_name: 'troll-v2.mp4',
+  size_bytes: 4096,
+  content_type: 'video/mp4',
+  checksum_sha256: 'b'.repeat(64),
+  latest_version_number: 2,
 };
 
 describe('Post-production turnover API', () => {
@@ -126,6 +145,99 @@ describe('Post-production turnover API', () => {
       }),
     }));
     expect(JSON.stringify(written)).not.toContain('bucket_name');
+    expect(JSON.stringify(written)).not.toContain('object_key');
+  });
+
+  it('lists eligible picture versions without exposing storage internals', async () => {
+    const query = vi.fn(async (text: string) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      if (text.includes('FROM casting_projects casting')) {
+        return { rows: [{ creatorhub_project_id: WORKSPACE_PROJECT_ID, workspace_project_id: WORKSPACE_PROJECT_ID }], rowCount: 1 };
+      }
+      if (text.includes('WITH eligible AS')) return { rows: [pictureRow], rowCount: 1 };
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .get(`${PATH}/picture-sources`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.pictureSources).toEqual(expect.objectContaining({
+      binding: { status: 'linked', workspaceProjectId: WORKSPACE_PROJECT_ID },
+      versions: [expect.objectContaining({ id: PICTURE_VERSION_ID, displayName: 'troll-v2.mp4', isLatest: true })],
+    }));
+    expect(JSON.stringify(response.body)).not.toContain(PICTURE_STORAGE_ID);
+    expect(JSON.stringify(response.body)).not.toContain(pictureRow.checksum_sha256);
+    expect(JSON.stringify(response.body)).not.toContain('object_key');
+  });
+
+  it('fails closed when the linked CreatorHub project is not owned by the Role Room owner', async () => {
+    const query = vi.fn(async (text: string) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      if (text.includes('FROM casting_projects casting')) {
+        return { rows: [{ creatorhub_project_id: WORKSPACE_PROJECT_ID, workspace_project_id: null }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .get(`${PATH}/picture-sources`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.pictureSources).toEqual({ binding: { status: 'unavailable' }, versions: [] });
+    expect(query.mock.calls.some(([text]) => String(text).includes('WITH eligible AS'))).toBe(false);
+  });
+
+  it('builds a picture manifest from the owner-bound Video Room version', async () => {
+    let written: Record<string, any> | null = null;
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('post_supervisor');
+      if (text.includes('FROM role_room_post_production_operations') && text.includes('SELECT operations')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('FROM casting_projects casting')) {
+        return { rows: [{ creatorhub_project_id: WORKSPACE_PROJECT_ID, workspace_project_id: WORKSPACE_PROJECT_ID }], rowCount: 1 };
+      }
+      if (text.includes('WITH eligible AS')) return { rows: [pictureRow], rowCount: 1 };
+      if (text.includes('INSERT INTO role_room_post_production_operations')) {
+        written = JSON.parse(String(params?.[1]));
+        return {
+          rows: [{ operations: written, version: 1, updated_by: 'sound-1', updated_at: '2026-09-21T10:00:00.000Z' }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(appFor(query))
+      .post(`${PATH}/commands`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 0,
+        command: {
+          type: 'create_picture_turnover',
+          label: 'Picture V2 · Editorial',
+          recipient: 'Editorial',
+          pictureVersionId: PICTURE_VERSION_ID,
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.postProduction.operations.turnovers[0].source).toEqual(expect.objectContaining({
+      sourceType: 'picture',
+      workspaceProjectId: WORKSPACE_PROJECT_ID,
+      versionId: PICTURE_VERSION_ID,
+      storageObjectId: PICTURE_STORAGE_ID,
+      checksumSha256: pictureRow.checksum_sha256,
+    }));
     expect(JSON.stringify(written)).not.toContain('object_key');
   });
 

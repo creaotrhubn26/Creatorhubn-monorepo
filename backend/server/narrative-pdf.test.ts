@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeStoryGraphPdf, renderStoryGraphPdf, storyGraphPdfFilename, type PdfDocLike } from './narrative-pdf.js';
+import { composeScenesScriptPdf, composeStoryGraphPdf, renderScenesScriptPdf, renderStoryGraphPdf, scenesScriptPdfFilename, storyGraphPdfFilename, type PdfDocLike } from './narrative-pdf.js';
 import type { ExportGraph } from '../../frontend/shared/narrative-format/index.ts';
 
 const code = (s: string) => `<pre><code>${s}</code></pre>`;
@@ -85,5 +85,27 @@ describe('narrative-pdf', () => {
     expect(buf.toString('latin1')).toContain('DejaVuSans');
     expect(storyGraphPdfFilename(graph(), 'en')).toBe('pungen-en.pdf');
     expect(storyGraphPdfFilename(graph(), null)).toBe('pungen.pdf');
+  });
+
+  it('manus-PDF av scener: tittelside, scene med Før/Handling/replikker/gater, sceneliste (UX-28)', async () => {
+    const doc = recorder();
+    composeScenesScriptPdf(doc, { projectName: 'What Follows Us', generatedAt: new Date('2026-09-21T00:00:00Z'), scenes: [{
+      code: 'P01', title: 'Skoleveien', subtitle: 'W01 · 1797, ettermiddag', workingId: 'P01', era: '1797', location: 'Skoleveien', status: 'in_progress', episodeCode: 'E01', episodeTitle: 'Da alle kunne bli fri',
+      beforeState: 'Bok hos Elise.', action: 'Nora tar boken.', control: 'Rolig bevegelse.', afterState: 'Alle har nådd lekeplassen.', audio: 'Skoleveisamtale.', changeNote: '', bridge: '', timeNote: '', challenge: '', gameplayMechanic: '', environment: '',
+      sourceRefs: [{ tag: 'W', ref: 'OPENING-HYBRID-v2' }],
+      lines: [{ cueId: 'W01.01', speakerLabel: 'NORA', textEn: 'Must you read all the way home?', textNb: '', sourceType: 'E', recordingStatus: 'none' }],
+      gates: [{ gateKey: 'greybox', status: 'passed', evidence: '68 bestått' }, { gateKey: 'audio', status: 'not_started', evidence: '' }],
+    }] });
+    const texts = doc.calls.filter((c) => c.op === 'text').map((c) => String(c.arg));
+    expect(texts).toContain('What Follows Us');
+    expect(texts.some((t) => t.startsWith('P01 – Skoleveien'))).toBe(true);
+    expect(texts).toContain('FØR');
+    expect(texts).toContain('Bok hos Elise.');
+    expect(texts.some((t) => t.includes('W01.01') && t.includes('Must you read'))).toBe(true);
+    expect(texts.some((t) => t.includes('Gråboks / regelprøve: Bestått — 68 bestått'))).toBe(true);
+    expect(texts).toContain('Sceneliste');
+    const pdf = await renderScenesScriptPdf({ projectName: 'Æøå', scenes: [] });
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(scenesScriptPdfFilename('What Follows Us — Episode One')).toMatch(/-manus\.pdf$/);
   });
 });

@@ -511,6 +511,7 @@ function buildPostProductionTrollSeedProject(): CastingProject {
   const project = buildProductionSoundTrollSeedProject();
   return {
     ...project,
+    creatorhub_project_id: '6cae5551-4d32-4b22-8c26-79fa61f8c7b1',
     description: 'Autentisert CI-prosjekt for Post Supervisor og Post Sound',
     crew: [
       ...(project.crew ?? []),

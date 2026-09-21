@@ -72,6 +72,8 @@ import {
   PostProductionValidationError,
   type PostProductionCommand,
   type PostProductionOperations,
+  type PostPictureSourceSnapshot,
+  type PostProductionSoundSourceSnapshot,
   type PostTurnoverSourceSnapshot,
 } from './casting-production-post-production.js';
 import {
@@ -1631,11 +1633,11 @@ export function createCastingProductionRouter(
     };
   };
 
-  async function loadPostTurnoverSource(
+  async function loadPostSoundSource(
     projectId: string,
     productionDayId: string,
     mediaIds?: readonly string[],
-  ): Promise<PostTurnoverSourceSnapshot | null> {
+  ): Promise<PostProductionSoundSourceSnapshot | null> {
     const dayResult = await pool.query(
       `SELECT id, sound_version
          FROM casting_production_days
@@ -1667,6 +1669,7 @@ export function createCastingProductionRouter(
       throw new PostProductionValidationError('En eller flere valgte recorderfiler finnes ikke lenger.');
     }
     return {
+      sourceType: 'production_sound',
       productionDayId,
       soundVersion: Number(dayResult.rows[0].sound_version ?? 0),
       capturedAt: new Date().toISOString(),
@@ -1684,34 +1687,142 @@ export function createCastingProductionRouter(
     };
   }
 
+  type PostPictureBinding = {
+    status: 'linked' | 'unlinked' | 'unavailable';
+    workspaceProjectId?: string;
+  };
+
+  async function resolvePostPictureBinding(projectId: string): Promise<PostPictureBinding> {
+    const result = await pool.query(
+      `SELECT casting.creatorhub_project_id,
+              workspace.id AS workspace_project_id
+         FROM casting_projects casting
+         LEFT JOIN projects workspace
+           ON workspace.id = casting.creatorhub_project_id
+          AND workspace.user_id = casting.created_by
+        WHERE casting.id = $1
+        LIMIT 1`,
+      [projectId],
+    );
+    const creatorhubProjectId = result.rows[0]?.creatorhub_project_id;
+    if (!creatorhubProjectId) return { status: 'unlinked' };
+    if (!isUuid(creatorhubProjectId) || !result.rows[0]?.workspace_project_id) {
+      return { status: 'unavailable' };
+    }
+    return { status: 'linked', workspaceProjectId: String(result.rows[0].workspace_project_id) };
+  }
+
+  async function loadEligiblePictureRows(
+    workspaceProjectId: string,
+    versionIds?: readonly string[],
+  ): Promise<Record<string, any>[]> {
+    if (!isUuid(workspaceProjectId) || versionIds?.some((id) => !isUuid(id))) {
+      throw new PostProductionValidationError('Picture-kilden har ugyldig ID.');
+    }
+    const filter = versionIds
+      ? 'WHERE eligible.id = ANY($2::uuid[])'
+      : 'ORDER BY eligible.version_number DESC, eligible.created_at DESC LIMIT 200';
+    const result = await pool.query(
+      `WITH eligible AS (
+         SELECT version.id,
+                version.project_id,
+                version.version_label,
+                version.version_number,
+                version.status AS version_status,
+                version.storage_object_id,
+                version.duration,
+                version.created_at,
+                stored.display_name,
+                stored.size_bytes,
+                stored.content_type,
+                stored.checksum_sha256
+           FROM project_video_versions version
+           JOIN role_room_storage_objects stored
+             ON stored.id = version.storage_object_id
+            AND stored.status = 'active'
+            AND stored.deleted_at IS NULL
+            AND stored.size_bytes > 0
+            AND stored.checksum_sha256 ~ '^[0-9a-f]{64}$'
+          WHERE version.project_id = $1::uuid
+       ), latest AS (
+         SELECT COALESCE(MAX(version_number), 0)::int AS latest_version_number
+           FROM eligible
+       )
+       SELECT eligible.*, latest.latest_version_number
+         FROM eligible
+         CROSS JOIN latest
+         ${filter}`,
+      versionIds ? [workspaceProjectId, versionIds] : [workspaceProjectId],
+    );
+    return result.rows as Record<string, any>[];
+  }
+
+  function mapPostPictureSource(row: Record<string, any>): PostPictureSourceSnapshot {
+    return {
+      sourceType: 'picture',
+      workspaceProjectId: String(row.project_id),
+      versionId: String(row.id),
+      versionNumber: Number(row.version_number),
+      versionLabel: String(row.version_label || `V${Number(row.version_number)}`),
+      versionStatus: String(row.version_status || 'under_review'),
+      storageObjectId: String(row.storage_object_id),
+      displayName: String(row.display_name),
+      checksumSha256: String(row.checksum_sha256),
+      sizeBytes: Number(row.size_bytes),
+      contentType: row.content_type ? String(row.content_type) : undefined,
+      durationSeconds: row.duration == null ? undefined : Number(row.duration),
+      latestVersionNumberAtCapture: Number(row.latest_version_number),
+      versionCreatedAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      capturedAt: new Date().toISOString(),
+    };
+  }
+
+  async function loadPostPictureSource(
+    projectId: string,
+    versionId: string,
+  ): Promise<PostPictureSourceSnapshot | null> {
+    const binding = await resolvePostPictureBinding(projectId);
+    if (binding.status !== 'linked' || !binding.workspaceProjectId) return null;
+    const rows = await loadEligiblePictureRows(binding.workspaceProjectId, [versionId]);
+    return rows[0] ? mapPostPictureSource(rows[0]) : null;
+  }
+
   async function loadPostTurnoverImpacts(projectId: string, operations: PostProductionOperations) {
     const impacts: Record<string, ReturnType<typeof collectPostTurnoverImpact>> = {};
     const productionDayIds = [...new Set(
-      operations.turnovers.map((turnover) => String(turnover.source.productionDayId)),
+      operations.turnovers
+        .filter((turnover) => turnover.source.sourceType === 'production_sound')
+        .map((turnover) => String((turnover.source as PostProductionSoundSourceSnapshot).productionDayId)),
     )];
-    if (productionDayIds.length === 0) return impacts;
+    const pictureVersionIds = [...new Set(
+      operations.turnovers
+        .filter((turnover) => turnover.source.sourceType === 'picture')
+        .map((turnover) => String((turnover.source as PostPictureSourceSnapshot).versionId)),
+    )];
 
-    const [dayResult, mediaResult] = await Promise.all([
-      pool.query(
-        `SELECT id, sound_version
-           FROM casting_production_days
-          WHERE project_id = $1
-            AND id = ANY($2::varchar[])`,
-        [projectId, productionDayIds],
-      ),
-      pool.query(
-        `SELECT media.id, media.production_day_id, media.storage_object_id,
-                media.display_name, media.checksum_sha256, media.size_bytes,
-                media.reconciliation_status, media.continuity_take_id,
-                media.created_at
-           FROM casting_production_sound_media media
-          WHERE media.project_id = $1
-            AND media.production_day_id = ANY($2::varchar[])
-            AND media.deleted_at IS NULL
-          ORDER BY media.created_at ASC, media.id ASC`,
-        [projectId, productionDayIds],
-      ),
-    ]);
+    const [dayResult, mediaResult] = productionDayIds.length > 0
+      ? await Promise.all([
+          pool.query(
+            `SELECT id, sound_version
+               FROM casting_production_days
+              WHERE project_id = $1
+                AND id = ANY($2::varchar[])`,
+            [projectId, productionDayIds],
+          ),
+          pool.query(
+            `SELECT media.id, media.production_day_id, media.storage_object_id,
+                    media.display_name, media.checksum_sha256, media.size_bytes,
+                    media.reconciliation_status, media.continuity_take_id,
+                    media.created_at
+               FROM casting_production_sound_media media
+              WHERE media.project_id = $1
+                AND media.production_day_id = ANY($2::varchar[])
+                AND media.deleted_at IS NULL
+              ORDER BY media.created_at ASC, media.id ASC`,
+            [projectId, productionDayIds],
+          ),
+        ])
+      : [{ rows: [] }, { rows: [] }];
     const daysById = new Map(dayResult.rows.map((row: Record<string, any>) => [String(row.id), row]));
     const mediaByDay = new Map<string, Record<string, any>[]>();
     for (const row of mediaResult.rows as Record<string, any>[]) {
@@ -1719,11 +1830,13 @@ export function createCastingProductionRouter(
       mediaByDay.set(dayId, [...(mediaByDay.get(dayId) ?? []), row]);
     }
 
-    for (const turnover of operations.turnovers) {
-      const productionDayId = String(turnover.source.productionDayId);
+    for (const turnover of operations.turnovers.filter((item) => item.source.sourceType === 'production_sound')) {
+      const source = turnover.source as PostProductionSoundSourceSnapshot;
+      const productionDayId = String(source.productionDayId);
       const day = daysById.get(productionDayId);
       const rows = mediaByDay.get(productionDayId) ?? [];
       const current: PostTurnoverSourceSnapshot | null = day ? {
+        sourceType: 'production_sound',
         productionDayId,
         soundVersion: Number(day.sound_version ?? 0),
         capturedAt: new Date().toISOString(),
@@ -1740,6 +1853,23 @@ export function createCastingProductionRouter(
         })),
       } : null;
       impacts[turnover.id] = collectPostTurnoverImpact(turnover.source, current);
+    }
+
+    if (pictureVersionIds.length > 0) {
+      const binding = await resolvePostPictureBinding(projectId);
+      const pictureRows = binding.status === 'linked' && binding.workspaceProjectId
+        ? await loadEligiblePictureRows(binding.workspaceProjectId, pictureVersionIds)
+        : [];
+      const pictureById = new Map(
+        pictureRows.map((row) => [String(row.id), mapPostPictureSource(row)]),
+      );
+      for (const turnover of operations.turnovers.filter((item) => item.source.sourceType === 'picture')) {
+        const source = turnover.source as PostPictureSourceSnapshot;
+        impacts[turnover.id] = collectPostTurnoverImpact(
+          source,
+          pictureById.get(source.versionId) ?? null,
+        );
+      }
     }
     return impacts;
   }
@@ -2046,6 +2176,43 @@ export function createCastingProductionRouter(
   });
 
   // ────────────── POST-PRODUCTION TURNOVER ──────────────
+  router.get('/projects/:projectId/post-production/picture-sources', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensurePostProductionAccess(req, res, projectId, 'prepare'))) return;
+      const binding = await resolvePostPictureBinding(projectId);
+      if (binding.status !== 'linked' || !binding.workspaceProjectId) {
+        res.json({ pictureSources: { binding, versions: [] } });
+        return;
+      }
+      const rows = await loadEligiblePictureRows(binding.workspaceProjectId);
+      res.json({
+        pictureSources: {
+          binding,
+          versions: rows.map((row) => ({
+            id: String(row.id),
+            versionNumber: Number(row.version_number),
+            versionLabel: String(row.version_label || `V${Number(row.version_number)}`),
+            status: String(row.version_status || 'under_review'),
+            displayName: String(row.display_name),
+            sizeBytes: Number(row.size_bytes),
+            contentType: row.content_type ? String(row.content_type) : undefined,
+            durationSeconds: row.duration == null ? undefined : Number(row.duration),
+            createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+            isLatest: Number(row.version_number) === Number(row.latest_version_number),
+          })),
+        },
+      });
+    } catch (error) {
+      if (error instanceof PostProductionValidationError) {
+        res.status(400).json({ error: 'invalid_picture_binding', message: error.message });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke hente picture-kilder', detail: 'internal_error' });
+    }
+  });
+
   router.get('/projects/:projectId/post-production', auth, async (req, res) => {
     try {
       await schemaReady(pool);
@@ -2087,7 +2254,9 @@ export function createCastingProductionRouter(
         return;
       }
       const parsed = parsePostProductionCommand(body.command);
-      const authority = parsed.type === 'create_turnover' || parsed.type === 'refresh_turnover'
+      const authority = parsed.type === 'create_turnover'
+        || parsed.type === 'create_picture_turnover'
+        || parsed.type === 'refresh_turnover'
         ? 'prepare'
         : parsed.type === 'add_qc_issue' || parsed.type === 'resolve_qc_issue'
           ? 'review'
@@ -2123,28 +2292,52 @@ export function createCastingProductionRouter(
 
       let command: PostProductionCommand;
       if (parsed.type === 'create_turnover') {
-        const source = await loadPostTurnoverSource(projectId, parsed.productionDayId, parsed.mediaIds);
+        const source = await loadPostSoundSource(projectId, parsed.productionDayId, parsed.mediaIds);
         if (!source) {
           res.status(404).json({ error: 'production_day_not_found', message: 'Produksjonsdagen finnes ikke.' });
           return;
         }
         command = { ...parsed, source };
+      } else if (parsed.type === 'create_picture_turnover') {
+        const source = await loadPostPictureSource(projectId, parsed.pictureVersionId);
+        if (!source) {
+          res.status(404).json({
+            error: 'picture_source_not_found',
+            message: 'Picture-versjonen er ikke tilgjengelig gjennom den sikre prosjektkoblingen.',
+          });
+          return;
+        }
+        command = {
+          type: 'create_turnover',
+          label: parsed.label,
+          recipient: parsed.recipient,
+          notes: parsed.notes,
+          source,
+        };
       } else if (parsed.type === 'refresh_turnover') {
         const turnover = currentOperations.turnovers.find((item) => item.id === parsed.turnoverId);
         if (!turnover) throw new PostProductionValidationError('Turnover-manifestet finnes ikke.');
-        const source = await loadPostTurnoverSource(
-          projectId,
-          turnover.source.productionDayId,
-          turnover.source.media.map((media) => media.mediaId),
-        );
+        const source = turnover.source.sourceType === 'picture'
+          ? await loadPostPictureSource(projectId, turnover.source.versionId)
+          : await loadPostSoundSource(
+              projectId,
+              turnover.source.productionDayId,
+              turnover.source.media.map((media) => media.mediaId),
+            );
         if (!source) {
-          throw new PostProductionTransitionError('Produksjonsdagen finnes ikke lenger. Manifestet kan bare erstattes.');
+          throw new PostProductionTransitionError(
+            turnover.source.sourceType === 'picture'
+              ? 'Picture-versjonen finnes ikke lenger. Manifestet kan bare erstattes.'
+              : 'Produksjonsdagen finnes ikke lenger. Manifestet kan bare erstattes.',
+          );
         }
         command = { ...parsed, source };
       } else if (parsed.type === 'transition_turnover') {
         const turnover = currentOperations.turnovers.find((item) => item.id === parsed.turnoverId);
         if (!turnover) throw new PostProductionValidationError('Turnover-manifestet finnes ikke.');
-        const currentSource = await loadPostTurnoverSource(projectId, turnover.source.productionDayId);
+        const currentSource = turnover.source.sourceType === 'picture'
+          ? await loadPostPictureSource(projectId, turnover.source.versionId)
+          : await loadPostSoundSource(projectId, turnover.source.productionDayId);
         command = {
           ...parsed,
           impact: collectPostTurnoverImpact(turnover.source, currentSource),

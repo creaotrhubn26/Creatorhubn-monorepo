@@ -86,7 +86,7 @@ export function StoryPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }:
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200 }} data-testid="narrative-story">
-      <Tabs value={section} onChange={(_e, v) => setSection(v as StorySection)} sx={{ minHeight: 36, mb: 2, borderBottom: `1px solid ${narrativeColors.borderStrong}`, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 36, fontSize: 13 }, '& .Mui-selected': { color: '#fff' }, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}>
+      <Tabs value={section} onChange={(_e, v) => setSection(v as StorySection)} sx={{ minHeight: 36, mb: 2, borderBottom: `1px solid ${narrativeColors.borderStrong}`, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 36, fontSize: 13, borderRadius: '6px 6px 0 0' }, '& .Mui-selected': { color: '#e6fff0', bgcolor: 'rgba(34,197,94,0.14)' }, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}>
         {SECTIONS.map((s) => <Tab key={s.id} value={s.id} label={s.id === 'questions' ? `${s.label} ${questions.filter((q) => q.status === 'open').length}` : s.label} data-testid={`narrative-story-tab-${s.id}`} />)}
       </Tabs>
 
@@ -104,7 +104,7 @@ export function StoryPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }:
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Chip size="small" label={g.episode.code} sx={{ fontWeight: 800, bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent }} />
                     <Box sx={{ flex: 1 }}><AutosaveField label="Tittel" value={g.episode.title} onSave={(v) => patchEpisode(projectId, g.episode!.id, { title: v }).then(load)} testId={`narrative-episode-title-${g.episode.code}`} maxLength={300} /></Box>
-                    <Select size="small" value={g.episode.status} onChange={(e) => void run(() => patchEpisode(projectId, g.episode!.id, { status: e.target.value as NarrativeEpisode['status'] }))} sx={{ ...sceneFieldSx, width: 120, '& .MuiSelect-select': { py: 0.75, fontSize: 12 } }} MenuProps={menuProps}><MenuItem value="draft">Utkast</MenuItem><MenuItem value="locked">Låst</MenuItem></Select>
+                    <Select size="small" value={g.episode.status} onChange={(e) => void run(() => patchEpisode(projectId, g.episode!.id, { status: e.target.value as NarrativeEpisode['status'] }))} sx={{ ...sceneFieldSx, width: 120, '& .MuiSelect-select': { py: 0.75, fontSize: 12 } }} MenuProps={menuProps} inputProps={{ 'aria-label': 'Status' }}><MenuItem value="draft">Utkast</MenuItem><MenuItem value="locked">Låst</MenuItem></Select>
                     <Tooltip title="Slett episode (scenene beholdes)"><IconButton size="small" onClick={() => { if (window.confirm(`Slette ${g.episode!.code}?`)) void run(() => deleteEpisode(projectId, g.episode!.id)); }} sx={{ color: narrativeColors.error }} aria-label="Slett"><DeleteIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                   </Stack>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 1.5 }}>

@@ -4,7 +4,7 @@
  * valgfritt utløp), vis råtokenet én gang, list og tilbakekall lenker.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import { ContentCopy as CopyIcon, LinkOff as RevokeIcon, PersonAddAlt as ShareIcon } from '@mui/icons-material';
 import { narrativeColors } from '../narrativeTheme';
 import { NARRATIVE_REVIEW_ACCESS_LABELS, type NarrativeReviewAccessMode, type NarrativeReviewShareLink, type NarrativeSceneReview } from '../narrativeTypes';
@@ -74,9 +74,12 @@ export function ReviewShareSection({ projectId, sceneId, review, onNotice }: { p
         <DialogTitle sx={{ fontSize: 15, fontWeight: 800 }}>Del runde {review.round} med reviewer</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <Select size="small" value={mode} onChange={(e) => setMode(e.target.value as NarrativeReviewAccessMode)} sx={sceneFieldSx} MenuProps={menuProps} inputProps={{ 'data-testid': 'narrative-review-share-mode' }}>
-              {(['view', 'comment', 'approve'] as NarrativeReviewAccessMode[]).map((m) => <MenuItem key={m} value={m}>{NARRATIVE_REVIEW_ACCESS_LABELS[m]}</MenuItem>)}
-            </Select>
+            <FormControl size="small" sx={sceneFieldSx}>
+              <InputLabel id="narrative-review-share-mode-label">Tilgang</InputLabel>
+              <Select labelId="narrative-review-share-mode-label" label="Tilgang" value={mode} onChange={(e) => setMode(e.target.value as NarrativeReviewAccessMode)} MenuProps={menuProps} inputProps={{ 'data-testid': 'narrative-review-share-mode' }}>
+                {(['view', 'comment', 'approve'] as NarrativeReviewAccessMode[]).map((m) => <MenuItem key={m} value={m}>{NARRATIVE_REVIEW_ACCESS_LABELS[m]}</MenuItem>)}
+              </Select>
+            </FormControl>
             <TextField size="small" type="number" label="Utløper etter (dager, 0 = aldri)" value={expiresDays} onChange={(e) => setExpiresDays(e.target.value)} sx={sceneFieldSx} inputProps={{ min: 0, max: 365, 'data-testid': 'narrative-review-share-days' }} />
             <Typography sx={{ fontSize: 11, color: narrativeColors.textDim }}>Reviewer oppgir navn før tilgang. Beslutninger lagres med reviewerens navn, og studioet varsles.</Typography>
           </Stack>
