@@ -80,6 +80,7 @@ describe("Video Room object storage", () => {
     expect(inserted?.params[7]).toBe("team-editor");
     expect(inserted?.params[12]).toBe("premiere");
     expect(inserted?.params[13]).toBe("video-room");
+    expect(inserted?.params[14]).toBeNull();
   });
 
   it("rejects a non-video payload before reserving storage", async () => {

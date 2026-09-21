@@ -56,6 +56,8 @@ export type ProductionWorkspaceKind =
   | 'assistant_direction'
   | 'casting'
   | 'continuity'
+  | 'art_department'
+  | 'production_sound'
   | 'department';
 
 interface ProductionRoleDefinitionBase {
@@ -118,12 +120,12 @@ export const PRODUCTION_ROLES = [
   { id: 'stand_in', label: 'Stand-in', departmentId: 'cast', reportsTo: 'second_assistant_director', workspace: 'department' },
   { id: 'background_performer', label: 'Statist', departmentId: 'cast', reportsTo: 'second_assistant_director', aliases: ['background'], workspace: 'department' },
   { id: 'sfx_supervisor', label: 'SFX supervisor', departmentId: 'special_effects', reportsTo: 'director', workspace: 'department' },
-  { id: 'production_designer', label: 'Produksjonsdesigner', departmentId: 'art', reportsTo: 'director', workspace: 'department' },
-  { id: 'set_designer', label: 'Settdesigner', departmentId: 'art', reportsTo: 'production_designer', workspace: 'department' },
-  { id: 'concept_illustrator', label: 'Konseptillustratør', departmentId: 'art', reportsTo: 'production_designer', workspace: 'department' },
-  { id: 'storyboard_artist', label: 'Storyboardartist', departmentId: 'art', reportsTo: 'production_designer', workspace: 'department' },
-  { id: 'production_sound_mixer', label: 'Produksjonslydmikser', departmentId: 'sound', reportsTo: 'director', aliases: ['sound_mixer', 'audio_mixer', 'sound_engineer'], workspace: 'department' },
-  { id: 'boom_operator', label: 'Boomoperatør', departmentId: 'sound', reportsTo: 'production_sound_mixer', workspace: 'department' },
+  { id: 'production_designer', label: 'Produksjonsdesigner', departmentId: 'art', reportsTo: 'director', workspace: 'art_department' },
+  { id: 'set_designer', label: 'Settdesigner', departmentId: 'art', reportsTo: 'production_designer', workspace: 'art_department' },
+  { id: 'concept_illustrator', label: 'Konseptillustratør', departmentId: 'art', reportsTo: 'production_designer', workspace: 'art_department' },
+  { id: 'storyboard_artist', label: 'Storyboardartist', departmentId: 'art', reportsTo: 'production_designer', workspace: 'art_department' },
+  { id: 'production_sound_mixer', label: 'Produksjonslydmikser', departmentId: 'sound', reportsTo: 'director', aliases: ['sound_mixer', 'audio_mixer', 'sound_engineer'], workspace: 'production_sound' },
+  { id: 'boom_operator', label: 'Boomoperatør', departmentId: 'sound', reportsTo: 'production_sound_mixer', workspace: 'production_sound' },
   { id: 'stunt_coordinator', label: 'Stuntkoordinator', departmentId: 'stunts', reportsTo: 'director', workspace: 'department' },
   { id: 'stunt_double', label: 'Stuntdouble', departmentId: 'stunts', reportsTo: 'stunt_coordinator', workspace: 'department' },
   { id: 'transportation_captain', label: 'Transportansvarlig', departmentId: 'transportation', reportsTo: 'production_manager', workspace: 'department' },
@@ -132,16 +134,16 @@ export const PRODUCTION_ROLES = [
   { id: 'chef', label: 'Kokk', departmentId: 'catering', reportsTo: 'production_manager', workspace: 'department' },
   { id: 'unit_publicist', label: 'Presseansvarlig', departmentId: 'publicity', reportsTo: 'producer', workspace: 'department' },
   { id: 'still_photographer', label: 'Stillfotograf', departmentId: 'publicity', reportsTo: 'unit_publicist', workspace: 'department' },
-  { id: 'costume_designer', label: 'Kostymedesigner', departmentId: 'costumes', reportsTo: 'production_designer', workspace: 'department' },
-  { id: 'wardrobe_supervisor', label: 'Kostymeansvarlig', departmentId: 'costumes', reportsTo: 'costume_designer', aliases: ['wardrobe', 'stylist'], workspace: 'department' },
-  { id: 'set_decorator', label: 'Set decorator', departmentId: 'sets', reportsTo: 'production_designer', workspace: 'department' },
-  { id: 'on_set_dresser', label: 'On-set dresser', departmentId: 'sets', reportsTo: 'set_decorator', workspace: 'department' },
-  { id: 'greensperson', label: 'Greensperson', departmentId: 'sets', reportsTo: 'set_decorator', workspace: 'department' },
-  { id: 'property_master', label: 'Rekvisittansvarlig', departmentId: 'props', reportsTo: 'production_designer', aliases: ['prop_master'], workspace: 'department' },
-  { id: 'assistant_property_master', label: 'Rekvisittassistent', departmentId: 'props', reportsTo: 'property_master', aliases: ['assistant_prop_master'], workspace: 'department' },
-  { id: 'key_hair_stylist', label: 'Håransvarlig', departmentId: 'hair_makeup', reportsTo: 'production_designer', workspace: 'department' },
-  { id: 'key_makeup_artist', label: 'Sminkeansvarlig', departmentId: 'hair_makeup', reportsTo: 'production_designer', aliases: ['makeup_artist'], workspace: 'department' },
-  { id: 'construction_coordinator', label: 'Konstruksjonskoordinator', departmentId: 'construction', reportsTo: 'production_designer', workspace: 'department' },
+  { id: 'costume_designer', label: 'Kostymedesigner', departmentId: 'costumes', reportsTo: 'production_designer', workspace: 'art_department' },
+  { id: 'wardrobe_supervisor', label: 'Kostymeansvarlig', departmentId: 'costumes', reportsTo: 'costume_designer', aliases: ['wardrobe', 'stylist'], workspace: 'art_department' },
+  { id: 'set_decorator', label: 'Set decorator', departmentId: 'sets', reportsTo: 'production_designer', workspace: 'art_department' },
+  { id: 'on_set_dresser', label: 'On-set dresser', departmentId: 'sets', reportsTo: 'set_decorator', workspace: 'art_department' },
+  { id: 'greensperson', label: 'Greensperson', departmentId: 'sets', reportsTo: 'set_decorator', workspace: 'art_department' },
+  { id: 'property_master', label: 'Rekvisittansvarlig', departmentId: 'props', reportsTo: 'production_designer', aliases: ['prop_master'], workspace: 'art_department' },
+  { id: 'assistant_property_master', label: 'Rekvisittassistent', departmentId: 'props', reportsTo: 'property_master', aliases: ['assistant_prop_master'], workspace: 'art_department' },
+  { id: 'key_hair_stylist', label: 'Håransvarlig', departmentId: 'hair_makeup', reportsTo: 'production_designer', workspace: 'art_department' },
+  { id: 'key_makeup_artist', label: 'Sminkeansvarlig', departmentId: 'hair_makeup', reportsTo: 'production_designer', aliases: ['makeup_artist'], workspace: 'art_department' },
+  { id: 'construction_coordinator', label: 'Konstruksjonskoordinator', departmentId: 'construction', reportsTo: 'production_designer', workspace: 'art_department' },
   { id: 'studio_teacher', label: 'Studio teacher', departmentId: 'other', reportsTo: 'production_manager', workspace: 'department' },
   { id: 'post_supervisor', label: 'Post supervisor', departmentId: 'post_management', reportsTo: 'producer', workspace: 'department' },
   { id: 'post_coordinator', label: 'Postkoordinator', departmentId: 'post_management', reportsTo: 'post_supervisor', workspace: 'department' },
@@ -294,5 +296,7 @@ export const PRODUCTION_WORKSPACE_DELIVERY_ORDER = [
   'assistant_direction',
   'continuity',
   'casting',
+  'art_department',
+  'production_sound',
   'department',
 ] as const satisfies readonly ProductionWorkspaceKind[];

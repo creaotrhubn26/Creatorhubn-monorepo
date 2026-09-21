@@ -1,13 +1,98 @@
 # The Role Room: rollearkitektur og Troll-lokasjoner
 
 Dato: 14. september 2026
-Status: Kode og backend er i produksjon på `theroleroom.com`. Dette dokumentet er overleveringen til neste arbeidsøkt eller Claude.
+Status: Lokasjonsleveransen er i produksjon på `theroleroom.com`. Tilleggene for Production Designer / Art Department og Production Sound er verifisert på arbeidsgren, men ikke merget eller deployet. Dette dokumentet er overleveringen til neste arbeidsøkt eller Claude.
 
 ## Kort konklusjon
 
 Den pågående leveransen er fullført. Troll-prosjektets fem grunnlokasjoner har gyldige, kartbare adresser og koordinater, lokasjonsanalysen godtar et eksakt Kartverket-treff selv om treffet mangler matrikkel-/property-ID, og den tidligere produksjonskrasjen fra blandede MUI-versjoner er fjernet. Endringene er merget til `main`, promotert til den dedikerte `live/roleroom`-grenen og bekreftet på `https://theroleroom.com`.
 
-Rollearkitekturen har samtidig fått et tydelig fundament: én produksjon, én delt prosjektgraf og rollebaserte arbeidslinser over de samme dataene. Kodebasen har nå et kanonisk kataloglag med 80 produksjonsroller i 31 avdelinger og dedikerte arbeidsflater for regissør, filmfotograf, regiassistenter, produksjonsleder, produksjonskoordinator, location-avdelingen og script supervisor. Det viktigste som står igjen er å gjøre tildeling, tilgang, arbeidsflater og operasjonelle datalinjer helt registerstyrte før flere avdelingsflater bygges.
+Rollearkitekturen har samtidig fått et tydelig fundament: én produksjon, én delt prosjektgraf og rollebaserte arbeidslinser over de samme dataene. Kodebasen har nå et kanonisk kataloglag med 80 produksjonsroller i 31 avdelinger og dedikerte arbeidsflater for regissør, filmfotograf, regiassistenter, produksjonsleder, produksjonskoordinator, location-avdelingen og script supervisor. På arbeidsgren finnes i tillegg dedikerte linser for Art Department og Production Sound. Det viktigste som står igjen er å gjøre tildeling, tilgang, arbeidsflater og operasjonelle datalinjer helt registerstyrte før flere avdelingsflater bygges.
+
+### Tillegg 20. september 2026: Production Designer / Art Department
+
+Neste vertikale rolleleveranse er implementert og verifisert på arbeidsgrenen `codex/role-room-production-designer`, men er **ikke merget, deployet eller live** når dette tillegget skrives. Den historiske produksjonsstatusen over gjelder fortsatt bare release-SHA-ene som er oppgitt i produksjonsavsnittet.
+
+Produksjonsdesigner og de tilknyttede art-rollene rutes nå til `art-department`-linsen med fem sammenhengende flater:
+
+- oversikt over uavklarte sceneplaner, rekvisittkoblinger, beslutninger og revisjonsspor;
+- scenevis art-breakdown med status, praktisk lokasjon/set build/hybrid, fagbehov og dokumentert designintensjon;
+- visuell retning med fase, palett, designintensjon og eksisterende storyboardreferanser;
+- avdelingshandoff for art direction, set decoration, rekvisitt, kostyme, hår/sminke, konstruksjon, SFX og VFX;
+- samlet handoff-review før informasjonen sendes videre til produksjon.
+
+Tilstanden lagres i en prosjektavgrenset, versjonert Postgres-lane gjennom `GET/PATCH /api/role-room/projects/:projectId/art-department`. Lagreoperasjonen bruker optimistic concurrency. Ved `409` beholdes det lokale utkastet, og brukeren må eksplisitt velge å laste serverversjonen; det skjer ingen stille overskriving. Audit-felt opprettes på serveren og kan ikke forfalskes fra klienten.
+
+Autoriseringen er fail-closed og gjenbruker den kanoniske prosjektresolveren. Prosjekteier, eksplisitt grant eller en relevant art-rolle kan skrive. Andre aktive prosjektmedlemmer kan lese, mens utenforstående får 404. `production_designer` er samtidig lagt til i rollevalg, effektiv rolleoppløsning, administrasjonsnavigasjon og mobilnavigasjon.
+
+Relevante filer:
+
+- `frontend/client/src/components/role-room/components/art-department/ArtDepartmentWorkspace.tsx`
+- `frontend/client/src/components/role-room/components/art-department/artDepartmentWorkspaceModel.ts`
+- `frontend/client/src/components/role-room/services/artDepartmentService.ts`
+- `backend/server/casting-production-art-department.ts`
+- `backend/server/casting-production-routes.ts`
+- `backend/migrations/0656_role_room_art_department_operations.sql`
+- `frontend/e2e/role-room-production-designer-troll.spec.ts`
+
+Verifisering på arbeidsgrenen:
+
+- 51 målrettede frontendtester bestod;
+- 107 målrettede backendtester bestod;
+- frontend- og backend-typecheck bestod;
+- autentisert Troll-E2E bestod på Chromium med lagring, reload, revisjonsspor og kontroll av kritiske konsollfeil;
+- mobil-E2E bestod i stående og liggende visning med 44 px trykkflater og uten horisontal overflow.
+
+Denne første leveransen viser allerede registrerte storyboardbilder og rekvisitter, men oppretter ikke en ny parallell filopplastingsmodell. Når egne art-referanser, tegninger og revisjoner får opplasting, skal de bruke den eksisterende private Role Room-kontrakten i AWS S3-bøtten `the-role-room-prod-745600963362-eu-north-1`, med organisasjons-/prosjektscope, checksum og kortlivede URL-er.
+
+### Tillegg 21. september 2026: Production Sound Mixer / Boom Operator
+
+Produksjonslyd er implementert og verifisert på arbeidsgrenen `codex/role-room-production-sound`, men er **ikke merget, deployet eller live** når dette tillegget skrives. Arbeidsflaten er metadata-first og oppretter ikke en parallell take-logg: continuity eier de kanoniske take-ID-ene, mens Production Sound legger lydrapport, spor, filnavn, kvalitetsflagg og ADR-behov på de samme ID-ene.
+
+Produksjonslydmikser og boomoperatør rutes nå til `production-sound`-linsen med fem flater:
+
+- dagsbrief med dekning, lydproblemer, ADR-flagg, manglende room tone og uavstemte recorder-filer;
+- recorder-, sound roll-, sample rate-, bit depth-, frame rate-, timecode-, akustikk- og radioplan;
+- take-rapportering mot continuity med spor, filnavn, kvalitet, problemmerker og ADR;
+- room tone, wild tracks, ambience og SFX per dag eller scene;
+- CSV-sound report og eksplisitt handoff til DIT, klipp og postlyd.
+
+Tilstanden ligger i `casting_production_days.data.productionSound`, med en selvstendig Drizzle-/SQL-kontrakt for `sound_version`, `sound_updated_by` og `sound_updated_at`. `PATCH /api/role-room/projects/:projectId/production-days/:dayId/production-sound` validerer payload, prosjektgrant, produksjonsdag, scenetilknytning, lokale spor og continuity-take på serveren. Generiske produksjonsdagsskriv kan ikke overskrive lydlinjen. Optimistic concurrency gir synlig `409`; lokalt utkast beholdes til brukeren eksplisitt laster serverversjonen.
+
+Dataintegriteten går begge veier: Production Sound kan ikke opprette lydrapporter for ukjente takes, og continuity kan ikke slette en take som fortsatt har en lydrapport. Dette hindrer foreldreløse rapporter og skjult datatap mellom avdelingene.
+
+Relevante filer:
+
+- `frontend/client/src/components/role-room/components/production-sound/ProductionSoundWorkspace.tsx`
+- `frontend/client/src/components/role-room/components/production-sound/productionSoundWorkspaceModel.ts`
+- `frontend/client/src/components/role-room/services/productionSoundService.ts`
+- `backend/server/casting-production-sound.ts`
+- `backend/server/casting-production-sound-media.ts`
+- `backend/server/casting-production-sound-s3.ts`
+- `backend/server/casting-production-routes.ts`
+- `backend/migrations/0657_role_room_production_sound.sql`
+- `backend/migrations/0658_role_room_production_sound_media.sql`
+- `frontend/e2e/role-room-production-sound-troll.spec.ts`
+
+Recorder-ingest er nå også implementert på arbeidsgrenen. Nettleseren beregner SHA-256 inkrementelt og laster WAVE/BWF direkte til den eksisterende private Role Room-bøtten `the-role-room-prod-745600963362-eu-north-1` med resumable multipart ved store filer. Backend verifiserer checksum og filstørrelse, leser RIFF/RF64, `fmt`, `data`, `bext` og iXML med avgrensede S3 range-reads og lagrer bare godkjent metadata. Spoofede eller strukturelt ugyldige WAVE-filer avvises; en gyldig WAVE uten BWF/iXML godtas med synlige advarsler.
+
+Avstemming er eksplisitt og atomisk: metadata kan gi et konservativt forslag når både scene/slate og numerisk take matcher entydig, men brukeren må bekrefte koblingen. Handlingen oppdaterer både `casting_production_sound_media` og `productionSound.takeReports[].recordingFileIds` i samme transaksjon og øker `sound_version`. Den kan ikke omgås gjennom den generiske lydrapport-ruten. Continuity-taken er fortsatt eneste kanoniske take-identitet; ingest oppretter aldri en ny take. Nedlasting bruker fem minutters signert URL og aldri offentlig objektadresse.
+
+Det som står igjen i denne vertikalen er reell ikke-destruktiv validering mot produksjonsbøttens CORS/IAM med en godkjent testfil, mottakende post-sound-linse med turnover-manifest og delegering/personatilpasning for boomoperatør. Ikke innfør en offentlig bøtte, en ny filproxy eller en separat take-identitet.
+
+Faggrunnlaget for første scope er [ScreenSkills' Production Sound Mixer-sjekkliste](https://www.screenskills.com/skills-checklists/scripted-film-and-tv/production-sound-department/production-sound-mixer-skills/), [Sound Devices 833-brukerveiledning](https://cdn.sounddevices.com/wp-content/uploads/2023/02/833-v9.20-User-Guide.pdf), [EBU Tech 3285 for Broadcast Wave Format](https://tech.ebu.ch/publications/tech3285) og [AES' iXML-standardarbeid](https://aes2.org/standards/standards-development/new-projects/). De underbygger behovet for planlegging, akustiske risikoer, recorder-/sporoppsett, wild tracks, daglig sound report og interoperabel metadataoverlevering. Produktet skal fortsatt valideres med faktiske norske lydteam før scope utvides.
+
+Verifisering på arbeidsgrenen:
+
+- 54 målrettede frontendtester og 192 målrettede backendtester bestod;
+- frontend- og backend-typecheck bestod;
+- frontendens nye lydfiler bestod ESLint uten warnings eller errors;
+- frontend- og backend-produksjonsbuild bestod, inkludert Role Room-index, geo-prerender og host-ruter;
+- tre autentiserte Troll-E2E-scenarier bestod på Chromium: komplett arbeidsflyt med direkte S3-opplasting og eksplisitt avstemming, garanti mot automatisk avstemming og mobilflyt;
+- mobil-E2E bestod i stående og liggende visning med minimum 44 px trykkflate og uten horisontal overflow;
+- testen observerte ingen ukontrollerte React-/JavaScript-feil og ingen feil fra presence-/selftapes-endepunktene som tidligere var problematiske;
+- CSV-eksporten nøytraliserer formel-prefikser i brukerdata før filen åpnes i et regneark;
+- SQL-migrasjon, Drizzle-skjema og runtime-guard bruker samme `sound_*`-kolonner; `0657` kolliderer ikke med dagens `origin/main`.
 
 ## Levert i den avsluttede lokasjonsrunden
 
@@ -68,6 +153,8 @@ Drizzle-skjemaet er allerede samkjørt med Location Manager-leveransen:
 - databasekontrakten krever `aws_s3`, bøtten `the-role-room-prod-745600963362-eu-north-1` og objektsti under `organizations/`;
 - SQL-migrasjonen `0603_role_room_location_operations.sql` og `backend/migrations/role-room-schema.ts` beskriver samme domene.
 
+På Production Sound-arbeidsgrenen speiler `0658_role_room_production_sound_media.sql` og `role-room-schema.ts` også den normaliserte recorderfil-tabellen. Tabellen peker på det eksisterende `role_room_storage_objects`-objektet, prosjektet og produksjonsdagen; status og continuity-take må være konsistente. Selve S3-objektet forblir i felles privat lagring og dupliseres ikke i fagtabellen.
+
 Dette skal ikke splittes til en ny lokasjonsdatabase eller en parallell opplastingsmodell.
 
 ## Verifisering og produksjonsstatus
@@ -123,6 +210,10 @@ Start alltid med disse før arkitekturen endres:
 - `backend/server/casting-project-ownership.ts`: serverens fail-closed prosjekt- og operasjonsrettigheter.
 - `backend/server/casting-production-routes.ts`: versjonerte produksjons-, koordinasjons-, continuity- og location-operasjoner.
 - `backend/server/role-room-storage-key.ts`: kanoniske private S3-nøkler.
+- `frontend/client/src/components/role-room/components/art-department/`: produksjonsdesignerens komposisjon og konservative scenegrunnlag.
+- `backend/server/casting-production-art-department.ts`: streng art-kontrakt, validering og servereid audit.
+- `frontend/client/src/components/role-room/components/production-sound/`: produksjonslydens fem flater over samme produksjonsdag og continuity-takes.
+- `backend/server/casting-production-sound.ts`: streng lydkontrakt og normalisering; mutasjonen ligger i `casting-production-routes.ts`.
 
 Viktig skille:
 
@@ -144,9 +235,11 @@ Viktig skille:
 | Produksjonskoordinator | Dedikert linse | `components/production-coordination/`, egen coordination-versjon og avgrenset ansvar. |
 | Location manager/scout/security | Dedikert linse | `components/locations/`, operativ status, offline kø, S3-scoutmedia, analyse og Location Decision Room. |
 | Script supervisor/continuity | Dedikert linse | `components/continuity/`, take-logg, lined-script-avvik, kommentarer, revisjoner og privat S3-media. |
+| Production Designer / Art Department | Dedikert linse på arbeidsgren | `components/art-department/`, fem flater over scenegrunnlag, visuell retning, beslutninger, avdelinger og handoff. Versjonert API/Drizzle-lane og E2E finnes, men leveransen er ikke deployet. |
+| Production Sound Mixer / Boom Operator | Dedikert linse på arbeidsgren | `components/production-sound/`, fem flater for dagsbrief, oppsett, continuity-koblede takes, BWF/iXML-recorderingest, ekstraopptak og post-handoff. Egen per-dag-versjon, grant, privat Role Room-S3, eksplisitt avstemming, validering og E2E finnes, men leveransen er ikke deployet. |
 | Casting | Eksisterende spesialiserte faner | Roller, kandidater, auditions og utvelgelse er modne fagflater, men er ikke samlet som en egen `casting`-lens i lens-registeret. |
 | Produsent | Eksisterende prosjekt-/plannerflater | Store deler finnes, men `producer` i rollekatalogen har ikke en egen produksjons-lens i `ROLE_ROOM_WORKSPACE_LENSES`. |
-| Andre fagroller | Katalogført, generisk workspace | Art, lyd, kostyme, hår/sminke, rekvisitt, set, transport, catering, PR og postroller peker foreløpig til `department`. |
+| Andre fagroller | Katalogført eller delt faglinse | Art, kostyme, hår/sminke, rekvisitt, set og konstruksjon peker nå til den delte `art-department`-linsen på arbeidsgrenen. Lyd, transport, catering, PR og post peker foreløpig til `department`. |
 
 Sporbare grunncommits:
 
@@ -174,7 +267,7 @@ Nye rolleflater skal følge samme mønster:
 6. Bruk private S3-objekter med kortlivede URL-er og prosjekt-/organisasjonsscope for media.
 7. La kommentarer være bredere enn mutasjonsrettighet, men håndhev begge på serveren.
 
-Eksisterende eksempler er `management_version`, `coordination_version` og `continuity_version` på produksjonsdagen, samt `role_room_location_operations.version` per lokasjon.
+Eksisterende eksempler er `management_version`, `coordination_version` og `continuity_version` på produksjonsdagen, `role_room_location_operations.version` per lokasjon og `role_room_art_department_operations.version` per prosjekt.
 
 ## Det som står igjen
 
@@ -204,8 +297,8 @@ I dag finnes mange av nodene, men konsekvensen av en endring må fortsatt samles
 
 Bygg avdelingsvis og gjenbruk en felles department-shell. Anbefalt rekkefølge:
 
-1. **Production Designer / Art Department.** Samler manusbehov, sett, rekvisitt, kostyme, hår/sminke, konstruksjon, konsept og storyboard mot scene og opptaksdag. Dette tester om Production Graph faktisk fungerer på tvers av mange underavdelinger.
-2. **Produksjonslyd.** Sound mixer og boom trenger lydforhold per lokasjon/scene, kanal- og radioplan, sound report, take-kobling og overlevering til post.
+1. **Production Designer / Art Department — implementert på arbeidsgren, ikke deployet.** Neste art-iterasjon er fil-/revisjonshåndtering via privat S3, godkjenningsflyt og Production Graph-change impact.
+2. **Produksjonslyd — implementert på arbeidsgren, ikke deployet.** Recorder-ingest, BWF/iXML-analyse, privat S3-media og eksplisitt avstemming bruker nå samme continuity-take-ID. Neste lyd-iterasjon er post-sound-mottak, turnover-manifest og reell CORS/IAM-smoke mot produksjonsbøtten.
 3. **Rekvisitt, set, kostyme og hår/sminke.** Bruk samme asset-/continuity-kjerne med eierskap, tilstand, bilder før/etter, hvem/hvilken scene og dagsbehov.
 4. **Transport, sikkerhet, catering og unit-logistikk.** Knyttes til production day, location, crew count, call time og avvik.
 5. **Post supervisor, editorial, post sound, VFX og musikk.** Bygg leveransemanifest, versionsporing, review/godkjenning og opphav/rights over samme scene-/take-identitet.
@@ -244,6 +337,8 @@ Disse er dokumentert og skal ikke tolkes som ferdige:
 - En bruker kan ikke ha flere normaliserte prosjektroller gjennom dagens unike `casting_user_roles`-rad.
 - Mange avdelinger er katalogført, men mangler dedikert eller modulær department-workspace.
 - Production Graph og automatisk, forhåndsvisbar change impact er ikke ferdig.
+- Art-linsen har versjonert fagdata og eksisterende storyboardreferanser, men mangler egne S3-opplastinger, tegningsrevisjoner, før/etter-sammenligning, formell regissør-/produsentgodkjenning og automatisk konsekvensanalyse mot budsjett og opptaksplan.
+- Production Sound har versjonert metadata, direkte/resumable recorder-opplasting til privat Role Room-S3, server-side BWF/iXML-analyse og eksplisitt, transaksjonell continuity-avstemming. Det mangler fortsatt en mottakende post-sound-linse, turnover-manifest, produksjonsgodkjent live-smoke av CORS/IAM og feltvalidering med faktiske recorderfiler. Avstemming skal forbli eksplisitt; metadataforslag skal ikke automatisk endre take-data.
 
 Det finnes ingen kjent blokkering igjen for Troll-adressenes gyldighet eller for å åpne og lagre en konservativ lokasjonsanalyse uten property-ID.
 
@@ -317,12 +412,12 @@ Status betyr:
 | Medvirkende | Stand-in (`stand_in`) | Katalog | Planlagt avgrenset cast-portal for call time, scene, blokkering, garderobe/HMU, meldinger og bekreftelse. |
 | Medvirkende | Statist (`background_performer`) | Katalog | Planlagt gruppebasert portal for call, transport, fitting, samtykke, innsjekk og wrap; ingen bred prosjektlesing. |
 | Spesialeffekter | SFX supervisor (`sfx_supervisor`) | Katalog | Planlagt scene-/shotbehov, metode, materialer, risikovurdering, tillatelser, test, reset og sign-off. |
-| Art | Produksjonsdesigner (`production_designer`) | Katalog, neste hovedrolle | Neste vertikale leveranse. Skal samle designintensjon, sets, props, kostyme, HMU, konstruksjon, konsept og storyboard per scene. |
-| Art | Settdesigner (`set_designer`) | Katalog | Planlagt modul under Production Designer for tegninger, mål, revisjoner, materialer, godkjenning og construction-handoff. |
-| Art | Konseptillustratør (`concept_illustrator`) | Katalog | Planlagt versjonert referanse-/konseptflate med brief, kilde/proveniens, review, valg og lock. |
-| Art | Storyboardartist (`storyboard_artist`) | Delvis | Storyboard Room har sterke tegne-, review- og animatic-kapabiliteter. Rollen mangler normalisert Role Room-assignment, department-ruting og produksjonshandoff. |
-| Opptakslyd | Produksjonslydmikser (`production_sound_mixer`) | Katalog | Planlagt fagflate for location-/scenelyd, kanal-/radioplan, sound report, take, avvik, filmanifest og post-handoff. |
-| Opptakslyd | Boomoperatør (`boom_operator`) | Katalog | Planlagt mobil shot-/takeflate for mikrofon, kanal, radio, problem, room tone og kvittering til mixer. |
+| Art | Produksjonsdesigner (`production_designer`) | Levert på arbeidsgren, ikke deployet | Dedikert, versjonert art-linse samler sceneplan, designintensjon, beslutninger, storyboardgrunnlag og fag-handoffs. Neste er private S3-revisjoner, formell sign-off og change impact. |
+| Art | Settdesigner (`set_designer`) | Delvis på arbeidsgren | Rutes til art-linsen og kan arbeide i sceneplan og sets-handoff. Egen modul for tegninger, mål, revisjoner, materialer og construction-handoff mangler. |
+| Art | Konseptillustratør (`concept_illustrator`) | Delvis på arbeidsgren | Rutes til art-linsen med visuell retning og review-grunnlag. Versjonert konseptmedia, proveniens, før/etter og lock mangler. |
+| Art | Storyboardartist (`storyboard_artist`) | Delvis på arbeidsgren | Rutes nå til art-linsen, som viser eksisterende storyboardreferanser. Normalisert handoff mellom Storyboard Room og Role Room, panelrevisjoner og sign-off mangler. |
+| Opptakslyd | Produksjonslydmikser (`production_sound_mixer`) | Levert på arbeidsgren, ikke deployet | Dedikert fagflate for akustisk plan, recorder/timecode, spor, continuity-koblede sound reports, room tone/wild tracks, direkte BWF/iXML-ingest til privat S3 og eksplisitt filavstemming. Neste er post-sound-turnover, live CORS/IAM-smoke og feltvalidering. |
+| Opptakslyd | Boomoperatør (`boom_operator`) | Levert på arbeidsgren, ikke deployet | Rutes til samme mobilresponsive lydflate med avgrenset sound-grant. Neste er tydeligere delegering per mikrofon/take og et smalere boom-persona dersom feltbruk viser behov. |
 | Stunt | Stuntkoordinator (`stunt_coordinator`) | Katalog | Planlagt scene-risiko, performer, rehearsal, medisinsk/sikkerhetsplan, utstyr, tillatelser og go/no-go. |
 | Stunt | Stuntdouble (`stunt_double`) | Katalog | Planlagt avgrenset portal for call, rehearsal, kost/HMU, sikkerhetsbrief, samtykke og take-status. |
 
@@ -336,16 +431,16 @@ Status betyr:
 | Catering | Kokk (`chef`) | Katalog | Planlagt måltidsplan, antall, allergiaggregat, tider, leveransepunkt og bekreftelse uten unødvendige personopplysninger. |
 | PR og stills | Presseansvarlig (`unit_publicist`) | Katalog | Planlagt godkjent story-/assetplan, embargo, releases, shot access, klientreview og publiseringshandoff. |
 | PR og stills | Stillfotograf (`still_photographer`) | Katalog | Planlagt shot-/sceneoppdrag, tilgang, releases, utvalg, metadata og privat media-handoff. |
-| Kostyme | Kostymedesigner (`costume_designer`) | Katalog | Planlagt character/scene-look, continuity, fittings, sourcing, kost, godkjenning og dagsbehov. |
-| Kostyme | Kostymeansvarlig (`wardrobe_supervisor`) | Katalog | Planlagt item-/look-tracking, fitting, vask/reparasjon, on-set-status, bilder og continuity per take. |
-| Set decoration | Set decorator (`set_decorator`) | Katalog | Planlagt set dressing-plan, eierskap/leie, sceneplassering, kost, installasjon og strike. |
-| Set decoration | On-set dresser (`on_set_dresser`) | Katalog | Planlagt mobil reset-/continuity-flate med bilder, plassering, endringer og avvik per take. |
-| Set decoration | Greensperson (`greensperson`) | Katalog | Planlagt behov, sourcing, plassering, vedlikehold, vann/sikkerhet, continuity og wrap. |
-| Rekvisitt | Rekvisittansvarlig (`property_master`) | Katalog | Planlagt prop-register koblet til karakter, scene, shot og take med eierskap, versjon, tilstand og handoff. |
-| Rekvisitt | Rekvisittassistent (`assistant_property_master`) | Katalog | Planlagt mobil uttak/retur, preset/reset, bilde, skade og oppgave under property master. |
-| Hår og sminke | Håransvarlig (`key_hair_stylist`) | Katalog | Planlagt character-look, fitting, scene-/dagrekkefølge, continuity-bilder, produkter, tid og avvik. |
-| Hår og sminke | Sminkeansvarlig (`key_makeup_artist`) | Katalog | Planlagt character-look, prosthetics/SFX-makeup, allergi-/samtykkescope, continuity og reset per take. |
-| Konstruksjon | Konstruksjonskoordinator (`construction_coordinator`) | Katalog | Planlagt tegning/revisjon, materialer, crew, HMS, milepæler, inspeksjon, kost og handoff til art/set. |
+| Kostyme | Kostymedesigner (`costume_designer`) | Delvis på arbeidsgren | Rutes til art-linsen og kostyme-handoff. Character/scene-look, continuity, fittings, sourcing, kost og dagsbehov mangler som egen modul. |
+| Kostyme | Kostymeansvarlig (`wardrobe_supervisor`) | Delvis på arbeidsgren | Rutes til art-linsen. Item-/look-tracking, fitting, vask/reparasjon, bilder og continuity per take mangler. |
+| Set decoration | Set decorator (`set_decorator`) | Delvis på arbeidsgren | Rutes til art-linsen og sets-handoff. Dressing-plan, eierskap/leie, kost, installasjon og strike mangler. |
+| Set decoration | On-set dresser (`on_set_dresser`) | Delvis på arbeidsgren | Rutes til art-linsen. Mobil reset-/continuity-flyt med bilder, plassering og take-avvik mangler. |
+| Set decoration | Greensperson (`greensperson`) | Delvis på arbeidsgren | Rutes til art-linsen. Sourcing, vedlikehold, vann/sikkerhet, continuity og wrap mangler som fagmodul. |
+| Rekvisitt | Rekvisittansvarlig (`property_master`) | Delvis på arbeidsgren | Rutes til art-linsen, som leser kanoniske rekvisitter og avdekker manglende scenekobling. Eierskap/leie, versjon, tilstand og take-handoff mangler. |
+| Rekvisitt | Rekvisittassistent (`assistant_property_master`) | Delvis på arbeidsgren | Rutes til art-linsen. Mobil uttak/retur, preset/reset, bilde, skade og delegerte oppgaver mangler. |
+| Hår og sminke | Håransvarlig (`key_hair_stylist`) | Delvis på arbeidsgren | Rutes til art-linsen og HMU-handoff. Look, fitting, continuity-bilder, produkter, tid og take-reset mangler. |
+| Hår og sminke | Sminkeansvarlig (`key_makeup_artist`) | Delvis på arbeidsgren | Rutes til art-linsen og HMU-handoff. Prosthetics/SFX-makeup, allergi-/samtykkescope, continuity og reset mangler. |
+| Konstruksjon | Konstruksjonskoordinator (`construction_coordinator`) | Delvis på arbeidsgren | Rutes til art-linsen og construction-handoff. Tegningsrevisjon, materialer, crew, HMS, milepæler, inspeksjon og kost mangler. |
 | Andre | Studio teacher (`studio_teacher`) | Katalog | Planlagt barnets avgrensede dagsplan, arbeid/skole/hvile, guardian-status og compliance uten bredt prosjektinnsyn. |
 
 ### Postproduksjon
@@ -385,9 +480,9 @@ Målet er at organisasjonskartet fungerer som konfigurasjon for navigasjon, ansv
 
 ## Konkret startpunkt for neste Claude-økt
 
-1. Les dette dokumentet og de syv kanoniske kildefilene nevnt over.
+1. Les dette dokumentet og de kanoniske kildefilene nevnt over.
 2. Bekreft live-SHA før endring; ikke anta at `creatorhubn.com` og `theroleroom.com` følger samme live-gren.
-3. Lag først en repository-grounded plan for workspace-register og flerrolle-assignment. Ikke implementer en ny rolle før migrasjons- og kompatibilitetsstrategien er eksplisitt.
+3. Viderefør det typed workspace-registeret, men flytt selve komponentlastingen og tilgangsmetadata ut av `CastingPlannerPanel.tsx`. Lag en eksplisitt migrasjons- og kompatibilitetsstrategi for normaliserte flerrolle-assignments før rollemodellene kopieres videre.
 4. Bevar URL-kontrakten `project`, `tab`, `lens`, `surface` og `scene`, inkludert back/forward og refresh.
 5. Bruk Troll til E2E, men ikke skriv nye faktapåstander inn i demoen uten verifisert kilde.
-6. Etter plattformarbeidet: start Production Designer / Art Department som neste vertikale rolleleveranse.
+6. Merge/deploy og live-verifiser Production Designer / Art Department og Production Sound før status settes til produksjon. Deretter bør neste vertikale leveranse velges mellom prop/set/wardrobe-continuity og transport/unit-logistikk, basert på brukerresearch og Production Graph-avhengigheter.
