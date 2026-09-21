@@ -251,6 +251,8 @@ const ROLE_CARDS: Record<string, {
   // ── Spillstudio (Story Graph, beta) — 2 path-valg. Begge lander i ?mode=game_studio.
   game_studio_owner:     { label: 'Spillstudio',        glyph: <GameStudioOwnerIcon    sx={{ fontSize: 'inherit' }} /> },
   narrative_designer:    { label: 'Narrativ designer',  glyph: <NarrativeDesignerIcon  sx={{ fontSize: 'inherit' }} /> },
+  // Kun brukt i USE_CASES-karusellen (venstre panel) — ingen egen rollekort.
+  game_qa_publisher:     { label: 'QA / Publisher' },
 
   // ── HOW TO ADD A NEW CARD ────────────────────────────────────────────
   // 1. Add an entry below (copy any line above as a template)
@@ -469,6 +471,13 @@ const CONTENT_PRODUCER_USE_CASES: { roleId: string; line: string }[] = [
   { roleId: 'photographer', line: 'Hold kunder, filer og godkjenninger tett på uten å hoppe mellom løse verktøy.' },
   { roleId: 'director', line: 'Planlegg produksjon, shotlist og samarbeid i samme rom som leveransen faktisk skjer i.' },
   { roleId: 'camera_operator', line: 'Gi små videoteam en raskere og mer strukturert produksjonsflyt fra brief til eksport.' },
+];
+// ── Spillstudio (Story Graph, beta) — filmspesifikke USE_CASES ("REGISSØR —
+// Bygg shotliste …") gir null gjenkjenning for spillroller. Egen slide-sett.
+const GAME_STUDIO_USE_CASES: { roleId: string; line: string }[] = [
+  { roleId: 'narrative_designer', line: 'Tegn historien som graf, forgreninger og variabler' },
+  { roleId: 'producer',           line: 'Scener, leveransegater og review med bevis' },
+  { roleId: 'game_qa_publisher',  line: 'Gjestereview uten konto' },
 ];
 const DECISION_ROLE_SPOTLIGHTS: Partial<Record<string, {
   eyebrow: string;
@@ -1254,6 +1263,11 @@ function RoleChip({
   variant?: RoleChipVariant;
 }) {
   const shortLabel = role.label.split(' ')[0];
+  // Spillstudio-rollene (Spillstudio / Narrativ designer) har ingen kort
+  // forkortelse som tåler den roterte hjørne-indeksen uten å bli klippet
+  // ("Spil…") eller speilvendt — vis dem uten hjørne-indeks, kun det fulle
+  // etiketten nederst (se "bottom label band" under).
+  const hasRotatedCornerIndex = !(GAME_STUDIO_ROLE_IDS as readonly string[]).includes(role.id);
   const spotlight = variant === 'decision'
     ? DECISION_ROLE_SPOTLIGHTS[role.id]
     : null;
@@ -1517,7 +1531,7 @@ function RoleChip({
       ) : null}
 
       {/* ── top-left corner index ── */}
-      {!compact && variant !== 'decision' && (
+      {!compact && variant !== 'decision' && hasRotatedCornerIndex && (
         <Box sx={{
           position: 'absolute', top: 6, left: 7, zIndex: 3,
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
@@ -1543,7 +1557,7 @@ function RoleChip({
       )}
 
       {/* ── bottom-right corner index (rotated 180°) ── */}
-      {!compact && variant !== 'decision' && (
+      {!compact && variant !== 'decision' && hasRotatedCornerIndex && (
         <Box sx={{
           position: 'absolute', bottom: 6, right: 7, zIndex: 3,
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
@@ -1896,6 +1910,9 @@ export default function LoginDialog({
   const [ucIdx, setUcIdx] = useState(0);
   const [ucVisible, setUcVisible] = useState(true);
   const [forgotPassword, setForgotPassword] = useState(false);
+  // UX-02: Spillstudio (Solo, gratis) kan opprette konto rett fra login-dialogen.
+  // Backend krever signup=true + loginAs=game_studio og passord ≥ 8 tegn.
+  const [signupMode, setSignupMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
   const [badgeKey, setBadgeKey] = useState(0);
@@ -2248,6 +2265,9 @@ export default function LoginDialog({
   const activeUseCases: { roleId: string; line: string }[] = (() => {
     if (effectiveLoginPersona === 'content_producer') {
       return CONTENT_PRODUCER_USE_CASES;
+    }
+    if (effectiveLoginPersona === 'game_studio') {
+      return GAME_STUDIO_USE_CASES;
     }
     return USE_CASES;
   })();
@@ -3344,6 +3364,7 @@ export default function LoginDialog({
           // users that have no Stripe invite.
           role: isLandingPage ? selectedRole : undefined,
           loginAs: isLandingPage ? (effectiveLoginPersona || undefined) : undefined,
+          ...(isLandingPage && signupMode && effectiveLoginPersona === 'game_studio' ? { signup: true } : {}),
         }),
         credentials: 'include',
       }).then((r) => r.json());
@@ -5270,7 +5291,7 @@ export default function LoginDialog({
             </Box>
           )}
 
-          {isLandingPage && effectiveLoginPersona && shouldShowCommercialDetails && showCommercialTeamStep && (
+          {isLandingPage && effectiveLoginPersona && requiresCommercialSetup && shouldShowCommercialDetails && showCommercialTeamStep && (
             <Box
               sx={{
                 display: 'flex',
@@ -6212,7 +6233,24 @@ export default function LoginDialog({
 
           {/* ── forgot password ── */}
           {!forgotPassword ? (
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: -0.5 }}>
+            <Box sx={{ display: 'flex', justifyContent: isLandingPage && effectiveLoginPersona === 'game_studio' ? 'space-between' : 'flex-end', alignItems: 'center', mt: -0.5, gap: 1, flexWrap: 'wrap' }}>
+              {isLandingPage && effectiveLoginPersona === 'game_studio' ? (
+                <Button
+                  onClick={() => { setSignupMode((v) => !v); setError(''); }}
+                  data-testid="role-room-login-signup-toggle"
+                  sx={{
+                    textTransform: 'none',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: `rgba(${aR},${aG},${aB},0.85)`,
+                    p: 0,
+                    minWidth: 0,
+                    '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
+                  }}
+                >
+                  {signupMode ? 'Har du konto? Logg inn' : 'Ny her? Opprett gratis Solo-konto'}
+                </Button>
+              ) : null}
               <Button
                 onClick={() => { setForgotPassword(true); setForgotEmail(email); }}
                 sx={{
@@ -6370,10 +6408,10 @@ export default function LoginDialog({
             {loading ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
                 <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.5)' }} />
-                <span style={{ opacity: 0.6 }}>Logger inn…</span>
+                <span style={{ opacity: 0.6 }}>{signupMode && effectiveLoginPersona === 'game_studio' ? 'Oppretter konto…' : 'Logger inn…'}</span>
               </Box>
             ) : (
-              ctaButtonLabel
+              signupMode && effectiveLoginPersona === 'game_studio' ? 'Opprett gratis konto' : ctaButtonLabel
             )}
           </Button>
 

@@ -365,6 +365,13 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   // Generate lager deterministiske funn fra mock-tilstanden; accept speiler applier-en (åpent spørsmål AI-<id>).
   const aiSuggestions: Rec[] = [];
   const suggestionJson = (data: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(data) });
+  // UX-01: «Nytt prosjekt» i prosjektvelgeren (POST /api/role-room/projects).
+  await page.route('**/api/role-room/projects', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const body = (route.request().postDataJSON() ?? {}) as { name?: string };
+    const id = `proj-${String(body.name ?? 'nytt').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'nytt'}`;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id, name: body.name ?? 'Nytt spill', status: 'active', project_type: 'game' }) });
+  });
   await page.route('**/api/role-room/projects/*/ai-suggestions**', async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());

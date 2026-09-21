@@ -190,6 +190,28 @@ function readFirstText(...values: Array<string | null | undefined>) {
   return '';
 }
 
+// ── Onboarding-wizard: "minimert"-state persisteres per bruker slik at den
+// ikke popper opp igjen på hver refresh etter at brukeren har lukket den ──
+function onboardingMinimizedStorageKey(userId: string | null | undefined) {
+  return `role_room_onboarding_minimized:${userId ?? ''}`;
+}
+function readOnboardingMinimized(userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  try {
+    return window.localStorage.getItem(onboardingMinimizedStorageKey(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeOnboardingMinimized(userId: string | null | undefined) {
+  if (!userId) return;
+  try {
+    window.localStorage.setItem(onboardingMinimizedStorageKey(userId), '1');
+  } catch {
+    // localStorage utilgjengelig (privat modus e.l.) — ignorer, kun en UX-bekvemmelighet.
+  }
+}
+
 function buildRoleRoomPublishingSuggestion(
   projectName: string | undefined,
   snapshot: RoleRoomAgentProducerBootstrapResult | null,
@@ -332,13 +354,22 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
   // Onboarding: sjekk om bruker må fullføre profil
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [onboardingMinimized, setOnboardingMinimized] = useState(false);
+  const [onboardingMinimized, setOnboardingMinimized] = useState(() => readOnboardingMinimized(auth.user?.id));
   const [memberProfileImageUrl, setMemberProfileImageUrl] = useState<string | null>(null);
   // Fokuspunkt (object-position) for header-avataren, satt i onboarding.
   const [memberAvatarObjectPosition, setMemberAvatarObjectPosition] = useState<string>('50% 50%');
+  // Sync minimert-state fra localStorage når userId blir kjent/endres (init-verdien
+  // over kan ha blitt satt før auth.user var tilgjengelig).
+  useEffect(() => {
+    if (!auth.user?.id) return;
+    if (readOnboardingMinimized(auth.user.id)) setOnboardingMinimized(true);
+  }, [auth.user?.id]);
   useEffect(() => {
     if (!auth.user?.id) return;
     if (onboardingMinimized) return;
+    // Spillstudio (Story Graph) har ingen profil-wizard — ikke gjør unødvendige
+    // onboarding-kall eller åpne dialogen for denne vertikalen (UX-08).
+    if (isGameMode(activeProfessionMode)) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -357,7 +388,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [auth.user?.id, onboardingMinimized, onboardingOpen]);
+  }, [auth.user?.id, onboardingMinimized, onboardingOpen, activeProfessionMode]);
 
   // Sentralt tab-katalog. Brukes av top-Tabs, side-rail og bottom-nav slik
   // at admin-konfigen virker likt på tvers av viewports.
@@ -1533,6 +1564,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         onMinimize={() => {
           setOnboardingOpen(false);
           setOnboardingMinimized(true);
+          writeOnboardingMinimized(auth.user?.id);
         }}
       />
     </Box>

@@ -151,6 +151,20 @@ export default function RoleRoomGdprNotice() {
   const [expanded, setExpanded] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
   const [settings, setSettings] = useState<CookieConsentSettings>(DEFAULT_SETTINGS);
+  // Story Graph (game_studio) har en fast venstre sidebar med bunn-nav på
+  // desktop og bell/KPI-rad øverst på mobil — en "Administrer cookies"-knapp
+  // nederst til venstre kolliderer med begge (UX-12). Når GameShell er
+  // mountet et sted på siden, flytter vi knappen til nederst-høyre, stablet
+  // over hjelpe-FAB-en i stedet.
+  const [isGameShell, setIsGameShell] = useState(false);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const check = () => setIsGameShell(!!document.querySelector('[data-testid="narrative-shell"]'));
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -367,19 +381,31 @@ export default function RoleRoomGdprNotice() {
     </Box>
   );
 
+  const manageButtonLabel = hasSaved ? 'Administrer cookies' : 'Velg cookies';
   const manageButton = !visible ? (
     <Button
       onClick={() => { setExpanded(true); setVisible(true); }}
       variant="outlined"
+      aria-label={manageButtonLabel}
       sx={{
-        position: 'fixed', left: { xs: 12, md: 20 }, bottom: { xs: 12, md: 20 }, zIndex: 9998,
-        borderRadius: '999px', textTransform: 'none', fontWeight: 700, px: 2, py: 0.8,
+        position: 'fixed',
+        zIndex: 9998,
+        // Kompakt pille i stedet for en full-størrelse knapp — mindre av
+        // skjermen dekket i begge posisjonene under.
+        borderRadius: '999px', textTransform: 'none', fontWeight: 700,
+        px: { xs: 1.3, md: 1.6 }, py: { xs: 0.4, md: 0.5 },
+        fontSize: { xs: '0.7rem', md: '0.76rem' },
+        ...(isGameShell
+          // Story Graph: bunn-venstre er okkupert av sidebarens bunn-nav
+          // (desktop) / bell-rad (mobil) — stable over hjelpe-FAB-en i stedet.
+          ? { right: { xs: 16, md: 24 }, bottom: { xs: 80, md: 88 } }
+          : { left: { xs: 12, md: 20 }, bottom: { xs: 12, md: 20 } }),
         color: palette.accentBright, borderColor: palette.border,
         bgcolor: 'rgba(27, 18, 44,0.9)', backdropFilter: 'blur(12px)',
         '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(27, 18, 44,0.96)' },
       }}
     >
-      {hasSaved ? 'Administrer cookies' : 'Velg cookies'}
+      {manageButtonLabel}
     </Button>
   ) : null;
 

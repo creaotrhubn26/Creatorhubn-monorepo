@@ -105,6 +105,25 @@ export class NarrativeNetworkError extends Error {
   }
 }
 
+// Eksportert slik at UI-laget (NarrativeWorkspace) kan gjenkjenne en
+// tilgangs-/ikke-funnet-feil på selve meldingen uten å måtte grave i
+// status-koden på feil-objektet (den forsvinner et par lag opp, i
+// useNarrativeGraph sitt `error: string | null`).
+export const NARRATIVE_FORBIDDEN_MESSAGE = 'Du har ikke tilgang til dette prosjektet.';
+export const NARRATIVE_NOT_FOUND_MESSAGE = 'Prosjektet finnes ikke.';
+
+/**
+ * Rå feiltekster fra backend ("forbidden", "internal", "HTTP 500" …) er ikke
+ * ment for sluttbrukere (UX-30/UX-31). Oversett de vanlige HTTP-statusene til
+ * norsk før de havner i en NarrativeApiError som UI-et viser direkte.
+ */
+function friendlyApiErrorMessage(status: number, rawMessage: string): string {
+  if (status === 403) return NARRATIVE_FORBIDDEN_MESSAGE;
+  if (status === 404) return NARRATIVE_NOT_FOUND_MESSAGE;
+  if (status >= 500) return 'Noe gikk galt hos oss. Prøv igjen om litt.';
+  return rawMessage;
+}
+
 type Envelope<T> = { success: true; data: T };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -134,7 +153,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (res.status === 409 && body.error === 'snapshot_stale') {
       throw new NarrativeStaleReviewError(typeof (body as { currentHash?: unknown }).currentHash === 'string' ? (body as { currentHash: string }).currentHash : null);
     }
-    throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
   }
   if (res.status === 204) return undefined as T;
   const json = (await res.json()) as Envelope<T> | T;
@@ -153,7 +172,7 @@ async function requestBlob(path: string): Promise<{ blob: Blob; filename: string
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
   }
   const disposition = res.headers.get('content-disposition') ?? '';
   const m = /filename="([^"]+)"/.exec(disposition);
@@ -170,7 +189,7 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
   }
   const json = (await res.json()) as Envelope<T>;
   return json.data;
@@ -466,6 +485,11 @@ export function exportPdf(projectId: string, locale: string | null): Promise<{ b
   return requestBlob(p(projectId, `/export.pdf${q}`));
 }
 
+/** Manus-PDF av scenekortene (Før/Handling/Kontroll/Etter/Lyd, replikker, gater) — uavhengig av brett (UX-28). */
+export function exportScenesPdf(projectId: string): Promise<{ blob: Blob; filename: string | null }> {
+  return requestBlob(p(projectId, '/scenes/export.pdf'));
+}
+
 // ─── Fase 6: scener, rammer, oppgaver, review ──────────────────────────
 
 export interface SceneInput {
@@ -652,7 +676,7 @@ async function publicRequest<T>(token: string, path: string, init: RequestInit =
   } catch { throw new NarrativeNetworkError(); }
   const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; currentHash?: string | null; data?: T };
   if (res.status === 409 && body.error === 'snapshot_stale') throw new NarrativeStaleReviewError(body.currentHash ?? null);
-  if (!res.ok) throw new NarrativeApiError(body.message || body.error || `HTTP ${res.status}`, res.status, body.error ?? null);
+  if (!res.ok) throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
   return body.data as T;
 }
 export async function getGuestReview(token: string, reviewerToken: string | null): Promise<NarrativeGuestReview | null> {
