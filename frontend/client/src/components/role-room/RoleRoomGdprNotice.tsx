@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { createPortal } from 'react-dom';
 import {
   Box,
@@ -157,6 +158,9 @@ export default function RoleRoomGdprNotice() {
   // mountet et sted på siden, flytter vi knappen til nederst-høyre, stablet
   // over hjelpe-FAB-en i stedet.
   const [isGameShell, setIsGameShell] = useState(false);
+  // På mobil: kun ikon (40×40) så pillen ikke dekker innhold (UX-12/UX-17).
+  // Må ligge før «if (!mounted) return null» — hooks kan ikke være betinget.
+  const compactManage = useMediaQuery('(max-width:899.95px)');
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const check = () => setIsGameShell(!!document.querySelector('[data-testid="narrative-shell"]'));
@@ -393,7 +397,7 @@ export default function RoleRoomGdprNotice() {
         // Kompakt pille i stedet for en full-størrelse knapp — mindre av
         // skjermen dekket i begge posisjonene under.
         borderRadius: '999px', textTransform: 'none', fontWeight: 700,
-        px: { xs: 1.3, md: 1.6 }, py: { xs: 0.4, md: 0.5 },
+        px: { xs: 0, md: 1.6 }, py: { xs: 0, md: 0.5 }, minWidth: { xs: 40, md: 64 }, width: { xs: 40, md: 'auto' }, height: { xs: 40, md: 'auto' },
         fontSize: { xs: '0.7rem', md: '0.76rem' },
         ...(isGameShell
           // Story Graph: bunn-venstre er okkupert av sidebarens bunn-nav
@@ -405,7 +409,7 @@ export default function RoleRoomGdprNotice() {
         '&:hover': { borderColor: palette.accentBright, bgcolor: 'rgba(27, 18, 44,0.96)' },
       }}
     >
-      {manageButtonLabel}
+      {compactManage ? <CookieOutlinedIcon fontSize="small" /> : manageButtonLabel}
     </Button>
   ) : null;
 

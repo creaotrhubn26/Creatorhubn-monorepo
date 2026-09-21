@@ -100,7 +100,7 @@ export function GameShell({ tabs, activeTabId, onSelectTab, labels, header, head
   const sidebarInner = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: narrativeColors.bgPanel, borderRight: `1px solid ${narrativeColors.borderStrong}` }}>
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography sx={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.3 }}>Story Graph</Typography>
+        <Typography component="div" sx={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.3 }}>Story Graph</Typography>
         <Chip size="small" label="Beta" sx={{ height: 20, fontSize: 10, bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent, fontWeight: 700 }} />
       </Box>
       <Divider sx={{ borderColor: narrativeColors.borderStrong }} />
@@ -148,7 +148,7 @@ export function GameShell({ tabs, activeTabId, onSelectTab, labels, header, head
                   Drawer på mobil — vis en fallback-tittel i topbaren her så
                   siden ikke mangler identitet. Desktop har den allerede i
                   den faste sidebaren, så ikke gjenta den der (UX-11). */}
-              <Typography
+              <Typography component="div"
                 sx={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.3, display: 'flex', alignItems: 'center', gap: 0.75 }}
                 data-testid="narrative-topbar-title"
               >
@@ -164,7 +164,7 @@ export function GameShell({ tabs, activeTabId, onSelectTab, labels, header, head
         {/* pb reserverer plass under siste innholdsrad slik at den fastlåste
             hjelpe-FAB-en (shared/HelpButton, ~56px nederst til høyre) ikke
             dekker den (UX-13). */}
-        <Box role="tabpanel" sx={{ flex: 1, minHeight: 0, pb: { xs: 12, md: 10 } }}>{children}</Box>
+        <Box role="tabpanel" sx={{ flex: 1, minHeight: 0, pb: { xs: 12, md: 10 }, '@media (max-width:899.95px)': { '& .MuiButton-sizeSmall': { minHeight: 36 }, '& .MuiIconButton-sizeSmall': { minWidth: 36, minHeight: 36 }, '& .MuiChip-clickable': { minHeight: 32 } } }}>{children}</Box>
       </Box>
     </Box>
   );

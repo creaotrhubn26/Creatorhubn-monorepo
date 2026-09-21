@@ -643,6 +643,7 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
               {store.error}
             </Alert>
           ) : null}
+          {isProjectAccessError ? null : (
           <ErrorBoundary
             key={activeTab.id}
             componentName={`narrative-tab:${activeTab.id}`}
@@ -658,6 +659,7 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
               {renderTabBody(activeTab)}
             </React.Suspense>
           </ErrorBoundary>
+          )}
         </Box>
       </GameShell>
       <CommandPalette commands={commands} />

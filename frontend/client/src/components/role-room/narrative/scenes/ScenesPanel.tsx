@@ -7,6 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMediaQuery } from '@mui/material';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItemButton, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -54,6 +55,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
   const visible = useMemo(() => filterScenes(scenes.scenes, { query, status }), [scenes.scenes, query, status]);
 
   useEffect(() => { writeUrl('scene', scenes.selectedId); }, [scenes.selectedId]);
+  const isMdUp = useMediaQuery('(min-width:900px)');
 
   // ─── Fase 8b: manusimport ──────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
@@ -131,7 +133,8 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
   return (
     <Box sx={{ display: 'flex', height: { xs: 'auto', md: 'calc(100vh - 150px)' }, minHeight: { xs: 'calc(100vh - 220px)', md: 0 }, color: narrativeColors.text }} data-testid="narrative-scenes-panel" data-mobile-view={scenes.selectedId ? 'card' : 'list'}>
       {/* ── Liste ── på mobil vises liste ELLER scenekort (UX-21) ───────── */}
-      <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, borderRight: { md: `1px solid ${narrativeColors.borderStrong}` }, bgcolor: narrativeColors.bgPanel, overflowY: { md: 'auto' }, minHeight: 0, display: { xs: scenes.selectedId ? 'none' : 'block', md: 'block' } }}>
+      {isMdUp || !scenes.selectedId ? (
+      <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, borderRight: { md: `1px solid ${narrativeColors.borderStrong}` }, bgcolor: narrativeColors.bgPanel, overflowY: { md: 'auto' }, minHeight: 0 }}>
         <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}`, position: 'sticky', top: 0, zIndex: 1, bgcolor: narrativeColors.bgPanel }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 14, flex: 1 }}>Scener <Typography component="span" sx={{ fontSize: 12, color: narrativeColors.textDim }}>({scenes.scenes.length})</Typography></Typography>
@@ -176,9 +179,11 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
           )}
         </Box>
       </Box>
+      ) : null}
 
       {/* ── Kort ──────────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: { md: 'auto' }, display: { xs: scenes.selectedId ? 'block' : 'none', md: 'block' } }}>
+      {isMdUp || scenes.selectedId ? (
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: { md: 'auto' } }}>
         {scenes.selectedId ? (
           <Button size="small" startIcon={<ArrowBackIcon />} onClick={() => scenes.select(null)} data-testid="narrative-scene-back" sx={{ display: { xs: 'inline-flex', md: 'none' }, m: 1, color: narrativeColors.textDim, minHeight: 40 }}>
             Tilbake til scener
@@ -202,6 +207,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
           <SceneCard projectId={projectId} graph={graph} detail={scenes.detail} scenes={scenes} onJumpToElement={onJumpToElement} onNotice={onNotice} />
         )}
       </Box>
+      ) : null}
 
       {/* ── Manusimport (Fase 8b) ─────────────────────────────────────── */}
       <ImportDocumentDialog

@@ -64,7 +64,7 @@ export function SceneScriptTab({ projectId, detail, scenes, refreshKey = 0 }: { 
         </FormControl>
         <FormControl size="small" sx={sceneFieldSx}>
           <InputLabel>Episode</InputLabel>
-          <Select label="Episode" value={scene.episodeId ?? ''} onChange={(e) => void save({ episodeId: e.target.value ? String(e.target.value) : null })} inputProps={{ 'data-testid': 'narrative-scene-episode', 'aria-label': 'Episode' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
+          <Select label="Episode" value={scene.episodeId && episodes.some((ep) => ep.id === scene.episodeId) ? scene.episodeId : ''} onChange={(e) => void save({ episodeId: e.target.value ? String(e.target.value) : null })} inputProps={{ 'data-testid': 'narrative-scene-episode', 'aria-label': 'Episode' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
             <MenuItem value="">Ingen</MenuItem>
             {episodes.map((ep) => <MenuItem key={ep.id} value={ep.id}>{ep.code} · {ep.title}</MenuItem>)}
           </Select>
