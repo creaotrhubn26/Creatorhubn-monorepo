@@ -1044,6 +1044,7 @@ import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes"
 import { requireProjectAccess } from "./project-access";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
 import { setupProjectVideoCollaborationRoutes } from "./project-video-collaboration-routes";
+import { setupProjectVideoCaptureRoutes } from "./project-video-capture-routes";
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
 import { startProToolsSyncWorker } from "./protools-companion-sync-worker";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
@@ -68791,6 +68792,12 @@ setupProjectWorkspaceRoutes({
   resolveUserSession: resolveActiveSessionFromRequest,
 });
 setupProjectVideoCollaborationRoutes({
+  app,
+  pool,
+  requireUserSession,
+  resolveUserSession: resolveActiveSessionFromRequest,
+});
+setupProjectVideoCaptureRoutes({
   app,
   pool,
   requireUserSession,

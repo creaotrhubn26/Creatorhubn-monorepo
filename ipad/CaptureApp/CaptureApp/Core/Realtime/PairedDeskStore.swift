@@ -53,6 +53,7 @@ final class PairedDeskStore {
         var list = load()
         list.removeAll { $0.deskId == deskId }
         persist(list)
+        BridgeCredentialStore.remove(forDeskId: deskId)
     }
 
     func isPaired(deskId: String) -> Bool {

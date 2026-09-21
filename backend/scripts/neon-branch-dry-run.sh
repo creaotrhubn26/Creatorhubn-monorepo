@@ -53,20 +53,29 @@ branch_id="$(jq -er '.branch.id' <<<"$created")"
 echo "branch_id=$branch_id"
 echo "::endgroup::"
 
-# Engangspassord for migrasjonsrollen på branchen (aldri logget).
-tmp_password="$(node -e 'console.log(require("crypto").randomBytes(24).toString("base64url"))')"
-echo "::add-mask::$tmp_password"
-owner_url="$(neon connection-string "$branch_id" --project-id "$NEON_PROJECT_ID" \
-  --role-name neondb_owner --database-name "$db_name" --endpoint-type read_write)"
-echo "::add-mask::$owner_url"
-branch_host="$(node -e 'console.log(new URL(process.argv[1]).hostname)' "$owner_url")"
+# Harness-feil (branch-oppsett, passord, tilkobling) er IKKE en migrasjonsfeil: da skal prod-deployen
+# gå videre med en gul advarsel, ikke stoppe. Bare feil i selve migrasjonene mot branchen er fatale.
+harness_skip() {
+  echo "::warning title=Neon dry-run skipped::$1 — prod-migrasjonene kjøres uten tørrkjøring denne gangen. Branch $branch_name ($branch_id) slettes."
+  neon branches delete "$branch_id" --project-id "$NEON_PROJECT_ID" >/dev/null 2>&1 || true
+  exit 0
+}
 
-# `neon connection-string --psql` bruker innebygd psql om binæren mangler på runneren.
-neon connection-string "$branch_id" --project-id "$NEON_PROJECT_ID" \
-  --role-name neondb_owner --database-name "$db_name" --psql -- \
-  -v ON_ERROR_STOP=1 -c "ALTER ROLE \"${MIGRATION_LOGIN_ROLE}\" WITH PASSWORD '${tmp_password}'" >/dev/null
-
-branch_url="postgresql://${MIGRATION_LOGIN_ROLE}:${tmp_password}@${branch_host}/${db_name}?sslmode=require&channel_binding=require"
+# Migrasjonsrollen er Neon-styrt (Neon viser den i rollelista med authentication_method=password),
+# så Neon kan gi tilkoblingsstrengen for branchen direkte — ingen ALTER ROLE ... PASSWORD trengs.
+# (Første kjøring 2026-09-18 feilet nettopp på ALTER ROLE: «permission denied to alter role».)
+# --endpoint-type read_write gir det direkte endepunktet (kjøreren avviser -pooler.-verter).
+branch_url="$(neon connection-string "$branch_id" --project-id "$NEON_PROJECT_ID" \
+  --role-name "$MIGRATION_LOGIN_ROLE" --database-name "$db_name" --endpoint-type read_write)" \
+  || harness_skip "Fikk ikke tilkoblingsstreng for ${MIGRATION_LOGIN_ROLE} på branchen (er rollen Neon-styrt?)"
+echo "::add-mask::$branch_url"
+# Kjøreren krever sslmode=require og channel_binding=require i URL-en.
+case "$branch_url" in
+  *"?"*) sep="&" ;;
+  *) sep="?" ;;
+esac
+case "$branch_url" in *sslmode=*) ;; *) branch_url="${branch_url}${sep}sslmode=require"; sep="&" ;; esac
+case "$branch_url" in *channel_binding=*) ;; *) branch_url="${branch_url}${sep}channel_binding=require" ;; esac
 echo "::add-mask::$branch_url"
 
 echo "::group::Tørrkjøring av migrasjoner mot $branch_name"

@@ -108,7 +108,11 @@ pub struct SessionLog {
 
 impl SessionLog {
     /// Opprett ny log-fil for session_id, skriv SessionStarted-event.
-    pub fn create(session_id: &str, spec: &SessionSpec, files: &[(PathBuf, u64)]) -> Result<Self, String> {
+    pub fn create(
+        session_id: &str,
+        spec: &SessionSpec,
+        files: &[(PathBuf, u64)],
+    ) -> Result<Self, String> {
         let dir = sessions_dir()?;
         let path = dir.join(format!("{}.jsonl", session_id));
         let log = Self {
@@ -147,8 +151,7 @@ impl SessionLog {
 
     pub fn append(&self, event: &LogEvent) -> Result<(), String> {
         let _guard = self.inner.lock().unwrap();
-        let line = serde_json::to_string(event)
-            .map_err(|e| format!("serialize event: {}", e))?;
+        let line = serde_json::to_string(event).map_err(|e| format!("serialize event: {}", e))?;
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -227,16 +230,30 @@ fn summarize_log(path: &Path) -> Result<Option<InterruptedSession>, String> {
         let ev: LogEvent = match serde_json::from_str(&line) {
             Ok(e) => e,
             Err(err) => {
-                eprintln!("[session-log] skip ugyldig linje i {}: {}", path.display(), err);
+                eprintln!(
+                    "[session-log] skip ugyldig linje i {}: {}",
+                    path.display(),
+                    err
+                );
                 continue;
             }
         };
         match ev {
-            LogEvent::SessionStarted { ts_ms, session_id, spec, files } => {
+            LogEvent::SessionStarted {
+                ts_ms,
+                session_id,
+                spec,
+                files,
+            } => {
                 last_event_ms = ts_ms;
                 started = Some((session_id, ts_ms, spec, files));
             }
-            LogEvent::FileResult { ts_ms, dest_id, outcome, .. } => {
+            LogEvent::FileResult {
+                ts_ms,
+                dest_id,
+                outcome,
+                ..
+            } => {
                 last_event_ms = ts_ms.max(last_event_ms);
                 if matches!(outcome, FileOutcome::Success | FileOutcome::Skipped) {
                     *completed_per_dest.entry(dest_id).or_insert(0) += 1;
@@ -289,11 +306,20 @@ pub fn load_resume_data(session_id: &str) -> Result<ResumeData, String> {
             Err(_) => continue,
         };
         match ev {
-            LogEvent::SessionStarted { spec: s, files: fs_list, .. } => {
+            LogEvent::SessionStarted {
+                spec: s,
+                files: fs_list,
+                ..
+            } => {
                 spec = Some(s);
                 files = fs_list;
             }
-            LogEvent::FileResult { source, dest_id, outcome, .. } => {
+            LogEvent::FileResult {
+                source,
+                dest_id,
+                outcome,
+                ..
+            } => {
                 if matches!(outcome, FileOutcome::Success | FileOutcome::Skipped) {
                     completed.insert((source, dest_id));
                 }
@@ -302,7 +328,11 @@ pub fn load_resume_data(session_id: &str) -> Result<ResumeData, String> {
         }
     }
     let spec = spec.ok_or_else(|| "log mangler SessionStarted-event".to_string())?;
-    Ok(ResumeData { spec, files, completed })
+    Ok(ResumeData {
+        spec,
+        files,
+        completed,
+    })
 }
 
 /// Marker en interrupted session som "håndtert" (bruker valgte å forkaste
@@ -370,12 +400,18 @@ mod tests {
                     label: "Disk A".into(),
                     path: "/Volumes/A".into(),
                     backend_id: None,
+                    cloud_provider: None,
+                    cloud_bucket_id: None,
+                    cloud_credentials: None,
                 },
                 DestinationSpec {
                     id: "dest-b".into(),
                     label: "Disk B".into(),
                     path: "/Volumes/B".into(),
                     backend_id: None,
+                    cloud_provider: None,
+                    cloud_bucket_id: None,
+                    cloud_credentials: None,
                 },
             ],
         }
@@ -414,8 +450,7 @@ mod tests {
         let (_tmp, _guard) = fresh_home();
         let spec = dummy_spec();
         let files = vec![(PathBuf::from("/Volumes/TEST_CARD/IMG_1.CR3"), 1024)];
-        let log =
-            SessionLog::create("sess_test_2", &spec, &files).expect("create log");
+        let log = SessionLog::create("sess_test_2", &spec, &files).expect("create log");
         log.append(&LogEvent::FileResult {
             ts_ms: now_ms(),
             source: "/Volumes/TEST_CARD/IMG_1.CR3".into(),
@@ -429,7 +464,10 @@ mod tests {
         let interrupted = list_interrupted_sessions().expect("list");
         assert_eq!(interrupted.len(), 1);
         assert_eq!(interrupted[0].session_id, "sess_test_2");
-        assert_eq!(interrupted[0].files_completed_per_dest, vec![("dest-a".into(), 1)]);
+        assert_eq!(
+            interrupted[0].files_completed_per_dest,
+            vec![("dest-a".into(), 1)]
+        );
     }
 
     #[test]
@@ -437,8 +475,7 @@ mod tests {
         let (_tmp, _guard) = fresh_home();
         let spec = dummy_spec();
         let files = vec![(PathBuf::from("/Volumes/TEST_CARD/IMG_1.CR3"), 1024)];
-        let log =
-            SessionLog::create("sess_test_3", &spec, &files).expect("create log");
+        let log = SessionLog::create("sess_test_3", &spec, &files).expect("create log");
         log.append(&LogEvent::SessionEnded {
             ts_ms: now_ms(),
             state: "completed".into(),
@@ -462,8 +499,7 @@ mod tests {
             (PathBuf::from("/Volumes/TEST_CARD/IMG_1.CR3"), 1024),
             (PathBuf::from("/Volumes/TEST_CARD/IMG_2.CR3"), 2048),
         ];
-        let log =
-            SessionLog::create("sess_test_4", &spec, &files).expect("create log");
+        let log = SessionLog::create("sess_test_4", &spec, &files).expect("create log");
         log.append(&LogEvent::FileResult {
             ts_ms: now_ms(),
             source: "/Volumes/TEST_CARD/IMG_1.CR3".into(),
@@ -486,14 +522,16 @@ mod tests {
         assert_eq!(resume.files.len(), 2);
         assert_eq!(resume.spec.volume_label, "TEST_CARD");
         // Bare success/skipped teller — failed gjør at parret IKKE er i completed
-        assert!(resume.completed.contains(&(
-            "/Volumes/TEST_CARD/IMG_1.CR3".into(),
-            "dest-a".into()
-        )));
-        assert!(!resume.completed.contains(&(
-            "/Volumes/TEST_CARD/IMG_1.CR3".into(),
-            "dest-b".into()
-        )));
+        assert!(
+            resume
+                .completed
+                .contains(&("/Volumes/TEST_CARD/IMG_1.CR3".into(), "dest-a".into()))
+        );
+        assert!(
+            !resume
+                .completed
+                .contains(&("/Volumes/TEST_CARD/IMG_1.CR3".into(), "dest-b".into()))
+        );
     }
 
     #[test]
@@ -501,8 +539,7 @@ mod tests {
         let (_tmp, _guard) = fresh_home();
         let spec = dummy_spec();
         let files = vec![(PathBuf::from("/Volumes/TEST_CARD/IMG_1.CR3"), 1024)];
-        let _log =
-            SessionLog::create("sess_test_5", &spec, &files).expect("create log");
+        let _log = SessionLog::create("sess_test_5", &spec, &files).expect("create log");
         let dir = sessions_dir().unwrap();
         let path = dir.join("sess_test_5.jsonl");
         assert!(path.exists());

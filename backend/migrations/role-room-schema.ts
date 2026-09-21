@@ -90,6 +90,69 @@ export const castingCandidates = pgTable('casting_candidates', {
   index('casting_candidates_project_id_idx').using('btree', table.projectId),
 ]);
 
+/**
+ * Auditable casting-team requests to an accepted partner agency.
+ *
+ * The partnership tables predate this Drizzle schema and remain managed by
+ * numbered SQL migrations, so invitation/proposal/talent foreign keys are
+ * represented with their canonical scalar types here. The database migration
+ * owns the corresponding foreign-key constraints.
+ */
+export const partnershipTalentRequests = pgTable('partnership_talent_requests', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  invitationId: uuid('invitation_id').notNull(),
+  talentId: uuid('talent_id').notNull(),
+  castingRoleId: varchar('casting_role_id', { length: 255 }).notNull().references(() => castingRoles.id, { onDelete: 'cascade' }),
+  requestedByUserId: varchar('requested_by_user_id', { length: 255 }),
+  brief: text('brief').notNull(),
+  responseDeadline: timestamp('response_deadline', { withTimezone: true, mode: 'string' }).notNull(),
+  status: varchar('status', { length: 20 }).default('pending').notNull(),
+  responseNote: text('response_note'),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
+  respondedAt: timestamp('responded_at', { withTimezone: true, mode: 'string' }),
+  respondedByUserId: varchar('responded_by_user_id', { length: 255 }),
+  fulfilledProposalId: uuid('fulfilled_proposal_id'),
+  isDemo: boolean('is_demo').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  check('partnership_talent_requests_status_check', sql`${table.status} IN ('pending', 'acknowledged', 'fulfilled', 'declined', 'cancelled', 'expired')`),
+  check('partnership_talent_requests_brief_length', sql`char_length(btrim(${table.brief})) BETWEEN 1 AND 2000`),
+  check('partnership_talent_requests_response_note_length', sql`${table.responseNote} IS NULL OR char_length(${table.responseNote}) <= 2000`),
+  uniqueIndex('ptr_unique_active_request')
+    .using('btree', table.invitationId, table.talentId, table.castingRoleId)
+    .where(sql`${table.status} IN ('pending', 'acknowledged')`),
+  index('ptr_invitation_status_deadline_idx').using('btree', table.invitationId, table.status, table.responseDeadline),
+  index('ptr_role_status_idx').using('btree', table.castingRoleId, table.status, table.createdAt.desc()),
+  index('ptr_talent_status_idx').using('btree', table.talentId, table.status, table.createdAt.desc()),
+]);
+
+export const partnershipTalentRequestDeliveries = pgTable('partnership_talent_request_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  talentRequestId: uuid('talent_request_id').notNull().references(() => partnershipTalentRequests.id, { onDelete: 'cascade' }),
+  notificationKind: varchar('notification_kind', { length: 20 }).notNull(),
+  status: varchar('status', { length: 16 }).default('pending').notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  availableAt: timestamp('available_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  claimToken: uuid('claim_token'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'string' }),
+  leaseUntil: timestamp('lease_until', { withTimezone: true, mode: 'string' }),
+  sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  check('partnership_talent_request_deliveries_kind_check', sql`${table.notificationKind} IN ('deadline_48h', 'deadline_24h', 'deadline_overdue', 'cancelled')`),
+  check('partnership_talent_request_deliveries_status_check', sql`${table.status} IN ('pending', 'processing', 'sent', 'failed', 'cancelled')`),
+  check('partnership_talent_request_deliveries_attempts_check', sql`${table.attempts} BETWEEN 0 AND 5`),
+  check('ptrd_processing_claim_check', sql`${table.status} <> 'processing' OR (${table.claimToken} IS NOT NULL AND ${table.claimedAt} IS NOT NULL AND ${table.leaseUntil} IS NOT NULL)`),
+  unique('ptrd_request_kind_unique').on(table.talentRequestId, table.notificationKind),
+  index('ptrd_claim_idx')
+    .using('btree', table.availableAt, table.createdAt)
+    .where(sql`${table.status} IN ('pending', 'failed', 'processing') AND ${table.attempts} < 5`),
+  index('ptrd_request_status_idx').using('btree', table.talentRequestId, table.status),
+]);
+
 export const castingSchedules = pgTable('casting_schedules', {
   id: varchar('id', { length: 255 }).primaryKey().notNull(),
   projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),

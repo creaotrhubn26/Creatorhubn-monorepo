@@ -126,9 +126,10 @@ jobs:
     environment: Production
     runs-on: ubuntu-latest
     env:
-      # Fase 8a: Neon-branch-tørrkjøring (valgfri). Steget hoppes over når nøkkelen mangler.
+      # Fase 8a: Neon-branch-tørrkjøring (valgfri). Steget kjører bare når BEGGE er satt;
+      # prosjekt-id-en godtas både som repo-variabel (Neon-konvensjon) og som secret.
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID || secrets.NEON_PROJECT_ID }}
     timeout-minutes: 60
     steps:
       - name: Checkout exact deploy commit
@@ -258,9 +259,24 @@ jobs:
 
       # Fase 8a: tørrkjør migrasjonene på en fersk Neon-branch av prod FØR prod røres.
       # Branchen er samtidig gjenopprettingspunkt (beholdes 7 dager ved feil). Steget
-      # hoppes over når NEON_API_KEY ikke er satt, så jobben virker uten Neon-integrasjon.
+      # hoppes over når NEON_API_KEY eller NEON_PROJECT_ID mangler, så jobben virker uten
+      # Neon-integrasjon — men halvferdig oppsett gir en gul advarsel (Fase 8g-hardening:
+      # 2026-09-18 stoppet en deploy fordi bare nøkkelen var satt).
+      - name: Check Neon dry-run configuration
+        run: |
+          set -euo pipefail
+          if [ -n "${NEON_API_KEY:-}" ] && [ -n "${NEON_PROJECT_ID:-}" ]; then
+            echo "Neon dry-run: configured (project ${NEON_PROJECT_ID})."
+          elif [ -z "${NEON_API_KEY:-}" ] && [ -z "${NEON_PROJECT_ID:-}" ]; then
+            echo "Neon dry-run: not configured — skipping (set secret NEON_API_KEY + variable NEON_PROJECT_ID to enable)."
+          elif [ -z "${NEON_PROJECT_ID:-}" ]; then
+            echo "::warning title=Neon dry-run skipped::NEON_API_KEY is set but NEON_PROJECT_ID is empty. Add repository variable NEON_PROJECT_ID (Settings → Secrets and variables → Actions → Variables) to enable the branch dry-run."
+          else
+            echo "::warning title=Neon dry-run skipped::NEON_PROJECT_ID is set but secret NEON_API_KEY is empty. Add the secret to enable the branch dry-run."
+          fi
+
       - name: Dry-run migrations on a Neon branch of production
-        if: env.NEON_API_KEY != ''
+        if: env.NEON_API_KEY != '' && env.NEON_PROJECT_ID != ''
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
         run: bash backend/scripts/neon-branch-dry-run.sh

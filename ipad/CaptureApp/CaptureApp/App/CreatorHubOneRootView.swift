@@ -22,6 +22,7 @@ struct CreatorHubOneRootView: View {
     enum Tab: Int, CaseIterable, Identifiable {
         case today
         case shoot
+        case video
         case gallery
         case redigering
         case admin
@@ -57,12 +58,15 @@ struct CreatorHubOneRootView: View {
     }
 
     @State private var selected: Tab = .today
+    private let isScreenshotHarness = ProcessInfo.processInfo.arguments.contains("--screenshot-demo-fixtures")
 
     init() {
         #if DEBUG
         // QA/skjermbilde-hook: `--tab-shoot` åpner Shoot-fanen direkte.
         if ProcessInfo.processInfo.arguments.contains("--tab-shoot") {
             _selected = State(initialValue: .shoot)
+        } else if ProcessInfo.processInfo.arguments.contains("--tab-video") {
+            _selected = State(initialValue: .video)
         }
         #endif
     }
@@ -114,7 +118,7 @@ struct CreatorHubOneRootView: View {
 
     var body: some View {
         TabView(selection: $selected) {
-            TodayView()
+            TodayView(ownerUserId: SignInService.shared.session?.userId ?? "signed-out")
                 .tabItem { Label("I dag", systemImage: "sun.max") }
                 .tag(Tab.today)
 
@@ -125,6 +129,10 @@ struct CreatorHubOneRootView: View {
             LiveCaptureView()
                 .tabItem { Label("Shoot", systemImage: "camera") }
                 .tag(Tab.shoot)
+
+            VideoCaptureView()
+                .tabItem { Label("Video", systemImage: "video.fill") }
+                .tag(Tab.video)
 
             // Galleri → NATIVE client-gallery review (showcase admin).
             // Rebuilt native for a run-and-gun feel: live engagement
@@ -138,9 +146,11 @@ struct CreatorHubOneRootView: View {
             // Smart Edit (MagicRecipe-justeringer + AI-retusj), bildekø,
             // stegflyt og batch. Gjenbruker capture-appens egen
             // MagicPipeline + AutoCleanService.
-            RedigeringView()
-                .tabItem { Label("Redigering", systemImage: "wand.and.stars") }
-                .tag(Tab.redigering)
+            if !isScreenshotHarness {
+                RedigeringView()
+                    .tabItem { Label("Redigering", systemImage: "wand.and.stars") }
+                    .tag(Tab.redigering)
+            }
 
             // Admin → NATIVE contracts hub (list, detalj, signér med
             // Apple Pencil, send, status) e2e mot /api/contracts.
@@ -162,18 +172,24 @@ struct CreatorHubOneRootView: View {
 
             // Meldinger → NATIVE klient-innboks/chat e2e mot
             // /api/communication.
-            MeldingerView()
-                .tabItem { Label("Meldinger", systemImage: "envelope") }
-                .tag(Tab.messages)
+            if !isScreenshotHarness {
+                MeldingerView()
+                    .tabItem { Label("Meldinger", systemImage: "envelope") }
+                    .tag(Tab.messages)
+            }
 
             // Debug-fanen følger KUN med i DEBUG-builds — skjules i release.
             #if DEBUG
-            FoundationDebugView()
-                .tabItem { Label("Debug", systemImage: "wrench.and.screwdriver") }
-                .tag(Tab.debug)
+            if !isScreenshotHarness {
+                FoundationDebugView()
+                    .tabItem { Label("Debug", systemImage: "wrench.and.screwdriver") }
+                    .tag(Tab.debug)
+            }
             #endif
         }
-        // CreatorHub dark branding across the whole shell — amber accent +
+        .toolbarBackground(CHTheme.bgDeep, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        // CreatorHub dark branding across the whole shell — orange accent +
         // forced dark scheme so every tab reads as one branded product.
         .chBranded()
     }

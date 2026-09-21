@@ -457,6 +457,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const sessionMode = searchParams.get('session');
       const seedFlag = searchParams.get('seed');
       const isContentProducerSession = sessionMode === 'content-producer';
+      const isProducerSession = sessionMode === 'producer';
+      const isCastingDirectorSession = sessionMode === 'casting-director';
       const isCinematographerSession = sessionMode === 'cinematographer';
       const isFirstAssistantDirectorSession = sessionMode === 'first-ad';
       const isSecondAssistantDirectorSession = sessionMode === 'second-ad';
@@ -481,13 +483,17 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             ? 'location_manager'
           : isScriptSupervisorSession
             ? 'script_supervisor'
+          : isProducerSession
+            ? 'producer'
+          : isCastingDirectorSession
+            ? 'casting_director'
           : isCinematographerSession
             ? 'cinematographer'
             : 'admin',
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession
+          : isProducerSession || isCastingDirectorSession || isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -506,6 +512,10 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'location_manager'
                 : isScriptSupervisorSession
                   ? 'script_supervisor'
+                : isProducerSession
+                  ? 'producer'
+                : isCastingDirectorSession
+                  ? 'casting_director'
               : null,
       });
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som

@@ -50,7 +50,7 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
     var capturedAssetId: String?
 
     /// BACKEND asset-id (satt post-levering fra idMap) — lar web + call-sheet +
-    /// andre enheter hente thumbnailen via `/api/capture/assets/:id/preview`.
+    /// andre enheter hente thumbnailen via en asset-scopet preview-capability.
     /// Optional + bakoverkompatibel.
     var capturedAssetBackendId: String?
 

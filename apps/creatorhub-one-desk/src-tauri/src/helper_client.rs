@@ -97,7 +97,10 @@ pub async fn list_capture_sessions(cfg: &Config) -> Result<Vec<CaptureSessionSum
     let resp = client
         .get(&url)
         .header("Authorization", format!("Bearer {}", cfg.token))
-        .header("User-Agent", concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")),
+        )
         .send()
         .await
         .map_err(|e| format!("Backend-request feilet: {}", e))?;
@@ -109,9 +112,15 @@ pub async fn list_capture_sessions(cfg: &Config) -> Result<Vec<CaptureSessionSum
         return Err(format!("Backend svarte {}: {}", status.as_u16(), snippet));
     }
 
-    let raw: serde_json::Value = resp.json().await.map_err(|e| format!("Parse-feil: {}", e))?;
+    let raw: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse-feil: {}", e))?;
     if raw.get("success").and_then(|v| v.as_bool()) != Some(true) {
-        let err = raw.get("error").and_then(|v| v.as_str()).unwrap_or("Ukjent feil");
+        let err = raw
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Ukjent feil");
         return Err(err.to_string());
     }
     let sessions = raw
@@ -145,7 +154,10 @@ pub async fn get_destinations_with_creds(cfg: &Config) -> Result<serde_json::Val
     let resp = client
         .get(&url)
         .header("Authorization", format!("Bearer {}", cfg.token))
-        .header("User-Agent", concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")),
+        )
         .send()
         .await
         .map_err(|e| format!("Backend-request feilet: {}", e))?;
@@ -160,20 +172,33 @@ pub async fn get_destinations_with_creds(cfg: &Config) -> Result<serde_json::Val
         .await
         .map_err(|e| format!("Kunne ikke parse backend-respons: {}", e))?;
     if raw.get("success").and_then(|v| v.as_bool()) != Some(true) {
-        let err = raw.get("error").and_then(|v| v.as_str()).unwrap_or("Ukjent feil");
+        let err = raw
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Ukjent feil");
         return Err(format!("Backend feilet: {}", err));
     }
-    Ok(raw.get("destinations").cloned().unwrap_or(serde_json::Value::Array(vec![])))
+    Ok(raw
+        .get("destinations")
+        .cloned()
+        .unwrap_or(serde_json::Value::Array(vec![])))
 }
 
 pub async fn get_project_info(cfg: &Config) -> Result<ProjectInfo, String> {
     let base = cfg.api_base.trim_end_matches('/');
-    let url = format!("{}/api/dit/projects/{}/info", base, urlencoding::encode(&cfg.project_id));
+    let url = format!(
+        "{}/api/dit/projects/{}/info",
+        base,
+        urlencoding::encode(&cfg.project_id)
+    );
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
         .header("Authorization", format!("Bearer {}", cfg.token))
-        .header("User-Agent", concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!("creatorhub-one-desk/", env!("CARGO_PKG_VERSION")),
+        )
         .send()
         .await
         .map_err(|e| format!("Backend-request feilet: {}", e))?;
@@ -191,7 +216,10 @@ pub async fn get_project_info(cfg: &Config) -> Result<ProjectInfo, String> {
         .map_err(|e| format!("Kunne ikke parse backend-respons: {}", e))?;
 
     if raw.get("success").and_then(|v| v.as_bool()) != Some(true) {
-        let err = raw.get("error").and_then(|v| v.as_str()).unwrap_or("Ukjent feil");
+        let err = raw
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Ukjent feil");
         return Err(format!("Backend feilet: {}", err));
     }
 
@@ -200,12 +228,29 @@ pub async fn get_project_info(cfg: &Config) -> Result<ProjectInfo, String> {
         .ok_or_else(|| "Mangler felt 'project' i respons".to_string())?;
     let info = ProjectInfo {
         project: ProjectSummary {
-            id: project.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-            name: project.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+            id: project
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            name: project
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
         },
-        memory_card_configs: raw.get("memory_card_configs").cloned().unwrap_or(serde_json::Value::Array(vec![])),
-        selected_memory_cards: raw.get("selected_memory_cards").cloned().unwrap_or(serde_json::Value::Array(vec![])),
-        destinations: raw.get("destinations").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        memory_card_configs: raw
+            .get("memory_card_configs")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
+        selected_memory_cards: raw
+            .get("selected_memory_cards")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
+        destinations: raw
+            .get("destinations")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
     };
     Ok(info)
 }

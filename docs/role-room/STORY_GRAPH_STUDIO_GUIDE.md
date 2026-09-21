@@ -68,5 +68,6 @@ gjeste-reviewere uten konto (Studio), team med roller og seter (Studio).
 ## 8. Drift
 
 Av-bryter `ROLE_ROOM_GAME_STUDIO_ENABLED=false` gir 503 + banner; Sentry på alle narrative-feil;
-migrasjoner tørrkjøres på en Neon-branch før prod; rate-limit på offentlige og muterende ruter;
+migrasjoner tørrkjøres på en Neon-branch før prod (krever secret `NEON_API_KEY` **og** variabel
+`NEON_PROJECT_ID`; mangler én av dem, hoppes steget over med gul advarsel); rate-limit på offentlige og muterende ruter;
 revisjoner beholdes (siste 50 + én per dag i 90 dager). API-referanse: `STORY_GRAPH_API.md`.

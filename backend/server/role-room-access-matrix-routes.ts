@@ -13,6 +13,7 @@ import { CASTING_GRANTS, CASTING_GRANT_RULES } from './casting-project-ownership
 
 /** Norsk etikett per grant. Rene visningsnavn; reglene ligger i tabellen. */
 const GRANT_LABELS: Record<string, string> = {
+  canEditCasting: 'Rediger casting',
   canEditProduction: 'Rediger opptaksdag',
   canManageProduction: 'Dagskontroll',
   canCoordinateProduction: 'Koordinering',

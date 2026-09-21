@@ -32,6 +32,12 @@ struct CaptureAppMain: App {
                     // shoot. Idempotent — multiple start()-kall no-op.
                     // Spec: docs/capture/desk-pairing.md.
                     PairingAdvertiser.shared.start()
+
+                    // Start the durable production outbox for a session restored
+                    // from Keychain. Fresh sign-ins are handled by SignInService.
+                    if let session = SignInService.shared.session {
+                        await CaptureSyncCoordinator.shared.start(session: session)
+                    }
                 }
         }
     }
@@ -51,6 +57,7 @@ struct CaptureAppMain: App {
 ///     steady-state photographer workflow.
 struct RootView: View {
     @State private var hasOnboarded: Bool = OnboardingCompletionFlag().isComplete
+    @State private var forceOnboarding: Bool = ProcessInfo.processInfo.arguments.contains("--reset-onboarding")
 
     /// Snapshot the launch arguments once. Reading ``ProcessInfo``
     /// on every render is cheap, but pinning the value here makes
@@ -183,13 +190,21 @@ struct RootView: View {
         if launchArguments.contains("--legacy-capture-only") {
             return .legacyCapture
         }
-        if launchArguments.contains("--reset-onboarding") {
+        #if DEBUG
+        // Deterministic QA entry point for simulator and a tethered iPad.
+        // It does not mutate the user's persisted onboarding state.
+        if launchArguments.contains("--tab-video") {
+            return .mainShell
+        }
+        #endif
+        if forceOnboarding {
             return .onboardingForced
         }
         return hasOnboarded ? .mainShell : .onboarding
     }
 
     private func finishOnboarding() {
+        forceOnboarding = false
         hasOnboarded = true
     }
 }

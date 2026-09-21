@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   CircularProgress,
-  Container,
   Divider,
   Link,
   Stack,
@@ -13,9 +12,13 @@ import {
 import GoogleIcon from "@mui/icons-material/Google";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getDefaultApiBase, pollOauthCompletion, startGoogleLoginV2 } from "../api";
+import {
+  getDefaultApiBase,
+  pollOauthCompletion,
+  startGoogleLoginV2,
+} from "../api";
+import AuthSurface from "./AuthSurface";
 import DeskIcon from "./DeskIcon";
-import noProjectsBg from "../assets/no-projects-bg.png";
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
@@ -111,33 +114,26 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        background: `
-          radial-gradient(ellipse at center, rgba(255,248,236,1) 0%, rgba(253,226,179,0.85) 60%, rgba(245,185,74,0.18) 100%),
-          url(${noProjectsBg}) center/cover no-repeat
-        `,
-        backgroundBlendMode: "lighten",
-      }}
-    >
-    <Container maxWidth="sm" sx={{ py: 8 }}>
-      <Stack spacing={4} sx={{ alignItems: "stretch", textAlign: "center" }}>
+    <AuthSurface>
+      <Stack spacing={3} sx={{ alignItems: "stretch", textAlign: "center" }}>
         <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
-          <DeskIcon size={96} />
+          <DeskIcon size={80} />
         </Box>
 
         <Box>
           <Typography variant="overline" color="text.secondary">
             Creatorhub One Desk
           </Typography>
-          <Typography variant="h3" sx={{ fontWeight: 700, mt: 1, mb: 2, lineHeight: 1.1 }}>
+          <Typography
+            variant="h3"
+            sx={{ fontWeight: 700, mt: 1, mb: 2, lineHeight: 1.1 }}
+          >
             Logg inn for å komme i gang
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Logg inn med Google-kontoen som er knyttet til Creatorhub.
-            Alle prosjekter du har tilgang til dukker opp automatisk
-            — ingen tokens å lime inn.
+            Logg inn med Google-kontoen som er knyttet til Creatorhub. Alle
+            prosjekter du har tilgang til dukker opp automatisk — ingen tokens å
+            lime inn.
           </Typography>
         </Box>
 
@@ -150,7 +146,13 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
         <Button
           variant="contained"
           size="large"
-          startIcon={waiting ? <CircularProgress size={18} color="inherit" /> : <GoogleIcon />}
+          startIcon={
+            waiting ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <GoogleIcon />
+            )
+          }
           onClick={handleLogin}
           disabled={waiting}
           sx={{ py: 1.5, fontSize: 16 }}
@@ -160,8 +162,8 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
 
         {waiting && (
           <Typography variant="body2" color="text.secondary">
-            En nettleser-fane er åpnet. Logg inn der — appen oppdaterer
-            seg automatisk når du er ferdig.
+            En nettleser-fane er åpnet. Logg inn der — appen oppdaterer seg
+            automatisk når du er ferdig.
           </Typography>
         )}
 
@@ -176,7 +178,6 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
           </Typography>
         </Box>
       </Stack>
-    </Container>
-    </Box>
+    </AuthSurface>
   );
 }

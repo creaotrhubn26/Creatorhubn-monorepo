@@ -194,6 +194,165 @@ actor CCAPIClient {
         try await post(path: path, body: ["action": "release", "af": af])
     }
 
+    // MARK: - Direct live view
+
+    /// Starts Canon live view using the exact POST endpoint advertised by the
+    /// connected body. The payload shape is already used by CreatorHub's
+    /// existing CCAPI backend adapter; endpoint selection remains capability-
+    /// negotiated so firmware/API version differences do not get hardcoded.
+    func startLiveView(size: String = "small") async throws {
+        guard ["small", "medium"].contains(size) else {
+            throw CCAPIError.invalidResponse("unsupported liveview size")
+        }
+        let path = try advertisedEndpoint(
+            containing: "/shooting/liveview",
+            exactSuffix: "/shooting/liveview",
+            method: .post
+        )
+        try await post(path: path, body: [
+            "liveviewsize": size,
+            "cameradisplay": "keep"
+        ])
+    }
+
+    /// Fetches one JPEG live-view frame from a GET endpoint advertised under
+    /// `/shooting/liveview`. Canon bodies commonly expose a `/flip` child, but
+    /// the client intentionally discovers the concrete path from `/ccapi`.
+    func liveViewFrame() async throws -> Data {
+        guard let inventory else { throw CCAPIError.notDiscovered }
+        let candidates = inventory.versions
+            .sorted { $0.ver > $1.ver }
+            .flatMap(\.apis)
+            .filter { endpoint in
+                endpoint.get == true
+                    && endpoint.path.contains("/shooting/liveview")
+                    && !endpoint.path.hasSuffix("/shooting/liveview")
+            }
+            .sorted { lhs, rhs in
+                let lhsFlip = lhs.path.hasSuffix("/flip")
+                let rhsFlip = rhs.path.hasSuffix("/flip")
+                return lhsFlip != rhsFlip ? lhsFlip : lhs.path < rhs.path
+            }
+        guard !candidates.isEmpty else {
+            throw CCAPIError.unsupportedOperation("/shooting/liveview frame")
+        }
+        var lastError: Error?
+        for endpoint in candidates {
+            do {
+                let (data, contentType) = try await getBinary(path: endpoint.path, timeout: 3)
+                if contentType.lowercased().contains("image/jpeg") || Self.looksLikeJPEG(data) {
+                    return data
+                }
+            } catch {
+                lastError = error
+            }
+        }
+        if let lastError { throw lastError }
+        throw CCAPIError.invalidResponse("liveview endpoint did not return JPEG")
+    }
+
+    /// Stops live view only when the camera explicitly advertises DELETE for
+    /// the live-view root. Bodies without that capability are left untouched;
+    /// we never guess a stop payload.
+    func stopLiveView() async {
+        guard let path = try? advertisedEndpoint(
+            containing: "/shooting/liveview",
+            exactSuffix: "/shooting/liveview",
+            method: .delete
+        ) else { return }
+        try? await delete(path: path)
+    }
+
+    private enum HTTPMethod {
+        case get, post, put, delete
+    }
+
+    private func advertisedEndpoint(
+        containing fragment: String,
+        exactSuffix: String,
+        method: HTTPMethod
+    ) throws -> String {
+        guard let inventory else { throw CCAPIError.notDiscovered }
+        let match = inventory.versions
+            .sorted { $0.ver > $1.ver }
+            .flatMap(\.apis)
+            .first { endpoint in
+                endpoint.path.contains(fragment)
+                    && endpoint.path.hasSuffix(exactSuffix)
+                    && supports(endpoint: endpoint, method: method)
+            }
+        guard let match else { throw CCAPIError.unsupportedOperation(exactSuffix) }
+        return match.path
+    }
+
+    private func supports(endpoint: CCAPIEndpoint, method: HTTPMethod) -> Bool {
+        switch method {
+        case .get: endpoint.get == true
+        case .post: endpoint.post == true
+        case .put: endpoint.put == true
+        case .delete: endpoint.delete == true
+        }
+    }
+
+    private func getBinary(path: String, timeout: TimeInterval) async throws -> (Data, String) {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw CCAPIError.invalidResponse("bad URL: \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        let started = Date()
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw CCAPIError.timedOut
+        } catch let urlError as URLError {
+            throw CCAPIError.network(String(describing: urlError.code))
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        await recorder?.recordHTTP(
+            method: "GET",
+            relativePath: path + " (\(data.count) liveview bytes)",
+            requestBody: nil,
+            statusCode: http.statusCode,
+            responseBody: nil,
+            durationMs: Date().timeIntervalSince(started) * 1000
+        )
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(code: http.statusCode, body: nil)
+        }
+        return (data, http.value(forHTTPHeaderField: "Content-Type") ?? "")
+    }
+
+    private func delete(path: String) async throws {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw CCAPIError.invalidResponse("bad URL: \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(
+                code: http.statusCode,
+                body: String(data: data, encoding: .utf8)
+            )
+        }
+    }
+
+    private static func looksLikeJPEG(_ data: Data) -> Bool {
+        data.count >= 4
+            && data[data.startIndex] == 0xff
+            && data[data.index(after: data.startIndex)] == 0xd8
+            && data[data.index(data.endIndex, offsetBy: -2)] == 0xff
+            && data[data.index(before: data.endIndex)] == 0xd9
+    }
+
     private func post(path: String, body: [String: any Sendable]) async throws {
         let url = baseURL.appendingPathComponent(path)
         var request = URLRequest(url: url)

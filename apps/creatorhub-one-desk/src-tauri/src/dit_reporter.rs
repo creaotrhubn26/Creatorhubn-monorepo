@@ -74,17 +74,28 @@ async fn post(cfg: &Config, path: &str, body: &impl Serialize) -> Result<Value, 
     let resp = client
         .post(&url)
         .header("Authorization", format!("Bearer {}", cfg.token))
-        .header("User-Agent", format!("creatorhub-one-desk/{}", HELPER_VERSION))
+        .header(
+            "User-Agent",
+            format!("creatorhub-one-desk/{}", HELPER_VERSION),
+        )
         .json(body)
         .send()
         .await
         .map_err(|e| format!("POST {}: {}", url, e))?;
     let status = resp.status();
     if !status.is_success() {
-        let snippet = resp.text().await.unwrap_or_default().chars().take(300).collect::<String>();
+        let snippet = resp
+            .text()
+            .await
+            .unwrap_or_default()
+            .chars()
+            .take(300)
+            .collect::<String>();
         return Err(format!("POST {} → {}: {}", url, status.as_u16(), snippet));
     }
-    resp.json::<Value>().await.map_err(|e| format!("Parse POST {} response: {}", url, e))
+    resp.json::<Value>()
+        .await
+        .map_err(|e| format!("Parse POST {} response: {}", url, e))
 }
 
 async fn patch(cfg: &Config, path: &str, body: &impl Serialize) -> Result<Value, String> {
@@ -93,17 +104,28 @@ async fn patch(cfg: &Config, path: &str, body: &impl Serialize) -> Result<Value,
     let resp = client
         .patch(&url)
         .header("Authorization", format!("Bearer {}", cfg.token))
-        .header("User-Agent", format!("creatorhub-one-desk/{}", HELPER_VERSION))
+        .header(
+            "User-Agent",
+            format!("creatorhub-one-desk/{}", HELPER_VERSION),
+        )
         .json(body)
         .send()
         .await
         .map_err(|e| format!("PATCH {}: {}", url, e))?;
     let status = resp.status();
     if !status.is_success() {
-        let snippet = resp.text().await.unwrap_or_default().chars().take(300).collect::<String>();
+        let snippet = resp
+            .text()
+            .await
+            .unwrap_or_default()
+            .chars()
+            .take(300)
+            .collect::<String>();
         return Err(format!("PATCH {} → {}: {}", url, status.as_u16(), snippet));
     }
-    resp.json::<Value>().await.map_err(|e| format!("Parse PATCH {} response: {}", url, e))
+    resp.json::<Value>()
+        .await
+        .map_err(|e| format!("Parse PATCH {} response: {}", url, e))
 }
 
 /// Oppretter en backup-job mot backend. Returnerer backend-generert job_id.
@@ -136,9 +158,13 @@ pub async fn create_job(
 
 /// Fire-and-forget progress-update. Caller bør throttle (f.eks. hver 5s).
 pub async fn report_progress(cfg: &Config, job_id: &str, bytes_copied: u64) -> Result<(), String> {
-    patch(cfg, &format!("/api/dit/jobs/{}", job_id), &PatchProgress { bytes_copied })
-        .await
-        .map(|_| ())
+    patch(
+        cfg,
+        &format!("/api/dit/jobs/{}", job_id),
+        &PatchProgress { bytes_copied },
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Marker job som verifisert (suksessfull kopi + hash-match).
@@ -157,7 +183,9 @@ pub async fn report_verified(
         bytes_copied: dest_size_bytes,
         completed_at: chrono_now_iso(),
     };
-    patch(cfg, &format!("/api/dit/jobs/{}", job_id), &body).await.map(|_| ())
+    patch(cfg, &format!("/api/dit/jobs/{}", job_id), &body)
+        .await
+        .map(|_| ())
 }
 
 /// Marker job som feilet.
@@ -173,7 +201,9 @@ pub async fn report_failed(
         error_code,
         error_message,
     };
-    patch(cfg, &format!("/api/dit/jobs/{}", job_id), &body).await.map(|_| ())
+    patch(cfg, &format!("/api/dit/jobs/{}", job_id), &body)
+        .await
+        .map(|_| ())
 }
 
 /// Returnerer current time som ISO-8601 i UTC. Vi unngår å trekke inn

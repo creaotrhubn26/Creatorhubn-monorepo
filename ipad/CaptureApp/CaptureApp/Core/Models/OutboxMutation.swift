@@ -52,6 +52,11 @@ struct OutboxMutation: Codable, Sendable, Equatable {
     /// inserter samme klient-token to ganger ved race-conditions.
     var clientMutationId: String
 
+    /// CreatorHub account that created the mutation. The sync worker only
+    /// drains rows for its authenticated account, preventing one person's
+    /// offline queue from being sent with another person's bearer token.
+    var ownerUserId: String
+
     /// HTTP-endepunktet å POST/PATCH/DELETE mot. Inkluderer hverken
     /// host eller bearer-token (det stampes av ``BackendClient``).
     var endpoint: String
@@ -79,6 +84,7 @@ struct OutboxMutation: Codable, Sendable, Equatable {
     init(
         id: Int64? = nil,
         clientMutationId: String,
+        ownerUserId: String,
         endpoint: String,
         method: Method,
         bodyJson: String? = nil,
@@ -92,6 +98,7 @@ struct OutboxMutation: Codable, Sendable, Equatable {
     ) {
         self.id = id
         self.clientMutationId = clientMutationId
+        self.ownerUserId = ownerUserId
         self.endpoint = endpoint
         self.method = method
         self.bodyJson = bodyJson

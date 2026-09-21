@@ -226,7 +226,10 @@ impl ProjectStore {
         self.ensure_loaded()?;
         let mut guard = self.inner.lock().unwrap();
         let file = guard.as_mut().expect("loaded");
-        let found = file.projects.iter_mut().find(|p| p.project_id == project_id);
+        let found = file
+            .projects
+            .iter_mut()
+            .find(|p| p.project_id == project_id);
         let entry = found.ok_or_else(|| format!("Prosjekt {} ikke funnet", project_id))?;
         entry.last_used_ms = now_ms();
         file.active_project_id = Some(project_id.to_string());
@@ -239,7 +242,10 @@ impl ProjectStore {
         self.ensure_loaded()?;
         let mut guard = self.inner.lock().unwrap();
         let file = guard.as_mut().expect("loaded");
-        let found = file.projects.iter_mut().find(|p| p.project_id == project_id);
+        let found = file
+            .projects
+            .iter_mut()
+            .find(|p| p.project_id == project_id);
         let entry = found.ok_or_else(|| format!("Prosjekt {} ikke funnet", project_id))?;
         entry.label = label;
         let file_clone = file.clone();
@@ -391,12 +397,22 @@ mod tests {
     fn add_second_project_replaces_active() {
         let (_h, _g) = fresh_home();
         let store = ProjectStore::default();
-        store.add_or_update(
-            "proj-a".into(), "A".into(),
-            "https://creatorhubn.com".into(), "trr_dit_a".into()).unwrap();
-        store.add_or_update(
-            "proj-b".into(), "B".into(),
-            "https://creatorhubn.com".into(), "trr_dit_b".into()).unwrap();
+        store
+            .add_or_update(
+                "proj-a".into(),
+                "A".into(),
+                "https://creatorhubn.com".into(),
+                "trr_dit_a".into(),
+            )
+            .unwrap();
+        store
+            .add_or_update(
+                "proj-b".into(),
+                "B".into(),
+                "https://creatorhubn.com".into(),
+                "trr_dit_b".into(),
+            )
+            .unwrap();
         assert_eq!(store.active_id().unwrap().as_deref(), Some("proj-b"));
         assert_eq!(store.list().unwrap().len(), 2);
     }
@@ -405,8 +421,12 @@ mod tests {
     fn set_active_switches_without_replacing_token() {
         let (_h, _g) = fresh_home();
         let store = ProjectStore::default();
-        store.add_or_update("a".into(), "A".into(), "u".into(), "ta".into()).unwrap();
-        store.add_or_update("b".into(), "B".into(), "u".into(), "tb".into()).unwrap();
+        store
+            .add_or_update("a".into(), "A".into(), "u".into(), "ta".into())
+            .unwrap();
+        store
+            .add_or_update("b".into(), "B".into(), "u".into(), "tb".into())
+            .unwrap();
         store.set_active("a").unwrap();
         assert_eq!(store.active_config().unwrap().unwrap().token, "ta");
         store.set_active("b").unwrap();
@@ -417,8 +437,12 @@ mod tests {
     fn remove_active_auto_picks_next_mru() {
         let (_h, _g) = fresh_home();
         let store = ProjectStore::default();
-        store.add_or_update("old".into(), "Old".into(), "u".into(), "to".into()).unwrap();
-        store.add_or_update("new".into(), "New".into(), "u".into(), "tn".into()).unwrap();
+        store
+            .add_or_update("old".into(), "Old".into(), "u".into(), "to".into())
+            .unwrap();
+        store
+            .add_or_update("new".into(), "New".into(), "u".into(), "tn".into())
+            .unwrap();
         // active = new
         store.remove("new").unwrap();
         // active fallout to 'old' siden det er eneste gjenværende
@@ -429,7 +453,9 @@ mod tests {
     fn remove_last_project_clears_active() {
         let (_h, _g) = fresh_home();
         let store = ProjectStore::default();
-        store.add_or_update("only".into(), "X".into(), "u".into(), "t".into()).unwrap();
+        store
+            .add_or_update("only".into(), "X".into(), "u".into(), "t".into())
+            .unwrap();
         store.remove("only").unwrap();
         assert!(store.active_id().unwrap().is_none());
         assert!(store.list().unwrap().is_empty());
@@ -468,7 +494,9 @@ mod tests {
     fn update_label_keeps_token() {
         let (_h, _g) = fresh_home();
         let store = ProjectStore::default();
-        store.add_or_update("x".into(), "Old name".into(), "u".into(), "t".into()).unwrap();
+        store
+            .add_or_update("x".into(), "Old name".into(), "u".into(), "t".into())
+            .unwrap();
         store.update_label("x", "New name".into()).unwrap();
         let list = store.list().unwrap();
         assert_eq!(list[0].label, "New name");
@@ -479,7 +507,9 @@ mod tests {
     fn clear_all_removes_both_files() {
         let (_h, _g) = fresh_home();
         let store = ProjectStore::default();
-        store.add_or_update("x".into(), "X".into(), "u".into(), "t".into()).unwrap();
+        store
+            .add_or_update("x".into(), "X".into(), "u".into(), "t".into())
+            .unwrap();
         assert!(projects_path().exists());
         store.clear_all().unwrap();
         assert!(!projects_path().exists());

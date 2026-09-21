@@ -46,6 +46,7 @@ import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 
 const ProposeTalentsDialog = lazy(() => import('../components/ProposeTalentsDialog'));
+const AgencyTalentRequestsPanel = lazy(() => import('../components/AgencyTalentRequestsPanel'));
 
 import { palette, radius } from '../theme';
 import {
@@ -56,11 +57,13 @@ import {
   enableAvailability,
   getAvailability,
   incomingInvitations,
+  incomingTalentRequests,
   listMine,
   pauseAvailability,
   pausePartnership,
   respondToPartnership,
   respondToProjectInvitation,
+  respondToTalentRequest,
   revokePartnership,
   unpauseAvailability,
   unpausePartnership,
@@ -70,6 +73,8 @@ import {
   type ConsequenceWarning,
   type Partnership,
   type ProjectInvitation,
+  type TalentRequest,
+  type TalentRequestQueueSummary,
 } from '../../services/roleRoomPartnershipsService';
 
 const cardSx = {
@@ -107,11 +112,22 @@ function fmtDate(s: string | null): string {
 }
 
 export default function AgencyPartnershipsPage() {
-  const [tab, setTab] = useState<'overview' | 'availability' | 'mine' | 'incoming'>('overview');
+  const initialTab = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'requests'
+    ? 'requests'
+    : 'overview';
+  const [tab, setTab] = useState<'overview' | 'availability' | 'mine' | 'incoming' | 'requests'>(initialTab);
   const [dashboard, setDashboard] = useState<AgencyDashboard | null>(null);
   const [availability, setAvailability] = useState<AvailabilityStatus | null>(null);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
+  const [talentRequests, setTalentRequests] = useState<TalentRequest[]>([]);
+  const [talentRequestSummary, setTalentRequestSummary] = useState<TalentRequestQueueSummary>({
+    open: 0,
+    unacknowledged: 0,
+    due_within_48h: 0,
+    overdue: 0,
+    oldest_unacknowledged_hours: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -133,17 +149,20 @@ export default function AgencyPartnershipsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [avail, mine, inc, dash] = await Promise.all([
+      const [avail, mine, inc, requestsResult, dash] = await Promise.all([
         getAvailability().catch((e) => {
           throw new Error(`Tilgjengelighet: ${e instanceof Error ? e.message : String(e)}`);
         }),
         listMine('agency').catch(() => ({ partnerships: [] })),
         incomingInvitations().catch(() => ({ invitations: [] })),
+        incomingTalentRequests(),
         agencyDashboard().catch(() => null),
       ]);
       setAvailability(avail);
       setPartnerships(mine.partnerships);
       setInvitations(inc.invitations);
+      setTalentRequests(requestsResult.requests);
+      setTalentRequestSummary(requestsResult.summary);
       setDashboard(dash);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Klarte ikke å laste data');
@@ -281,12 +300,19 @@ export default function AgencyPartnershipsPage() {
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
         sx={{ mb: 2.4, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600 } }}
       >
         <Tab value="overview" label="Oversikt" />
         <Tab value="availability" label="Tilgjengelighet" />
         <Tab value="mine" label={`Mine partnerships (${partnerships.length})`} />
         <Tab value="incoming" label={`Innkommende (${invitations.length})`} />
+        <Tab
+          value="requests"
+          label={`Talentforespørsler (${talentRequests.filter((request) => request.status === 'pending' || request.status === 'acknowledged').length})`}
+        />
       </Tabs>
 
       {loading && !availability ? (
@@ -351,6 +377,26 @@ export default function AgencyPartnershipsPage() {
           )}
           onProposeTalents={(inv) => setProposeDialog(inv)}
         />
+      ) : null}
+
+      {tab === 'requests' ? (
+        <ErrorBoundary componentName="agency-talent-requests">
+          <Suspense fallback={<Box sx={{ display: 'grid', placeItems: 'center', minHeight: 180 }}><CircularProgress size={24} /></Box>}>
+            <AgencyTalentRequestsPanel
+              requests={talentRequests}
+              summary={talentRequestSummary}
+              busy={busy}
+              onRespond={(requestId, action, responseNote) => doAction(
+                () => respondToTalentRequest(requestId, action, responseNote),
+                action === 'acknowledge'
+                  ? 'Forespørselen er markert som mottatt.'
+                  : action === 'decline'
+                    ? 'Forespørselen er avslått.'
+                    : 'Talentforslaget er sendt til produksjonen.',
+              )}
+            />
+          </Suspense>
+        </ErrorBoundary>
       ) : null}
 
       {proposeDialog ? (

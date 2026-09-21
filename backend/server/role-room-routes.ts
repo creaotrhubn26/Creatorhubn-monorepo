@@ -624,6 +624,7 @@ interface RoleRoomLinkedInTransferPayload {
 
 interface ProjectRoleRecord {
   role: string;
+  roles: string[];
   permissions: Record<string, boolean>;
 }
 
@@ -4805,6 +4806,41 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRequestChanges: true,
           canViewEconomy: true,
         };
+      case 'executive_producer':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: true,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: true,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: true,
+        };
+      case 'line_producer':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: true,
+          canCoordinateProduction: true,
+          canManageCrew: true,
+          canManageLocations: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: true,
+        };
       case 'content_producer':
         return {
           canViewAll: true,
@@ -4840,6 +4876,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canViewEconomy: true,
         };
       case 'casting_director':
+      case 'local_casting_director':
+      case 'extras_casting_director':
         return {
           canViewAll: true,
           canEditCasting: true,
@@ -4852,7 +4890,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canEditScript: false,
           canLockScript: false,
           canRunTableRead: false,
-          canComment: false,
+          canComment: true,
           canRequestChanges: false,
           canViewEconomy: false,
         };
@@ -4873,7 +4911,28 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRequestChanges: false,
           canViewEconomy: false,
         };
+      case 'production_accountant':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
+          canViewEconomy: true,
+        };
       case 'production_coordinator':
+      case 'production_secretary':
+      case 'office_production_assistant':
+      case 'office_pa':
+      case 'production_assistant':
         return {
           canViewAll: true,
           canEditCasting: false,
@@ -4916,6 +4975,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       case 'second_ad':
       case 'second_assistant_director':
       case '2nd_ad':
+      case 'second_second_assistant_director':
+      case '2nd_2nd_ad':
         return {
           canViewAll: true,
           canEditCasting: false,
@@ -4930,6 +4991,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRunTableRead: false,
           canComment: true,
           canRequestChanges: true,
+          canViewEconomy: false,
+        };
+      case 'set_production_assistant':
+      case 'set_pa':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
           canViewEconomy: false,
         };
       case 'camera_team':
@@ -5016,7 +5095,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     const result = await pool.query(
-      `SELECT role, permissions
+      `SELECT role, permissions, additional_roles
        FROM casting_user_roles
        WHERE project_id = $1
          AND user_id = ANY($2::text[])
@@ -5025,11 +5104,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
        LIMIT 1`,
       [projectId, identifiers],
     );
-    let row = result.rows[0] as { role?: string; permissions?: unknown } | undefined;
+    let row = result.rows[0] as { role?: string; permissions?: unknown; additional_roles?: unknown } | undefined;
 
     if (!row) {
       const fallbackResult = await pool.query(
-        `SELECT role, permissions
+        `SELECT role, permissions, additional_roles
          FROM casting_user_roles
          WHERE project_id = '__global__'
            AND user_id = ANY($1::text[])
@@ -5038,14 +5117,31 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [identifiers],
       );
-      row = fallbackResult.rows[0] as { role?: string; permissions?: unknown } | undefined;
+      row = fallbackResult.rows[0] as { role?: string; permissions?: unknown; additional_roles?: unknown } | undefined;
     }
 
     if (!row) return null;
     if (!row?.role) return null;
+    const role = String(row.role).trim().toLowerCase();
+    const roles = [
+      role,
+      ...(Array.isArray(row.additional_roles)
+        ? row.additional_roles
+          .filter((candidate): candidate is string => typeof candidate === 'string')
+          .map((candidate) => candidate.trim().toLowerCase())
+          .filter(Boolean)
+        : []),
+    ].filter((candidate, index, values) => values.indexOf(candidate) === index);
+    const roleDefaults = roles.reduce<Record<string, boolean>>((permissions, candidate) => {
+      for (const [permission, granted] of Object.entries(getDefaultProjectRolePermissions(candidate))) {
+        permissions[permission] = permissions[permission] === true || granted === true;
+      }
+      return permissions;
+    }, {});
     return {
-      role: String(row.role),
-      permissions: parseRolePermissions(row.permissions),
+      role,
+      roles,
+      permissions: { ...roleDefaults, ...parseRolePermissions(row.permissions) },
     };
   }
 
@@ -5061,6 +5157,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
     return {
       role: normalizedRole,
+      roles: [normalizedRole],
       permissions: getDefaultProjectRolePermissions(normalizedRole),
     };
   }
@@ -5083,6 +5180,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     ) {
       return {
         role: sessionRoleRecord.role,
+        roles: [...new Set([...roleRecord.roles, ...sessionRoleRecord.roles])],
         permissions: {
           ...roleRecord.permissions,
           ...sessionRoleRecord.permissions,
@@ -5091,6 +5189,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     return roleRecord;
+  }
+
+  function hasAnyProjectRole(
+    roleRecord: ProjectRoleRecord,
+    allowedRoles: readonly string[],
+  ): boolean {
+    return roleRecord.roles.some((role) => allowedRoles.includes(role));
   }
 
   /**
@@ -5121,18 +5226,31 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!effectiveRoleRecord) return false;
     if ([
       'director',
+      'executive_producer',
       'producer',
+      'line_producer',
+      'casting_director',
+      'local_casting_director',
+      'extras_casting_director',
       'production_manager',
       'production_coordinator',
+      'production_secretary',
+      'office_production_assistant',
+      'office_pa',
+      'production_assistant',
       'first_ad',
       'first_assistant_director',
       '1st_ad',
       'second_ad',
       'second_assistant_director',
       '2nd_ad',
+      'second_second_assistant_director',
+      '2nd_2nd_ad',
+      'set_production_assistant',
+      'set_pa',
       'content_producer',
       'client_reviewer',
-    ].includes(effectiveRoleRecord.role)) return true;
+    ].some((role) => effectiveRoleRecord.roles.includes(role))) return true;
     return effectiveRoleRecord.permissions.canViewAll === true
       || effectiveRoleRecord.permissions.canEditProduction === true
       || effectiveRoleRecord.permissions.canComment === true;
@@ -5142,7 +5260,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    if (hasAnyProjectRole(effectiveRoleRecord, ['director', 'executive_producer', 'producer', 'line_producer', 'production_accountant', 'content_producer', 'client_reviewer'])) return true;
     return effectiveRoleRecord.permissions.canViewEconomy === true;
   }
 
@@ -5153,6 +5271,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if ([
       'director',
       'producer',
+      'line_producer',
       'production_manager',
       'first_ad',
       'first_assistant_director',
@@ -5160,16 +5279,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'second_ad',
       'second_assistant_director',
       '2nd_ad',
+      'second_second_assistant_director',
+      '2nd_2nd_ad',
       'content_producer',
-    ].includes(effectiveRoleRecord.role)) return true;
+    ].some((role) => effectiveRoleRecord.roles.includes(role))) return true;
     return effectiveRoleRecord.permissions.canEditProduction === true;
+  }
+
+  function canWriteCastingData(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if ([
+      'director',
+      'producer',
+      'casting_director',
+      'local_casting_director',
+      'extras_casting_director',
+    ].some((role) => effectiveRoleRecord.roles.includes(role))) return true;
+    return effectiveRoleRecord.permissions.canEditCasting === true;
   }
 
   function canManageProjectRoles(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'production_manager'].includes(effectiveRoleRecord.role)) return true;
+    if (hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'line_producer', 'production_manager'])) return true;
     return effectiveRoleRecord.permissions.canManageCrew === true;
   }
 
@@ -5185,7 +5320,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'content_producer', 'writer', 'script_editor'].includes(effectiveRoleRecord.role)) {
+    if (hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'content_producer', 'writer', 'script_editor'])) {
       return true;
     }
     return effectiveRoleRecord.permissions.canEditScript === true;
@@ -5195,7 +5330,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (canReadProducerData(req, roleRecord)) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['script_supervisor', 'video_assist', 'editor', 'assistant_editor'].includes(effectiveRoleRecord.role)) {
+    if (hasAnyProjectRole(effectiveRoleRecord, ['script_supervisor', 'video_assist', 'editor', 'assistant_editor'])) {
       return true;
     }
     return effectiveRoleRecord.permissions.canEditScript === true
@@ -5218,7 +5353,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'video_assist',
       'editor',
       'assistant_editor',
-    ].includes(effectiveRoleRecord.role)) {
+    ].some((role) => effectiveRoleRecord.roles.includes(role))) {
       return true;
     }
     return effectiveRoleRecord.permissions.canEditProduction === true
@@ -5231,7 +5366,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    if (hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'content_producer', 'client_reviewer'])) return true;
     return effectiveRoleRecord.permissions.canComment === true;
   }
 
@@ -5239,7 +5374,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    if (hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'client_reviewer'])) return true;
     return effectiveRoleRecord.permissions.canApprove === true || effectiveRoleRecord.permissions.canRequestChanges === true;
   }
 
@@ -5247,7 +5382,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'content_producer', 'client_reviewer'].includes(effectiveRoleRecord.role)) return true;
+    if (hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'content_producer', 'client_reviewer'])) return true;
     return effectiveRoleRecord.permissions.canEditProduction === true || effectiveRoleRecord.permissions.canComment === true;
   }
 
@@ -5255,7 +5390,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    return ['director', 'producer', 'content_producer'].includes(effectiveRoleRecord.role)
+    return hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'content_producer'])
       || effectiveRoleRecord.permissions.canEditProduction === true;
   }
 
@@ -5263,7 +5398,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    return ['director', 'producer', 'content_producer', 'production_manager'].includes(effectiveRoleRecord.role)
+    return hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'content_producer', 'production_manager'])
       || effectiveRoleRecord.permissions.canViewAll === true;
   }
 
@@ -5271,7 +5406,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    return ['director', 'producer', 'client_reviewer'].includes(effectiveRoleRecord.role)
+    return hasAnyProjectRole(effectiveRoleRecord, ['director', 'producer', 'client_reviewer'])
       || effectiveRoleRecord.permissions.canApprove === true;
   }
 
@@ -12186,6 +12321,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!roleRecord && ownsProject) {
       roleRecord = {
         role: 'director',
+        roles: ['director'],
         permissions: getDefaultProjectRolePermissions('director'),
       };
     }
@@ -17351,8 +17487,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å redigere casting' });
         return;
       }
     }
@@ -17411,8 +17547,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler skrivetilgang til dette prosjektet' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å redigere casting' });
         return;
       }
     }
@@ -17933,8 +18069,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til auditionplanen' });
         return;
       }
     }
@@ -17972,8 +18108,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til auditionplanen' });
         return;
       }
     }
@@ -18015,8 +18151,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til auditionplanen' });
         return;
       }
     }
@@ -18051,8 +18187,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til auditionplanen' });
         return;
       }
     }
@@ -18082,8 +18218,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
-        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+      if (!canWriteCastingData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til auditionplanen' });
         return;
       }
     }
@@ -19575,7 +19711,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      if (!canWriteCastingData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å invitere talent' });
         return;
       }

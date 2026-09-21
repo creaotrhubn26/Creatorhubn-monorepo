@@ -264,7 +264,10 @@ final class RedigeringModel {
         do {
             let url = try AppDatabase.defaultDiskURL()
             let db = try AppDatabase.openOnDisk(at: url)
-            assets = try await CullStore(database: db, outbox: Outbox(database: db))
+            assets = try await CullStore(
+                database: db,
+                outbox: Outbox(database: db, ownerUserId: ownerUserId)
+            )
                 .assets(sessionId: s.id, ownerUserId: ownerUserId)
             selectedId = assets.first?.id
             loadRecipeForSelection()

@@ -228,7 +228,14 @@ const PrivacyPolicy: React.FC = () => {
   const socialLinks = getPublicSocialProfiles(brandKey);
 
   const isRoleRoom = brandKey === 'roleRoom';
+  // getThemedCardSx() er en dark-theme-helper som hardkoder
+  // color: rgba(255,255,255,0.95). Spredt SIST overstyrte den merkefargen
+  // under, slik at hver ListItemText-primary ble hvit på den lyse flaten —
+  // ~30 underoverskrifter var i praksis usynlige på creatorhubn.com.
+  // Spredt FØRST beholder vi hover-oppførselen, mens de eksplisitte
+  // merkefargene vinner.
   const surfaceSx = {
+    ...theming.getThemedCardSx(),
     p: 4,
     borderRadius: '18px',
     background: isRoleRoom ? 'rgba(8, 15, 28, 0.84)' : 'rgba(255,255,255,0.94)',
@@ -236,7 +243,6 @@ const PrivacyPolicy: React.FC = () => {
     border: `1px solid ${brand.accentBorder}`,
     boxShadow: isRoleRoom ? '0 28px 80px rgba(4, 10, 24, 0.44)' : undefined,
     backdropFilter: 'blur(20px)',
-    ...theming.getThemedCardSx(),
   } as const;
   const bodyColor = isRoleRoom ? 'rgba(226,232,240,0.9)' : '#374151';
   const mutedColor = isRoleRoom ? 'rgba(148,163,184,0.86)' : '#6b7280';
@@ -525,9 +531,10 @@ const PrivacyPolicy: React.FC = () => {
                   Google Sign-In i CreatorHub og iPad-appen CreatorHub Capture brukes bare til
                   identitetsbekreftelse og innlogging. Vi ber om de grunnleggende omfangene{' '}
                   <code>openid</code>, <code>email</code> og <code>profile</code>. Det gir oss tilgang
-                  til bekreftet e-postadresse, navn og eventuell profilbilde-URL. Innloggingen gir
-                  ikke tilgang til Google-passordet ditt, Gmail, Google Drive, Kalender, Kontakter
-                  eller andre Google-tjenester.
+                  til bekreftet e-postadresse, navn og eventuell profilbilde-URL. Google Sign-In
+                  alene gir ikke tilgang til Google-passordet ditt, Gmail, Google Drive, Kalender,
+                  Kontakter eller andre Google-tjenester — slike tilganger bes det om separat, og
+                  er beskrevet i seksjon 8b under.
                 </Typography>
                 <Paper sx={panelSx}>
                   <List dense disablePadding>
@@ -556,6 +563,86 @@ const PrivacyPolicy: React.FC = () => {
                       />
                     </ListItem>
                   </List>
+                </Paper>
+              </Box>
+
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: brand.accent, mb: 2 }}>
+                  8b. Google Workspace-data (Drive, Gmail, Chat, Kalender m.fl.)
+                </Typography>
+                <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
+                  Utover innlogging kan du selv koble CreatorHub til din egen Google-konto for å
+                  bruke produksjonsfunksjonene. Dette er alltid frivillig, skjer i en separat
+                  godkjenningsflyt der Google viser deg hver enkelt tillatelse, og gjelder bare
+                  din egen konto og dine egne prosjekter. Vi ber aldri om tilgang på vegne av
+                  hele organisasjonen din, og vi skanner aldri kontoen din i bakgrunnen.
+                </Typography>
+                <Paper sx={panelSx}>
+                  <List dense disablePadding>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Google Drive"
+                        secondary="Vi åpner filene du selv peker ut (opptak, stillbilder, dokumenter), skriver godkjente leveranser, kontrakter og eksporter tilbake til din Drive, fester et CreatorHub-skript på dine egne filer når du ber om det, henter opptak og transkripsjon som Google Meet lagde for ditt eget møte, og viser i prosjektloggen hvem som endret en leveransefil og når. Vi leser ikke filer du ikke har knyttet til et prosjekt."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Gmail"
+                        secondary="Prosjekt-chatten sender fra din egen e-postadresse. Vi henter KUN meldinger der In-Reply-To/References peker på Message-ID-en til en e-post CreatorHub selv har sendt, slik at kundens svar havner i riktig prosjekttråd. Ingen annen e-post leses, lagres eller indekseres. Utkast opprettes i Gmail slik at du kan lese gjennom før du sender; ingenting sendes uten at du bekrefter."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Google Chat"
+                        secondary="Hvert prosjekt speiler kundedialogen i et Google Chat-rom du selv eier. Vi publiserer statusoppdateringer, leveranselenker og godkjenningsforespørsler der, og leser det samme rommet slik at samtalen vises ved siden av filene den handler om. Vi har ikke tilgang til andre rom."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Kalender, Kontakter, Docs, Sheets og Tasks"
+                        secondary="Opptaksdatoer, frister og leveranseoppgaver skrives fra prosjektplanen. Kundekontakter du legger på et prosjekt leses og oppdateres. Call sheets, manus og budsjetter genereres inn i dine egne filer."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Analytics, Ads, Tag Manager, YouTube og Photos"
+                        secondary="Når du kobler til dine egne markedsførings- og publiseringskontoer, leser vi kampanjetall for å vise resultater, og publiserer kun materiale du har godkjent."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Lagring, deling og sletting"
+                        secondary="OAuth-tokens lagres kryptert på server og eksponeres aldri til nettleseren. Innhold vi henter behandles for å vise deg funksjonen og lagres ikke lenger enn nødvendig for det. Vi deler ikke Google-data med annonsenettverk eller datameglere; underleverandører brukes kun til drift (hosting, database, logging) under databehandleravtale. Du kan når som helst trekke tilbake tilgangen på myaccount.google.com/permissions, og be om innsyn eller sletting ved å kontakte oss."
+                      />
+                    </ListItem>
+                    <ListItem disableGutters>
+                      <ListItemText
+                        primary="Ingen AI-trening"
+                        secondary="Google-brukerdata brukes aldri til å utvikle, forbedre eller trene generelle AI- eller maskinlæringsmodeller. Mennesker leser ikke dataene, med unntak av der du uttrykkelig har samtykket, av sikkerhetshensyn, for å etterleve lov, eller når dataene er aggregert og anonymisert."
+                      />
+                    </ListItem>
+                  </List>
+                </Paper>
+                <Paper sx={{ ...panelSx, mt: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: bodyColor, mb: 1 }}>
+                    Limited Use / Google API Services User Data Policy
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: bodyColor, lineHeight: 1.8 }}>
+                    CreatorHub Norge sin bruk av informasjon mottatt fra Google API-er følger{' '}
+                    <a
+                      href="https://developers.google.com/terms/api-services-user-data-policy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Google API Services User Data Policy
+                    </a>
+                    , inkludert kravene om Limited Use.
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: bodyColor, lineHeight: 1.8, mt: 1, fontStyle: 'italic' }}>
+                    CreatorHub Norge's use of information received from Google APIs will adhere to
+                    the Google API Services User Data Policy, including the Limited Use
+                    requirements.
+                  </Typography>
                 </Paper>
               </Box>
 

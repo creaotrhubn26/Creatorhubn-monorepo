@@ -6006,6 +6006,7 @@ final class LiveCaptureModel {
     // → outbox-sync til /api/projects/:id/shot-list → synlig i workspace.
     private var autoCheckedShotAssetIds: Set<UUID> = []
     private var shotAutoCheckStore: ShotListStore?
+    private var shotAutoCheckOwnerUserId: String?
     /// Team-flagg (projects.settings.shotListAutoCheck) — eier/lead styrer det
     /// fra web-workspacen. Default PÅ; hentes når prosjekt kobles til.
     var shotListAutoCheckEnabled = true
@@ -6925,17 +6926,23 @@ final class LiveCaptureModel {
         }
     }
 
-    private func shotStore() -> ShotListStore? {
-        if let s = shotAutoCheckStore { return s }
+    private func shotStore(ownerUserId: String) -> ShotListStore? {
+        if shotAutoCheckOwnerUserId == ownerUserId, let store = shotAutoCheckStore {
+            return store
+        }
         guard let url = try? AppDatabase.defaultDiskURL(),
               let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
-        let s = ShotListStore(database: db, outbox: Outbox(database: db))
-        shotAutoCheckStore = s
-        return s
+        let store = ShotListStore(
+            database: db,
+            outbox: Outbox(database: db, ownerUserId: ownerUserId)
+        )
+        shotAutoCheckStore = store
+        shotAutoCheckOwnerUserId = ownerUserId
+        return store
     }
 
     private func autoCheckShot(assetId: UUID, previewKey: String, projectId: String, owner: String) async {
-        guard let store = shotStore(),
+        guard let store = shotStore(ownerUserId: owner),
               let list = try? await store.load(projectId: projectId, ownerUserId: owner),
               list.shots.contains(where: { !($0.isCompleted ?? false) })
         else { return }
@@ -6989,7 +6996,7 @@ final class LiveCaptureModel {
             return
         }
         guard let projectId = selectedProject?.id else { return }
-        if let store = shotStore(),
+        if let store = shotStore(ownerUserId: actorUserId),
            let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId),
            let shot = list.shots.first(where: { $0.id == shotId }), shot.isCompleted ?? false {
             try? await store.toggleCompletion(shotId: shotId, in: list)   // true → false
@@ -7036,7 +7043,7 @@ final class LiveCaptureModel {
 
         // «Neste» = høyest prioriterte uhukede shots akkurat nå.
         var nextArr: [String] = []
-        if let store = shotStore(),
+        if let store = shotStore(ownerUserId: actorUserId),
            let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId) {
             nextArr = list.shots.filter { !($0.isCompleted ?? false) }
                 .sorted { prioRank($0.priority) < prioRank($1.priority) }
@@ -7205,7 +7212,8 @@ final class LiveCaptureModel {
                 shotAssetMap[asset.id.uuidString.lowercased()] = backendId.uuidString.lowercased()
             }
         }
-        if !shotAssetMap.isEmpty, let pid = selectedProject?.id, let store = shotStore(),
+        if !shotAssetMap.isEmpty, let pid = selectedProject?.id,
+           let store = shotStore(ownerUserId: actorUserId),
            let list = try? await store.load(projectId: pid, ownerUserId: actorUserId) {
             try? await store.linkBackendAssetIds(shotAssetMap, in: list)
             await loadProjectDetail(projectId: pid)
@@ -7674,6 +7682,7 @@ final class LiveCaptureModel {
             clientLabel: clientLabel,
             pin: pin,
             ttlMinutes: ttlMinutes,
+            projectId: selectedProject?.id,
         )
         await MainActor.run { self.lastDelivery = result }
         // Phase 5.4 — fire-and-forget AI enhancement for the just-
@@ -7729,7 +7738,8 @@ final class LiveCaptureModel {
                     priority: e.priority, shotType: e.shotType, locationName: e.locationName,
                     notes: e.notes, scouted: e.scouted, isCompleted: e.isCompleted,
                     capturedAssetId: e.capturedAssetId,
-                    capturedAssetBackendId: e.capturedAssetBackendId, completedBy: e.completedBy)
+                    capturedAssetBackendId: e.capturedAssetBackendId,
+                    completedBy: e.completedBy)
             }
         }
         items += scenes.map { BackendClient.ShotListPostItem(id: UUID().uuidString.lowercased(), scene: $0) }
@@ -7759,8 +7769,11 @@ final class LiveCaptureModel {
 
     /// Stabil preview-URL for et backend-asset (thumbnail i shot-radene på
     /// tvers av enheter / etter restart). nil hvis ingen backend konfigurert.
-    func assetPreviewURL(backendAssetId: String) -> URL? {
-        (backendClient ?? makeBackendClientFromDefaults())?.assetPreviewURL(backendAssetId: backendAssetId)
+    func assetPreviewURL(backendAssetId: String, token: String?) -> URL? {
+        (backendClient ?? makeBackendClientFromDefaults())?.assetPreviewURL(
+            backendAssetId: backendAssetId,
+            token: token
+        )
     }
 
     /// #9 Hent en brief fra prosjektets bryllups-timeline (dagsplan) → mater
@@ -7932,6 +7945,7 @@ final class LiveCaptureModel {
             sendEmail: sendEmail,
             emailBody: emailBody,
             photographerName: photographerName,
+            projectId: selectedProject?.id,
         )
         await MainActor.run { self.lastShowcaseDelivery = result }
         return result
@@ -8785,18 +8799,17 @@ private struct SessionRow: View {
 // MARK: - Palette
 
 private extension Color {
-    static let captureBackground      = Color(red: 0.07, green: 0.08, blue: 0.10)
-    static let captureFilmstripBG     = Color(red: 0.10, green: 0.11, blue: 0.13)
+    static let captureBackground      = CHTheme.bg
+    static let captureFilmstripBG     = CHTheme.bgDeep
     static let captureChipBG          = Color.white.opacity(0.07)
-    static let captureFieldBG         = Color.white.opacity(0.10)
-    static let captureSeparator       = Color.white.opacity(0.12)
-    // Design-tokens fra CreatorHub One-pakken (Shoot-mockup).
-    static let captureAccent          = Color(red: 1.0, green: 0.42, blue: 0.17)   // #FF6B2C
-    static let captureAccentDeep      = Color(red: 0.91, green: 0.29, blue: 0.05)  // #E94B0C
-    static let captureDeepBG          = Color(red: 0.016, green: 0.035, blue: 0.07) // #040912
-    static let captureSurface         = Color(red: 0.067, green: 0.098, blue: 0.153) // #111927
-    static let captureBorder          = Color(red: 0.188, green: 0.235, blue: 0.314) // #303C50
-    static let captureSuccess         = Color(red: 0.133, green: 0.773, blue: 0.369) // #22C55E
-    static let captureTextSecondary   = Color(red: 0.655, green: 0.686, blue: 0.753) // #A7AFC0
-    static let captureTextMuted       = Color(red: 0.435, green: 0.471, blue: 0.533) // #6F7888
+    static let captureFieldBG         = CHTheme.input
+    static let captureSeparator       = CHTheme.border
+    static let captureAccent          = CHTheme.accent
+    static let captureAccentDeep      = CHTheme.accentDark
+    static let captureDeepBG          = CHTheme.bgDeep
+    static let captureSurface         = CHTheme.surfaceSolid
+    static let captureBorder          = CHTheme.border
+    static let captureSuccess         = CHTheme.success
+    static let captureTextSecondary   = CHTheme.textSecondary
+    static let captureTextMuted       = CHTheme.textMuted
 }

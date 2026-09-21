@@ -55,6 +55,167 @@ export async function getDefaultApiBase(): Promise<string> {
   return invoke<string>("default_api_base");
 }
 
+// ── CreatorHub Bridge: local video + camera/production control ─────
+
+export type BridgeAvailability =
+  | "ready"
+  | "runtime_required"
+  | "tool_required"
+  | "sdk_required"
+  | "device_required";
+
+export interface BridgeCapability {
+  id: string;
+  label: string;
+  role: "video_transport" | "camera_control" | "production_control";
+  availability: BridgeAvailability;
+  local_only: boolean;
+  detail: string;
+}
+
+export interface BridgeStatus {
+  product_name: string;
+  local_monitoring_requires_cloud: boolean;
+  video_sources: BridgeCapability[];
+  camera_controls: BridgeCapability[];
+  production_controls: BridgeCapability[];
+}
+
+export interface BridgePreviewSource {
+  id: string;
+  label: string;
+  role: "multiview" | "camera";
+  playback_url: string;
+  quality_label: string;
+}
+
+export interface BridgePreviewStatus {
+  running: boolean;
+  port: number | null;
+  service_type: string;
+  manifest_path: string;
+  source_count: number;
+  sources: BridgePreviewSource[];
+  last_error: string | null;
+}
+
+export interface NdiDiscoveryResult {
+  runtime_path: string;
+  runtime_version: string;
+  sources: Array<{ name: string; url_address: string | null }>;
+}
+
+export type NdiPreviewPhase = "idle" | "starting" | "running" | "stopped" | "failed";
+
+export interface NdiPreviewStatus {
+  phase: NdiPreviewPhase;
+  source_name: string | null;
+  frames_received: number;
+  width: number | null;
+  height: number | null;
+  frames_per_second: number | null;
+  playback_url: string | null;
+  ffmpeg_path: string | null;
+  last_error: string | null;
+}
+
+export interface BlackmagicProbe {
+  api_base: string;
+  product: {
+    device_name?: string | null;
+    product_name?: string | null;
+    software_version?: string | null;
+  };
+  recording: boolean;
+  clip_count: number;
+  system: unknown;
+}
+
+export interface ObsProbe {
+  obs_studio_version: string | null;
+  obs_websocket_version: string | null;
+  recording: boolean | null;
+  current_program_scene: string | null;
+  scenes: string[];
+  available_requests: string[];
+}
+
+export async function getBridgeStatus(): Promise<BridgeStatus> {
+  return invoke<BridgeStatus>("bridge_status");
+}
+
+export async function getBridgePreviewStatus(): Promise<BridgePreviewStatus> {
+  return invoke<BridgePreviewStatus>("bridge_preview_status");
+}
+
+export async function saveBridgePreviewSources(
+  sources: BridgePreviewSource[],
+): Promise<BridgePreviewStatus> {
+  return invoke<BridgePreviewStatus>("save_bridge_preview_sources", { sources });
+}
+
+export async function discoverNdiSources(timeoutMs = 1500): Promise<NdiDiscoveryResult> {
+  return invoke<NdiDiscoveryResult>("discover_ndi_sources", { timeoutMs });
+}
+
+export async function getNdiPreviewStatus(): Promise<NdiPreviewStatus> {
+  return invoke<NdiPreviewStatus>("ndi_preview_status");
+}
+
+export async function startNdiPreview(source: {
+  name: string;
+  url_address: string | null;
+}): Promise<NdiPreviewStatus> {
+  return invoke<NdiPreviewStatus>("start_ndi_preview", {
+    sourceName: source.name,
+    urlAddress: source.url_address,
+  });
+}
+
+export async function stopNdiPreview(): Promise<NdiPreviewStatus> {
+  return invoke<NdiPreviewStatus>("stop_ndi_preview");
+}
+
+export async function probeBlackmagicCamera(baseUrl: string): Promise<BlackmagicProbe> {
+  return invoke<BlackmagicProbe>("probe_blackmagic_camera", { baseUrl });
+}
+
+export async function setBlackmagicRecording(args: {
+  baseUrl: string;
+  recording: boolean;
+  clipName?: string | null;
+}): Promise<{ recording: boolean }> {
+  return invoke<{ recording: boolean }>("set_blackmagic_recording", {
+    baseUrl: args.baseUrl,
+    recording: args.recording,
+    clipName: args.clipName ?? null,
+  });
+}
+
+export async function probeObs(args: {
+  endpoint: string;
+  password?: string | null;
+}): Promise<ObsProbe> {
+  return invoke<ObsProbe>("probe_obs", {
+    endpoint: args.endpoint,
+    password: args.password || null,
+  });
+}
+
+export async function runObsAction(args: {
+  endpoint: string;
+  password?: string | null;
+  action: "start_record" | "stop_record" | "set_current_program_scene";
+  sceneName?: string | null;
+}): Promise<unknown> {
+  return invoke("run_obs_action", {
+    endpoint: args.endpoint,
+    password: args.password || null,
+    action: args.action,
+    sceneName: args.sceneName ?? null,
+  });
+}
+
 export async function loadStoredConfig(): Promise<StoredConfig | null> {
   return invoke<StoredConfig | null>("load_stored_config");
 }

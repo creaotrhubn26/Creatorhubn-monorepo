@@ -53,6 +53,17 @@ enum PairingConnection {
                 let decision = await awaitDecisionWithTimeout(for: request)
                 switch decision {
                 case .accept:
+                    if let bridgeAccessToken = request.bridgeAccessToken {
+                        do {
+                            try BridgeCredentialStore.save(
+                                token: bridgeAccessToken,
+                                forDeskId: request.deskId
+                            )
+                        } catch {
+                            finish(connection, with: PairingProtocol.encodeError(reason: "credential_storage"))
+                            return
+                        }
+                    }
                     let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
                     let deskName = request.deskName.isEmpty ? "Desk" : request.deskName
                     PairedDeskStore.shared.upsert(

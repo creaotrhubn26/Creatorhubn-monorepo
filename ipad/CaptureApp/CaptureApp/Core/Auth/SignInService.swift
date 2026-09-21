@@ -85,6 +85,7 @@ final class SignInService {
         )
         try Self.saveToKeychain(stored)
         self.session = stored
+        Task { await CaptureSyncCoordinator.shared.start(session: stored) }
     }
 
     /// Bypass the Google-token exchange and persist a CreatorHub bearer
@@ -107,11 +108,13 @@ final class SignInService {
         )
         try Self.saveToKeychain(stored)
         self.session = stored
+        Task { await CaptureSyncCoordinator.shared.start(session: stored) }
     }
 
     func signOut() {
         Self.deleteFromKeychain()
         session = nil
+        Task { await CaptureSyncCoordinator.shared.stop() }
     }
 
     #if DEBUG
@@ -121,6 +124,9 @@ final class SignInService {
         session = StoredSession(
             backendBaseURL: backendBaseURL, bearer: "demo",
             userId: userId, email: "demo@creatorhubn.com", displayName: displayName)
+        if let session {
+            Task { await CaptureSyncCoordinator.shared.start(session: session) }
+        }
     }
     #endif
 
