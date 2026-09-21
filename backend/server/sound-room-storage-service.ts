@@ -21,6 +21,7 @@ import type { PrivateObjectStorage } from "./private-object-storage.js";
 import { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
 import { buildVideoCaptureObjectKey } from "./video-capture-storage-contract.js";
 import { buildVideoRoomObjectKey } from "./video-room-storage-contract.js";
+import { roleRoomProductionSoundMediaKey } from "./role-room-storage-key.js";
 export { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
 
 const MIB = 1024 ** 2;
@@ -108,10 +109,24 @@ export interface VideoCaptureUploadInput {
   forceMultipart?: boolean;
 }
 
+export interface ProductionSoundUploadInput {
+  userId: string;
+  organizationId?: string | null;
+  projectId: string;
+  productionDayId: string;
+  fileName: string;
+  sizeBytes: number;
+  contentType: string;
+  checksumSha256: string;
+  channel: "browser";
+  forceMultipart?: boolean;
+}
+
 type RoleRoomMediaUploadInput =
   | (SoundRoomUploadInput & { mediaKind: "audio" })
   | (VideoRoomUploadInput & { mediaKind: "video" })
-  | (VideoCaptureUploadInput & { mediaKind: "video_capture" });
+  | (VideoCaptureUploadInput & { mediaKind: "video_capture" })
+  | (ProductionSoundUploadInput & { mediaKind: "production_sound" });
 
 export interface SoundRoomUploadTicket {
   objectId: string;
@@ -143,6 +158,8 @@ export interface SoundRoomStorageObjectRow {
   multipart_upload_id: string | null;
   multipart_part_size: string | null;
   source_channel: string | null;
+  source_module: string | null;
+  project_id: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -223,7 +240,8 @@ export async function readOwnedSoundRoomObject(
             object_row.content_type, object_row.checksum_sha256,
             object_row.status, object_row.upload_strategy,
             object_row.multipart_upload_id, object_row.multipart_part_size,
-            object_row.source_channel, object_row.metadata
+            object_row.source_channel, object_row.source_module,
+            object_row.project_id, object_row.metadata
        FROM role_room_storage_objects object_row
        JOIN role_room_storage_accounts account
          ON account.id = object_row.storage_account_id
@@ -251,7 +269,7 @@ async function initiateCreatorHubMediaUpload(
   if (input.sizeBytes > MAX_UPLOAD_BYTES) throw new Error("file_too_large");
   if (!validChecksum(input.checksumSha256)) throw new Error("invalid_checksum");
   const contentType = normalizeContentType(input.contentType);
-  const isVideo = input.mediaKind !== "audio";
+  const isVideo = input.mediaKind === "video" || input.mediaKind === "video_capture";
   const allowedTypes = isVideo ? VIDEO_ROOM_VIDEO_TYPES : SOUND_ROOM_AUDIO_TYPES;
   if (!allowedTypes.has(contentType)) {
     throw new Error(isVideo ? "unsupported_video_type" : "unsupported_audio_type");
@@ -279,29 +297,45 @@ async function initiateCreatorHubMediaUpload(
     ? buildVideoRoomObjectKey(input.organizationId, input.userId, input.projectId, objectId, input.fileName)
     : input.mediaKind === "video_capture"
       ? buildVideoCaptureObjectKey(input.organizationId, input.userId, input.projectId, objectId, input.fileName)
-      : buildSoundRoomObjectKey({
-        organizationId: input.organizationId,
-        userId: input.userId,
-        workspaceProjectId: input.workspaceProjectId,
-        projectId: input.projectId,
-        sessionId: input.sessionId,
-        channel: input.channel,
-        objectId,
-        fileName: input.fileName,
-      });
+      : input.mediaKind === "production_sound"
+        ? roleRoomProductionSoundMediaKey({
+          organizationId: input.organizationId,
+          userId: input.userId,
+          projectId: input.projectId,
+          productionDayId: input.productionDayId,
+          objectId,
+          fileName: input.fileName,
+        })
+        : buildSoundRoomObjectKey({
+          organizationId: input.organizationId,
+          userId: input.userId,
+          workspaceProjectId: input.workspaceProjectId,
+          projectId: input.projectId,
+          sessionId: input.sessionId,
+          channel: input.channel,
+          objectId,
+          fileName: input.fileName,
+        });
   const sourceModule = input.mediaKind === "video"
     ? "video-room"
-    : input.mediaKind === "video_capture" ? "video-capture" : "sound-room";
+    : input.mediaKind === "video_capture"
+      ? "video-capture"
+      : input.mediaKind === "production_sound" ? "production-sound" : "sound-room";
   const multipart = input.forceMultipart === true || input.sizeBytes > SINGLE_PUT_LIMIT;
   const strategy = multipart ? "multipart" : "single";
   const partSize = multipart ? partSizeFor(input.sizeBytes) : null;
   const metadata = {
     entityType: input.mediaKind === "video"
       ? "video_review_project"
-      : input.mediaKind === "video_capture" ? "video_capture_asset" : "audio_review_project",
-    entityId: input.mediaKind === "video_capture" ? input.assetId : input.projectId,
+      : input.mediaKind === "video_capture"
+        ? "video_capture_asset"
+        : input.mediaKind === "production_sound" ? "production_sound_day" : "audio_review_project",
+    entityId: input.mediaKind === "video_capture"
+      ? input.assetId
+      : input.mediaKind === "production_sound" ? input.productionDayId : input.projectId,
     sessionId: input.mediaKind === "audio" ? input.sessionId || null : null,
     clientEventId: input.mediaKind === "audio" ? input.clientEventId || null : null,
+    productionDayId: input.mediaKind === "production_sound" ? input.productionDayId : null,
     originalChecksumSha256: input.checksumSha256.toLowerCase(),
   };
   let uploadId: string | null = null;
@@ -324,11 +358,11 @@ async function initiateCreatorHubMediaUpload(
       `INSERT INTO role_room_storage_objects (
          id, storage_account_id, object_key, display_name, size_bytes,
          content_type, checksum_sha256, source_module, created_by_user_id,
-         metadata, status, reservation_expires_at, upload_strategy,
+         project_id, metadata, status, reservation_expires_at, upload_strategy,
          multipart_upload_id, multipart_part_size, source_channel
       ) VALUES (
          $1::uuid, $2::uuid, $3, $4, $5::bigint,
-         $6, $7, $14, $8, $9::jsonb, 'pending',
+         $6, $7, $14, $8, $15, $9::jsonb, 'pending',
          NOW() + INTERVAL '1 hour', $10, $11, $12::bigint, $13
        )`,
       [
@@ -339,13 +373,16 @@ async function initiateCreatorHubMediaUpload(
         input.sizeBytes,
         contentType,
         input.checksumSha256.toLowerCase(),
-        input.mediaKind === "audio" ? input.userId : input.createdByUserId,
+        input.mediaKind === "video" || input.mediaKind === "video_capture"
+          ? input.createdByUserId
+          : input.userId,
         JSON.stringify(metadata),
         strategy,
         uploadId,
         partSize,
         input.channel,
         sourceModule,
+        input.mediaKind === "production_sound" ? input.projectId : null,
       ],
     );
 
@@ -423,6 +460,14 @@ export async function initiateVideoCaptureUpload(
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
   return initiateCreatorHubMediaUpload(pool, { ...input, mediaKind: "video_capture" }, deps);
+}
+
+export async function initiateProductionSoundUpload(
+  pool: Pool,
+  input: ProductionSoundUploadInput,
+  deps: SoundRoomStorageDeps = {},
+): Promise<SoundRoomUploadTicket> {
+  return initiateCreatorHubMediaUpload(pool, { ...input, mediaKind: "production_sound" }, deps);
 }
 
 export async function resumeSoundRoomUpload(
@@ -685,7 +730,9 @@ export async function completeSoundRoomUpload(
           objectRow.id,
           `${objectRow.metadata?.entityType === "video_review_project"
             ? "video-room"
-            : objectRow.metadata?.entityType === "video_capture_asset" ? "video-capture" : "sound-room"}-upload:${objectRow.id}`,
+            : objectRow.metadata?.entityType === "video_capture_asset"
+              ? "video-capture"
+              : objectRow.metadata?.entityType === "production_sound_day" ? "production-sound" : "sound-room"}-upload:${objectRow.id}`,
           Number(objectRow.size_bytes),
           JSON.stringify({ sourceChannel: objectRow.source_channel }),
         ],

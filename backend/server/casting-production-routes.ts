@@ -13,6 +13,7 @@
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-management
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-coordination
  *   • PATCH  /projects/:projectId/production-days/:dayId/continuity
+ *   • PATCH  /projects/:projectId/production-days/:dayId/production-sound
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/comments
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/media
  *   • GET    /projects/:projectId/production-days/:dayId/continuity/media/:fileId/url
@@ -30,7 +31,7 @@ import {
   type Response,
   type Router as ExpressRouter,
 } from 'express';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { unlink } from 'node:fs/promises';
@@ -52,6 +53,13 @@ import {
   type CastingGrant,
 } from './casting-project-ownership.js';
 import {
+  ArtDepartmentValidationError,
+  emptyArtDepartmentOperations,
+  normalizeArtDepartmentOperations,
+  readArtDepartmentActivity,
+  summarizeArtDepartmentChanges,
+} from './casting-production-art-department.js';
+import {
   continuityObject,
   normalizeContinuityComment,
   normalizeProductionContinuityOperations,
@@ -61,6 +69,23 @@ import {
   readContinuityRevisions,
   summarizeContinuityChanges,
 } from './casting-production-continuity.js';
+import {
+  emptyProductionSoundOperations,
+  normalizeProductionSoundOperations,
+  ProductionSoundValidationError,
+  readProductionSoundActivity,
+  summarizeProductionSoundChanges,
+} from "./casting-production-sound.js";
+import {
+  completeProductionSoundMediaUpload,
+  getProductionSoundMediaDownloadUrl,
+  getProductionSoundMediaUploadStatus,
+  initiateProductionSoundMediaUpload,
+  listProductionSoundMedia,
+  mapProductionSoundMediaRow,
+  resumeProductionSoundMediaUpload,
+  signProductionSoundMediaUploadParts,
+} from "./casting-production-sound-s3.js";
 import {
   CONTINUITY_MEDIA_MAX_VIDEO_BYTES,
   CONTINUITY_MEDIA_MIME_TYPES,
@@ -184,6 +209,20 @@ const locationDecisionActionLimiter = rateLimit({
   }),
 });
 
+const productionSoundMediaActionLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthedRequest).userId || "unauthenticated",
+  handler: (_req, res) =>
+    res.status(429).json({
+      error: "rate_limited",
+      message:
+        "For mange lydopplastingshandlinger på kort tid. Vent litt og prøv igjen.",
+    }),
+});
+
 async function resolveUser(
   pool: Pool,
   activeSessions: Map<string, SessionData> | undefined,
@@ -222,7 +261,13 @@ async function ensureSchema(pool: Pool): Promise<void> {
     ADD COLUMN IF NOT EXISTS coordination_updated_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS continuity_version INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS continuity_updated_by VARCHAR(255),
-    ADD COLUMN IF NOT EXISTS continuity_updated_at TIMESTAMPTZ`);
+    ADD COLUMN IF NOT EXISTS continuity_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS sound_version INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS sound_updated_by VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS sound_updated_at TIMESTAMPTZ`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_casting_production_days_sound_updated
+    ON casting_production_days(project_id, sound_updated_at DESC)
+    WHERE sound_updated_at IS NOT NULL`);
   await pool.query(`CREATE TABLE IF NOT EXISTS role_room_location_operations (
     id VARCHAR(255) PRIMARY KEY NOT NULL,
     project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
@@ -237,6 +282,19 @@ async function ensureSchema(pool: Pool): Promise<void> {
     ON role_room_location_operations(project_id, location_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS role_room_location_operations_project_updated_idx
     ON role_room_location_operations(project_id, updated_at DESC)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS role_room_art_department_operations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+    operations JSONB NOT NULL DEFAULT '{}'::jsonb,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT role_room_art_department_operations_project_unique UNIQUE (project_id),
+    CONSTRAINT role_room_art_department_operations_payload_object CHECK (jsonb_typeof(operations) = 'object')
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS role_room_art_department_operations_updated_idx
+    ON role_room_art_department_operations(project_id, updated_at DESC)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS casting_location_scout_media (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
@@ -300,6 +358,54 @@ function asArray(value: unknown): unknown[] {
 function isUuid(value: unknown): value is string {
   return typeof value === 'string'
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function sendProductionSoundStorageError(res: Response, error: unknown): void {
+  const candidate =
+    error instanceof Error ? error.message : String(error || "");
+  const statusByCode: Record<string, number> = {
+    invalid_file_name: 400,
+    invalid_project_id: 400,
+    invalid_size: 400,
+    invalid_checksum: 400,
+    invalid_parts: 400,
+    invalid_part_number: 400,
+    invalid_part_checksum: 400,
+    multipart_parts_required: 400,
+    unsupported_audio_type: 415,
+    file_too_large: 413,
+    storage_quota_exceeded: 507,
+    storage_not_configured: 503,
+    storage_unavailable: 503,
+    upload_not_found: 404,
+    not_multipart_upload: 409,
+    upload_not_completable: 409,
+    multipart_parts_incomplete: 409,
+    multipart_part_verification_failed: 422,
+    size_mismatch: 422,
+    checksum_mismatch: 422,
+  };
+  const validationMessage =
+    error instanceof Error &&
+    error.name === "ProductionSoundMediaValidationError"
+      ? error.message
+      : null;
+  if (validationMessage) {
+    res
+      .status(415)
+      .json({ error: "invalid_wave_file", message: validationMessage });
+    return;
+  }
+  const code = Object.hasOwn(statusByCode, candidate)
+    ? candidate
+    : "production_sound_storage_failed";
+  res.status(statusByCode[code] ?? 503).json({
+    error: code,
+    message:
+      code === "production_sound_storage_failed"
+        ? "Lydfilen kunne ikke behandles."
+        : undefined,
+  });
 }
 
 function toDateString(value: unknown): string {
@@ -366,6 +472,18 @@ const CONFLICT_LANES = {
     versionField: 'continuityVersion',
     updatedByField: 'continuityUpdatedBy',
     updatedAtField: 'continuityUpdatedAt',
+  },
+  production_sound: {
+    payloadKey: "productionDay",
+    versionField: "soundVersion",
+    updatedByField: "soundUpdatedBy",
+    updatedAtField: "soundUpdatedAt",
+  },
+  art_department: {
+    payloadKey: 'artDepartment',
+    versionField: 'version',
+    updatedByField: 'updatedBy',
+    updatedAtField: 'updatedAt',
   },
 } as const satisfies Record<string, {
   payloadKey: string;
@@ -437,6 +555,9 @@ function mapDayRow(row: Record<string, any>) {
     continuityVersion: Number(row.continuity_version ?? 0),
     continuityUpdatedBy: row.continuity_updated_by ?? undefined,
     continuityUpdatedAt: row.continuity_updated_at ?? undefined,
+    soundVersion: Number(row.sound_version ?? 0),
+    soundUpdatedBy: row.sound_updated_by ?? undefined,
+    soundUpdatedAt: row.sound_updated_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1125,6 +1246,10 @@ function productionDayDataWithoutProtectedOperations(body: Record<string, any>):
   delete data.continuityVersion;
   delete data.continuityUpdatedAt;
   delete data.continuityUpdatedBy;
+  delete data.productionSound;
+  delete data.soundVersion;
+  delete data.soundUpdatedAt;
+  delete data.soundUpdatedBy;
   return data;
 }
 
@@ -1217,6 +1342,13 @@ export interface CreateCastingProductionRouterDeps {
   uploadLocationScoutPhoto?: typeof uploadLocationScoutMediaToS3;
   listLocationScoutMedia?: typeof listLocationScoutMedia;
   getLocationScoutMediaDownloadUrl?: typeof getLocationScoutMediaDownloadUrl;
+  initiateProductionSoundMediaUpload?: typeof initiateProductionSoundMediaUpload;
+  resumeProductionSoundMediaUpload?: typeof resumeProductionSoundMediaUpload;
+  signProductionSoundMediaUploadParts?: typeof signProductionSoundMediaUploadParts;
+  getProductionSoundMediaUploadStatus?: typeof getProductionSoundMediaUploadStatus;
+  completeProductionSoundMediaUpload?: typeof completeProductionSoundMediaUpload;
+  listProductionSoundMedia?: typeof listProductionSoundMedia;
+  getProductionSoundMediaDownloadUrl?: typeof getProductionSoundMediaDownloadUrl;
 }
 
 export function createCastingProductionRouter(
@@ -1230,6 +1362,25 @@ export function createCastingProductionRouter(
   const uploadLocationScoutMedia = deps.uploadLocationScoutPhoto ?? uploadLocationScoutMediaToS3;
   const listLocationScoutMediaAdapter = deps.listLocationScoutMedia ?? listLocationScoutMedia;
   const getLocationScoutMediaDownloadUrlAdapter = deps.getLocationScoutMediaDownloadUrl ?? getLocationScoutMediaDownloadUrl;
+  const initiateSoundMediaUpload =
+    deps.initiateProductionSoundMediaUpload ??
+    initiateProductionSoundMediaUpload;
+  const resumeSoundMediaUpload =
+    deps.resumeProductionSoundMediaUpload ?? resumeProductionSoundMediaUpload;
+  const signSoundMediaParts =
+    deps.signProductionSoundMediaUploadParts ??
+    signProductionSoundMediaUploadParts;
+  const getSoundMediaUploadStatus =
+    deps.getProductionSoundMediaUploadStatus ??
+    getProductionSoundMediaUploadStatus;
+  const completeSoundMediaUpload =
+    deps.completeProductionSoundMediaUpload ??
+    completeProductionSoundMediaUpload;
+  const listSoundMedia =
+    deps.listProductionSoundMedia ?? listProductionSoundMedia;
+  const getSoundMediaDownloadUrl =
+    deps.getProductionSoundMediaDownloadUrl ??
+    getProductionSoundMediaDownloadUrl;
 
   // Props remain owner-scoped. Production days also support active project
   // members, with an explicit production-write check for mutations. Auth alone
@@ -1304,6 +1455,15 @@ export function createCastingProductionRouter(
     mode === 'manage' ? 'canManageContinuity' : 'canCommentContinuity',
   );
 
+  const ensureArtDepartmentAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canManageArtDepartment');
+
+  const ensureProductionSoundAccess = (
+    req: Request,
+    res: Response,
+    projectId: unknown,
+  ) => ensureProjectGrant(req, res, projectId, "canManageProductionSound");
+
   async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
     const access = await resolveCastingProjectAccess(pool, projectId, userId);
     // A project missing from the canonical table has no decision authority,
@@ -1334,6 +1494,16 @@ export function createCastingProductionRouter(
     version: Number(row.version ?? 0),
     updatedBy: row.updated_by ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+  });
+
+  const mapArtDepartmentRow = (projectId: string, row?: Record<string, any>) => ({
+    projectId,
+    operations: row
+      ? { ...normalizeArtDepartmentOperations(row.operations), activity: readArtDepartmentActivity(row.operations) }
+      : { ...emptyArtDepartmentOperations(), activity: [] },
+    version: Number(row?.version ?? 0),
+    updatedBy: row?.updated_by ?? undefined,
+    updatedAt: row?.updated_at ?? undefined,
   });
 
   // ────────────── CHANGE IMPACT ──────────────
@@ -1519,6 +1689,121 @@ export function createCastingProductionRouter(
       });
     } catch {
       res.status(500).json({ error: 'Kunne ikke hente prosjekttilgang', detail: 'internal_error' });
+    }
+  });
+
+  // ────────────── PRODUCTION DESIGN / ART DEPARTMENT ──────────────
+  router.get('/projects/:projectId/art-department', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensureProductionAccess(req, res, projectId, 'read'))) return;
+      const result = await pool.query(
+        `SELECT operations, version, updated_by, updated_at
+           FROM role_room_art_department_operations
+          WHERE project_id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      res.json({ artDepartment: mapArtDepartmentRow(projectId, result.rows[0]) });
+    } catch (error) {
+      if (error instanceof ArtDepartmentValidationError) {
+        res.status(500).json({ error: 'invalid_persisted_state', message: 'Produksjonsdesigngrunnlaget må repareres.' });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke hente produksjonsdesigngrunnlaget', detail: 'internal_error' });
+    }
+  });
+
+  router.patch('/projects/:projectId/art-department', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensureArtDepartmentAccess(req, res, projectId))) return;
+
+      const body = asObject(req.body);
+      if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 512 * 1024) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Produksjonsdesigngrunnlaget er ugyldig eller for stort.' });
+        return;
+      }
+      const expectedVersion = Number(body.expectedVersion);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        res.status(400).json({ error: 'invalid_payload', message: 'expectedVersion må være et ikke-negativt heltall.' });
+        return;
+      }
+      const operations = normalizeArtDepartmentOperations(body.operations);
+      const currentResult = await pool.query(
+        `SELECT operations, version, updated_by, updated_at
+           FROM role_room_art_department_operations
+          WHERE project_id = $1
+          LIMIT 1`,
+        [projectId],
+      );
+      const currentRow = currentResult.rows[0] as Record<string, any> | undefined;
+      const currentVersion = Number(currentRow?.version ?? 0);
+      if (currentVersion !== expectedVersion) {
+        sendVersionConflict(
+          res,
+          'art_department',
+          'Produksjonsdesigngrunnlaget er endret av en annen bruker.',
+          mapArtDepartmentRow(projectId, currentRow),
+        );
+        return;
+      }
+
+      const actorUserId = (req as AuthedRequest).userId;
+      const savedAt = new Date().toISOString();
+      const previousOperations = currentRow
+        ? normalizeArtDepartmentOperations(currentRow.operations)
+        : null;
+      const activity = [
+        ...readArtDepartmentActivity(currentRow?.operations),
+        {
+          id: genId('art-activity'),
+          type: 'workspace_saved' as const,
+          message: summarizeArtDepartmentChanges(previousOperations, operations),
+          actorUserId,
+          createdAt: savedAt,
+        },
+      ].slice(-100);
+      const auditedOperations = { ...operations, activity };
+
+      const saveResult = await pool.query(
+        `INSERT INTO role_room_art_department_operations
+           (project_id, operations, version, updated_by, created_at, updated_at)
+         VALUES ($1, $2::jsonb, 1, $3, NOW(), NOW())
+         ON CONFLICT (project_id) DO UPDATE
+           SET operations = EXCLUDED.operations,
+               version = role_room_art_department_operations.version + 1,
+               updated_by = EXCLUDED.updated_by,
+               updated_at = NOW()
+         WHERE role_room_art_department_operations.version = $4
+         RETURNING operations, version, updated_by, updated_at`,
+        [projectId, JSON.stringify(auditedOperations), actorUserId, expectedVersion],
+      );
+      if (saveResult.rowCount === 0) {
+        const latest = await pool.query(
+          `SELECT operations, version, updated_by, updated_at
+             FROM role_room_art_department_operations
+            WHERE project_id = $1
+            LIMIT 1`,
+          [projectId],
+        );
+        sendVersionConflict(
+          res,
+          'art_department',
+          'Produksjonsdesigngrunnlaget er endret av en annen bruker.',
+          mapArtDepartmentRow(projectId, latest.rows[0]),
+        );
+        return;
+      }
+      res.json({ artDepartment: mapArtDepartmentRow(projectId, saveResult.rows[0]) });
+    } catch (error) {
+      if (error instanceof ArtDepartmentValidationError) {
+        res.status(400).json({ error: 'invalid_payload', message: error.message });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke lagre produksjonsdesigngrunnlaget', detail: 'internal_error' });
     }
   });
 
@@ -2096,6 +2381,10 @@ export function createCastingProductionRouter(
              WHEN casting_production_days.data ? 'productionContinuity'
              THEN jsonb_build_object('productionContinuity', casting_production_days.data -> 'productionContinuity')
              ELSE '{}'::jsonb
+           END || CASE
+             WHEN casting_production_days.data ? 'productionSound'
+             THEN jsonb_build_object('productionSound', casting_production_days.data -> 'productionSound')
+             ELSE '{}'::jsonb
            END,
            updated_at = NOW()
          WHERE casting_production_days.project_id = EXCLUDED.project_id
@@ -2350,17 +2639,22 @@ export function createCastingProductionRouter(
       }
       res.status(500).json({ error: 'Kunne ikke lagre koordinatorflaten', detail: 'internal_error' });
     }
-  });
+  },
+  );
 
-  router.patch('/projects/:projectId/production-days/:dayId/continuity', auth, async (req, res) => {
+  // ────────────── PRODUCTION SOUND ──────────────
+  router.patch(
+    "/projects/:projectId/production-days/:dayId/production-sound",
+    auth, async (req, res) => {
     try {
       await schemaReady(pool);
       const { projectId, dayId } = req.params;
-      if (!(await ensureContinuityAccess(req, res, projectId, 'manage'))) return;
+      if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
 
       const body = asObject(req.body);
       if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 256 * 1024) {
-        res.status(400).json({ error: 'invalid_payload', message: 'Kontinuitetsloggen er ugyldig eller for stor.' });
+        res.status(400).json({ error: 'invalid_payload', message: "Lydrapporten er ugyldig eller for stor.",
+          });
         return;
       }
       const expectedVersion = Number(body.expectedVersion);
@@ -2368,7 +2662,7 @@ export function createCastingProductionRouter(
         res.status(400).json({ error: 'invalid_payload', message: 'expectedVersion må være et ikke-negativt heltall.' });
         return;
       }
-      const normalized = normalizeProductionContinuityOperations(body.operations);
+      const operations = normalizeProductionSoundOperations(body.operations);
       const currentResult = await pool.query(
         'SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2',
         [projectId, dayId],
@@ -2379,21 +2673,778 @@ export function createCastingProductionRouter(
       }
 
       const currentRow = currentResult.rows[0] as Record<string, any>;
-      const currentVersion = Number(currentRow.continuity_version ?? 0);
+      const currentVersion = Number(currentRow.sound_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(currentRow));
+        sendVersionConflict(res,
+            "production_sound",
+            "Lydrapporten er endret av en annen bruker.",
+            mapDayRow(currentRow));
         return;
       }
 
-      const assignedSceneIds = new Set(asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)));
-      if (
-        normalized.sceneRecords.length !== assignedSceneIds.size
-        || normalized.sceneRecords.some((entry) => !assignedSceneIds.has(entry.sceneId))
-      ) {
+      const assignedSceneIds = new Set(asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)),
+        );
+        const invalidRecordingScene = operations.additionalRecordings.find(
+          (recording) =>
+            recording.sceneId && !assignedSceneIds.has(recording.sceneId),
+        );
+        if (invalidRecordingScene) {
+          res.status(400).json({
+            error: "invalid_payload",
+            message:
+              "Tilleggsopptak kan bare knyttes til scener på produksjonsdagen.",
+          });
+          return;
+        }
+
+        const dayData = asObject(currentRow.data) ?? {};
+        const continuity = asObject(dayData.productionContinuity);
+        const canonicalTakes = Array.isArray(continuity?.takes)
+          ? continuity.takes.flatMap((entry) => {
+              const take = asObject(entry);
+              const id = typeof take?.id === "string" ? take.id.trim() : "";
+              const sceneId =
+                typeof take?.sceneId === "string" ? take.sceneId.trim() : "";
+              return id && sceneId ? [{ id, sceneId }] : [];
+            })
+          : [];
+        const canonicalTakeById = new Map(
+          canonicalTakes.map((take) => [take.id, take]),
+        );
+        const unknownTake = operations.takeReports.find(
+          (report) => !canonicalTakeById.has(report.continuityTakeId),
+        );
+        if (unknownTake) {
+          res.status(409).json({
+            error: "take_reference_conflict",
+            message:
+              "Take-grunnlaget er endret. Oppdater siden og avstem lydrapporten mot continuity-loggen.",
+            productionDay: mapDayRow(currentRow),
+          });
+          return;
+        }
+        const crossDayTake = operations.takeReports.find((report) => {
+          const take = canonicalTakeById.get(report.continuityTakeId);
+          return take && !assignedSceneIds.has(take.sceneId);
+        });
+        if (crossDayTake) {
         res.status(400).json({
           error: 'invalid_payload',
-          message: 'Kontinuitet kan bare registreres for scener som er tildelt produksjonsdagen.',
+          message:
+              "Et lydnotat refererer til en take fra en annen produksjonsdag.",
+          });
+          return;
+        }
+
+        const previousRaw = asObject(dayData.productionSound);
+        let previousOperations: ReturnType<
+          typeof normalizeProductionSoundOperations
+        > | null = null;
+        if (previousRaw) {
+          try {
+            previousOperations =
+              normalizeProductionSoundOperations(previousRaw);
+          } catch {
+            previousOperations = null;
+          }
+        }
+        const mediaLinks = (
+          value: ReturnType<typeof normalizeProductionSoundOperations> | null,
+        ) =>
+          (value?.takeReports ?? [])
+            .flatMap((report) =>
+              report.recordingFileIds.map(
+                (mediaId) => `${report.continuityTakeId}:${mediaId}`,
+              ),
+            )
+            .sort();
+        if (
+          JSON.stringify(mediaLinks(previousOperations)) !==
+          JSON.stringify(mediaLinks(operations))
+        ) {
+          res.status(400).json({
+            error: "invalid_payload",
+            message:
+              "Recorderfiler må kobles eller frikobles med den eksplisitte avstemmingshandlingen.",
+          });
+          return;
+        }
+        const actorUserId = (req as AuthedRequest).userId;
+        const savedAt = new Date().toISOString();
+        const nextOperations = {
+          ...operations,
+          activity: [
+            ...readProductionSoundActivity(previousRaw),
+            {
+              id: genId("sound-activity"),
+              type: "workspace_saved" as const,
+              message: summarizeProductionSoundChanges(
+                previousOperations,
+                operations,
+              ),
+              actorUserId,
+              createdAt: savedAt,
+            },
+          ].slice(-100),
+        };
+
+        const updateResult = await pool.query(
+          `UPDATE casting_production_days
+         SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{productionSound}', $4::jsonb, true),
+             sound_version = sound_version + 1,
+             sound_updated_by = $5,
+             sound_updated_at = NOW(),
+             updated_at = NOW()
+         WHERE project_id = $1 AND id = $2 AND sound_version = $3
+         RETURNING *`,
+          [
+            projectId,
+            dayId,
+            expectedVersion,
+            JSON.stringify(nextOperations),
+            actorUserId,
+          ],
+        );
+        if (updateResult.rowCount === 0) {
+          const latest = await pool.query(
+            "SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2",
+            [projectId, dayId],
+          );
+          if (latest.rowCount === 0) {
+            res.status(404).json({ error: "Produksjonsdag ikke funnet" });
+            return;
+          }
+          sendVersionConflict(
+            res,
+            "production_sound",
+            "Lydrapporten er endret av en annen bruker.",
+            mapDayRow(latest.rows[0]),
+          );
+          return;
+        }
+        res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
+      } catch (error) {
+        if (error instanceof ProductionSoundValidationError) {
+          res
+            .status(400)
+            .json({ error: "invalid_payload", message: error.message });
+          return;
+        }
+        res.status(500).json({
+          error: "Kunne ikke lagre lydrapporten",
+          detail: "internal_error",
         });
+      }
+    },
+  );
+
+  router.post(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/initiate",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        const body = asObject(req.body);
+        const fileName =
+          typeof body?.fileName === "string" ? body.fileName.trim() : "";
+        const contentType =
+          typeof body?.contentType === "string" ? body.contentType.trim() : "";
+        const checksumSha256 =
+          typeof body?.checksumSha256 === "string"
+            ? body.checksumSha256.trim().toLowerCase()
+            : "";
+        const sizeBytes = Number(body?.sizeBytes);
+        if (
+          !fileName ||
+          fileName.length > 255 ||
+          !Number.isSafeInteger(sizeBytes) ||
+          sizeBytes < 1 ||
+          !/^[a-f0-9]{64}$/.test(checksumSha256)
+        ) {
+          res.status(400).json({
+            error: "invalid_payload",
+            message: "Filnavn, størrelse og SHA-256 er påkrevd.",
+          });
+          return;
+        }
+        const day = await pool.query(
+          "SELECT 1 FROM casting_production_days WHERE project_id = $1 AND id = $2",
+          [projectId, dayId],
+        );
+        if (day.rowCount === 0) {
+          res.status(404).json({ error: "Produksjonsdag ikke funnet" });
+          return;
+        }
+        const upload = await initiateSoundMediaUpload(pool, {
+          userId: (req as AuthedRequest).userId,
+          projectId,
+          productionDayId: dayId,
+          fileName,
+          sizeBytes,
+          contentType,
+          checksumSha256,
+        });
+        res.status(201).json({ upload });
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
+      }
+    },
+  );
+
+  router.post(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:objectId/resume",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, objectId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        if (!isUuid(objectId)) {
+          res.status(404).json({ error: "upload_not_found" });
+          return;
+        }
+        const upload = await resumeSoundMediaUpload(pool, {
+          objectId,
+          userId: (req as AuthedRequest).userId,
+          projectId,
+          productionDayId: dayId,
+        });
+        res.json({ upload });
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
+      }
+    },
+  );
+
+  router.get(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:objectId/status",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, objectId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        if (!isUuid(objectId)) {
+          res.status(404).json({ error: "upload_not_found" });
+          return;
+        }
+        res.json(
+          await getSoundMediaUploadStatus(pool, {
+            objectId,
+            userId: (req as AuthedRequest).userId,
+            projectId,
+            productionDayId: dayId,
+          }),
+        );
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
+      }
+    },
+  );
+
+  router.post(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:objectId/parts",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, objectId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        if (!isUuid(objectId)) {
+          res.status(404).json({ error: "upload_not_found" });
+          return;
+        }
+        const rawParts: unknown[] = Array.isArray(req.body?.parts)
+          ? req.body.parts
+          : [];
+        const parts = rawParts.slice(0, 201).map((entry) => {
+          const item = asObject(entry);
+          return {
+            partNumber: Number(item?.partNumber),
+            checksumSha256:
+              typeof item?.checksumSha256 === "string"
+                ? item.checksumSha256.trim().toLowerCase()
+                : "",
+          };
+        });
+        const signedParts = await signSoundMediaParts(pool, {
+          objectId,
+          userId: (req as AuthedRequest).userId,
+          projectId,
+          productionDayId: dayId,
+          parts,
+        });
+        res.json({ parts: signedParts });
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
+      }
+    },
+  );
+
+  router.post(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:objectId/complete",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, objectId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        if (!isUuid(objectId)) {
+          res.status(404).json({ error: "upload_not_found" });
+          return;
+        }
+        const rawParts: unknown[] = Array.isArray(req.body?.parts)
+          ? req.body.parts
+          : [];
+        const parts = rawParts.slice(0, 10_001).map((entry) => {
+          const item = asObject(entry);
+          return {
+            partNumber: Number(item?.partNumber),
+            etag:
+              typeof item?.etag === "string"
+                ? item.etag.trim().slice(0, 512)
+                : "",
+            checksumSha256:
+              typeof item?.checksumSha256 === "string"
+                ? item.checksumSha256.trim().toLowerCase()
+                : "",
+          };
+        });
+        const media = await completeSoundMediaUpload(pool, {
+          objectId,
+          userId: (req as AuthedRequest).userId,
+          projectId,
+          productionDayId: dayId,
+          parts,
+        });
+        res.status(201).json({ media });
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
+      }
+    },
+  );
+
+  router.get(
+    "/projects/:projectId/production-days/:dayId/production-sound/media",
+    auth,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId } = req.params;
+        if (!(await ensureProductionAccess(req, res, projectId, "read")))
+          return;
+        const day = await pool.query(
+          "SELECT 1 FROM casting_production_days WHERE project_id = $1 AND id = $2",
+          [projectId, dayId],
+        );
+        if (day.rowCount === 0) {
+          res.status(404).json({ error: "Produksjonsdag ikke funnet" });
+          return;
+        }
+        res.json({
+          media: await listSoundMedia(pool, {
+            projectId,
+            productionDayId: dayId,
+          }),
+        });
+      } catch {
+        res.status(500).json({
+          error: "Kunne ikke hente recorderfiler",
+          detail: "internal_error",
+        });
+      }
+    },
+  );
+
+  router.get(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:mediaId/url",
+    auth,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, mediaId } = req.params;
+        if (!(await ensureProductionAccess(req, res, projectId, "read")))
+          return;
+        if (!isUuid(mediaId)) {
+          res.status(404).json({ error: "not_found" });
+          return;
+        }
+        const result = await getSoundMediaDownloadUrl(pool, {
+          mediaId,
+          projectId,
+          productionDayId: dayId,
+        });
+        if (!result) {
+          res.status(404).json({ error: "not_found" });
+          return;
+        }
+        res.json({ ...result, expiresInSeconds: 300 });
+      } catch {
+        res.status(503).json({ error: "storage_unavailable" });
+      }
+    },
+  );
+
+  router.patch(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:mediaId/reconcile",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+      } catch {
+        res.status(500).json({
+          error: "Kunne ikke klargjøre recorderavstemmingen",
+          detail: "internal_error",
+        });
+        return;
+      }
+      const { projectId, dayId, mediaId } = req.params;
+      if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+      if (!isUuid(mediaId)) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      const expectedVersion = Number(req.body?.expectedVersion);
+      const continuityTakeId =
+        req.body?.continuityTakeId === null
+          ? null
+          : typeof req.body?.continuityTakeId === "string"
+            ? req.body.continuityTakeId.trim().slice(0, 120)
+            : "";
+      if (
+        !Number.isInteger(expectedVersion) ||
+        expectedVersion < 0 ||
+        continuityTakeId === ""
+      ) {
+        res.status(400).json({
+          error: "invalid_payload",
+          message: "expectedVersion og continuityTakeId er påkrevd.",
+        });
+        return;
+      }
+      let client: PoolClient;
+      try {
+        client = await pool.connect();
+      } catch {
+        res.status(503).json({
+          error: "database_unavailable",
+          message: "Recorderavstemmingen er midlertidig utilgjengelig.",
+        });
+        return;
+      }
+      try {
+        await client.query("BEGIN");
+        const dayResult = await client.query(
+          "SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2 FOR UPDATE",
+          [projectId, dayId],
+        );
+        if (dayResult.rowCount === 0) {
+          await client.query("ROLLBACK");
+          res.status(404).json({ error: "Produksjonsdag ikke funnet" });
+          return;
+        }
+        const dayRow = dayResult.rows[0] as Record<string, any>;
+        if (Number(dayRow.sound_version ?? 0) !== expectedVersion) {
+          await client.query("ROLLBACK");
+          sendVersionConflict(
+            res,
+            "production_sound",
+            "Lydrapporten er endret av en annen bruker.",
+            mapDayRow(dayRow),
+          );
+          return;
+        }
+        const mediaResult = await client.query(
+          `SELECT id::text, project_id, production_day_id, storage_object_id::text,
+                  uploaded_by, display_name, content_type, size_bytes, checksum_sha256,
+                  recorder_metadata, reconciliation_status, continuity_take_id,
+                  reconciled_by, reconciled_at, created_at
+             FROM casting_production_sound_media
+            WHERE id = $1::uuid AND project_id = $2 AND production_day_id = $3
+              AND deleted_at IS NULL
+            FOR UPDATE`,
+          [mediaId, projectId, dayId],
+        );
+        if (mediaResult.rowCount === 0) {
+          await client.query("ROLLBACK");
+          res.status(404).json({ error: "not_found" });
+          return;
+        }
+        const currentMedia = mapProductionSoundMediaRow(
+          mediaResult.rows[0] as any,
+        );
+        const dayData = asObject(dayRow.data) ?? {};
+        const rawSound = asObject(dayData.productionSound);
+        const operations = normalizeProductionSoundOperations(
+          rawSound ?? emptyProductionSoundOperations(),
+        );
+        const continuity = asObject(dayData.productionContinuity);
+        const canonicalTakes = asArray(continuity?.takes).flatMap((entry) => {
+          const take = asObject(entry);
+          const id = typeof take?.id === "string" ? take.id.trim() : "";
+          const sceneId =
+            typeof take?.sceneId === "string" ? take.sceneId.trim() : "";
+          return id && sceneId ? [{ id, sceneId }] : [];
+        });
+        const targetTake = continuityTakeId
+          ? canonicalTakes.find((take) => take.id === continuityTakeId)
+          : null;
+        const assignedSceneIds = new Set(
+          asArray(dayRow.scene_ids).map((id) => String(id)),
+        );
+        if (
+          continuityTakeId &&
+          (!targetTake || !assignedSceneIds.has(targetTake.sceneId))
+        ) {
+          await client.query("ROLLBACK");
+          res.status(409).json({
+            error: "take_reference_conflict",
+            message: "Valgt take finnes ikke lenger på denne produksjonsdagen.",
+            productionDay: mapDayRow(dayRow),
+          });
+          return;
+        }
+        const linkedInSoundReport = operations.takeReports.some((report) =>
+          report.recordingFileIds.includes(mediaId),
+        );
+        if (
+          currentMedia.continuityTakeId === continuityTakeId &&
+          (continuityTakeId ? linkedInSoundReport : !linkedInSoundReport)
+        ) {
+          await client.query("COMMIT");
+          res.json({ productionDay: mapDayRow(dayRow), media: currentMedia });
+          return;
+        }
+
+        let reports = operations.takeReports.map((report) => {
+          const recordingFileIds = report.recordingFileIds.filter(
+            (id) => id !== mediaId,
+          );
+          return {
+            ...report,
+            recordingFileIds,
+            fileName:
+              recordingFileIds.length === 0 &&
+              report.fileName === currentMedia.displayName
+                ? undefined
+                : report.fileName,
+          };
+        });
+        if (continuityTakeId) {
+          const existing = reports.find(
+            (report) => report.continuityTakeId === continuityTakeId,
+          );
+          const nextReport = existing
+            ? {
+                ...existing,
+                fileName: existing.fileName || currentMedia.displayName,
+                recordingFileIds: [
+                  ...new Set([...existing.recordingFileIds, mediaId]),
+                ],
+                updatedAt: new Date().toISOString(),
+              }
+            : {
+                id: genId("take-report"),
+                continuityTakeId,
+                fileName: currentMedia.displayName,
+                recordingFileIds: [mediaId],
+                trackIds: [],
+                quality: "usable" as const,
+                issueTags: [],
+                needsAdr: false,
+                updatedAt: new Date().toISOString(),
+              };
+          reports = [
+            ...reports.filter(
+              (report) => report.continuityTakeId !== continuityTakeId,
+            ),
+            nextReport,
+          ];
+        }
+        const actorUserId = (req as AuthedRequest).userId;
+        const now = new Date().toISOString();
+        const nextOperations = {
+          ...operations,
+          takeReports: reports,
+          activity: [
+            ...readProductionSoundActivity(rawSound),
+            {
+              id: genId("sound-activity"),
+              type: "recording_reconciled" as const,
+              message: continuityTakeId
+                ? `Koblet ${currentMedia.displayName} til continuity-take.`
+                : `Fjernet take-koblingen fra ${currentMedia.displayName}.`,
+              actorUserId,
+              createdAt: now,
+            },
+          ].slice(-100),
+        };
+        const updatedMedia = await client.query(
+          `UPDATE casting_production_sound_media
+              SET reconciliation_status = $4,
+                  continuity_take_id = $5,
+                  reconciled_by = $6,
+                  reconciled_at = $7
+            WHERE id = $1::uuid AND project_id = $2 AND production_day_id = $3
+            RETURNING id::text, project_id, production_day_id, storage_object_id::text,
+                      uploaded_by, display_name, content_type, size_bytes, checksum_sha256,
+                      recorder_metadata, reconciliation_status, continuity_take_id,
+                      reconciled_by, reconciled_at, created_at`,
+          [
+            mediaId,
+            projectId,
+            dayId,
+            continuityTakeId ? "matched" : "unmatched",
+            continuityTakeId,
+            continuityTakeId ? actorUserId : null,
+            continuityTakeId ? now : null,
+          ],
+        );
+        const updatedDay = await client.query(
+          `UPDATE casting_production_days
+              SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{productionSound}', $4::jsonb, true),
+                  sound_version = sound_version + 1,
+                  sound_updated_by = $5,
+                  sound_updated_at = NOW(),
+                  updated_at = NOW()
+            WHERE project_id = $1 AND id = $2 AND sound_version = $3
+            RETURNING *`,
+          [
+            projectId,
+            dayId,
+            expectedVersion,
+            JSON.stringify(nextOperations),
+            actorUserId,
+          ],
+        );
+        if (updatedDay.rowCount === 0 || updatedMedia.rowCount === 0)
+          throw new Error("reconciliation_conflict");
+        await client.query("COMMIT");
+        res.json({
+          productionDay: mapDayRow(updatedDay.rows[0]),
+          media: mapProductionSoundMediaRow(updatedMedia.rows[0] as any),
+        });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        if (error instanceof ProductionSoundValidationError) {
+          res
+            .status(400)
+            .json({ error: "invalid_payload", message: error.message });
+        } else {
+          res.status(500).json({
+            error: "Kunne ikke avstemme recorderfilen",
+            detail: "internal_error",
+          });
+        }
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  router.patch(
+    "/projects/:projectId/production-days/:dayId/continuity",
+    auth,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId } = req.params;
+        if (!(await ensureContinuityAccess(req, res, projectId, "manage")))
+          return;
+
+        const body = asObject(req.body);
+        if (
+          !body ||
+          Buffer.byteLength(JSON.stringify(body), "utf8") > 256 * 1024
+        ) {
+          res.status(400).json({
+            error: "invalid_payload",
+            message: "Kontinuitetsloggen er ugyldig eller for stor.",
+          });
+          return;
+        }
+        const expectedVersion = Number(body.expectedVersion);
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+          res.status(400).json({
+            error: "invalid_payload",
+            message: "expectedVersion må være et ikke-negativt heltall.",
+          });
+          return;
+        }
+        const normalized = normalizeProductionContinuityOperations(
+          body.operations,
+        );
+        const currentResult = await pool.query(
+          "SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2",
+          [projectId, dayId],
+        );
+        if (currentResult.rowCount === 0) {
+          res.status(404).json({ error: "Produksjonsdag ikke funnet" });
+          return;
+        }
+
+        const currentRow = currentResult.rows[0] as Record<string, any>;
+        const currentVersion = Number(currentRow.continuity_version ?? 0);
+        if (currentVersion !== expectedVersion) {
+          sendVersionConflict(
+            res,
+            "continuity",
+            "Kontinuitetsloggen er endret av en annen bruker.",
+            mapDayRow(currentRow),
+          );
+          return;
+        }
+
+        const assignedSceneIds = new Set(
+          asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)),
+        );
+        if (
+          normalized.sceneRecords.length !== assignedSceneIds.size ||
+          normalized.sceneRecords.some(
+            (entry) => !assignedSceneIds.has(entry.sceneId),
+          )
+        ) {
+          res.status(400).json({
+            error: "invalid_payload",
+            message:
+              "Kontinuitet kan bare registreres for scener som er tildelt produksjonsdagen.",
+          });
+          return;
+        }
+
+        // Continuity owns the canonical take IDs used by Production Sound. A
+        // take with a linked sound report must therefore be reconciled by the
+        // sound department before it can be removed here; silently deleting the
+        // ID would leave the daily sound report pointing at a take that no
+        // longer exists.
+        const dayData = asObject(currentRow.data);
+        const productionSound = asObject(dayData?.productionSound);
+        const nextTakeIds = new Set(normalized.takes.map((take) => take.id));
+        const linkedSoundReport = asArray(productionSound?.takeReports).find(
+          (entry) => {
+            const report = asObject(entry);
+            const continuityTakeId =
+              typeof report?.continuityTakeId === "string"
+                ? report.continuityTakeId.trim()
+                : "";
+            return continuityTakeId && !nextTakeIds.has(continuityTakeId);
+          },
+        );
+        if (linkedSoundReport) {
+          res.status(409).json({
+            error: "take_dependency_conflict",
+            message:
+              "Taken har en lydrapport. Avstem eller fjern lydrapporten før taken slettes fra continuity.",
+            productionDay: mapDayRow(currentRow),
+          });
         return;
       }
 
