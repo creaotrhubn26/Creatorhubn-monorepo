@@ -117,11 +117,23 @@ export const NARRATIVE_NOT_FOUND_MESSAGE = 'Prosjektet finnes ikke.';
  * ment for sluttbrukere (UX-30/UX-31). Oversett de vanlige HTTP-statusene til
  * norsk før de havner i en NarrativeApiError som UI-et viser direkte.
  */
-function friendlyApiErrorMessage(status: number, rawMessage: string): string {
-  if (status === 403) return NARRATIVE_FORBIDDEN_MESSAGE;
-  if (status === 404) return NARRATIVE_NOT_FOUND_MESSAGE;
+function friendlyApiErrorMessage(status: number, body: { error?: string; message?: string }, path: string): string {
+  // Prosjekt-nivå: guarden svarer { error: 'forbidden' } uten melding, og
+  // graf-/oversikt-lasting er der «prosjektet» er ressursen. Alt annet
+  // (capability_required, manglende scene/ramme/oppgave) beholder backendens
+  // egen melding, så et teammedlem ser «mangler denne rettigheten» og ikke
+  // «ikke tilgang til prosjektet» (Codex-review på #2448).
+  const isProjectPath = /^\/projects\/[^/]+\/(graph|overview)(\?|$)/.test(path);
+  if (status === 403) {
+    if (body.error === 'forbidden' && !body.message) return NARRATIVE_FORBIDDEN_MESSAGE;
+    return body.message || 'Du har ikke rettighet til denne handlingen.';
+  }
+  if (status === 404) {
+    if (isProjectPath) return NARRATIVE_NOT_FOUND_MESSAGE;
+    return body.message || 'Fant ikke elementet — det kan være slettet av noen andre. Last inn på nytt.';
+  }
   if (status >= 500) return 'Noe gikk galt hos oss. Prøv igjen om litt.';
-  return rawMessage;
+  return body.message || body.error || `HTTP ${status}`;
 }
 
 type Envelope<T> = { success: true; data: T };
@@ -153,7 +165,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (res.status === 409 && body.error === 'snapshot_stale') {
       throw new NarrativeStaleReviewError(typeof (body as { currentHash?: unknown }).currentHash === 'string' ? (body as { currentHash: string }).currentHash : null);
     }
-    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
+    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body, path), res.status, body.error ?? null);
   }
   if (res.status === 204) return undefined as T;
   const json = (await res.json()) as Envelope<T> | T;
@@ -172,7 +184,7 @@ async function requestBlob(path: string): Promise<{ blob: Blob; filename: string
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
+    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body, path), res.status, body.error ?? null);
   }
   const disposition = res.headers.get('content-disposition') ?? '';
   const m = /filename="([^"]+)"/.exec(disposition);
@@ -189,7 +201,7 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
+    throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body, path), res.status, body.error ?? null);
   }
   const json = (await res.json()) as Envelope<T>;
   return json.data;
@@ -676,7 +688,7 @@ async function publicRequest<T>(token: string, path: string, init: RequestInit =
   } catch { throw new NarrativeNetworkError(); }
   const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; currentHash?: string | null; data?: T };
   if (res.status === 409 && body.error === 'snapshot_stale') throw new NarrativeStaleReviewError(body.currentHash ?? null);
-  if (!res.ok) throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body.message || body.error || `HTTP ${res.status}`), res.status, body.error ?? null);
+  if (!res.ok) throw new NarrativeApiError(friendlyApiErrorMessage(res.status, body, path), res.status, body.error ?? null);
   return body.data as T;
 }
 export async function getGuestReview(token: string, reviewerToken: string | null): Promise<NarrativeGuestReview | null> {

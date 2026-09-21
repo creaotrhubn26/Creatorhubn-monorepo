@@ -36,6 +36,9 @@ feil: `{ error: <kode> }` med 400/402/403/404/409/413/429/503. Plan-gating svare
 
 - `POST /api/auth/login` med `{ email, password, loginAs: 'game_studio', role, signup: true }` oppretter en Solo-konto
   hvis e-posten ikke finnes (passord ≥ 8 tegn → ellers 400). Uten `signup` er oppførselen uendret (401 for ukjent e-post).
+- E-posten må være bekreftet først: `POST /api/auth/email-code/send` `{ email, purpose: 'game_studio_signup' }` →
+  `POST /api/auth/email-code/verify` `{ email, purpose, code }`. Uten en kode verifisert de siste 30 minuttene svarer
+  login-kallet 403 `{ error: 'email_verification_required' }` og oppretter ingenting (ingen kan registrere andres adresse).
   Ingen kommersiell gate for Spillstudio; Stripe skjer inne i workspacet («Pris»).
 - `POST /api/role-room/projects` `{ name, projectType: 'game' }` brukes av prosjektvelgeren i spillstudio-modus
   («Nytt prosjekt»); plan-kvoten (`maxProjects`) håndheves ved første Story Graph-skriving, ikke ved opprettelse.

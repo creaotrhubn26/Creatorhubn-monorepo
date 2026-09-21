@@ -2530,6 +2530,14 @@ export async function listSceneGates(db: Queryable, projectId: string, sceneId: 
   return fillGates(sceneId, projectId, (rows as Row[]).map(mapSceneGateRow));
 }
 
+/** Alle gater i prosjektet gruppert per scene (fylt ut med «not_started» for manglende nøkler, som listSceneGates). */
+export async function listSceneGatesByScene(db: Queryable, projectId: string, sceneIds: string[]): Promise<Map<string, NarrativeSceneGate[]>> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_gates WHERE project_id = $1`, [projectId]);
+  const stored = new Map<string, NarrativeSceneGate[]>();
+  for (const row of rows as Row[]) { const g = mapSceneGateRow(row); const list = stored.get(g.sceneId); if (list) list.push(g); else stored.set(g.sceneId, [g]); }
+  return new Map(sceneIds.map((id) => [id, fillGates(id, projectId, stored.get(id) ?? [])]));
+}
+
 export interface SceneGateInput { status: NarrativeGateStatus; evidence?: string; evidenceRefs?: string[] }
 
 /** Upsert av én gate. «passed» uten bevis avvises FØR databasen (samme regel som CHECK-en). */
@@ -2557,6 +2565,14 @@ export async function setSceneGate(
 export class DuplicateCueError extends Error {
   readonly code = 'duplicate_cue';
   constructor(readonly cueId: string) { super(`Replikk-ID «${cueId}» finnes allerede i scenen.`); }
+}
+
+/** Alle replikker i prosjektet gruppert per scene (manus-PDF: én spørring, ikke én per scene). */
+export async function listSceneLinesByScene(db: Queryable, projectId: string): Promise<Map<string, NarrativeSceneLine[]>> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_lines WHERE project_id = $1 ORDER BY scene_id, sort_order, cue_id`, [projectId]);
+  const out = new Map<string, NarrativeSceneLine[]>();
+  for (const row of rows as Row[]) { const line = mapSceneLineRow(row); const list = out.get(line.sceneId); if (list) list.push(line); else out.set(line.sceneId, [line]); }
+  return out;
 }
 
 export async function listSceneLines(db: Queryable, projectId: string, sceneId: string): Promise<NarrativeSceneLine[]> {

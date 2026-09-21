@@ -133,6 +133,8 @@ Etter regresjonen ble seks nye funn rettet (`1f37013d` + oppfølging: betinget r
 
 Nettverks- og konsolltallene som står igjen er de bevisste feilprobene (backend nede, 401/403/500/503) — de skal feile. Gjenværende overflow i delmengden: —.
 
+**Etter PR-review (Codex, #2448):** tre funn tatt inn — registreringen krever nå bekreftet e-postkode (`game_studio_signup`) før kontoen opprettes; 403/404 fra scener/rettigheter beholder backendens egen melding (bare prosjekt-guarden og graf-/oversikt-lasting får prosjektordlyden); manus-PDF-en henter replikker og gater i to spørringer i stedet for to per scene.
+
 **Modellvalg:** verdikt, prioritering og alt med produksjonskonsekvens (auth-provisjonering, team-bootstrap, PDF-rute, hook-rekkefølge) er gjort med Fable 5.1; de mekaniske PR A-rettelsene (tekster, aria, testids, kontrast) ble delegert til tre Sonnet-subagenter på disjunkte filsett og verifisert med tsc, vitest, e2e og harness-kjøring.
 <!-- status:end -->
 

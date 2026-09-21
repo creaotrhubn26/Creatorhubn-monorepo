@@ -1913,6 +1913,45 @@ export default function LoginDialog({
   // UX-02: Spillstudio (Solo, gratis) kan opprette konto rett fra login-dialogen.
   // Backend krever signup=true + loginAs=game_studio og passord ≥ 8 tegn.
   const [signupMode, setSignupMode] = useState(false);
+  // E-postbekreftelse før Solo-konto opprettes (backend krever verifisert kode).
+  const [signupCodeStage, setSignupCodeStage] = useState<'idle' | 'sending' | 'awaiting' | 'verifying' | 'verified'>('idle');
+  const [signupCode, setSignupCode] = useState('');
+  const [signupCodeMessage, setSignupCodeMessage] = useState<string | null>(null);
+  const sendSignupCode = useCallback(async () => {
+    const target = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) { setError('Skriv inn en gyldig e-postadresse først.'); return; }
+    setError(''); setSignupCodeStage('sending'); setSignupCodeMessage(null);
+    try {
+      const r = await fetch('/api/auth/email-code/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: target, purpose: 'game_studio_signup' }) });
+      const payload = (await r.json().catch(() => null)) as { status?: string; devCode?: string; reason?: string } | null;
+      if (!r.ok || payload?.status !== 'ok') {
+        setSignupCodeStage('idle');
+        setSignupCodeMessage(r.status === 429 ? 'For mange forsøk — vent litt før du prøver igjen.' : 'Kunne ikke sende koden. Prøv igjen om litt.');
+        return;
+      }
+      setSignupCodeStage('awaiting');
+      setSignupCodeMessage(payload?.devCode ? `Dev-modus: koden er ${payload.devCode} (SMTP ikke konfigurert)` : `Vi sendte en 6-sifret kode til ${target}.`);
+    } catch {
+      setSignupCodeStage('idle'); setSignupCodeMessage('Kunne ikke sende koden. Sjekk nettforbindelsen.');
+    }
+  }, [email]);
+  const verifySignupCode = useCallback(async () => {
+    setSignupCodeStage('verifying'); setSignupCodeMessage(null);
+    try {
+      const r = await fetch('/api/auth/email-code/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), purpose: 'game_studio_signup', code: signupCode.trim() }) });
+      const payload = (await r.json().catch(() => null)) as { status?: string; error?: string; attemptsRemaining?: number } | null;
+      if (r.ok && payload?.status === 'ok') { setSignupCodeStage('verified'); setSignupCodeMessage('E-posten er bekreftet.'); return; }
+      setSignupCodeStage('awaiting');
+      setSignupCodeMessage(
+        payload?.error === 'wrong_code' ? `Feil kode${typeof payload.attemptsRemaining === 'number' ? ` (${payload.attemptsRemaining} forsøk igjen)` : ''}.`
+        : payload?.error === 'expired' ? 'Koden er utløpt — send en ny.'
+        : payload?.error === 'max_attempts' ? 'For mange forsøk — send en ny kode.'
+        : 'Kunne ikke verifisere koden. Prøv igjen.',
+      );
+    } catch {
+      setSignupCodeStage('awaiting'); setSignupCodeMessage('Kunne ikke verifisere koden. Sjekk nettforbindelsen.');
+    }
+  }, [email, signupCode]);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
   const [badgeKey, setBadgeKey] = useState(0);
@@ -3353,6 +3392,11 @@ export default function LoginDialog({
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), 5000)
       );
+      if (isLandingPage && signupMode && effectiveLoginPersona === 'game_studio' && signupCodeStage !== 'verified') {
+        setError('Bekreft e-posten din med koden før kontoen opprettes.');
+        setLoading(false);
+        return;
+      }
       const request = fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3437,6 +3481,7 @@ export default function LoginDialog({
     loginPersona,
     isLandingPage,
     signupMode,
+    signupCodeStage,
     onLoginSuccess,
     persistCommercialSetup,
     isCommercialPaymentRequired,
@@ -6232,12 +6277,41 @@ export default function LoginDialog({
             sx={glassInputSx(passwordFocused)}
           />
 
+          {/* ── e-postbekreftelse ved registrering (Spillstudio) ── */}
+          {isLandingPage && signupMode && effectiveLoginPersona === 'game_studio' && !forgotPassword ? (
+            <Box sx={{ mt: 0.5, p: 1.25, borderRadius: 2, border: `1px solid rgba(${aR},${aG},${aB},0.35)`, bgcolor: `rgba(${aR},${aG},${aB},0.06)` }} data-testid="role-room-signup-verify">
+              <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, mb: 0.5 }}>Bekreft e-posten din</Typography>
+              {signupCodeStage === 'verified' ? (
+                <Typography sx={{ fontSize: '0.78rem', color: `rgba(${aR},${aG},${aB},0.95)` }} data-testid="role-room-signup-verified">✓ {signupCodeMessage ?? 'E-posten er bekreftet.'}</Typography>
+              ) : signupCodeStage === 'idle' || signupCodeStage === 'sending' ? (
+                <Button size="small" variant="outlined" onClick={() => void sendSignupCode()} disabled={signupCodeStage === 'sending' || loading} data-testid="role-room-signup-code-send" sx={{ textTransform: 'none', fontSize: '0.78rem', minHeight: 36 }}>
+                  {signupCodeStage === 'sending' ? 'Sender …' : 'Send bekreftelseskode'}
+                </Button>
+              ) : (
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <TextField
+                    size="small" label="6-sifret kode" value={signupCode} onChange={(e) => setSignupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputProps={{ inputMode: 'numeric', 'data-testid': 'role-room-signup-code', 'aria-label': 'Bekreftelseskode' }} sx={{ width: 150 }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (signupCode.length === 6) void verifySignupCode(); } }}
+                  />
+                  <Button size="small" variant="contained" onClick={() => void verifySignupCode()} disabled={signupCodeStage === 'verifying' || signupCode.length !== 6} data-testid="role-room-signup-code-verify" sx={{ textTransform: 'none', minHeight: 36 }}>
+                    {signupCodeStage === 'verifying' ? 'Sjekker …' : 'Verifiser'}
+                  </Button>
+                  <Button size="small" onClick={() => void sendSignupCode()} disabled={signupCodeStage === 'verifying'} sx={{ textTransform: 'none', fontSize: '0.75rem', minHeight: 36 }}>Send på nytt</Button>
+                </Box>
+              )}
+              {signupCodeMessage && signupCodeStage !== 'verified' ? (
+                <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: /^Feil|utløpt|For mange|Kunne ikke/.test(signupCodeMessage) ? '#f87171' : 'rgba(226,232,240,0.7)' }} data-testid="role-room-signup-code-message">{signupCodeMessage}</Typography>
+              ) : null}
+            </Box>
+          ) : null}
+
           {/* ── forgot password ── */}
           {!forgotPassword ? (
             <Box sx={{ display: 'flex', justifyContent: isLandingPage && effectiveLoginPersona === 'game_studio' ? 'space-between' : 'flex-end', alignItems: 'center', mt: -0.5, gap: 1, flexWrap: 'wrap' }}>
               {isLandingPage && effectiveLoginPersona === 'game_studio' ? (
                 <Button
-                  onClick={() => { setSignupMode((v) => !v); setError(''); }}
+                  onClick={() => { setSignupMode((v) => !v); setError(''); setSignupCodeStage('idle'); setSignupCode(''); setSignupCodeMessage(null); }}
                   data-testid="role-room-login-signup-toggle"
                   sx={{
                     textTransform: 'none',

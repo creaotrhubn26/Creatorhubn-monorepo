@@ -20,7 +20,8 @@ Låste funksjoner viser et banner med «Se planer»; ingenting skrives før plan
 ## 0.5 Konto og første prosjekt
 
 1. Landingssiden → kortet «Spillstudio — Story Graph» → «Utforsk». I login-dialogen: «Ny her? Opprett gratis Solo-konto»
-   → e-post + passord (minst 8 tegn) → «Opprett gratis konto». Ingen betaling; Pro/Studio kjøpes senere under «Pris».
+   → e-post + passord (minst 8 tegn) → «Send bekreftelseskode» → skriv inn koden fra e-posten → «Opprett gratis konto».
+   Ingen betaling; Pro/Studio kjøpes senere under «Pris».
 2. Prosjektvelgeren i spillstudio-modus har «Nytt prosjekt» (navn → «Opprett prosjekt»). Prosjektet åpnes med
    første-gangs-hero og «Start fra mal». Solo tillater tre prosjekter med Story Graph-innhold.
 3. Team-fanen: eieren får Eier-rollen og standardrollene automatisk ved første besøk, og kan invitere (Studio: seter fra planen).

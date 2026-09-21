@@ -916,14 +916,19 @@ export function createRoleRoomNarrativeRouter(
   // Manus-PDF av scenekortene (UX-28): et scenebasert studio har ofte ingen brett.
   router.get('/projects/:projectId/scenes/export.pdf', ...guard, wrap(async (req, res) => {
     await feature(req.projectId, 'export_pdf');
-    const [scenes, episodes, project] = await Promise.all([
+    const [scenes, episodes, project, linesByScene] = await Promise.all([
       svc.listScenes(pool, req.projectId),
       svc.listEpisodes(pool, req.projectId),
       pool.query<{ name: string }>('SELECT name FROM casting_projects WHERE id = $1', [req.projectId]),
+      svc.listSceneLinesByScene(pool, req.projectId),
     ]);
+    // Replikker og gater hentes samlet (to spørringer) i stedet for to per scene —
+    // et prosjekt med noen hundre scener skal ikke kø-legge poolen for én eksport.
+    const gatesByScene = await svc.listSceneGatesByScene(pool, req.projectId, scenes.map((s) => s.id));
     const episodeById = new Map(episodes.map((e) => [e.id, e]));
-    const detailed = await Promise.all(scenes.map(async (s) => {
-      const [lines, gates] = await Promise.all([svc.listSceneLines(pool, req.projectId, s.id), svc.listSceneGates(pool, req.projectId, s.id)]);
+    const detailed = scenes.map((s) => {
+      const lines = linesByScene.get(s.id) ?? [];
+      const gates = gatesByScene.get(s.id) ?? [];
       const ep = s.episodeId ? episodeById.get(s.episodeId) : undefined;
       return {
         code: s.code, title: s.title, subtitle: s.subtitle, workingId: s.workingId, era: s.era, location: s.location, status: s.status,
@@ -934,7 +939,7 @@ export function createRoleRoomNarrativeRouter(
         lines: lines.map((l) => ({ cueId: l.cueId, speakerLabel: l.speakerLabel, textEn: l.textEn, textNb: l.textNb, sourceType: l.sourceType, recordingStatus: l.recordingStatus })),
         gates: gates.map((g) => ({ gateKey: g.gateKey, status: g.status, evidence: g.evidence })),
       };
-    }));
+    });
     const projectName = String(project.rows[0]?.name ?? '').trim() || 'Manus';
     const pdf = await renderScenesScriptPdf({ projectName, scenes: detailed });
     res.setHeader('Content-Type', 'application/pdf');
