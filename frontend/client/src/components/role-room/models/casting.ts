@@ -1925,6 +1925,32 @@ export interface PostPictureSourceSnapshot {
   capturedAt: string;
 }
 
+export interface PostStoryboardFrameReference {
+  frameId: string;
+  sceneId: string;
+  sceneHeading: string;
+  sceneNumber?: string;
+  shotNumber?: string;
+  description?: string;
+  durationSeconds?: number;
+}
+
+export interface PostStoryboardReferenceSnapshot {
+  reviewRoundId: string;
+  manuscriptId: string;
+  manuscriptTitle: string;
+  version: number;
+  label: string;
+  snapshotHash: string;
+  scriptFingerprint: string;
+  status: 'approved';
+  frameCount: number;
+  totalDurationSeconds: number;
+  latestApprovedVersionAtCapture: number;
+  capturedAt: string;
+  frames: PostStoryboardFrameReference[];
+}
+
 export type PostTurnoverSourceSnapshot = PostProductionSoundSourceSnapshot | PostPictureSourceSnapshot;
 
 export interface PostPictureSourceOption {
@@ -1948,6 +1974,48 @@ export interface PostPictureSourceCatalog {
   versions: PostPictureSourceOption[];
 }
 
+export type PostStoryboardReviewStatus = 'in_review' | 'changes_requested' | 'approved' | 'superseded';
+
+export interface PostStoryboardRoundOption {
+  id: string;
+  manuscriptId: string;
+  manuscriptTitle: string;
+  version: number;
+  label: string;
+  summary?: string;
+  status: PostStoryboardReviewStatus;
+  snapshotHash: string;
+  frameCount: number;
+  totalDurationSeconds: number;
+  latestApprovedVersion: number;
+  submittedAt: string;
+  approvedAt?: string;
+}
+
+export interface PostStoryboardSourceCatalog {
+  rounds: PostStoryboardRoundOption[];
+}
+
+export interface PostStoryboardFrameOption {
+  id: string;
+  shotNumber?: string;
+  description?: string;
+  durationSeconds?: number;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+}
+
+export interface PostStoryboardSceneOption {
+  id: string;
+  heading: string;
+  sceneNumber?: string;
+  frames: PostStoryboardFrameOption[];
+}
+
+export interface PostStoryboardSourceDetail extends PostStoryboardRoundOption {
+  scenes: PostStoryboardSceneOption[];
+}
+
 export interface PostQcIssue {
   id: string;
   severity: PostQcSeverity;
@@ -1968,7 +2036,7 @@ export interface PostTurnoverEvent {
 }
 
 export interface PostTurnoverImpactItem {
-  code: 'production_day_missing' | 'sound_report_changed' | 'media_missing' | 'media_changed' | 'media_reconciliation_changed' | 'new_media_available' | 'picture_project_changed' | 'picture_version_missing' | 'picture_asset_changed' | 'picture_status_changed' | 'new_picture_version_available';
+  code: 'production_day_missing' | 'sound_report_changed' | 'media_missing' | 'media_changed' | 'media_reconciliation_changed' | 'new_media_available' | 'picture_project_changed' | 'picture_version_missing' | 'picture_asset_changed' | 'picture_status_changed' | 'new_picture_version_available' | 'storyboard_round_missing' | 'storyboard_snapshot_changed' | 'storyboard_status_changed' | 'storyboard_frames_missing' | 'new_storyboard_revision_available';
   severity: 'warning' | 'blocking';
   message: string;
   mediaId?: string;
@@ -1987,6 +2055,7 @@ export interface PostTurnoverManifest {
   notes?: string;
   status: PostTurnoverStatus;
   source: PostTurnoverSourceSnapshot;
+  storyboardReference?: PostStoryboardReferenceSnapshot;
   issues: PostQcIssue[];
   events: PostTurnoverEvent[];
   impact: PostTurnoverImpact;

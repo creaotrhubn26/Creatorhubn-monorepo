@@ -16,6 +16,8 @@
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-sound
  *   • DELETE /projects/:projectId/production-days/:dayId/production-sound/media/:mediaId
  *   • GET    /projects/:projectId/post-production
+ *   • GET    /projects/:projectId/post-production/storyboard-sources
+ *   • GET    /projects/:projectId/post-production/storyboard-sources/:roundId
  *   • POST   /projects/:projectId/post-production/commands
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/comments
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/media
@@ -64,6 +66,7 @@ import {
 } from './casting-production-art-department.js';
 import {
   applyPostProductionCommand,
+  collectPostStoryboardImpact,
   collectPostTurnoverImpact,
   emptyPostProductionOperations,
   normalizePostProductionOperations,
@@ -73,9 +76,13 @@ import {
   type PostProductionCommand,
   type PostProductionOperations,
   type PostPictureSourceSnapshot,
+  type PostStoryboardCurrentState,
+  type PostStoryboardFrameReference,
+  type PostStoryboardReferenceSnapshot,
   type PostProductionSoundSourceSnapshot,
   type PostTurnoverSourceSnapshot,
 } from './casting-production-post-production.js';
+import { viewerMeetsTabLevel } from './role-room-tab-access.js';
 import {
   continuityObject,
   normalizeContinuityComment,
@@ -1568,6 +1575,20 @@ export function createCastingProductionRouter(
         mode === 'prepare' ? 'canPreparePostTurnover' : 'canReviewPostTurnover',
       );
 
+  const ensurePostStoryboardAccess = async (
+    req: Request,
+    res: Response,
+    projectId: string,
+  ): Promise<boolean> => {
+    if (!(await ensurePostProductionAccess(req, res, projectId, 'either'))) return false;
+    const userId = (req as AuthedRequest).userId;
+    if (!(await viewerMeetsTabLevel(pool, projectId, userId, 'storyboard', 'view'))) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  };
+
   async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
     const access = await resolveCastingProjectAccess(pool, projectId, userId);
     // A project missing from the canonical table has no decision authority,
@@ -1787,6 +1808,194 @@ export function createCastingProductionRouter(
     return rows[0] ? mapPostPictureSource(rows[0]) : null;
   }
 
+  type PostStoryboardRoundRow = Record<string, any> & {
+    id: string;
+    manuscript_id: string;
+    manuscript_title: string;
+    version: number;
+    label: string;
+    snapshot_hash: string;
+    script_fingerprint: string;
+    status: string;
+    frame_count: number;
+    total_duration_seconds: number;
+    latest_approved_version: number | null;
+    snapshot?: unknown;
+  };
+
+  const optionalSnapshotString = (value: unknown, maxLength: number): string | undefined => {
+    if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) return undefined;
+    const normalized = String(value).trim();
+    return normalized && normalized.length <= maxLength ? normalized : undefined;
+  };
+
+  function postStoryboardFrames(snapshot: unknown): PostStoryboardFrameReference[] {
+    const root = asObject(snapshot);
+    const scenes = asArray(root?.scenes);
+    const frames: PostStoryboardFrameReference[] = [];
+    for (const rawScene of scenes) {
+      const scene = asObject(rawScene);
+      const sceneId = optionalSnapshotString(scene?.id, 255);
+      if (!sceneId) continue;
+      const sceneHeading = optionalSnapshotString(scene?.heading, 500) ?? 'Scene';
+      const sceneNumber = optionalSnapshotString(scene?.sceneNumber, 80);
+      for (const rawFrame of asArray(scene?.storyboardFrames)) {
+        const frame = asObject(rawFrame);
+        const frameId = optionalSnapshotString(frame?.id, 255);
+        if (!frameId) continue;
+        const duration = Number(frame?.duration);
+        frames.push({
+          frameId,
+          sceneId,
+          sceneHeading,
+          sceneNumber,
+          shotNumber: optionalSnapshotString(frame?.shotNumber, 80),
+          description: optionalSnapshotString(frame?.description, 2_000),
+          durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : undefined,
+        });
+      }
+    }
+    return frames;
+  }
+
+  function mapPostStoryboardRound(row: PostStoryboardRoundRow, includeScenes = false) {
+    const snapshot = asObject(row.snapshot);
+    const scenes = includeScenes
+      ? asArray(snapshot?.scenes).map((rawScene) => {
+          const scene = asObject(rawScene);
+          return {
+            id: optionalSnapshotString(scene?.id, 255) ?? '',
+            heading: optionalSnapshotString(scene?.heading, 500) ?? 'Scene',
+            sceneNumber: optionalSnapshotString(scene?.sceneNumber, 80),
+            frames: asArray(scene?.storyboardFrames).map((rawFrame) => {
+              const frame = asObject(rawFrame);
+              const duration = Number(frame?.duration);
+              return {
+                id: optionalSnapshotString(frame?.id, 255) ?? '',
+                shotNumber: optionalSnapshotString(frame?.shotNumber, 80),
+                description: optionalSnapshotString(frame?.description, 2_000),
+                durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : undefined,
+                imageUrl: optionalSnapshotString(frame?.imageUrl, 4_096),
+                thumbnailUrl: optionalSnapshotString(frame?.thumbnailUrl, 4_096),
+              };
+            }).filter((frame) => frame.id),
+          };
+        }).filter((scene) => scene.id)
+      : undefined;
+    return {
+      id: String(row.id),
+      manuscriptId: String(row.manuscript_id),
+      manuscriptTitle: String(row.manuscript_title || 'Manus'),
+      version: Number(row.version),
+      label: String(row.label),
+      summary: row.summary == null ? undefined : String(row.summary),
+      status: String(row.status),
+      snapshotHash: String(row.snapshot_hash),
+      frameCount: Number(row.frame_count),
+      totalDurationSeconds: Number(row.total_duration_seconds),
+      latestApprovedVersion: Number(row.latest_approved_version ?? 0),
+      submittedAt: row.submitted_at instanceof Date ? row.submitted_at.toISOString() : String(row.submitted_at),
+      approvedAt: row.approved_at instanceof Date ? row.approved_at.toISOString() : row.approved_at == null ? undefined : String(row.approved_at),
+      ...(includeScenes ? { scenes } : {}),
+    };
+  }
+
+  async function loadPostStoryboardReference(
+    projectId: string,
+    reviewRoundId: string,
+    selectedFrameIds: readonly string[],
+  ): Promise<PostStoryboardReferenceSnapshot | null> {
+    if (!isUuid(reviewRoundId)) {
+      throw new PostProductionValidationError('Storyboard-revisjonen har ugyldig ID.');
+    }
+    const result = await pool.query(
+      `SELECT review_round.*, manuscript.title AS manuscript_title,
+              (SELECT MAX(approved.version)
+                 FROM storyboard_review_rounds approved
+                WHERE approved.project_id = review_round.project_id
+                  AND approved.manuscript_id = review_round.manuscript_id
+                  AND approved.status = 'approved') AS latest_approved_version
+         FROM storyboard_review_rounds review_round
+         JOIN casting_manuscripts manuscript
+           ON manuscript.id = review_round.manuscript_id
+          AND manuscript.project_id = review_round.project_id
+        WHERE review_round.project_id = $1
+          AND review_round.id = $2::uuid
+        LIMIT 1`,
+      [projectId, reviewRoundId],
+    );
+    const row = result.rows[0] as PostStoryboardRoundRow | undefined;
+    if (!row || row.status !== 'approved') return null;
+    const availableFrames = postStoryboardFrames(row.snapshot);
+    const frameById = new Map(availableFrames.map((frame) => [frame.frameId, frame]));
+    const frames = selectedFrameIds.map((frameId) => frameById.get(frameId));
+    if (frames.some((frame) => !frame)) {
+      throw new PostProductionValidationError('Ett eller flere valgte storyboardpaneler finnes ikke i revisjonen.');
+    }
+    return {
+      reviewRoundId: String(row.id),
+      manuscriptId: String(row.manuscript_id),
+      manuscriptTitle: String(row.manuscript_title || 'Manus'),
+      version: Number(row.version),
+      label: String(row.label),
+      snapshotHash: String(row.snapshot_hash),
+      scriptFingerprint: String(row.script_fingerprint),
+      status: 'approved',
+      frameCount: Number(row.frame_count),
+      totalDurationSeconds: Number(row.total_duration_seconds),
+      latestApprovedVersionAtCapture: Number(row.latest_approved_version ?? row.version),
+      capturedAt: new Date().toISOString(),
+      frames: frames as PostStoryboardFrameReference[],
+    };
+  }
+
+  function postStoryboardCurrentState(row: PostStoryboardRoundRow): PostStoryboardCurrentState {
+    return {
+      reviewRoundId: String(row.id),
+      version: Number(row.version),
+      status: String(row.status),
+      snapshotHash: String(row.snapshot_hash),
+      latestApprovedVersion: Number(row.latest_approved_version ?? 0),
+      availableFrameIds: postStoryboardFrames(row.snapshot).map((frame) => frame.frameId),
+    };
+  }
+
+  async function loadPostStoryboardCurrentState(
+    projectId: string,
+    reviewRoundId: string,
+  ): Promise<PostStoryboardCurrentState | null> {
+    if (!isUuid(reviewRoundId)) return null;
+    const result = await pool.query(
+      `SELECT review_round.id, review_round.manuscript_id, review_round.version,
+              review_round.status, review_round.snapshot_hash, review_round.snapshot,
+              (SELECT MAX(approved.version)
+                 FROM storyboard_review_rounds approved
+                WHERE approved.project_id = review_round.project_id
+                  AND approved.manuscript_id = review_round.manuscript_id
+                  AND approved.status = 'approved') AS latest_approved_version
+         FROM storyboard_review_rounds review_round
+        WHERE review_round.project_id = $1
+          AND review_round.id = $2::uuid
+        LIMIT 1`,
+      [projectId, reviewRoundId],
+    );
+    return result.rows[0]
+      ? postStoryboardCurrentState(result.rows[0] as PostStoryboardRoundRow)
+      : null;
+  }
+
+  function mergePostImpacts(
+    sourceImpact: ReturnType<typeof collectPostTurnoverImpact>,
+    storyboardImpact: ReturnType<typeof collectPostStoryboardImpact>,
+  ) {
+    const items = [...sourceImpact.items, ...storyboardImpact.items];
+    return {
+      stale: items.length > 0,
+      blocking: items.some((item) => item.severity === 'blocking'),
+      items,
+    };
+  }
+
   async function loadPostTurnoverImpacts(projectId: string, operations: PostProductionOperations) {
     const impacts: Record<string, ReturnType<typeof collectPostTurnoverImpact>> = {};
     const productionDayIds = [...new Set(
@@ -1870,6 +2079,39 @@ export function createCastingProductionRouter(
           pictureById.get(source.versionId) ?? null,
         );
       }
+    }
+
+    const storyboardRoundIds = [...new Set(
+      operations.turnovers
+        .map((turnover) => turnover.storyboardReference?.reviewRoundId)
+        .filter((id): id is string => Boolean(id)),
+    )];
+    const storyboardById = new Map<string, PostStoryboardCurrentState>();
+    if (storyboardRoundIds.length > 0) {
+      const result = await pool.query(
+        `SELECT review_round.id, review_round.manuscript_id, review_round.version,
+                review_round.status, review_round.snapshot_hash, review_round.snapshot,
+                (SELECT MAX(approved.version)
+                   FROM storyboard_review_rounds approved
+                  WHERE approved.project_id = review_round.project_id
+                    AND approved.manuscript_id = review_round.manuscript_id
+                    AND approved.status = 'approved') AS latest_approved_version
+           FROM storyboard_review_rounds review_round
+          WHERE review_round.project_id = $1
+            AND review_round.id = ANY($2::uuid[])`,
+        [projectId, storyboardRoundIds],
+      );
+      for (const row of result.rows as PostStoryboardRoundRow[]) {
+        storyboardById.set(String(row.id), postStoryboardCurrentState(row));
+      }
+    }
+    for (const turnover of operations.turnovers) {
+      const reference = turnover.storyboardReference;
+      if (!reference) continue;
+      impacts[turnover.id] = mergePostImpacts(
+        impacts[turnover.id] ?? { stale: false, blocking: false, items: [] },
+        collectPostStoryboardImpact(reference, storyboardById.get(reference.reviewRoundId) ?? null),
+      );
     }
     return impacts;
   }
@@ -2176,6 +2418,72 @@ export function createCastingProductionRouter(
   });
 
   // ────────────── POST-PRODUCTION TURNOVER ──────────────
+  router.get('/projects/:projectId/post-production/storyboard-sources', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensurePostStoryboardAccess(req, res, projectId))) return;
+      const result = await pool.query(
+        `SELECT review_round.id, review_round.manuscript_id, manuscript.title AS manuscript_title,
+                review_round.version, review_round.label, review_round.summary,
+                review_round.snapshot_hash, review_round.status, review_round.frame_count,
+                review_round.total_duration_seconds, review_round.submitted_at, review_round.approved_at,
+                MAX(review_round.version) FILTER (WHERE review_round.status = 'approved')
+                  OVER (PARTITION BY review_round.manuscript_id) AS latest_approved_version
+           FROM storyboard_review_rounds review_round
+           JOIN casting_manuscripts manuscript
+             ON manuscript.id = review_round.manuscript_id
+            AND manuscript.project_id = review_round.project_id
+          WHERE review_round.project_id = $1
+          ORDER BY manuscript.title ASC, review_round.version DESC
+          LIMIT 200`,
+        [projectId],
+      );
+      res.json({
+        storyboardSources: {
+          rounds: (result.rows as PostStoryboardRoundRow[]).map((row) => mapPostStoryboardRound(row)),
+        },
+      });
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke hente storyboardgrunnlaget', detail: 'internal_error' });
+    }
+  });
+
+  router.get('/projects/:projectId/post-production/storyboard-sources/:roundId', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId || '').trim();
+      if (!(await ensurePostStoryboardAccess(req, res, projectId))) return;
+      if (!isUuid(req.params.roundId)) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      const result = await pool.query(
+        `SELECT review_round.*, manuscript.title AS manuscript_title,
+                (SELECT MAX(approved.version)
+                   FROM storyboard_review_rounds approved
+                  WHERE approved.project_id = review_round.project_id
+                    AND approved.manuscript_id = review_round.manuscript_id
+                    AND approved.status = 'approved') AS latest_approved_version
+           FROM storyboard_review_rounds review_round
+           JOIN casting_manuscripts manuscript
+             ON manuscript.id = review_round.manuscript_id
+            AND manuscript.project_id = review_round.project_id
+          WHERE review_round.project_id = $1
+            AND review_round.id = $2::uuid
+          LIMIT 1`,
+        [projectId, req.params.roundId],
+      );
+      if (!result.rows[0]) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({ storyboardSource: mapPostStoryboardRound(result.rows[0] as PostStoryboardRoundRow, true) });
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke hente storyboardrevisjonen', detail: 'internal_error' });
+    }
+  });
+
   router.get('/projects/:projectId/post-production/picture-sources', auth, async (req, res) => {
     try {
       await schemaReady(pool);
@@ -2266,6 +2574,16 @@ export function createCastingProductionRouter(
               ? 'either'
               : 'review';
       if (!(await ensurePostProductionAccess(req, res, projectId, authority))) return;
+      const parsedStoryboardRoundId = 'storyboardReviewRoundId' in parsed
+        ? parsed.storyboardReviewRoundId
+        : undefined;
+      if (
+        parsedStoryboardRoundId
+        && !(await viewerMeetsTabLevel(pool, projectId, (req as AuthedRequest).userId, 'storyboard', 'view'))
+      ) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
 
       const currentResult = await pool.query(
         `SELECT operations, version, updated_by, updated_at
@@ -2297,7 +2615,24 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'production_day_not_found', message: 'Produksjonsdagen finnes ikke.' });
           return;
         }
-        command = { ...parsed, source };
+        const storyboardReference = parsed.storyboardReviewRoundId
+          ? await loadPostStoryboardReference(
+              projectId,
+              parsed.storyboardReviewRoundId,
+              parsed.storyboardFrameIds ?? [],
+            )
+          : undefined;
+        if (parsed.storyboardReviewRoundId && !storyboardReference) {
+          res.status(409).json({
+            error: 'storyboard_source_not_approved',
+            message: 'Storyboard-revisjonen må være godkjent før den kan bindes til en turnover.',
+          });
+          return;
+        }
+        command = {
+          type: 'create_turnover', label: parsed.label, recipient: parsed.recipient,
+          notes: parsed.notes, source, storyboardReference: storyboardReference ?? undefined,
+        };
       } else if (parsed.type === 'create_picture_turnover') {
         const source = await loadPostPictureSource(projectId, parsed.pictureVersionId);
         if (!source) {
@@ -2307,12 +2642,27 @@ export function createCastingProductionRouter(
           });
           return;
         }
+        const storyboardReference = parsed.storyboardReviewRoundId
+          ? await loadPostStoryboardReference(
+              projectId,
+              parsed.storyboardReviewRoundId,
+              parsed.storyboardFrameIds ?? [],
+            )
+          : undefined;
+        if (parsed.storyboardReviewRoundId && !storyboardReference) {
+          res.status(409).json({
+            error: 'storyboard_source_not_approved',
+            message: 'Storyboard-revisjonen må være godkjent før den kan bindes til en turnover.',
+          });
+          return;
+        }
         command = {
           type: 'create_turnover',
           label: parsed.label,
           recipient: parsed.recipient,
           notes: parsed.notes,
           source,
+          storyboardReference: storyboardReference ?? undefined,
         };
       } else if (parsed.type === 'refresh_turnover') {
         const turnover = currentOperations.turnovers.find((item) => item.id === parsed.turnoverId);
@@ -2331,16 +2681,35 @@ export function createCastingProductionRouter(
               : 'Produksjonsdagen finnes ikke lenger. Manifestet kan bare erstattes.',
           );
         }
-        command = { ...parsed, source };
+        const storyboardReference = turnover.storyboardReference
+          ? await loadPostStoryboardReference(
+              projectId,
+              turnover.storyboardReference.reviewRoundId,
+              turnover.storyboardReference.frames.map((frame) => frame.frameId),
+            )
+          : undefined;
+        if (turnover.storyboardReference && !storyboardReference) {
+          throw new PostProductionTransitionError(
+            'Storyboard-revisjonen er ikke lenger godkjent. Manifestet kan bare erstattes.',
+          );
+        }
+        command = { ...parsed, source, storyboardReference: storyboardReference ?? undefined };
       } else if (parsed.type === 'transition_turnover') {
         const turnover = currentOperations.turnovers.find((item) => item.id === parsed.turnoverId);
         if (!turnover) throw new PostProductionValidationError('Turnover-manifestet finnes ikke.');
         const currentSource = turnover.source.sourceType === 'picture'
           ? await loadPostPictureSource(projectId, turnover.source.versionId)
           : await loadPostSoundSource(projectId, turnover.source.productionDayId);
+        const sourceImpact = collectPostTurnoverImpact(turnover.source, currentSource);
+        const storyboardImpact = collectPostStoryboardImpact(
+          turnover.storyboardReference,
+          turnover.storyboardReference
+            ? await loadPostStoryboardCurrentState(projectId, turnover.storyboardReference.reviewRoundId)
+            : null,
+        );
         command = {
           ...parsed,
-          impact: collectPostTurnoverImpact(turnover.source, currentSource),
+          impact: mergePostImpacts(sourceImpact, storyboardImpact),
         };
       } else {
         command = parsed;

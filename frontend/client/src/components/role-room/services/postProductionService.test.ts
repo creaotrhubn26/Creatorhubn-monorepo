@@ -51,6 +51,29 @@ describe('postProductionService', () => {
     );
   });
 
+  it('loads storyboard metadata and one locked preview through the post contract', async () => {
+    const storyboardSources = { rounds: [{
+      id: 'round-1', manuscriptId: 'manus-1', manuscriptTitle: 'Troll', version: 3,
+      label: 'Regigodkjent', status: 'approved', snapshotHash: 'c'.repeat(64),
+      frameCount: 1, totalDurationSeconds: 4, latestApprovedVersion: 3,
+      submittedAt: '2026-09-21T08:00:00.000Z', approvedAt: '2026-09-21T09:00:00.000Z',
+    }] };
+    const storyboardSource = { ...storyboardSources.rounds[0], scenes: [{
+      id: 'scene-1', heading: 'EXT. FJELL – NATT', frames: [{ id: 'frame-1', shotNumber: '1A' }],
+    }] };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ storyboardSources }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ storyboardSource }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(postProductionService.getStoryboardSources('troll project')).resolves.toEqual(storyboardSources);
+    await expect(postProductionService.getStoryboardSource('troll project', 'round/1')).resolves.toEqual(storyboardSource);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/role-room/projects/troll%20project/post-production/storyboard-sources',
+      '/api/role-room/projects/troll%20project/post-production/storyboard-sources/round%2F1',
+    ]);
+  });
+
   it('keeps the latest server state on a version conflict', async () => {
     const latest = { projectId: 'troll', operations: { turnovers: [] }, version: 3 };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

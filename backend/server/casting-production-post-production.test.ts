@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyPostProductionCommand,
+  collectPostStoryboardImpact,
   collectPostTurnoverImpact,
   emptyPostProductionOperations,
   normalizePostProductionOperations,
   type PostCommandContext,
   type PostPictureSourceSnapshot,
   type PostProductionSoundSourceSnapshot,
+  type PostStoryboardReferenceSnapshot,
 } from './casting-production-post-production.js';
 
 const source = (overrides: Partial<PostProductionSoundSourceSnapshot> = {}): PostProductionSoundSourceSnapshot => ({
@@ -54,6 +56,28 @@ const context: PostCommandContext = {
   createId: (prefix) => `${prefix}-1`,
 };
 
+const storyboardReference = (
+  overrides: Partial<PostStoryboardReferenceSnapshot> = {},
+): PostStoryboardReferenceSnapshot => ({
+  reviewRoundId: '0f4813b2-ed6c-47c4-a982-7d8e9093c0a1',
+  manuscriptId: 'troll-manus',
+  manuscriptTitle: 'Troll',
+  version: 3,
+  label: 'Regigodkjent',
+  snapshotHash: 'c'.repeat(64),
+  scriptFingerprint: 'd'.repeat(64),
+  status: 'approved',
+  frameCount: 12,
+  totalDurationSeconds: 44,
+  latestApprovedVersionAtCapture: 3,
+  capturedAt: '2026-09-21T10:00:00.000Z',
+  frames: [{
+    frameId: 'frame-1', sceneId: 'scene-1', sceneHeading: 'EXT. FJELL – NATT',
+    sceneNumber: '1', shotNumber: '1A', description: 'Trollet reiser seg.', durationSeconds: 4,
+  }],
+  ...overrides,
+});
+
 function createdOperations() {
   return applyPostProductionCommand(emptyPostProductionOperations(), {
     type: 'create_turnover',
@@ -75,6 +99,22 @@ describe('post-production turnover state machine', () => {
         media: [expect.objectContaining({ mediaId: 'media-1', storageObjectId: 'object-1' })],
       }),
     }));
+  });
+
+  it('captures an approved storyboard revision and selected panels with the turnover', () => {
+    const operations = applyPostProductionCommand(emptyPostProductionOperations(), {
+      type: 'create_turnover',
+      label: 'Picture V2',
+      source: pictureSource(),
+      storyboardReference: storyboardReference(),
+    }, context);
+
+    expect(operations.turnovers[0].storyboardReference).toEqual(expect.objectContaining({
+      reviewRoundId: '0f4813b2-ed6c-47c4-a982-7d8e9093c0a1',
+      version: 3,
+      frames: [expect.objectContaining({ frameId: 'frame-1', shotNumber: '1A' })],
+    }));
+    expect(normalizePostProductionOperations(operations).turnovers[0].storyboardReference?.status).toBe('approved');
   });
 
   it('enforces the ready → received → accepted flow', () => {
@@ -151,6 +191,23 @@ describe('post-production turnover state machine', () => {
     expect(impact.items.map((item) => item.code)).toEqual([
       'picture_asset_changed',
       'new_picture_version_available',
+    ]);
+  });
+
+  it('blocks mutated storyboard snapshots and warns about a newer approved revision', () => {
+    const impact = collectPostStoryboardImpact(storyboardReference(), {
+      reviewRoundId: '0f4813b2-ed6c-47c4-a982-7d8e9093c0a1',
+      version: 3,
+      status: 'approved',
+      snapshotHash: 'e'.repeat(64),
+      latestApprovedVersion: 4,
+      availableFrameIds: ['frame-1'],
+    });
+
+    expect(impact).toEqual(expect.objectContaining({ stale: true, blocking: true }));
+    expect(impact.items.map((item) => item.code)).toEqual([
+      'storyboard_snapshot_changed',
+      'new_storyboard_revision_available',
     ]);
   });
 
