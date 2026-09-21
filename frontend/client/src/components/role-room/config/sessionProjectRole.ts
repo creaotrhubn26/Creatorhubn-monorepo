@@ -58,6 +58,15 @@ const CATALOG_TO_PROJECT_ROLE: Partial<Record<ProductionRoleId, UserRoleType>> =
   construction_coordinator: 'production_designer',
   production_sound_mixer: 'production_sound_mixer',
   boom_operator: 'production_sound_mixer',
+  post_supervisor: 'post_supervisor',
+  post_coordinator: 'post_coordinator',
+  sound_designer: 'sound_designer',
+  sound_editor: 'sound_editor',
+  foley_artist: 'foley_artist',
+  adr_engineer: 'adr_engineer',
+  supervising_editor: 'supervising_editor',
+  video_editor: 'video_editor',
+  assistant_editor: 'assistant_editor',
 };
 
 /**

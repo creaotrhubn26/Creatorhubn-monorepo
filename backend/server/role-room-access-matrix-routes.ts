@@ -22,6 +22,8 @@ const GRANT_LABELS: Record<string, string> = {
   canCommentContinuity: 'Kommenter kontinuitet',
   canManageArtDepartment: 'Produksjonsdesign og art department',
   canManageProductionSound: 'Opptakslyd og lydrapport',
+  canPreparePostTurnover: 'Klargjør turnover til post',
+  canReviewPostTurnover: 'Motta og QC-kontroller turnover',
 };
 
 export interface AccessMatrixDeps {

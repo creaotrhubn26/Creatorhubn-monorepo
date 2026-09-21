@@ -127,6 +127,36 @@ export const CASTING_GRANT_RULES = {
     roles: ["production_sound_mixer", "sound_mixer", "audio_mixer", "sound_engineer", "boom_operator"],
     permissionKeys: ["canManageProductionSound"],
   },
+  canPreparePostTurnover: {
+    roles: [
+      "producer",
+      "line_producer",
+      "production_manager",
+      "production_sound_mixer",
+      "sound_mixer",
+      "audio_mixer",
+      "sound_engineer",
+      "boom_operator",
+      "post_supervisor",
+      "post_coordinator",
+    ],
+    permissionKeys: ["canPreparePostTurnover", "canManagePostProduction"],
+  },
+  canReviewPostTurnover: {
+    roles: [
+      "producer",
+      "post_supervisor",
+      "post_coordinator",
+      "sound_designer",
+      "sound_editor",
+      "foley_artist",
+      "adr_engineer",
+      "supervising_editor",
+      "video_editor",
+      "assistant_editor",
+    ],
+    permissionKeys: ["canReviewPostTurnover", "canManagePostProduction"],
+  },
 } as const satisfies Record<string, { roles: readonly string[]; permissionKeys: readonly string[] }>;
 
 export type CastingGrant = keyof typeof CASTING_GRANT_RULES;

@@ -24,6 +24,15 @@ export type UserRoleType =
   | 'script_supervisor'
   | 'production_designer'
   | 'production_sound_mixer'
+  | 'post_supervisor'
+  | 'post_coordinator'
+  | 'sound_designer'
+  | 'sound_editor'
+  | 'foley_artist'
+  | 'adr_engineer'
+  | 'supervising_editor'
+  | 'video_editor'
+  | 'assistant_editor'
   | 'first_ad'
   | 'second_ad'
   | 'second_second_assistant_director'
@@ -44,6 +53,9 @@ export interface UserRolePermissions {
   canManageContinuity?: boolean;
   canManageArtDepartment?: boolean;
   canManageProductionSound?: boolean;
+  canPreparePostTurnover?: boolean;
+  canReviewPostTurnover?: boolean;
+  canManagePostProduction?: boolean;
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
@@ -1870,6 +1882,84 @@ export interface ProductionSoundMedia {
   reconciledBy?: string;
   reconciledAt?: string;
   createdAt: string;
+}
+
+export type PostTurnoverStatus = 'draft' | 'ready' | 'received' | 'qc_issues' | 'accepted' | 'superseded';
+export type PostQcSeverity = 'note' | 'warning' | 'blocker';
+
+export interface PostTurnoverMediaSnapshot {
+  mediaId: string;
+  storageObjectId: string;
+  displayName: string;
+  checksumSha256: string;
+  sizeBytes: number;
+  reconciliationStatus: 'unmatched' | 'matched';
+  continuityTakeId?: string;
+  createdAt: string;
+}
+
+export interface PostTurnoverSourceSnapshot {
+  productionDayId: string;
+  soundVersion: number;
+  capturedAt: string;
+  availableMediaIds: string[];
+  media: PostTurnoverMediaSnapshot[];
+}
+
+export interface PostQcIssue {
+  id: string;
+  severity: PostQcSeverity;
+  message: string;
+  status: 'open' | 'resolved';
+  createdBy: string;
+  createdAt: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+}
+
+export interface PostTurnoverEvent {
+  id: string;
+  type: 'created' | 'status_changed' | 'source_refreshed' | 'qc_issue_added' | 'qc_issue_resolved';
+  message: string;
+  actorUserId: string;
+  createdAt: string;
+}
+
+export interface PostTurnoverImpactItem {
+  code: 'production_day_missing' | 'sound_report_changed' | 'media_missing' | 'media_changed' | 'media_reconciliation_changed' | 'new_media_available';
+  severity: 'warning' | 'blocking';
+  message: string;
+  mediaId?: string;
+}
+
+export interface PostTurnoverImpact {
+  stale: boolean;
+  blocking: boolean;
+  items: PostTurnoverImpactItem[];
+}
+
+export interface PostTurnoverManifest {
+  id: string;
+  label: string;
+  recipient?: string;
+  notes?: string;
+  status: PostTurnoverStatus;
+  source: PostTurnoverSourceSnapshot;
+  issues: PostQcIssue[];
+  events: PostTurnoverEvent[];
+  impact: PostTurnoverImpact;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface PostProductionRecord {
+  projectId: string;
+  operations: { turnovers: PostTurnoverManifest[] };
+  version: number;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface ProductionSoundAdditionalRecording {

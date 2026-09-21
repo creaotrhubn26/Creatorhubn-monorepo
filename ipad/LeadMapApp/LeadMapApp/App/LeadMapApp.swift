@@ -380,28 +380,21 @@ struct RootView: View {
                     .allowsHitTesting(false)
             }
         }
-        // Kortet lå i samme hjørne som kartets knappekolonne og dekket
-        // «Hva vil du finne?» — inngangen til Discovery. Knappen fantes, men
-        // var ikke trykkbar, og et hjelpekort som stenger hovedhandlingen er
-        // verre enn intet hjelpekort.
+        // Kortet flyter over et kart som fyller hele flaten, så «et ledig
+        // hjørne» finnes ikke: høyre kant eier kartets knappekolonne med
+        // Discovery-knappen nederst, og bunn-midten eier lead-panelets
+        // handlingsrad («Åpne lead» / «Planlegg møte» / «Naviger») så snart
+        // en lead er valgt. Begge deler ble dekket av kortet i tur og orden.
         //
-        // Venstre side er ikke et alternativ på iPad: der ligger sidepanelet,
-        // og kortet dekket «Flere funksjoner» i stedet. Det blir derfor
-        // værende i høyre hjørne, men løftet over hele knappekolonnen
-        // (zoom, posisjon, kartlag, målebånd og Discovery-knappen).
-        // iPhone har knappene i samme hjørne, men der ligger kortet over
-        // fanelinjen (76 pt) og kommer ikke i veien.
-        // Hjørnene er opptatt på iPad: sidepanelet eier venstre side, og
-        // kartets knappekolonne står langs høyre kant med Discovery-knappen
-        // nederst i den. Kortet lå i det hjørnet og dekket «Hva vil du
-        // finne?» — inngangen til Discovery fantes, men kunne ikke trykkes.
-        //
-        // Bunn-midten er den eneste kanten uten kontroller, så der ligger det
-        // nå. iPhone beholder høyre hjørne over fanelinjen, der det ikke er i
-        // veien for noe.
-        .overlay(alignment: DeviceIdiom.isPhone ? .bottomTrailing : .bottom) {
+        // Nederst til venstre er den ene sonen ingenting annet bruker: med
+        // sidepanelet framme er kortet dokket i den tomme bunnen av panelet,
+        // og med panelet skjult står det over en tom del av kartet. Bredden
+        // er kappet til panelets bredde så det ikke lener seg inn over
+        // kartkontrollene. iPhone beholder høyre hjørne over fanelinjen.
+        .overlay(alignment: DeviceIdiom.isPhone ? .bottomTrailing : .bottomLeading) {
             if appState.isAuthenticated {
                 LeadgridProductOnboardingGuide()
+                    .frame(maxWidth: DeviceIdiom.isPhone ? .infinity : 300)
                     .padding(.horizontal, DeviceIdiom.isPhone ? 12 : 20)
                     .padding(.bottom, DeviceIdiom.isPhone ? 76 : 24)
             }

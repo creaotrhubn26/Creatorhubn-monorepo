@@ -53,6 +53,15 @@ export interface RoleNavConfigEntry {
  * ordnede listen — telefon tar 4 første som primære + Mer.
  */
 export const DEFAULT_TABS_BY_ROLE: Record<UserRoleType, SubTabValue[]> = {
+  post_supervisor: ['shooting', 'schedule', 'brief', 'approval', 'crew', 'planner'],
+  post_coordinator: ['shooting', 'schedule', 'brief', 'crew', 'planner'],
+  sound_designer: ['shooting', 'brief', 'schedule', 'planner'],
+  sound_editor: ['shooting', 'brief', 'schedule', 'planner'],
+  foley_artist: ['shooting', 'brief', 'schedule'],
+  adr_engineer: ['shooting', 'brief', 'schedule'],
+  supervising_editor: ['shooting', 'brief', 'schedule', 'planner'],
+  video_editor: ['shooting', 'brief', 'schedule', 'planner'],
+  assistant_editor: ['shooting', 'brief', 'schedule'],
   production_sound_mixer: [
     'shooting', 'schedule', 'brief', 'crew', 'planner',
   ],
@@ -155,6 +164,15 @@ export const DEFAULT_TABS_BY_ROLE: Record<UserRoleType, SubTabValue[]> = {
 };
 
 export const ALL_USER_ROLES: UserRoleType[] = [
+  'post_supervisor',
+  'post_coordinator',
+  'sound_designer',
+  'sound_editor',
+  'foley_artist',
+  'adr_engineer',
+  'supervising_editor',
+  'video_editor',
+  'assistant_editor',
   'production_sound_mixer',
   'production_designer',
   'director',
@@ -187,6 +205,15 @@ export const ALL_USER_ROLES: UserRoleType[] = [
 ];
 
 export const USER_ROLE_LABELS: Record<UserRoleType, string> = {
+  post_supervisor: 'Post supervisor',
+  post_coordinator: 'Postkoordinator',
+  sound_designer: 'Lyddesigner',
+  sound_editor: 'Lydklipper',
+  foley_artist: 'Foleyartist',
+  adr_engineer: 'ADR-tekniker',
+  supervising_editor: 'Klippeansvarlig',
+  video_editor: 'Klipper',
+  assistant_editor: 'Klippeassistent',
   production_sound_mixer: 'Produksjonslydmikser / boom',
   production_designer: 'Produksjonsdesigner',
   director: 'Regissør',

@@ -18,7 +18,6 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
   Divider,
   Checkbox,
@@ -186,6 +185,15 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     'script_supervisor',
     'production_designer',
     'production_sound_mixer',
+    'post_supervisor',
+    'post_coordinator',
+    'sound_designer',
+    'sound_editor',
+    'foley_artist',
+    'adr_engineer',
+    'supervising_editor',
+    'video_editor',
+    'assistant_editor',
     'first_ad',
     'second_ad',
     'second_second_assistant_director',
@@ -213,6 +221,15 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       script_supervisor: 'Script supervisor / kontinuitet',
       production_designer: 'Produksjonsdesigner',
       production_sound_mixer: 'Produksjonslydmikser / boom',
+      post_supervisor: 'Post supervisor',
+      post_coordinator: 'Postkoordinator',
+      sound_designer: 'Lyddesigner',
+      sound_editor: 'Lydklipper',
+      foley_artist: 'Foleyartist',
+      adr_engineer: 'ADR-tekniker',
+      supervising_editor: 'Klippeansvarlig',
+      video_editor: 'Klipper',
+      assistant_editor: 'Klippeassistent',
       first_ad: 'Innspillingsleder / 1st AD',
       second_ad: '2. regiassistent / 2nd AD',
       second_second_assistant_director: '2nd 2nd AD',
@@ -1213,7 +1230,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     >
                       {roleTypes.map((role) => {
                         const getRoleIcon = (r: UserRoleType) => {
-                          const icons: Record<UserRoleType, ReactElement> = {
+                          const icons: Partial<Record<UserRoleType, ReactElement>> = {
                             director: <MovieIcon sx={{ fontSize: '1rem' }} />,
                             producer: <BusinessIcon sx={{ fontSize: '1rem' }} />,
                             executive_producer: <BusinessIcon sx={{ fontSize: '1rem' }} />,
