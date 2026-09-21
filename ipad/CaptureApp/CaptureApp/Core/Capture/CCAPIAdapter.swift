@@ -27,6 +27,11 @@ actor CCAPIAdapter: IngestAdapter {
 
     private var pollingTask: Task<Void, Never>?
     private var downloadTask: Task<Void, Never>?
+    private var downloadRetryTasks: [String: Task<Void, Never>] = [:]
+    /// Canon bodies have a deliberately small HTTP stack. Do not overlap the
+    /// 500 ms event poll with a RAW range transfer; on R6 Mark II firmware
+    /// 1.6.0 that contention can turn an otherwise valid content GET into 503.
+    private var transferInProgress = false
 
     /// Assets we've seen and announced. Keyed by stable UUID derived from the
     /// CCAPI content URL.
@@ -95,6 +100,8 @@ actor CCAPIAdapter: IngestAdapter {
     func stop() async {
         pollingTask?.cancel()
         downloadTask?.cancel()
+        for task in downloadRetryTasks.values { task.cancel() }
+        downloadRetryTasks.removeAll()
         pollingTask = nil
         downloadTask = nil
         awaitingWork?.resume()
@@ -152,6 +159,10 @@ actor CCAPIAdapter: IngestAdapter {
     private func runPollingLoop() async {
         var reconnectAttempt = 0
         while !Task.isCancelled {
+            if transferInProgress {
+                try? await Task.sleep(for: Self.pollInterval)
+                continue
+            }
             do {
                 // Short poll + interval. We verified on R6 mkII fw 1.6.0 that
                 // `?continue=on` long-polling does not reliably surface
@@ -276,22 +287,22 @@ actor CCAPIAdapter: IngestAdapter {
     /// nedlastingsfeil før vi gir opp. WiFi-tethering dropper pakker; ett
     /// enkelt-feil skal ikke miste bildet permanent.
     private static let maxDownloadAttempts = 3
+    /// 256 KiB stays below the practical response limit observed on R6 Mark
+    /// II firmware 1.6.0. At 512 KiB the body can advertise the full range but
+    /// close after 256 KiB, which URLSession correctly rejects as truncated.
+    private static let originalChunkBytes: Int64 = 256 * 1024
+    private static let maximumOriginalBytes: Int64 = 2 * 1024 * 1024 * 1024 * 1024
 
     private func performDownload(_ item: Pending) async {
         let destination = downloadDirectory
             .appendingPathComponent("\(item.assetId.uuidString)-\(item.kind.rawValue)")
         var lastError = "ukjent"
+        transferInProgress = true
+        defer { transferInProgress = false }
         for attempt in 1...Self.maxDownloadAttempts {
             if Task.isCancelled { return }
             do {
-                // TODO: support HTTP Range-based resume when spec is verified.
-                let sourceURL = Self.downloadURL(for: item)
-                let (data, totalBytes) = try await client.downloadContent(
-                    contentURL: sourceURL,
-                    range: nil,
-                )
-                try data.write(to: destination, options: .atomic)
-                let checksum = Self.sha256Hex(data)
+                let (totalBytes, checksum) = try await download(item, to: destination)
                 continuation.yield(
                     .downloadCompleted(
                         assetId: item.assetId,
@@ -300,15 +311,12 @@ actor CCAPIAdapter: IngestAdapter {
                         checksumSha256: checksum,
                     ),
                 )
-                if totalBytes > 0 {
-                    continuation.yield(
-                        .downloadProgress(
-                            assetId: item.assetId,
-                            bytesDownloaded: Int64(data.count),
-                            totalBytes: totalBytes,
-                        ),
-                    )
-                }
+                downloadRetryTasks.removeValue(forKey: retryKey(for: item))?.cancel()
+                continuation.yield(.downloadProgress(
+                    assetId: item.assetId,
+                    bytesDownloaded: totalBytes,
+                    totalBytes: totalBytes
+                ))
                 return
             } catch let ccapi as CCAPIError {
                 lastError = String(describing: ccapi)
@@ -328,6 +336,131 @@ actor CCAPIAdapter: IngestAdapter {
                 error: .transportFailed(lastError),
             ),
         )
+        scheduleRetry(item)
+    }
+
+    /// Display previews are small and stay atomic. Full/RAW originals use
+    /// bounded HTTP Range requests and a `.partial` file. Each retry resumes
+    /// at the verified local byte boundary, so a transient 503 or Wi-Fi drop
+    /// never restarts a 30–100 MB camera original from zero.
+    private func download(
+        _ item: Pending,
+        to destination: URL
+    ) async throws -> (totalBytes: Int64, checksum: String) {
+        let sourceURL = Self.downloadURL(for: item)
+        if item.kind == .preview {
+            let response = try await client.downloadContent(contentURL: sourceURL, range: nil)
+            try response.data.write(to: destination, options: .atomic)
+            return (Int64(response.data.count), Self.sha256Hex(response.data))
+        }
+
+        let partial = destination.appendingPathExtension("partial")
+        let totalMarker = destination.appendingPathExtension("partial.total")
+        var received = Self.fileSize(at: partial)
+        var expectedTotal = Self.readExpectedTotal(at: totalMarker)
+
+        if received == 0 {
+            try? fileManager.removeItem(at: totalMarker)
+            expectedTotal = nil
+            if !fileManager.fileExists(atPath: partial.path) {
+                guard fileManager.createFile(atPath: partial.path, contents: nil) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            }
+        } else if let expectedTotal, received > expectedTotal {
+            try fileManager.removeItem(at: partial)
+            try? fileManager.removeItem(at: totalMarker)
+            guard fileManager.createFile(atPath: partial.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            received = 0
+            self.continuation.yield(.downloadProgress(
+                assetId: item.assetId,
+                bytesDownloaded: 0,
+                totalBytes: nil
+            ))
+        }
+
+        while expectedTotal == nil || received < expectedTotal! {
+            if Task.isCancelled { throw CancellationError() }
+            let upper = received + Self.originalChunkBytes
+            let response = try await client.downloadContent(
+                contentURL: sourceURL,
+                range: received..<upper
+            )
+            guard !response.data.isEmpty else {
+                throw CCAPIError.invalidResponse("empty camera content range")
+            }
+            guard response.totalBytes > 0,
+                  response.totalBytes <= Self.maximumOriginalBytes
+            else {
+                throw CCAPIError.invalidResponse("invalid camera content length")
+            }
+
+            if response.acceptedRange {
+                let handle = try FileHandle(forWritingTo: partial)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: response.data)
+                received += Int64(response.data.count)
+            } else {
+                // Some CCAPI bodies ignore Range and return the entire object.
+                // That is still valid, but it must replace—not append to—the
+                // partial file when this is a resumed attempt.
+                try response.data.write(to: partial, options: .atomic)
+                received = Int64(response.data.count)
+            }
+
+            expectedTotal = response.totalBytes
+            try Data(String(response.totalBytes).utf8).write(to: totalMarker, options: .atomic)
+            guard received <= response.totalBytes else {
+                throw CCAPIError.invalidResponse("camera returned more bytes than declared")
+            }
+            continuation.yield(.downloadProgress(
+                assetId: item.assetId,
+                bytesDownloaded: received,
+                totalBytes: response.totalBytes
+            ))
+            // A small pacing gap lets the camera flush its embedded HTTP
+            // buffers. Back-to-back megabyte requests can otherwise stall
+            // even though each individual Range request is valid.
+            if received < response.totalBytes {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+        }
+
+        guard let expectedTotal, received == expectedTotal else {
+            throw CCAPIError.invalidResponse("incomplete camera original")
+        }
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: partial, to: destination)
+        try? fileManager.removeItem(at: totalMarker)
+        return (expectedTotal, try Self.sha256Hex(fileURL: destination))
+    }
+
+    /// A camera Wi-Fi dropout must not turn a captured file into a manual
+    /// recovery job. Keep the descriptor and retry in the background with a
+    /// bounded delay; queue de-duplication prevents duplicate writes when a
+    /// user also requests the file explicitly after reconnecting.
+    private func scheduleRetry(_ item: Pending) {
+        let key = retryKey(for: item)
+        guard downloadRetryTasks[key] == nil, !Task.isCancelled else { return }
+        downloadRetryTasks[key] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard !Task.isCancelled, let self else { return }
+            await self.finishScheduledRetry(item, key: key)
+        }
+    }
+
+    private func finishScheduledRetry(_ item: Pending, key: String) {
+        downloadRetryTasks.removeValue(forKey: key)
+        enqueue(item)
+    }
+
+    private func retryKey(for item: Pending) -> String {
+        "\(item.assetId.uuidString):\(item.kind.rawValue)"
     }
 
     // MARK: - Helpers
@@ -377,6 +510,29 @@ actor CCAPIAdapter: IngestAdapter {
 
     private static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func sha256Hex(fileURL: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1 * 1024 * 1024), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func fileSize(at url: URL) -> Int64 {
+        guard let value = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return 0 }
+        return Int64(value)
+    }
+
+    private static func readExpectedTotal(at url: URL) -> Int64? {
+        guard let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8),
+              let value = Int64(text), value > 0
+        else { return nil }
+        return value
     }
 
     private static func mimeType(for pathExtension: String) -> String {

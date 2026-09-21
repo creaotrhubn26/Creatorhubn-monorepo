@@ -27,12 +27,13 @@ final class CameraDiscovery: ObservableObject {
         let serial: String?
 
         var displayName: String {
-            deviceName ?? serviceName
+            CCAPICameraName.displayName(deviceName: deviceName, fallback: serviceName)
         }
     }
 
     @Published private(set) var cameras: [Found] = []
     @Published private(set) var isSearching: Bool = false
+    @Published private(set) var isCheckingRecentCamera: Bool = false
     @Published private(set) var permissionDenied: Bool = false
 
     private var browser: NWBrowser?
@@ -48,6 +49,7 @@ final class CameraDiscovery: ObservableObject {
     }
 
     private var scanTask: Task<Void, Never>?
+    private var recentCameraTask: Task<Void, Never>?
 
     func start() {
         guard browser == nil else { return }
@@ -56,6 +58,24 @@ final class CameraDiscovery: ObservableObject {
         cameras = []
         permissionDenied = false
         isSearching = true
+
+        // The last camera normally keeps the same address throughout a job.
+        // Probe it immediately instead of making the photographer wait for a
+        // 254-host subnet sweep. The regular discovery still runs in parallel
+        // so moving to another network remains automatic.
+        if let recent = CCAPICameraPreference.lastCameraURL {
+            isCheckingRecentCamera = true
+            recentCameraTask = Task { [weak self] in
+                for attempt in 1...3 where !Task.isCancelled {
+                    if await self?.probe(baseURL: recent, reportFailure: attempt == 3) == true {
+                        break
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                guard !Task.isCancelled else { return }
+                await MainActor.run { self?.isCheckingRecentCamera = false }
+            }
+        }
 
         #if DEBUG
         // QA/skjermbilde: `--fake-cameras` seeder to funn så flerkamera-UI-et kan
@@ -129,9 +149,12 @@ final class CameraDiscovery: ObservableObject {
         browser = nil
         scanTask?.cancel()
         scanTask = nil
+        recentCameraTask?.cancel()
+        recentCameraTask = nil
         for task in probes.values { task.cancel() }
         probes.removeAll()
         isSearching = false
+        isCheckingRecentCamera = false
     }
 
     /// Enumerate all local /24 subnets via `getifaddrs`, probe every host
@@ -204,6 +227,12 @@ final class CameraDiscovery: ObservableObject {
     private func probe(host: String, scheme: String, port: Int?) async {
         let portSegment = port.map { ":\($0)" } ?? ""
         guard let baseURL = URL(string: "\(scheme)://\(host)\(portSegment)") else { return }
+        _ = await probe(baseURL: baseURL)
+    }
+
+    @discardableResult
+    private func probe(baseURL: URL, reportFailure: Bool = false) async -> Bool {
+        guard let host = baseURL.host else { return false }
         let key = "ip:\(host)"
 
         let session = sessionFactory(baseURL)
@@ -232,8 +261,18 @@ final class CameraDiscovery: ObservableObject {
                     }
                 }
             }
+            return true
         } catch {
-            // Silent: either no server, not CCAPI, or timeout.
+            // Subnet scans are intentionally silent (hundreds of expected
+            // misses). The remembered-camera fast path is different: surface
+            // its final failure in logs so QA can distinguish camera-busy,
+            // certificate rejection and ordinary timeout.
+            if reportFailure {
+                AppLog.capture.error(
+                    "CameraDiscovery: recent camera \(baseURL.absoluteString, privacy: .public) failed — \(error.localizedDescription, privacy: .public)"
+                )
+            }
+            return false
         }
     }
 
@@ -282,7 +321,8 @@ final class CameraDiscovery: ObservableObject {
                                   &host, socklen_t(host.count),
                                   nil, 0, NI_NUMERICHOST)
             guard err == 0 else { continue }
-            let ip = String(cString: host)
+            let ipBytes = host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+            let ip = String(decoding: ipBytes, as: UTF8.self)
 
             // Keep private ranges only; skip link-local 169.254.x.x
             guard ip.hasPrefix("192.168.") || ip.hasPrefix("10.") || ip.hasPrefix("172.") else { continue }

@@ -222,6 +222,99 @@ final class ScreenshotHarness: XCTestCase {
         snap(app, name: "QA_Canon_R6_Mark_II")
     }
 
+    /// Photo/Shoot has a separate ingest pipeline from Video. Keep a dedicated
+    /// physical smoke test so a working live-view connection cannot mask a
+    /// broken still-photo connection.
+    func testRealCanonR6PhotoConnectionSmoke() throws {
+        guard ProcessInfo.processInfo.environment["RUN_REAL_CANON_PHOTO_SMOKE"] == "1" else {
+            throw XCTSkip("Krever fysisk Canon R6 Mark II i CCAPI-modus")
+        }
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += ["--tab-shoot", "--canon-hardware-smoke"]
+        app.launch()
+
+        let camera = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "photo-camera-ip:")
+        ).firstMatch
+        XCTAssertTrue(
+            camera.waitForExistence(timeout: 90),
+            "R6 Mark II ble ikke oppdaget i Foto/Shoot på iPadens lokale nettverk",
+        )
+        camera.tap()
+
+        let shutter = app.buttons["capture-shutter-button"]
+        XCTAssertTrue(
+            shutter.waitForExistence(timeout: 30),
+            "Foto/Shoot opprettet ikke en klar CCAPI-økt mot R6 Mark II",
+        )
+        XCTAssertTrue(shutter.isEnabled, "Foto-utløseren må være klar etter tilkobling")
+        snap(app, name: "QA_Canon_R6_Mark_II_Photo")
+    }
+
+    /// Opt-in destructive hardware check: fires one real still, waits for the
+    /// CCAPI content event, downloads the preview, and verifies that the UI is
+    /// backed by persisted bytes plus a SHA-256 checksum. Kept separate from
+    /// the connection smoke so ordinary QA never takes a photograph.
+    func testRealCanonR6PhotoCaptureAndIngest() throws {
+        guard ProcessInfo.processInfo.environment["RUN_REAL_CANON_PHOTO_CAPTURE"] == "1" else {
+            throw XCTSkip("Krever eksplisitt opt-in; testen tar ett fysisk bilde")
+        }
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += ["--tab-shoot"]
+        app.launch()
+
+        let camera = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "photo-camera-ip:")
+        ).firstMatch
+        if camera.waitForExistence(timeout: 15) {
+            camera.tap()
+        } else {
+            // Auto-discovery and direct address are both production paths.
+            // Keep the hardware test recoverable if Canon is briefly busy
+            // after releasing a prior RAW transfer.
+            let address = app.textFields["photo-direct-address"]
+            XCTAssertTrue(address.waitForExistence(timeout: 5))
+            address.tap()
+            let existing = address.value as? String ?? ""
+            address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+            address.typeText("https://192.168.1.16")
+            app.buttons["photo-direct-connect"].tap()
+        }
+
+        let shutter = app.buttons["capture-shutter-button"]
+        XCTAssertTrue(shutter.waitForExistence(timeout: 30))
+        XCTAssertTrue(shutter.isEnabled)
+        shutter.tap()
+
+        let captured = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "photo-asset-")
+        ).firstMatch
+        XCTAssertTrue(
+            captured.waitForExistence(timeout: 45),
+            "Bildet fra kameraet dukket ikke opp i filmstripen"
+        )
+        let verified = XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+                format: "(value CONTAINS[c] %@ OR value CONTAINS[c] %@) AND value CONTAINS[c] %@ AND value CONTAINS[c] %@",
+                "rawReady",
+                "fullReady",
+                "checksum verifisert",
+                "byte"
+            ),
+            object: captured
+        )
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [verified], timeout: 180),
+            .completed,
+            "Kameraoriginalen ble ikke bekreftet med byte-størrelse og SHA-256"
+        )
+        snap(app, name: "QA_Canon_R6_Mark_II_Photo_Captured")
+    }
+
     func testCanonVideoDemoRecordAndImport() {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()

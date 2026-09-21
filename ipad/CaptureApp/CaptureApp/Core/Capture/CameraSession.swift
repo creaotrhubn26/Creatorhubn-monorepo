@@ -13,6 +13,17 @@ import Foundation
 /// `CameraSession` is the top-level object the UI listens to. It never
 /// talks to the network directly — all I/O goes through the adapter.
 actor CameraSession {
+    struct AssetTransferProgress: Sendable, Equatable {
+        let assetId: UUID
+        let receivedBytes: Int64
+        let totalBytes: Int64?
+
+        var fractionCompleted: Double? {
+            guard let totalBytes, totalBytes > 0 else { return nil }
+            return min(1, max(0, Double(receivedBytes) / Double(totalBytes)))
+        }
+    }
+
     enum State: Sendable, Equatable {
         case disconnected
         case discovering
@@ -34,8 +45,10 @@ actor CameraSession {
 
     nonisolated let stateChanges: AsyncStream<State>
     nonisolated let telemetryUpdates: AsyncStream<CameraTelemetry>
+    nonisolated let downloadProgressUpdates: AsyncStream<AssetTransferProgress>
     private let stateContinuation: AsyncStream<State>.Continuation
     private let telemetryContinuation: AsyncStream<CameraTelemetry>.Continuation
+    private let downloadProgressContinuation: AsyncStream<AssetTransferProgress>.Continuation
 
     init(
         sessionId: UUID,
@@ -56,11 +69,16 @@ actor CameraSession {
             .makeStream(bufferingPolicy: .bufferingNewest(1))
         self.telemetryUpdates = telemetryStream
         self.telemetryContinuation = telemetryCont
+        let (progressStream, progressCont) = AsyncStream<AssetTransferProgress>
+            .makeStream(bufferingPolicy: .bufferingNewest(32))
+        self.downloadProgressUpdates = progressStream
+        self.downloadProgressContinuation = progressCont
     }
 
     deinit {
         stateContinuation.finish()
         telemetryContinuation.finish()
+        downloadProgressContinuation.finish()
     }
 
     func start() async throws {
@@ -68,7 +86,16 @@ actor CameraSession {
         pumpTask = Task { [weak self] in
             await self?.pumpAdapterEvents()
         }
-        try await adapter.start()
+        do {
+            try await adapter.start()
+        } catch {
+            // A failed first connection must not leave the session looking
+            // started. This matters when the camera is still releasing the
+            // Video live-view connection during a switch to Shoot/Foto.
+            pumpTask?.cancel()
+            pumpTask = nil
+            throw error
+        }
     }
 
     func stop() async {
@@ -86,7 +113,18 @@ actor CameraSession {
     /// adapter de-dupes per (assetId, kind), so re-enqueueing a pick that
     /// already has a download in flight is a no-op.
     func fetch(assetId: UUID, priority: IngestPriority) async throws {
-        try await adapter.fetch(assetId: assetId, priority: priority)
+        let pendingState: AssetState = switch priority {
+        case .preview: .previewPending
+        case .full: .fullPending
+        case .raw: .rawPending
+        }
+        try? await store.transitionAssetState(id: assetId, to: pendingState)
+        do {
+            try await adapter.fetch(assetId: assetId, priority: priority)
+        } catch {
+            try? await store.transitionAssetState(id: assetId, to: .failedTransient)
+            throw error
+        }
     }
 
     func setStoragePolicy(_ policy: Asset.StoragePolicy) {
@@ -185,9 +223,14 @@ actor CameraSession {
                 metadata: ["kind": kind.rawValue, "error": String(describing: error)],
             )
 
-        case .downloadProgress:
-            // Progress is UI-only; not persisted to the event log.
-            break
+        case let .downloadProgress(assetId, bytesDownloaded, totalBytes):
+            // Byte progress is deliberately UI-only; the `.partial` file is
+            // the durable resume source, while the event log stays compact.
+            downloadProgressContinuation.yield(.init(
+                assetId: assetId,
+                receivedBytes: bytesDownloaded,
+                totalBytes: totalBytes
+            ))
 
         case let .telemetryUpdated(telemetry):
             // Forward verbatim; consumers accumulate (partial diffs).

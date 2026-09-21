@@ -98,6 +98,20 @@ final class CCAPILiveSmokeTests: XCTestCase {
             adapter: adapter,
             store: store
         )
+        let progressTask = Task {
+            for await progress in cameraSession.downloadProgressUpdates {
+                guard let total = progress.totalBytes, total > 0 else { continue }
+                let percent = Int(Double(progress.receivedBytes) / Double(total) * 100)
+                if percent == 100 || percent % 10 == 0 {
+                    print("LIVE · original progress: \(percent)% (\(progress.receivedBytes)/\(total))")
+                }
+            }
+        }
+        defer {
+            progressTask.cancel()
+            Task { await cameraSession.stop() }
+            try? FileManager.default.removeItem(at: tempDir)
+        }
 
         try await cameraSession.start()
         // Let the polling loop settle and drain the initial snapshot.
@@ -123,14 +137,42 @@ final class CCAPILiveSmokeTests: XCTestCase {
             try? await Task.sleep(for: .milliseconds(300))
         }
 
-        await cameraSession.stop()
-        try? FileManager.default.removeItem(at: tempDir)
-
         XCTAssertNotNil(captured, "shutter-triggered asset did not land in SessionStore within 30s")
         if let asset = captured {
             print("LIVE · captured+persisted: name=\(asset.originalFilename) state=\(asset.state.rawValue) previewKey=\(asset.previewKey ?? "nil")")
             XCTAssertFalse(asset.originalFilename.isEmpty)
+            let priority: IngestPriority = ["cr3", "cr2"].contains(
+                (asset.originalFilename as NSString).pathExtension.lowercased()
+            ) ? .raw : .full
+            try await cameraSession.fetch(assetId: asset.id, priority: priority)
+
+            let originalDeadline = Date().addingTimeInterval(180)
+            while Date() < originalDeadline {
+                if let refreshed = try await store.fetchAsset(id: asset.id) {
+                    captured = refreshed
+                    if refreshed.state == .rawReady || refreshed.state == .fullReady {
+                        break
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+
+            let original = try XCTUnwrap(captured)
+            guard original.state == .rawReady || original.state == .fullReady else {
+                XCTFail("camera original did not complete: \(original.state.rawValue)")
+                return
+            }
+            let originalBytes = try XCTUnwrap(original.sizeBytes)
+            XCTAssertGreaterThan(originalBytes, 0)
+            let originalChecksum = try XCTUnwrap(original.checksumSha256)
+            XCTAssertEqual(originalChecksum.count, 64)
+            let originalPath = try XCTUnwrap(original.rawKey ?? original.fullKey)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: originalPath))
+            print("LIVE · original verified: bytes=\(original.sizeBytes ?? 0) sha256=\(original.checksumSha256 ?? "nil")")
         }
+
+        await cameraSession.stop()
+        try? FileManager.default.removeItem(at: tempDir)
 
         // Verify the event log captured the transitions we expect.
         let events = try await store.listEvents(sessionId: dbSession.id)

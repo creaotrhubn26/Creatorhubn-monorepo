@@ -80,6 +80,12 @@ struct LiveCaptureView: View {
                 withAnimation(.easeInOut(duration: 0.35)) { showConnectedConfirmation = false }
             }
         }
+        // TabView keeps neighbouring tabs alive. Explicitly releasing Photo's
+        // CCAPI session prevents Photo polling and Video live view from
+        // competing for the same Canon HTTP stack after a tab switch.
+        .onDisappear {
+            Task { await model.suspendCameraForWorkspaceSwitch() }
+        }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $isSettingsPresented) {
             SettingsSheet(
@@ -643,6 +649,7 @@ struct LiveCaptureView: View {
                 focusedAssetId: model.focusedAssetId,
                 compareAnchorId: model.compareAnchorAssetId,
                 assetIdsWithReviews: model.clientReviewsEnabled ? model.assetIdsWithReviews : [],
+                downloadProgress: model.photoDownloadProgress,
                 autoEditedIds: model.autoEditedAssetIds,
                 axis: axis,
                 onSelect: { model.focusedAssetId = $0.id },
@@ -709,7 +716,8 @@ private struct DisconnectedOverlay: View {
     @StateObject private var discovery = CameraDiscovery()
     @FocusState private var urlFocused: Bool
 
-    private var canConnect: Bool { URL(string: url)?.host != nil }
+    private var normalizedURL: URL? { CCAPICameraAddress.normalize(url) }
+    private var canConnect: Bool { normalizedURL != nil }
 
     /// Hero går grønt når et kamera er funnet. `--hero-linked` tvinger grønt for
     /// QA/skjermbilde (DEBUG).
@@ -829,7 +837,9 @@ private struct DisconnectedOverlay: View {
             .frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 Text(found ? (discovery.cameras.count == 1 ? "Kamera funnet" : "\(discovery.cameras.count) kameraer funnet")
-                     : (discovery.isSearching ? "Søker etter kameraer…" : "Klar til å søke"))
+                     : (discovery.isCheckingRecentCamera
+                        ? "Prøver sist brukte kamera…"
+                        : (discovery.isSearching ? "Søker etter kameraer…" : "Klar til å søke")))
                     .font(.headline).foregroundStyle(.white)
                 Text(found ? "Velg kameraet under, eller trykk Koble til."
                      : "Kontroller at kameraet er på, koblet til samme nettverk og at CCAPI er aktivert.")
@@ -837,10 +847,23 @@ private struct DisconnectedOverlay: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            HStack(spacing: 5) {
-                Circle().fill(discovery.permissionDenied ? Color.orange : Color.captureSuccess).frame(width: 7, height: 7)
-                Text(discovery.permissionDenied ? "Ingen tilgang" : "Nettverk OK")
-                    .font(.caption2).foregroundStyle(Color.captureTextSecondary)
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 5) {
+                    Circle().fill(discovery.permissionDenied ? Color.orange : Color.captureSuccess).frame(width: 7, height: 7)
+                    Text(discovery.permissionDenied ? "Ingen tilgang" : "Nettverk OK")
+                        .font(.caption2).foregroundStyle(Color.captureTextSecondary)
+                }
+                if !found && !discovery.isSearching && !discovery.permissionDenied {
+                    Button {
+                        discovery.refresh()
+                    } label: {
+                        Label("Søk på nytt", systemImage: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.captureAccent)
+                    .accessibilityIdentifier("photo-camera-refresh")
+                }
             }
         }
         .padding(14)
@@ -872,11 +895,12 @@ private struct DisconnectedOverlay: View {
                     .focused($urlFocused)
                     .submitLabel(.go)
                     .onSubmit(connect)
+                    .accessibilityIdentifier("photo-direct-address")
             }
             .padding(14)
             .background(Color.captureDeepBG.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.captureBorder.opacity(0.6), lineWidth: 1))
-            Text("F.eks. https://192.168.1.2")
+            Text("F.eks. 192.168.1.2:8080 eller adressen som vises på kameraet")
                 .font(.caption2).foregroundStyle(Color.captureTextMuted)
         }
     }
@@ -884,12 +908,24 @@ private struct DisconnectedOverlay: View {
     // MARK: - Status / funnet kameraer
 
     private var statusPill: some View {
-        HStack(spacing: 8) {
-            Image(systemName: lastError == nil ? "info.circle" : "exclamationmark.triangle.fill")
-                .foregroundStyle(lastError == nil ? Color.captureTextMuted : .orange)
-            Text(lastError ?? "Ingen kamera funnet ennå")
-                .font(.caption).foregroundStyle(Color.captureTextSecondary)
-                .lineLimit(2)
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: lastError == nil ? "info.circle" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(lastError == nil ? Color.captureTextMuted : .orange)
+                Text(lastError ?? "Ingen kamera funnet ennå")
+                    .font(.caption).foregroundStyle(Color.captureTextSecondary)
+                    .lineLimit(3)
+            }
+            if lastError != nil, let cameraURL = normalizedURL {
+                Button("Glem lagret kameratillit og prøv igjen") {
+                    CCAPICameraPreference.forgetTrust(for: cameraURL)
+                    discovery.refresh()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.captureAccent)
+                .accessibilityIdentifier("photo-forget-camera-trust")
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Color.captureChipBG, in: Capsule())
@@ -930,6 +966,7 @@ private struct DisconnectedOverlay: View {
         }
         .buttonStyle(.plain)
         .disabled(isConnecting || !canConnect)
+        .accessibilityIdentifier("photo-direct-connect")
     }
 
     private var demoButton: some View {
@@ -954,7 +991,8 @@ private struct DisconnectedOverlay: View {
     }
 
     private func connect() {
-        guard let resolved = URL(string: url), resolved.host != nil else { return }
+        guard let resolved = normalizedURL else { return }
+        url = resolved.absoluteString
         urlFocused = false
         onConnect(resolved)
     }
@@ -1086,6 +1124,7 @@ private struct DiscoveredCameraCard: View {
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.captureSuccess.opacity(0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("photo-camera-\(camera.id)")
     }
 }
 
@@ -1319,7 +1358,7 @@ private struct StatusBar: View {
                 HStack(spacing: 6) {
                     Image(systemName: projectTitle == nil ? "folder.badge.plus" : "folder.fill")
                         .font(.caption.weight(.semibold))
-                    Text(projectTitle ?? "No project")
+                    Text(projectTitle ?? "Velg prosjekt")
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -1561,13 +1600,13 @@ private struct ConnectionBadge: View {
 
     private var label: String {
         switch state {
-        case .disconnected:             return "Disconnected"
-        case .discovering:              return "Discovering"
-        case .pairing:                  return "Pairing"
-        case .ready:                    return "Ready"
-        case .shooting:                 return "Shooting"
-        case let .reconnecting(n):      return "Reconnecting · attempt \(n)"
-        case let .error(msg):           return "Error — \(msg)"
+        case .disconnected:             return "Frakoblet"
+        case .discovering:              return "Søker"
+        case .pairing:                  return "Kobler til"
+        case .ready:                    return "Klar"
+        case .shooting:                 return "Opptak"
+        case let .reconnecting(n):      return "Kobler til igjen · forsøk \(n)"
+        case let .error(msg):           return "Feil — \(msg)"
         }
     }
 
@@ -4276,19 +4315,19 @@ private struct AssetStateBadge: View {
 
     private var title: String {
         switch state {
-        case .anticipated:      return "Anticipated"
-        case .previewPending:   return "Downloading"
-        case .previewReady:     return "Preview ready"
-        case .fullPending:      return "Fetching full"
-        case .fullReady:        return "Full ready"
-        case .rawPending:       return "Fetching RAW"
-        case .rawReady:         return "RAW ready"
-        case .syncPending:      return "Sync queued"
-        case .syncInProgress:   return "Syncing"
-        case .syncComplete:     return "Synced"
-        case .verified:         return "Verified"
-        case .failedTransient:  return "Retry pending"
-        case .failedPermanent:  return "Failed"
+        case .anticipated:      return "Forventet"
+        case .previewPending:   return "Henter preview"
+        case .previewReady:     return "Preview klar"
+        case .fullPending:      return "Henter original"
+        case .fullReady:        return "Original klar"
+        case .rawPending:       return "Henter RAW"
+        case .rawReady:         return "RAW klar"
+        case .syncPending:      return "Venter på synk"
+        case .syncInProgress:   return "Synkroniserer"
+        case .syncComplete:     return "Synkronisert"
+        case .verified:         return "Verifisert"
+        case .failedTransient:  return "Prøver igjen"
+        case .failedPermanent:  return "Feilet"
         }
     }
 
@@ -4575,6 +4614,7 @@ private struct FilmstripRail: View {
     let focusedAssetId: UUID?
     let compareAnchorId: UUID?
     let assetIdsWithReviews: Set<UUID>
+    let downloadProgress: [UUID: CameraSession.AssetTransferProgress]
     /// Bilder capture-edit-policyen auto-redigerte → «Auto»-badge (E4).
     var autoEditedIds: Set<UUID> = []
     var axis: Axis.Set = .horizontal
@@ -4635,6 +4675,7 @@ private struct FilmstripRail: View {
             isFocused: asset.id == focusedAssetId,
             isCompareAnchor: asset.id == compareAnchorId,
             hasReviews: assetIdsWithReviews.contains(asset.id),
+            downloadProgress: downloadProgress[asset.id],
             lightChanged: idx > 0 && ExifInfo.lightChanged(
                 previousFired: assets[idx - 1].signals.flashFired,
                 previousComp: assets[idx - 1].signals.flashCompensation,
@@ -4655,6 +4696,7 @@ private struct FilmstripTile: View {
     let isFocused: Bool
     var isCompareAnchor: Bool = false
     var hasReviews: Bool = false
+    var downloadProgress: CameraSession.AssetTransferProgress?
     /// «Lys endret» vs forrige bilde (blits fyrte/kompensasjon endret) — varsler
     /// fotografen når assistenten bumpet blitsen mellom to formals.
     var lightChanged: Bool = false
@@ -4875,8 +4917,50 @@ private struct FilmstripTile: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(isFocused ? .primary : .secondary)
+            if let transferLabel {
+                HStack(spacing: 5) {
+                    ProgressView(value: downloadProgress?.fractionCompleted ?? 0)
+                        .progressViewStyle(.linear)
+                        .tint(Color.captureAccent)
+                    Text(transferLabel)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.captureTextSecondary)
+                        .lineLimit(1)
+                }
+            }
         }
         .frame(width: 156)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(asset.originalFilename)
+        .accessibilityValue(accessibilityStatus)
+        .accessibilityIdentifier("photo-asset-\(asset.id.uuidString)")
+    }
+
+    private var accessibilityStatus: String {
+        var parts = [asset.state.rawValue]
+        if let size = asset.sizeBytes, size > 0 { parts.append("\(size) byte") }
+        if asset.checksumSha256 != nil { parts.append("checksum verifisert") }
+        switch asset.cloudState {
+        case .secured: parts.append("sikret i CreatorHub")
+        case .uploading: parts.append("laster opp")
+        case .failed: parts.append("opplasting feilet")
+        case .waitingForProject: parts.append("venter på prosjekt")
+        case .queued: parts.append("i kø")
+        case .local: parts.append("lokal")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private var transferLabel: String? {
+        guard asset.state == .rawPending || asset.state == .fullPending,
+              let progress = downloadProgress
+        else { return nil }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        let received = formatter.string(fromByteCount: progress.receivedBytes)
+        guard let total = progress.totalBytes, total > 0 else { return received }
+        let percent = Int((progress.fractionCompleted ?? 0) * 100)
+        return "\(percent)% · \(received) / \(formatter.string(fromByteCount: total))"
     }
 
     private var overlayColor: Color {
@@ -6307,6 +6391,10 @@ final class LiveCaptureModel {
     private var currentSessionId: UUID?
     private var photoBackupTasks: [UUID: Task<Void, Never>] = [:]
     private var photoOriginalFetchRequested: Set<UUID> = []
+    /// Live byte progress for the camera→iPad original transfer. The durable
+    /// resume state is the adapter's `.partial` file; this dictionary exists
+    /// only to make the current transfer legible in the filmstrip.
+    var photoDownloadProgress: [UUID: CameraSession.AssetTransferProgress] = [:]
     private var photoStorageUsageTask: Task<Void, Never>?
     private var photoTransferConfirmationTask: Task<Void, Never>?
     private let analyser = ImageAnalyser()
@@ -6437,6 +6525,7 @@ final class LiveCaptureModel {
     /// while still on-set.
     private var realtimeService: RealtimeEventService?
     private var realtimeObserverId: UUID?
+    private var realtimeSetupTask: Task<Void, Never>?
 
     /// Phase 5.3 — multi-photographer presence. Tracks every other
     /// photographer currently connected to this session. Self-events
@@ -6725,6 +6814,10 @@ final class LiveCaptureModel {
 
     func connect(to baseURL: URL) async {
         guard cameraSession == nil else { return }
+        guard let baseURL = CCAPICameraAddress.normalize(baseURL) else {
+            errorMessage = "Ugyldig kameraadresse. Bruk IP-adressen eller hele CCAPI-adressen fra kameraet."
+            return
+        }
         isConnecting = true
         errorMessage = nil
         refreshPhase()
@@ -6741,6 +6834,17 @@ final class LiveCaptureModel {
         #endif
         let client = CCAPIClient(baseURL: baseURL, session: urlSession)
         do {
+            // Verify the network endpoint before creating a persistent shoot
+            // session. This avoids empty archive rows after a typo or a camera
+            // that is still busy releasing Video live view.
+            _ = try await client.connect()
+            let verifiedDevice = try? await client.deviceInformation()
+            try CCAPICameraIdentityStore().validateAndRemember(
+                baseURL: baseURL,
+                serial: verifiedDevice?.serialnumber
+            )
+            CCAPICameraPreference.remember(baseURL)
+
             // PERSISTENS: tethered økter skrives til den delte disk-DB-en (samme
             // som Redigering/Arkiv/kortimport leser) + en persistent per-økt-
             // katalog — IKKE lenger en in-memory-DB + temporaryDirectory som
@@ -6813,41 +6917,62 @@ final class LiveCaptureModel {
                 withIntermediateDirectories: true,
             )
 
-            // Phase 4 — start the user-scoped realtime socket so
-            // client `asset.hearted` / `asset.commented` events land
-            // in `recentClientReviews` while the photographer is
-            // still on-set. Skipped when not signed in (offline mode
-            // keeps the rest of the app functional; reviews simply
-            // never arrive until next sign-in).
+            // Camera connectivity is the critical path. In particular, a
+            // Canon access-point network often has no internet route, so a
+            // backend ticket request must never delay or prevent CCAPI.
+            try await camera.start()
+            schedulePhotoStorageUsageRefresh()
+
+            if let verifiedDevice {
+                deviceSummary = DeviceSummary(
+                    productName: CCAPICameraName.displayName(
+                        deviceName: verifiedDevice.productname,
+                        fallback: verifiedDevice.productname
+                    ),
+                    firmware: verifiedDevice.firmwareversion ?? "—",
+                    serial: verifiedDevice.serialnumber,
+                    mac: verifiedDevice.macaddress
+                )
+            }
+
+            // Phase 4 — realtime client feedback is additive and starts in
+            // the background after the camera is ready. It will reconnect
+            // when internet becomes available without blocking Foto/Shoot.
             if let session = SignInService.shared.session,
                let realtimeBackend = self.backendClient {
                 let realtime = RealtimeEventService()
                 self.realtimeService = realtime
                 let wsURL = session.backendBaseURL.appendingPathComponent("/api/ipad/ws/events")
-                await realtime.start(url: wsURL) {
-                    try await realtimeBackend.createRealtimeTicket()
-                }
-                let observerId = await realtime.addObserver { [weak self] event in
-                    Task { @MainActor in
-                        self?.recordClientReview(event)
+                realtimeSetupTask?.cancel()
+                realtimeSetupTask = Task { [weak self] in
+                    await realtime.start(url: wsURL) {
+                        try await realtimeBackend.createRealtimeTicket()
                     }
-                }
-                self.realtimeObserverId = observerId
-                // Phase 5.3 — announce presence so other iPads in
-                // this session add an avatar for us. Fire-and-forget;
-                // server retries the broadcast naturally on the next
-                // markPresent heartbeat.
-                if let backend = self.backendClient {
-                    Task { [backend, sessionId = dbSession.id, name = session.displayName] in
-                        try? await backend.broadcastPresence(
-                            sessionId: sessionId, joining: true, displayName: name,
+                    guard !Task.isCancelled else {
+                        await realtime.stop()
+                        return
+                    }
+                    let observerId = await realtime.addObserver { [weak self] event in
+                        Task { @MainActor in
+                            self?.recordClientReview(event)
+                        }
+                    }
+                    guard !Task.isCancelled else {
+                        await realtime.removeObserver(observerId)
+                        await realtime.stop()
+                        return
+                    }
+                    self?.realtimeObserverId = observerId
+                    // Phase 5.3 — announce presence without delaying capture.
+                    Task { [realtimeBackend, sessionId = dbSession.id, name = session.displayName] in
+                        try? await realtimeBackend.broadcastPresence(
+                            sessionId: sessionId,
+                            joining: true,
+                            displayName: name,
                         )
                     }
                 }
             }
-
-            try await camera.start()
-            schedulePhotoStorageUsageRefresh()
 
             #if DEBUG
             // Run the demo enhancer for every DEBUG connection — lets us
@@ -6865,7 +6990,10 @@ final class LiveCaptureModel {
                 if let info = try? await client.deviceInformation() {
                     await MainActor.run {
                         self?.deviceSummary = DeviceSummary(
-                            productName: info.productname,
+                            productName: CCAPICameraName.displayName(
+                                deviceName: info.productname,
+                                fallback: info.productname
+                            ),
                             firmware: info.firmwareversion ?? "—",
                             serial: info.serialnumber,
                             mac: info.macaddress
@@ -6896,13 +7024,28 @@ final class LiveCaptureModel {
                     await MainActor.run { self?.mergeTelemetry(diff) }
                 }
             }
-            forwardingTasks = [stateTask, assetsTask, telemetryTask]
+            let progressStream = camera.downloadProgressUpdates
+            let progressTask = Task { [weak self] in
+                for await progress in progressStream {
+                    await MainActor.run {
+                        guard let self else { return }
+                        if let total = progress.totalBytes,
+                           total > 0,
+                           progress.receivedBytes >= total {
+                            self.photoDownloadProgress.removeValue(forKey: progress.assetId)
+                        } else {
+                            self.photoDownloadProgress[progress.assetId] = progress
+                        }
+                    }
+                }
+            }
+            forwardingTasks = [stateTask, assetsTask, telemetryTask, progressTask]
 
             isConnecting = false
             refreshPhase()
         } catch {
             isConnecting = false
-            errorMessage = "Couldn't reach camera: \(error.localizedDescription)"
+            errorMessage = "Kunne ikke koble til kameraet: \(error.localizedDescription)"
             await teardown()
         }
     }
@@ -6913,6 +7056,14 @@ final class LiveCaptureModel {
         }
         resetActiveShotCard()   // ny opptaksøkt neste gang ⇒ ferskt kort
         await teardown()
+    }
+
+    /// Workspace hand-off is intentionally identical to a user disconnect:
+    /// bytes and DB rows stay on disk, while network tasks and the camera HTTP
+    /// connection are released before Video acquires live view.
+    func suspendCameraForWorkspaceSwitch() async {
+        guard cameraSession != nil || isConnecting else { return }
+        await disconnect()
     }
 
     func triggerShutter() async {
@@ -8945,6 +9096,7 @@ final class LiveCaptureModel {
         for task in photoBackupTasks.values { task.cancel() }
         photoBackupTasks.removeAll()
         photoOriginalFetchRequested.removeAll()
+        photoDownloadProgress.removeAll()
         photoStorageUsageTask?.cancel()
         photoStorageUsageTask = nil
         photoTransferConfirmationTask?.cancel()
@@ -8998,6 +9150,8 @@ final class LiveCaptureModel {
         voiceMemoService?.reset()
         voiceMemoService = nil
         replyMemosDirectory = nil
+        realtimeSetupTask?.cancel()
+        realtimeSetupTask = nil
         if let realtime = realtimeService, let observerId = realtimeObserverId {
             Task { await realtime.removeObserver(observerId) }
         }

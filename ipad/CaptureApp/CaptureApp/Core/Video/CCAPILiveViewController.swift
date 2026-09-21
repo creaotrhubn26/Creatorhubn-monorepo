@@ -125,20 +125,7 @@ final class CCAPILiveViewController {
     }
 
     static func normalizedCameraURL(_ rawAddress: String) -> URL? {
-        let trimmed = rawAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let withScheme = trimmed.contains("://") ? trimmed : "http://\(trimmed)"
-        guard var components = URLComponents(string: withScheme),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              components.host != nil
-        else { return nil }
-        if ["/", "/ccapi", "/ccapi/"].contains(components.path) {
-            components.path = ""
-        }
-        components.query = nil
-        components.fragment = nil
-        return components.url
+        CCAPICameraAddress.normalize(rawAddress)
     }
 
     func select(_ camera: CameraDiscovery.Found) async {
@@ -176,6 +163,12 @@ final class CCAPILiveViewController {
         self.client = client
         do {
             _ = try await client.connect()
+            let identity = try? await client.deviceInformation()
+            try CCAPICameraIdentityStore().validateAndRemember(
+                baseURL: camera.baseURL,
+                serial: identity?.serialnumber ?? camera.serial
+            )
+            CCAPICameraPreference.remember(camera.baseURL)
             guard shouldMaintainConnection,
                   selectedCameraId == camera.id,
                   !Task.isCancelled

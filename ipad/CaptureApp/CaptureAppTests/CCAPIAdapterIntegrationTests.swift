@@ -146,4 +146,51 @@ final class CCAPIAdapterIntegrationTests: XCTestCase {
         await adapter.stop()
         XCTAssertTrue(found, "expected IMG_0003.JPG to surface via polling. url=\(newURL)")
     }
+
+    func testRawOriginalDownloadsInRangesAndVerifiesChecksum() async throws {
+        let path = "/ccapi/ver120/contents/sd/100CANON/LARGE_0001.CR3"
+        let expected = Data(repeating: 0x5a, count: 2_500_123)
+        _ = camera.simulateCapture(filename: "LARGE_0001.CR3", body: expected)
+        let assetId = CCAPIAdapter.deterministicUUID(for: path)
+        let adapter = try makeAdapter()
+        let scan = Task<(URL?, String?, [Int64]), Never> { [events = adapter.events] in
+            var progress: [Int64] = []
+            for await event in events {
+                switch event {
+                case let .downloadProgress(id, bytes, _) where id == assetId:
+                    progress.append(bytes)
+                case let .downloadCompleted(id, kind, url, checksum)
+                    where id == assetId && kind == .raw:
+                    return (url, checksum, progress)
+                default:
+                    continue
+                }
+            }
+            return (nil, nil, progress)
+        }
+
+        try await adapter.start()
+        try await adapter.fetch(assetId: assetId, priority: .raw)
+        let result = await withTaskGroup(of: (URL?, String?, [Int64]).self) { group in
+            group.addTask { await scan.value }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(8))
+                scan.cancel()
+                return (nil, nil, [])
+            }
+            let first = await group.next() ?? (nil, nil, [])
+            group.cancelAll()
+            return first
+        }
+        await adapter.stop()
+
+        let fileURL = try XCTUnwrap(result.0)
+        XCTAssertEqual(try Data(contentsOf: fileURL), expected)
+        XCTAssertEqual(result.1?.count, 64)
+        XCTAssertGreaterThanOrEqual(
+            result.2.filter { $0 > 0 && $0 < Int64(expected.count) }.count,
+            2,
+            "large originals should expose multiple resumable byte ranges"
+        )
+    }
 }

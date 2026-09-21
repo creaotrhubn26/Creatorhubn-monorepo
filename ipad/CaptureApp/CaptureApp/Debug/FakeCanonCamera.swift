@@ -157,18 +157,61 @@ final class FakeCanonCamera: @unchecked Sendable {
             let bodyIgnoringQuery = contentBodies[url.path]
             lock.unlock()
             if let body = bodyIgnoringQuery {
-                return MockURLProtocol.binaryResponse(for: url, body: body)
+                return rangedContentResponse(for: request, url: url, body: body)
             }
             // Treat any other path as a content download if we have bytes for it.
             lock.lock()
             let body = contentBodies[pathWithQuery]
             lock.unlock()
             if let body {
-                return MockURLProtocol.binaryResponse(for: url, body: body)
+                return rangedContentResponse(for: request, url: url, body: body)
             }
             let resp = HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: nil)!
             return (resp, Data("not found: \(pathWithQuery)".utf8))
         }
+    }
+
+    /// Mirrors Canon's byte-range response closely enough that integration
+    /// tests exercise the same resumable path used for physical CR3 files.
+    private func rangedContentResponse(
+        for request: URLRequest,
+        url: URL,
+        body: Data
+    ) -> (HTTPURLResponse, Data) {
+        guard let header = request.value(forHTTPHeaderField: "Range"),
+              header.hasPrefix("bytes=")
+        else { return MockURLProtocol.binaryResponse(for: url, body: body) }
+
+        let bounds = header.dropFirst("bytes=".count).split(separator: "-", maxSplits: 1)
+        guard bounds.count == 2,
+              let start = Int(bounds[0]),
+              let requestedEnd = Int(bounds[1]),
+              start >= 0,
+              start < body.count,
+              requestedEnd >= start
+        else {
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 416,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Range": "bytes */\(body.count)"]
+            )!
+            return (response, Data())
+        }
+        let end = min(requestedEnd, body.count - 1)
+        let chunk = body.subdata(in: start..<(end + 1))
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: 206,
+            httpVersion: "HTTP/1.1",
+            headerFields: [
+                "Content-Type": "application/octet-stream",
+                "Content-Length": "\(chunk.count)",
+                "Content-Range": "bytes \(start)-\(end)/\(body.count)",
+                "Accept-Ranges": "bytes",
+            ]
+        )!
+        return (response, chunk)
     }
 
     /// Canon pagination: `?kind=number` → totals, `?kind=list&page=N` → slice

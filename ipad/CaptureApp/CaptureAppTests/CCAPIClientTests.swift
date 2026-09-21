@@ -2,6 +2,27 @@ import XCTest
 @testable import CaptureApp
 
 final class CCAPIInventoryTests: XCTestCase {
+    func testContentRangeReportsCompleteOriginalSize() throws {
+        let url = try XCTUnwrap(URL(string: "https://192.168.1.16/content.CR3"))
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: url,
+            statusCode: 206,
+            httpVersion: "HTTP/1.1",
+            headerFields: [
+                "Content-Length": "1048576",
+                "Content-Range": "bytes 1048576-2097151/32781458",
+            ]
+        ))
+        XCTAssertEqual(
+            CCAPIClient.totalContentLength(
+                response: response,
+                receivedBytes: 1_048_576,
+                acceptedRange: true
+            ),
+            32_781_458
+        )
+    }
+
     func testDecodesVersionedInventory() throws {
         // R6 Mark II wire format: top-level dict keyed by version string,
         // each value is the endpoint array for that version.
@@ -171,6 +192,58 @@ final class CCAPIInventoryTests: XCTestCase {
         )
         XCTAssertNil(CCAPILiveViewController.normalizedCameraURL("ftp://192.168.1.42"))
         XCTAssertNil(CCAPILiveViewController.normalizedCameraURL(""))
+        XCTAssertNil(CCAPICameraAddress.normalize("https://192.168.1.42/not-ccapi"))
+    }
+
+    @MainActor
+    func testPhotoAndVideoShareCanonicalCameraOrigin() throws {
+        let displayedByCamera = "  https://192.168.1.6:443/ccapi  "
+        let canonical = try XCTUnwrap(CCAPICameraAddress.normalize(displayedByCamera))
+
+        XCTAssertEqual(canonical.absoluteString, "https://192.168.1.6:443")
+        XCTAssertEqual(
+            canonical,
+            CCAPILiveViewController.normalizedCameraURL(displayedByCamera),
+            "Shoot/Foto og Video må bruke samme Canon-origin"
+        )
+    }
+
+    func testCanonProductNameIsNormalizedForPeopleAndSorting() {
+        XCTAssertEqual(
+            CCAPICameraName.displayName(deviceName: "EOS R6m2", fallback: "192.168.1.16"),
+            "Canon EOS R6 Mark II"
+        )
+        XCTAssertEqual(
+            CCAPICameraName.displayName(deviceName: nil, fallback: "Studio B"),
+            "Studio B"
+        )
+    }
+
+    func testCameraSerialPairingRejectsDifferentBodyAtSameAddress() throws {
+        let suite = "CCAPICameraIdentityStoreTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CCAPICameraIdentityStore(defaults: defaults)
+        let url = try XCTUnwrap(URL(string: "https://192.168.1.16"))
+
+        XCTAssertNoThrow(try store.validateAndRemember(baseURL: url, serial: "R6-ONE"))
+        XCTAssertNoThrow(try store.validateAndRemember(baseURL: url, serial: "R6-ONE"))
+        XCTAssertThrowsError(try store.validateAndRemember(baseURL: url, serial: "R6-TWO"))
+        store.forget(baseURL: url)
+        XCTAssertNoThrow(try store.validateAndRemember(baseURL: url, serial: "R6-TWO"))
+    }
+
+    func testCameraCertificateTrustOnFirstUseRejectsSubstitution() throws {
+        let suite = "CCAPICertificatePinStoreTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CCAPICertificatePinStore(defaults: defaults)
+
+        XCTAssertTrue(store.matchesOrStoresFirstUse(Data("cert-a".utf8), host: "192.168.1.16"))
+        XCTAssertTrue(store.matchesOrStoresFirstUse(Data("cert-a".utf8), host: "192.168.1.16"))
+        XCTAssertFalse(store.matchesOrStoresFirstUse(Data("cert-b".utf8), host: "192.168.1.16"))
+        store.forget(host: "192.168.1.16")
+        XCTAssertTrue(store.matchesOrStoresFirstUse(Data("cert-b".utf8), host: "192.168.1.16"))
     }
 
     @MainActor

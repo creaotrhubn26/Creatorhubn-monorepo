@@ -19,7 +19,7 @@ struct VideoCaptureView: View {
     @State private var showProjectPicker = false
     @State private var auxiliaryPanel: AuxiliaryPanel?
     @State private var playbackRequest: VideoPlaybackRequest?
-    @State private var canonAddress = ""
+    @AppStorage("capture.lastCameraURL") private var canonAddress = ""
     @State private var referenceImageItem: PhotosPickerItem?
     @State private var referenceImage: UIImage?
     @AppStorage("video.monitor.orientation") private var monitorOrientationRaw = VideoMonitorOrientation.automatic.rawValue
@@ -283,6 +283,7 @@ struct VideoCaptureView: View {
 
                     ForEach(model.canon.cameras) { camera in
                         Button {
+                            canonAddress = camera.baseURL.absoluteString
                             Task { await model.selectCanonCamera(camera) }
                         } label: {
                             HStack(spacing: 10) {
@@ -334,7 +335,9 @@ struct VideoCaptureView: View {
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(CHTheme.borderSoft))
                             .accessibilityIdentifier("canon-direct-address")
                         Button {
-                            Task { await model.connectCanon(address: canonAddress) }
+                            guard let normalized = CCAPICameraAddress.normalize(canonAddress) else { return }
+                            canonAddress = normalized.absoluteString
+                            Task { await model.connectCanon(address: normalized.absoluteString) }
                         } label: {
                             Label("Koble til", systemImage: "link")
                                 .frame(maxWidth: .infinity)

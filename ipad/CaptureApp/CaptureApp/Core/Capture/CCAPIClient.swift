@@ -1,5 +1,119 @@
 import Foundation
 
+/// Canon displays a full `/ccapi` URL on the camera while users commonly
+/// enter only an IP address. Keep every CreatorHub camera surface on the same
+/// canonical origin so versioned CCAPI paths are never appended twice.
+enum CCAPICameraAddress {
+    static func normalize(_ rawAddress: String) -> URL? {
+        let trimmed = rawAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let withScheme = trimmed.contains("://") ? trimmed : "http://\(trimmed)"
+        guard var components = URLComponents(string: withScheme),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.host != nil
+        else { return nil }
+
+        if ["", "/", "/ccapi", "/ccapi/"].contains(components.path) {
+            components.path = ""
+        } else {
+            // A camera base address is an origin, not an arbitrary web path.
+            return nil
+        }
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    static func normalize(_ url: URL) -> URL? {
+        normalize(url.absoluteString)
+    }
+}
+
+/// Shared, deliberately small persistence boundary for both the Photo and
+/// Video CCAPI surfaces. Keeping the key here prevents the two workspaces
+/// from drifting back to separate "last camera" implementations.
+enum CCAPICameraPreference {
+    static let lastCameraURLKey = "capture.lastCameraURL"
+
+    static var lastCameraURL: URL? {
+        guard let value = UserDefaults.standard.string(forKey: lastCameraURLKey) else {
+            return nil
+        }
+        return CCAPICameraAddress.normalize(value)
+    }
+
+    static func remember(_ baseURL: URL) {
+        guard let canonical = CCAPICameraAddress.normalize(baseURL) else { return }
+        UserDefaults.standard.set(canonical.absoluteString, forKey: lastCameraURLKey)
+    }
+
+    static func forgetTrust(for baseURL: URL) {
+        CCAPICameraIdentityStore().forget(baseURL: baseURL)
+        if let host = baseURL.host {
+            CCAPICertificatePinStore.shared.forget(host: host)
+        }
+    }
+}
+
+/// Canon's product-name spelling is not consistent between camera families.
+/// Present one professional, sortable name while preserving the raw value for
+/// logs and identity checks.
+enum CCAPICameraName {
+    static func displayName(deviceName: String?, fallback: String) -> String {
+        let raw = (deviceName?.isEmpty == false ? deviceName! : fallback)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let aliases = [
+            "EOS R6m2": "Canon EOS R6 Mark II",
+            "Canon EOS R6m2": "Canon EOS R6 Mark II",
+            "EOS R6 Mark II": "Canon EOS R6 Mark II",
+            "EOS R5": "Canon EOS R5",
+        ]
+        return aliases[raw] ?? raw
+    }
+}
+
+/// Host-to-serial pairing adds a stable camera identity on top of the
+/// host-scoped TLS certificate pin. It catches an unexpected body taking over
+/// an address even when the local network reuses an IP.
+struct CCAPICameraIdentityStore {
+    enum Failure: LocalizedError, Equatable {
+        case serialChanged(expected: String, actual: String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .serialChanged(expected, actual):
+                "Kameraidentiteten er endret (forventet serienummer \(expected), fikk \(actual)). Glem kameraet før du kobler til et annet på samme adresse."
+            }
+        }
+    }
+
+    private let defaults: UserDefaults
+    private let keyPrefix = "capture.ccapi.serial."
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func validateAndRemember(baseURL: URL, serial: String?) throws {
+        guard let host = baseURL.host?.lowercased(),
+              let serial = serial?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !serial.isEmpty
+        else { return }
+        let key = keyPrefix + host
+        if let expected = defaults.string(forKey: key), expected != serial {
+            throw Failure.serialChanged(expected: expected, actual: serial)
+        }
+        defaults.set(serial, forKey: key)
+    }
+
+    func forget(baseURL: URL) {
+        guard let host = baseURL.host?.lowercased() else { return }
+        defaults.removeObject(forKey: keyPrefix + host)
+    }
+}
+
 /// Typed HTTP client for Canon's Camera Control API.
 /// Spec: Canon CCAPI Reference v1.4.0 (NDA — not in repo).
 ///
@@ -139,9 +253,14 @@ actor CCAPIClient {
     func downloadContent(
         contentURL: URL,
         range: Range<Int64>? = nil,
-    ) async throws -> (Data, Int64) {
-        var request = URLRequest(url: contentURL)
+    ) async throws -> (data: Data, totalBytes: Int64, acceptedRange: Bool) {
+        var request = URLRequest(
+            url: contentURL,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: range == nil ? 60 : 12
+        )
         request.httpMethod = "GET"
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         if let range {
             request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)",
                               forHTTPHeaderField: "Range")
@@ -171,14 +290,44 @@ actor CCAPIClient {
             responseBody: nil,
             durationMs: Date().timeIntervalSince(started) * 1000,
         )
+        if http.statusCode == 503 {
+            throw CCAPIError.cameraBusy
+        }
         guard (200..<300).contains(http.statusCode) else {
             throw CCAPIError.httpStatus(
                 code: http.statusCode,
                 body: String(data: data, encoding: .utf8),
             )
         }
-        let totalSize = Int64(http.expectedContentLength)
-        return (data, totalSize)
+        let acceptedRange = http.statusCode == 206
+        let totalSize = Self.totalContentLength(
+            response: http,
+            receivedBytes: data.count,
+            acceptedRange: acceptedRange
+        )
+        return (data, totalSize, acceptedRange)
+    }
+
+    /// A 206 response reports the requested chunk in `expectedContentLength`,
+    /// not the complete camera original. Canon includes the complete byte
+    /// length after `/` in Content-Range; use it to drive resumable transfer
+    /// progress and to decide when the local file is complete.
+    nonisolated static func totalContentLength(
+        response: HTTPURLResponse,
+        receivedBytes: Int,
+        acceptedRange: Bool
+    ) -> Int64 {
+        if acceptedRange,
+           let header = response.value(forHTTPHeaderField: "Content-Range"),
+           let slash = header.lastIndex(of: "/"),
+           let total = Int64(header[header.index(after: slash)...]),
+           total > 0 {
+            return total
+        }
+        if response.expectedContentLength > 0 {
+            return response.expectedContentLength
+        }
+        return Int64(receivedBytes)
     }
 
     // MARK: - Shooting control (§shutterbutton)
