@@ -1069,6 +1069,12 @@ func configureDiscovery() async {
                 )
                 self.roleInOrg = "admin"
                 self.permissions = ["leads.view", "leads.update", "visits.create"]
+                // Dentum er Discovery-piloten. I produksjon kommer flagget fra
+                // workspace-planen, men å sette activeOrganizationId nullstiller
+                // det (se didSet over), og QA-modus har ingen backend å hente
+                // det fra igjen. Uten dette forsvant «Hva vil du finne?» fra
+                // kartet i hele Dentum-turen — inngangen til Discovery, borte.
+                self.leadgridDiscoveryEnabled = true
                 self.organizations = [OrganizationSummary(
                     id: "qa-tour-organization",
                     name: "Dentum",
