@@ -9,7 +9,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NARRATIVE_DISABLED_EVENT } from './narrativeService';
+import { NARRATIVE_DISABLED_EVENT, NARRATIVE_FORBIDDEN_MESSAGE, NARRATIVE_NOT_FOUND_MESSAGE } from './narrativeService';
+import { narrativeAuthHeaders } from './narrativeAuthHeaders';
 import {
   Alert,
   Box,
@@ -24,8 +25,7 @@ import {
   Snackbar,
   Stack,
   Tooltip,
-  Typography,
-} from '@mui/material';
+  Typography, TextField } from '@mui/material';
 import {
   Add as AddIcon,
   CallSplit as BranchIcon,
@@ -40,7 +40,6 @@ import { SnackbarProvider } from 'notistack';
 import type { Viewport } from '@xyflow/react';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import useBrandingSettings from '../hooks/useBrandingSettings';
-import { ProfessionModeChip } from '../shared/ProfessionModeChip';
 import { getCastingProjectsFromDb } from '../services/castingDbService';
 import { getActiveProfessionMode, isGameMode, type ProfessionMode } from '../config/professionMode';
 import { getTabsForProfession, type TabConfig } from '../config/professionTabs';
@@ -110,6 +109,24 @@ function ProjectPicker({ onPick }: { onPick: (projectId: string, name: string) =
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createProject = async () => {
+    const name = newName.trim();
+    if (name.length < 2 || creating) return;
+    setCreating(true); setCreateError(null);
+    try {
+      const res = await fetch('/api/role-room/projects', { method: 'POST', headers: { 'Content-Type': 'application/json', ...narrativeAuthHeaders() }, credentials: 'include', body: JSON.stringify({ name, projectType: 'game' }) });
+      const body = (await res.json().catch(() => ({}))) as { id?: string; name?: string; error?: string };
+      if (!res.ok || !body.id) throw new Error(res.status === 403 ? 'Kontoen din kan ikke opprette prosjekter ennå.' : body.error || 'Kunne ikke opprette prosjektet.');
+      onPick(body.id, body.name ?? name);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Kunne ikke opprette prosjektet.');
+    } finally {
+      setCreating(false);
+    }
+  };
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -135,10 +152,22 @@ function ProjectPicker({ onPick }: { onPick: (projectId: string, name: string) =
           {loading ? <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>Laster prosjekter…</Typography> : null}
           {error ? <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert> : null}
           {!loading && !error && projects.length === 0 ? (
-            <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>
-              Du har ingen prosjekter ennå. Opprett et prosjekt i produksjonsmodus først, og bytt så tilbake til spillstudio.
+            <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }} data-testid="narrative-project-picker-empty">
+              Du har ingen prosjekter ennå — opprett det første her, så åpner Story Graph med en gang.
             </Typography>
           ) : null}
+          {/* UX-01: «Nytt prosjekt» rett i spillstudio — ingen omvei via produksjonsmodus. */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.5, mb: 1 }} component="form" onSubmit={(e) => { e.preventDefault(); void createProject(); }}>
+            <TextField
+              size="small" fullWidth label="Nytt prosjekt" placeholder="Navn på spillet" value={newName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+              inputProps={{ 'data-testid': 'narrative-project-create-name', maxLength: 120 }} disabled={creating}
+              sx={{ '& .MuiOutlinedInput-root': { color: narrativeColors.text, '& fieldset': { borderColor: narrativeColors.borderStrong } }, '& .MuiInputLabel-root': { color: narrativeColors.textDim } }}
+            />
+            <Button type="submit" variant="contained" disabled={creating || newName.trim().length < 2} data-testid="narrative-project-create" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700, whiteSpace: 'nowrap', minHeight: 40 }}>
+              {creating ? 'Oppretter…' : 'Opprett prosjekt'}
+            </Button>
+          </Stack>
+          {createError ? <Alert severity="error" sx={{ mb: 1 }} data-testid="narrative-project-create-error">{createError}</Alert> : null}
           <List dense>
             {projects.map((p) => (
               <ListItemButton key={p.id} onClick={() => onPick(p.id, p.name)} data-testid={`narrative-pick-project-${p.id}`}>
@@ -176,6 +205,16 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
     setProjectName(name ?? null);
     writeUrlParam('projectId', id);
     try { window.localStorage.setItem(PROJECT_STORAGE_KEY, id); } catch { /* ignore */ }
+  }, []);
+
+  /** UX-30: 403/404 på et prosjekt-ID vi ikke lenger har tilgang til (eller som
+   * aldri fantes) — rydd valget helt (URL + localStorage) og gå tilbake til
+   * prosjektvelgeren i stedet for å stå fast på en feilende last. */
+  const clearSelectedProject = useCallback(() => {
+    setProjectId(null);
+    setProjectName(null);
+    writeUrlParam('projectId', null);
+    try { window.localStorage.removeItem(PROJECT_STORAGE_KEY); } catch { /* ignore */ }
   }, []);
 
   const [activeTabId, setActiveTabId] = useState<string>(() => {
@@ -282,9 +321,18 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
   );
   const issues = useMemo(() => validateGraph(graph), [graph]);
 
+  // UX-30: 403 (fremmed prosjekt) / 404 (slettet/ukjent prosjekt) på selve
+  // graf-lasten vises som en sidebanner med "Velg et annet prosjekt" i
+  // stedet for en generisk toast (se banner-JSX under).
+  const isProjectAccessError = store.error === NARRATIVE_FORBIDDEN_MESSAGE || store.error === NARRATIVE_NOT_FOUND_MESSAGE;
   useEffect(() => {
-    if (store.error) setNotice({ message: store.error, severity: 'error' });
-  }, [store.error]);
+    if (!store.error) return;
+    // UX-30/31: unngå dobbel melding — kill-switch-bannerets tekst dekker
+    // 503-tilfellet allerede, og tilgangsfeilen vises som egen sidebanner
+    // (med "Velg et annet prosjekt") rett under, ikke som toast også.
+    if (serviceDisabled || isProjectAccessError) return;
+    setNotice({ message: store.error, severity: 'error' });
+  }, [store.error, serviceDisabled, isProjectAccessError]);
   useEffect(() => {
     if (store.conflict) {
       setNotice({ message: `«${htmlToText(store.conflict.titleHtml) || 'Elementet'}» ble endret av noen andre. Innholdet er oppdatert til siste versjon — gjør endringen din på nytt.`, severity: 'warning' });
@@ -541,16 +589,11 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         onSelectTab={selectTab}
         labels={labels}
         onOpenSearch={openPalette}
-        header={(
-          <ProfessionModeChip
-            mode={mode}
-            onSwitch={(newMode) => {
-              const url = new URL(window.location.href);
-              url.searchParams.set('mode', newMode);
-              window.location.href = url.toString();
-            }}
-          />
-        )}
+        // Ingen ProfessionModeChip her — RoleRoomUXLayer (ytre shell) viser
+        // allerede modus-indikatoren øverst; å gjenta den i Story Graph-topbaren
+        // var en duplikat (UX-11). GameShell viser selv en fallback-tittel på
+        // mobil der sidebaren (som har «Story Graph»-tittelen) er skjult.
+        header={null}
         headerActions={(
           <>
             {projectId && selfUserId ? <PresenceAvatars peers={uniquePeers} boardNameById={boardNameById} connected={realtime.connected} /> : null}
@@ -562,7 +605,11 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
                 </Typography>
                 {!projectIdProp ? (
                   <Tooltip title="Bytt prosjekt">
-                    <IconButton size="small" onClick={() => { setProjectId(null); writeUrlParam('projectId', null); }} sx={{ color: narrativeColors.textDim }} aria-label="Bytt prosjekt">
+                    <IconButton
+                      onClick={() => { setProjectId(null); writeUrlParam('projectId', null); }}
+                      sx={{ color: narrativeColors.textDim, width: { xs: 40, md: 30 }, height: { xs: 40, md: 30 } }}
+                      aria-label="Bytt prosjekt"
+                    >
                       <SwitchProjectIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -577,7 +624,26 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
             <Alert severity="warning" data-testid="narrative-disabled-banner" sx={{ m: 2 }}>
               Spillstudio er midlertidig slått av for vedlikehold. Ingenting går tapt — prøv igjen om litt.
             </Alert>
+          ) : isProjectAccessError ? (
+            <Alert
+              severity="error"
+              data-testid="narrative-error-banner"
+              sx={{ m: 2 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  data-testid="narrative-error-pick-project"
+                  onClick={clearSelectedProject}
+                >
+                  Velg et annet prosjekt
+                </Button>
+              }
+            >
+              {store.error}
+            </Alert>
           ) : null}
+          {isProjectAccessError ? null : (
           <ErrorBoundary
             key={activeTab.id}
             componentName={`narrative-tab:${activeTab.id}`}
@@ -593,6 +659,7 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
               {renderTabBody(activeTab)}
             </React.Suspense>
           </ErrorBoundary>
+          )}
         </Box>
       </GameShell>
       <CommandPalette commands={commands} />

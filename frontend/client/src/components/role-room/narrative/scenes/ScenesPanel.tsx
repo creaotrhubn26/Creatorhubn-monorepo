@@ -7,10 +7,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMediaQuery } from '@mui/material';
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItemButton, Skeleton, Stack, TextField, Tooltip, Typography,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, List, ListItem, ListItemButton, Skeleton, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { Add as AddIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Add as AddIcon, ArrowBack as ArrowBackIcon, Search as SearchIcon } from '@mui/icons-material';
 import { narrativeColors } from '../narrativeTheme';
 import type { NarrativeGraph, NarrativeSceneStatus, NarrativeSceneSummary } from '../narrativeTypes';
 import { NarrativeApiError } from '../narrativeService';
@@ -54,6 +55,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
   const visible = useMemo(() => filterScenes(scenes.scenes, { query, status }), [scenes.scenes, query, status]);
 
   useEffect(() => { writeUrl('scene', scenes.selectedId); }, [scenes.selectedId]);
+  const isMdUp = useMediaQuery('(min-width:900px)');
 
   // ─── Fase 8b: manusimport ──────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
@@ -99,13 +101,13 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
     const overdue = isOverdue(s.dueAt, s.status);
     const selected = s.id === scenes.selectedId;
     return (
+      <ListItem key={s.id} disablePadding sx={{ mb: 0.5 }}>
       <ListItemButton
-        key={s.id}
         selected={selected}
         onClick={() => scenes.select(s.id)}
         data-testid={`narrative-scene-row-${s.id}`}
         sx={{
-          borderRadius: 1.5, mb: 0.5, alignItems: 'flex-start', gap: 1, py: 1,
+          borderRadius: 1.5, alignItems: 'flex-start', gap: 1, py: 1,
           borderLeft: `3px solid ${selected ? narrativeColors.accent : 'transparent'}`,
           '&.Mui-selected': { bgcolor: 'rgba(34,197,94,0.08)' },
           '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
@@ -124,14 +126,16 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
         </Box>
         {assignee ? <Tooltip title={assignee.displayName}><Box><MemberAvatar member={assignee} size={24} /></Box></Tooltip> : null}
       </ListItemButton>
+      </ListItem>
     );
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: 'calc(100vh - 150px)', color: narrativeColors.text }} data-testid="narrative-scenes-panel">
-      {/* ── Liste ─────────────────────────────────────────────────────── */}
-      <Box sx={{ width: 320, flexShrink: 0, borderRight: `1px solid ${narrativeColors.borderStrong}`, bgcolor: narrativeColors.bgPanel, display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}` }}>
+    <Box sx={{ display: 'flex', height: { xs: 'auto', md: 'calc(100vh - 150px)' }, minHeight: { xs: 'calc(100vh - 220px)', md: 0 }, color: narrativeColors.text }} data-testid="narrative-scenes-panel" data-mobile-view={scenes.selectedId ? 'card' : 'list'}>
+      {/* ── Liste ── på mobil vises liste ELLER scenekort (UX-21) ───────── */}
+      {isMdUp || !scenes.selectedId ? (
+      <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, borderRight: { md: `1px solid ${narrativeColors.borderStrong}` }, bgcolor: narrativeColors.bgPanel, overflowY: { md: 'auto' }, minHeight: 0 }}>
+        <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}`, position: 'sticky', top: 0, zIndex: 1, bgcolor: narrativeColors.bgPanel }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 14, flex: 1 }}>Scener <Typography component="span" sx={{ fontSize: 12, color: narrativeColors.textDim }}>({scenes.scenes.length})</Typography></Typography>
             <Tooltip title="Importer manus (Word/PDF/Markdown) — vises som diff før noe skrives">
@@ -151,13 +155,13 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
               return (
                 <Chip
                   key={f} size="small" label={f === 'all' ? 'Alle' : SCENE_STATUS_LABELS[f]} onClick={() => setStatus(f)} data-testid={`narrative-scenes-filter-${f}`}
-                  sx={{ height: 20, fontSize: 10, fontWeight: 700, bgcolor: active ? `${color}33` : 'transparent', color: active ? color : narrativeColors.textDim, border: `1px solid ${active ? color : narrativeColors.borderStrong}` }}
+                  sx={{ height: { xs: 32, md: 20 }, fontSize: 10, fontWeight: 700, bgcolor: active ? `${color}33` : 'transparent', color: active ? color : narrativeColors.textDim, border: `1px solid ${active ? color : narrativeColors.borderStrong}` }}
                 />
               );
             })}
           </Stack>
         </Box>
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+        <Box sx={{ p: 1 }}>
           {scenes.loading && scenes.scenes.length === 0 ? (
             <Stack spacing={1} data-testid="narrative-scenes-loading">{[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={52} sx={{ bgcolor: 'rgba(255,255,255,0.06)' }} />)}</Stack>
           ) : scenes.error ? (
@@ -175,9 +179,16 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
           )}
         </Box>
       </Box>
+      ) : null}
 
       {/* ── Kort ──────────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+      {isMdUp || scenes.selectedId ? (
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: { md: 'auto' } }}>
+        {scenes.selectedId ? (
+          <Button size="small" startIcon={<ArrowBackIcon />} onClick={() => scenes.select(null)} data-testid="narrative-scene-back" sx={{ display: { xs: 'inline-flex', md: 'none' }, m: 1, color: narrativeColors.textDim, minHeight: 40 }}>
+            Tilbake til scener
+          </Button>
+        ) : null}
         {!scenes.selectedId ? (
           <Box sx={{ p: 6, textAlign: 'center', color: narrativeColors.textDim }} data-testid="narrative-scene-none">
             <Typography sx={{ fontSize: 14, fontWeight: 700, color: narrativeColors.text }}>Velg en scene</Typography>
@@ -196,6 +207,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
           <SceneCard projectId={projectId} graph={graph} detail={scenes.detail} scenes={scenes} onJumpToElement={onJumpToElement} onNotice={onNotice} />
         )}
       </Box>
+      ) : null}
 
       {/* ── Manusimport (Fase 8b) ─────────────────────────────────────── */}
       <ImportDocumentDialog

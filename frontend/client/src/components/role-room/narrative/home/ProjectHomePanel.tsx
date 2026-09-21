@@ -48,7 +48,10 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
     setTemplateBusy(true);
     try {
       const r = await applyProjectTemplate(projectId, template);
-      const n = r.report ? Object.values(r.report).reduce((acc, c) => acc + c.inserted, 0) : 0;
+      // r.report kan inneholde en `warnings`-liste ved siden av per-tabell-tellerne
+      // (se backend/server/narrative-fixture-seed.ts SeedReport) — den har ikke
+      // .inserted, så Number(...) || 0 hindrer NaN i stedet for å stole på formen.
+      const n = r.report ? Object.values(r.report).reduce((acc, c) => acc + (Number((c as { inserted?: unknown } | null | undefined)?.inserted) || 0), 0) : 0;
       setTemplateNotice({ text: template === 'blank' ? 'Tomt prosjekt — begynn med Historie eller en scene.' : `Mal «${template}» lagt inn (${n} rader).`, severity: 'success' });
       setTemplateOpen(false);
       await load();
@@ -115,22 +118,22 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
       {templateNotice ? <Alert severity={templateNotice.severity} sx={{ mb: 2 }} data-testid="narrative-home-template-notice" onClose={() => setTemplateNotice(null)}>{templateNotice.text}</Alert> : null}
 
       {/* KPI-kort */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' }, gap: 1.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(6, minmax(0, 1fr))' }, gap: 1.5 }}>
         {kpis.map((k) => (
-          <Card key={k.key} sx={{ bgcolor: narrativeColors.bgPanel, border: `1px solid ${narrativeColors.borderStrong}`, color: narrativeColors.text }} data-testid={`narrative-home-kpi-${k.key}`}>
+          <Card key={k.key} sx={{ bgcolor: narrativeColors.bgPanel, border: `1px solid ${narrativeColors.borderStrong}`, color: narrativeColors.text, minWidth: 0 }} data-testid={`narrative-home-kpi-${k.key}`}>
             <CardActionArea onClick={() => onNavigate(k.tab)} sx={{ height: '100%' }}>
               <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                 <Typography sx={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: narrativeColors.textDim, fontWeight: 700 }}>{k.label}</Typography>
                 <Typography sx={{ fontSize: 26, fontWeight: 800, color: TONE_COLOR[k.tone], lineHeight: 1.2 }}>{k.value}</Typography>
                 <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, mt: 0.25 }}>{k.sub}</Typography>
-                {k.pct !== null ? <LinearProgress variant="determinate" value={k.pct} sx={{ mt: 1, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: TONE_COLOR[k.tone] } }} /> : null}
+                {k.pct !== null ? <LinearProgress variant="determinate" value={k.pct} aria-label={`${k.label}: ${k.value}`} sx={{ mt: 1, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: TONE_COLOR[k.tone] } }} /> : null}
               </CardContent>
             </CardActionArea>
           </Card>
         ))}
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.3fr 1fr' }, gap: 2, mt: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1.3fr) minmax(0, 1fr)' }, gap: 2, mt: 2 }}>
         {/* Venstre: status per scene, epoker, episoder */}
         <Stack spacing={2}>
           <Card sx={{ bgcolor: narrativeColors.bgPanel, border: `1px solid ${narrativeColors.borderStrong}`, color: narrativeColors.text }}>
@@ -158,7 +161,7 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
               {overview.episodes.length === 0 ? <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>Ingen episoder ennå.</Typography> : (
                 <Stack spacing={0.75}>
                   {overview.episodes.map((e) => (
-                    <Stack key={e.id} direction="row" alignItems="center" spacing={1} data-testid={`narrative-home-episode-${e.code}`}>
+                    <Stack key={e.id} direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }} data-testid={`narrative-home-episode-${e.code}`}>
                       <Chip size="small" label={e.code} sx={{ height: 20, fontSize: 10, fontWeight: 800, bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent }} />
                       <Typography sx={{ fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</Typography>
                       <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, whiteSpace: 'nowrap' }}>{e.approvedCount}/{e.sceneCount} scener godkjent</Typography>

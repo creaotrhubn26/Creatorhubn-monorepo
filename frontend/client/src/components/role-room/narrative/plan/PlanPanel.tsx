@@ -7,7 +7,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Popover, Select, Skeleton, Stack, Tab, Tabs, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, EventOutlined as EventIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { narrativeColors } from '../narrativeTheme';
 import { NARRATIVE_LANE_LABELS, NARRATIVE_MILESTONE_LANES, NARRATIVE_MILESTONE_STATUS_LABELS, type NarrativeMilestone, type NarrativeMilestoneLane, type NarrativeMilestoneStatus, type NarrativeSceneSummary } from '../narrativeTypes';
 import { createMilestone, deleteMilestone, listMilestones, listScenes, patchMilestone, patchScene, setMilestoneScenes, NarrativeApiError } from '../narrativeService';
@@ -71,7 +71,7 @@ export function PlanPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }: 
     <Box sx={{ p: { xs: 2, md: 3 } }} data-testid="narrative-plan" data-locked={locked ? 'plan' : undefined}>
       <PlanGateBanner feature="production_plan" />
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2, flexWrap: 'wrap' }} useFlexGap>
-        <Tabs value={view} onChange={(_e, v) => setView(v as 'gantt' | 'list')} sx={{ minHeight: 32, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 32, fontSize: 13, py: 0 }, '& .Mui-selected': { color: '#fff' }, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}>
+        <Tabs value={view} onChange={(_e, v) => setView(v as 'gantt' | 'list')} sx={{ minHeight: 32, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 32, fontSize: 13, py: 0, borderRadius: '6px 6px 0 0' }, '& .Mui-selected': { color: '#e6fff0', bgcolor: 'rgba(34,197,94,0.14)' }, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}>
           <Tab value="gantt" label="Gantt" data-testid="narrative-plan-view-gantt" /><Tab value="list" label="Liste" data-testid="narrative-plan-view-list" />
         </Tabs>
         <Box sx={{ flex: 1 }} />
@@ -131,11 +131,29 @@ export function PlanPanel({ projectId, refreshKey = 0, onOpenScene, onNotice }: 
 
       {view === 'gantt' && undated.length > 0 ? (
         <Box sx={{ mt: 2 }} data-testid="narrative-plan-undated">
-          <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 1 }}>Uten dato ({undated.length})</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.5 }}>Uten dato ({undated.length})</Typography>
+          <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, mb: 1 }}>Klikk på en scene eller milepæl for å sette start og frist — da dukker den opp i Gantt-visningen.</Typography>
           <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }} useFlexGap>
-            {undated.map((bar) => <Chip key={bar.key} size="small" label={bar.title} onClick={(e) => setPopover({ anchor: e.currentTarget, bar })} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: narrativeColors.text }} data-testid={`narrative-plan-undated-${bar.id}`} />)}
+            {undated.map((bar) => (
+              <Chip
+                key={bar.key}
+                size="small"
+                variant="outlined"
+                icon={<EventIcon sx={{ fontSize: 15 }} />}
+                label={bar.title}
+                onClick={(e) => setPopover({ anchor: e.currentTarget, bar })}
+                role="button"
+                aria-label={`Sett datoer for ${bar.title}`}
+                sx={{
+                  color: narrativeColors.text,
+                  borderColor: narrativeColors.borderStrong,
+                  '& .MuiChip-icon': { color: narrativeColors.textDim },
+                  '&:hover': { borderColor: narrativeColors.accent, bgcolor: narrativeColors.accentSoft },
+                }}
+                data-testid={`narrative-plan-undated-${bar.id}`}
+              />
+            ))}
           </Stack>
-          <Typography sx={{ fontSize: 11, color: narrativeColors.textDim, mt: 0.5 }}>Klikk for å sette datoer.</Typography>
         </Box>
       ) : null}
 

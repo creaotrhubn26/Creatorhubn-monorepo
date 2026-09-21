@@ -487,6 +487,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
       <Box sx={{ position: 'relative' }}>
         {(isEditMode ? onClose : onMinimize) && (
           <IconButton onClick={isEditMode ? onClose : onMinimize}
+                       aria-label="Lukk"
                        sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2, color: 'white' }}
                        size="small">
             <Close fontSize="small" />
