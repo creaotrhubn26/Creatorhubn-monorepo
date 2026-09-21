@@ -468,6 +468,45 @@ function buildProductionDesignerTrollSeedProject(): CastingProject {
   } as CastingProject;
 }
 
+function buildProductionSoundTrollSeedProject(): CastingProject {
+  const project = buildScriptSupervisorTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for Production Sound Mixer og boomoperatør',
+    crew: [
+      {
+        id: 'troll-sound-mixer', projectId: project.id, name: 'Sanna Lyd',
+        role: 'production_sound_mixer', department: 'sound', status: 'confirmed',
+        contactInfo: { email: 'sanna.sound@example.test' },
+      },
+      {
+        id: 'troll-boom-operator', projectId: project.id, name: 'Bjørn Boom',
+        role: 'boom_operator', department: 'sound', status: 'confirmed',
+        contactInfo: { email: 'bjorn.boom@example.test' },
+      },
+    ],
+    productionDays: (project.productionDays ?? []).map((day) => ({
+      ...day,
+      crew: ['troll-sound-mixer', 'troll-boom-operator'],
+      soundVersion: 0,
+      productionSound: {
+        dayStatus: 'setup',
+        setup: { recorder: 'Sound Devices 833', soundRoll: 'A001', sampleRate: 48000, bitDepth: 24, frameRate: '25', timecodeMode: 'external', timecodeSource: 'Master TC fra lyd' },
+        tracks: [
+          { id: 'troll-track-mix', trackName: 'Mix L', sourceType: 'mix', status: 'ready' },
+          { id: 'troll-track-boom', trackName: 'Boom 1', sourceType: 'boom', subject: 'Dialog', status: 'ready' },
+        ],
+        takeReports: [], unmatchedRecordings: [], additionalRecordings: [],
+        handoff: { status: 'draft' }, activity: [],
+      },
+    })),
+    userRoles: [{
+      id: 'troll-production-sound-user-role', projectId: project.id,
+      userId: 'e2e-test-user', role: 'production_sound_mixer',
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -497,6 +536,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const isLocationManagerSession = sessionMode === 'location-manager';
       const isScriptSupervisorSession = sessionMode === 'script-supervisor';
       const isProductionDesignerSession = sessionMode === 'production-designer';
+      const isProductionSoundSession = sessionMode === 'production-sound';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
@@ -516,6 +556,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             ? 'script_supervisor'
           : isProductionDesignerSession
             ? 'production_designer'
+          : isProductionSoundSession
+            ? 'production_sound_mixer'
           : isProducerSession
             ? 'producer'
           : isCastingDirectorSession
@@ -526,7 +568,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isProducerSession || isCastingDirectorSession || isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession || isProductionDesignerSession
+          : isProducerSession || isCastingDirectorSession || isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession || isProductionDesignerSession || isProductionSoundSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -547,6 +589,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'script_supervisor'
                 : isProductionDesignerSession
                   ? 'production_designer'
+                : isProductionSoundSession
+                  ? 'production_sound_mixer'
                 : isProducerSession
                   ? 'producer'
                 : isCastingDirectorSession
@@ -571,7 +615,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, location_manager: true, script_supervisor: true, production_designer: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, location_manager: true, script_supervisor: true, production_designer: true, production_sound_mixer: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -580,7 +624,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll' || seedFlag === 'script-supervisor-troll' || seedFlag === 'production-designer-troll') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll' || seedFlag === 'script-supervisor-troll' || seedFlag === 'production-designer-troll' || seedFlag === 'production-sound-troll') {
         try {
           const seedProject = seedFlag === 'director'
             ? buildDirectorSeedProject()
@@ -598,6 +642,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                 ? buildScriptSupervisorTrollSeedProject()
               : seedFlag === 'production-designer-troll'
                 ? buildProductionDesignerTrollSeedProject()
+              : seedFlag === 'production-sound-troll'
+                ? buildProductionSoundTrollSeedProject()
               : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
@@ -619,6 +665,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'continuity'
                 : seedFlag === 'production-designer-troll'
                   ? 'art-department'
+                : seedFlag === 'production-sound-troll'
+                  ? 'production-sound'
                   : undefined,
               firstAssistantDirectorSurface: seedFlag === 'second-ad-troll' ? 'today' : undefined,
               storyArcView: 'main',

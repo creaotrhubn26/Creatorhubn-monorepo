@@ -57,6 +57,7 @@ export type ProductionWorkspaceKind =
   | 'casting'
   | 'continuity'
   | 'art_department'
+  | 'production_sound'
   | 'department';
 
 interface ProductionRoleDefinitionBase {
@@ -123,8 +124,8 @@ export const PRODUCTION_ROLES = [
   { id: 'set_designer', label: 'Settdesigner', departmentId: 'art', reportsTo: 'production_designer', workspace: 'art_department' },
   { id: 'concept_illustrator', label: 'Konseptillustratør', departmentId: 'art', reportsTo: 'production_designer', workspace: 'art_department' },
   { id: 'storyboard_artist', label: 'Storyboardartist', departmentId: 'art', reportsTo: 'production_designer', workspace: 'art_department' },
-  { id: 'production_sound_mixer', label: 'Produksjonslydmikser', departmentId: 'sound', reportsTo: 'director', aliases: ['sound_mixer', 'audio_mixer', 'sound_engineer'], workspace: 'department' },
-  { id: 'boom_operator', label: 'Boomoperatør', departmentId: 'sound', reportsTo: 'production_sound_mixer', workspace: 'department' },
+  { id: 'production_sound_mixer', label: 'Produksjonslydmikser', departmentId: 'sound', reportsTo: 'director', aliases: ['sound_mixer', 'audio_mixer', 'sound_engineer'], workspace: 'production_sound' },
+  { id: 'boom_operator', label: 'Boomoperatør', departmentId: 'sound', reportsTo: 'production_sound_mixer', workspace: 'production_sound' },
   { id: 'stunt_coordinator', label: 'Stuntkoordinator', departmentId: 'stunts', reportsTo: 'director', workspace: 'department' },
   { id: 'stunt_double', label: 'Stuntdouble', departmentId: 'stunts', reportsTo: 'stunt_coordinator', workspace: 'department' },
   { id: 'transportation_captain', label: 'Transportansvarlig', departmentId: 'transportation', reportsTo: 'production_manager', workspace: 'department' },
@@ -296,5 +297,6 @@ export const PRODUCTION_WORKSPACE_DELIVERY_ORDER = [
   'continuity',
   'casting',
   'art_department',
+  'production_sound',
   'department',
 ] as const satisfies readonly ProductionWorkspaceKind[];

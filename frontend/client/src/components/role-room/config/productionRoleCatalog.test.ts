@@ -57,6 +57,8 @@ describe('productionRoleCatalog', () => {
     expect(getProductionWorkspaceForRole('script_supervisor')).toBe('continuity');
     expect(getProductionWorkspaceForRole('production_designer')).toBe('art_department');
     expect(getProductionWorkspaceForRole('property_master')).toBe('art_department');
+    expect(getProductionWorkspaceForRole('production_sound_mixer')).toBe('production_sound');
+    expect(getProductionWorkspaceForRole('boom_operator')).toBe('production_sound');
     expect(getProductionRoleDefinition('DoP')?.reportsTo).toBe('director');
     expect(PRODUCTION_WORKSPACE_DELIVERY_ORDER.slice(0, 2)).toEqual([
       'director',

@@ -194,6 +194,10 @@ import {
   isArtDepartmentSurface,
   type ArtDepartmentSurface,
 } from './art-department/artDepartmentWorkspaceModel';
+import {
+  isProductionSoundSurface,
+  type ProductionSoundSurface,
+} from './production-sound/productionSoundWorkspaceModel';
 import type { ProducerWorkspaceTarget } from './producer-role/producerWorkspaceModel';
 import {
   isRoleRoomWorkspaceLens,
@@ -291,6 +295,7 @@ const ProductionCoordinationWorkspace = lazyWithRetry(() => import('./production
 const LocationManagerWorkspace = lazyWithRetry(() => import('./locations/LocationManagerWorkspace').then(m => ({ default: m.LocationManagerWorkspace })));
 const ContinuityWorkspace = lazyWithRetry(() => import('./continuity/ContinuityWorkspace').then(m => ({ default: m.ContinuityWorkspace })));
 const ArtDepartmentWorkspace = lazyWithRetry(() => import('./art-department/ArtDepartmentWorkspace').then(m => ({ default: m.ArtDepartmentWorkspace })));
+const ProductionSoundWorkspace = lazyWithRetry(() => import('./production-sound/ProductionSoundWorkspace').then(m => ({ default: m.ProductionSoundWorkspace })));
 const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
@@ -1280,6 +1285,13 @@ type RoleRoomProjectWorkspaceState = {
     const surface = params.get('surface');
     return isArtDepartmentSurface(surface) ? surface : 'overview';
   });
+  const [productionSoundSurface, setProductionSoundSurface] = useState<ProductionSoundSurface>(() => {
+    if (typeof window === 'undefined') return 'overview';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client' || params.get('lens') !== 'production-sound') return 'overview';
+    const surface = params.get('surface');
+    return isProductionSoundSurface(surface) ? surface : 'overview';
+  });
   const [cinematographerSurface, setCinematographerSurface] = useState<CinematographerSurface>(() => {
     if (typeof window === 'undefined') return 'today';
     const params = new URLSearchParams(window.location.search);
@@ -1883,6 +1895,11 @@ type RoleRoomProjectWorkspaceState = {
         ? urlRoleSurface
         : 'overview',
     );
+    setProductionSoundSurface(
+      urlLens === 'production-sound' && isProductionSoundSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : 'overview',
+    );
     setCinematographerSurface(
       isCinematographerSurface(urlRoleSurface)
         ? urlRoleSurface
@@ -2345,6 +2362,16 @@ type RoleRoomProjectWorkspaceState = {
   const handleOpenArtDepartmentWorkspace = useCallback(() => {
     handleArtDepartmentNavigate('overview');
   }, [handleArtDepartmentNavigate]);
+
+  const handleProductionSoundNavigate = useCallback((surface: ProductionSoundSurface) => {
+    setWorkspaceLensPreference('production-sound');
+    setProductionSoundSurface(surface);
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenProductionSoundWorkspace = useCallback(() => {
+    handleProductionSoundNavigate('overview');
+  }, [handleProductionSoundNavigate]);
 
   const handleOpenFullWorkspace = useCallback(() => {
     setWorkspaceLensPreference('full');
@@ -3129,6 +3156,11 @@ type RoleRoomProjectWorkspaceState = {
       location_security: 'Location security',
       script_supervisor: 'Script supervisor / kontinuitet',
       production_designer: 'Produksjonsdesigner',
+      production_sound_mixer: 'Produksjonslydmikser',
+      sound_mixer: 'Produksjonslydmikser',
+      audio_mixer: 'Produksjonslydmikser',
+      sound_engineer: 'Produksjonslydmikser',
+      boom_operator: 'Boomoperatør',
       first_ad: 'Innspillingsleder / 1st AD',
       first_assistant_director: 'Innspillingsleder / 1st AD',
       '1st_ad': 'Innspillingsleder / 1st AD',
@@ -3344,6 +3376,13 @@ type RoleRoomProjectWorkspaceState = {
     'key_makeup_artist',
     'construction_coordinator',
   ].includes(normalizedRequestedProjectRole);
+  const hasProductionSoundPersona = [
+    'production_sound_mixer',
+    'sound_mixer',
+    'audio_mixer',
+    'sound_engineer',
+    'boom_operator',
+  ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role
     ? currentUserRole.role === 'camera_team' && hasCinematographerPersona
@@ -3402,6 +3441,8 @@ type RoleRoomProjectWorkspaceState = {
     && (!isRoleRoomAdminSession || hasScriptSupervisorPersona || mappedSessionProjectRole === 'script_supervisor');
   const isAssignedArtDepartmentProjectRole = hasAssignedLensRole('art-department')
     && (!isRoleRoomAdminSession || hasArtDepartmentPersona || mappedSessionProjectRole === 'production_designer');
+  const isAssignedProductionSoundProjectRole = hasAssignedLensRole('production-sound')
+    && (!isRoleRoomAdminSession || hasProductionSoundPersona || mappedSessionProjectRole === 'production_sound_mixer');
   const canUseProducerWorkspace = isAssignedProducerProjectRole || isRoleRoomAdminSession;
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
   const canUseCastingWorkspace = isAssignedCastingProjectRole || permissions.canEditCasting || isRoleRoomAdminSession;
@@ -3462,6 +3503,18 @@ type RoleRoomProjectWorkspaceState = {
   const canUseArtDepartmentWorkspace = isAssignedArtDepartmentProjectRole
     || canEditArtDepartmentWorkspace
     || isRoleRoomAdminSession;
+  const productionSoundPermissions: NonNullable<UserRole['permissions']> = currentUserRole
+    ? {
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }
+    : {};
+  const canEditProductionSoundWorkspace = productionSoundPermissions.canManageProductionSound === true
+    || currentUserRole?.serverGrants?.canManageProductionSound === true
+    || isRoleRoomAdminSession;
+  const canUseProductionSoundWorkspace = isAssignedProductionSoundProjectRole
+    || canEditProductionSoundWorkspace
+    || isRoleRoomAdminSession;
   // Admin-linsen er den eneste som ikke følger av prosjektrollen. Klientporten
   // skjuler UI; hver Admin Room-rute er e-postlåst på serveren i tillegg.
   const { isSuperAdmin: isSuperAdminSession, ready: superAdminGateReady } = useSuperAdminGate();
@@ -3485,6 +3538,7 @@ type RoleRoomProjectWorkspaceState = {
       case 'location-management': return isAssignedLocationDepartmentProjectRole;
       case 'continuity': return isAssignedScriptSupervisorProjectRole;
       case 'art-department': return isAssignedArtDepartmentProjectRole;
+      case 'production-sound': return isAssignedProductionSoundProjectRole;
       // Ingen prosjektrolle velger admin-linsen; den åpnes bare eksplisitt.
       case 'admin': return false;
     }
@@ -3501,6 +3555,7 @@ type RoleRoomProjectWorkspaceState = {
       case 'location-management': return canUseLocationManagerWorkspace;
       case 'continuity': return canUseContinuityWorkspace;
       case 'art-department': return canUseArtDepartmentWorkspace;
+      case 'production-sound': return canUseProductionSoundWorkspace;
       case 'admin': return isSuperAdminSession;
     }
   };
@@ -5521,6 +5576,7 @@ type RoleRoomProjectWorkspaceState = {
       surfaces: {
         casting: castingSurface !== 'overview' ? castingSurface : '',
         'art-department': artDepartmentSurface,
+        'production-sound': productionSoundSurface,
         director: directorSurface,
         cinematography: cinematographerSurface,
         'assistant-direction': firstAssistantDirectorSurface,
@@ -5567,6 +5623,7 @@ type RoleRoomProjectWorkspaceState = {
     contentProducerPlannerSurface,
     castingSurface,
     artDepartmentSurface,
+    productionSoundSurface,
     cinematographerSurface,
     directorSurface,
     directorSceneId,
@@ -5582,6 +5639,7 @@ type RoleRoomProjectWorkspaceState = {
     isAssignedProductionCoordinatorProjectRole,
     isAssignedScriptSupervisorProjectRole,
     isAssignedArtDepartmentProjectRole,
+    isAssignedProductionSoundProjectRole,
     isAssignedSecondAssistantDirectorProjectRole,
     isExternalClientPortalMode,
     workspaceLensPreference,
@@ -5665,6 +5723,10 @@ type RoleRoomProjectWorkspaceState = {
       }
       if (nextLens === 'art-department' && isArtDepartmentSurface(urlSurface)) {
         setArtDepartmentSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'production-sound' && isProductionSoundSurface(urlSurface)) {
+        setProductionSoundSurface((previous) => (previous === urlSurface ? previous : urlSurface));
         return;
       }
       const nextSurface: ContentProducerPlannerSurface = (
@@ -11378,6 +11440,26 @@ type RoleRoomProjectWorkspaceState = {
               onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
               onOpenFullWorkspace={handleOpenFullWorkspace}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'production-sound' ? (
+            <ProductionSoundWorkspace
+              key={`production-sound-${currentProject.id}`}
+              project={currentProject}
+              activeSurface={productionSoundSurface}
+              readOnly={!canEditProductionSoundWorkspace}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              onNavigate={handleProductionSoundNavigate}
+              onOpenContinuity={handleOpenContinuityWorkspace}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
           ) : (
             <>
               {currentProject && canUseProducerWorkspace ? (
@@ -11472,6 +11554,25 @@ type RoleRoomProjectWorkspaceState = {
                   </Box>
                   <Button variant="outlined" startIcon={<BrushIcon />} onClick={handleOpenArtDepartmentWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#fbcfe8', borderColor: 'rgba(244,114,182,0.42)', flexShrink: 0 }}>
                     Åpne art department
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseProductionSoundWorkspace ? (
+                <Box
+                  data-testid="production-sound-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(14,165,233,0.07)', border: '1px solid rgba(56,189,248,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#e0f2fe', fontWeight: 750, fontSize: '0.9rem' }}>Production Sound</Typography>
+                    <Typography sx={{ color: 'rgba(186,230,253,0.72)', fontSize: '0.76rem' }}>Recorder, sync, track assignment, take-kvalitet, ekstraopptak og daglig handoff til post.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<GraphicEqIcon />} onClick={handleOpenProductionSoundWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#bae6fd', borderColor: 'rgba(56,189,248,0.42)', flexShrink: 0 }}>
+                    Åpne lydarbeidsflate
                   </Button>
                 </Box>
               ) : null}

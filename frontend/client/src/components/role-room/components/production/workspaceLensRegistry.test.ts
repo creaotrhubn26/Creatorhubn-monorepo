@@ -45,6 +45,8 @@ describe('workspaceLensRegistry', () => {
     expect(matchesLensProjectRole('location-management', 'location_scout')).toBe(true);
     expect(matchesLensProjectRole('art-department', 'production_designer')).toBe(true);
     expect(matchesLensProjectRole('art-department', 'property_master')).toBe(true);
+    expect(matchesLensProjectRole('production-sound', 'sound_engineer')).toBe(true);
+    expect(matchesLensProjectRole('production-sound', 'boom_operator')).toBe(true);
     expect(matchesLensProjectRole('director', 'producer')).toBe(false);
     expect(matchesLensProjectRole('director', null)).toBe(false);
     expect(matchesLensProjectRole('director', '')).toBe(false);
@@ -182,6 +184,14 @@ describe('resolveLensUrlState', () => {
       lens: 'art-department',
       surfaces: { 'art-department': 'visual-direction' },
     })).toEqual({ lens: 'art-department', surface: 'visual-direction', scene: '' });
+  });
+
+  it('publishes the selected production-sound surface', () => {
+    expect(resolveLensUrlState({
+      ...base,
+      lens: 'production-sound',
+      surfaces: { 'production-sound': 'takes' },
+    })).toEqual({ lens: 'production-sound', surface: 'takes', scene: '' });
   });
 
   it('drops the lens parameter in the full workspace', () => {

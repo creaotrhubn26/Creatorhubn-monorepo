@@ -49,6 +49,7 @@ const VALID_USER_ROLE_TYPES = new Set([
   "production_manager",
   "production_coordinator",
   "production_designer",
+  "production_sound_mixer",
   "first_ad",
   "second_ad",
   "camera_team",

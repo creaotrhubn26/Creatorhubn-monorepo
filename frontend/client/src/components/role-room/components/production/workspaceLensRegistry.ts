@@ -155,6 +155,13 @@ export const WORKSPACE_LENS_REGISTRY = [
     usesSceneParam: false,
   },
   {
+    lens: 'production-sound',
+    workspaceKind: 'production_sound',
+    projectRoles: ['production_sound_mixer', 'sound_mixer', 'audio_mixer', 'sound_engineer', 'boom_operator'],
+    surfaceSource: 'own',
+    usesSceneParam: false,
+  },
+  {
     // The Admin Room as a lens. No project role selects it — `projectRoles` is
     // empty on purpose — so it opens only on an explicit choice, and only for a
     // caller the panel considers super admin. It is also the one lens that does

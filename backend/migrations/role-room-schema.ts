@@ -17,6 +17,8 @@ import {
   check,
   unique,
   uniqueIndex,
+  foreignKey,
+  char,
   uuid,
   date,
 } from 'drizzle-orm/pg-core';
@@ -333,9 +335,14 @@ export const castingProductionDays = pgTable('casting_production_days', {
   continuityVersion: integer('continuity_version').default(0).notNull(),
   continuityUpdatedBy: varchar('continuity_updated_by', { length: 255 }),
   continuityUpdatedAt: timestamp('continuity_updated_at', { withTimezone: true, mode: 'string' }),
+  /** Independent concurrency lane for production-sound reports. */
+  soundVersion: integer('sound_version').default(0).notNull(),
+  soundUpdatedBy: varchar('sound_updated_by', { length: 255 }),
+  soundUpdatedAt: timestamp('sound_updated_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
+  unique('uq_casting_production_days_project_id_id').on(table.projectId, table.id),
   index('casting_production_days_project_id_idx').using('btree', table.projectId),
   index('idx_casting_production_days_management_updated')
     .using('btree', table.projectId, table.managementUpdatedAt.desc())
@@ -346,6 +353,9 @@ export const castingProductionDays = pgTable('casting_production_days', {
   index('idx_casting_production_days_continuity_updated')
     .using('btree', table.projectId, table.continuityUpdatedAt.desc())
     .where(sql`${table.continuityUpdatedAt} IS NOT NULL`),
+  index('idx_casting_production_days_sound_updated')
+    .using('btree', table.projectId, table.soundUpdatedAt.desc())
+    .where(sql`${table.soundUpdatedAt} IS NOT NULL`),
 ]);
 
 /** Private AWS S3 objects attached to script-supervisor continuity records. */
@@ -386,6 +396,52 @@ export const castingProductionContinuityMedia = pgTable('casting_production_cont
   index('idx_casting_continuity_media_scene_active')
     .using('btree', table.projectId, table.sceneId, table.createdAt.desc())
     .where(sql`${table.deletedAt} IS NULL`),
+]);
+
+/** Private BWF/WAV originals and their explicit continuity-take reconciliation. */
+export const castingProductionSoundMedia = pgTable('casting_production_sound_media', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }).notNull().references(() => castingProductionDays.id, { onDelete: 'cascade' }),
+  /** SQL migration owns the FK to role_room_storage_objects, defined in the shared storage schema. */
+  storageObjectId: uuid('storage_object_id').notNull(),
+  uploadedBy: varchar('uploaded_by', { length: 255 }),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  contentType: varchar('content_type', { length: 120 }).notNull(),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  checksumSha256: char('checksum_sha256', { length: 64 }).notNull(),
+  recorderMetadata: jsonb('recorder_metadata').default({}).notNull(),
+  reconciliationStatus: varchar('reconciliation_status', { length: 20 }).default('unmatched').notNull(),
+  continuityTakeId: varchar('continuity_take_id', { length: 120 }),
+  reconciledBy: varchar('reconciled_by', { length: 255 }),
+  reconciledAt: timestamp('reconciled_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+}, (table) => [
+  unique('uq_casting_production_sound_media_storage_object').on(table.storageObjectId),
+  foreignKey({
+    columns: [table.projectId, table.productionDayId],
+    foreignColumns: [castingProductionDays.projectId, castingProductionDays.id],
+    name: 'fk_casting_production_sound_media_project_day',
+  }).onDelete('cascade'),
+  check('chk_casting_production_sound_media_type', sql`${table.contentType} IN (
+    'audio/wav', 'audio/wave', 'audio/vnd.wave', 'audio/x-wav', 'application/octet-stream'
+  )`),
+  check('chk_casting_production_sound_media_size', sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 21474836480`),
+  check('chk_casting_production_sound_media_checksum', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
+  check('chk_casting_production_sound_media_metadata', sql`jsonb_typeof(${table.recorderMetadata}) = 'object'`),
+  check('chk_casting_production_sound_media_status', sql`${table.reconciliationStatus} IN ('unmatched', 'matched')`),
+  check('chk_casting_production_sound_media_reconciliation', sql`
+    (${table.reconciliationStatus} = 'unmatched' AND ${table.continuityTakeId} IS NULL AND ${table.reconciledBy} IS NULL AND ${table.reconciledAt} IS NULL)
+    OR
+    (${table.reconciliationStatus} = 'matched' AND ${table.continuityTakeId} IS NOT NULL AND ${table.reconciledBy} IS NOT NULL AND ${table.reconciledAt} IS NOT NULL)
+  `),
+  index('idx_casting_production_sound_media_day_active')
+    .using('btree', table.projectId, table.productionDayId, table.reconciliationStatus, table.createdAt.desc())
+    .where(sql`${table.deletedAt} IS NULL`),
+  index('idx_casting_production_sound_media_take_active')
+    .using('btree', table.projectId, table.productionDayId, table.continuityTakeId, table.createdAt.desc())
+    .where(sql`${table.deletedAt} IS NULL AND ${table.continuityTakeId} IS NOT NULL`),
 ]);
 
 export const castingShotLists = pgTable('casting_shot_lists', {

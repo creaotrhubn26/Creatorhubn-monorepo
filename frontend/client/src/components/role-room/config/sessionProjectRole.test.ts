@@ -23,6 +23,8 @@ describe('resolveSessionProjectRole', () => {
     expect(resolveSessionProjectRole('office_pa')).toBe('office_production_assistant');
     expect(resolveSessionProjectRole('local_casting_director')).toBe('local_casting_director');
     expect(resolveSessionProjectRole('property_master')).toBe('production_designer');
+    expect(resolveSessionProjectRole('sound_engineer')).toBe('production_sound_mixer');
+    expect(resolveSessionProjectRole('boom_operator')).toBe('production_sound_mixer');
   });
 
   it('tåler skitne verdier fra sesjonen', () => {
@@ -79,5 +81,10 @@ describe('katalogen og linseregisteret er enige', () => {
   it('samler art-avdelingens fagroller under produksjonsdesignerens prosjektrolle', () => {
     const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'art-department');
     expect(new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole))).toEqual(new Set(['production_designer']));
+  });
+
+  it('samler opptakslyd under lydmikserens prosjektrolle', () => {
+    const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'production-sound');
+    expect(new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole))).toEqual(new Set(['production_sound_mixer']));
   });
 });

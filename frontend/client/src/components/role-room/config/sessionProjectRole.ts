@@ -56,6 +56,8 @@ const CATALOG_TO_PROJECT_ROLE: Partial<Record<ProductionRoleId, UserRoleType>> =
   key_hair_stylist: 'production_designer',
   key_makeup_artist: 'production_designer',
   construction_coordinator: 'production_designer',
+  production_sound_mixer: 'production_sound_mixer',
+  boom_operator: 'production_sound_mixer',
 };
 
 /**

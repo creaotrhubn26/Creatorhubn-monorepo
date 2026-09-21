@@ -123,6 +123,10 @@ export const CASTING_GRANT_RULES = {
     ],
     permissionKeys: ["canManageArtDepartment"],
   },
+  canManageProductionSound: {
+    roles: ["production_sound_mixer", "sound_mixer", "audio_mixer", "sound_engineer", "boom_operator"],
+    permissionKeys: ["canManageProductionSound"],
+  },
 } as const satisfies Record<string, { roles: readonly string[]; permissionKeys: readonly string[] }>;
 
 export type CastingGrant = keyof typeof CASTING_GRANT_RULES;
