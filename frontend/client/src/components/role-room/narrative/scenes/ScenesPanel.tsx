@@ -103,6 +103,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
         key={s.id}
         selected={selected}
         onClick={() => scenes.select(s.id)}
+        component="li"
         data-testid={`narrative-scene-row-${s.id}`}
         sx={{
           borderRadius: 1.5, mb: 0.5, alignItems: 'flex-start', gap: 1, py: 1,
@@ -128,10 +129,10 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: 'calc(100vh - 150px)', color: narrativeColors.text }} data-testid="narrative-scenes-panel">
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 150px)', color: narrativeColors.text }} data-testid="narrative-scenes-panel">
       {/* ── Liste ─────────────────────────────────────────────────────── */}
-      <Box sx={{ width: 320, flexShrink: 0, borderRight: `1px solid ${narrativeColors.borderStrong}`, bgcolor: narrativeColors.bgPanel, display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}` }}>
+      <Box sx={{ width: 320, flexShrink: 0, borderRight: `1px solid ${narrativeColors.borderStrong}`, bgcolor: narrativeColors.bgPanel, overflowY: 'auto', minHeight: 0 }}>
+        <Box sx={{ p: 1.5, borderBottom: `1px solid ${narrativeColors.borderStrong}`, position: 'sticky', top: 0, zIndex: 1, bgcolor: narrativeColors.bgPanel }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 14, flex: 1 }}>Scener <Typography component="span" sx={{ fontSize: 12, color: narrativeColors.textDim }}>({scenes.scenes.length})</Typography></Typography>
             <Tooltip title="Importer manus (Word/PDF/Markdown) — vises som diff før noe skrives">
@@ -151,13 +152,13 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
               return (
                 <Chip
                   key={f} size="small" label={f === 'all' ? 'Alle' : SCENE_STATUS_LABELS[f]} onClick={() => setStatus(f)} data-testid={`narrative-scenes-filter-${f}`}
-                  sx={{ height: 20, fontSize: 10, fontWeight: 700, bgcolor: active ? `${color}33` : 'transparent', color: active ? color : narrativeColors.textDim, border: `1px solid ${active ? color : narrativeColors.borderStrong}` }}
+                  sx={{ height: { xs: 32, md: 20 }, fontSize: 10, fontWeight: 700, bgcolor: active ? `${color}33` : 'transparent', color: active ? color : narrativeColors.textDim, border: `1px solid ${active ? color : narrativeColors.borderStrong}` }}
                 />
               );
             })}
           </Stack>
         </Box>
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+        <Box sx={{ p: 1 }}>
           {scenes.loading && scenes.scenes.length === 0 ? (
             <Stack spacing={1} data-testid="narrative-scenes-loading">{[0, 1, 2].map((i) => <Skeleton key={i} variant="rounded" height={52} sx={{ bgcolor: 'rgba(255,255,255,0.06)' }} />)}</Stack>
           ) : scenes.error ? (
@@ -177,7 +178,7 @@ export function ScenesPanel({ projectId, graph, refreshKey, onJumpToElement, onN
       </Box>
 
       {/* ── Kort ──────────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
         {!scenes.selectedId ? (
           <Box sx={{ p: 6, textAlign: 'center', color: narrativeColors.textDim }} data-testid="narrative-scene-none">
             <Typography sx={{ fontSize: 14, fontWeight: 700, color: narrativeColors.text }}>Velg en scene</Typography>

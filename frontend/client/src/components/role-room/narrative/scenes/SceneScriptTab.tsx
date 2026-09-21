@@ -58,13 +58,13 @@ export function SceneScriptTab({ projectId, detail, scenes, refreshKey = 0 }: { 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5 }}>
         <FormControl size="small" sx={sceneFieldSx}>
           <InputLabel>Epoke</InputLabel>
-          <Select label="Epoke" value={scene.era} onChange={(e) => void save({ era: e.target.value as NarrativeSceneEra })} inputProps={{ 'data-testid': 'narrative-scene-era' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
+          <Select label="Epoke" value={scene.era} onChange={(e) => void save({ era: e.target.value as NarrativeSceneEra })} inputProps={{ 'data-testid': 'narrative-scene-era', 'aria-label': 'Epoke' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
             {NARRATIVE_SCENE_ERAS.map((era) => <MenuItem key={era} value={era}>{NARRATIVE_SCENE_ERA_LABELS[era]}</MenuItem>)}
           </Select>
         </FormControl>
         <FormControl size="small" sx={sceneFieldSx}>
           <InputLabel>Episode</InputLabel>
-          <Select label="Episode" value={scene.episodeId ?? ''} onChange={(e) => void save({ episodeId: e.target.value ? String(e.target.value) : null })} inputProps={{ 'data-testid': 'narrative-scene-episode' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
+          <Select label="Episode" value={scene.episodeId ?? ''} onChange={(e) => void save({ episodeId: e.target.value ? String(e.target.value) : null })} inputProps={{ 'data-testid': 'narrative-scene-episode', 'aria-label': 'Episode' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
             <MenuItem value="">Ingen</MenuItem>
             {episodes.map((ep) => <MenuItem key={ep.id} value={ep.id}>{ep.code} · {ep.title}</MenuItem>)}
           </Select>
@@ -89,13 +89,13 @@ export function SceneScriptTab({ projectId, detail, scenes, refreshKey = 0 }: { 
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap alignItems="center">
           <FormControl size="small" sx={{ ...sceneFieldSx, minWidth: 120 }}>
             <InputLabel>Merke</InputLabel>
-            <Select label="Merke" value={refTag} onChange={(e) => setRefTag(e.target.value as NarrativeSourceTag)} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
+            <Select label="Merke" value={refTag} onChange={(e) => setRefTag(e.target.value as NarrativeSourceTag)} inputProps={{ 'aria-label': 'Merke' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
               {NARRATIVE_SOURCE_TAGS.map((t) => <MenuItem key={t} value={t}>{t} · {NARRATIVE_SOURCE_TAG_LABELS[t]}</MenuItem>)}
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ ...sceneFieldSx, minWidth: 220 }}>
             <InputLabel>Kilde</InputLabel>
-            <Select label="Kilde" value={refCode} onChange={(e) => setRefCode(String(e.target.value))} inputProps={{ 'data-testid': 'narrative-scene-source-ref-code' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
+            <Select label="Kilde" value={refCode} onChange={(e) => setRefCode(String(e.target.value))} inputProps={{ 'data-testid': 'narrative-scene-source-ref-code', 'aria-label': 'Kilde' }} MenuProps={{ PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text } } }}>
               {sources.map((s) => <MenuItem key={s.id} value={s.code}>{s.code} · {s.label}</MenuItem>)}
             </Select>
           </FormControl>

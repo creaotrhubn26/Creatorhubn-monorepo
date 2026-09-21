@@ -22,14 +22,14 @@ const menuProps = { PaperProps: { sx: { bgcolor: narrativeColors.bgPanel, color:
 
 interface SpeakerOption { id: string | null; label: string }
 
-function InlineText({ value, onSave, testId, placeholder, multiline }: { value: string; onSave: (v: string) => Promise<void>; testId?: string; placeholder?: string; multiline?: boolean }) {
+function InlineText({ value, onSave, testId, placeholder, multiline, ariaLabel }: { value: string; onSave: (v: string) => Promise<void>; testId?: string; placeholder?: string; multiline?: boolean; ariaLabel?: string }) {
   const [draft, setDraft] = useState(value);
   const [dirty, setDirty] = useState(false);
   React.useEffect(() => { if (!dirty) setDraft(value); }, [value, dirty]);
   return (
     <TextField size="small" fullWidth multiline={multiline} value={draft} placeholder={placeholder} onChange={(e) => { setDraft(e.target.value); setDirty(true); }}
       onBlur={() => { if (dirty && draft !== value) void onSave(draft).finally(() => setDirty(false)); else setDirty(false); }}
-      inputProps={{ 'data-testid': testId }} sx={{ ...sceneFieldSx, '& .MuiInputBase-input': { fontSize: 12, py: 0.5 } }} />
+      inputProps={{ 'data-testid': testId, 'aria-label': ariaLabel }} sx={{ ...sceneFieldSx, '& .MuiInputBase-input': { fontSize: 12, py: 0.5 } }} />
   );
 }
 
@@ -85,18 +85,18 @@ export function SceneLinesTab({ projectId, graph, detail, scenes, onNotice }: { 
                 <tr key={l.id} data-testid={`narrative-line-${l.cueId}`}>
                   <td><Typography sx={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace', color: narrativeColors.accent }}>{l.cueId}</Typography>{l.perspective ? <Typography sx={{ fontSize: 10, color: narrativeColors.textDim }}>{l.perspective}</Typography> : null}</td>
                   <td>
-                    <InlineText value={l.speakerLabel} onSave={(v) => run(() => patchSceneLine(projectId, sceneId, l.id, { speakerLabel: v }))} testId={`narrative-line-speaker-${l.cueId}`} placeholder="NORA, 12" />
+                    <InlineText value={l.speakerLabel} onSave={(v) => run(() => patchSceneLine(projectId, sceneId, l.id, { speakerLabel: v }))} testId={`narrative-line-speaker-${l.cueId}`} placeholder="NORA, 12" ariaLabel={`Taler for ${l.cueId}`} />
                     <Typography sx={{ fontSize: 10, color: narrativeColors.textDim }}>{l.speakerComponentId ? speakerById.get(l.speakerComponentId)?.label ?? '(slettet)' : 'uten karakter'}</Typography>
                   </td>
                   <td>
-                    <Select size="small" value={l.sourceType} onChange={(e) => void run(() => patchSceneLine(projectId, sceneId, l.id, { sourceType: e.target.value as NarrativeLineSourceType }))} sx={selectSx} MenuProps={menuProps} inputProps={{ 'data-testid': `narrative-line-type-${l.cueId}` }}>
+                    <Select size="small" value={l.sourceType} onChange={(e) => void run(() => patchSceneLine(projectId, sceneId, l.id, { sourceType: e.target.value as NarrativeLineSourceType }))} sx={selectSx} MenuProps={menuProps} inputProps={{ 'data-testid': `narrative-line-type-${l.cueId}`, 'aria-label': `Type for ${l.cueId}` }}>
                       {NARRATIVE_LINE_SOURCE_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                     </Select>
                   </td>
                   <td><InlineText multiline value={l.textEn} onSave={(v) => run(() => patchSceneLine(projectId, sceneId, l.id, { textEn: v }))} testId={`narrative-line-en-${l.cueId}`} /></td>
                   <td><InlineText multiline value={l.textNb} onSave={(v) => run(() => patchSceneLine(projectId, sceneId, l.id, { textNb: v }))} testId={`narrative-line-nb-${l.cueId}`} placeholder="(valgfritt)" /></td>
                   <td>
-                    <Select size="small" value={l.recordingStatus} onChange={(e) => void run(() => patchSceneLine(projectId, sceneId, l.id, { recordingStatus: e.target.value as NarrativeLineRecordingStatus }))} sx={{ ...selectSx, '& .MuiSelect-select': { py: 0.5, fontSize: 12, color: RECORDING_COLOR[l.recordingStatus], fontWeight: 700 } }} MenuProps={menuProps} inputProps={{ 'data-testid': `narrative-line-recording-${l.cueId}` }}>
+                    <Select size="small" value={l.recordingStatus} onChange={(e) => void run(() => patchSceneLine(projectId, sceneId, l.id, { recordingStatus: e.target.value as NarrativeLineRecordingStatus }))} sx={{ ...selectSx, '& .MuiSelect-select': { py: 0.5, fontSize: 12, color: RECORDING_COLOR[l.recordingStatus], fontWeight: 700 } }} MenuProps={menuProps} inputProps={{ 'data-testid': `narrative-line-recording-${l.cueId}`, 'aria-label': `Opptak for ${l.cueId}` }}>
                       {RECORDING.map((r) => <MenuItem key={r} value={r}>{NARRATIVE_RECORDING_LABELS[r]}</MenuItem>)}
                     </Select>
                   </td>
@@ -120,7 +120,7 @@ export function SceneLinesTab({ projectId, graph, detail, scenes, onNotice }: { 
           <Autocomplete size="small" options={speakers} value={speaker} onChange={(_e, v) => { if (v) setSpeaker(v); }} getOptionLabel={(o) => o.label} isOptionEqualToValue={(a, b) => a.id === b.id} sx={{ width: 240 }}
             renderInput={(params) => <TextField {...params} label="Taler (karakter)" sx={sceneFieldSx} inputProps={{ ...params.inputProps, 'data-testid': 'narrative-line-new-speaker' }} />} />
           <TextField size="small" label="Talerbetegnelse" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="NORA, 12" sx={{ ...sceneFieldSx, width: 160 }} inputProps={{ 'data-testid': 'narrative-line-new-label' }} />
-          <Select size="small" value={sourceType} onChange={(e) => setSourceType(e.target.value as NarrativeLineSourceType)} sx={{ ...sceneFieldSx, width: 90 }} MenuProps={menuProps} inputProps={{ 'data-testid': 'narrative-line-new-type' }} title={NARRATIVE_SOURCE_TAG_LABELS.T}>
+          <Select size="small" value={sourceType} onChange={(e) => setSourceType(e.target.value as NarrativeLineSourceType)} sx={{ ...sceneFieldSx, width: 90 }} MenuProps={menuProps} inputProps={{ 'data-testid': 'narrative-line-new-type', 'aria-label': 'Type' }} title={NARRATIVE_SOURCE_TAG_LABELS.T}>
             {NARRATIVE_LINE_SOURCE_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
           </Select>
           <TextField size="small" label="Engelsk tekst" value={text} onChange={(e) => setText(e.target.value)} sx={{ ...sceneFieldSx, flex: 1, minWidth: 240 }} inputProps={{ 'data-testid': 'narrative-line-new-text' }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void add(); } }} />
