@@ -11,7 +11,7 @@ const turnover = (overrides: Partial<PostTurnoverManifest> = {}): PostTurnoverMa
   id: 'turnover-1',
   label: 'Dag 1',
   status: 'received',
-  source: { productionDayId: 'day-1', soundVersion: 1, capturedAt: '2026-09-21T10:00:00Z', availableMediaIds: [], media: [] },
+  source: { sourceType: 'production_sound', productionDayId: 'day-1', soundVersion: 1, capturedAt: '2026-09-21T10:00:00Z', availableMediaIds: [], media: [] },
   issues: [],
   events: [],
   impact: { stale: false, blocking: false, items: [] },

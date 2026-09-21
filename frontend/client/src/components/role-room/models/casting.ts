@@ -1898,12 +1898,54 @@ export interface PostTurnoverMediaSnapshot {
   createdAt: string;
 }
 
-export interface PostTurnoverSourceSnapshot {
+export interface PostProductionSoundSourceSnapshot {
+  sourceType: 'production_sound';
   productionDayId: string;
   soundVersion: number;
   capturedAt: string;
   availableMediaIds: string[];
   media: PostTurnoverMediaSnapshot[];
+}
+
+export interface PostPictureSourceSnapshot {
+  sourceType: 'picture';
+  workspaceProjectId: string;
+  versionId: string;
+  versionNumber: number;
+  versionLabel: string;
+  versionStatus: string;
+  storageObjectId: string;
+  displayName: string;
+  checksumSha256: string;
+  sizeBytes: number;
+  contentType?: string;
+  durationSeconds?: number;
+  latestVersionNumberAtCapture: number;
+  versionCreatedAt: string;
+  capturedAt: string;
+}
+
+export type PostTurnoverSourceSnapshot = PostProductionSoundSourceSnapshot | PostPictureSourceSnapshot;
+
+export interface PostPictureSourceOption {
+  id: string;
+  versionNumber: number;
+  versionLabel: string;
+  status: string;
+  displayName: string;
+  sizeBytes: number;
+  contentType?: string;
+  durationSeconds?: number;
+  createdAt: string;
+  isLatest: boolean;
+}
+
+export interface PostPictureSourceCatalog {
+  binding: {
+    status: 'linked' | 'unlinked' | 'unavailable';
+    workspaceProjectId?: string;
+  };
+  versions: PostPictureSourceOption[];
 }
 
 export interface PostQcIssue {
@@ -1926,7 +1968,7 @@ export interface PostTurnoverEvent {
 }
 
 export interface PostTurnoverImpactItem {
-  code: 'production_day_missing' | 'sound_report_changed' | 'media_missing' | 'media_changed' | 'media_reconciliation_changed' | 'new_media_available';
+  code: 'production_day_missing' | 'sound_report_changed' | 'media_missing' | 'media_changed' | 'media_reconciliation_changed' | 'new_media_available' | 'picture_project_changed' | 'picture_version_missing' | 'picture_asset_changed' | 'picture_status_changed' | 'new_picture_version_available';
   severity: 'warning' | 'blocking';
   message: string;
   mediaId?: string;
@@ -2751,6 +2793,8 @@ export interface Person {
 export interface CastingProject {
   id: string;
   name: string;
+  creatorhub_project_id?: string | null;
+  creatorhubProjectId?: string | null;
   description?: string;
   projectKind?: 'workspace' | 'demo' | 'template';
   templateAudience?: 'content_producer' | 'production_team';
