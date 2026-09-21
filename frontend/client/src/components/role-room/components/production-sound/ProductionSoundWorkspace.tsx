@@ -4,6 +4,7 @@ import {
   AlbumOutlined as RecordingIcon,
   ArrowBack as FullWorkspaceIcon,
   DownloadOutlined as ExportIcon,
+  DeleteOutline as DeleteIcon,
   InsertDriveFileOutlined as FileIcon,
   LinkOutlined as LinkIcon,
   OpenInNewOutlined as OpenIcon,
@@ -25,6 +26,11 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -246,6 +252,9 @@ export function ProductionSoundWorkspace({
   const [reconcilingMediaId, setReconcilingMediaId] = useState<string | null>(
     null,
   );
+  const [deleteCandidate, setDeleteCandidate] =
+    useState<ProductionSoundMedia | null>(null);
+  const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null);
   const [reconcileTargets, setReconcileTargets] = useState<
     Record<string, string>
   >({});
@@ -627,6 +636,61 @@ export function ProductionSoundWorkspace({
         text:
           error instanceof Error ? error.message : "Kunne ikke åpne lydfilen.",
       });
+    }
+  };
+
+  const requestDeleteRecorderMedia = (media: ProductionSoundMedia) => {
+    if (media.reconciliationStatus === "matched") {
+      setFeedback({
+        type: "warning",
+        text: "Fjern koblingen til continuity-taken før recorderfilen slettes.",
+      });
+      return;
+    }
+    setDeleteCandidate(media);
+  };
+
+  const deleteRecorderMedia = async () => {
+    if (!selectedDay || !deleteCandidate || readOnly || deletingMediaId) return;
+    if (deleteCandidate.reconciliationStatus === "matched") {
+      setFeedback({
+        type: "warning",
+        text: "Fjern koblingen til continuity-taken før recorderfilen slettes.",
+      });
+      setDeleteCandidate(null);
+      return;
+    }
+    setDeletingMediaId(deleteCandidate.id);
+    setFeedback(null);
+    try {
+      await productionSoundService.deleteMedia(
+        project.id,
+        selectedDay.id,
+        deleteCandidate.id,
+      );
+      setSoundMedia((current) =>
+        current.filter((item) => item.id !== deleteCandidate.id),
+      );
+      setReconcileTargets((current) => {
+        const next = { ...current };
+        delete next[deleteCandidate.id];
+        return next;
+      });
+      setFeedback({
+        type: "success",
+        text: `${deleteCandidate.displayName} er slettet permanent fra privat lagring.`,
+      });
+      setDeleteCandidate(null);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Recorderfilen kunne ikke slettes.",
+      });
+    } finally {
+      setDeletingMediaId(null);
     }
   };
 
@@ -1991,18 +2055,47 @@ export function ProductionSoundWorkspace({
                           </Typography>
                         ))}
                       </Box>
-                      <Button
-                        variant="text"
-                        startIcon={<OpenIcon />}
-                        onClick={() => void openMedia(media)}
-                        sx={{
-                          minHeight: targetSize,
-                          alignSelf: { md: "flex-start" },
-                          color: "#7dd3fc",
-                        }}
+                      <Stack
+                        direction={{ xs: "row", md: "column" }}
+                        spacing={0.5}
+                        alignItems={{ md: "stretch" }}
                       >
-                        Åpne fil
-                      </Button>
+                        <Button
+                          variant="text"
+                          startIcon={<OpenIcon />}
+                          onClick={() => void openMedia(media)}
+                          sx={{
+                            minHeight: targetSize,
+                            color: "#7dd3fc",
+                          }}
+                        >
+                          Åpne fil
+                        </Button>
+                        {!readOnly ? (
+                          <Button
+                            variant="text"
+                            color="error"
+                            startIcon={
+                              deletingMediaId === media.id ? (
+                                <CircularProgress size={15} color="inherit" />
+                              ) : (
+                                <DeleteIcon />
+                              )
+                            }
+                            aria-label={`Slett ${media.displayName} permanent`}
+                            title={
+                              media.reconciliationStatus === "matched"
+                                ? "Fjern take-koblingen før filen slettes"
+                                : "Slett recorderfil permanent"
+                            }
+                            disabled={Boolean(deletingMediaId)}
+                            onClick={() => requestDeleteRecorderMedia(media)}
+                            sx={{ minHeight: targetSize }}
+                          >
+                            Slett fil
+                          </Button>
+                        ) : null}
+                      </Stack>
                     </Box>
                     {!readOnly ? (
                       <Box
@@ -2529,6 +2622,62 @@ export function ProductionSoundWorkspace({
         {activeSurface === "additional" ? renderAdditional() : null}
         {activeSurface === "handoff" ? renderHandoff() : null}
       </Box>
+      <Dialog
+        open={Boolean(deleteCandidate)}
+        onClose={
+          deletingMediaId ? undefined : () => setDeleteCandidate(null)
+        }
+        aria-labelledby="delete-sound-media-title"
+        aria-describedby="delete-sound-media-description"
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{
+          sx: {
+            bgcolor: "#0b1722",
+            color: roleTokens.text,
+            border: "1px solid rgba(248,113,113,.28)",
+          },
+        }}
+      >
+        <DialogTitle id="delete-sound-media-title">
+          Slett recorderfil permanent?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText
+            id="delete-sound-media-description"
+            sx={{ color: roleTokens.textMuted }}
+          >
+            {deleteCandidate?.displayName} fjernes fra prosjektet og den private
+            S3-lagringen. Handlingen kan ikke angres.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0, gap: 0.75 }}>
+          <Button
+            onClick={() => setDeleteCandidate(null)}
+            disabled={Boolean(deletingMediaId)}
+            sx={{ minHeight: targetSize, color: roleTokens.text }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            data-testid="production-sound-delete-confirm"
+            variant="contained"
+            color="error"
+            startIcon={
+              deletingMediaId ? (
+                <CircularProgress size={15} color="inherit" />
+              ) : (
+                <DeleteIcon />
+              )
+            }
+            disabled={Boolean(deletingMediaId)}
+            onClick={() => void deleteRecorderMedia()}
+            sx={{ minHeight: targetSize }}
+          >
+            Slett permanent
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

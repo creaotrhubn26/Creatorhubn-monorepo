@@ -230,7 +230,7 @@ async function releaseReservation(
 }
 
 export async function readOwnedSoundRoomObject(
-  pool: Pool,
+  pool: Pool | PoolClient,
   objectId: string,
   userId: string,
 ): Promise<SoundRoomStorageObjectRow | null> {
@@ -788,12 +788,15 @@ export async function deleteCreatorHubMediaObject(
   objectId: string,
   storageOwnerUserId: string,
   deps: SoundRoomStorageDeps = {},
+  transactionClient?: PoolClient,
 ): Promise<boolean> {
   const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
-  const objectRow = await readOwnedSoundRoomObject(pool, objectId, storageOwnerUserId);
+  const db = transactionClient ?? pool;
+  const objectRow = await readOwnedSoundRoomObject(db, objectId, storageOwnerUserId);
   if (!objectRow) return false;
   if (objectRow.status === "pending") {
+    if (transactionClient) throw new Error("pending_delete_requires_abort");
     return abortSoundRoomUpload(pool, objectId, storageOwnerUserId, deps);
   }
   if (objectRow.status !== "active") return false;
@@ -801,9 +804,10 @@ export async function deleteCreatorHubMediaObject(
     Bucket: storage.bucket,
     Key: objectRow.object_key,
   }));
-  const client = await pool.connect();
+  const client = transactionClient ?? (await pool.connect());
+  const ownsTransaction = !transactionClient;
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     const changed = await client.query(
       `UPDATE role_room_storage_objects
           SET status = 'deleted', deleted_at = NOW()
@@ -825,13 +829,14 @@ export async function deleteCreatorHubMediaObject(
         ],
       );
     }
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     return (changed.rowCount ?? 0) > 0;
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
+    if (ownsTransaction)
+      await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
