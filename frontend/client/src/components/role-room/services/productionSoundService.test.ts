@@ -136,6 +136,46 @@ describe("productionSoundService", () => {
     );
   });
 
+  it("deletes a completed recorder file through its scoped endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: async () => {
+        throw new Error("No content");
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      productionSoundService.deleteMedia("troll project", "day/1", "media/1"),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/role-room/projects/troll%20project/production-days/day%2F1/production-sound/media/media%2F1",
+      expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
+  });
+
+  it("can abort an unfinished recorder upload for safe cleanup", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      productionSoundService.abortRecorderUpload(
+        "troll",
+        "day-1",
+        "object-1",
+      ),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/role-room/projects/troll/production-days/day-1/production-sound/media/uploads/object-1",
+      expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
+  });
+
   it("uploads a WAVE directly to the signed S3 URL before server completion", async () => {
     const media = {
       id: "media-1",

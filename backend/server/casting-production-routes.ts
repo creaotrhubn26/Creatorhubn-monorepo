@@ -14,6 +14,7 @@
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-coordination
  *   • PATCH  /projects/:projectId/production-days/:dayId/continuity
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-sound
+ *   • DELETE /projects/:projectId/production-days/:dayId/production-sound/media/:mediaId
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/comments
  *   • POST   /projects/:projectId/production-days/:dayId/continuity/media
  *   • GET    /projects/:projectId/production-days/:dayId/continuity/media/:fileId/url
@@ -77,7 +78,9 @@ import {
   summarizeProductionSoundChanges,
 } from "./casting-production-sound.js";
 import {
+  abortProductionSoundMediaUpload,
   completeProductionSoundMediaUpload,
+  deleteProductionSoundMedia,
   getProductionSoundMediaDownloadUrl,
   getProductionSoundMediaUploadStatus,
   initiateProductionSoundMediaUpload,
@@ -384,6 +387,10 @@ function sendProductionSoundStorageError(res: Response, error: unknown): void {
     multipart_part_verification_failed: 422,
     size_mismatch: 422,
     checksum_mismatch: 422,
+    media_not_found: 404,
+    media_reconciled: 409,
+    media_delete_failed: 503,
+    media_owner_missing: 503,
   };
   const validationMessage =
     error instanceof Error &&
@@ -399,12 +406,23 @@ function sendProductionSoundStorageError(res: Response, error: unknown): void {
   const code = Object.hasOwn(statusByCode, candidate)
     ? candidate
     : "production_sound_storage_failed";
+  const messageByCode: Partial<Record<string, string>> = {
+    media_not_found:
+      "Recorderfilen finnes ikke lenger eller tilhører en annen produksjonsdag.",
+    media_reconciled:
+      "Fjern koblingen til continuity-taken før recorderfilen slettes.",
+    media_delete_failed:
+      "Recorderfilen kunne ikke slettes trygt fra lagringen.",
+    media_owner_missing:
+      "Recorderfilen mangler en gyldig lagringseier.",
+  };
   res.status(statusByCode[code] ?? 503).json({
     error: code,
     message:
-      code === "production_sound_storage_failed"
+      messageByCode[code] ??
+      (code === "production_sound_storage_failed"
         ? "Lydfilen kunne ikke behandles."
-        : undefined,
+        : undefined),
   });
 }
 
@@ -1347,6 +1365,8 @@ export interface CreateCastingProductionRouterDeps {
   signProductionSoundMediaUploadParts?: typeof signProductionSoundMediaUploadParts;
   getProductionSoundMediaUploadStatus?: typeof getProductionSoundMediaUploadStatus;
   completeProductionSoundMediaUpload?: typeof completeProductionSoundMediaUpload;
+  abortProductionSoundMediaUpload?: typeof abortProductionSoundMediaUpload;
+  deleteProductionSoundMedia?: typeof deleteProductionSoundMedia;
   listProductionSoundMedia?: typeof listProductionSoundMedia;
   getProductionSoundMediaDownloadUrl?: typeof getProductionSoundMediaDownloadUrl;
 }
@@ -1376,6 +1396,10 @@ export function createCastingProductionRouter(
   const completeSoundMediaUpload =
     deps.completeProductionSoundMediaUpload ??
     completeProductionSoundMediaUpload;
+  const abortSoundMediaUpload =
+    deps.abortProductionSoundMediaUpload ?? abortProductionSoundMediaUpload;
+  const deleteSoundMedia =
+    deps.deleteProductionSoundMedia ?? deleteProductionSoundMedia;
   const listSoundMedia =
     deps.listProductionSoundMedia ?? listProductionSoundMedia;
   const getSoundMediaDownloadUrl =
@@ -3031,6 +3055,36 @@ export function createCastingProductionRouter(
     },
   );
 
+  router.delete(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/uploads/:objectId",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, objectId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        if (!isUuid(objectId)) {
+          res.status(404).json({ error: "upload_not_found" });
+          return;
+        }
+        const aborted = await abortSoundMediaUpload(pool, {
+          objectId,
+          userId: (req as AuthedRequest).userId,
+          projectId,
+          productionDayId: dayId,
+        });
+        if (!aborted) {
+          res.status(404).json({ error: "upload_not_found" });
+          return;
+        }
+        res.status(204).end();
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
+      }
+    },
+  );
+
   router.get(
     "/projects/:projectId/production-days/:dayId/production-sound/media",
     auth,
@@ -3059,6 +3113,35 @@ export function createCastingProductionRouter(
           error: "Kunne ikke hente recorderfiler",
           detail: "internal_error",
         });
+      }
+    },
+  );
+
+  router.delete(
+    "/projects/:projectId/production-days/:dayId/production-sound/media/:mediaId",
+    auth,
+    productionSoundMediaActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId, dayId, mediaId } = req.params;
+        if (!(await ensureProductionSoundAccess(req, res, projectId))) return;
+        if (!isUuid(mediaId)) {
+          res.status(404).json({ error: "media_not_found" });
+          return;
+        }
+        const deleted = await deleteSoundMedia(pool, {
+          mediaId,
+          projectId,
+          productionDayId: dayId,
+        });
+        if (!deleted) {
+          res.status(404).json({ error: "media_not_found" });
+          return;
+        }
+        res.status(204).end();
+      } catch (error) {
+        sendProductionSoundStorageError(res, error);
       }
     },
   );

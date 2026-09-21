@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 
 import { getRoleRoomObjectStorage } from "./role-room-object-storage.js";
 import {
+  abortSoundRoomUpload,
   completeSoundRoomUpload,
   createSoundRoomObjectDownloadUrl,
   deleteCreatorHubMediaObject,
@@ -418,4 +419,133 @@ export async function getProductionSoundMediaDownloadUrl(
     contentType: row.content_type,
     sizeBytes: Number(row.size_bytes),
   };
+}
+
+/**
+ * Abort an unfinished direct upload owned by the current user.
+ *
+ * The project/day scope is checked before the shared storage service sees the
+ * object id, so a valid id from another production cannot be used as an
+ * object-storage oracle.
+ */
+export async function abortProductionSoundMediaUpload(
+  pool: Pool,
+  input: {
+    objectId: string;
+    userId: string;
+    projectId: string;
+    productionDayId: string;
+  },
+): Promise<boolean> {
+  if (!(await scopedStorageObject(pool, input)))
+    throw new Error("upload_not_found");
+  return abortSoundRoomUpload(
+    pool,
+    input.objectId,
+    input.userId,
+    productionSoundStorageDeps(),
+  );
+}
+
+type DeleteProductionSoundMediaDeps = {
+  deleteStorageObject?: typeof deleteCreatorHubMediaObject;
+  storageDeps?: SoundRoomStorageDeps;
+};
+
+/**
+ * Permanently remove one unmatched recorder file.
+ *
+ * The media row is locked while its reconciliation state is checked. This
+ * serializes deletion with the existing reconcile transaction and guarantees
+ * that a file cannot become linked to a take while it is being removed. The
+ * storage object is deleted first; if the following metadata update fails, a
+ * retry observes the already-deleted storage row and finishes the soft delete.
+ */
+export async function deleteProductionSoundMedia(
+  pool: Pool,
+  input: {
+    mediaId: string;
+    projectId: string;
+    productionDayId: string;
+  },
+  deps: DeleteProductionSoundMediaDeps = {},
+): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<{
+      storage_object_id: string;
+      reconciliation_status: "unmatched" | "matched";
+      storage_status: string;
+      storage_owner_user_id: string | null;
+    }>(
+      `SELECT media.storage_object_id::text, media.reconciliation_status,
+              object_row.status AS storage_status,
+              COALESCE(account.user_id, media.uploaded_by) AS storage_owner_user_id
+         FROM casting_production_sound_media media
+         JOIN role_room_storage_objects object_row
+           ON object_row.id = media.storage_object_id
+         JOIN role_room_storage_accounts account
+           ON account.id = object_row.storage_account_id
+        WHERE media.id = $1::uuid
+          AND media.project_id = $2
+          AND media.production_day_id = $3
+          AND media.deleted_at IS NULL
+        LIMIT 1
+        FOR UPDATE OF media`,
+      [input.mediaId, input.projectId, input.productionDayId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    if (row.reconciliation_status === "matched") {
+      throw new Error("media_reconciled");
+    }
+    if (row.storage_status === "active") {
+      if (!row.storage_owner_user_id) throw new Error("media_owner_missing");
+      const deleted = await (deps.deleteStorageObject ??
+        deleteCreatorHubMediaObject)(
+        pool,
+        row.storage_object_id,
+        row.storage_owner_user_id,
+        deps.storageDeps ?? productionSoundStorageDeps(),
+        client,
+      );
+      if (!deleted) {
+        const latest = await client.query<{ status: string }>(
+          `SELECT status
+             FROM role_room_storage_objects
+            WHERE id = $1::uuid
+            LIMIT 1`,
+          [row.storage_object_id],
+        );
+        if (latest.rows[0]?.status !== "deleted")
+          throw new Error("media_delete_failed");
+      }
+    } else if (row.storage_status !== "deleted") {
+      throw new Error("media_delete_failed");
+    }
+    await client.query(
+      `UPDATE casting_production_sound_media
+          SET deleted_at = COALESCE(deleted_at, NOW()),
+              continuity_take_id = NULL,
+              reconciled_by = NULL,
+              reconciled_at = NULL,
+              reconciliation_status = 'unmatched'
+        WHERE id = $1::uuid
+          AND project_id = $2
+          AND production_day_id = $3
+          AND deleted_at IS NULL`,
+      [input.mediaId, input.projectId, input.productionDayId],
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

@@ -167,6 +167,28 @@ export const productionSoundService = {
     return Array.isArray(payload.media) ? payload.media : [];
   },
 
+  async abortRecorderUpload(
+    projectId: string,
+    dayId: string,
+    objectId: string,
+  ): Promise<void> {
+    await jsonRequest<void>(
+      `${mediaBase(projectId, dayId)}/uploads/${encodeURIComponent(objectId)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async deleteMedia(
+    projectId: string,
+    dayId: string,
+    mediaId: string,
+  ): Promise<void> {
+    await jsonRequest<void>(
+      `${mediaBase(projectId, dayId)}/${encodeURIComponent(mediaId)}`,
+      { method: "DELETE" },
+    );
+  },
+
   async uploadRecorderFile(
     projectId: string,
     dayId: string,
