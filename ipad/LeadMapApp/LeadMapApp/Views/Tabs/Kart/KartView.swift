@@ -28,6 +28,10 @@ private enum KrBrand {
     static let stroke = Color.white.opacity(0.06)
     static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
     static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
+    /// Samme lilla, nedtonet til hvit tekst klarer 4,5:1 (WCAG AA).
+    /// Brukes bare der fargen ligger bak tekst — ikke på fyll og pins.
+    static let purpleTekstflate = LgKontrast.lillaTekstflate
+    static let purpleTekstflateLys = LgKontrast.lillaTekstflateLys
     static let red = Color(red: 0.95, green: 0.20, blue: 0.20)
     static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
@@ -554,6 +558,14 @@ struct KartView: View {
     /// Tegnforklaringen bor bak en liten kart-chip i stedet for egen
     /// full-bredde-rad (audit-regel 5: kartet er alltid scenen).
     @State private var legendOpen: Bool = false
+    /// Leads i prosjektet som mangler koordinater, men har en adresse vi kan
+    /// slå opp. Null betyr «ingen å hente», ikke «ikke sjekket».
+    @State private var utenPlassering: Int = 0
+    @State private var plasseringJobber = false
+    @State private var plasseringResultat: LeadPlacementResult?
+    /// Adresser som ga flere treff. Disse plasseres ikke før noen peker.
+    @State private var plasseringTvetydige: [AmbiguousLeadPlacement] = []
+    @State private var visPlasseringsvalg = false
 
     @State private var selectedArea: AreaFilter = .all
     @State private var selectedRadiusKm: Double = 5
@@ -568,6 +580,89 @@ struct KartView: View {
     /// appState.leads adaptert til pin-modellen. QA-runde 3 (desktop,
     /// 2026-07-05): mock-gatingen tømte kartet i ekte modus fordi den
     /// ekte grenen aldri ble koblet — 22 leads i API, 0 pins på kartet.
+    /// Leads uten koordinater filtreres bort av kartet. Uten denne brikka
+    /// forsvinner de i stillhet, og brukeren tror søket ga færre treff.
+    @ViewBuilder
+    private var plasseringChip: some View {
+        if let resultat = plasseringResultat {
+            Label(
+                resultat.ambiguous.isEmpty
+                    ? (resultat.placed > 0
+                        ? "\(resultat.placed) plassert på kartet"
+                        : "Fant ingen adresse for \(resultat.unresolved)")
+                    : "\(resultat.ambiguous.count) trenger verifisering",
+                systemImage: resultat.ambiguous.isEmpty
+                    ? (resultat.placed > 0 ? "mappin.circle.fill" : "questionmark.circle")
+                    : "questionmark.circle.fill")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .frame(minHeight: 44)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+        } else if utenPlassering > 0 {
+            Button {
+                Task { await finnAdressene() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: plasseringJobber
+                          ? "arrow.triangle.2.circlepath" : "mappin.slash")
+                        .font(.appScaled(size: 10, weight: .bold))
+                    Text(plasseringJobber
+                         ? "Finner adressene …"
+                         : "\(utenPlassering) uten plassering")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .frame(minHeight: 44)
+                .background(.ultraThinMaterial, in: Capsule())
+                .background(KrBrand.orange.opacity(0.45), in: Capsule())
+                .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(plasseringJobber)
+            .accessibilityIdentifier("kart.placement.resolve")
+            .accessibilityHint("Slår opp adressene på nytt slik at de kan vises på kartet")
+        }
+    }
+
+    private func lastPlasseringsstatus() async {
+        guard let api = appState.api, let projectId = appState.activeProjectId,
+              !DemoModeManager.isActiveNonisolated else { return }
+        // Statusen er tilleggsinformasjon. Feiler den, skal kartet være som før.
+        guard let status = try? await api.fetchLeadPlacementStatus(projectId: projectId)
+        else { return }
+        utenPlassering = status.resolvableCount
+    }
+
+    private func finnAdressene() async {
+        guard let api = appState.api, let projectId = appState.activeProjectId,
+              !plasseringJobber else { return }
+        plasseringJobber = true
+        defer { plasseringJobber = false }
+        do {
+            let resultat = try await api.resolveLeadPlacement(projectId: projectId)
+            plasseringResultat = resultat
+            plasseringTvetydige = resultat.ambiguous
+            await appState.refreshLeads()
+            await lastPlasseringsstatus()
+            if !resultat.ambiguous.isEmpty {
+                // Systemet plasserte det det kunne. Resten må et menneske peke
+                // på — vi spør med en gang, mens konteksten er fersk.
+                visPlasseringsvalg = true
+            }
+            // Kvitteringen står i fem sekunder; så er brikka tilbake til
+            // tilstanden den faktisk beskriver.
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            plasseringResultat = nil
+        } catch {
+            showToast("Fikk ikke slått opp adressene. Prøv igjen.")
+        }
+    }
+
     private var kartLeads: [MapLeadMock] {
         if DemoModeManager.isActiveNonisolated {
             return KartPreviewData.leads
@@ -1254,6 +1349,26 @@ struct KartView: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
+        .sheet(isPresented: $visPlasseringsvalg) {
+            LeadPlacementVerifySheet(
+                leads: plasseringTvetydige,
+                onVelg: { lead, option in
+                    Task {
+                        guard let api = appState.api,
+                              let projectId = appState.activeProjectId else { return }
+                        try? await api.verifyLeadPlacement(
+                            projectId: projectId, leadId: lead.leadId, option: option)
+                        await appState.refreshLeads()
+                        await lastPlasseringsstatus()
+                    }
+                },
+                onHoppOver: { _ in })
+        }
+        .task(id: appState.leads.count) {
+            // Telles på nytt når lead-lista endrer seg: en godkjent kandidat
+            // uten koordinater skal dukke opp i brikka med en gang.
+            await lastPlasseringsstatus()
+        }
         .task(id: appState.activeLeadgridProjectId) {
             // Persisted Dørsalg-state tilhører prosjektet. Kartverkets
             // adresse-cache, viewport og paging beholdes for rask UX.
@@ -1925,8 +2040,10 @@ struct KartView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 11).padding(.vertical, 8)
             .frame(minHeight: 44)
+            // Lilla på 45 % over ultraThinMaterial ga under 4,5:1 mot hvit
+            // tekst. Den mørkere tekstflaten, i full dekkevne.
             .background(.ultraThinMaterial, in: Capsule())
-            .background(KrBrand.purple.opacity(0.45), in: Capsule())
+            .background(KrBrand.purpleTekstflate, in: Capsule())
             .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -1959,9 +2076,12 @@ struct KartView: View {
             .overlay(alignment: .bottomLeading) {
                 // Tegnforklaring-chip — vik plass når kortet er framme.
                 if leadKortTilstand == .skjult && !navModeActive && !measureMode {
-                    legendChip
-                        .padding(10)
-                        .transition(.opacity)
+                    HStack(spacing: 8) {
+                        legendChip
+                        plasseringChip
+                    }
+                    .padding(10)
+                    .transition(.opacity)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -2488,7 +2608,13 @@ struct KartView: View {
             Image(systemName: "magnifyingglass")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(KrBrand.textSecondary)
-            TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
+            // Plassholderen arver ikke `.font` fra feltet — den er sin egen
+            // Text og ble tegnet i standard body-størrelse. Og den sluttet på
+            // «…», som revisjonen leser som avkuttet tekst («Text clipped»);
+            // ellipsen er fjernet, setningen er hel uten den.
+            TextField("Søk etter sted, lead eller selskap", text: $search,
+                      prompt: Text("Søk etter sted, lead eller selskap")
+                .font(.appScaled(size: 12))
                 .foregroundColor(KrBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
@@ -2496,6 +2622,8 @@ struct KartView: View {
                 .focused($searchFieldFocused)
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
+        // Feltet var 38pt høyt og klippet teksten ved store tekststørrelser.
+        .frame(minHeight: 44)
         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
         .frame(maxWidth: .infinity)
@@ -3895,9 +4023,14 @@ struct KartView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .frame(minHeight: 48)
+            // Merkelilla bak hvit 13pt tekst gir 3,98:1 i venstre ende og
+            // 2,95:1 i høyre — under kravet på 4,5:1 (XCUIAccessibilityAudit
+            // melder «Contrast failed» på etiketten). Gradienten er derfor
+            // nedtonet her, der den ligger bak tekst; fyll, streker og pins
+            // beholder merkefargen.
             .background(
                 LinearGradient(
-                    colors: [KrBrand.purple, KrBrand.purpleLight],
+                    colors: [KrBrand.purpleTekstflate, KrBrand.purpleTekstflateLys],
                     startPoint: .leading,
                     endPoint: .trailing
                 ),

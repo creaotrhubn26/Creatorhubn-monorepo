@@ -4,11 +4,12 @@ import type {
   ArtDepartmentId,
   ArtDepartmentOperations,
   ArtDepartmentScenePlan,
+  ArtContinuityItem,
   CastingProject,
   SceneBreakdown,
 } from '../../models/casting';
 
-export const ART_DEPARTMENT_SURFACES = ['overview', 'scenes', 'visual-direction', 'departments', 'handoff'] as const;
+export const ART_DEPARTMENT_SURFACES = ['overview', 'scenes', 'visual-direction', 'continuity', 'departments', 'handoff'] as const;
 export type ArtDepartmentSurface = (typeof ART_DEPARTMENT_SURFACES)[number];
 
 export function isArtDepartmentSurface(value: unknown): value is ArtDepartmentSurface {
@@ -49,6 +50,10 @@ export interface ArtDepartmentWorkspaceBrief {
     unassignedPropCount: number;
     openDecisionCount: number;
     readyHandoffCount: number;
+    continuityItemCount: number;
+    continuityIssueCount: number;
+    continuityResetCount: number;
+    continuityAttentionCount: number;
   };
   nextActions: Array<{
     id: string;
@@ -84,6 +89,7 @@ export function createEmptyArtDepartmentOperations(): ArtDepartmentOperations {
     scenePlans: [],
     decisions: [],
     handoffs: defaultHandoffs(),
+    continuityItems: [],
     activity: [],
   };
 }
@@ -99,11 +105,12 @@ export function mergeArtDepartmentOperations(value?: ArtDepartmentOperations | n
     scenePlans: Array.isArray(value.scenePlans) ? value.scenePlans : [],
     decisions: Array.isArray(value.decisions) ? value.decisions : [],
     handoffs: ART_DEPARTMENTS.map((department) => handoffsByDepartment.get(department) ?? empty.handoffs.find((item) => item.department === department)!),
+    continuityItems: Array.isArray(value.continuityItems) ? value.continuityItems : [],
     activity: Array.isArray(value.activity) ? value.activity : [],
   };
 }
 
-export function createArtDepartmentId(prefix: 'decision'): string {
+export function createArtDepartmentId(prefix: 'decision' | 'continuity'): string {
   const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}-${random}`;
 }
@@ -162,6 +169,12 @@ export function buildArtDepartmentWorkspaceBrief(
   const plannedSceneCount = scenes.filter((scene) => scene.plan.status !== 'not_started').length;
   const openDecisionCount = (operations.decisions ?? []).filter((decision) => decision.status !== 'ready_for_review').length;
   const readyHandoffCount = (operations.handoffs ?? []).filter((handoff) => handoff.status === 'ready').length;
+  const continuityItemCount = operations.continuityItems.length;
+  const continuityIssueCount = operations.continuityItems.filter((item) => item.status === 'blocked' || Boolean(item.issue?.trim())).length;
+  const continuityResetCount = operations.continuityItems.filter((item) => item.status === 'reset_required').length;
+  const continuityAttentionCount = operations.continuityItems.filter((item) => (
+    item.status === 'reset_required' || item.status === 'blocked' || Boolean(item.issue?.trim())
+  )).length;
 
   const nextActions: ArtDepartmentWorkspaceBrief['nextActions'] = [];
   if (blockedSceneCount > 0) {
@@ -172,6 +185,15 @@ export function buildArtDepartmentWorkspaceBrief(
   }
   if (unassignedPropCount > 0) {
     nextActions.push({ id: 'unassigned-props', title: `${unassignedPropCount} rekvisitter mangler scenekobling`, detail: 'Koble dem til riktig scene før opptaksdagen pakkes.', surface: 'departments', tone: 'attention' });
+  }
+  if (continuityAttentionCount > 0) {
+    nextActions.push({
+      id: 'continuity-attention',
+      title: `${continuityAttentionCount} continuity-punkter krever handling`,
+      detail: 'Kontroller avvik og reset før neste scene eller opptaksdag.',
+      surface: 'continuity',
+      tone: 'attention',
+    });
   }
   if (!operations.visualDirection?.trim()) {
     nextActions.push({ id: 'visual-direction', title: 'Visuell retning er ikke dokumentert', detail: 'Beskriv designintensjonen som regissør, foto og art-avdeling skal arbeide etter.', surface: 'visual-direction', tone: 'neutral' });
@@ -190,6 +212,10 @@ export function buildArtDepartmentWorkspaceBrief(
       unassignedPropCount,
       openDecisionCount,
       readyHandoffCount,
+      continuityItemCount,
+      continuityIssueCount,
+      continuityResetCount,
+      continuityAttentionCount,
     },
     nextActions,
   };
@@ -209,4 +235,51 @@ export function upsertDecision(
 ): ArtDepartmentOperations {
   const without = operations.decisions.filter((item) => item.id !== decision.id);
   return { ...operations, decisions: [...without, decision] };
+}
+
+export function upsertContinuityItem(
+  operations: ArtDepartmentOperations,
+  item: ArtContinuityItem,
+): ArtDepartmentOperations {
+  const without = operations.continuityItems.filter((candidate) => candidate.id !== item.id);
+  return { ...operations, continuityItems: [...without, item] };
+}
+
+export interface ArtDepartmentLocalDraft {
+  baseVersion: number;
+  updatedAt: string;
+  operations: ArtDepartmentOperations;
+}
+
+function artDepartmentDraftKey(projectId: string): string {
+  return `role-room:art-department:draft:${projectId}`;
+}
+
+export function loadArtDepartmentDraft(projectId: string): ArtDepartmentLocalDraft | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(artDepartmentDraftKey(projectId)) ?? 'null') as ArtDepartmentLocalDraft | null;
+    if (!parsed || !Number.isInteger(parsed.baseVersion) || typeof parsed.updatedAt !== 'string' || !parsed.operations) return null;
+    return { ...parsed, operations: mergeArtDepartmentOperations(parsed.operations) };
+  } catch {
+    return null;
+  }
+}
+
+export function saveArtDepartmentDraft(projectId: string, draft: ArtDepartmentLocalDraft): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(artDepartmentDraftKey(projectId), JSON.stringify(draft));
+  } catch {
+    // A full or disabled storage area must never interrupt editing.
+  }
+}
+
+export function clearArtDepartmentDraft(projectId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(artDepartmentDraftKey(projectId));
+  } catch {
+    // Best effort; server persistence remains authoritative.
+  }
 }

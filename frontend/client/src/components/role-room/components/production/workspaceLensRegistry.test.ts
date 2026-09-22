@@ -6,6 +6,7 @@ import {
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
   matchesLensProjectRole,
+  hasWorkspaceLensGrant,
   isLensDecisionPending,
   resolveLensUrlState,
   resolveWorkspaceLens,
@@ -27,6 +28,18 @@ describe('workspaceLensRegistry', () => {
     for (const entry of WORKSPACE_LENS_REGISTRY) {
       expect(WORKSPACE_LENS_COMPONENTS[entry.componentKey]).toBeDefined();
     }
+  });
+
+  it('registers a standard surface and permission bundle for every lens', () => {
+    for (const entry of WORKSPACE_LENS_REGISTRY) {
+      expect(entry).toHaveProperty('defaultSurface');
+      expect(Array.isArray(entry.permissionBundle.manageAnyOf)).toBe(true);
+    }
+    expect(WORKSPACE_LENS_REGISTRY.find((entry) => entry.lens === 'art-department'))
+      .toEqual(expect.objectContaining({ defaultSurface: 'overview' }));
+    expect(hasWorkspaceLensGrant('art-department', { canManageArtDepartment: true })).toBe(true);
+    expect(hasWorkspaceLensGrant('art-department', { canEditProduction: true })).toBe(false);
+    expect(hasWorkspaceLensGrant('post-production', { canReviewPostTurnover: true })).toBe(true);
   });
 
   it('keeps the assistant direction split in sync with the lens entry', () => {

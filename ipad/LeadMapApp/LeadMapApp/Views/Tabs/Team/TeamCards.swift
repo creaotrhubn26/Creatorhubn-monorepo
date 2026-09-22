@@ -241,7 +241,30 @@ final class TerritoryLabelView: MKAnnotationView {
         nameLabel.text = t.memberName
         areaLabel.text = t.areaName
         card.backgroundColor = t.color
+        // Territoriefargene spenner fra lilla til gult, og hvit tekst på gult,
+        // grønt og lyst blått faller under kontrastkravet — målt av
+        // XCUIAccessibilityAudit på Team-fanen. Tekstfargen velges derfor
+        // etter bakgrunnens luminans i stedet for å være hvit uansett.
+        let tekst = Self.lesbarTekst(på: t.color)
+        nameLabel.textColor = tekst
+        areaLabel.textColor = tekst.withAlphaComponent(0.92)
+        card.layer.borderColor = tekst.withAlphaComponent(0.85).cgColor
         setNeedsLayout()
+    }
+
+    /// Svart eller hvit tekst — den som gir best kontrast mot bakgrunnen.
+    ///
+    /// Terskelen er WCAG-krysningspunktet: kontrasten mot hvit er
+    /// `1,05 / (L + 0,05)`, mot svart `(L + 0,05) / 0,05`. De er like når
+    /// `L ≈ 0,179`; over det vinner svart.
+    static func lesbarTekst(på bakgrunn: UIColor) -> UIColor {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard bakgrunn.getRed(&r, green: &g, blue: &b, alpha: &a) else { return .white }
+        func lineær(_ c: CGFloat) -> CGFloat {
+            c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        let luminans = 0.2126 * lineær(r) + 0.7152 * lineær(g) + 0.0722 * lineær(b)
+        return luminans > 0.179 ? UIColor(white: 0.08, alpha: 1) : .white
     }
 }
 
@@ -516,7 +539,7 @@ struct TeamPerformanceCard: View {
                     Circle().fill(m.color.opacity(0.85))
                     Text(m.initials)
                         .font(.appScaled(size: 11, weight: .black))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(m.color.lesbarTekst)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
@@ -693,8 +716,10 @@ struct TeamAreasCard: View {
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10).padding(.vertical, 7)
+                    .frame(minHeight: 44)
                     .background(
-                        LinearGradient(colors: [TBrand.purple, TBrand.purpleLight],
+                        LinearGradient(colors: [LgKontrast.lillaTekstflate,
+                                                LgKontrast.lillaTekstflateLys],
                                        startPoint: .leading, endPoint: .trailing),
                         in: Capsule()
                     )
@@ -708,6 +733,7 @@ struct TeamAreasCard: View {
                         .padding(8)
                         .background(TBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
                         .overlay(RoundedRectangle(cornerRadius: 9).stroke(TBrand.stroke, lineWidth: 1))
+                        .trykkflate()
                 }
                 .buttonStyle(.plain)
             }
@@ -1290,7 +1316,7 @@ struct ActivityModal: View {
                                 Circle().fill(m.color.opacity(0.85))
                                 Text(m.initials)
                                     .font(.appScaled(size: 8, weight: .black))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(m.color.lesbarTekst)
                             }
                             .frame(width: 18, height: 18)
                             Text(m.name.split(separator: " ").first.map(String.init) ?? m.name)

@@ -13,6 +13,7 @@ import {
   discoveryBriefSchema,
   discoveryCandidateQuerySchema,
   discoveryDecisionSchema,
+  warmStartCommitSchema,
   discoveryFeedbackSchema,
   discoveryHash,
   discoveryPreviewSchema,
@@ -44,6 +45,11 @@ import {
   type LeadgridSession,
 } from "./leadgrid-project-access.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import {
+  commitWarmStart,
+  previewWarmStart,
+  WarmStartStaleError,
+} from "./leadgrid-discovery-warm-start.js";
 import {
   assertAutoDiscoveryProfileCapacity,
   DiscoveryGovernanceError,
@@ -953,6 +959,70 @@ export function registerLeadgridDiscoveryRoutes({
           ...query,
         }),
       );
+    }),
+  );
+
+  // Varm start: ett søk gir gjerne to hundre kandidater. Uten en inngang blir
+  // de liggende. GET viser forslaget, POST oppretter først når brukeren har
+  // sett hvem det gjelder.
+  app.get(
+    `${base}/runs/:runId/warm-start`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      res.json(
+        await previewWarmStart(pool, {
+          project: context.project,
+          runId: parseUuid(req.params.runId, "runId"),
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    `${base}/runs/:runId/warm-start`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const { permissions } = await resolveEffectivePermissions(
+        pool,
+        context.project.organizationId,
+        context.userId,
+      );
+      if (!permissions.has("leads.create")) {
+        res.status(403).json({
+          error: "mangler_tillatelse",
+          required: "leads.create",
+          organization_id: context.project.organizationId,
+        });
+        return;
+      }
+      const body = warmStartCommitSchema.parse(req.body ?? {});
+      try {
+        res.json(
+          await commitWarmStart(pool, {
+            project: context.project,
+            userId: context.userId,
+            runId: parseUuid(req.params.runId, "runId"),
+            candidateId: body.candidate_id,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof WarmStartStaleError) {
+          // Noen andre rakk å behandle kandidaten. Appen henter forslaget på
+          // nytt i stedet for å godkjenne en rad brukeren aldri så.
+          sendError(
+            res,
+            409,
+            "warm_start_stale",
+            "Forslaget er ikke lenger det varmeste. Hent det på nytt.",
+          );
+          return;
+        }
+        throw error;
+      }
     }),
   );
 

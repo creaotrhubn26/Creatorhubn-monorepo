@@ -349,6 +349,11 @@ export const discoveryRunCreateSchema = z
     }
   });
 
+/** Varm start bekreftes mot kandidaten brukeren faktisk så i forslaget. */
+export const warmStartCommitSchema = z
+  .object({ candidate_id: z.string().uuid() })
+  .strict();
+
 export const discoveryDecisionSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),

@@ -14,13 +14,14 @@ Rollearkitekturen har samtidig fått et tydelig fundament: én produksjon, én d
 
 ### Tillegg 20. september 2026: Production Designer / Art Department
 
-Leveransen ble opprinnelig implementert på `codex/role-room-production-designer` og er nå merget og med i den synkroniserte Role Room-livegrenen.
+Grunnleveransen ble opprinnelig implementert på `codex/role-room-production-designer` og er nå merget og med i den synkroniserte Role Room-livegrenen. Art Continuity-utvidelsen som beskrives nedenfor ligger foreløpig bare på `codex/role-room-art-continuity`.
 
-Produksjonsdesigner og de tilknyttede art-rollene rutes nå til `art-department`-linsen med fem sammenhengende flater:
+Produksjonsdesigner og de tilknyttede art-rollene rutes nå til `art-department`-linsen med seks sammenhengende flater:
 
 - oversikt over uavklarte sceneplaner, rekvisittkoblinger, beslutninger og revisjonsspor;
 - scenevis art-breakdown med status, praktisk lokasjon/set build/hybrid, fagbehov og dokumentert designintensjon;
 - visuell retning med fase, palett, designintensjon og eksisterende storyboardreferanser;
+- art continuity med scene-/dagskoblet preset, reset, tilstand, kilde, ansvar, plassering, avvik og private før-/etterbilder;
 - avdelingshandoff for art direction, set decoration, rekvisitt, kostyme, hår/sminke, konstruksjon, SFX og VFX;
 - samlet handoff-review før informasjonen sendes videre til produksjon.
 
@@ -46,7 +47,39 @@ Verifisering på arbeidsgrenen:
 - autentisert Troll-E2E bestod på Chromium med lagring, reload, revisjonsspor og kontroll av kritiske konsollfeil;
 - mobil-E2E bestod i stående og liggende visning med 44 px trykkflater og uten horisontal overflow.
 
-Denne første leveransen viser allerede registrerte storyboardbilder og rekvisitter, men oppretter ikke en ny parallell filopplastingsmodell. Når egne art-referanser, tegninger og revisjoner får opplasting, skal de bruke den eksisterende private Role Room-kontrakten i AWS S3-bøtten `the-role-room-prod-745600963362-eu-north-1`, med organisasjons-/prosjektscope, checksum og kortlivede URL-er.
+Denne første leveransen viser allerede registrerte storyboardbilder og rekvisitter. Art continuity-utvidelsen på `codex/role-room-art-continuity` oppretter ikke en ny parallell filopplastingsmodell, men bruker den eksisterende private continuity-kontrakten i AWS S3-bøtten `the-role-room-prod-745600963362-eu-north-1`, med prosjekt-/dags-/scenescope, checksum og kortlivede URL-er.
+
+### Tillegg 21. september 2026: Art Continuity & Readiness
+
+Arbeidsgrenen `codex/role-room-art-continuity` utvider den eksisterende Art Department-linsen, uten ny app, ny asset-identitet eller ny databasetabell. `continuityItems` ligger bakoverkompatibelt i den eksisterende versjonerte `role_room_art_department_operations.operations`-ledgeren. Før-/etterbilder gjenbruker `casting_production_continuity_media` og Role Rooms private S3-lagring.
+
+Levert på arbeidsgrenen:
+
+- ett scene- og opptaksdagskoblet continuity-board for set, rekvisitt, kostyme og hår/sminke;
+- kobling til kanonisk karakter og rekvisitt når det finnes, med servervalidering mot prosjektet;
+- status, kilde/eierskap, tilstand, ansvar, fysisk plassering, preset, reset og avvik;
+- private før-/etterbilder som kun kan kobles til den valgte scenen og opptaksdagen;
+- lokale utkast, synlig synkroniseringsstatus og eksplisitt valg ved versjonskonflikt;
+- ett utvidet workspace-register med standardflate og server-grant bundle for hver registrerte rollelinse;
+- berøringsvennlig flyt i stående og liggende mobilvisning.
+
+Tilgangen er fortsatt fail-closed. En art-rolle kan laste opp media til den delte private continuity-butikken gjennom `canManageArtDepartment`, men får ikke dermed rett til å endre script supervisorens take-logg. Klienten kan ikke sende bucket, object key, aktør eller audit-tidspunkt. Backend kontrollerer at scene, opptaksdag, karakter, rekvisitt og media tilhører samme prosjektkontekst før lagring.
+
+Ingen Drizzle-migrasjon er nødvendig for denne iterasjonen: den faglige tilstanden bruker eksisterende JSONB-ledger, og private media bruker den allerede normaliserte continuity-media-tabellen. Neste faglige iterasjon er spesifikke moduler for tegninger/materialer og construction-handoff, fittings og look-versjoner, samt take-nær reset og formell sign-off/change impact. Workspace-registeret mangler fortsatt prop-adaptere før hele den store render-kjeden kan fjernes trygt.
+
+Verifisering på arbeidsgrenen:
+
+- 41 målrettede frontendtester og 64 målrettede backendtester bestod;
+- frontend- og backend-typecheck bestod;
+- de nye og endrede domenefilene bestod ESLint uten advarsler eller feil;
+- autentisert Troll-E2E dekker opprettelse, reset/avvik, privat bildeopplasting, lagring, reload og lokal konfliktgjenoppretting;
+- mobil-E2E dekker minst 44 px trykkflater og fravær av horisontal overflow i stående og liggende visning.
+
+En reell produksjonssmoke mot live-SHA `5e5c1786de3a484226b83e8327ee2223b5dc0592` bekreftet også den eksisterende private continuity-mediekjeden for Troll-prosjektet `troll-1780071501773`: falskt PNG-innhold ble avvist med `415`, en gyldig 68-byte PNG ble lagret som `aws_s3`, og nedlasting gjennom en fem minutters signert URL ga identisk SHA-256. Feil opptaksdag ga `404`, anonym API-tilgang ga `401`, og direkte S3-adresse uten signatur ga `403`. Smoke-objektet er merket `ROLE_ROOM_SMOKE_DELETE_AFTER_2026-09-21.png` med media-ID `2230dad6-c4b8-4e48-81c5-9d1692db5640`; det står igjen å legge til en autorisert soft-delete/cleanup-flyt for private continuity-filer.
+
+Denne produksjonssmoken beviser S3-, database- og signert-URL-kontrakten, men ikke den nye `canManageArtDepartment`-grenen isolert: live-brukeren hadde både continuity- og art-grant, og arbeidsgrenen er ikke deployet. Art-only-tilgang er foreløpig dekket av backend-integrasjonstesten med `property_master` og må smoke-testes på live etter merge/promotering.
+
+Dette avsnittet dokumenterer kildekoden på arbeidsgrenen, ikke live-status. Produksjonsstatus må verifiseres mot deployens build-SHA etter en eventuell merge og promotering.
 
 ### Tillegg 21. september 2026: Production Sound Mixer / Boom Operator
 
@@ -363,7 +396,7 @@ Eksisterende eksempler er `management_version`, `coordination_version`, `continu
 
 ### Prioritet 1: stabiliser rollen som plattformkontrakt
 
-1. **Fullfør det sentrale workspace-registeret.** Lens-navn, støttede roller, workspace-kind, URL-atferd og komponentnøkkel ligger nå i ett typed register, og lazy komponentlasting er flyttet ut av `CastingPlannerPanel.tsx`. Det som står igjen er å registrere prop-adaptere, standardflate og permission bundle slik at den store nested render-kjeden kan erstattes uten å miste de ulike workspace-kontraktene.
+1. **Fullfør det sentrale workspace-registeret.** Lens-navn, støttede roller, workspace-kind, URL-atferd, komponentnøkkel, standardflate og permission bundle ligger nå i ett typed register, og lazy komponentlasting er flyttet ut av `CastingPlannerPanel.tsx`. Det som står igjen er å registrere prop-adaptere slik at den store nested render-kjeden kan erstattes uten å miste de ulike workspace-kontraktene.
 2. **Serverautoritativ rolleoppløsning.** Frontendens persona- og adminlogikk er nyttig for presentasjon, men serveren må returnere effektiv prosjektrolle og eksplisitte grants i ett svar. Alle API-er skal bruke den samme resolveren.
 3. **Flere prosjektroller per person.** `casting_user_roles` har i dag unikhet på `(project_id, user_id)` og representerer i praksis én rolle per bruker i prosjektet. Små produksjoner trenger for eksempel produsent + regissør eller DoP + kameraoperatør. Innfør normalisert assignment-tabell eller en trygg, migrerbar flerrollemodell før mer rollelogikk kopieres.
 4. **Skill medlemskap fra crew-credit.** Ikke bruk `casting_crew.role`, profilens `professions` og `casting_user_roles.role` om hverandre. Definer én eksplisitt kobling mellom konto, prosjektassignment og crew-rad.
@@ -388,7 +421,7 @@ I dag finnes mange av nodene, men konsekvensen av en endring må fortsatt samles
 Bygg avdelingsvis og gjenbruk en felles department-shell. Anbefalt rekkefølge:
 
 1. **Post Supervisor / Post Sound / Picture-turnover — implementert.** Bevar én ledger og én asset-identitet. Neste post-iterasjon utvider samme manifestkjerne til VFX, color, musikk og final delivery.
-2. **Rekvisitt, set, kostyme og hår/sminke.** Bruk samme asset-/continuity-kjerne med eierskap, tilstand, bilder før/etter, hvem/hvilken scene og dagsbehov. Art-linsen er shellen; bygg fagmoduler, ikke nye apper.
+2. **Rekvisitt, set, kostyme og hår/sminke — første continuity/readiness-kjerne implementert.** Neste trinn er fagspesifikke moduler for tegninger/materialer, fittings/look-versjoner, vask/reparasjon, prosthetics og take-nær reset. Fortsett i Art-linsen; ikke bygg nye apper eller asset-identiteter.
 3. **Transport, sikkerhet, catering og unit-logistikk.** Knyttes til production day, location, crew count, call time og avvik.
 4. **Editorial, VFX og musikk.** Bruk turnover-ledgerens manifest-, versjons-, QC- og reviewkjerne over samme scene-/take-/asset-identitet. Legg til rights/proveniens der domenet krever det.
 5. **Kamera-, lys- og grip-delegering.** La DoP-linsen delegere shot-, utstyrs-, rigg- og rapportoppgaver med avgrensede grants til operator, AC, DIT, gaffer og key grip.
@@ -503,7 +536,7 @@ Status betyr:
 | Medvirkende | Stand-in (`stand_in`) | Katalog | Planlagt avgrenset cast-portal for call time, scene, blokkering, garderobe/HMU, meldinger og bekreftelse. |
 | Medvirkende | Statist (`background_performer`) | Katalog | Planlagt gruppebasert portal for call, transport, fitting, samtykke, innsjekk og wrap; ingen bred prosjektlesing. |
 | Spesialeffekter | SFX supervisor (`sfx_supervisor`) | Katalog | Planlagt scene-/shotbehov, metode, materialer, risikovurdering, tillatelser, test, reset og sign-off. |
-| Art | Produksjonsdesigner (`production_designer`) | Levert | Dedikert, versjonert art-linse samler sceneplan, designintensjon, beslutninger, storyboardgrunnlag og fag-handoffs. Neste er private S3-revisjoner, formell sign-off og change impact. |
+| Art | Produksjonsdesigner (`production_designer`) | Levert | Dedikert, versjonert art-linse samler sceneplan, designintensjon, beslutninger, storyboardgrunnlag, fag-handoffs og Art Continuity & Readiness med private før-/etterbilder. Neste er tegnings-/konseptide-revisjoner, formell sign-off og change impact. |
 | Art | Settdesigner (`set_designer`) | Delvis | Rutes til art-linsen og kan arbeide i sceneplan og sets-handoff. Egen modul for tegninger, mål, revisjoner, materialer og construction-handoff mangler. |
 | Art | Konseptillustratør (`concept_illustrator`) | Delvis | Rutes til art-linsen med visuell retning og review-grunnlag. Versjonert konseptmedia, proveniens, før/etter og lock mangler. |
 | Art | Storyboardartist (`storyboard_artist`) | Delvis | Rutes nå til art-linsen, som viser eksisterende storyboardreferanser. Normalisert handoff mellom Storyboard Room og Role Room, panelrevisjoner og sign-off mangler. |
@@ -522,15 +555,15 @@ Status betyr:
 | Catering | Kokk (`chef`) | Katalog | Planlagt måltidsplan, antall, allergiaggregat, tider, leveransepunkt og bekreftelse uten unødvendige personopplysninger. |
 | PR og stills | Presseansvarlig (`unit_publicist`) | Katalog | Planlagt godkjent story-/assetplan, embargo, releases, shot access, klientreview og publiseringshandoff. |
 | PR og stills | Stillfotograf (`still_photographer`) | Katalog | Planlagt shot-/sceneoppdrag, tilgang, releases, utvalg, metadata og privat media-handoff. |
-| Kostyme | Kostymedesigner (`costume_designer`) | Delvis | Rutes til art-linsen og kostyme-handoff. Character/scene-look, continuity, fittings, sourcing, kost og dagsbehov mangler som egen modul. |
-| Kostyme | Kostymeansvarlig (`wardrobe_supervisor`) | Delvis | Rutes til art-linsen. Item-/look-tracking, fitting, vask/reparasjon, bilder og continuity per take mangler. |
-| Set decoration | Set decorator (`set_decorator`) | Delvis | Rutes til art-linsen og sets-handoff. Dressing-plan, eierskap/leie, kost, installasjon og strike mangler. |
-| Set decoration | On-set dresser (`on_set_dresser`) | Delvis | Rutes til art-linsen. Mobil reset-/continuity-flyt med bilder, plassering og take-avvik mangler. |
+| Kostyme | Kostymedesigner (`costume_designer`) | Delvis | Rutes til art-linsen og kan nå registrere scene/dag, karakter, kilde, tilstand, preset/reset og før-/etterbilder. Fittings, look-versjoner, kost og take-nær continuity mangler som egen fagmodul. |
+| Kostyme | Kostymeansvarlig (`wardrobe_supervisor`) | Delvis | Rutes til art-linsen med grunnleggende item-/look-tracking, plassering, bilder og reset. Fitting, vask/reparasjon og continuity per take mangler. |
+| Set decoration | Set decorator (`set_decorator`) | Delvis | Rutes til art-linsen og kan registrere scene-/dagskoblet set continuity, kilde, tilstand, plassering og bilder. Dressing-plan, kost, installasjon og strike mangler. |
+| Set decoration | On-set dresser (`on_set_dresser`) | Delvis | Rutes til art-linsen med mobil reset-/continuity-flyt, før-/etterbilder, plassering og avvik per scene/dag. Take-nær avstemming og delegerte oppgaver mangler. |
 | Set decoration | Greensperson (`greensperson`) | Delvis | Rutes til art-linsen. Sourcing, vedlikehold, vann/sikkerhet, continuity og wrap mangler som fagmodul. |
-| Rekvisitt | Rekvisittansvarlig (`property_master`) | Delvis | Rutes til art-linsen, som leser kanoniske rekvisitter og avdekker manglende scenekobling. Eierskap/leie, versjon, tilstand og take-handoff mangler. |
-| Rekvisitt | Rekvisittassistent (`assistant_property_master`) | Delvis | Rutes til art-linsen. Mobil uttak/retur, preset/reset, bilde, skade og delegerte oppgaver mangler. |
-| Hår og sminke | Håransvarlig (`key_hair_stylist`) | Delvis | Rutes til art-linsen og HMU-handoff. Look, fitting, continuity-bilder, produkter, tid og take-reset mangler. |
-| Hår og sminke | Sminkeansvarlig (`key_makeup_artist`) | Delvis | Rutes til art-linsen og HMU-handoff. Prosthetics/SFX-makeup, allergi-/samtykkescope, continuity og reset mangler. |
+| Rekvisitt | Rekvisittansvarlig (`property_master`) | Delvis | Rutes til art-linsen med kanonisk rekvisittkobling, eierskap/kilde, tilstand, ansvar, plassering, preset/reset, avvik og private før-/etterbilder. Uttak/retur, versjon, kost og take-handoff mangler. |
+| Rekvisitt | Rekvisittassistent (`assistant_property_master`) | Delvis | Rutes til samme touchvennlige continuity-board med preset/reset, bilder og skade/avvik. Mobil uttak/retur og delegerte oppgaver mangler. |
+| Hår og sminke | Håransvarlig (`key_hair_stylist`) | Delvis | Rutes til art-linsen med karakter-/scene-/dagskoblet look, continuity-bilder, preset/reset og avvik. Fitting, produkter, tid og take-nær reset mangler. |
+| Hår og sminke | Sminkeansvarlig (`key_makeup_artist`) | Delvis | Rutes til art-linsen med karakter-/scene-/dagskoblet look, continuity-bilder, preset/reset og avvik. Prosthetics/SFX-makeup, allergi-/samtykkescope og take-nær reset mangler. |
 | Konstruksjon | Konstruksjonskoordinator (`construction_coordinator`) | Delvis | Rutes til art-linsen og construction-handoff. Tegningsrevisjon, materialer, crew, HMS, milepæler, inspeksjon og kost mangler. |
 | Andre | Studio teacher (`studio_teacher`) | Katalog | Planlagt barnets avgrensede dagsplan, arbeid/skole/hvile, guardian-status og compliance uten bredt prosjektinnsyn. |
 

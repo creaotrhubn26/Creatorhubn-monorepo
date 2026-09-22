@@ -34,6 +34,9 @@
   for = "/build-info.json"
   [headers.values]
     Cache-Control = "no-store, max-age=0, must-revalidate"
+    # Netlify caches static assets at the edge for up to one year unless the
+    # CDN-specific header opts out. The browser header above is not enough.
+    Netlify-CDN-Cache-Control = "private, no-store, max-age=0, must-revalidate"
 
 # App-skallet og Role Room-serviceworkeren må revalideres ved hver deploy.
 # Hashede byggfiler kan caches evig; filnavnet endres når innholdet endres.

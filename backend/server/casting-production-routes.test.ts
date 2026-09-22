@@ -1565,7 +1565,8 @@ describe('casting production-day access', () => {
       },
     }));
 
-    const response = await request(createApp(query, { uploadContinuityMedia }))
+    const app = createApp(query, { uploadContinuityMedia });
+    const response = await request(app)
       .post(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity/media`)
       .set('authorization', `Bearer ${SESSION_TOKEN}`)
       .field('sceneId', 'scene-1')
@@ -1588,6 +1589,52 @@ describe('casting production-day access', () => {
       sceneId: 'scene-1',
       kind: 'photo',
     }));
+  });
+
+  it('lets an art-department assignee upload the same private continuity asset without granting take-log writes', async () => {
+    const fileId = '21691ee5-d9c4-43cf-a345-ae9412cc7f8b';
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX/.test(text)) return { rows: [], rowCount: 0 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{
+          project_exists: true, is_owner: false, member_role: 'property_master',
+          member_permissions: null, member_additional_roles: null,
+        }], rowCount: 1 };
+      }
+      if (text.startsWith('SELECT scene_ids FROM casting_production_days')) {
+        return { rows: [{ scene_ids: ['scene-1'] }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const uploadContinuityMedia = vi.fn(async (_pool, input) => ({
+      ok: true as const,
+      media: {
+        id: fileId, projectId: PROJECT_ID, productionDayId: 'day-1', sceneId: 'scene-1',
+        uploadedBy: input.userId, displayName: input.displayName, sizeBytes: input.sizeBytes,
+        contentType: input.contentType, kind: input.kind, checksumSha256: 'b'.repeat(64),
+        createdAt: new Date().toISOString(),
+      },
+    }));
+
+    const app = createApp(query, { uploadContinuityMedia });
+    const response = await request(app)
+      .post(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity/media`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .field('sceneId', 'scene-1')
+      .attach('file', Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...new Array(28).fill(0)]), {
+        filename: 'hammer-preset.jpg',
+        contentType: 'image/jpeg',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.reference).toEqual(expect.objectContaining({ storageFileId: fileId }));
+    const takeWrite = await request(app)
+      .patch(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 0, operations: { sceneRecords: [], takes: [], entries: [], deviations: [] } });
+    expect(takeWrite.status).toBe(404);
+    const accessCall = query.mock.calls.find(([sql]) => String(sql).includes('AS member_role'));
+    expect(accessCall).toBeTruthy();
   });
 
   it('rejects an unauthenticated media body before multer accepts the upload', async () => {

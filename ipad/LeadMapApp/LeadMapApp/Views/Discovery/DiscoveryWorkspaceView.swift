@@ -1169,6 +1169,7 @@ struct DiscoveryWorkspaceView: View {
 
             ScrollView {
                 LazyVStack(spacing: 12) {
+                    warmStartCard
                     if coordinator.candidates.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: coordinator.isBusy ? "hourglass" : "arrow.clockwise.circle")
@@ -1249,6 +1250,99 @@ struct DiscoveryWorkspaceView: View {
                 .padding()
                 .background(.ultraThinMaterial)
             }
+        }
+    }
+
+    /// To hundre kandidater er ikke to hundre valg — det er ett valg brukeren
+    /// ikke tar. Kortet peker på den best scorende, sier hvorfor, og viser hva
+    /// som skjer FØR noe opprettes. Det vises bare når prosjektet ennå ikke har
+    /// et eneste lead; etterpå er lista selv inngangen.
+    @ViewBuilder
+    private var warmStartCard: some View {
+        if let result = coordinator.warmStartResult {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Satt opp", systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(LeadgridDiscoveryTheme.success)
+                Text(result.firstStep.title)
+                    .font(.subheadline.weight(.semibold))
+                if result.taskCreated {
+                    Label("Ligger som oppgave med frist i morgen tidlig",
+                          systemImage: "calendar.badge.clock")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .discoverySurface()
+            .accessibilityIdentifier("discovery.warm-start.done")
+        } else if let forslag = coordinator.warmStart, appState.leads.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Vi fant \(coordinator.warmStartPendingCount) bedrifter. Skal vi sette opp den varmeste for deg?")
+                    .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(forslag.name)
+                        .font(.subheadline.weight(.bold))
+                    if let sted = forslag.city, !sted.isEmpty {
+                        Text(sted)
+                            .font(.caption)
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                    }
+                    ForEach(forslag.reasons, id: \.self) { grunn in
+                        Label(grunn, systemImage: "checkmark")
+                            .font(.caption)
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                    }
+                }
+                if forslag.mapReady {
+                    Label("Havner som pin på kartet", systemImage: "mappin.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.success)
+                } else {
+                    // Kartlaget filtrerer bort leads uten koordinater. Uten
+                    // denne linja forsvinner bedriften fra kartet uten at noen
+                    // får vite hvorfor.
+                    Label("Mangler koordinater — havner i Leads, ikke på kartet",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                }
+                Label(forslag.firstStep.title, systemImage: forslag.firstStep.symbol)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .background(LeadgridDiscoveryTheme.accentSoft.opacity(0.15),
+                                in: RoundedRectangle(cornerRadius: 9))
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            let opprettet = await coordinator.acceptWarmStart()
+                            if opprettet { await appState.refreshLeads() }
+                        }
+                    } label: {
+                        Text(coordinator.warmStartBusy ? "Setter opp …" : "Sett opp")
+                            .frame(minHeight: 44)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(coordinator.warmStartBusy)
+                    .accessibilityIdentifier("discovery.warm-start.accept")
+                    Button("Jeg velger selv") { coordinator.dismissWarmStart() }
+                        .buttonStyle(.bordered)
+                        .frame(minHeight: 44)
+                        .disabled(coordinator.warmStartBusy)
+                        .accessibilityIdentifier("discovery.warm-start.dismiss")
+                }
+                Text("Godkjenner kandidaten som lead og legger første handling som oppgave. Ingenting sendes til bedriften.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .discoverySurface()
+            .accessibilityIdentifier("discovery.warm-start.card")
         }
     }
 
