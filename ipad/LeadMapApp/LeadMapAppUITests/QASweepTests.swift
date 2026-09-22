@@ -168,6 +168,14 @@ final class QASweepTests: XCTestCase {
         }
     }
 
+    /// Et resultat der nesten alt er kontrastfunn beskriver ikke designet.
+    /// Åtte eller flere kontrastfunn på én flate betyr i praksis at hele
+    /// skjermen ble målt mot feil bakgrunn.
+    private func erUsannsynligMange(_ linjer: [String]) -> Bool {
+        let kontrast = linjer.filter { $0.contains("Contrast") }.count
+        return kontrast >= 8
+    }
+
     /// Preflight (treffområder) + Apples handlingsbare revisjon på én flate.
     ///
     /// `performAccessibilityAudit` svarer av og til
@@ -186,7 +194,7 @@ final class QASweepTests: XCTestCase {
             .contrast, .hitRegion, .sufficientElementDescription, .textClipped,
         ]
         var sisteFeil: NSError?
-        for _ in 1...3 {
+        for forsøk in 1...3 {
             let app = launchApp(tab: tab, environment: environment)
             let rapport = A11yRapport()
             rapport.linjer.append(
@@ -203,10 +211,15 @@ final class QASweepTests: XCTestCase {
             // animerer, måles hver knapp i halv størrelse og hver tekst mot feil
             // bakgrunn. Derfor bare når appen faktisk ikke står i forgrunnen,
             // og alltid med tid til å lande etterpå.
-            if mål.state != .runningForeground {
-                mål.activate()
-                _ = mål.wait(for: .runningForeground, timeout: 15)
-            }
+            // Alltid activate(), ikke bare når tilstanden sier at appen ikke
+            // står i forgrunnen. `state` kan si .runningForeground mens flaten
+            // fortsatt er tonet ned bak systemets UI etter en tidligere test —
+            // og da måles HVER tekst mot feil bakgrunn. Full suite 2026-09-22:
+            // alle sju revisjoner falt på «Contrast failed» for hvit tekst som
+            // «Statistikk» og «Agenda». Animasjonen som activate() utløser
+            // fanges opp av vente-løkka under.
+            mål.activate()
+            _ = mål.wait(for: .runningForeground, timeout: 15)
             sleep(2)
             // Revisjonen måler mot skjermen slik den står. Ligger simulatoren
             // fortsatt i landskap etter en tidligere test, sammenlignes tekst
@@ -258,6 +271,12 @@ final class QASweepTests: XCTestCase {
                     return true
                 }
                 app.terminate()
+                if erUsannsynligMange(rapport.linjer), forsøk < 3 {
+                    // En revisjon som sier at ALL tekst på flaten feiler
+                    // kontrast, har målt feil skjerm — ikke funnet et
+                    // designproblem. Mål på nytt med en fersk app.
+                    continue
+                }
                 return rapport.linjer
             } catch let feil as NSError
                 where feil.domain == "com.apple.accessibilityAudit" && feil.code == -902 {
