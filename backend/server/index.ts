@@ -981,6 +981,7 @@ import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-r
 import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-config-routes";
 import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
+import { registerLeadgridLeadPlacementRoutes } from "./leadgrid-lead-placement-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
@@ -68294,6 +68295,7 @@ registerLeadgridDorsalgRoutes({ app, pool, requireUserSession });
 // Dørsalg brief-møter (mig 0398): leder samler teamet før felt —
 // opprett m/ gjentakelse + inviter selgere (bjelle-varsel).
 registerLeadgridBriefRoutes({ app, pool, requireUserSession });
+registerLeadgridLeadPlacementRoutes({ app, pool, requireUserSession });
 
 // Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
 // alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
