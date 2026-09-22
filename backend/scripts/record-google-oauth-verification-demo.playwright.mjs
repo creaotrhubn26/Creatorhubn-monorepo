@@ -201,7 +201,19 @@ async function installStyles(page) {
 async function showTitleCard(page, { title, subtitle, body }) {
   await page.evaluate(({ title, subtitle, body }) => {
     let el = document.getElementById('gv-title');
-    if (!el) { el = document.createElement('div'); el.id = 'gv-title'; document.body.appendChild(el); }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'gv-title';
+      // Egen container utenfor React-roten, så React aldri ser nodene våre
+      // som sine egne barn.
+      let host = document.getElementById('gv-overlay-host');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'gv-overlay-host';
+        document.documentElement.appendChild(host);
+      }
+      host.appendChild(el);
+    }
     el.innerHTML = `<h2>${subtitle}</h2><h1>${title}</h1><p>${body}</p>`;
     requestAnimationFrame(() => el.classList.add('show'));
   }, { title, subtitle, body });
@@ -210,14 +222,37 @@ async function showTitleCard(page, { title, subtitle, body }) {
 async function hideTitleCard(page) {
   await page.evaluate(() => {
     const el = document.getElementById('gv-title');
-    if (el) { el.classList.remove('show'); setTimeout(() => el.remove(), 520); }
+    if (!el) return;
+    el.classList.remove('show');
+    // Fjern defensivt. Vi legger overleggene på document.body, som React
+    // også eier barn av. Et rått el.remove() i en timeout kan kollidere med
+    // en React-unmount midt i og gi «Failed to execute 'removeChild' on
+    // 'Node'». Sjekk foreldreskap, og svelg feilen — et overlegg som ikke
+    // ble ryddet skal aldri velte et opptak.
+    setTimeout(() => {
+      try {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      } catch {
+        /* allerede fjernet av noen andre */
+      }
+    }, 520);
   });
 }
 
 async function showCaption(page, step, text) {
   await page.evaluate(({ step, text }) => {
     let el = document.getElementById('gv-caption');
-    if (!el) { el = document.createElement('div'); el.id = 'gv-caption'; document.body.appendChild(el); }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'gv-caption';
+      let host = document.getElementById('gv-overlay-host');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'gv-overlay-host';
+        document.documentElement.appendChild(host);
+      }
+      host.appendChild(el);
+    }
     el.innerHTML = `<span class="step">${step}</span>${text}`;
     requestAnimationFrame(() => el.classList.add('show'));
   }, { step, text });
