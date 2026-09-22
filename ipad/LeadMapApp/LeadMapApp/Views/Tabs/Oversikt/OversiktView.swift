@@ -228,6 +228,7 @@ struct OversiktView: View {
             .padding(.horizontal, 11).padding(.vertical, 7)
             .background(Brand.card, in: Capsule())
             .overlay(Capsule().stroke(Brand.stroke, lineWidth: 1))
+            .trykkflate()
         }
     }
 
@@ -454,6 +455,7 @@ private struct DorsalgOversiktSection: View {
                         .rotationEffect(.degrees(kollapset ? -90 : 0))
                         .frame(width: 26, height: 26)
                         .background(Brand.cardHi, in: Circle())
+                        .trykkflate()
                 }
                 .buttonStyle(.plain)
             }
@@ -2601,6 +2603,7 @@ private struct LeadsInAreaCard: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(Brand.green, in: Capsule())
+                .trykkflate()
             }
             .buttonStyle(.plain)
             // Fjern destinasjon
@@ -3407,6 +3410,7 @@ private struct NextActionCard: View {
                         .rotationEffect(.degrees(kollapset ? -90 : 0))
                         .frame(width: 26, height: 26)
                         .background(Brand.cardHi, in: Circle())
+                        .trykkflate()
                 }
                 .buttonStyle(.plain)
             }
@@ -3456,6 +3460,10 @@ private struct NextActionCard: View {
                 Image(systemName: icon)
                     .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(color)
+                    // Ikonet er dekorativt — raden har tittel og undertittel.
+                    // Uten dette leser revisjonen opp symbolnavnet
+                    // («bell.badge.fill») som om det var innhold.
+                    .accessibilityHidden(true)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
@@ -3657,6 +3665,7 @@ private struct LeadsOversiktCard: View {
                                 in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9)
                         .stroke(Brand.purple.opacity(0.5), lineWidth: 1))
+                    .trykkflate()
                 }
                 .buttonStyle(.plain)
                 Button {
@@ -3668,6 +3677,7 @@ private struct LeadsOversiktCard: View {
                         .rotationEffect(.degrees(kollapset ? -90 : 0))
                         .frame(width: 26, height: 26)
                         .background(Brand.cardHi, in: Circle())
+                        .trykkflate()
                 }
                 .buttonStyle(.plain)
             }
@@ -3704,7 +3714,9 @@ private struct LeadsOversiktCard: View {
             HStack(spacing: 10) {
                 Text("\(score)")
                     .font(.appScaled(size: 12, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                    // Score-fargen spenner fra lilla til gult; hvit tekst
+                    // faller under kravet på de lyse trinnene.
+                    .foregroundStyle(scoreFarge(lead).lesbarTekst)
                     .frame(width: 34, height: 26)
                     .background(scoreFarge(lead), in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 1) {
@@ -3735,10 +3747,12 @@ private struct LeadsOversiktCard: View {
                         .frame(width: 32, height: 32)
                         .background(Brand.purpleLight.opacity(0.12),
                                     in: RoundedRectangle(cornerRadius: 8))
+                        .trykkflate()
                 }
                 .buttonStyle(.plain)
                 .help("Naviger til \(lead.name)")
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -3792,6 +3806,7 @@ private struct MoteOppgaverCard: View {
                         .rotationEffect(.degrees(kollapset ? -90 : 0))
                         .frame(width: 26, height: 26)
                         .background(Brand.cardHi, in: Circle())
+                        .trykkflate()
                 }
                 .buttonStyle(.plain)
                     }
@@ -3806,7 +3821,9 @@ private struct MoteOppgaverCard: View {
                                     Text(o.tittel)
                                         .font(.appScaled(size: 12, weight: .semibold))
                                         .foregroundStyle(.white)
-                                        .lineLimit(1)
+                                        // «Send referanse fra Byggmester
+                                        // Hansen» ble klippet på én linje.
+                                        .lineLimit(2)
                                     Text(o.selskap)
                                         .font(.appScaled(size: 10))
                                         .foregroundStyle(Brand.textTertiary)
@@ -3822,6 +3839,7 @@ private struct MoteOppgaverCard: View {
                                                     in: Capsule())
                                 }
                             }
+                            .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)

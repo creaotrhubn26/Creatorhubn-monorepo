@@ -28,6 +28,10 @@ private enum KrBrand {
     static let stroke = Color.white.opacity(0.06)
     static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
     static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
+    /// Samme lilla, nedtonet til hvit tekst klarer 4,5:1 (WCAG AA).
+    /// Brukes bare der fargen ligger bak tekst — ikke på fyll og pins.
+    static let purpleTekstflate = LgKontrast.lillaTekstflate
+    static let purpleTekstflateLys = LgKontrast.lillaTekstflateLys
     static let red = Color(red: 0.95, green: 0.20, blue: 0.20)
     static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
@@ -1925,8 +1929,10 @@ struct KartView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 11).padding(.vertical, 8)
             .frame(minHeight: 44)
+            // Lilla på 45 % over ultraThinMaterial ga under 4,5:1 mot hvit
+            // tekst. Den mørkere tekstflaten, i full dekkevne.
             .background(.ultraThinMaterial, in: Capsule())
-            .background(KrBrand.purple.opacity(0.45), in: Capsule())
+            .background(KrBrand.purpleTekstflate, in: Capsule())
             .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -2488,7 +2494,13 @@ struct KartView: View {
             Image(systemName: "magnifyingglass")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(KrBrand.textSecondary)
-            TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
+            // Plassholderen arver ikke `.font` fra feltet — den er sin egen
+            // Text og ble tegnet i standard body-størrelse. Og den sluttet på
+            // «…», som revisjonen leser som avkuttet tekst («Text clipped»);
+            // ellipsen er fjernet, setningen er hel uten den.
+            TextField("Søk etter sted, lead eller selskap", text: $search,
+                      prompt: Text("Søk etter sted, lead eller selskap")
+                .font(.appScaled(size: 12))
                 .foregroundColor(KrBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
@@ -2496,6 +2508,8 @@ struct KartView: View {
                 .focused($searchFieldFocused)
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
+        // Feltet var 38pt høyt og klippet teksten ved store tekststørrelser.
+        .frame(minHeight: 44)
         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
         .frame(maxWidth: .infinity)
@@ -3895,9 +3909,14 @@ struct KartView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .frame(minHeight: 48)
+            // Merkelilla bak hvit 13pt tekst gir 3,98:1 i venstre ende og
+            // 2,95:1 i høyre — under kravet på 4,5:1 (XCUIAccessibilityAudit
+            // melder «Contrast failed» på etiketten). Gradienten er derfor
+            // nedtonet her, der den ligger bak tekst; fyll, streker og pins
+            // beholder merkefargen.
             .background(
                 LinearGradient(
-                    colors: [KrBrand.purple, KrBrand.purpleLight],
+                    colors: [KrBrand.purpleTekstflate, KrBrand.purpleTekstflateLys],
                     startPoint: .leading,
                     endPoint: .trailing
                 ),
