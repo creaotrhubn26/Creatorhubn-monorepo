@@ -50,6 +50,7 @@ import {
   previewWarmStart,
   WarmStartStaleError,
 } from "./leadgrid-discovery-warm-start.js";
+import { placeLeadAfterApproval } from "./leadgrid-lead-placement.js";
 import {
   assertAutoDiscoveryProfileCapacity,
   DiscoveryGovernanceError,
@@ -1089,16 +1090,29 @@ export function registerLeadgridDiscoveryRoutes({
       }
       const idempotencyKey = requiredIdempotencyKey(req, res);
       if (!idempotencyKey) return;
-      res.json(
-        await decideDiscoveryCandidate(pool, {
+      const utfall = await decideDiscoveryCandidate(pool, {
+        project: context.project,
+        userId: context.userId,
+        runId: parseUuid(req.params.runId, "runId"),
+        candidateId: parseUuid(req.params.candidateId, "candidateId"),
+        idempotencyKey,
+        decision,
+      });
+      res.json(utfall);
+      // Etter svaret: en godkjent kandidat uten koordinater er usynlig på
+      // kartet fra sekundet den blir lead. Oppslaget tar et par hundre
+      // millisekunder mot Kartverket og skal ikke forsinke godkjenningen.
+      if (utfall.lead_id) {
+        void placeLeadAfterApproval(pool, {
           project: context.project,
-          userId: context.userId,
-          runId: parseUuid(req.params.runId, "runId"),
-          candidateId: parseUuid(req.params.candidateId, "candidateId"),
-          idempotencyKey,
-          decision,
-        }),
-      );
+          leadId: utfall.lead_id,
+        }).catch((error: unknown) => {
+          console.warn(
+            "[discovery] plassering etter godkjenning feilet:",
+            (error as Error).message,
+          );
+        });
+      }
     }),
   );
 

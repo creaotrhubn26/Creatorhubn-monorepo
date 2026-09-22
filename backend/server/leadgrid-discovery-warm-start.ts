@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
+import { placeLeadAfterApproval } from "./leadgrid-lead-placement.js";
 import {
   decideDiscoveryCandidate,
   listDiscoveryCandidates,
@@ -256,6 +257,20 @@ export async function commitWarmStart(
   let taskId: string | null = null;
   let taskCreated = false;
   if (decision.lead_id) {
+    // Leaden skal være på kartet med én gang, ikke først når noen trykker på
+    // brikka i Kart. Er adressen tvetydig, plasseres ingenting — da tar
+    // brikka den.
+    try {
+      await placeLeadAfterApproval(pool, {
+        project: input.project,
+        leadId: decision.lead_id,
+      });
+    } catch (error) {
+      console.warn(
+        "[warm-start] plassering feilet:",
+        (error as Error).message,
+      );
+    }
     const existing = await pool.query<{ id: string }>(
       `SELECT id::text
          FROM leadgrid_oppgaver
