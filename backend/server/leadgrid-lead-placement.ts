@@ -6,13 +6,26 @@
  * Discovery geokoder maks 120 adresser per kjøring og bommer på noen; godkjenner
  * du seksti kandidater, kan flere bli usynlige.
  *
- * Her telles de, og adressen slås opp på nytt mot Kartverkets adresse-API.
+ * Presisjonen kommer i tre trinn, i denne rekkefølgen:
+ *
+ *   1. Kommunenummer fra Enhetsregisteret. Har leaden organisasjonsnummer,
+ *      henter vi forretningsadressen derfra. Da søker vi i ÉN kommune, og
+ *      «Storgata 1» i Oslo kan ikke lenger treffe Storgata 1 i Bergen.
+ *   2. Entydig adressetreff. Ett punkt igjen etter filtrering: plasser.
+ *   3. Flere kandidater: ikke gjett. En pin i feil kommune ser like riktig ut
+ *      som en riktig pin, og selgeren oppdager det først når hen står der.
+ *      Leaden meldes som tvetydig, og brukeren peker.
+ *
+ * Svaret lagres (leadgrid_lead_placement_decisions), slik at samme lead ikke
+ * spørres om igjen og samme adresse i samme organisasjon plasseres automatisk
+ * neste gang.
  */
 import type { Pool } from "pg";
 
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 
 const GEONORGE_ADDRESS_ENDPOINT = "https://ws.geonorge.no/adresser/v1/sok";
+const BRREG_ENHET_ENDPOINT = "https://data.brreg.no/enhetsregisteret/api/enheter";
 /** Ett trykk skal ikke kunne starte tusen eksterne oppslag. */
 export const MAX_PLACEMENT_ATTEMPTS = 50;
 
@@ -22,6 +35,31 @@ export interface UnplacedLead {
   address: string | null;
   postal_code: string | null;
   city: string | null;
+  organization_number?: string | null;
+}
+
+export interface GeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface PlacementOption extends GeoPoint {
+  /** Full adresse slik Kartverket skriver den — det brukeren skal kjenne igjen. */
+  label: string;
+  municipality: string | null;
+  postal_code: string | null;
+}
+
+export type PlacementOutcome =
+  | { kind: "placed"; point: GeoPoint; label: string | null }
+  | { kind: "ambiguous"; options: PlacementOption[] }
+  | { kind: "unresolved" };
+
+export interface AmbiguousLead {
+  lead_id: string;
+  name: string;
+  address: string | null;
+  options: PlacementOption[];
 }
 
 export interface LeadPlacementStatus {
@@ -34,71 +72,139 @@ export interface LeadPlacementStatus {
 export interface LeadPlacementResult {
   attempted: number;
   placed: number;
+  /** Adressen ga flere kandidater — brukeren må peke. */
+  ambiguous: AmbiguousLead[];
   /** Adressen ga ingen treff hos Kartverket. */
   unresolved: number;
   remaining: number;
-}
-
-export interface GeoPoint {
-  latitude: number;
-  longitude: number;
-}
-
-/**
- * Kartverket trenger noe å søke på. Gateadresse alene er for tvetydig på
- * landsbasis — «Storgata 1» finnes i hundre kommuner — så vi krever postnummer
- * eller poststed i tillegg. Uten det er et oppslag verre enn ingen: det
- * plasserer bedriften et tilfeldig sted.
- */
-export function placementQueryFor(lead: UnplacedLead): URLSearchParams | null {
-  const adresse = lead.address?.trim();
-  if (!adresse) return null;
-  const postnummer = lead.postal_code?.trim();
-  const poststed = lead.city?.trim();
-  if (!postnummer && !poststed) return null;
-  const params = new URLSearchParams();
-  params.set("adressetekst", adresse);
-  if (postnummer && /^\d{4}$/.test(postnummer)) {
-    params.set("postnummer", postnummer);
-  } else if (poststed) {
-    params.set("poststed", poststed);
-  }
-  params.set("treffPerSide", "5");
-  params.set("sokemodus", "AND");
-  return params;
+  /** Plassert uten oppslag fordi noen har bekreftet samme adresse før. */
+  reused: number;
 }
 
 interface GeonorgeHit {
   representasjonspunkt?: { lat?: unknown; lon?: unknown };
   postnummer?: unknown;
+  poststed?: unknown;
+  adressetekst?: unknown;
+  kommunenavn?: unknown;
+  kommunenummer?: unknown;
 }
 
 /**
- * Første treff med gyldig punkt vinner, men et treff i feil postnummer
- * forkastes: Kartverkets fritekstsøk kan falle tilbake til nabokommunen.
+ * Nøkkelen vi husker svaret under. To leads på samme adresse i samme
+ * organisasjon skal ikke spørres to ganger.
  */
-export function pickPlacement(
+export function placementKeyFor(lead: UnplacedLead): string | null {
+  const adresse = lead.address?.trim().toLocaleLowerCase("nb-NO");
+  if (!adresse) return null;
+  const sted =
+    lead.postal_code?.trim() || lead.city?.trim().toLocaleLowerCase("nb-NO");
+  if (!sted) return null;
+  return `${adresse}|${sted}`.replace(/\s+/g, " ");
+}
+
+/**
+ * Kartverket trenger noe å avgrense på. Gateadresse alene er for tvetydig på
+ * landsbasis, så vi krever kommunenummer, postnummer eller poststed. Uten det
+ * gjør vi ingenting: et oppslag som plasserer bedriften et tilfeldig sted er
+ * verre enn ingen pin.
+ */
+export function placementQueryFor(
+  lead: UnplacedLead,
+  municipalityNumber?: string | null,
+): URLSearchParams | null {
+  const adresse = lead.address?.trim();
+  if (!adresse) return null;
+  const kommune = municipalityNumber?.trim();
+  const postnummer = lead.postal_code?.trim();
+  const poststed = lead.city?.trim();
+  if (
+    !(kommune && /^\d{4}$/.test(kommune)) &&
+    !postnummer &&
+    !poststed
+  ) {
+    return null;
+  }
+  const params = new URLSearchParams();
+  params.set("adressetekst", adresse);
+  if (kommune && /^\d{4}$/.test(kommune)) {
+    params.set("kommunenummer", kommune);
+  }
+  if (postnummer && /^\d{4}$/.test(postnummer)) {
+    params.set("postnummer", postnummer);
+  } else if (poststed && !(kommune && /^\d{4}$/.test(kommune))) {
+    params.set("poststed", poststed);
+  }
+  params.set("treffPerSide", "10");
+  params.set("sokemodus", "AND");
+  return params;
+}
+
+function pointOf(hit: GeonorgeHit): GeoPoint | null {
+  const lat = Number(hit.representasjonspunkt?.lat);
+  const lon = Number(hit.representasjonspunkt?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  // Nøyaktig punktet kartet filtrerer bort. Et «treff» der er ingen plassering.
+  if (lat === 0 && lon === 0) return null;
+  return { latitude: lat, longitude: lon };
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Avgjør om treffene peker på ett sted, flere steder, eller ingen.
+ *
+ * To treff i samme gate med ulikt husnummer er ikke «samme sted»: de er ulike
+ * adresser og må avklares. To treff på nøyaktig samme punkt er det samme
+ * stedet, og teller som entydig.
+ */
+export function classifyPlacement(
   hits: GeonorgeHit[],
   lead: UnplacedLead,
-): GeoPoint | null {
+): PlacementOutcome {
   const forventetPostnummer = lead.postal_code?.trim();
+  const brukbare: PlacementOption[] = [];
   for (const hit of hits) {
-    const lat = Number(hit.representasjonspunkt?.lat);
-    const lon = Number(hit.representasjonspunkt?.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    if (lat === 0 && lon === 0) continue;
+    const punkt = pointOf(hit);
+    if (!punkt) continue;
+    const postnummer = text(hit.postnummer);
     if (
       forventetPostnummer &&
       /^\d{4}$/.test(forventetPostnummer) &&
-      typeof hit.postnummer === "string" &&
-      hit.postnummer.trim() &&
-      hit.postnummer.trim() !== forventetPostnummer
+      postnummer &&
+      postnummer !== forventetPostnummer
     ) {
+      // Kartverkets fritekstsøk kan falle tilbake til nabokommunen.
       continue;
     }
-    return { latitude: lat, longitude: lon };
+    brukbare.push({
+      ...punkt,
+      label:
+        [text(hit.adressetekst), postnummer, text(hit.poststed)]
+          .filter(Boolean)
+          .join(" ") || (lead.address ?? lead.name),
+      municipality: text(hit.kommunenavn),
+      postal_code: postnummer,
+    });
   }
-  return null;
+  if (brukbare.length === 0) return { kind: "unresolved" };
+  const unike = new Map<string, PlacementOption>();
+  for (const option of brukbare) {
+    const nøkkel = `${option.latitude.toFixed(5)},${option.longitude.toFixed(5)}`;
+    if (!unike.has(nøkkel)) unike.set(nøkkel, option);
+  }
+  const alternativer = [...unike.values()];
+  if (alternativer.length === 1) {
+    const [eneste] = alternativer;
+    return {
+      kind: "placed",
+      point: { latitude: eneste.latitude, longitude: eneste.longitude },
+      label: eneste.label,
+    };
+  }
+  return { kind: "ambiguous", options: alternativer.slice(0, 5) };
 }
 
 const UNPLACED_PREDICATE = `(latitude IS NULL OR longitude IS NULL
@@ -109,7 +215,8 @@ export async function leadPlacementStatus(
   input: { project: LeadgridAccessibleProject },
 ): Promise<LeadPlacementStatus> {
   const rows = await pool.query<UnplacedLead>(
-    `SELECT id::text, name, address, postal_code, city
+    `SELECT id::text, name, address, postal_code, city,
+            enrichment_org_nr AS organization_number
        FROM crm_customers
       WHERE organization_id = $1::uuid
         AND project_id = $2
@@ -119,7 +226,9 @@ export async function leadPlacementStatus(
       LIMIT 200`,
     [input.project.organizationId, input.project.id],
   );
-  const resolvable = rows.rows.filter((lead) => placementQueryFor(lead) !== null);
+  const resolvable = rows.rows.filter(
+    (lead) => placementQueryFor(lead, null) !== null,
+  );
   return {
     unplaced_count: rows.rowCount ?? 0,
     resolvable_count: resolvable.length,
@@ -142,7 +251,8 @@ export async function placeUnplacedLeads(
   const hentFra = input.fetchImpl ?? fetch;
   const status = await leadPlacementStatus(pool, { project: input.project });
   const kandidater = await pool.query<UnplacedLead>(
-    `SELECT id::text, name, address, postal_code, city
+    `SELECT id::text, name, address, postal_code, city,
+            enrichment_org_nr AS organization_number
        FROM crm_customers
       WHERE organization_id = $1::uuid
         AND project_id = $2
@@ -155,57 +265,221 @@ export async function placeUnplacedLeads(
   );
 
   let placed = 0;
+  let reused = 0;
   let unresolved = 0;
   let attempted = 0;
+  const ambiguous: AmbiguousLead[] = [];
+
   for (const lead of kandidater.rows) {
-    const params = placementQueryFor(lead);
+    const nøkkel = placementKeyFor(lead);
+    if (nøkkel) {
+      // Det noen har bekreftet før, spør vi ikke om igjen.
+      const husket = await pool.query<{ latitude: number; longitude: number }>(
+        `SELECT latitude, longitude
+           FROM leadgrid_lead_placement_decisions
+          WHERE organization_id = $1::uuid AND query_key = $2
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [input.project.organizationId, nøkkel],
+      );
+      const rad = husket.rows[0];
+      if (rad) {
+        await writePlacement(pool, {
+          project: input.project,
+          lead,
+          point: { latitude: rad.latitude, longitude: rad.longitude },
+          label: null,
+          source: "user_verified",
+          queryKey: nøkkel,
+          municipalityNumber: null,
+          decidedBy: null,
+        });
+        placed += 1;
+        reused += 1;
+        continue;
+      }
+    }
+
+    const kommunenummer = await municipalityFromBrreg(hentFra, lead);
+    const params = placementQueryFor(lead, kommunenummer);
     if (!params) continue;
     attempted += 1;
-    const punkt = await slåOppAdresse(hentFra, params, lead);
-    if (!punkt) {
+    const utfall = await lookupAddress(hentFra, params, lead);
+    if (utfall.kind === "unresolved") {
       unresolved += 1;
       continue;
     }
-    await pool.query(
-      `UPDATE crm_customers
-          SET latitude = $1, longitude = $2, updated_at = NOW()
-        WHERE id = $3::uuid
-          AND organization_id = $4::uuid
-          AND project_id = $5`,
-      [
-        punkt.latitude,
-        punkt.longitude,
-        lead.id,
-        input.project.organizationId,
-        input.project.id,
-      ],
-    );
+    if (utfall.kind === "ambiguous") {
+      ambiguous.push({
+        lead_id: lead.id,
+        name: lead.name,
+        address: lead.address,
+        options: utfall.options,
+      });
+      continue;
+    }
+    await writePlacement(pool, {
+      project: input.project,
+      lead,
+      point: utfall.point,
+      label: utfall.label,
+      source: kommunenummer ? "brreg_municipality" : "unique_match",
+      queryKey: nøkkel,
+      municipalityNumber: kommunenummer,
+      decidedBy: null,
+    });
     placed += 1;
   }
 
   return {
     attempted,
     placed,
+    reused,
+    ambiguous,
     unresolved,
     remaining: Math.max(0, status.unplaced_count - placed),
   };
 }
 
-async function slåOppAdresse(
+/**
+ * Brukeren pekte. Da er dette fasit — både for leaden og for neste lead på
+ * samme adresse.
+ */
+export async function verifyLeadPlacement(
+  pool: Pool,
+  input: {
+    project: LeadgridAccessibleProject;
+    leadId: string;
+    point: GeoPoint;
+    label: string | null;
+    userId: string;
+  },
+): Promise<{ placed: boolean }> {
+  const lead = await pool.query<UnplacedLead>(
+    `SELECT id::text, name, address, postal_code, city,
+            enrichment_org_nr AS organization_number
+       FROM crm_customers
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
+        AND archived_at IS NULL`,
+    [input.leadId, input.project.organizationId, input.project.id],
+  );
+  const rad = lead.rows[0];
+  if (!rad) return { placed: false };
+  await writePlacement(pool, {
+    project: input.project,
+    lead: rad,
+    point: input.point,
+    label: input.label,
+    source: "user_verified",
+    queryKey: placementKeyFor(rad),
+    municipalityNumber: null,
+    decidedBy: input.userId,
+  });
+  return { placed: true };
+}
+
+async function writePlacement(
+  pool: Pool,
+  input: {
+    project: LeadgridAccessibleProject;
+    lead: UnplacedLead;
+    point: GeoPoint;
+    label: string | null;
+    source: "brreg_municipality" | "unique_match" | "user_verified";
+    queryKey: string | null;
+    municipalityNumber: string | null;
+    decidedBy: string | null;
+  },
+): Promise<void> {
+  await pool.query(
+    `UPDATE crm_customers
+        SET latitude = $1, longitude = $2, updated_at = NOW()
+      WHERE id = $3::uuid
+        AND organization_id = $4::uuid
+        AND project_id = $5`,
+    [
+      input.point.latitude,
+      input.point.longitude,
+      input.lead.id,
+      input.project.organizationId,
+      input.project.id,
+    ],
+  );
+  if (!input.queryKey) return;
+  await pool.query(
+    `INSERT INTO leadgrid_lead_placement_decisions
+       (organization_id, project_id, lead_id, query_key, municipality_number,
+        latitude, longitude, label, source, decided_by)
+     VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10::uuid)
+     ON CONFLICT (lead_id) DO UPDATE
+        SET latitude = EXCLUDED.latitude,
+            longitude = EXCLUDED.longitude,
+            label = EXCLUDED.label,
+            source = EXCLUDED.source,
+            decided_by = EXCLUDED.decided_by,
+            created_at = NOW()`,
+    [
+      input.project.organizationId,
+      input.project.id,
+      input.lead.id,
+      input.queryKey,
+      input.municipalityNumber,
+      input.point.latitude,
+      input.point.longitude,
+      input.label,
+      input.source,
+      input.decidedBy,
+    ],
+  );
+}
+
+/**
+ * Organisasjonsnummeret er det presise anker: Enhetsregisteret vet hvilken
+ * kommune bedriften er registrert i, og da kan adressesøket ikke lenger treffe
+ * en likelydende gate i en annen kommune.
+ */
+async function municipalityFromBrreg(
+  hentFra: typeof fetch,
+  lead: UnplacedLead,
+): Promise<string | null> {
+  const orgnr = lead.organization_number?.replace(/\D/g, "");
+  if (!orgnr || orgnr.length !== 9) return null;
+  try {
+    const svar = await hentFra(`${BRREG_ENHET_ENDPOINT}/${orgnr}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!svar.ok) return null;
+    const data = (await svar.json()) as {
+      forretningsadresse?: { kommunenummer?: unknown };
+      beliggenhetsadresse?: { kommunenummer?: unknown };
+    };
+    const kommune =
+      text(data.forretningsadresse?.kommunenummer) ??
+      text(data.beliggenhetsadresse?.kommunenummer);
+    return kommune && /^\d{4}$/.test(kommune) ? kommune : null;
+  } catch {
+    return null;
+  }
+}
+
+async function lookupAddress(
   hentFra: typeof fetch,
   params: URLSearchParams,
   lead: UnplacedLead,
-): Promise<GeoPoint | null> {
+): Promise<PlacementOutcome> {
   try {
     const svar = await hentFra(`${GEONORGE_ADDRESS_ENDPOINT}?${params}`, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(8_000),
     });
-    if (!svar.ok) return null;
+    if (!svar.ok) return { kind: "unresolved" };
     const data = (await svar.json()) as { adresser?: GeonorgeHit[] };
-    return pickPlacement(data.adresser ?? [], lead);
+    return classifyPlacement(data.adresser ?? [], lead);
   } catch {
     // Ett oppslag som feiler skal ikke stoppe resten av lista.
-    return null;
+    return { kind: "unresolved" };
   }
 }

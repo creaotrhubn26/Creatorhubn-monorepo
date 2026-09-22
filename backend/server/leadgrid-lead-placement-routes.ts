@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import {
   leadPlacementStatus,
   placeUnplacedLeads,
+  verifyLeadPlacement,
 } from "./leadgrid-lead-placement.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 import {
@@ -55,6 +56,56 @@ export function registerLeadgridLeadPlacementRoutes(deps: {
     } catch (error) {
       console.warn("[lead-placement] status feilet:", (error as Error).message);
       res.status(500).json({ error: "placement_status_failed" });
+    }
+  });
+
+  // Brukeren pekte på riktig adresse blant flere. Da er det fasit — både for
+  // denne leaden og for neste lead på samme adresse.
+  app.post("/api/leadgrid/lead-placement/verify", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const project = await selectedProject(req, res, session.userId);
+    if (!project) return;
+    const { permissions } = await resolveEffectivePermissions(
+      pool,
+      project.organizationId,
+      session.userId,
+    );
+    if (!permissions.has("leads.update")) {
+      res.status(403).json({ error: "mangler_tillatelse", required: "leads.update" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const leadId = String(body.lead_id ?? "").trim();
+    const latitude = Number(body.latitude);
+    const longitude = Number(body.longitude);
+    if (
+      !leadId ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180 ||
+      (latitude === 0 && longitude === 0)
+    ) {
+      res.status(400).json({ error: "ugyldig_plassering" });
+      return;
+    }
+    try {
+      const result = await verifyLeadPlacement(pool, {
+        project,
+        leadId,
+        point: { latitude, longitude },
+        label: typeof body.label === "string" ? body.label.slice(0, 300) : null,
+        userId: session.userId,
+      });
+      if (!result.placed) {
+        res.status(404).json({ error: "lead_not_found" });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      console.warn("[lead-placement] verifisering feilet:", (error as Error).message);
+      res.status(500).json({ error: "placement_verify_failed" });
     }
   });
 

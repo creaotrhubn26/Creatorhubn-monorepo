@@ -15,9 +15,42 @@ struct LeadPlacementStatus: Decodable, Sendable {
     }
 }
 
+/// Én adresse Kartverket mener kan stemme. Brukeren velger mellom disse når
+/// oppslaget ikke er entydig.
+struct LeadPlacementOption: Decodable, Sendable, Identifiable {
+    let latitude: Double
+    let longitude: Double
+    let label: String
+    let municipality: String?
+    let postalCode: String?
+
+    var id: String { "\(latitude),\(longitude)" }
+
+    enum CodingKeys: String, CodingKey {
+        case latitude, longitude, label, municipality
+        case postalCode = "postal_code"
+    }
+}
+
+struct AmbiguousLeadPlacement: Decodable, Sendable, Identifiable {
+    let leadId: String
+    let name: String
+    let address: String?
+    let options: [LeadPlacementOption]
+
+    var id: String { leadId }
+
+    enum CodingKeys: String, CodingKey {
+        case name, address, options
+        case leadId = "lead_id"
+    }
+}
+
 struct LeadPlacementResult: Decodable, Sendable {
     let attempted: Int
     let placed: Int
+    let reused: Int
+    let ambiguous: [AmbiguousLeadPlacement]
     let unresolved: Int
     let remaining: Int
 }
@@ -30,6 +63,29 @@ extension APIClient {
             path: "/api/leadgrid/lead-placement?project_id=\(encoded)",
             body: nil)
         return try JSONDecoder().decode(LeadPlacementStatus.self, from: data)
+    }
+
+    func verifyLeadPlacement(
+        projectId: String,
+        leadId: String,
+        option: LeadPlacementOption
+    ) async throws {
+        struct Body: Encodable {
+            let project_id: String
+            let lead_id: String
+            let latitude: Double
+            let longitude: Double
+            let label: String
+        }
+        _ = try await executeRaw(
+            method: "POST",
+            path: "/api/leadgrid/lead-placement/verify",
+            body: try JSONEncoder().encode(Body(
+                project_id: projectId,
+                lead_id: leadId,
+                latitude: option.latitude,
+                longitude: option.longitude,
+                label: option.label)))
     }
 
     func resolveLeadPlacement(projectId: String) async throws -> LeadPlacementResult {

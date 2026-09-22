@@ -563,6 +563,9 @@ struct KartView: View {
     @State private var utenPlassering: Int = 0
     @State private var plasseringJobber = false
     @State private var plasseringResultat: LeadPlacementResult?
+    /// Adresser som ga flere treff. Disse plasseres ikke før noen peker.
+    @State private var plasseringTvetydige: [AmbiguousLeadPlacement] = []
+    @State private var visPlasseringsvalg = false
 
     @State private var selectedArea: AreaFilter = .all
     @State private var selectedRadiusKm: Double = 5
@@ -583,10 +586,14 @@ struct KartView: View {
     private var plasseringChip: some View {
         if let resultat = plasseringResultat {
             Label(
-                resultat.placed > 0
-                    ? "\(resultat.placed) plassert på kartet"
-                    : "Fant ingen adresse for \(resultat.unresolved)",
-                systemImage: resultat.placed > 0 ? "mappin.circle.fill" : "questionmark.circle")
+                resultat.ambiguous.isEmpty
+                    ? (resultat.placed > 0
+                        ? "\(resultat.placed) plassert på kartet"
+                        : "Fant ingen adresse for \(resultat.unresolved)")
+                    : "\(resultat.ambiguous.count) trenger verifisering",
+                systemImage: resultat.ambiguous.isEmpty
+                    ? (resultat.placed > 0 ? "mappin.circle.fill" : "questionmark.circle")
+                    : "questionmark.circle.fill")
                 .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10).padding(.vertical, 7)
@@ -639,9 +646,14 @@ struct KartView: View {
         do {
             let resultat = try await api.resolveLeadPlacement(projectId: projectId)
             plasseringResultat = resultat
-            utenPlassering = 0
+            plasseringTvetydige = resultat.ambiguous
             await appState.refreshLeads()
             await lastPlasseringsstatus()
+            if !resultat.ambiguous.isEmpty {
+                // Systemet plasserte det det kunne. Resten må et menneske peke
+                // på — vi spør med en gang, mens konteksten er fersk.
+                visPlasseringsvalg = true
+            }
             // Kvitteringen står i fem sekunder; så er brikka tilbake til
             // tilstanden den faktisk beskriver.
             try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -1336,6 +1348,21 @@ struct KartView: View {
                 }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
+        }
+        .sheet(isPresented: $visPlasseringsvalg) {
+            LeadPlacementVerifySheet(
+                leads: plasseringTvetydige,
+                onVelg: { lead, option in
+                    Task {
+                        guard let api = appState.api,
+                              let projectId = appState.activeProjectId else { return }
+                        try? await api.verifyLeadPlacement(
+                            projectId: projectId, leadId: lead.leadId, option: option)
+                        await appState.refreshLeads()
+                        await lastPlasseringsstatus()
+                    }
+                },
+                onHoppOver: { _ in })
         }
         .task(id: appState.leads.count) {
             // Telles på nytt når lead-lista endrer seg: en godkjent kandidat
