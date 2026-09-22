@@ -11,6 +11,10 @@ struct StarRatingControl: View {
     let locale: Locale
     let onSelect: (Int) -> Void
 
+    @Environment(\.contrastColors) private var contrast
+    /// 30 pt ved standard tekststørrelse; følger Dynamic Type opp til 48 pt.
+    @ScaledMetric(relativeTo: .title) private var starSize: CGFloat = 30
+
     var body: some View {
         HStack(spacing: AppSpacing.s) {
             ForEach(1 ... 5, id: \.self) { value in
@@ -18,9 +22,9 @@ struct StarRatingControl: View {
                     onSelect(value)
                 } label: {
                     Image(systemName: value <= stars ? "star.fill" : "star")
-                        .font(.system(size: 30))
-                        .foregroundStyle(value <= stars ? AppColor.rating : AppColor.textTertiary)
-                        .frame(width: AppSpacing.minTapTarget, height: AppSpacing.minTapTarget)
+                        .font(.system(size: min(starSize, 48)))
+                        .foregroundStyle(value <= stars ? AppColor.rating : contrast.textTertiary)
+                        .frame(minWidth: AppSpacing.minTapTarget, minHeight: AppSpacing.minTapTarget)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableButtonStyle())

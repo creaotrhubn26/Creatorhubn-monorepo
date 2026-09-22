@@ -147,7 +147,7 @@ struct QuizOptionButton: View {
                     .accessibilityHidden(true)
                 Text(text)
                     .font(AppFont.body)
-                    .foregroundStyle(mode == .locked ? contrast.textTertiary : AppColor.textPrimary)
+                    .foregroundStyle(mode == .locked ? contrast.textSecondary : AppColor.textPrimary)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
             }
@@ -175,10 +175,10 @@ struct QuizOptionButton: View {
 
     private var iconColor: Color {
         switch mode {
-        case .open: return AppColor.textSecondary
+        case .open: return contrast.textSecondary
         case .correct: return AppColor.accent
         case .wrong: return AppColor.error
-        case .locked: return AppColor.textTertiary
+        case .locked: return contrast.textTertiary
         }
     }
 
