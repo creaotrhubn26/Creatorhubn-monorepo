@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MAX_PLACEMENT_ATTEMPTS,
   classifyPlacement,
+  placeLeadAfterApproval,
   placeUnplacedLeads,
   placementKeyFor,
   placementQueryFor,
@@ -238,5 +239,99 @@ describe("placeUnplacedLeads", () => {
       String(sql).includes("coalesce(address"),
     )?.[1] as unknown[];
     expect(grense?.[2]).toBe(MAX_PLACEMENT_ATTEMPTS);
+  });
+});
+
+describe("placeLeadAfterApproval", () => {
+  const project = {
+    id: "p1",
+    organizationId: "11111111-1111-4111-8111-111111111111",
+  } as never;
+
+  const treff = {
+    representasjonspunkt: { lat: 59.91, lon: 10.75 },
+    postnummer: "0155",
+    poststed: "OSLO",
+    adressetekst: "Storgata 1",
+    kommunenavn: "OSLO",
+  };
+
+  function pool(leadRader: unknown[], husket: unknown[] = []) {
+    const query = vi.fn(async (sql: string) => {
+      const tekst = String(sql);
+      if (tekst.includes("leadgrid_lead_placement_decisions")) {
+        if (tekst.trimStart().startsWith("INSERT")) return { rows: [], rowCount: 1 };
+        return { rows: husket, rowCount: husket.length };
+      }
+      if (tekst.includes("UPDATE crm_customers")) return { rows: [], rowCount: 1 };
+      return { rows: leadRader, rowCount: leadRader.length };
+    });
+    return { pool: { query } as never, query };
+  }
+
+  it("plasserer leaden med én gang når adressen er entydig", async () => {
+    const { pool: p, query } = pool([lead]);
+    const hent = vi.fn(async () => new Response(JSON.stringify({ adresser: [treff] })));
+    const utfall = await placeLeadAfterApproval(p, {
+      project,
+      leadId: "l1",
+      fetchImpl: hent as never,
+    });
+    expect(utfall).toBe("placed");
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE crm_customers"),
+      expect.arrayContaining([59.91, 10.75]),
+    );
+  });
+
+  it("gjør ingenting når leaden allerede har koordinater", async () => {
+    // Spørringen filtrerer på manglende plassering, så ingen rad = ferdig.
+    const { pool: p } = pool([]);
+    const hent = vi.fn();
+    expect(
+      await placeLeadAfterApproval(p, {
+        project,
+        leadId: "l1",
+        fetchImpl: hent as never,
+      }),
+    ).toBe("skipped");
+    expect(hent).not.toHaveBeenCalled();
+  });
+
+  it("plasserer ingenting når adressen er tvetydig", async () => {
+    const { pool: p, query } = pool([{ ...lead, postal_code: null }]);
+    const hent = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          adresser: [
+            treff,
+            { ...treff, representasjonspunkt: { lat: 63.43, lon: 10.39 } },
+          ],
+        }),
+      ),
+    );
+    expect(
+      await placeLeadAfterApproval(p, {
+        project,
+        leadId: "l1",
+        fetchImpl: hent as never,
+      }),
+    ).toBe("ambiguous");
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).includes("UPDATE crm_customers")),
+    ).toBe(false);
+  });
+
+  it("bruker et bekreftet svar uten å spørre Kartverket", async () => {
+    const { pool: p } = pool([lead], [{ latitude: 59.91, longitude: 10.75 }]);
+    const hent = vi.fn();
+    expect(
+      await placeLeadAfterApproval(p, {
+        project,
+        leadId: "l1",
+        fetchImpl: hent as never,
+      }),
+    ).toBe("placed");
+    expect(hent).not.toHaveBeenCalled();
   });
 });
