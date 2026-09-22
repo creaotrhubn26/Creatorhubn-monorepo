@@ -342,6 +342,89 @@ export async function placeUnplacedLeads(
 }
 
 /**
+ * Plasser én nettopp godkjent lead.
+ *
+ * Discovery geokoder maks 120 adresser per kjøring. Blir en kandidat godkjent
+ * uten koordinater, er leaden usynlig på kartet fra sekundet den oppstår — og
+ * brikka i Kart fanger den først når noen trykker. Her gjøres oppslaget med én
+ * gang, med samme presisjon som resten: kommunenummer fra Enhetsregisteret
+ * først, og ingen plassering i det hele tatt hvis adressen er tvetydig.
+ *
+ * Kalles uten å ventes på. Feiler den, er leaden akkurat like usynlig som før,
+ * og brikka står igjen som sikkerhetsnett.
+ */
+export async function placeLeadAfterApproval(
+  pool: Pool,
+  input: {
+    project: LeadgridAccessibleProject;
+    leadId: string;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<"placed" | "ambiguous" | "unresolved" | "skipped"> {
+  const hentFra = input.fetchImpl ?? fetch;
+  const rad = await pool.query<UnplacedLead>(
+    `SELECT id::text, name, address, postal_code, city,
+            enrichment_org_nr AS organization_number
+       FROM crm_customers
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
+        AND archived_at IS NULL
+        AND ${UNPLACED_PREDICATE}`,
+    [input.leadId, input.project.organizationId, input.project.id],
+  );
+  const lead = rad.rows[0];
+  // Har leaden allerede koordinater, treffer ikke spørringen. Det er svaret.
+  if (!lead) return "skipped";
+
+  const nøkkel = placementKeyFor(lead);
+  if (nøkkel) {
+    const husket = await pool.query<{ latitude: number; longitude: number }>(
+      `SELECT latitude, longitude
+         FROM leadgrid_lead_placement_decisions
+        WHERE organization_id = $1::uuid AND query_key = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [input.project.organizationId, nøkkel],
+    );
+    const bekreftet = husket.rows[0];
+    if (bekreftet) {
+      await writePlacement(pool, {
+        project: input.project,
+        lead,
+        point: {
+          latitude: bekreftet.latitude,
+          longitude: bekreftet.longitude,
+        },
+        label: null,
+        source: "user_verified",
+        queryKey: nøkkel,
+        municipalityNumber: null,
+        decidedBy: null,
+      });
+      return "placed";
+    }
+  }
+
+  const kommunenummer = await municipalityFromBrreg(hentFra, lead);
+  const params = placementQueryFor(lead, kommunenummer);
+  if (!params) return "skipped";
+  const utfall = await lookupAddress(hentFra, params, lead);
+  if (utfall.kind !== "placed") return utfall.kind;
+  await writePlacement(pool, {
+    project: input.project,
+    lead,
+    point: utfall.point,
+    label: utfall.label,
+    source: kommunenummer ? "brreg_municipality" : "unique_match",
+    queryKey: nøkkel,
+    municipalityNumber: kommunenummer,
+    decidedBy: null,
+  });
+  return "placed";
+}
+
+/**
  * Brukeren pekte. Da er dette fasit — både for leaden og for neste lead på
  * samme adresse.
  */
