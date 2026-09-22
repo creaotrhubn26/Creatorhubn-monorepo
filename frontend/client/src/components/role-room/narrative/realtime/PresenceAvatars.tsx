@@ -19,12 +19,16 @@ export function PresenceAvatars({ peers, boardNameById, connected }: PresenceAva
   if (peers.length === 0) {
     return (
       <Tooltip title={connected ? 'Ingen andre er her nå' : 'Sanntid: ikke tilkoblet'}>
-        <Box data-testid="narrative-presence" data-connected={connected ? '1' : '0'} sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: connected ? narrativeColors.accent : narrativeColors.textDim, opacity: 0.7 }} />
+        {/* MUI Tooltip setter aria-label på barnet når det ikke har egen
+            tekst — role="status" gjør denne div-en til et gyldig ARIA-mål
+            for det navnet (UX-14: aria-label er ellers ikke lov på en
+            generisk div). */}
+        <Box role="status" data-testid="narrative-presence" data-connected={connected ? '1' : '0'} sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: connected ? narrativeColors.accent : narrativeColors.textDim, opacity: 0.7 }} />
       </Tooltip>
     );
   }
   return (
-    <Box data-testid="narrative-presence" data-connected={connected ? '1' : '0'} sx={{ display: 'flex', alignItems: 'center', pl: 0.75 }}>
+    <Box role="status" data-testid="narrative-presence" data-connected={connected ? '1' : '0'} sx={{ display: 'flex', alignItems: 'center', pl: 0.75 }}>
       {peers.slice(0, 5).map((p) => {
         const board = p.boardId ? boardNameById?.get(p.boardId) : null;
         return (

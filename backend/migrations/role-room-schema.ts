@@ -17,6 +17,8 @@ import {
   check,
   unique,
   uniqueIndex,
+  foreignKey,
+  char,
   uuid,
   date,
 } from 'drizzle-orm/pg-core';
@@ -88,6 +90,69 @@ export const castingCandidates = pgTable('casting_candidates', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   index('casting_candidates_project_id_idx').using('btree', table.projectId),
+]);
+
+/**
+ * Auditable casting-team requests to an accepted partner agency.
+ *
+ * The partnership tables predate this Drizzle schema and remain managed by
+ * numbered SQL migrations, so invitation/proposal/talent foreign keys are
+ * represented with their canonical scalar types here. The database migration
+ * owns the corresponding foreign-key constraints.
+ */
+export const partnershipTalentRequests = pgTable('partnership_talent_requests', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  invitationId: uuid('invitation_id').notNull(),
+  talentId: uuid('talent_id').notNull(),
+  castingRoleId: varchar('casting_role_id', { length: 255 }).notNull().references(() => castingRoles.id, { onDelete: 'cascade' }),
+  requestedByUserId: varchar('requested_by_user_id', { length: 255 }),
+  brief: text('brief').notNull(),
+  responseDeadline: timestamp('response_deadline', { withTimezone: true, mode: 'string' }).notNull(),
+  status: varchar('status', { length: 20 }).default('pending').notNull(),
+  responseNote: text('response_note'),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
+  respondedAt: timestamp('responded_at', { withTimezone: true, mode: 'string' }),
+  respondedByUserId: varchar('responded_by_user_id', { length: 255 }),
+  fulfilledProposalId: uuid('fulfilled_proposal_id'),
+  isDemo: boolean('is_demo').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  check('partnership_talent_requests_status_check', sql`${table.status} IN ('pending', 'acknowledged', 'fulfilled', 'declined', 'cancelled', 'expired')`),
+  check('partnership_talent_requests_brief_length', sql`char_length(btrim(${table.brief})) BETWEEN 1 AND 2000`),
+  check('partnership_talent_requests_response_note_length', sql`${table.responseNote} IS NULL OR char_length(${table.responseNote}) <= 2000`),
+  uniqueIndex('ptr_unique_active_request')
+    .using('btree', table.invitationId, table.talentId, table.castingRoleId)
+    .where(sql`${table.status} IN ('pending', 'acknowledged')`),
+  index('ptr_invitation_status_deadline_idx').using('btree', table.invitationId, table.status, table.responseDeadline),
+  index('ptr_role_status_idx').using('btree', table.castingRoleId, table.status, table.createdAt.desc()),
+  index('ptr_talent_status_idx').using('btree', table.talentId, table.status, table.createdAt.desc()),
+]);
+
+export const partnershipTalentRequestDeliveries = pgTable('partnership_talent_request_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  talentRequestId: uuid('talent_request_id').notNull().references(() => partnershipTalentRequests.id, { onDelete: 'cascade' }),
+  notificationKind: varchar('notification_kind', { length: 20 }).notNull(),
+  status: varchar('status', { length: 16 }).default('pending').notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  availableAt: timestamp('available_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  claimToken: uuid('claim_token'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'string' }),
+  leaseUntil: timestamp('lease_until', { withTimezone: true, mode: 'string' }),
+  sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  check('partnership_talent_request_deliveries_kind_check', sql`${table.notificationKind} IN ('deadline_48h', 'deadline_24h', 'deadline_overdue', 'cancelled')`),
+  check('partnership_talent_request_deliveries_status_check', sql`${table.status} IN ('pending', 'processing', 'sent', 'failed', 'cancelled')`),
+  check('partnership_talent_request_deliveries_attempts_check', sql`${table.attempts} BETWEEN 0 AND 5`),
+  check('ptrd_processing_claim_check', sql`${table.status} <> 'processing' OR (${table.claimToken} IS NOT NULL AND ${table.claimedAt} IS NOT NULL AND ${table.leaseUntil} IS NOT NULL)`),
+  unique('ptrd_request_kind_unique').on(table.talentRequestId, table.notificationKind),
+  index('ptrd_claim_idx')
+    .using('btree', table.availableAt, table.createdAt)
+    .where(sql`${table.status} IN ('pending', 'failed', 'processing') AND ${table.attempts} < 5`),
+  index('ptrd_request_status_idx').using('btree', table.talentRequestId, table.status),
 ]);
 
 export const castingSchedules = pgTable('casting_schedules', {
@@ -166,6 +231,45 @@ export const roleRoomLocationOperations = pgTable('role_room_location_operations
 }, (table) => [
   uniqueIndex('role_room_location_operations_project_location_uidx').using('btree', table.projectId, table.locationId),
   index('role_room_location_operations_project_updated_idx').using('btree', table.projectId, table.updatedAt),
+]);
+
+/**
+ * Project-wide Production Design lane. This deliberately references the
+ * shared project instead of copying scene, prop or storyboard entities into
+ * an art-specific silo.
+ */
+export const roleRoomArtDepartmentOperations = pgTable('role_room_art_department_operations', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  operations: jsonb('operations').default({}).notNull(),
+  version: integer('version').default(0).notNull(),
+  updatedBy: varchar('updated_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  unique('role_room_art_department_operations_project_unique').on(table.projectId),
+  index('role_room_art_department_operations_updated_idx').using('btree', table.projectId, table.updatedAt),
+  check('role_room_art_department_operations_payload_object', sql`jsonb_typeof(${table.operations}) = 'object'`),
+  check('role_room_art_department_operations_version_nonnegative', sql`${table.version} >= 0`),
+]);
+
+/**
+ * Project-wide post-production turnover/QC ledger. Stored manifests reference
+ * canonical production-sound media and never duplicate the private S3 object.
+ */
+export const roleRoomPostProductionOperations = pgTable('role_room_post_production_operations', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  operations: jsonb('operations').default({ turnovers: [] }).notNull(),
+  version: integer('version').default(0).notNull(),
+  updatedBy: varchar('updated_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  unique('uq_role_room_post_production_project').on(table.projectId),
+  index('idx_role_room_post_production_updated').using('btree', table.projectId, table.updatedAt),
+  check('chk_role_room_post_production_payload', sql`jsonb_typeof(${table.operations}) = 'object'`),
+  check('chk_role_room_post_production_version', sql`${table.version} >= 0`),
 ]);
 
 /** Private, checksum-verified and retry-safe scout evidence in the Role Room S3 bucket. */
@@ -250,9 +354,14 @@ export const castingProductionDays = pgTable('casting_production_days', {
   continuityVersion: integer('continuity_version').default(0).notNull(),
   continuityUpdatedBy: varchar('continuity_updated_by', { length: 255 }),
   continuityUpdatedAt: timestamp('continuity_updated_at', { withTimezone: true, mode: 'string' }),
+  /** Independent concurrency lane for production-sound reports. */
+  soundVersion: integer('sound_version').default(0).notNull(),
+  soundUpdatedBy: varchar('sound_updated_by', { length: 255 }),
+  soundUpdatedAt: timestamp('sound_updated_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
+  unique('uq_casting_production_days_project_id_id').on(table.projectId, table.id),
   index('casting_production_days_project_id_idx').using('btree', table.projectId),
   index('idx_casting_production_days_management_updated')
     .using('btree', table.projectId, table.managementUpdatedAt.desc())
@@ -263,6 +372,9 @@ export const castingProductionDays = pgTable('casting_production_days', {
   index('idx_casting_production_days_continuity_updated')
     .using('btree', table.projectId, table.continuityUpdatedAt.desc())
     .where(sql`${table.continuityUpdatedAt} IS NOT NULL`),
+  index('idx_casting_production_days_sound_updated')
+    .using('btree', table.projectId, table.soundUpdatedAt.desc())
+    .where(sql`${table.soundUpdatedAt} IS NOT NULL`),
 ]);
 
 /** Private AWS S3 objects attached to script-supervisor continuity records. */
@@ -303,6 +415,52 @@ export const castingProductionContinuityMedia = pgTable('casting_production_cont
   index('idx_casting_continuity_media_scene_active')
     .using('btree', table.projectId, table.sceneId, table.createdAt.desc())
     .where(sql`${table.deletedAt} IS NULL`),
+]);
+
+/** Private BWF/WAV originals and their explicit continuity-take reconciliation. */
+export const castingProductionSoundMedia = pgTable('casting_production_sound_media', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }).notNull().references(() => castingProductionDays.id, { onDelete: 'cascade' }),
+  /** SQL migration owns the FK to role_room_storage_objects, defined in the shared storage schema. */
+  storageObjectId: uuid('storage_object_id').notNull(),
+  uploadedBy: varchar('uploaded_by', { length: 255 }),
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  contentType: varchar('content_type', { length: 120 }).notNull(),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  checksumSha256: char('checksum_sha256', { length: 64 }).notNull(),
+  recorderMetadata: jsonb('recorder_metadata').default({}).notNull(),
+  reconciliationStatus: varchar('reconciliation_status', { length: 20 }).default('unmatched').notNull(),
+  continuityTakeId: varchar('continuity_take_id', { length: 120 }),
+  reconciledBy: varchar('reconciled_by', { length: 255 }),
+  reconciledAt: timestamp('reconciled_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+}, (table) => [
+  unique('uq_casting_production_sound_media_storage_object').on(table.storageObjectId),
+  foreignKey({
+    columns: [table.projectId, table.productionDayId],
+    foreignColumns: [castingProductionDays.projectId, castingProductionDays.id],
+    name: 'fk_casting_production_sound_media_project_day',
+  }).onDelete('cascade'),
+  check('chk_casting_production_sound_media_type', sql`${table.contentType} IN (
+    'audio/wav', 'audio/wave', 'audio/vnd.wave', 'audio/x-wav', 'application/octet-stream'
+  )`),
+  check('chk_casting_production_sound_media_size', sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 21474836480`),
+  check('chk_casting_production_sound_media_checksum', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
+  check('chk_casting_production_sound_media_metadata', sql`jsonb_typeof(${table.recorderMetadata}) = 'object'`),
+  check('chk_casting_production_sound_media_status', sql`${table.reconciliationStatus} IN ('unmatched', 'matched')`),
+  check('chk_casting_production_sound_media_reconciliation', sql`
+    (${table.reconciliationStatus} = 'unmatched' AND ${table.continuityTakeId} IS NULL AND ${table.reconciledBy} IS NULL AND ${table.reconciledAt} IS NULL)
+    OR
+    (${table.reconciliationStatus} = 'matched' AND ${table.continuityTakeId} IS NOT NULL AND ${table.reconciledBy} IS NOT NULL AND ${table.reconciledAt} IS NOT NULL)
+  `),
+  index('idx_casting_production_sound_media_day_active')
+    .using('btree', table.projectId, table.productionDayId, table.reconciliationStatus, table.createdAt.desc())
+    .where(sql`${table.deletedAt} IS NULL`),
+  index('idx_casting_production_sound_media_take_active')
+    .using('btree', table.projectId, table.productionDayId, table.continuityTakeId, table.createdAt.desc())
+    .where(sql`${table.deletedAt} IS NULL AND ${table.continuityTakeId} IS NOT NULL`),
 ]);
 
 export const castingShotLists = pgTable('casting_shot_lists', {

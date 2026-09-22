@@ -2175,19 +2175,37 @@ useEffect(() => {
     // Proceed with project creation
     try {
       const newProject = await createProjectViaCorrectEndpoint();
+
+      // Si fra til forelderen MED ÉN GANG prosjektet finnes. Forelderen
+      // lukker dialogen og navigerer til det nye prosjektet.
+      //
+      // Dette sto tidligere ETTER orchestrateCompleteWorkflow. Den venter
+      // på valgfrie berikelses-endepunkter (showcase, tidslinjer), og
+      // henger ett av dem, henger hele lukkingen: prosjektet ble opprettet,
+      // men dialogen ble stående uten feilmelding, og lista oppdaterte seg
+      // først ved manuell reload. Reprodusert 19.09.2026 — en utdatert
+      // service worker hang POST /api/showcase/auto-create, så det første
+      // await-et i orkestreringen aldri resolverte.
+      //
+      // Opprettelsen er det brukeren ba om. Berikelsen er en bonus, og
+      // skal aldri kunne blokkere den.
+      if (onProjectCreated && newProject) {
+        onProjectCreated(newProject);
+      }
+
       if (newProject) {
-        await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject);
+        // Kjører i bakgrunnen — resultatet påvirker ikke UI-flyten.
+        void WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject)
+          .catch((err) => {
+            console.warn('Workflow orchestration failed (non-blocking):', err);
+          });
         // Bridge to Capture: persist the shot list into the shot_lists
         // table (the iPad CaptureApp reads from there, not from the
         // project metadata blob) and bootstrap a capture session so the
         // iPad sees a ready-to-shoot session without a manual step.
-        await syncProjectToCapture(newProject).catch((err) => {
+        void syncProjectToCapture(newProject).catch((err) => {
           console.warn('Capture bridge sync failed (non-blocking):', err);
         });
-      }
-      // Call callback to notify parent component
-      if (onProjectCreated && newProject) {
-        onProjectCreated(newProject);
       }
     } catch (error) {
       console.error('Failed to create project:', error);

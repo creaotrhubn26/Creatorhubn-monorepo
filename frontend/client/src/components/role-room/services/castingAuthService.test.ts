@@ -64,6 +64,51 @@ describe('production coordinator role contract', () => {
   });
 });
 
+describe('producer and casting role contracts', () => {
+  it('keeps executive, line and casting responsibilities separated', () => {
+    expect(castingAuthService.getDefaultPermissions('executive_producer')).toMatchObject({
+      canViewAll: true,
+      canApprove: true,
+      canViewEconomy: true,
+      canEditCasting: false,
+      canEditProduction: false,
+    });
+    expect(castingAuthService.getDefaultPermissions('line_producer')).toMatchObject({
+      canEditProduction: true,
+      canCoordinateProduction: true,
+      canManageCrew: true,
+      canManageLocations: true,
+      canViewEconomy: true,
+      canEditCasting: false,
+    });
+    for (const role of ['casting_director', 'local_casting_director', 'extras_casting_director'] as const) {
+      expect(castingAuthService.getDefaultPermissions(role)).toMatchObject({
+        canViewAll: true,
+        canEditCasting: true,
+        canEditProduction: false,
+        canViewEconomy: false,
+      });
+    }
+  });
+
+  it('covers the missing hierarchy aliases with least-privilege defaults', () => {
+    expect(castingAuthService.getDefaultPermissions('second_second_assistant_director')).toMatchObject({
+      canEditProduction: true,
+      canManageCrew: false,
+    });
+    expect(castingAuthService.getDefaultPermissions('set_production_assistant')).toMatchObject({
+      canEditProduction: false,
+      canComment: true,
+    });
+    for (const role of ['production_secretary', 'office_production_assistant'] as const) {
+      expect(castingAuthService.getDefaultPermissions(role)).toMatchObject({
+        canCoordinateProduction: true,
+        canEditProduction: false,
+      });
+    }
+  });
+});
+
 describe('location department role contract', () => {
   it('lets managers and scouts maintain readiness while security remains read-only', () => {
     expect(castingAuthService.getDefaultPermissions('location_manager')).toMatchObject({
@@ -112,6 +157,7 @@ describe('server-resolved project role', () => {
   const serverAccess = (role: string | null, extra: Record<string, unknown> = {}) => ({
     projectId: 'project-1',
     role,
+    roles: role ? [role] : [],
     isOwner: false,
     isMember: role !== null,
     permissions: {},
@@ -139,6 +185,19 @@ describe('server-resolved project role', () => {
       castingAuthService.getUserRole('project-1'));
 
     expect(result).toMatchObject({ id: 'row-1', role: 'production_manager' });
+  });
+
+  it('preserves additional roles and lets authoritative grants override stale false values', async () => {
+    const result = await withStubs(serverAccess('viewer', {
+      roles: ['viewer', 'casting_director'],
+      grants: { canEditCasting: true },
+    }), () => castingAuthService.getUserRole('project-1'));
+
+    expect(result).toMatchObject({
+      additionalRoles: ['casting_director'],
+      serverGrants: { canEditCasting: true },
+      permissions: { canEditCasting: true },
+    });
   });
 
   it('keeps an owner without a membership row on the roster answer', async () => {

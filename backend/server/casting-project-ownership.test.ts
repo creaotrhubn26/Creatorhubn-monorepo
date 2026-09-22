@@ -5,6 +5,7 @@ import {
   userCanAccessCastingProject,
   userCanCommentCastingContinuity,
   userCanCoordinateCastingProduction,
+  userCanEditCasting,
   userCanEditCastingProduction,
   userCanManageCastingLocations,
   userCanManageCastingContinuity,
@@ -63,12 +64,17 @@ describe("resolveCastingProjectAccess", () => {
     expect(access.isMember).toBe(true);
     expect(access.canAccess).toBe(true);
     expect(access.grants).toEqual({
+      canEditCasting: false,
       canEditProduction: true,
       canManageProduction: true,
       canCoordinateProduction: true,
       canManageLocations: true,
       canManageContinuity: false,
       canCommentContinuity: false,
+      canManageArtDepartment: false,
+      canManageProductionSound: false,
+      canPreparePostTurnover: true,
+      canReviewPostTurnover: false,
     });
   });
 
@@ -132,6 +138,35 @@ describe("resolveCastingProjectAccess", () => {
 
     expect(access.canAccess).toBe(false);
     expect(Object.values(access.grants).some(Boolean)).toBe(false);
+  });
+});
+
+describe("userCanEditCasting", () => {
+  it("allows dedicated casting roles without granting production writes", async () => {
+    for (const role of ["casting_director", "local_casting_director", "extras_casting_director"]) {
+      await expect(userCanEditCasting(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(true);
+      await expect(userCanEditCastingProduction(
+        { query: canonicalMember(role) }, "project-1", `${role}-1`,
+      )).resolves.toBe(false);
+    }
+  });
+
+  it("unions casting access across additional roles", async () => {
+    const query = canonicalMember("viewer", null, { additionalRoles: ["casting_director"] });
+
+    await expect(userCanEditCasting({ query }, "project-1", "casting-1"))
+      .resolves.toBe(true);
+  });
+
+  it("accepts an explicit casting grant and denies ordinary viewers", async () => {
+    await expect(userCanEditCasting(
+      { query: canonicalMember("viewer", { canEditCasting: true }) }, "project-1", "viewer-1",
+    )).resolves.toBe(true);
+    await expect(userCanEditCasting(
+      { query: canonicalMember("viewer") }, "project-1", "viewer-1",
+    )).resolves.toBe(false);
   });
 });
 

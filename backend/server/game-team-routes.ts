@@ -136,10 +136,20 @@ export function createGameTeamRouter(
 
   // ─── My team / membership ───────────────────────────────────────────
   router.get('/me', auth, async (req, res) => {
-    const { userId } = req as AuthedRequest;
-    const membership = await svc.getMembershipForUser(pool, userId);
+    const { userId, userEmail } = req as AuthedRequest;
+    let membership = await svc.getMembershipForUser(pool, userId);
     if (!membership) {
-      // Sjekk om brukeren ER en eier (har eget team)
+      // Brukeren er ikke medlem noe sted → hen er eier av sitt eget team.
+      // Uten denne bootstrappen finnes ingen Eier-rolle, isOwnerRole blir
+      // false og Team-fanen viser verken «Inviter» eller «Ny rolle» (UX-29).
+      try {
+        await svc.ensureTeamForOwner(pool, userId, userEmail);
+        membership = await svc.getMembershipForUser(pool, userId);
+      } catch {
+        membership = null;
+      }
+    }
+    if (!membership) {
       const summary = await svc.getTeamSummary(pool, userId);
       if (summary.memberCount === 0) {
         res.json({ success: true, data: null });

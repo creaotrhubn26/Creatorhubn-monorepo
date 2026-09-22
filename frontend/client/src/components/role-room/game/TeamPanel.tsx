@@ -421,7 +421,7 @@ const MemberRow: React.FC<{
               <MenuItem key={r.id} value={r.id}>{r.label}</MenuItem>
             ))}
           </TextField>
-          <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)} data-testid={`team-member-menu-${member.memberRowId}`}>
+          <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)} data-testid={`team-member-menu-${member.memberRowId}`} aria-label={`Handlinger for ${member.email}`}>
             <MoreIcon sx={{ color: TEXT_DIM }} />
           </IconButton>
           <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
@@ -437,6 +437,7 @@ const MemberRow: React.FC<{
                 }
               }}
               data-testid={`team-member-remove-${member.memberRowId}`}
+              aria-label="Fjern medlem"
               sx={{ color: narrativeColors.error, fontSize: 13 }}
             >
               Fjern fra team
@@ -484,6 +485,7 @@ const InvitesList: React.FC<{
             <IconButton
               size="small"
               data-testid={`team-invite-copy-${i.token}`}
+              aria-label="Kopier invitasjon"
               onClick={async () => {
                 const link = `${window.location.origin}/game/invite/${i.token}`;
                 try { await navigator.clipboard.writeText(link); } catch {}
@@ -496,6 +498,7 @@ const InvitesList: React.FC<{
             <IconButton
               size="small"
               data-testid={`team-invite-revoke-${i.token}`}
+              aria-label="Tilbakekall invitasjon"
               onClick={async () => {
                 if (!window.confirm(`Trekke tilbake invitasjon til ${i.invitedEmail}?`)) return;
                 try {
@@ -550,11 +553,11 @@ const RolesList: React.FC<{
           </Box>
           {canManage ? (
             <>
-              <IconButton size="small" onClick={() => onEdit(r)} data-testid={`team-role-edit-${r.id}`}>
+              <IconButton size="small" onClick={() => onEdit(r)} data-testid={`team-role-edit-${r.id}`} aria-label="Rediger rolle">
                 <EditIcon sx={{ color: TEXT_DIM, fontSize: 18 }} />
               </IconButton>
               {!r.isOwnerRole ? (
-                <IconButton size="small" onClick={() => onDelete(r)} data-testid={`team-role-delete-${r.id}`}>
+                <IconButton size="small" onClick={() => onDelete(r)} data-testid={`team-role-delete-${r.id}`} aria-label="Slett rolle">
                   <DeleteIcon sx={{ color: narrativeColors.error, fontSize: 18 }} />
                 </IconButton>
               ) : null}

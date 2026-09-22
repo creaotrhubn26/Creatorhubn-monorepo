@@ -13,12 +13,17 @@ import { CASTING_GRANTS, CASTING_GRANT_RULES } from './casting-project-ownership
 
 /** Norsk etikett per grant. Rene visningsnavn; reglene ligger i tabellen. */
 const GRANT_LABELS: Record<string, string> = {
+  canEditCasting: 'Rediger casting',
   canEditProduction: 'Rediger opptaksdag',
   canManageProduction: 'Dagskontroll',
   canCoordinateProduction: 'Koordinering',
   canManageLocations: 'Lokasjoner',
   canManageContinuity: 'Kontinuitet',
   canCommentContinuity: 'Kommenter kontinuitet',
+  canManageArtDepartment: 'Produksjonsdesign og art department',
+  canManageProductionSound: 'Opptakslyd og lydrapport',
+  canPreparePostTurnover: 'Klargjør turnover til post',
+  canReviewPostTurnover: 'Motta og QC-kontroller turnover',
 };
 
 export interface AccessMatrixDeps {

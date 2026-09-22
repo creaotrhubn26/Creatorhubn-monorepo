@@ -27,7 +27,15 @@ struct LeadgridNotificationBellView: View {
                         .offset(x: 8, y: -8)
                 }
             }
+            .trykkflate()
+            // Knappen har sin egen etikett; uten dette leser revisjonen
+            // (og VoiceOver) symbolnavnet på bildet inni.
+            .accessibilityHidden(true)
         }
+        // Uten dette leser VoiceOver opp symbolnavnet «bell.badge.fill».
+        .accessibilityLabel(appState.leadgridUnreadCount > 0
+            ? "Varsler, \(appState.leadgridUnreadCount) uleste"
+            : "Varsler")
         .sheet(isPresented: $showInbox) {
             LeadgridNotificationInboxView()
                 .presentationDetents([.medium, .large])

@@ -29,7 +29,7 @@ import {
   ArcweaveImportError, InkImportError, TweeImportError, LOCALE_CODE_RE, exportFileStem, toArcweaveProject, toCsv, toMarkdown,
 } from '../../frontend/shared/narrative-format/index.ts';
 import { MAX_TRANSLATE_SEGMENTS, translateSegments } from './narrative-translate.js';
-import { renderStoryGraphPdf, storyGraphPdfFilename } from './narrative-pdf.js';
+import { renderScenesScriptPdf, renderStoryGraphPdf, scenesScriptPdfFilename, storyGraphPdfFilename } from './narrative-pdf.js';
 import { broadcastEventToRoom, narrativeRoomKey } from './websocket-chat.js';
 import { captureBackendException } from './sentry-init.js';
 import { createTokenRateLimiter } from './narrative-rate-limit.js';
@@ -913,6 +913,41 @@ export function createRoleRoomNarrativeRouter(
       throw err;
     }
   }));
+  // Manus-PDF av scenekortene (UX-28): et scenebasert studio har ofte ingen brett.
+  router.get('/projects/:projectId/scenes/export.pdf', ...guard, wrap(async (req, res) => {
+    await feature(req.projectId, 'export_pdf');
+    const [scenes, episodes, project, linesByScene] = await Promise.all([
+      svc.listScenes(pool, req.projectId),
+      svc.listEpisodes(pool, req.projectId),
+      pool.query<{ name: string }>('SELECT name FROM casting_projects WHERE id = $1', [req.projectId]),
+      svc.listSceneLinesByScene(pool, req.projectId),
+    ]);
+    // Replikker og gater hentes samlet (to spørringer) i stedet for to per scene —
+    // et prosjekt med noen hundre scener skal ikke kø-legge poolen for én eksport.
+    const gatesByScene = await svc.listSceneGatesByScene(pool, req.projectId, scenes.map((s) => s.id));
+    const episodeById = new Map(episodes.map((e) => [e.id, e]));
+    const detailed = scenes.map((s) => {
+      const lines = linesByScene.get(s.id) ?? [];
+      const gates = gatesByScene.get(s.id) ?? [];
+      const ep = s.episodeId ? episodeById.get(s.episodeId) : undefined;
+      return {
+        code: s.code, title: s.title, subtitle: s.subtitle, workingId: s.workingId, era: s.era, location: s.location, status: s.status,
+        episodeCode: ep?.code ?? null, episodeTitle: ep?.title ?? null,
+        beforeState: s.beforeState, action: s.action, control: s.control, afterState: s.afterState, audio: s.audio,
+        changeNote: s.changeNote, bridge: s.bridge, timeNote: s.timeNote, challenge: s.challenge, gameplayMechanic: s.gameplayMechanic, environment: s.environment,
+        sourceRefs: (s.sourceRefs ?? []).map((r) => ({ tag: String(r.tag ?? ''), ref: String(r.ref ?? '') })),
+        lines: lines.map((l) => ({ cueId: l.cueId, speakerLabel: l.speakerLabel, textEn: l.textEn, textNb: l.textNb, sourceType: l.sourceType, recordingStatus: l.recordingStatus })),
+        gates: gates.map((g) => ({ gateKey: g.gateKey, status: g.status, evidence: g.evidence })),
+      };
+    });
+    const projectName = String(project.rows[0]?.name ?? '').trim() || 'Manus';
+    const pdf = await renderScenesScriptPdf({ projectName, scenes: detailed });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${scenesScriptPdfFilename(projectName)}"`);
+    res.setHeader('Content-Length', String(pdf.length));
+    res.send(pdf);
+  }));
+
   router.get('/projects/:projectId/scenes/:sceneId', ...guard, wrap(async (req, res) => {
     const detail = await svc.getSceneDetail(pool, req.projectId, param(req, 'sceneId'));
     if (!detail) { res.status(404).json({ error: 'not_found' }); return; }

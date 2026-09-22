@@ -32,6 +32,19 @@ feil: `{ error: <kode> }` med 400/402/403/404/409/413/429/503. Plan-gating svare
 | `POST /projects/:id/scenes/:sceneId/frames/from-base64` | KI-referansebilde → objektlager → ramme (10/dag) | `ai_assist` |
 | `POST /projects/:id/apply-template` `{ template: 'blank'|'demo-adventure'|'wfu-sample' }` | Prosjektmal (revisjon «Før mal» først) | alle (teller mot `maxProjects`) |
 
+## Konto og prosjekt (UX QA 2026-09)
+
+- `POST /api/auth/login` med `{ email, password, loginAs: 'game_studio', role, signup: true }` oppretter en Solo-konto
+  hvis e-posten ikke finnes (passord ≥ 8 tegn → ellers 400). Uten `signup` er oppførselen uendret (401 for ukjent e-post).
+- E-posten må være bekreftet først: `POST /api/auth/email-code/send` `{ email, purpose: 'game_studio_signup' }` →
+  `POST /api/auth/email-code/verify` `{ email, purpose, code }`. Uten en kode verifisert de siste 30 minuttene svarer
+  login-kallet 403 `{ error: 'email_verification_required' }` og oppretter ingenting (ingen kan registrere andres adresse).
+  Ingen kommersiell gate for Spillstudio; Stripe skjer inne i workspacet («Pris»).
+- `POST /api/role-room/projects` `{ name, projectType: 'game' }` brukes av prosjektvelgeren i spillstudio-modus
+  («Nytt prosjekt»); plan-kvoten (`maxProjects`) håndheves ved første Story Graph-skriving, ikke ved opprettelse.
+- `GET /api/game/teams/me`: en bruker uten team-medlemskap får teamet bootstrappet (fire standardroller + Eier-medlemskap)
+  første gang, slik at Team-fanen viser «Inviter»/«Ny rolle».
+
 ## MCP-verktøy (spillmodus)
 Lese: `rr_get_story_graph`, `rr_list_story_components`, `rr_validate_story_graph`, `rr_export_story_graph` (json/md/csv), `rr_list_game_scenes`,
 `rr_game_scene_review_status`, `rr_get_scene_card`, `rr_project_overview`, `rr_script_guardian_check`. Skrive: `rr_draft_element` (utkast-brett, aldri koblet inn i flyten).
@@ -39,6 +52,10 @@ Lese: `rr_get_story_graph`, `rr_list_story_components`, `rr_validate_story_graph
 ## Eksportformater
 `export.json` = Arcweave `project.json` 1:1 (Arcweaves MIT-plugins for Unity/Unreal/Godot leser den direkte); `export.md`, `export.csv`
 (norsk Excel-profil), `export.pdf` (Pro/Studio); standalone HTML fra Eksport-fanen. Runtime-pakker: `packages/story-graph-runtime/{js,unity,godot,swift}`.
+
+- `GET /projects/:id/scenes/export.pdf` (Pro/Studio, `export_pdf`): **manus-PDF av scenekortene** — én seksjon per scene
+  med Før/Handling/Kontroll/Etter/Lyd (+ Endring/Bro/Tid, gameplay-felt), kildemerker, replikker og leveransegater,
+  pluss sceneliste. Uavhengig av brett; filnavn `<prosjekt>-manus.pdf`. Ikke i MCP (binært).
 
 ## Hardening (Fase 8a/8g)
 Av-bryter `ROLE_ROOM_GAME_STUDIO_ENABLED=false` → 503 `game_studio_disabled` på `/api/role-room/narrative` og `/api/game/*` ·

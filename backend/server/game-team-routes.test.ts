@@ -32,6 +32,22 @@ function createApp(pool: Pool) {
 const roleRow = (over: Record<string, unknown> = {}) => ({ id: '11111111-1111-4111-8111-111111111111', team_organization_id: 'u-owner', label: 'Narrativ designer', capabilities: { 'story.edit': true, 'scenes.edit': true }, is_owner_role: false, is_default_for_invite: true, display_order: 2, created_at: new Date(), updated_at: new Date(), ...over });
 
 describe('game team routes', () => {
+  it('GET /me: eier uten medlemskap får teamet bootstrappet (Eier-rolle → isOwnerRole) (UX-29)', async () => {
+    let membershipCalls = 0;
+    const memberRow = { id: 'm-1', organization_id: 'u-owner', user_id: 'u-owner', email: 'o@x.test', status: 'active', role: 'admin', game_role_id: roleRow().id, invited_at: null, joined_at: '2026-09-21T00:00:00Z', game_role_label: 'Eier' };
+    const pool = makePool([
+      { match: /FROM enterprise_team_members m\s+LEFT JOIN game_team_role r/, rows: () => (membershipCalls++ === 0 ? [] : [memberRow]) },
+      { match: /SELECT id FROM game_team_role\s+WHERE team_organization_id = \$1 AND is_owner_role = TRUE/, rows: [{ id: roleRow().id }] },
+      { match: /FROM game_team_role WHERE id = \$1/, rows: [roleRow({ label: 'Eier', is_owner_role: true })] },
+      { match: /COUNT\(\*\) FILTER \(WHERE status IN \('active','pending'\)\) AS member_count/, rows: [{ member_count: 1, active_count: 1 }] },
+    ]);
+    const res = await request(createApp(pool)).get('/api/game/teams/me').set('Authorization', `Bearer ${OWNER}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.role.isOwnerRole).toBe(true);
+    const inserts = (pool as unknown as { query: { mock: { calls: unknown[][] } } }).query.mock.calls.map((c) => String(c[0]));
+    expect(inserts.some((q) => /INSERT INTO enterprise_team_members/.test(q))).toBe(true);
+  });
+
   it('katalogen har spill-kapabiliteter og fire default-roller', async () => {
     const res = await request(createApp(makePool())).get('/api/game/teams/capabilities').set('Authorization', `Bearer ${OWNER}`);
     expect(res.status).toBe(200);

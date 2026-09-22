@@ -186,6 +186,24 @@ import {
   type FirstAssistantDirectorSurface,
 } from './assistant-director/firstAssistantDirectorWorkspaceModel';
 import {
+  isCastingWorkspaceSurface,
+  type CastingWorkspaceSurface,
+  type CastingWorkspaceTarget,
+} from './casting/castingWorkspaceModel';
+import {
+  isArtDepartmentSurface,
+  type ArtDepartmentSurface,
+} from './art-department/artDepartmentWorkspaceModel';
+import {
+  isProductionSoundSurface,
+  type ProductionSoundSurface,
+} from './production-sound/productionSoundWorkspaceModel';
+import {
+  isPostProductionSurface,
+  type PostProductionSurface,
+} from './post-production/postProductionWorkspaceModel';
+import type { ProducerWorkspaceTarget } from './producer-role/producerWorkspaceModel';
+import {
   isRoleRoomWorkspaceLens,
   type RoleRoomWorkspaceLens,
 } from './production/productionWorkspaceLens';
@@ -194,12 +212,29 @@ import {
   FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
+  hasWorkspaceLensGrant,
   matchesLensProjectRole,
   isLensDecisionPending,
   resolveLensUrlState,
   resolveWorkspaceLens,
   type RoleWorkspaceLens,
 } from './production/workspaceLensRegistry';
+import {
+  AdminRoomWorkspace,
+  ArtDepartmentWorkspace,
+  CastingWorkspace,
+  CinematographerWorkspace,
+  ContinuityWorkspace,
+  DirectorWorkspace,
+  FirstAssistantDirectorWorkspace,
+  LocationManagerWorkspace,
+  PostProductionWorkspace,
+  ProducerWorkspace,
+  ProductionCoordinationWorkspace,
+  ProductionManagementWorkspace,
+  ProductionSoundWorkspace,
+  SecondAssistantDirectorWorkspace,
+} from './production/workspaceLensComponents';
 import { isSessionProjectRole, resolveSessionProjectRole } from '../config/sessionProjectRole';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
@@ -233,6 +268,7 @@ import {
 import { KlientStatusBadge } from './KlientStatusBadge';
 import { PanelSkeleton } from './PanelSkeleton';
 import { EmptyProjectsHero } from './EmptyProjectsHero';
+import { RoleRoomWorkspaceVisual } from './production/RoleRoomWorkspaceVisual';
 import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
 import { useAIRecommendation } from '../hooks/useAIRecommendation';
 import { usePlannerOnboardingTour } from '../hooks/usePlannerOnboardingTour';
@@ -269,14 +305,7 @@ const StoryLogicPanel = lazyWithRetry(() => import('./screenplay/StoryLogicPanel
 const RoleManagementPanel = lazyWithRetry(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
 const CandidateManagementPanel = lazyWithRetry(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
 const DashboardPanel = lazyWithRetry(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
-const DirectorWorkspace = lazyWithRetry(() => import('./director/DirectorWorkspace').then(m => ({ default: m.DirectorWorkspace })));
-const CinematographerWorkspace = lazyWithRetry(() => import('./cinematographer/CinematographerWorkspace').then(m => ({ default: m.CinematographerWorkspace })));
-const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/FirstAssistantDirectorWorkspace').then(m => ({ default: m.FirstAssistantDirectorWorkspace })));
-const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
-const ProductionManagementWorkspace = lazyWithRetry(() => import('./production-management/ProductionManagementWorkspace').then(m => ({ default: m.ProductionManagementWorkspace })));
-const ProductionCoordinationWorkspace = lazyWithRetry(() => import('./production-coordination/ProductionCoordinationWorkspace').then(m => ({ default: m.ProductionCoordinationWorkspace })));
-const LocationManagerWorkspace = lazyWithRetry(() => import('./locations/LocationManagerWorkspace').then(m => ({ default: m.LocationManagerWorkspace })));
-const ContinuityWorkspace = lazyWithRetry(() => import('./continuity/ContinuityWorkspace').then(m => ({ default: m.ContinuityWorkspace })));
+const TalentSourcingPanel = lazyWithRetry(() => import('./casting/TalentSourcingPanel').then(m => ({ default: m.TalentSourcingPanel })));
 const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
@@ -284,8 +313,6 @@ const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ def
 // Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
 // Admin Room som linse. Tung side (CMS-editor, ~24 faner), så den lastes
 // først når super admin faktisk åpner linsen.
-const AdminRoomWorkspace = lazy(() => import('../../../pages/AdminRoom'));
-
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
 const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
@@ -893,13 +920,13 @@ export function CastingPlannerPanel({
     base = Math.max(useCompactHeaderLayout ? TOUCH_TARGET_SIZE : 38, base);
     return base;
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
-  const safeHeaderActionButtonSizePx = isMobile
+  const safeHeaderActionButtonSizePx = useCompactHeaderLayout
     ? Math.max(navActionButtonSizePx, MOBILE_TOUCH_TARGET_SIZE)
     : navActionButtonSizePx;
-  const safeHeaderProjectActionSizePx = isMobile
+  const safeHeaderProjectActionSizePx = useCompactHeaderLayout
     ? Math.max(projectChipActionSizePx, MOBILE_TOUCH_TARGET_SIZE)
     : projectChipActionSizePx;
-  const headerMenuItemMinHeight = isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE;
+  const headerMenuItemMinHeight = useCompactHeaderLayout ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE;
   const headerMenuPaperWidth = isMobile ? 'min(280px, calc(100vw - 24px))' : undefined;
 
   const tabIconBoxSizePx = useMemo(() => {
@@ -1252,6 +1279,34 @@ type RoleRoomProjectWorkspaceState = {
     const surface = params.get('surface');
     return isDirectorSurface(surface) ? surface : 'today';
   });
+  const [castingSurface, setCastingSurface] = useState<CastingWorkspaceSurface>(() => {
+    if (typeof window === 'undefined') return 'overview';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client' || params.get('lens') !== 'casting') return 'overview';
+    const surface = params.get('surface');
+    return isCastingWorkspaceSurface(surface) ? surface : 'overview';
+  });
+  const [artDepartmentSurface, setArtDepartmentSurface] = useState<ArtDepartmentSurface>(() => {
+    if (typeof window === 'undefined') return 'overview';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client' || params.get('lens') !== 'art-department') return 'overview';
+    const surface = params.get('surface');
+    return isArtDepartmentSurface(surface) ? surface : 'overview';
+  });
+  const [productionSoundSurface, setProductionSoundSurface] = useState<ProductionSoundSurface>(() => {
+    if (typeof window === 'undefined') return 'overview';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client' || params.get('lens') !== 'production-sound') return 'overview';
+    const surface = params.get('surface');
+    return isProductionSoundSurface(surface) ? surface : 'overview';
+  });
+  const [postProductionSurface, setPostProductionSurface] = useState<PostProductionSurface>(() => {
+    if (typeof window === 'undefined') return 'overview';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client' || params.get('lens') !== 'post-production') return 'overview';
+    const surface = params.get('surface');
+    return isPostProductionSurface(surface) ? surface : 'overview';
+  });
   const [cinematographerSurface, setCinematographerSurface] = useState<CinematographerSurface>(() => {
     if (typeof window === 'undefined') return 'today';
     const params = new URLSearchParams(window.location.search);
@@ -1509,35 +1564,8 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
-      if (isSessionProjectRole(normalizedRequestedRole, 'camera_team')) {
-        return 'camera_team';
-      }
-      if (isSessionProjectRole(normalizedRequestedRole, 'content_producer')) {
-        return 'content_producer';
-      }
-      if (isSessionProjectRole(normalizedRequestedRole, 'first_ad')) {
-        return 'first_ad';
-      }
-      if (isSessionProjectRole(normalizedRequestedRole, 'second_ad')) {
-        return 'second_ad';
-      }
-      if (
-        [
-          'director',
-          'producer',
-          'casting_director',
-          'production_manager',
-          'production_coordinator',
-          'script_supervisor',
-          'camera_team',
-          'writer',
-          'script_editor',
-          'reader',
-          'agency',
-        ].includes(normalizedRequestedRole)
-      ) {
-        return normalizedRequestedRole as UserRoleType;
-      }
+      const requestedProjectRole = resolveSessionProjectRole(normalizedRequestedRole);
+      if (requestedProjectRole) return requestedProjectRole;
     }
 
     if (!normalizedRole) return null;
@@ -1547,26 +1575,7 @@ type RoleRoomProjectWorkspaceState = {
     if (normalizedRole === 'client_reviewer' || normalizedRole === 'client') return 'client_reviewer';
     // Katalogen eier skrivemåtene; her spør vi den i stedet for å gjenta dem.
     const katalogRolle = resolveSessionProjectRole(normalizedRole);
-    if (katalogRolle === 'camera_team' || katalogRolle === 'first_ad' || katalogRolle === 'second_ad') {
-      return katalogRolle;
-    }
-    if (
-      [
-        'director',
-        'producer',
-        'casting_director',
-        'production_manager',
-        'production_coordinator',
-        'script_supervisor',
-        'camera_team',
-        'writer',
-        'script_editor',
-        'reader',
-        'agency',
-      ].includes(normalizedRole)
-    ) {
-      return normalizedRole as UserRoleType;
-    }
+    if (katalogRolle) return katalogRolle;
     if (isSessionProjectRole(normalizedRole, 'content_producer')) {
       return 'content_producer';
     }
@@ -1891,6 +1900,26 @@ type RoleRoomProjectWorkspaceState = {
         : projectWorkspaceState?.directorSurface
           ?? (persisted?.projectId === (currentProject?.id ?? null) ? persisted.directorSurface ?? 'today' : 'today'),
     );
+    setCastingSurface(
+      urlLens === 'casting' && isCastingWorkspaceSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : 'overview',
+    );
+    setArtDepartmentSurface(
+      urlLens === 'art-department' && isArtDepartmentSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : 'overview',
+    );
+    setProductionSoundSurface(
+      urlLens === 'production-sound' && isProductionSoundSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : 'overview',
+    );
+    setPostProductionSurface(
+      urlLens === 'post-production' && isPostProductionSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : 'overview',
+    );
     setCinematographerSurface(
       isCinematographerSurface(urlRoleSurface)
         ? urlRoleSurface
@@ -2194,6 +2223,63 @@ type RoleRoomProjectWorkspaceState = {
     navigateToTab(0);
   }, [navigateToTab]);
 
+  const handleProducerNavigate = useCallback((target: ProducerWorkspaceTarget) => {
+    setWorkspaceLensPreference('producer');
+    switch (target) {
+      case 'casting':
+        navigateToTab(SELECTION_TAB_INDEX);
+        return;
+      case 'schedule':
+        navigateToTab(CALENDAR_TAB_INDEX);
+        return;
+      case 'crew':
+        navigateToTab(TEAM_TAB_INDEX);
+        return;
+      case 'locations':
+        navigateToTab(LOCATIONS_TAB_INDEX);
+        return;
+      case 'economy':
+        navigateToTab(PRODUCER_ECONOMY_TAB_INDEX);
+        return;
+      case 'reviews':
+        navigateToTab(PRODUCER_REVIEWS_TAB_INDEX);
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenProducerWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('producer');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleCastingNavigate = useCallback((target: CastingWorkspaceTarget) => {
+    setWorkspaceLensPreference('casting');
+    setCastingSurface(target);
+    switch (target) {
+      case 'roles':
+        navigateToTab(ROLES_TAB_INDEX);
+        return;
+      case 'talents':
+        navigateToTab(CANDIDATES_TAB_INDEX);
+        return;
+      case 'candidates':
+        navigateToTab(CANDIDATES_TAB_INDEX);
+        return;
+      case 'auditions':
+        navigateToTab(AUDITIONS_TAB_INDEX);
+        return;
+      case 'selection':
+        navigateToTab(SELECTION_TAB_INDEX);
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenCastingWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('casting');
+    setCastingSurface('overview');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
   const handleCinematographerNavigate = useCallback((surface: CinematographerSurface) => {
     setWorkspaceLensPreference('cinematography');
     setCinematographerSurface(surface);
@@ -2286,6 +2372,36 @@ type RoleRoomProjectWorkspaceState = {
     setWorkspaceLensPreference('continuity');
     navigateToTab(0);
   }, [navigateToTab]);
+
+  const handleArtDepartmentNavigate = useCallback((surface: ArtDepartmentSurface) => {
+    setWorkspaceLensPreference('art-department');
+    setArtDepartmentSurface(surface);
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenArtDepartmentWorkspace = useCallback(() => {
+    handleArtDepartmentNavigate('overview');
+  }, [handleArtDepartmentNavigate]);
+
+  const handleProductionSoundNavigate = useCallback((surface: ProductionSoundSurface) => {
+    setWorkspaceLensPreference('production-sound');
+    setProductionSoundSurface(surface);
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenProductionSoundWorkspace = useCallback(() => {
+    handleProductionSoundNavigate('overview');
+  }, [handleProductionSoundNavigate]);
+
+  const handlePostProductionNavigate = useCallback((surface: PostProductionSurface) => {
+    setWorkspaceLensPreference('post-production');
+    setPostProductionSurface(surface);
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenPostProductionWorkspace = useCallback(() => {
+    handlePostProductionNavigate('overview');
+  }, [handlePostProductionNavigate]);
 
   const handleOpenFullWorkspace = useCallback(() => {
     setWorkspaceLensPreference('full');
@@ -3054,20 +3170,44 @@ type RoleRoomProjectWorkspaceState = {
       director_of_photography: 'Filmfotograf (DoP)',
       dop: 'Filmfotograf (DoP)',
       dp: 'Filmfotograf (DoP)',
+      executive_producer: 'Ansvarlig produsent',
       producer: branding.tokens.labels.roleProducerLabel,
+      line_producer: 'Linjeprodusent',
       casting_director: branding.tokens.labels.roleCastingDirectorLabel,
+      local_casting_director: 'Lokal castingansvarlig',
+      extras_casting_director: 'Statistansvarlig',
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
+      production_accountant: 'Produksjonsregnskapsfører',
       production_coordinator: 'Produksjonskoordinator',
+      production_secretary: 'Produksjonssekretær',
+      office_production_assistant: 'Kontor-PA',
       location_manager: 'Location manager',
       location_scout: 'Location scout',
       location_security: 'Location security',
       script_supervisor: 'Script supervisor / kontinuitet',
+      production_designer: 'Produksjonsdesigner',
+      production_sound_mixer: 'Produksjonslydmikser',
+      sound_mixer: 'Produksjonslydmikser',
+      audio_mixer: 'Produksjonslydmikser',
+      sound_engineer: 'Produksjonslydmikser',
+      boom_operator: 'Boomoperatør',
+      post_supervisor: 'Post supervisor',
+      post_coordinator: 'Postkoordinator',
+      sound_designer: 'Lyddesigner',
+      sound_editor: 'Lydklipper',
+      foley_artist: 'Foleyartist',
+      adr_engineer: 'ADR-tekniker',
+      supervising_editor: 'Klippeansvarlig',
+      video_editor: 'Klipper',
+      assistant_editor: 'Klippeassistent',
       first_ad: 'Innspillingsleder / 1st AD',
       first_assistant_director: 'Innspillingsleder / 1st AD',
       '1st_ad': 'Innspillingsleder / 1st AD',
       second_ad: '2. regiassistent / 2nd AD',
       second_assistant_director: '2. regiassistent / 2nd AD',
       '2nd_ad': '2. regiassistent / 2nd AD',
+      second_second_assistant_director: '2nd 2nd AD',
+      set_production_assistant: 'Set-PA',
       camera_team: branding.tokens.labels.roleCameraTeamLabel,
       agency: branding.tokens.labels.roleAgencyLabel,
       content_producer: 'Innholdsprodusent',
@@ -3099,29 +3239,8 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
-      if (isSessionProjectRole(normalizedRequestedRole, 'content_producer')) {
-        return 'content_producer';
-      }
-      if ([
-        'director',
-        'producer',
-        'casting_director',
-        'production_manager',
-        'production_coordinator',
-        'location_manager',
-        'location_scout',
-        'location_security',
-        'script_supervisor',
-        'first_ad',
-        'second_ad',
-        'camera_team',
-        'writer',
-        'script_editor',
-        'reader',
-        'agency',
-      ].includes(normalizedRequestedRole)) {
-        return normalizedRequestedRole as UserRoleType;
-      }
+      const requestedProjectRole = resolveSessionProjectRole(normalizedRequestedRole);
+      if (requestedProjectRole) return requestedProjectRole;
     }
 
     if (!role) return null;
@@ -3130,30 +3249,8 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'owner') return 'director';
     if (normalized === 'admin') return 'producer';
     if (normalized === 'super_admin') return 'director';
-    if (normalized === 'director') return 'director';
-    if (normalized === 'producer') return 'producer';
-    if (normalized === 'content_producer') return 'content_producer';
-    if (normalized === 'client_reviewer') return 'client_reviewer';
-    if (isSessionProjectRole(normalized, 'camera_team')) return 'camera_team';
-    if (normalized === 'casting_director') return 'casting_director';
-    if (normalized === 'production_manager') return 'production_manager';
-    if (normalized === 'production_coordinator') return 'production_coordinator';
-    if (normalized === 'location_manager') return 'location_manager';
-    if (normalized === 'location_scout') return 'location_scout';
-    if (normalized === 'location_security') return 'location_security';
-    if (normalized === 'script_supervisor') return 'script_supervisor';
-    if (isSessionProjectRole(normalized, 'first_ad')) return 'first_ad';
-    if (isSessionProjectRole(normalized, 'second_ad')) return 'second_ad';
-    if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
-    if (normalized === 'writer') return 'writer';
-    if (normalized === 'script_editor') return 'script_editor';
-    if (normalized === 'reader') return 'reader';
-    if (normalized === 'agency') return 'agency';
-
-    // Map photo/video account roles to the closest project-role permission set
-    if (isSessionProjectRole(normalized, 'content_producer')) {
-      return 'content_producer';
-    }
+    const resolvedProjectRole = resolveSessionProjectRole(normalized);
+    if (resolvedProjectRole) return resolvedProjectRole;
     if (normalized === 'client') {
       return 'client_reviewer';
     }
@@ -3263,6 +3360,20 @@ type RoleRoomProjectWorkspaceState = {
     'second_ad',
     'second_assistant_director',
     '2nd_ad',
+    'second_second_assistant_director',
+    '2nd_2nd_ad',
+    'set_production_assistant',
+    'set_pa',
+  ].includes(normalizedRequestedProjectRole);
+  const hasProducerPersona = [
+    'executive_producer',
+    'producer',
+    'line_producer',
+  ].includes(normalizedRequestedProjectRole);
+  const hasCastingPersona = [
+    'casting_director',
+    'local_casting_director',
+    'extras_casting_director',
   ].includes(normalizedRequestedProjectRole);
   const hasProductionManagerPersona = [
     'production_manager',
@@ -3271,6 +3382,10 @@ type RoleRoomProjectWorkspaceState = {
   const hasProductionCoordinatorPersona = [
     'production_coordinator',
     'production coordinator',
+    'production_secretary',
+    'office_production_assistant',
+    'office_pa',
+    'production_assistant',
   ].includes(normalizedRequestedProjectRole);
   const hasLocationDepartmentPersona = [
     'location_manager',
@@ -3283,6 +3398,41 @@ type RoleRoomProjectWorkspaceState = {
   const hasScriptSupervisorPersona = [
     'script_supervisor',
     'continuity',
+  ].includes(normalizedRequestedProjectRole);
+  const hasArtDepartmentPersona = [
+    'production_designer',
+    'set_designer',
+    'concept_illustrator',
+    'storyboard_artist',
+    'costume_designer',
+    'wardrobe_supervisor',
+    'set_decorator',
+    'on_set_dresser',
+    'greensperson',
+    'property_master',
+    'assistant_property_master',
+    'key_hair_stylist',
+    'key_makeup_artist',
+    'construction_coordinator',
+  ].includes(normalizedRequestedProjectRole);
+  const hasProductionSoundPersona = [
+    'production_sound_mixer',
+    'sound_mixer',
+    'audio_mixer',
+    'sound_engineer',
+    'boom_operator',
+  ].includes(normalizedRequestedProjectRole);
+  const hasPostProductionPersona = [
+    'post_supervisor',
+    'post_coordinator',
+    'sound_designer',
+    'sound_editor',
+    'foley_artist',
+    'adr_engineer',
+    'supervising_editor',
+    'video_editor',
+    'editor',
+    'assistant_editor',
   ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role
@@ -3307,30 +3457,48 @@ type RoleRoomProjectWorkspaceState = {
   // eksplisitt prosjektrolle lander i sin egen arbeidsflate; eier/admin kan
   // åpne rolleflatene som en bevisst forhåndsvisning.
   const normalizedCurrentProjectRole = String(currentUserRole?.role || '').trim().toLowerCase();
+  const currentProjectRoleSet = new Set([
+    normalizedCurrentProjectRole,
+    ...(currentUserRole?.additionalRoles ?? []).map((role) => String(role).trim().toLowerCase()),
+  ].filter(Boolean));
+  const hasAssignedLensRole = (lens: RoleWorkspaceLens): boolean =>
+    [...currentProjectRoleSet].some((role) => matchesLensProjectRole(lens, role));
   // Hvilke prosjektroller som hører til hvilken linse eies av
   // WORKSPACE_LENS_REGISTRY. Persona- og adminsjekkene under er
   // sesjonsavhengige og blir derfor liggende her.
-  const isAssignedDirectorProjectRole = matchesLensProjectRole('director', normalizedCurrentProjectRole)
+  const isAssignedProducerProjectRole = hasAssignedLensRole('producer')
+    && (!isRoleRoomAdminSession || hasProducerPersona || mappedSessionProjectRole === 'producer');
+  const isAssignedDirectorProjectRole = hasAssignedLensRole('director')
     && (!isRoleRoomAdminSession || mappedSessionProjectRole === 'director');
   const isAssignedCinematographerProjectRole = (
-    matchesLensProjectRole('cinematography', normalizedCurrentProjectRole)
-    || (normalizedCurrentProjectRole === 'camera_team' && hasCinematographerPersona)
+    hasAssignedLensRole('cinematography')
+    || (currentProjectRoleSet.has('camera_team') && hasCinematographerPersona)
   ) && (!isRoleRoomAdminSession || hasCinematographerPersona);
   const isAssignedFirstAssistantDirectorProjectRole = FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES
-    .includes(normalizedCurrentProjectRole)
+    .some((role) => currentProjectRoleSet.has(role))
     && (!isRoleRoomAdminSession || hasFirstAssistantDirectorPersona);
   const isAssignedSecondAssistantDirectorProjectRole = SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES
-    .includes(normalizedCurrentProjectRole)
+    .some((role) => currentProjectRoleSet.has(role))
     && (!isRoleRoomAdminSession || hasSecondAssistantDirectorPersona);
-  const isAssignedProductionManagerProjectRole = matchesLensProjectRole('production-management', normalizedCurrentProjectRole)
+  const isAssignedCastingProjectRole = hasAssignedLensRole('casting')
+    && (!isRoleRoomAdminSession || hasCastingPersona || mappedSessionProjectRole === 'casting_director');
+  const isAssignedProductionManagerProjectRole = hasAssignedLensRole('production-management')
     && (!isRoleRoomAdminSession || hasProductionManagerPersona || mappedSessionProjectRole === 'production_manager');
-  const isAssignedProductionCoordinatorProjectRole = matchesLensProjectRole('production-coordination', normalizedCurrentProjectRole)
+  const isAssignedProductionCoordinatorProjectRole = hasAssignedLensRole('production-coordination')
     && (!isRoleRoomAdminSession || hasProductionCoordinatorPersona || mappedSessionProjectRole === 'production_coordinator');
-  const isAssignedLocationDepartmentProjectRole = matchesLensProjectRole('location-management', normalizedCurrentProjectRole)
+  const isAssignedLocationDepartmentProjectRole = hasAssignedLensRole('location-management')
     && (!isRoleRoomAdminSession || hasLocationDepartmentPersona);
-  const isAssignedScriptSupervisorProjectRole = matchesLensProjectRole('continuity', normalizedCurrentProjectRole)
+  const isAssignedScriptSupervisorProjectRole = hasAssignedLensRole('continuity')
     && (!isRoleRoomAdminSession || hasScriptSupervisorPersona || mappedSessionProjectRole === 'script_supervisor');
+  const isAssignedArtDepartmentProjectRole = hasAssignedLensRole('art-department')
+    && (!isRoleRoomAdminSession || hasArtDepartmentPersona || mappedSessionProjectRole === 'production_designer');
+  const isAssignedProductionSoundProjectRole = hasAssignedLensRole('production-sound')
+    && (!isRoleRoomAdminSession || hasProductionSoundPersona || mappedSessionProjectRole === 'production_sound_mixer');
+  const isAssignedPostProductionProjectRole = hasAssignedLensRole('post-production')
+    && (!isRoleRoomAdminSession || hasPostProductionPersona);
+  const canUseProducerWorkspace = isAssignedProducerProjectRole || isRoleRoomAdminSession;
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
+  const canUseCastingWorkspace = isAssignedCastingProjectRole || permissions.canEditCasting || isRoleRoomAdminSession;
   const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
   const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
   const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
@@ -3376,6 +3544,48 @@ type RoleRoomProjectWorkspaceState = {
   const canUseContinuityWorkspace = canEditContinuityWorkspace
     || canCommentContinuityWorkspace
     || ['director', 'producer', 'first_ad', 'second_ad'].includes(normalizedCurrentProjectRole);
+  const artDepartmentPermissions: NonNullable<UserRole['permissions']> = currentUserRole
+    ? {
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }
+    : {};
+  const canEditArtDepartmentWorkspace = artDepartmentPermissions.canManageArtDepartment === true
+    || hasWorkspaceLensGrant('art-department', currentUserRole?.serverGrants)
+    || isRoleRoomAdminSession;
+  const canUseArtDepartmentWorkspace = isAssignedArtDepartmentProjectRole
+    || canEditArtDepartmentWorkspace
+    || isRoleRoomAdminSession;
+  const productionSoundPermissions: NonNullable<UserRole['permissions']> = currentUserRole
+    ? {
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }
+    : {};
+  const canEditProductionSoundWorkspace = productionSoundPermissions.canManageProductionSound === true
+    || hasWorkspaceLensGrant('production-sound', currentUserRole?.serverGrants)
+    || isRoleRoomAdminSession;
+  const canUseProductionSoundWorkspace = isAssignedProductionSoundProjectRole
+    || canEditProductionSoundWorkspace
+    || isRoleRoomAdminSession;
+  const postProductionPermissions: NonNullable<UserRole['permissions']> = currentUserRole
+    ? {
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }
+    : {};
+  const canPreparePostTurnover = postProductionPermissions.canPreparePostTurnover === true
+    || postProductionPermissions.canManagePostProduction === true
+    || currentUserRole?.serverGrants?.canPreparePostTurnover === true
+    || isRoleRoomAdminSession;
+  const canReviewPostTurnover = postProductionPermissions.canReviewPostTurnover === true
+    || postProductionPermissions.canManagePostProduction === true
+    || currentUserRole?.serverGrants?.canReviewPostTurnover === true
+    || isRoleRoomAdminSession;
+  const canUsePostProductionWorkspace = isAssignedPostProductionProjectRole
+    || canPreparePostTurnover
+    || canReviewPostTurnover
+    || isRoleRoomAdminSession;
   // Admin-linsen er den eneste som ikke følger av prosjektrollen. Klientporten
   // skjuler UI; hver Admin Room-rute er e-postlåst på serveren i tillegg.
   const { isSuperAdmin: isSuperAdminSession, ready: superAdminGateReady } = useSuperAdminGate();
@@ -3388,7 +3598,9 @@ type RoleRoomProjectWorkspaceState = {
   // boolean-verdiene i sin dependency-array.
   const isAssignedLensProjectRole = (lens: RoleWorkspaceLens): boolean => {
     switch (lens) {
+      case 'producer': return isAssignedProducerProjectRole;
       case 'director': return isAssignedDirectorProjectRole;
+      case 'casting': return isAssignedCastingProjectRole;
       case 'cinematography': return isAssignedCinematographerProjectRole;
       case 'assistant-direction':
         return isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole;
@@ -3396,19 +3608,27 @@ type RoleRoomProjectWorkspaceState = {
       case 'production-coordination': return isAssignedProductionCoordinatorProjectRole;
       case 'location-management': return isAssignedLocationDepartmentProjectRole;
       case 'continuity': return isAssignedScriptSupervisorProjectRole;
+      case 'art-department': return isAssignedArtDepartmentProjectRole;
+      case 'production-sound': return isAssignedProductionSoundProjectRole;
+      case 'post-production': return isAssignedPostProductionProjectRole;
       // Ingen prosjektrolle velger admin-linsen; den åpnes bare eksplisitt.
       case 'admin': return false;
     }
   };
   const isAllowedLens = (lens: RoleWorkspaceLens): boolean => {
     switch (lens) {
+      case 'producer': return canUseProducerWorkspace;
       case 'director': return canUseDirectorWorkspace;
+      case 'casting': return canUseCastingWorkspace;
       case 'cinematography': return canUseCinematographerWorkspace;
       case 'assistant-direction': return canUseAssistantDirectorWorkspace;
       case 'production-management': return canUseProductionManagementWorkspace;
       case 'production-coordination': return canUseProductionCoordinationWorkspace;
       case 'location-management': return canUseLocationManagerWorkspace;
       case 'continuity': return canUseContinuityWorkspace;
+      case 'art-department': return canUseArtDepartmentWorkspace;
+      case 'production-sound': return canUseProductionSoundWorkspace;
+      case 'post-production': return canUsePostProductionWorkspace;
       case 'admin': return isSuperAdminSession;
     }
   };
@@ -4254,12 +4474,10 @@ type RoleRoomProjectWorkspaceState = {
       return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
     }
 
-    // Andre moduser (innholdsprodusent, dansestudio, utdanning): skjul TROLL
-    // helt fra prosjekt-listen. Bare content-producer-demo er relevant for
-    // dem (eller den modus-spesifikke demo-en).
-    return workspaceProjects.filter((project) =>
-      !isContentProducerDemoProject(project) && !isTrollProject(project),
-    );
+    // Innholdsprodusent og øvrige ikke-produksjonsmoduser skal aldri få TROLL,
+    // men Northwind/content-producer-demoen tilhører nettopp denne vertikalen
+    // og må derfor forbli synlig sammen med brukerens ordinære prosjekter.
+    return workspaceProjects.filter((project) => !isTrollProject(project));
   }, [
     isClientReviewerMode,
     isClientReviewerSession,
@@ -5427,6 +5645,10 @@ type RoleRoomProjectWorkspaceState = {
       hasAssignedLensRole: WORKSPACE_LENS_REGISTRY
         .some((entry) => isAssignedLensProjectRole(entry.lens)),
       surfaces: {
+        casting: castingSurface !== 'overview' ? castingSurface : '',
+        'art-department': artDepartmentSurface,
+        'production-sound': productionSoundSurface,
+        'post-production': postProductionSurface,
         director: directorSurface,
         cinematography: cinematographerSurface,
         'assistant-direction': firstAssistantDirectorSurface,
@@ -5471,18 +5693,27 @@ type RoleRoomProjectWorkspaceState = {
     currentProject?.id,
     storyArcView,
     contentProducerPlannerSurface,
+    castingSurface,
+    artDepartmentSurface,
+    productionSoundSurface,
+    postProductionSurface,
     cinematographerSurface,
     directorSurface,
     directorSceneId,
     effectiveWorkspaceLens,
     firstAssistantDirectorSurface,
+    isAssignedCastingProjectRole,
     isAssignedCinematographerProjectRole,
     isAssignedDirectorProjectRole,
     isAssignedFirstAssistantDirectorProjectRole,
     isAssignedLocationDepartmentProjectRole,
+    isAssignedProducerProjectRole,
     isAssignedProductionManagerProjectRole,
     isAssignedProductionCoordinatorProjectRole,
     isAssignedScriptSupervisorProjectRole,
+    isAssignedArtDepartmentProjectRole,
+    isAssignedProductionSoundProjectRole,
+    isAssignedPostProductionProjectRole,
     isAssignedSecondAssistantDirectorProjectRole,
     isExternalClientPortalMode,
     workspaceLensPreference,
@@ -5548,6 +5779,10 @@ type RoleRoomProjectWorkspaceState = {
       const nextDirectorSceneId = params.get('scene')?.trim() || null;
       setDirectorSceneId((previous) => (previous === nextDirectorSceneId ? previous : nextDirectorSceneId));
       const urlSurface = params.get('surface');
+      if (nextLens === 'casting' && isCastingWorkspaceSurface(urlSurface)) {
+        setCastingSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
       if (nextLens === 'director' && isDirectorSurface(urlSurface)) {
         setDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
         return;
@@ -5558,6 +5793,18 @@ type RoleRoomProjectWorkspaceState = {
       }
       if (nextLens === 'assistant-direction' && isFirstAssistantDirectorSurface(urlSurface)) {
         setFirstAssistantDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'art-department' && isArtDepartmentSurface(urlSurface)) {
+        setArtDepartmentSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'production-sound' && isProductionSoundSurface(urlSurface)) {
+        setProductionSoundSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'post-production' && isPostProductionSurface(urlSurface)) {
+        setPostProductionSurface((previous) => (previous === urlSurface ? previous : urlSurface));
         return;
       }
       const nextSurface: ContentProducerPlannerSurface = (
@@ -9260,13 +9507,16 @@ type RoleRoomProjectWorkspaceState = {
         // visuell reduksjon ~22% på desktop. Mobil/tablet beholder full
         // skala for touch-tilgjengelighet.
         fontSize: isDesktop ? '13.5px' : isTablet ? '14px' : '14px',
-        zoom: isDesktop ? 0.88 : isTablet ? 0.94 : 1,
+        zoom: isDesktop ? 0.88 : 1,
         touchAction: 'pan-y',
         WebkitTapHighlightColor: 'transparent',
       }}
     >
       {/* Project Selector Header */}
-      <Box sx={{ 
+      <Box
+        component="header"
+        data-testid="role-room-header"
+        sx={{
         display: isLiveSetImmersive ? 'none' : 'block',
         bgcolor: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
         background: 'linear-gradient(180deg, #1c2128 0%, #161b22 100%)',
@@ -9469,6 +9719,19 @@ type RoleRoomProjectWorkspaceState = {
               }}
             >
               <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 88, sm: 108 }, flexShrink: 0 }} />
+              {headerActiveProject ? (
+                <RoleRoomWorkspaceVisual
+                  lens={effectiveWorkspaceLens}
+                  loading="eager"
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    borderRadius: 1.25,
+                    boxShadow: '0 5px 14px rgba(0,0,0,.24)',
+                  }}
+                />
+              ) : null}
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   sx={{
@@ -9550,7 +9813,9 @@ type RoleRoomProjectWorkspaceState = {
                     minWidth: 0,
                     maxWidth: { md: 520, lg: 600, xl: 680 },
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr)',
+                    gridTemplateColumns: headerActiveProject
+                      ? `${useDenseDesktopHeader ? 42 : 48}px minmax(0, 1fr)`
+                      : 'minmax(0, 1fr)',
                     gap: useDenseDesktopHeader ? 0.85 : 1.1,
                     alignItems: 'center',
                     px: useDenseDesktopHeader ? { md: 1, lg: 1.15 } : { md: 1.15, lg: 1.35 },
@@ -9575,6 +9840,19 @@ type RoleRoomProjectWorkspaceState = {
                     },
                   }}
                 >
+                  {headerActiveProject ? (
+                    <RoleRoomWorkspaceVisual
+                      lens={effectiveWorkspaceLens}
+                      loading="eager"
+                      sx={{
+                        width: useDenseDesktopHeader ? 42 : 48,
+                        height: useDenseDesktopHeader ? 42 : 48,
+                        alignSelf: 'center',
+                        borderRadius: 1.5,
+                        boxShadow: '0 7px 18px rgba(0,0,0,.26)',
+                      }}
+                    />
+                  ) : null}
                   <Box sx={{ minWidth: 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: useDenseDesktopHeader ? 0.65 : 0.9, minWidth: 0, flexWrap: 'wrap' }}>
                       <Box
@@ -9779,11 +10057,20 @@ type RoleRoomProjectWorkspaceState = {
                     onClick={() => { void handleSelectProjectFromSelector(project); }}
                     sx={{
                       display: 'grid',
-                      rowGap: 0.75,
+                      gridTemplateColumns: isActive ? '46px minmax(0,1fr)' : 'minmax(0,1fr)',
+                      gap: isActive ? 1 : 0,
+                      alignItems: 'center',
                       minWidth: 0,
                       cursor: 'pointer',
                     }}
                   >
+                    {isActive ? (
+                      <RoleRoomWorkspaceVisual
+                        lens={effectiveWorkspaceLens}
+                        sx={{ width: 46, height: 46, alignSelf: 'center', boxShadow: '0 6px 16px rgba(0,0,0,.24)' }}
+                      />
+                    ) : null}
+                    <Box sx={{ display: 'grid', rowGap: 0.75, minWidth: 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
                       <Box
                         sx={{
@@ -9860,6 +10147,7 @@ type RoleRoomProjectWorkspaceState = {
                           },
                         }}
                       />
+                    </Box>
                     </Box>
                   </Box>
 
@@ -11103,6 +11391,26 @@ type RoleRoomProjectWorkspaceState = {
               workspaceName={branding.appName}
               onCreateProject={() => setProjectCreationModalOpen(true)}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'producer' ? (
+            <ProducerWorkspace
+              key={`producer-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!permissions.canEditProduction}
+              canViewEconomy={permissions.canViewEconomy || isRoleRoomAdminSession}
+              onNavigate={handleProducerNavigate}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'casting' ? (
+            <CastingWorkspace
+              key={`casting-${currentProject.id}`}
+              project={currentProject}
+              roles={roles}
+              candidates={allCandidates}
+              schedules={schedules}
+              readOnly={!permissions.canEditCasting}
+              onNavigate={handleCastingNavigate}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
           ) : currentProject && effectiveWorkspaceLens === 'director' ? (
             <DirectorWorkspace
               key={`director-${currentProject.id}`}
@@ -11233,8 +11541,96 @@ type RoleRoomProjectWorkspaceState = {
                 setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
               }}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'art-department' ? (
+            <ArtDepartmentWorkspace
+              key={`art-department-${currentProject.id}`}
+              project={currentProject}
+              activeSurface={artDepartmentSurface}
+              readOnly={!canEditArtDepartmentWorkspace}
+              onNavigate={handleArtDepartmentNavigate}
+              onOpenStoryboard={(sceneId) => navigateToTab(STORY_ARC_TAB_INDEX, {
+                storyArcView: 'main',
+                storyArcFocus: sceneId ? { sceneId } : null,
+              })}
+              onOpenProps={() => navigateToTab(EQUIPMENT_TAB_INDEX)}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'production-sound' ? (
+            <ProductionSoundWorkspace
+              key={`production-sound-${currentProject.id}`}
+              project={currentProject}
+              activeSurface={productionSoundSurface}
+              readOnly={!canEditProductionSoundWorkspace}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              onNavigate={handleProductionSoundNavigate}
+              onOpenContinuity={handleOpenContinuityWorkspace}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'post-production' ? (
+            <PostProductionWorkspace
+              key={`post-production-${currentProject.id}`}
+              project={currentProject}
+              activeSurface={postProductionSurface}
+              canPrepare={canPreparePostTurnover}
+              canReview={canReviewPostTurnover}
+              canViewStoryboard={canAccessTab(STORYBOARD_TAB_INDEX)}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              onNavigate={handlePostProductionNavigate}
+              onOpenProductionSound={handleOpenProductionSoundWorkspace}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenStoryboard={() => navigateToTab(STORYBOARD_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
           ) : (
             <>
+              {currentProject && canUseProducerWorkspace ? (
+                <Box
+                  data-testid="producer-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(93,118,203,0.08)', border: '1px solid rgba(93,118,203,0.24)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#eef1fb', fontWeight: 750, fontSize: '0.9rem' }}>Produsentrom</Typography>
+                    <Typography sx={{ color: 'rgba(223,228,243,0.72)', fontSize: '0.76rem' }}>Få prosjektpuls på casting, plan, crew, lokasjoner, økonomi og godkjenninger.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<AttachMoneyIcon />} onClick={handleOpenProducerWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#dfe4f3', borderColor: 'rgba(93,118,203,0.44)', flexShrink: 0 }}>
+                    Åpne produsentrom
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseCastingWorkspace ? (
+                <Box
+                  data-testid="casting-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: 1, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(236,72,153,0.07)', border: '1px solid rgba(236,72,153,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#fce7f3', fontWeight: 750, fontSize: '0.9rem' }}>Castingrom</Typography>
+                    <Typography sx={{ color: 'rgba(251,207,232,0.72)', fontSize: '0.76rem' }}>Arbeid målrettet med roller, kandidater, auditions og dokumenterte castingvalg.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<TheaterComedyIcon />} onClick={handleOpenCastingWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#fbcfe8', borderColor: 'rgba(236,72,153,0.42)', flexShrink: 0 }}>
+                    Åpne castingrom
+                  </Button>
+                </Box>
+              ) : null}
               {currentProject && canUseLocationManagerWorkspace ? (
                 <Box
                   data-testid="location-manager-workspace-launcher"
@@ -11270,6 +11666,63 @@ type RoleRoomProjectWorkspaceState = {
                   </Box>
                   <Button variant="outlined" startIcon={<FactCheckIcon />} onClick={handleOpenContinuityWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#99f6e4', borderColor: 'rgba(45,212,191,0.42)', flexShrink: 0 }}>
                     Åpne kontinuitet
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseArtDepartmentWorkspace ? (
+                <Box
+                  data-testid="art-department-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(236,72,153,0.07)', border: '1px solid rgba(244,114,182,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#fce7f3', fontWeight: 750, fontSize: '0.9rem' }}>Produksjonsdesign og art department</Typography>
+                    <Typography sx={{ color: 'rgba(251,207,232,0.72)', fontSize: '0.76rem' }}>Samle visuell retning, scenebehov, beslutninger og handoff til set, rekvisitt, kostyme og konstruksjon.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<BrushIcon />} onClick={handleOpenArtDepartmentWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#fbcfe8', borderColor: 'rgba(244,114,182,0.42)', flexShrink: 0 }}>
+                    Åpne art department
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseProductionSoundWorkspace ? (
+                <Box
+                  data-testid="production-sound-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(14,165,233,0.07)', border: '1px solid rgba(56,189,248,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#e0f2fe', fontWeight: 750, fontSize: '0.9rem' }}>Production Sound</Typography>
+                    <Typography sx={{ color: 'rgba(186,230,253,0.72)', fontSize: '0.76rem' }}>Recorder, sync, track assignment, take-kvalitet, ekstraopptak og daglig handoff til post.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<GraphicEqIcon />} onClick={handleOpenProductionSoundWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#bae6fd', borderColor: 'rgba(56,189,248,0.42)', flexShrink: 0 }}>
+                    Åpne lydarbeidsflate
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUsePostProductionWorkspace ? (
+                <Box
+                  data-testid="post-production-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(99,102,241,0.08)', border: '1px solid rgba(129,140,248,0.24)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#eef2ff', fontWeight: 750, fontSize: '0.9rem' }}>Post Supervisor og Post Sound</Typography>
+                    <Typography sx={{ color: 'rgba(224,231,255,0.72)', fontSize: '0.76rem' }}>Sporbar turnover fra recorderfiler til mottak, QC, endringskontroll og godkjenning.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<FactCheckIcon />} onClick={handleOpenPostProductionWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#c7d2fe', borderColor: 'rgba(129,140,248,0.46)', flexShrink: 0 }}>
+                    Åpne post-produksjon
                   </Button>
                 </Box>
               ) : null}
@@ -11524,7 +11977,14 @@ type RoleRoomProjectWorkspaceState = {
         </TabPanel>
 
         <TabPanel value={activeTab} index={CANDIDATES_TAB_INDEX}>
-          {isContentProducerMode ? (
+          {currentProject && effectiveWorkspaceLens === 'casting' && castingSurface === 'talents' ? (
+            <TalentSourcingPanel
+              projectId={currentProject.id}
+              roles={roles}
+              onCandidatesChanged={loadProjects}
+              onOpenCandidates={() => handleCastingNavigate('candidates')}
+            />
+          ) : isContentProducerMode ? (
             <ProducerExtrasPanel>
               <CandidateManagementPanel
                 key={currentProject?.id ?? 'no-project'}

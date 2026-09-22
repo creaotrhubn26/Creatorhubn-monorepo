@@ -1,0 +1,54 @@
+name: Role Room talent request reminders
+
+on:
+  schedule:
+    # Hourly at :13. The delivery ledger deduplicates logical 48 h, 24 h and
+    # overdue notices across retries and overlapping backend instances.
+    - cron: '13 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (count without mutating or sending)'
+        required: false
+        default: 'false'
+      limit:
+        description: 'Maximum deliveries to claim (1-50)'
+        required: false
+        default: '50'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: role-room-talent-request-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run durable talent request reminder sweep
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL || 'https://creatorhub-backend-rtbl.onrender.com' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          LIMIT: ${{ github.event.inputs.limit || '50' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN secret is not configured"
+            exit 1
+          fi
+          response_file="$RUNNER_TEMP/talent-request-reminders.json"
+          status=$(curl -sS --connect-timeout 5 --max-time 120 \
+            -o "$response_file" -w '%{http_code}' -X POST \
+            "$BACKEND_BASE_URL/api/role-room/internal/talent-request-reminders/run?dryRun=$DRY_RUN&limit=$LIMIT" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            -H 'Content-Type: application/json')
+          jq . "$response_file" || cat "$response_file"
+          if [ "$status" != 200 ]; then
+            echo "::error::Talent request reminder sweep failed with HTTP $status"
+            exit 1
+          fi

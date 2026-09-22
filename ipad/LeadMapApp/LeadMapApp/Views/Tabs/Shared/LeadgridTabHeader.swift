@@ -147,6 +147,11 @@ struct LeadgridTabHeader<Extra: View>: View {
                             .font(.appScaled(size: 17, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
+                            // «Team» ble klippet til «Te…» fordi knappene til
+                            // høyre tok plassen først. Skjermnavnene er korte
+                            // (lengst: «Salgsledelse»), så tittelen får sin
+                            // fulle bredde og resten komprimeres i stedet.
+                            .fixedSize(horizontal: true, vertical: false)
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("leadgrid-screen-title")
                         if !isNarrow {

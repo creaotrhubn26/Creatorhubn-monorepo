@@ -380,11 +380,23 @@ struct RootView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .bottomTrailing) {
+        // Kortet flyter over et kart som fyller hele flaten, så «et ledig
+        // hjørne» finnes ikke: høyre kant eier kartets knappekolonne med
+        // Discovery-knappen nederst, og bunn-midten eier lead-panelets
+        // handlingsrad («Åpne lead» / «Planlegg møte» / «Naviger») så snart
+        // en lead er valgt. Begge deler ble dekket av kortet i tur og orden.
+        //
+        // Nederst til venstre er den ene sonen ingenting annet bruker: med
+        // sidepanelet framme er kortet dokket i den tomme bunnen av panelet,
+        // og med panelet skjult står det over en tom del av kartet. Bredden
+        // er kappet til panelets bredde så det ikke lener seg inn over
+        // kartkontrollene. iPhone beholder høyre hjørne over fanelinjen.
+        .overlay(alignment: DeviceIdiom.isPhone ? .bottomTrailing : .bottomLeading) {
             if appState.isAuthenticated {
                 LeadgridProductOnboardingGuide()
+                    .frame(maxWidth: DeviceIdiom.isPhone ? .infinity : 300)
                     .padding(.horizontal, DeviceIdiom.isPhone ? 12 : 20)
-                    .padding(.bottom, DeviceIdiom.isPhone ? 76 : 20)
+                    .padding(.bottom, DeviceIdiom.isPhone ? 76 : 24)
             }
         }
         #if DEBUG
@@ -788,9 +800,15 @@ private struct LeadgridProductOnboardingGuide: View {
                 .font(.appScaled(size: 11))
                 .foregroundStyle(Color.white.opacity(0.68))
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Prøv igjen") { Task { await load() } }
+            // Rammen ligger på etiketten: på .borderedProminent er det
+            // etiketten som bestemmer knappens flate, så en ytre .frame
+            // ville bare sentrert en 34pt knapp i et 44pt felt.
+            Button { Task { await load() } } label: {
+                Text("Prøv igjen").frame(minHeight: 44)
+            }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.66, green: 0.32, blue: 0.99))
+                // Merkelilla gir 3,98:1 mot hvit tekst; nedtonet til 5,9:1.
+                .tint(Color(red: 0.52, green: 0.24, blue: 0.82))
                 .disabled(isBusy)
                 .accessibilityIdentifier("product-onboarding.retry-load")
         }

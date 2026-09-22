@@ -1,12 +1,17 @@
 export const ROLE_ROOM_WORKSPACE_LENSES = [
   'full',
+  'producer',
   'director',
+  'casting',
   'cinematography',
   'assistant-direction',
   'production-management',
   'production-coordination',
   'location-management',
   'continuity',
+  'art-department',
+  'production-sound',
+  'post-production',
   // Plattformflate, ikke en produksjonsrolle: kun super admin, og den eneste
   // linsen som ikke velges av prosjektrollen din.
   'admin',

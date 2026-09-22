@@ -47,7 +47,7 @@ export function SceneTasksTab({ projectId, detail, scenes }: { projectId: string
             <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>{progress.done} av {progress.total} ferdig</Typography>
             <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }} data-testid="narrative-scene-task-progress">{progress.pct}%</Typography>
           </Stack>
-          <LinearProgress variant="determinate" value={progress.pct} sx={{ height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.06)', '& .MuiLinearProgress-bar': { bgcolor: narrativeColors.accent } }} />
+          <LinearProgress variant="determinate" value={progress.pct} aria-label={`Oppgaver: ${progress.done} av ${progress.total} ferdig`} sx={{ height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.06)', '& .MuiLinearProgress-bar': { bgcolor: narrativeColors.accent } }} />
         </Box>
       ) : null}
 
