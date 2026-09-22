@@ -7,8 +7,13 @@ struct RedigeringView: View {
     @State private var model = RedigeringModel()
     @State private var zoom: CGFloat = 1
     @State private var comparisonMode: RedigeringComparisonMode = .split
+    #if DEBUG
+    @State private var showCrop = ProcessInfo.processInfo.arguments.contains("--crop-on")
+    #else
     @State private var showCrop = false
+    #endif
     @State private var showMask = false
+    @State private var showProtection = false
     /// Kvalitetssjekk-review (steg 4) — flagg leveranse-blokkere over serien.
     @State private var showQualityReview = false
     /// Bilde-først: skjul inspector-panelet så bildet fyller bredden.
@@ -21,6 +26,9 @@ struct RedigeringView: View {
     /// Vis «AI-endringer»-heatmap (hvor + hvor mye redigeringen endret bildet).
     @State private var showDiff = ProcessInfo.processInfo.arguments.contains("--diff-on")
     @State private var diffOverlay: UIImage?
+    /// Per-person focus map. It is intentionally visible by default for group
+    /// portraits; one missed child matters more than a perfectly sharp backdrop.
+    @State private var showFaceFocus = true
 
     var body: some View {
         NavigationStack {
@@ -51,6 +59,14 @@ struct RedigeringView: View {
                         .help("Trykk-på-ansikt (lokal justering)")
                         .accessibilityLabel("Personer")
                         .accessibilityHint("Velg ansikt for lokal lys- og fargejustering")
+                        Button {
+                            showFaceFocus.toggle()
+                        } label: {
+                            Image(systemName: "viewfinder.circle")
+                                .foregroundStyle(showFaceFocus ? CHTheme.accent : CHTheme.textSecondary)
+                        }
+                        .help("Vis fokus per person")
+                        .accessibilityLabel(showFaceFocus ? "Skjul fokus per person" : "Vis fokus per person")
                         Button {
                             showMaskOverlay.toggle()
                             Task { await updateMaskOverlay() }
@@ -93,9 +109,13 @@ struct RedigeringView: View {
         .task { await model.loadSessions() }
         .sheet(isPresented: $showCrop) {
             if let path = model.selected?.previewKey ?? model.selected?.displayPreviewKey {
-                RectMarqueeSheet(imagePath: path, title: "Beskjær", applyLabel: "Beskjær",
-                                 initialRect: model.currentCrop, allowReset: true,
-                                 onReset: { model.setCrop(nil) }) { rect in model.setCrop(rect) }
+                SmartCropSheet(
+                    imagePath: path,
+                    faceRectsVision: model.selectedAnalysis?.faces.map(\.rect) ?? [],
+                    initialRect: model.currentCrop,
+                    onReset: { model.setCrop(nil) },
+                    onApply: { model.setCrop($0) }
+                )
             }
         }
         .sheet(isPresented: $showMask) {
@@ -103,6 +123,19 @@ struct RedigeringView: View {
                 RetouchBrushSheet(imagePath: path) { strokes, diameter in
                     Task { await model.runManualInpaint(strokes: strokes, brushDiameter: diameter) }
                 }
+            }
+        }
+        .sheet(isPresented: $showProtection) {
+            if let path = model.selected?.previewKey ?? model.selected?.displayPreviewKey {
+                RectMarqueeSheet(
+                    imagePath: path,
+                    title: "Beskytt identitetsområde",
+                    applyLabel: "Beskytt",
+                    initialRect: nil,
+                    allowReset: !model.protectedRegions.isEmpty,
+                    onReset: { model.clearProtectedRegions() },
+                    onApply: { model.addProtectedRegion($0) }
+                )
             }
         }
         .sheet(isPresented: $showQualityReview) {
@@ -192,8 +225,10 @@ struct RedigeringView: View {
 
     private var subtitle: some View {
         HStack(spacing: 6) {
-            Circle().fill(CHTheme.accent).frame(width: 7, height: 7)
-            Text("\(model.assets.count) bilder importert · AI-analyse ferdig")
+            Circle()
+                .fill(model.automaticProcessingComplete ? CHTheme.accent : CHTheme.warning)
+                .frame(width: 7, height: 7)
+            Text(model.automaticProcessingStatus)
                 .font(.subheadline).foregroundStyle(CHTheme.textSecondary)
         }
     }
@@ -212,6 +247,8 @@ struct RedigeringView: View {
             faceDots: model.localFaceMode ? model.faceRectsNorm : [],
             activeFace: model.activeFace,
             onTapFace: { model.activeFace = $0 },
+            faceFocus: model.selectedAnalysis?.faceFocusAssessments ?? [],
+            showFaceFocus: showFaceFocus,
         )
         .frame(height: max(320, height))
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -325,6 +362,9 @@ struct RedigeringView: View {
                 comparisonMode.advance()
             }
             toolButton("Pensel", "paintbrush.pointed") { showMask = true }
+            toolButton("Beskytt", "shield.lefthalf.filled", active: !model.protectedRegions.isEmpty) {
+                showProtection = true
+            }
             toolButton("Angre", "arrow.uturn.backward", enabled: model.canUndo) { model.undoEdit() }
             toolButton("Gjør om", "arrow.uturn.forward", enabled: model.canRedo) { model.redoEdit() }
         }

@@ -133,6 +133,50 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(refreshed?.signals, signals)
     }
 
+    func testAnalysisAndEditValidationMergeWithoutClobberingSignals() async throws {
+        let store = try makeStore()
+        let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)
+        let asset = try await store.createAsset(sessionId: session.id, descriptor: AssetDescriptor(
+            id: UUID(), originalFilename: "IMG.JPG", captureTime: Date(),
+            mime: "image/jpeg", sizeBytes: 100
+        ))
+        var initial = AssetSignals.empty
+        initial.markupRef = "keep-this-markup"
+        try await store.updateAssetSignals(id: asset.id, signals: initial)
+
+        let validation = EditValidation(
+            state: .completed,
+            attempts: 1,
+            sourceRevision: "r1",
+            metrics: nil,
+            lastError: nil,
+            updatedAt: Date(timeIntervalSince1970: 42)
+        )
+        try await store.updateEditValidation(id: asset.id, validation: validation)
+        let analysis = AssetAnalysis(
+            version: AssetAnalysis.currentVersion,
+            medianLuma: 0.5, p5Luma: 0.1, p95Luma: 0.9,
+            highlightClip: 0.01, shadowClip: 0.02,
+            subjectHighlightClip: nil,
+            globalSharpness: 0.2, subjectSharpness: nil,
+            skinCast: .neutral, faces: [], sceneFeature: [0.1, 0.2]
+        )
+        try await store.updateAssetAnalysis(
+            id: asset.id,
+            analysis: analysis,
+            eyesOpen: true,
+            faceCount: 0
+        )
+
+        let fetched = try await store.fetchAsset(id: asset.id)
+        let refreshed = try XCTUnwrap(fetched)
+        XCTAssertEqual(refreshed.signals.markupRef, "keep-this-markup")
+        XCTAssertEqual(refreshed.signals.editValidation, validation)
+        XCTAssertEqual(refreshed.signals.analysis, analysis)
+        XCTAssertEqual(refreshed.signals.eyesOpen, true)
+        XCTAssertEqual(refreshed.signals.faceCount, 0)
+    }
+
     func testAttachStorageKeyUpdatesCorrectKind() async throws {
         let store = try makeStore()
         let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)

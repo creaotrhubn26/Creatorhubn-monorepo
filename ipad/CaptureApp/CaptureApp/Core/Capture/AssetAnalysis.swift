@@ -47,7 +47,7 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
     /// Sammenlignes på tvers av bilder (Hamming) i ``LiveCaptureModel``, ikke her.
     var perceptualHash: UInt64 = 0
 
-    static let currentVersion = 1
+    static let currentVersion = 2
 
     /// Erstatt eventuelle non-finite Double-er (nan/inf fra divisjon/areaAverage)
     /// med 0 FØR persistering — én non-finite i bloben fikk ellers JSONEncoder til
@@ -69,6 +69,8 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
                 s.luma = f(face.luma)
                 s.captureQuality = fo(face.captureQuality)
                 s.sharpness = fo(face.sharpness)
+                s.leftEyeSharpness = fo(face.leftEyeSharpness)
+                s.rightEyeSharpness = fo(face.rightEyeSharpness)
                 return s
             },
             sceneFeature: sceneFeature.map { $0.isFinite ? $0 : 0 },
@@ -79,6 +81,95 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
     var hasFaces: Bool { !faces.isEmpty }
     /// Største ansikt (etter areal) — «hovedpersonen» i de fleste portretter.
     var primaryFace: FaceAnalysis? { faces.max { $0.sizeFraction < $1.sizeFraction } }
+
+    /// Referansen for gruppefokus. Global skarphet alene kan bli kunstig lav av
+    /// pen bokeh; medianen av de målte ansiktene gjør at ett mykt familiemedlem
+    /// fortsatt oppdages når de andre fire er skarpe. Median (ikke maksimum)
+    /// begrenser falske treff fra ett svært teksturrikt/nært ansikt.
+    var faceFocusReferenceSharpness: Double {
+        let measured = faces.compactMap(\.sharpness).filter(\.isFinite).sorted()
+        guard !measured.isEmpty else { return globalSharpness }
+        let middle = measured.count / 2
+        let median = measured.count.isMultiple(of: 2)
+            ? (measured[middle - 1] + measured[middle]) / 2
+            : measured[middle]
+        return max(globalSharpness, median)
+    }
+
+    /// Alle ansiktene i stabil visuell rekkefølge (venstre → høyre), med
+    /// eksplisitt fokusstatus. UI-et bruker selve rammen til å vise *hvem* som
+    /// er skarp; dette er ikke en identitetsgjenkjenning.
+    var faceFocusAssessments: [FaceFocusAssessment] {
+        let reference = faceFocusReferenceSharpness
+        return faces
+            .enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.rect.midX == rhs.element.rect.midX {
+                    return lhs.element.rect.midY > rhs.element.rect.midY
+                }
+                return lhs.element.rect.midX < rhs.element.rect.midX
+            }
+            .enumerated()
+            .map { displayOffset, item in
+                FaceFocusAssessment(
+                    sourceIndex: item.offset,
+                    personNumber: displayOffset + 1,
+                    rect: item.element.rect,
+                    state: item.element.focusState(globalSharpness: reference),
+                    sharpness: item.element.sharpness
+                )
+            }
+    }
+
+    /// Eye-level focus can fail even when hair, nose or clothing makes the
+    /// larger face/person region look sharp. Each eye is therefore evaluated
+    /// inside its own Vision landmark region. Results remain tied to the same
+    /// anonymous left-to-right person number used by the face focus UI.
+    var eyeFocusAssessments: [EyeFocusAssessment] {
+        faceFocusAssessments.flatMap { faceAssessment -> [EyeFocusAssessment] in
+            guard faces.indices.contains(faceAssessment.sourceIndex) else { return [] }
+            let face = faces[faceAssessment.sourceIndex]
+            return [
+                EyeFocusAssessment(
+                    sourceIndex: faceAssessment.sourceIndex,
+                    personNumber: faceAssessment.personNumber,
+                    eye: .left,
+                    rect: face.leftEyeRect,
+                    state: face.eyeFocusState(
+                        sharpness: face.leftEyeSharpness,
+                        peerSharpness: face.rightEyeSharpness
+                    ),
+                    sharpness: face.leftEyeSharpness
+                ),
+                EyeFocusAssessment(
+                    sourceIndex: faceAssessment.sourceIndex,
+                    personNumber: faceAssessment.personNumber,
+                    eye: .right,
+                    rect: face.rightEyeRect,
+                    state: face.eyeFocusState(
+                        sharpness: face.rightEyeSharpness,
+                        peerSharpness: face.leftEyeSharpness
+                    ),
+                    sharpness: face.rightEyeSharpness
+                ),
+            ].filter { $0.rect != nil && $0.state != .unmeasured }
+        }
+    }
+
+    /// Conservative delivery warning: if two eyes are measurable, one sharp
+    /// eye is sufficient. This avoids rejecting intentional shallow-depth
+    /// portraits merely because the farther eye is softer. With only one
+    /// measurable eye (profile/occlusion), that eye must be sharp.
+    var criticalSoftEyeFocusAssessments: [EyeFocusAssessment] {
+        Dictionary(grouping: eyeFocusAssessments, by: \.sourceIndex)
+            .values
+            .flatMap { eyes -> [EyeFocusAssessment] in
+                let measured = eyes.filter { $0.state != .unmeasured }
+                guard !measured.isEmpty,
+                      measured.allSatisfy({ $0.state == .soft }) else { return [] }
+                return measured
+            }
+    }
 
     /// On-set-flagg for filmstripen — det fotografen kan reagere på mens bildet kan
     /// tas om. nil = ok. Ren, testbar. Lukkede øyne prioriteres (sterkest signal).
@@ -100,10 +191,13 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
         }
     }
     var onSetFlag: OnSetFlag? {
-        if let face = primaryFace {
-            if face.eyesOpen == false { return .eyesClosed }
-            if face.isSoft(globalSharpness: globalSharpness) { return .blurry }
-            if let q = face.captureQuality, q < 0.35 { return .lowFaceQuality }
+        if !faces.isEmpty {
+            // En familie leveres som en gruppe: et mindre ansikt er ikke mindre
+            // viktig enn det største. Prioriter sterkeste signal på tvers av ALLE.
+            if faces.contains(where: { $0.eyesOpen == false }) { return .eyesClosed }
+            if !criticalSoftEyeFocusAssessments.isEmpty { return .blurry }
+            if faceFocusAssessments.contains(where: { $0.state == .soft }) { return .blurry }
+            if faces.contains(where: { ($0.captureQuality ?? 1) < 0.35 }) { return .lowFaceQuality }
         } else if globalSharpness < 0.0006 {
             // Ingen ansikt (landskap/produkt) → global uskarphet.
             return .blurry
@@ -122,6 +216,10 @@ struct FaceAnalysis: Sendable, Equatable, Hashable, Codable {
     var captureQuality: Double?         // VNDetectFaceCaptureQuality 0…1
     var sharpness: Double?              // Laplacian-energi innenfor ansikts-rekt (rå)
     var skinCast: ImageAnalysis.SkinReading.Cast?
+    var leftEyeRect: CGRect? = nil      // normalisert bildekoordinat, Vision-origo
+    var rightEyeRect: CGRect? = nil
+    var leftEyeSharpness: Double? = nil // Laplacian-energi i øyelandmark-regionen
+    var rightEyeSharpness: Double? = nil
 
     /// Er ansiktet mykt/ute av fokus relativt bildets globale skarphet? Rent
     /// avledet, brukes av HUD-varselet. `globalSharpness` = referanse.
@@ -132,6 +230,59 @@ struct FaceAnalysis: Sendable, Equatable, Hashable, Codable {
         // dette fanger nettopp bommet fokus, ikke vakker bokeh.
         return s < max(globalSharpness * 0.6, 0.0006)
     }
+
+    func focusState(globalSharpness: Double) -> FaceFocusState {
+        guard sharpness != nil else { return .unmeasured }
+        return isSoft(globalSharpness: globalSharpness) ? .soft : .sharp
+    }
+
+    /// Conservative eye-focus gate. A single eye is marked soft when it is
+    /// substantially below both the detailed face region and its peer. Both
+    /// eyes may be marked when a sharp face outline/hair hides missed eye AF.
+    func eyeFocusState(sharpness eyeSharpness: Double?, peerSharpness: Double?) -> FaceFocusState {
+        guard let eyeSharpness, eyeSharpness.isFinite else { return .unmeasured }
+        let faceReference = max(sharpness ?? 0, 0.0008)
+        let peerReference = max(peerSharpness ?? eyeSharpness, eyeSharpness)
+        let threshold = max(0.00045, max(faceReference * 0.42, peerReference * 0.5))
+        return eyeSharpness < threshold ? .soft : .sharp
+    }
+}
+
+enum FaceFocusState: String, Sendable, Equatable, Hashable, Codable {
+    case sharp, soft, unmeasured
+
+    var label: String {
+        switch self {
+        case .sharp: return "Skarp"
+        case .soft: return "Ute av fokus"
+        case .unmeasured: return "Ikke målt"
+        }
+    }
+}
+
+struct FaceFocusAssessment: Sendable, Equatable, Hashable, Identifiable {
+    let sourceIndex: Int
+    let personNumber: Int
+    let rect: CGRect
+    let state: FaceFocusState
+    let sharpness: Double?
+
+    var id: Int { sourceIndex }
+}
+
+enum EyeSide: String, Sendable, Equatable, Hashable, Codable {
+    case left, right
+}
+
+struct EyeFocusAssessment: Sendable, Equatable, Hashable, Identifiable {
+    let sourceIndex: Int
+    let personNumber: Int
+    let eye: EyeSide
+    let rect: CGRect?
+    let state: FaceFocusState
+    let sharpness: Double?
+
+    var id: String { "\(sourceIndex)-\(eye.rawValue)" }
 }
 
 /// Off-main worker som produserer `AssetAnalysis` fra en preview/full-fil.
@@ -295,14 +446,54 @@ actor AssetAnalyzer {
         return energyInSubject / subjectArea
     }
 
-    /// Motiv-klipping: andel av MOTIV-pikslene som er utbrent (luma ≥ 0.98).
+    /// Motiv-klipping / høylysrisiko i motivet. Display-P3-konvertering, JPEG og
+    /// en bevisst highlight-rolloff kan flytte en sensor-klippet hvit flate litt
+    /// under 0.98 uten å bringe teksturen tilbake. Bruk derfor en gradert guard
+    /// fra 0.96…1.00 for motivet, mens global `highlightClip` fortsatt bruker
+    /// den strengere 0.98-grensen. Det gjør hvite kjoler tryggere uten å flagge
+    /// hele bildet bare fordi himmelen eller en lampe er lys.
     nonisolated static func subjectClip(hiMaskSource luma: CIImage, subject: CIImage, extent: CGRect, ctx: CIContext) -> Double? {
-        guard let hiMask = clipMask(luma: luma, highlight: true) else { return nil }
-        let both = hiMask.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: subject])
-        let clipInSubject = areaAverageR(both, rect: extent, ctx: ctx) ?? 0
-        let subjectArea = areaAverageR(subject, rect: extent, ctx: ctx) ?? 0
-        guard subjectArea > 0.001 else { return nil }
-        return min(1, clipInSubject / subjectArea)
+        let width = max(1, Int(extent.width.rounded()))
+        let height = max(1, Int(extent.height.rounded()))
+        let count = width * height
+        var lumaBytes = [UInt8](repeating: 0, count: count * 4)
+        var subjectBytes = [UInt8](repeating: 0, count: count)
+
+        // Core Image filters work in a linear working space. Comparing their
+        // float values directly with a display-referred 0.96 threshold made the
+        // old check miss obvious white plateaus after P3/JPEG conversion. One
+        // explicit sRGB render makes 245…255 mean the same thing the user sees.
+        ctx.render(
+            luma.cropped(to: extent),
+            toBitmap: &lumaBytes,
+            rowBytes: width * 4,
+            bounds: extent,
+            format: .RGBA8,
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+        )
+        ctx.render(
+            subject.cropped(to: extent),
+            toBitmap: &subjectBytes,
+            rowBytes: width,
+            bounds: extent,
+            format: .L8,
+            colorSpace: nil
+        )
+
+        var subjectWeight = 0.0
+        var highlightWeight = 0.0
+        for index in 0..<count {
+            let mask = Double(subjectBytes[index]) / 255
+            guard mask > 0 else { continue }
+            subjectWeight += mask
+            let value = Double(lumaBytes[index * 4])
+            // Graded safety shoulder: 245 contributes 0, 255 contributes 1.
+            // This avoids a brittle one-code-value boundary after JPEG encode.
+            let risk = max(0, min(1, (value - 245) / 10))
+            highlightWeight += mask * risk
+        }
+        guard subjectWeight > Double(count) * 0.001 else { return nil }
+        return min(1, highlightWeight / subjectWeight)
     }
 
     /// Binær klipp-maske fra luma (hvit der klippet), samme forsterknings-triks
@@ -383,13 +574,67 @@ actor AssetAnalyzer {
             let castRGB = (inset.width > 1 && inset.height > 1) ? sampleRGB(image, rect: inset, ctx: ctx) : nil
             let cast = castRGB.map { classifyCast(r: $0.0, g: $0.1, b: $0.2) }
             let faceSharp = laplacianEnergy(luma, rect: facePx.intersection(extent), ctx: ctx)
+            let leftEye = eyeMeasurement(
+                face.landmarks?.leftEye,
+                faceRect: facePx,
+                imageExtent: extent,
+                luma: luma,
+                ctx: ctx
+            )
+            let rightEye = eyeMeasurement(
+                face.landmarks?.rightEye,
+                faceRect: facePx,
+                imageExtent: extent,
+                luma: luma,
+                ctx: ctx
+            )
             let cq = idx < qObs.count ? qObs[idx].faceCaptureQuality.map(Double.init) : nil
             let eyes = eyesOpen(face)
             let sizeFrac = imgArea > 0 ? Double(facePx.width * facePx.height) / imgArea : 0
             _ = globalSharpness
             return FaceAnalysis(rect: bb, sizeFraction: sizeFrac, luma: luminance,
-                                eyesOpen: eyes, captureQuality: cq, sharpness: faceSharp, skinCast: cast)
+                                eyesOpen: eyes, captureQuality: cq, sharpness: faceSharp, skinCast: cast,
+                                leftEyeRect: leftEye?.rect, rightEyeRect: rightEye?.rect,
+                                leftEyeSharpness: leftEye?.sharpness,
+                                rightEyeSharpness: rightEye?.sharpness)
         }
+    }
+
+    /// Converts a Vision face-relative eye landmark into a padded normalized
+    /// image region and measures only that eye's high-frequency detail. Very
+    /// small landmarks are left unmeasured instead of manufacturing confidence.
+    nonisolated static func eyeMeasurement(
+        _ landmark: VNFaceLandmarkRegion2D?,
+        faceRect: CGRect,
+        imageExtent: CGRect,
+        luma: CIImage,
+        ctx: CIContext
+    ) -> (rect: CGRect, sharpness: Double)? {
+        guard let points = landmark?.normalizedPoints, !points.isEmpty else { return nil }
+        let xs = points.map(\.x)
+        let ys = points.map(\.y)
+        guard let minX = xs.min(), let maxX = xs.max(),
+              let minY = ys.min(), let maxY = ys.max() else { return nil }
+
+        var eye = CGRect(
+            x: faceRect.minX + minX * faceRect.width,
+            y: faceRect.minY + minY * faceRect.height,
+            width: max(1, (maxX - minX) * faceRect.width),
+            height: max(1, (maxY - minY) * faceRect.height)
+        )
+        eye = eye.insetBy(dx: -eye.width * 0.30, dy: -eye.height * 0.75)
+            .intersection(imageExtent)
+        guard eye.width >= 5, eye.height >= 4,
+              let sharpness = laplacianEnergy(luma, rect: eye, ctx: ctx),
+              sharpness.isFinite else { return nil }
+
+        let normalized = CGRect(
+            x: (eye.minX - imageExtent.minX) / imageExtent.width,
+            y: (eye.minY - imageExtent.minY) / imageExtent.height,
+            width: eye.width / imageExtent.width,
+            height: eye.height / imageExtent.height
+        )
+        return (normalized, sharpness)
     }
 
     /// Øyne åpne/lukket via øye-landmarkenes aspektforhold (høyde/bredde). Åpent

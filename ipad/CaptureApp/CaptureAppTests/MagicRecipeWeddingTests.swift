@@ -180,6 +180,7 @@ final class MagicRecipeWeddingTests: XCTestCase {
             ("eyeSharpen", { $0.eyeSharpen = 0.2 }),
             ("eyeCatchlight", { $0.eyeCatchlight = 0.2 }), ("autoStraighten", { $0.autoStraighten = true }),
             ("teethWhiten", { $0.teethWhiten = 0.2 }), ("skinUnify", { $0.skinUnify = 0.2 }),
+            ("skinDiscoloration", { $0.skinDiscoloration = 0.2 }),
             ("skinGuard", { $0.skinGuard = 0.2 }), ("filmGrain", { $0.filmGrain = 0.2 }),
             ("blemishCleanup", { $0.blemishCleanup = 0.2 }), ("dodgeBurn", { $0.dodgeBurn = 0.2 }),
             ("shineControl", { $0.shineControl = 0.2 }), ("underEyeLift", { $0.underEyeLift = 0.2 }),

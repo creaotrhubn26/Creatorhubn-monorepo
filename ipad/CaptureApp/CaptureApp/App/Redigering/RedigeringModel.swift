@@ -109,6 +109,11 @@ final class RedigeringModel {
     private var renderGeneration = 0
     /// Løpenummer for lokal ansiktsdeteksjon — koalescerer samtidige pass.
     private var faceDetectGeneration = 0
+    /// One retryable validation job per image. A new slider render cancels the
+    /// stale job and validates only the latest visible result.
+    private let editValidationService = EditValidationService()
+    private var editValidationTasks: [UUID: Task<Void, Never>] = [:]
+    private var editValidationTaskTokens: [UUID: UUID] = [:]
 
     /// Kamera-EXIF (ISO/blender/lukker/brennvidde) for det valgte bildet — lest
     /// fra RAW/JPEG ved valg. Vises i editoren; nil når fila mangler metadata.
@@ -141,9 +146,21 @@ final class RedigeringModel {
     private var applied: [UUID: MagicRecipe] = [:]
     /// Per-asset crop (normalised rect, origin top-left).
     private var crops: [UUID: CGRect] = [:]
+    /// Areas explicitly excluded from portrait retouch (normalised, top-left).
+    private(set) var protectedRegions: [CGRect] = []
+    /// Persistent provenance for the selected image's non-destructive edit.
+    private(set) var auditTrail: [RedigeringEditStore.AuditEntry] = []
+    private var lastAuditAt: Date?
+    private var lastAuditSource: String?
     /// Full-series batch progress.
     private(set) var seriesProgress = 0
     private(set) var seriesTotal = 0
+    private(set) var resumableBatchCount = 0
+
+    /// Reference frame used to harmonise exposure/colour across a scene.
+    private(set) var sceneLockReferenceId: UUID?
+    private(set) var sceneLockRunning = false
+    private(set) var sceneLockStatus: String?
 
     /// Kvalitetssjekk (steg 4): leveranse-blokkere per bilde + kjøre-status.
     /// `qualityFindings` er sortert med blokkere øverst; tom etter en ren kjøring.
@@ -191,7 +208,9 @@ final class RedigeringModel {
             analysis: analysis
         )
         recipe = result.recipe
+        recipe.portraitRetouchLevel = .custom
         exposureEV = result.exposureEV
+        recordAudit(source: "adaptive-tone", summary: "Motivtilpasset lys og hudtone brukt")
         statusMessage = "Lys og hudtone er tilpasset motivet — alle verdier kan finjusteres."
         recipeChanged()
     }
@@ -264,6 +283,32 @@ final class RedigeringModel {
     var canRedo: Bool { !redo.isEmpty }
     var appliedCount: Int { applied.count }
 
+    var automaticProcessingStatus: String {
+        guard !assets.isEmpty else { return "Ingen bilder importert" }
+        let analyzed = assets.filter { $0.signals.analysis != nil }.count
+        let validationTargets = assets.filter {
+            $0.enhancedKey != nil || $0.serverEnhancedKey != nil || $0.autoCleanedKey != nil
+        }
+        let completed = validationTargets.filter { $0.signals.editValidation?.state == .completed }.count
+        let failed = validationTargets.filter { $0.signals.editValidation?.state == .failed }.count
+        var value = "\(assets.count) bilder · bildeanalyse \(analyzed)/\(assets.count)"
+        if validationTargets.isEmpty {
+            value += " · retusj-QC venter på resultat"
+        } else {
+            value += " · retusj-QC \(completed)/\(validationTargets.count)"
+        }
+        if failed > 0 { value += " · \(failed) må prøves igjen" }
+        return value
+    }
+
+    var automaticProcessingComplete: Bool {
+        guard !assets.isEmpty, assets.allSatisfy({ $0.signals.analysis != nil }) else { return false }
+        let targets = assets.filter {
+            $0.enhancedKey != nil || $0.serverEnhancedKey != nil || $0.autoCleanedKey != nil
+        }
+        return !targets.isEmpty && targets.allSatisfy { $0.signals.editValidation?.state == .completed }
+    }
+
     /// #4: sann når videre redigering + eksport skjer fra en ~2400px preview-JPEG
     /// (etter AI-retusj/inpaint, som produserer `autoCleanedKey`) i stedet for
     /// kamera-RAW-en — et kvalitetstap fotografen ellers ikke ser. Driver en
@@ -316,6 +361,8 @@ final class RedigeringModel {
                 outbox: Outbox(database: db, ownerUserId: ownerUserId)
             )
                 .assets(sessionId: s.id, ownerUserId: ownerUserId)
+            sceneLockReferenceId = RedigeringEditStore.loadSceneLockReference(s.id)
+            resumableBatchCount = RedigeringEditStore.loadBatch(s.id)?.pendingIds.count ?? 0
             selectedId = assets.first?.id
             loadRecipeForSelection()
             loadExifForSelection()
@@ -350,6 +397,8 @@ final class RedigeringModel {
         faceAdjust = [:]
         activeFace = nil
         reflectionRemoval = false
+        protectedRegions = []
+        auditTrail = []
         // Restore persisted edit (survives crash/teardown), else the in-memory
         // cache, else defaults.
         if let saved = RedigeringEditStore.load(id) {
@@ -359,6 +408,8 @@ final class RedigeringModel {
             restoreFaceEdits(saved.faceEdits ?? [])
             reflectionRemoval = saved.reflectionRemoval ?? false
             cameraColorProfileID = saved.cameraColorProfileID ?? .appleEmbedded
+            protectedRegions = saved.protectedRegions ?? []
+            auditTrail = saved.auditTrail ?? []
             syncPresetName(to: saved.recipe)
         } else if let r = applied[id] {
             recipe = r
@@ -392,21 +443,40 @@ final class RedigeringModel {
                 crop: crops[id],
                 faceEdits: currentFaceEdits,
                 reflectionRemoval: reflectionRemoval,
-                cameraColorProfileID: cameraColorProfileID
+                cameraColorProfileID: cameraColorProfileID,
+                protectedRegions: protectedRegions,
+                auditTrail: auditTrail
             )
         )
+    }
+
+    private func recordAudit(source: String, summary: String) {
+        let now = Date()
+        if lastAuditSource == source,
+           let lastAuditAt,
+           now.timeIntervalSince(lastAuditAt) < 2,
+           !auditTrail.isEmpty {
+            auditTrail[auditTrail.count - 1] = .init(date: now, source: source, summary: summary)
+        } else {
+            auditTrail.append(.init(date: now, source: source, summary: summary))
+            if auditTrail.count > 50 { auditTrail.removeFirst(auditTrail.count - 50) }
+        }
+        self.lastAuditAt = now
+        self.lastAuditSource = source
     }
 
     func applyCameraColorProfile(_ id: CameraColorProfileID) {
         guard availableCameraColorProfiles.contains(where: { $0.id == id }) else { return }
         pushUndo()
         cameraColorProfileID = id
+        recordAudit(source: "camera-profile", summary: "Kameraprofil: \(activeCameraColorProfile.displayName)")
         persistEdit()
         Task { await render() }
     }
 
     func applyPreset(_ name: String, _ r: MagicRecipe) {
         pushUndo(); presetName = name; recipe = r
+        recordAudit(source: "preset", summary: "Preset: \(name)")
         persistEdit()
         Task { await render() }
     }
@@ -414,6 +484,7 @@ final class RedigeringModel {
     /// Call when a slider commits (on release) — renders the real pipeline.
     func recipeChanged() {
         syncPresetName(to: recipe)
+        recordAudit(source: "manual", summary: "Manuelle lys-, farge- eller retusjverdier justert")
         persistEdit()
         Task { await render() }
     }
@@ -433,6 +504,8 @@ final class RedigeringModel {
         faceAdjust = [:]
         activeFace = nil
         reflectionRemoval = false
+        protectedRegions = []
+        recordAudit(source: "reset", summary: "Alle redigeringer nullstilt")
         persistEdit()
         Task { await render() }
     }
@@ -447,7 +520,9 @@ final class RedigeringModel {
             crop: selectedId.flatMap { crops[$0] },
             faceEdits: currentFaceEdits,
             reflectionRemoval: reflectionRemoval,
-            cameraColorProfileID: cameraColorProfileID
+            cameraColorProfileID: cameraColorProfileID,
+            protectedRegions: protectedRegions,
+            auditTrail: auditTrail
         )
     }
     private func restore(_ s: RedigeringEditStore.EditState) {
@@ -457,6 +532,8 @@ final class RedigeringModel {
         restoreFaceEdits(s.faceEdits ?? [])
         reflectionRemoval = s.reflectionRemoval ?? false
         cameraColorProfileID = s.cameraColorProfileID ?? .appleEmbedded
+        protectedRegions = s.protectedRegions ?? []
+        auditTrail = s.auditTrail ?? []
         syncPresetName(to: s.recipe)
         persistEdit(); Task { await render() }
     }
@@ -472,23 +549,139 @@ final class RedigeringModel {
 
     private func pushUndo() { undo.append(snapshot()); redo.removeAll() }
 
+    func setSceneLockReferenceToSelected() {
+        guard let session, let selectedId else { return }
+        sceneLockReferenceId = selectedId
+        RedigeringEditStore.saveSceneLockReference(selectedId, sessionId: session.id)
+        recordAudit(source: "scene-lock", summary: "Valgt som Scene Lock-referanse")
+        persistEdit()
+        sceneLockStatus = "Referansen er satt til \(selected?.originalFilename ?? "valgt bilde")."
+    }
+
+    func applySceneLockToSeries() async {
+        guard !sceneLockRunning,
+              let referenceId = sceneLockReferenceId,
+              let referenceAsset = assets.first(where: { $0.id == referenceId }),
+              let svc = services()
+        else {
+            sceneLockStatus = "Velg først et referansebilde."
+            return
+        }
+        sceneLockRunning = true
+        defer { sceneLockRunning = false }
+        guard let referenceAnalysis = await analysis(for: referenceAsset, store: svc.store) else {
+            sceneLockStatus = "Referansebildet kunne ikke analyseres."
+            return
+        }
+        let referenceState = RedigeringEditStore.load(referenceId) ?? .init(
+            recipe: referenceId == selectedId ? recipe : .neutral,
+            exposureEV: referenceId == selectedId ? exposureEV : 0,
+            crop: nil
+        )
+        sceneLockStatus = "Matcher lys og farge i \(assets.count) bilder…"
+        for asset in assets {
+            guard let targetAnalysis = await analysis(for: asset, store: svc.store) else { continue }
+            let prior = RedigeringEditStore.load(asset.id)
+            let result: SceneConsistencyAdvisor.Result = asset.id == referenceId
+                ? .init(recipe: referenceState.recipe, exposureEV: referenceState.exposureEV)
+                : SceneConsistencyAdvisor.match(
+                    referenceRecipe: referenceState.recipe,
+                    referenceExposureEV: referenceState.exposureEV,
+                    reference: referenceAnalysis,
+                    target: targetAnalysis
+                )
+            var history = prior?.auditTrail ?? []
+            history.append(.init(source: "scene-lock", summary: "Lys og farge matchet mot \(referenceAsset.originalFilename)"))
+            RedigeringEditStore.save(asset.id, .init(
+                recipe: result.recipe,
+                exposureEV: result.exposureEV,
+                crop: prior?.crop,
+                faceEdits: prior?.faceEdits ?? [],
+                reflectionRemoval: prior?.reflectionRemoval ?? false,
+                cameraColorProfileID: prior?.cameraColorProfileID ?? .appleEmbedded,
+                protectedRegions: prior?.protectedRegions ?? [],
+                auditTrail: Array(history.suffix(50))
+            ))
+            applied[asset.id] = result.recipe
+        }
+        await persistSeries(assetIds: assets.map(\.id), mode: .sceneLock)
+        if selectedId != nil { loadRecipeForSelection(); await render() }
+        sceneLockStatus = resumableBatchCount == 0
+            ? "Scene Lock er ferdig og lagret lokalt."
+            : "Scene Lock er lagret; \(resumableBatchCount) bilder kan gjenopptas."
+    }
+
+    private func analysis(for asset: Asset, store: SessionStore) async -> AssetAnalysis? {
+        if let existing = assets.first(where: { $0.id == asset.id })?.signals.analysis { return existing }
+        guard let path = asset.previewKey ?? asset.displayPreviewKey,
+              FileManager.default.fileExists(atPath: path),
+              let measured = await assetAnalyzer.analyze(imageURL: URL(fileURLWithPath: path))
+        else { return nil }
+        if let index = assets.firstIndex(where: { $0.id == asset.id }) {
+            var signals = assets[index].signals
+            signals.analysis = measured
+            signals.faceCount = measured.faces.count
+            assets[index].signals = signals
+            try? await store.updateAssetSignals(id: asset.id, signals: signals)
+        }
+        return measured
+    }
+
     /// Apply the current recipe to every asset, then render + persist each one
     /// full-res in the background (real batch). Crop is per-asset; the recipe +
     /// exposure + reflection apply to all.
     func applyToSeries() {
-        for a in assets { applied[a.id] = recipe }
-        Task { await persistSeries() }
+        let sourceRecipe = recipe
+        let sourceExposure = exposureEV
+        let sourceProfile = cameraColorProfileID
+        let sourceReflection = reflectionRemoval
+        for asset in assets {
+            let previous = RedigeringEditStore.load(asset.id)
+            var history = previous?.auditTrail ?? []
+            history.append(.init(source: "series", summary: "Justeringer brukt på hele serien"))
+            let state = RedigeringEditStore.EditState(
+                recipe: sourceRecipe,
+                exposureEV: sourceExposure,
+                crop: previous?.crop,
+                faceEdits: previous?.faceEdits ?? [],
+                reflectionRemoval: sourceReflection,
+                cameraColorProfileID: sourceProfile,
+                protectedRegions: previous?.protectedRegions ?? [],
+                auditTrail: Array(history.suffix(50))
+            )
+            applied[asset.id] = sourceRecipe
+            RedigeringEditStore.save(asset.id, state)
+        }
+        Task { await persistSeries(assetIds: assets.map(\.id), mode: .applySeries) }
     }
 
-    private func persistSeries() async {
-        guard let svc = services() else { return }
-        working = true; seriesTotal = assets.count; seriesProgress = 0
+    func resumePendingBatch() {
+        guard let session, let checkpoint = RedigeringEditStore.loadBatch(session.id),
+              !checkpoint.pendingIds.isEmpty else { return }
+        Task { await persistSeries(assetIds: checkpoint.pendingIds, mode: checkpoint.mode, resume: true) }
+    }
+
+    private func persistSeries(
+        assetIds: [UUID],
+        mode: RedigeringEditStore.BatchCheckpoint.Mode,
+        resume: Bool = false
+    ) async {
+        guard let svc = services(), let session else { return }
+        let targets = assetIds.compactMap { id in assets.first(where: { $0.id == id }) }
+        guard !targets.isEmpty else { return }
+        var checkpoint = resume
+            ? (RedigeringEditStore.loadBatch(session.id) ?? .init(
+                mode: mode, pendingIds: assetIds, completedIds: [], failedIds: [], startedAt: .now, updatedAt: .now))
+            : .init(mode: mode, pendingIds: assetIds, completedIds: [], failedIds: [], startedAt: .now, updatedAt: .now)
+        RedigeringEditStore.saveBatch(checkpoint, sessionId: session.id)
+        resumableBatchCount = checkpoint.pendingIds.count
+        working = true; seriesTotal = targets.count; seriesProgress = 0
         defer { working = false; seriesTotal = 0 }
-        let seriesRecipe = recipe
-        let seriesProfileID = cameraColorProfileID
-        let ev = exposureEV
         var failed: [String] = []
-        for a in assets {
+        for a in targets {
+            guard !Task.isCancelled else { break }
+            let state = RedigeringEditStore.load(a.id) ?? .init(
+                recipe: .neutral, exposureEV: 0, crop: nil)
             // #4: SAMME base-valg som interaktiv render (server-sky → cleaned →
             // RAW) — før ignorerte batch serverEnhancedKey, så et server-forbedret
             // bilde ble eksportert fra RAW med full recipe mens previewen viste
@@ -497,57 +690,56 @@ final class RedigeringModel {
             // Camera matching resolves PER ASSET. A mixed-camera series must not
             // inherit the selected image's model profile. Unsupported bodies
             // safely fall back to Apple embedded.
-            let storedRecipe = base.graded ? Self.flatGradedRecipe : seriesRecipe
-            let storedProfileID: CameraColorProfileID = base.graded
-                ? .appleEmbedded
-                : seriesProfileID
             let exportRecipe = base.graded
                 ? Self.flatGradedRecipe
                 : effectiveRecipe(
                     for: a,
-                    userRecipe: seriesRecipe,
-                    profileID: seriesProfileID
+                    userRecipe: state.recipe,
+                    profileID: state.cameraColorProfileID ?? .appleEmbedded,
+                    reflectionRemovalOverride: state.reflectionRemoval ?? false
                 )
-            // #3a: crop fra minne ELLER persistert edit — etter app-restart er
-            // in-memory-dictet tomt for alle unntatt valgt asset, så batch mistet
-            // ellers beskjæringene.
-            let crop = crops[a.id] ?? RedigeringEditStore.load(a.id)?.crop
-            // Persist the user recipe and profile separately. Persisting the
-            // already-merged export recipe would apply the profile twice after
-            // an app restart.
-            applied[a.id] = storedRecipe
-            let faceEdits = RedigeringEditStore.load(a.id)?.faceEdits ?? []
-            RedigeringEditStore.save(
-                a.id,
-                .init(
-                    recipe: storedRecipe,
-                    exposureEV: ev,
-                    crop: crop,
-                    faceEdits: faceEdits,
-                    reflectionRemoval: reflectionRemoval,
-                    cameraColorProfileID: storedProfileID
-                )
-            )
+            let crop = state.crop
+            let faceEdits = state.faceEdits ?? []
+            let protected = state.protectedRegions ?? []
             let data = await Task.detached(priority: .utility) {
                 RedigeringPipeline.renderExport(rawPath: base.rawPath, jpegPath: base.jpegPath,
-                                                recipe: exportRecipe, exposureEV: ev, crop: crop,
-                                                faceEdits: faceEdits)
+                                                recipe: exportRecipe, exposureEV: state.exposureEV, crop: crop,
+                                                faceEdits: faceEdits, protectedRegions: protected)
             }.value
             var ok = false
             if let data {
                 let dest = svc.dir.appendingPathComponent("\(a.id.uuidString)-enhanced.jpg")
                 if (try? data.write(to: dest, options: .atomic)) != nil {
                     try? await svc.store.attachEnhancedKey(id: a.id, key: dest.path)
+                    if let fresh = try? await svc.store.fetchAsset(id: a.id),
+                       let index = assets.firstIndex(where: { $0.id == a.id }) {
+                        assets[index] = fresh
+                    }
                     ok = true
                 }
             }
-            if !ok { failed.append(a.originalFilename) }
+            checkpoint.pendingIds.removeAll { $0 == a.id }
+            checkpoint.failedIds.removeAll { $0 == a.id }
+            if ok {
+                checkpoint.completedIds.append(a.id)
+            } else {
+                failed.append(a.originalFilename)
+                checkpoint.failedIds.append(a.id)
+                checkpoint.pendingIds.append(a.id)
+            }
+            checkpoint.updatedAt = .now
+            RedigeringEditStore.saveBatch(checkpoint, sessionId: session.id)
+            resumableBatchCount = checkpoint.pendingIds.count
             seriesProgress += 1
         }
-        let saved = assets.count - failed.count
+        let saved = targets.count - failed.count
+        if checkpoint.pendingIds.isEmpty {
+            RedigeringEditStore.removeBatch(session.id)
+            resumableBatchCount = 0
+        }
         statusMessage = failed.isEmpty
-            ? "Lagret \(saved) bilder."
-            : "Lagret \(saved), feilet \(failed.count): \(failed.prefix(3).joined(separator: ", "))\(failed.count > 3 ? "…" : "")"
+            ? "\(saved) bilder er rendret lokalt og klare for den eksisterende CreatorHub-leveringsflyten."
+            : "Lagret \(saved) lokalt. \(failed.count) kan gjenopptas: \(failed.prefix(3).joined(separator: ", "))\(failed.count > 3 ? "…" : "")"
     }
 
     /// Kvalitetssjekk-passet: sørg for at hvert bilde har en `AssetAnalysis`
@@ -582,7 +774,8 @@ final class RedigeringModel {
                 let issues = QualityCheckService.evaluate(
                     analysis,
                     flashFired: asset.signals.flashFired,
-                    flashReturnDetected: asset.signals.flashReturnDetected)
+                    flashReturnDetected: asset.signals.flashReturnDetected,
+                    editValidation: assets.first(where: { $0.id == asset.id })?.signals.editValidation)
                 if !issues.isEmpty { findings.append(QualityFinding(assetId: asset.id, issues: issues)) }
             }
             qualityProgress += 1
@@ -622,6 +815,8 @@ final class RedigeringModel {
         await auto.processAsset(asset, downloadDir: svc.dir, mode: .autoClean)
         await reloadSelected(svc.store, assetId: asset.id)
         let count = selected?.autoCleanedDetectionCount ?? 0
+        recordAudit(source: "ai-retouch", summary: count > 0 ? "AI-retusj fjernet \(count) distraksjoner" : "AI-retusj kjørt uten funn")
+        persistEdit()
         statusMessage = count > 0 ? "Fjernet \(count) distraksjoner." : "Ingen distraksjoner funnet."
         await render()
     }
@@ -635,6 +830,7 @@ final class RedigeringModel {
         let jpeg = asset.displayPreviewKey
         let r = effectiveRecipe(); let ev = exposureEV; let crop = crops[asset.id]
         let faceEdits = currentFaceEdits
+        let protected = protectedRegions
         let data = await Task.detached(priority: .userInitiated) {
             RedigeringPipeline.renderExport(
                 rawPath: useRaw,
@@ -642,7 +838,8 @@ final class RedigeringModel {
                 recipe: r,
                 exposureEV: ev,
                 crop: crop,
-                faceEdits: faceEdits
+                faceEdits: faceEdits,
+                protectedRegions: protected
             )
         }.value
         guard let data else { statusMessage = "Kunne ikke lagre — bildet lot seg ikke dekode/rendre."; return }
@@ -650,6 +847,7 @@ final class RedigeringModel {
         do {
             try data.write(to: dest, options: .atomic)
             try await svc.store.attachEnhancedKey(id: asset.id, key: dest.path)
+            await reloadSelected(svc.store, assetId: asset.id)
             statusMessage = "Lagret forbedret versjon."
         } catch { statusMessage = "Kunne ikke lagre." }
     }
@@ -680,6 +878,8 @@ final class RedigeringModel {
             try bytes.write(to: dest, options: .atomic)
             try await svc.store.attachAutoCleanedKey(id: asset.id, key: dest.path, detectionCount: 1)
             await reloadSelected(svc.store, assetId: asset.id)
+            recordAudit(source: "inpaint", summary: "Markert område fjernet med AI-inpaint")
+            persistEdit()
             statusMessage = "Område fjernet."
             await render()
         } catch { statusMessage = "Inpaint feilet." }
@@ -734,6 +934,8 @@ final class RedigeringModel {
             try bytes.write(to: dest, options: .atomic)
             try await svc.store.attachAutoCleanedKey(id: asset.id, key: dest.path, detectionCount: strokes.count)
             await reloadSelected(svc.store, assetId: asset.id)
+            recordAudit(source: "brush-inpaint", summary: "Penselretusj brukt på \(strokes.count) strøk")
+            persistEdit()
             statusMessage = "Penselretusj fullført. Originalen er beholdt."
             await render()
         } catch {
@@ -794,6 +996,7 @@ final class RedigeringModel {
         let r = (learnedActive || base.graded) ? Self.flatGradedRecipe : effectiveRecipe()
         let ev = exposureEV
         let crop = crops[asset.id]
+        let protected = protectedRegions
         let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
         let styleFlash = asset.signals.flashFired   // Del D: blits-dim til lært-stil-kNN
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
@@ -811,7 +1014,8 @@ final class RedigeringModel {
             } else {
                 // Preset-bane (ikke lært) eller RAW-fallback → 8-bit via renderPreview.
                 guard let base = RedigeringPipeline.renderPreview(
-                        rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop),
+                        rawPath: raw, jpegPath: jpeg, recipe: r, exposureEV: ev, crop: crop,
+                        protectedRegions: protected),
                       let ci0 = CIImage(image: base) else { return nil }
                 ci = ci0
             }
@@ -850,6 +1054,113 @@ final class RedigeringModel {
         guard selectedId == asset.id else { rendering = false; return }
         afterImage = img
         rendering = false
+        if let img { scheduleEditValidation(for: asset, renderedImage: img) }
+    }
+
+    /// Persist the exact preview shown in the editor and validate it against
+    /// the camera preview. This makes registration/pixel-QC automatic for the
+    /// initial retouch and for every subsequent recipe change.
+    private func scheduleEditValidation(for asset: Asset, renderedImage: UIImage) {
+        guard let beforePath = asset.previewKey ?? asset.displayPreviewKey,
+              beforePath != asset.enhancedKey,
+              let jpeg = renderedImage.jpegData(compressionQuality: 0.94),
+              let svc = services()
+        else { return }
+        let id = asset.id
+        let destination = svc.dir.appendingPathComponent("\(id.uuidString)-edit-preview.jpg")
+        editValidationTasks[id]?.cancel()
+        let token = UUID()
+        editValidationTaskTokens[id] = token
+        editValidationTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try jpeg.write(to: destination, options: .atomic)
+                guard !Task.isCancelled else { return }
+                guard let revision = EditValidationRevision.make(
+                    beforePath: beforePath,
+                    afterPath: destination.path
+                ) else { throw EditValidationError.unreadableImage }
+
+                var lastError: Error?
+                for attempt in 1...3 where !Task.isCancelled {
+                    await self.persistEditValidation(
+                        id: id,
+                        store: svc.store,
+                        validation: EditValidation(
+                            state: .running,
+                            attempts: attempt,
+                            sourceRevision: revision,
+                            metrics: nil,
+                            lastError: nil,
+                            updatedAt: .now
+                        )
+                    )
+                    do {
+                        let metrics = try await self.editValidationService.validate(
+                            beforeURL: URL(fileURLWithPath: beforePath),
+                            afterURL: destination
+                        )
+                        guard !Task.isCancelled,
+                              EditValidationRevision.make(
+                                beforePath: beforePath,
+                                afterPath: destination.path
+                              ) == revision
+                        else { return }
+                        await self.persistEditValidation(
+                            id: id,
+                            store: svc.store,
+                            validation: EditValidation(
+                                state: .completed,
+                                attempts: attempt,
+                                sourceRevision: revision,
+                                metrics: metrics,
+                                lastError: nil,
+                                updatedAt: .now
+                            )
+                        )
+                        self.finishEditValidationTask(id: id, token: token)
+                        return
+                    } catch {
+                        lastError = error
+                        if attempt < 3 { try? await Task.sleep(for: .seconds(Double(attempt))) }
+                    }
+                }
+                guard !Task.isCancelled else { return }
+                await self.persistEditValidation(
+                    id: id,
+                    store: svc.store,
+                    validation: EditValidation(
+                        state: .failed,
+                        attempts: 3,
+                        sourceRevision: revision,
+                        metrics: nil,
+                        lastError: lastError?.localizedDescription ?? "Ukjent analysefeil",
+                        updatedAt: .now
+                    )
+                )
+            } catch {
+                statusMessage = "Retusjen vises, men automatisk QC kunne ikke lagres."
+            }
+            finishEditValidationTask(id: id, token: token)
+        }
+    }
+
+    private func finishEditValidationTask(id: UUID, token: UUID) {
+        guard editValidationTaskTokens[id] == token else { return }
+        editValidationTasks.removeValue(forKey: id)
+        editValidationTaskTokens.removeValue(forKey: id)
+    }
+
+    private func persistEditValidation(
+        id: UUID,
+        store: SessionStore,
+        validation: EditValidation
+    ) async {
+        try? await store.updateEditValidation(id: id, validation: validation)
+        guard let fresh = try? await store.fetchAsset(id: id),
+              let index = assets.firstIndex(where: { $0.id == id })
+        else { return }
+        assets[index] = fresh
     }
 
     /// Reflection removal isn't a separate model — it's a strong highlight/
@@ -858,7 +1169,8 @@ final class RedigeringModel {
     private func effectiveRecipe(
         for asset: Asset? = nil,
         userRecipe: MagicRecipe? = nil,
-        profileID: CameraColorProfileID? = nil
+        profileID: CameraColorProfileID? = nil,
+        reflectionRemovalOverride: Bool? = nil
     ) -> MagicRecipe {
         let target = asset ?? selected
         let targetExif: ExifInfo? = {
@@ -871,7 +1183,7 @@ final class RedigeringModel {
             cameraModel: targetExif?.camera,
             hasRaw: target?.rawKey != nil
         )
-        if reflectionRemoval {
+        if reflectionRemovalOverride ?? reflectionRemoval {
             r.highlightRecovery = max(r.highlightRecovery, 0.7)
             r.dehaze = max(r.dehaze, 0.2)
         }
@@ -885,8 +1197,86 @@ final class RedigeringModel {
         guard let id = selectedId else { return }
         pushUndo()   // #10: crop var utenfor undo-stacken
         if let rect { crops[id] = rect } else { crops[id] = nil }
+        recordAudit(source: "crop", summary: rect == nil ? "Beskjæring fjernet" : "Beskjæring oppdatert")
         persistEdit()
         Task { await render() }
+    }
+
+    func addProtectedRegion(_ rect: CGRect) {
+        let clipped = rect.standardized.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard clipped.width > 0.01, clipped.height > 0.01 else { return }
+        pushUndo()
+        protectedRegions.append(clipped)
+        recordAudit(source: "protection", summary: "La til et identitetsbeskyttet område")
+        persistEdit()
+        Task { await render() }
+    }
+
+    func clearProtectedRegions() {
+        guard !protectedRegions.isEmpty else { return }
+        pushUndo()
+        protectedRegions.removeAll()
+        recordAudit(source: "protection", summary: "Fjernet alle beskyttede områder")
+        persistEdit()
+        Task { await render() }
+    }
+
+    /// Plain-language explanation generated from the exact persisted state —
+    /// never a generic AI claim disconnected from the rendered values.
+    var editExplanations: [String] {
+        var lines: [String] = ["Kamerabasen er \(activeCameraColorProfile.displayName)."]
+        if abs(exposureEV) >= 0.01 { lines.append(String(format: "Eksponering justeres %+.2f EV.", exposureEV)) }
+        if recipe.highlightRecovery > 0.01 { lines.append("Høylys beskyttes med \(Int(recipe.highlightRecovery * 100)) % styrke.") }
+        if abs(recipe.warmth) > 0.01 || abs(recipe.tint) > 0.01 {
+            lines.append("Hvitbalansen korrigeres separat for temperatur og grønn–magenta tint.")
+        }
+        if recipe.skinLowFreq > 0.01 || recipe.blemishCleanup > 0.01 || recipe.skinDiscoloration > 0.01 {
+            lines.append("Hudtone og små ujevnheter retusjeres maskert; porer og identitetsmerker bevares \(recipe.preserveIdentityMarks ? "strengt" : "med redusert vern").")
+        }
+        if !protectedRegions.isEmpty { lines.append("\(protectedRegions.count) markerte områder kompositeres tilbake uten portrettretusj.") }
+        if sceneLockReferenceId != nil { lines.append("Scene Lock bruker et valgt referansebilde for konsistent lys og farge.") }
+        if currentCrop != nil { lines.append("En ikke-destruktiv beskjæring brukes i preview og eksport.") }
+        if !currentFaceEdits.isEmpty { lines.append("\(currentFaceEdits.count) ansikt har en lokal, reversibel justering.") }
+        return lines
+    }
+}
+
+/// Conservative series matching. It transfers the reference look, then adjusts
+/// only exposure, contrast, highlight protection and obvious skin cast.
+enum SceneConsistencyAdvisor {
+    struct Result: Sendable {
+        var recipe: MagicRecipe
+        var exposureEV: Double
+    }
+
+    static func match(
+        referenceRecipe: MagicRecipe,
+        referenceExposureEV: Double,
+        reference: AssetAnalysis,
+        target: AssetAnalysis
+    ) -> Result {
+        var recipe = referenceRecipe
+        let referenceLuma = reference.primaryFace?.luma ?? reference.medianLuma
+        let targetLuma = target.primaryFace?.luma ?? target.medianLuma
+        let ratio = (referenceLuma + 0.03) / (targetLuma + 0.03)
+        let deltaEV = min(0.75, max(-0.75, log2(max(0.2, ratio))))
+
+        let referenceRange = reference.p95Luma - reference.p5Luma
+        let targetRange = target.p95Luma - target.p5Luma
+        recipe.contrast = min(1, max(-1, recipe.contrast + (referenceRange - targetRange) * 0.7))
+        if target.highlightClip > reference.highlightClip + 0.01 {
+            recipe.highlightRecovery = max(recipe.highlightRecovery, min(1, (target.highlightClip - reference.highlightClip) * 8))
+        }
+        switch target.skinCast {
+        case .tooWarm?: recipe.warmth -= 0.08
+        case .tooCool?: recipe.warmth += 0.08
+        case .tooGreen?: recipe.tint += 0.08
+        case .tooMagenta?: recipe.tint -= 0.08
+        case .neutral?, nil: break
+        }
+        recipe.warmth = min(1, max(-1, recipe.warmth))
+        recipe.tint = min(1, max(-1, recipe.tint))
+        return .init(recipe: recipe, exposureEV: min(2, max(-2, referenceExposureEV + deltaEV)))
     }
 }
 
@@ -935,6 +1325,7 @@ enum PortraitToneAdvisor {
         // choices win; this action never reduces a photographer's setting.
         r.skinGuard = max(r.skinGuard, 0.60)
         r.blemishCleanup = max(r.blemishCleanup, 0.14)
+        r.skinDiscoloration = max(r.skinDiscoloration, 0.12)
         r.dodgeBurn = max(r.dodgeBurn, 0.10)
         r.shineControl = max(r.shineControl, 0.08)
         r.underEyeLift = max(r.underEyeLift, 0.06)

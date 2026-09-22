@@ -40,6 +40,10 @@ struct BeforeAfterCompare: View {
     var faceDots: [CGRect] = []          // normaliserte CI-rekter (origo nede-venstre)
     var activeFace: Int?
     var onTapFace: (Int) -> Void = { _ in }
+    /// Per-person focus from the persisted capture analysis. Unlike the local
+    /// edit dots, this is diagnostic only and never changes the photograph.
+    var faceFocus: [FaceFocusAssessment] = []
+    var showFaceFocus = false
     @State private var split: CGFloat = 0.5
     @State private var holdingOriginal = false
     @GestureState private var pinch: CGFloat = 1
@@ -87,6 +91,20 @@ struct BeforeAfterCompare: View {
                     Image(uiImage: diffOverlay).resizable().scaledToFit()
                         .frame(width: geo.size.width, height: geo.size.height)
                         .opacity(0.7).allowsHitTesting(false)
+                }
+                if showFaceFocus {
+                    ForEach(faceFocus) { assessment in
+                        if let displayRect = focusDisplayRect(for: assessment.rect, in: imageRect) {
+                            FaceFocusBox(assessment: assessment)
+                                .frame(width: displayRect.width, height: displayRect.height)
+                                .position(x: displayRect.midX, y: displayRect.midY)
+                        }
+                    }
+                    if !faceFocus.isEmpty {
+                        focusSummary
+                            .padding(10)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
                 }
                 // Tappbare ansikts-prikker (lokal justering). CI-koord (nede-
                 // venstre) → SwiftUI (topp-venstre): flipp Y.
@@ -156,6 +174,55 @@ struct BeforeAfterCompare: View {
         )
     }
 
+    /// Vision stores bottom-left coordinates while crop state is top-left.
+    /// Convert, clip to the active crop, then map into the fitted image rect so
+    /// focus boxes stay attached to the right person after cropping/rotation.
+    private func focusDisplayRect(for visionRect: CGRect, in imageRect: CGRect) -> CGRect? {
+        let faceTopLeft = CGRect(
+            x: visionRect.minX,
+            y: 1 - visionRect.maxY,
+            width: visionRect.width,
+            height: visionRect.height
+        )
+        let crop = beforeCrop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+        guard crop.width > 0, crop.height > 0 else { return nil }
+        let visible = faceTopLeft.intersection(crop)
+        guard !visible.isNull, visible.width > 0.002, visible.height > 0.002 else { return nil }
+        let normalized = CGRect(
+            x: (visible.minX - crop.minX) / crop.width,
+            y: (visible.minY - crop.minY) / crop.height,
+            width: visible.width / crop.width,
+            height: visible.height / crop.height
+        )
+        return CGRect(
+            x: imageRect.minX + normalized.minX * imageRect.width,
+            y: imageRect.minY + normalized.minY * imageRect.height,
+            width: normalized.width * imageRect.width,
+            height: normalized.height * imageRect.height
+        )
+    }
+
+    private var focusSummary: some View {
+        let sharp = faceFocus.filter { $0.state == .sharp }.count
+        let soft = faceFocus.filter { $0.state == .soft }.count
+        let unknown = faceFocus.filter { $0.state == .unmeasured }.count
+        return HStack(spacing: 6) {
+            Image(systemName: soft > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+            Text(soft > 0
+                 ? "\(sharp) av \(faceFocus.count) skarpe · \(soft) ute av fokus"
+                 : (unknown > 0
+                    ? "\(sharp) av \(faceFocus.count) skarpe · \(unknown) ikke målt"
+                    : "Alle \(sharp) ansikter er skarpe"))
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background((soft > 0 ? CHTheme.danger : CHTheme.success).opacity(0.92), in: Capsule())
+        .accessibilityLabel(soft > 0
+                            ? "Fokusadvarsel. \(sharp) av \(faceFocus.count) ansikter er skarpe. \(soft) er ute av fokus."
+                            : "Fokuskontroll. Alle målte ansikter er skarpe.")
+    }
+
     private var labels: some View {
         VStack {
             Group {
@@ -200,5 +267,38 @@ struct BeforeAfterCompare: View {
                 .font(.title).foregroundStyle(.white).background(Circle().fill(CHTheme.accent))
         }
         .position(x: geo.size.width * split, y: geo.size.height / 2)
+    }
+}
+
+struct FaceFocusBox: View {
+    let assessment: FaceFocusAssessment
+
+    private var color: Color {
+        switch assessment.state {
+        case .sharp: return CHTheme.success
+        case .soft: return CHTheme.danger
+        case .unmeasured: return CHTheme.textMuted
+        }
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .stroke(color, style: StrokeStyle(
+                lineWidth: assessment.state == .soft ? 3 : 2,
+                dash: assessment.state == .unmeasured ? [5, 4] : []
+            ))
+            .overlay(alignment: .topLeading) {
+                Text("\(assessment.personNumber) · \(assessment.state.label)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(color.opacity(0.94), in: Capsule())
+                    .fixedSize()
+                    .offset(y: -22)
+            }
+            .shadow(color: .black.opacity(0.45), radius: 2)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Person \(assessment.personNumber), \(assessment.state.label.lowercased())")
     }
 }

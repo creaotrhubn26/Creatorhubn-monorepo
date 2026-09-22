@@ -21,9 +21,9 @@ final class FakeCanonCamera: @unchecked Sendable {
     private var movieRecording = false
     private var movieSequence = 1
     private var shootingSettings: [String: (value: String, ability: [String])] = [
-        "tv": ("1/50", ["1/25", "1/50", "1/100"]),
-        "av": ("f2.8", ["f2.0", "f2.8", "f4.0"]),
-        "iso": ("800", ["400", "800", "1600"]),
+        "tv": ("1/250", ["1/60", "1/125", "1/250", "1/500"]),
+        "av": ("f4.0", ["f2.0", "f2.8", "f4.0", "f5.6", "f7.1", "f8.0", "f9.0"]),
+        "iso": ("400", ["400", "800", "1250", "1600", "2500", "3200"]),
     ]
 
     private(set) var pollCount = 0
@@ -243,6 +243,7 @@ final class FakeCanonCamera: @unchecked Sendable {
         pendingAddedContents.removeAll()
         let emitSnapshot = (pollCount == 1)
         let currentPoll = pollCount
+        let settingsSnapshot = shootingSettings
         lock.unlock()
 
         var fields: [String] = []
@@ -253,12 +254,17 @@ final class FakeCanonCamera: @unchecked Sendable {
         if emitSnapshot {
             // Full telemetry snapshot on the first poll — matches what a
             // real camera does when a client starts polling fresh.
+            func settingJSON(_ key: String) -> String {
+                guard let setting = settingsSnapshot[key] else { return "{}" }
+                let ability = setting.ability.map { "\"\($0)\"" }.joined(separator: ",")
+                return "{\"value\":\"\(setting.value)\",\"ability\":[\(ability)]}"
+            }
             fields.append(contentsOf: [
                 #""battery":{"kind":"battery","name":"LP-E6NH","quality":"normal","level":"78"}"#,
                 #""lens":{"mount":true,"name":"RF50mm F1.8 STM"}"#,
-                #""av":{"value":"f5.0","ability":["f1.8","f2.8","f4.0","f5.0","f5.6","f8.0","f11","f16"]}"#,
-                #""tv":{"value":"1/125","ability":["1/30","1/60","1/125","1/250","1/500"]}"#,
-                #""iso":{"value":"400","ability":["auto","100","200","400","800","1600","3200"]}"#,
+                "\"av\":\(settingJSON("av"))",
+                "\"tv\":\(settingJSON("tv"))",
+                "\"iso\":\(settingJSON("iso"))",
                 #""storage":{"storagelist":[{"name":"card1","path":"/ccapi/ver120/contents/sd","accesscapability":"readwrite","maxsize":256000000000,"spacesize":119000000000,"contentsnumber":\#(initialContentURLs().count)}]}"#
             ])
         } else if !drained.isEmpty {

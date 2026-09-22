@@ -127,7 +127,12 @@ final class MagicPipeline {
         // Subject classification — face detect first because it's fast and
         // dominates. Then fall back to VNClassifyImageRequest's label set
         // for plane / vehicle / food / landscape / product.
-        let recipe: MagicRecipe = Self.classifySubject(image)
+        // Capture policy is persisted before this stream processes the asset.
+        // Respect a selected preset / Sync-forrige recipe; otherwise use the
+        // deterministic subject-aware baseline. This keeps the live result and
+        // the later Redigering surface on the same recipe.
+        let recipe: MagicRecipe = RedigeringEditStore.load(assetId)?.recipe
+            ?? Self.classifySubject(image)
         await MainActor.run { self.baselineRecipes[assetId] = recipe }
 
         await applyMagic(

@@ -19,22 +19,51 @@ enum QualityCheckService {
     /// `flashFired`/`flashReturnDetected` (fra EXIF) driver «blits traff ikke».
     static func evaluate(_ a: AssetAnalysis,
                          flashFired: Bool? = nil,
-                         flashReturnDetected: Bool? = nil) -> [QualityIssue] {
+                         flashReturnDetected: Bool? = nil,
+                         editValidation: EditValidation? = nil) -> [QualityIssue] {
         var out: [QualityIssue] = []
-        if let face = a.primaryFace {
-            // «Lukkede øyne på hovedperson» — den klassiske retake-grunnen.
-            if face.eyesOpen == false { out.append(.eyesClosed) }
-            // Bommet fokus på ansiktet (ikke vakker bokeh) — dyrt å oppdage sent.
-            if face.isSoft(globalSharpness: a.globalSharpness) { out.append(.faceSoft) }
-            if let q = face.captureQuality, q < lowQualityThreshold { out.append(.lowFaceQuality) }
+        if !a.faces.isEmpty {
+            // Gruppebilder vurderes per person. Ett mindre barn ute av fokus må
+            // aldri forsvinne fordi det største ansiktet i rammen er skarpt.
+            if a.faces.contains(where: { $0.eyesOpen == false }) { out.append(.eyesClosed) }
+            if a.faceFocusAssessments.contains(where: { $0.state == .soft }) { out.append(.faceSoft) }
+            if a.faces.contains(where: { ($0.captureQuality ?? 1) < lowQualityThreshold }) {
+                out.append(.lowFaceQuality)
+            }
             // Blitsen fyrte men traff ikke: fyrte + ingen retur + mørkt ansikt →
             // klassisk trigger-glipp/mistimet sync (nest vanligste blitsfeil).
-            if flashFired == true, flashReturnDetected == false, face.luma < darkFaceThreshold {
+            if flashFired == true, flashReturnDetected == false,
+               a.faces.contains(where: { $0.luma < darkFaceThreshold }) {
                 out.append(.flashMissed)
             }
         }
         // Motiv-klipping (utbrent kjole/motiv) — global klipp fanger ikke dette.
         if let sub = a.subjectHighlightClip, sub > subjectClipThreshold { out.append(.subjectClipped) }
+        if let validation = editValidation {
+            if validation.state == .failed {
+                out.append(.editValidationFailed)
+            } else if let m = validation.metrics {
+                // Intentionally conservative: these are review prompts, not an
+                // automatic rejection of a creative grade.
+                if m.alignmentConfidence < 0.45 || m.validPixelFraction < 0.80 {
+                    out.append(.alignmentUncertain)
+                }
+                if let skin = m.skinMeanDeltaE, skin > 12 {
+                    out.append(.skinToneShift)
+                }
+                if m.p95DeltaE > 24, m.changedPixelFraction > 0.72 {
+                    out.append(.retouchTooStrong)
+                }
+                if let background = m.backgroundMeanDeltaE,
+                   let subject = m.subjectMeanDeltaE,
+                   background > 15, background > subject * 1.75 {
+                    out.append(.backgroundSpill)
+                }
+                if m.highlightClipDelta > 0.015 {
+                    out.append(.newHighlightClipping)
+                }
+            }
+        }
         return out
     }
 }
@@ -49,6 +78,8 @@ enum QualitySeverity: Int, Codable, Hashable, Comparable {
 /// Ett leveranse-relevant funn.
 enum QualityIssue: String, Codable, Hashable, CaseIterable, Identifiable {
     case eyesClosed, faceSoft, subjectClipped, lowFaceQuality, flashMissed
+    case editValidationFailed, skinToneShift, retouchTooStrong, backgroundSpill
+    case newHighlightClipping, alignmentUncertain
 
     var id: String { rawValue }
 
@@ -59,6 +90,12 @@ enum QualityIssue: String, Codable, Hashable, CaseIterable, Identifiable {
         case .subjectClipped: return "Motiv utbrent"
         case .lowFaceQuality: return "Svakt ansiktsbilde"
         case .flashMissed:    return "Blits traff ikke"
+        case .editValidationFailed: return "Retusj-QC feilet"
+        case .skinToneShift: return "Hudtone flyttet"
+        case .retouchTooStrong: return "Kraftig retusj"
+        case .backgroundSpill: return "Bakgrunn påvirket"
+        case .newHighlightClipping: return "Nye utbrente høylys"
+        case .alignmentUncertain: return "Usikker sammenligning"
         }
     }
 
@@ -69,13 +106,38 @@ enum QualityIssue: String, Codable, Hashable, CaseIterable, Identifiable {
         case .subjectClipped: return "exclamationmark.triangle.fill"
         case .lowFaceQuality: return "person.fill.questionmark"
         case .flashMissed:    return "bolt.slash.fill"
+        case .editValidationFailed: return "waveform.path.ecg.rectangle"
+        case .skinToneShift: return "person.crop.circle.badge.exclamationmark"
+        case .retouchTooStrong: return "wand.and.stars.inverse"
+        case .backgroundSpill: return "rectangle.dashed"
+        case .newHighlightClipping: return "sun.max.trianglebadge.exclamationmark"
+        case .alignmentUncertain: return "viewfinder"
         }
     }
 
     var severity: QualitySeverity {
         switch self {
-        case .eyesClosed, .faceSoft, .subjectClipped, .flashMissed: return .blocker
-        case .lowFaceQuality:                                       return .warning
+        case .eyesClosed, .faceSoft, .subjectClipped, .flashMissed, .newHighlightClipping:
+            return .blocker
+        case .lowFaceQuality, .editValidationFailed, .skinToneShift, .retouchTooStrong,
+             .backgroundSpill, .alignmentUncertain:
+            return .warning
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .eyesClosed: return "Ett eller flere ansikter ser ut til å ha lukkede øyne. Kontroller før levering."
+        case .faceSoft: return "Ett eller flere ansikter er mindre skarpe enn resten av gruppen."
+        case .subjectClipped: return "Motivet har et målbart område uten høylysdetalj."
+        case .lowFaceQuality: return "Vision målte lav ansiktskvalitet, ofte grunnet bevegelse eller okklusjon."
+        case .flashMissed: return "EXIF viser blits, men mørkt ansikt og manglende retur tyder på bom."
+        case .editValidationFailed: return "Før/etter-analysen kunne ikke fullføres. Originalen er fortsatt trygg."
+        case .skinToneShift: return "Pikselanalysen målte en uvanlig stor fargeendring i hudområdet."
+        case .retouchTooStrong: return "En stor del av bildet har kraftige pikselendringer."
+        case .backgroundSpill: return "Bakgrunnen ble endret betydelig mer enn motivet. Kontroller masken."
+        case .newHighlightClipping: return "Etterbildet har flere klippede høylys enn originalen."
+        case .alignmentUncertain: return "SIFT-lignende Vision-registrering fant for lite sikker overlapp."
         }
     }
 }

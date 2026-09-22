@@ -5,6 +5,20 @@ import Foundation
 /// recipe / exposure / crop (the audit flagged the in-memory `applied`/`crops`
 /// dicts as silent data loss). Same lightweight pattern as ProjectDeliverables.
 enum RedigeringEditStore {
+    struct AuditEntry: Codable, Sendable, Equatable, Identifiable {
+        var id: UUID
+        var date: Date
+        var source: String
+        var summary: String
+
+        init(id: UUID = UUID(), date: Date = .now, source: String, summary: String) {
+            self.id = id
+            self.date = date
+            self.source = source
+            self.summary = summary
+        }
+    }
+
     struct EditState: Codable, Sendable, Equatable {
         /// Schema-versjon — lar oss migrere trygt hvis MagicRecipe/feltene endres,
         /// i stedet for at en decode-feil stille sletter fotografens edits. Optional
@@ -22,6 +36,11 @@ enum RedigeringEditStore {
         /// Explicit camera-colour base. Optional keeps all pre-v4 edit payloads
         /// decodable; missing means Apple's embedded camera rendering.
         var cameraColorProfileID: CameraColorProfileID?
+        /// Normalised top-left rectangles where portrait retouch is composited
+        /// back from a detail-preserving render. Optional keeps old payloads valid.
+        var protectedRegions: [CGRect]?
+        /// Human-readable, persistent provenance for deliberate edits.
+        var auditTrail: [AuditEntry]?
 
         init(
             recipe: MagicRecipe,
@@ -30,7 +49,9 @@ enum RedigeringEditStore {
             faceEdits: [FaceLocalAdjustFilter.Entry] = [],
             reflectionRemoval: Bool = false,
             cameraColorProfileID: CameraColorProfileID = .appleEmbedded,
-            version: Int? = 4
+            protectedRegions: [CGRect] = [],
+            auditTrail: [AuditEntry] = [],
+            version: Int? = 5
         ) {
             self.version = version
             self.recipe = recipe
@@ -39,7 +60,19 @@ enum RedigeringEditStore {
             self.faceEdits = faceEdits
             self.reflectionRemoval = reflectionRemoval
             self.cameraColorProfileID = cameraColorProfileID
+            self.protectedRegions = protectedRegions
+            self.auditTrail = auditTrail
         }
+    }
+
+    struct BatchCheckpoint: Codable, Sendable, Equatable {
+        enum Mode: String, Codable, Sendable { case applySeries, sceneLock }
+        var mode: Mode
+        var pendingIds: [UUID]
+        var completedIds: [UUID]
+        var failedIds: [UUID]
+        var startedAt: Date
+        var updatedAt: Date
     }
 
     private static func key(_ assetId: UUID) -> String {
@@ -71,6 +104,40 @@ enum RedigeringEditStore {
     /// UserDefaults ubegrenset over tid.
     static func remove(_ assetId: UUID) {
         UserDefaults.standard.removeObject(forKey: key(assetId))
+    }
+
+    private static func sceneLockKey(_ sessionId: UUID) -> String {
+        "creatorhub.redigering.scene-lock.\(sessionId.uuidString)"
+    }
+
+    static func loadSceneLockReference(_ sessionId: UUID) -> UUID? {
+        UserDefaults.standard.string(forKey: sceneLockKey(sessionId)).flatMap(UUID.init(uuidString:))
+    }
+
+    static func saveSceneLockReference(_ assetId: UUID?, sessionId: UUID) {
+        if let assetId {
+            UserDefaults.standard.set(assetId.uuidString, forKey: sceneLockKey(sessionId))
+        } else {
+            UserDefaults.standard.removeObject(forKey: sceneLockKey(sessionId))
+        }
+    }
+
+    private static func batchKey(_ sessionId: UUID) -> String {
+        "creatorhub.redigering.batch.\(sessionId.uuidString)"
+    }
+
+    static func loadBatch(_ sessionId: UUID) -> BatchCheckpoint? {
+        guard let data = UserDefaults.standard.data(forKey: batchKey(sessionId)) else { return nil }
+        return try? JSONDecoder().decode(BatchCheckpoint.self, from: data)
+    }
+
+    static func saveBatch(_ checkpoint: BatchCheckpoint, sessionId: UUID) {
+        guard let data = try? JSONEncoder().encode(checkpoint) else { return }
+        UserDefaults.standard.set(data, forKey: batchKey(sessionId))
+    }
+
+    static func removeBatch(_ sessionId: UUID) {
+        UserDefaults.standard.removeObject(forKey: batchKey(sessionId))
     }
 
     // MARK: - Cull selections (per session)

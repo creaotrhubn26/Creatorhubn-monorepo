@@ -145,6 +145,7 @@ enum SkinFinishFilter {
     /// brows and lips are never warped or regenerated.
     static func applyPortraitRetouch(recipe: MagicRecipe, to image: CIImage) -> CIImage {
         let active = recipe.blemishCleanup > 0.0001
+            || recipe.skinDiscoloration > 0.0001
             || recipe.dodgeBurn > 0.0001
             || recipe.shineControl > 0.0001
             || recipe.underEyeLift > 0.0001
@@ -167,6 +168,16 @@ enum SkinFinishFilter {
         if recipe.blemishCleanup > 0 {
             current = applySelectiveBlemishCleanup(
                 amount: recipe.blemishCleanup,
+                to: current,
+                skinMask: skinMask,
+                extent: extent,
+                preserveIdentityMarks: recipe.preserveIdentityMarks
+            )
+        }
+
+        if recipe.skinDiscoloration > 0 {
+            current = applyDiscolorationCorrection(
+                amount: recipe.skinDiscoloration,
                 to: current,
                 skinMask: skinMask,
                 extent: extent
@@ -258,7 +269,8 @@ enum SkinFinishFilter {
         amount: Double,
         to image: CIImage,
         skinMask: CIImage,
-        extent: CGRect
+        extent: CGRect,
+        preserveIdentityMarks: Bool
     ) -> CIImage {
         let median = CIFilter.median()
         median.inputImage = image
@@ -277,17 +289,58 @@ enum SkinFinishFilter {
         let contrast = CIFilter.colorControls()
         contrast.inputImage = mono.outputImage
         contrast.saturation = 0
-        contrast.contrast = Float(4.0 + max(0, min(1, amount)) * 5.0)
-        contrast.brightness = -0.10
+        // Identity-safe mode needs stronger evidence before a pixel is treated
+        // as temporary. It intentionally leaves some stable dark marks behind;
+        // disabling the policy is an explicit photographer decision.
+        contrast.contrast = Float(
+            (preserveIdentityMarks ? 6.5 : 4.0)
+                + max(0, min(1, amount)) * (preserveIdentityMarks ? 4.0 : 6.0)
+        )
+        contrast.brightness = preserveIdentityMarks ? -0.16 : -0.08
         guard let anomaly = contrast.outputImage?.cropped(to: extent) else { return image }
         let selectiveMask = multiplyMasks(skinMask, anomaly, extent: extent)
 
         let dissolve = CIFilter.dissolveTransition()
         dissolve.inputImage = image
         dissolve.targetImage = repaired
-        dissolve.time = Float(0.22 + max(0, min(1, amount)) * 0.50)
+        let clampedAmount = max(0, min(1, amount))
+        let maximumMix = preserveIdentityMarks ? 0.72 : 1.0
+        // A soft response gives Natural enough visible cleanup while retaining
+        // a true zero point and never feeding an invalid >1 transition value.
+        dissolve.time = Float(pow(clampedAmount, 0.65) * maximumMix)
         guard let cleaned = dissolve.outputImage?.cropped(to: extent) else { return image }
         return blend(cleaned, over: image, mask: selectiveMask, extent: extent)
+    }
+
+    /// Smooths only colour variation, not luminance detail. `CIColorBlendMode`
+    /// takes hue/saturation from a broad local average while retaining the
+    /// original image's luminosity, so pores, freckles and facial modelling
+    /// survive. The protected facial-feature mask keeps lips, eyes and brows out.
+    static func applyDiscolorationCorrection(
+        amount: Double,
+        to image: CIImage,
+        skinMask: CIImage,
+        extent: CGRect
+    ) -> CIImage {
+        let clamped = max(0, min(1, amount))
+        guard clamped > 0.0001 else { return image }
+        let dimension = min(extent.width, extent.height)
+        let blur = CIFilter.gaussianBlur()
+        blur.inputImage = image.clampedToExtent()
+        blur.radius = Float(max(5, min(36, dimension * 0.006)))
+        guard let localColour = blur.outputImage?.cropped(to: extent) else { return image }
+
+        let colourEvened = localColour.applyingFilter(
+            "CIColorBlendMode",
+            parameters: [kCIInputBackgroundImageKey: image]
+        ).cropped(to: extent)
+
+        let dissolve = CIFilter.dissolveTransition()
+        dissolve.inputImage = image
+        dissolve.targetImage = colourEvened
+        dissolve.time = Float(pow(clamped, 0.72) * 0.70)
+        guard let corrected = dissolve.outputImage?.cropped(to: extent) else { return image }
+        return blend(corrected, over: image, mask: skinMask, extent: extent)
     }
 
     private static func upperLumaMask(from image: CIImage, extent: CGRect) -> CIImage {

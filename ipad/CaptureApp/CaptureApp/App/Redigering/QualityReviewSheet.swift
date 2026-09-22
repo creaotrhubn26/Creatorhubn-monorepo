@@ -108,11 +108,16 @@ struct QualityReviewSheet: View {
                     .font(.subheadline.weight(.medium)).foregroundStyle(CHTheme.textPrimary)
                     .lineLimit(1)
                 FlowChips(issues: finding.issues)
+                Text(finding.issues.map(\.detail).joined(separator: " "))
+                    .font(.caption2)
+                    .foregroundStyle(CHTheme.textMuted)
+                    .lineLimit(2)
             }
             Spacer()
             Image(systemName: "chevron.right").font(.caption).foregroundStyle(CHTheme.textMuted)
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder

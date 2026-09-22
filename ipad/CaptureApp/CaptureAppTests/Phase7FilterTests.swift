@@ -226,9 +226,76 @@ final class SkinToneUnifyFilterTests: XCTestCase {
 // MARK: - Detailed portrait retouch + subject-adaptive tone
 
 final class PortraitRetouchFilterTests: XCTestCase {
+    func testDiscolorationCorrectionRendersThroughCoreImage() throws {
+        let extent = CGRect(x: 0, y: 0, width: 128, height: 96)
+        let base = CIImage(color: CIColor(red: 0.72, green: 0.49, blue: 0.38))
+            .cropped(to: extent)
+        let redPatch = CIImage(color: CIColor(red: 0.88, green: 0.30, blue: 0.28))
+            .cropped(to: CGRect(x: 48, y: 32, width: 30, height: 30))
+            .composited(over: base)
+        let mask = CIImage(color: .white).cropped(to: extent)
+
+        let corrected = SkinFinishFilter.applyDiscolorationCorrection(
+            amount: 0.7,
+            to: redPatch,
+            skinMask: mask,
+            extent: extent
+        )
+        XCTAssertEqual(corrected.extent, extent)
+        XCTAssertNotNil(CIContext(options: [.useSoftwareRenderer: true]).createCGImage(corrected, from: extent),
+                        "chroma-korreksjonen må kunne rendres på CPU-fallback uten en GPU/ANE")
+    }
+
+    func testRetouchLevelsIncreaseCleanupWithoutDroppingIdentityProtection() {
+        var natural = MagicRecipe()
+        natural.applyPortraitRetouchLevel(.natural)
+        var clean = MagicRecipe()
+        clean.applyPortraitRetouchLevel(.clean)
+        var maximum = MagicRecipe()
+        maximum.applyPortraitRetouchLevel(.maximum)
+
+        XCTAssertLessThan(natural.blemishCleanup, clean.blemishCleanup)
+        XCTAssertLessThan(clean.blemishCleanup, maximum.blemishCleanup)
+        XCTAssertLessThan(natural.skinDiscoloration, clean.skinDiscoloration)
+        XCTAssertLessThan(clean.skinDiscoloration, maximum.skinDiscoloration)
+        XCTAssertTrue(natural.preserveIdentityMarks)
+        XCTAssertTrue(clean.preserveIdentityMarks)
+        XCTAssertTrue(maximum.preserveIdentityMarks,
+                      "maksimal retusj må kreve eksplisitt opt-out før identitetsmerker fjernes")
+    }
+
+    func testRetouchLevelOnlyChangesPortraitControls() {
+        var recipe = MagicRecipe(warmth: -0.27, contrast: 0.31, saturation: -0.08)
+        recipe.applyPortraitRetouchLevel(.clean)
+        XCTAssertEqual(recipe.warmth, -0.27, accuracy: 1e-6)
+        XCTAssertEqual(recipe.contrast, 0.31, accuracy: 1e-6)
+        XCTAssertEqual(recipe.saturation, -0.08, accuracy: 1e-6)
+        XCTAssertEqual(recipe.portraitRetouchLevel, .clean)
+    }
+
+    func testRetouchPolicyRoundTripsAndOldRecipesStaySafe() throws {
+        var recipe = MagicRecipe()
+        recipe.applyPortraitRetouchLevel(.maximum)
+        recipe.preserveIdentityMarks = false
+        let decoded = try JSONDecoder().decode(
+            MagicRecipe.self,
+            from: JSONEncoder().encode(recipe)
+        )
+        XCTAssertEqual(decoded.portraitRetouchLevel, .maximum)
+        XCTAssertFalse(decoded.preserveIdentityMarks)
+        XCTAssertEqual(decoded.skinDiscoloration, recipe.skinDiscoloration, accuracy: 1e-6)
+
+        let legacy = Data("{\"warmth\":0,\"shadowLift\":0,\"contrast\":0,\"saturation\":0}".utf8)
+        let safeLegacy = try JSONDecoder().decode(MagicRecipe.self, from: legacy)
+        XCTAssertTrue(safeLegacy.preserveIdentityMarks)
+        XCTAssertEqual(safeLegacy.portraitRetouchLevel, .custom)
+        XCTAssertEqual(safeLegacy.skinDiscoloration, 0)
+    }
+
     func testDetailedRetouchNoOpsSafelyWithoutFace() {
         var recipe = MagicRecipe.portrait
         recipe.blemishCleanup = 1
+        recipe.skinDiscoloration = 1
         recipe.dodgeBurn = 1
         recipe.shineControl = 1
         recipe.underEyeLift = 1
@@ -387,6 +454,120 @@ final class MagicRecipeCodableTests: XCTestCase {
         XCTAssertEqual(decoded.teethWhiten, recipe.teethWhiten, accuracy: 1e-6)
         XCTAssertTrue(decoded.autoStraighten)
         XCTAssertEqual(decoded.straightenAngle, 0.05, accuracy: 1e-6)
+    }
+}
+
+// MARK: - Face-aware crop
+
+final class PortraitCropAdvisorTests: XCTestCase {
+    func testFourFiveCropHasCorrectPixelAspectAndComposition() throws {
+        let imageSize = CGSize(width: 4000, height: 6000)
+        let faceVision = CGRect(x: 0.40, y: 0.55, width: 0.18, height: 0.18)
+        let settings = PortraitCropSettings(
+            aspect: .fourFive,
+            headSize: 0.36,
+            topMargin: 0.10,
+            horizontalPosition: 0.50
+        )
+        let crop = try XCTUnwrap(PortraitCropAdvisor.crop(
+            faceRectVision: faceVision,
+            imageSize: imageSize,
+            settings: settings
+        ))
+        let pixelAspect = crop.width * imageSize.width / (crop.height * imageSize.height)
+        XCTAssertEqual(pixelAspect, 4.0 / 5.0, accuracy: 0.0001)
+
+        let faceTopLeft = CGRect(
+            x: faceVision.minX,
+            y: 1 - faceVision.maxY,
+            width: faceVision.width,
+            height: faceVision.height
+        )
+        XCTAssertEqual(faceTopLeft.height / crop.height, 0.36, accuracy: 0.0001)
+        XCTAssertEqual((faceTopLeft.minY - crop.minY) / crop.height, 0.10, accuracy: 0.0001)
+        XCTAssertEqual((faceTopLeft.midX - crop.minX) / crop.width, 0.50, accuracy: 0.0001)
+    }
+
+    func testCropAtImageEdgeKeepsFaceAndBounds() throws {
+        let faceVision = CGRect(x: 0.01, y: 0.75, width: 0.22, height: 0.20)
+        var settings = PortraitCropSettings()
+        settings.horizontalPosition = 0.75
+        settings.topMargin = 0.30
+        let crop = try XCTUnwrap(PortraitCropAdvisor.crop(
+            faceRectVision: faceVision,
+            imageSize: CGSize(width: 6000, height: 4000),
+            settings: settings
+        ))
+        XCTAssertGreaterThanOrEqual(crop.minX, 0)
+        XCTAssertGreaterThanOrEqual(crop.minY, 0)
+        XCTAssertLessThanOrEqual(crop.maxX, 1)
+        XCTAssertLessThanOrEqual(crop.maxY, 1)
+
+        let faceTopLeft = CGRect(
+            x: faceVision.minX,
+            y: 1 - faceVision.maxY,
+            width: faceVision.width,
+            height: faceVision.height
+        )
+        XCTAssertTrue(crop.insetBy(dx: -0.0001, dy: -0.0001).contains(faceTopLeft))
+    }
+
+    func testInvalidFaceFailsWithoutInventingCrop() {
+        XCTAssertNil(PortraitCropAdvisor.crop(
+            faceRectVision: .zero,
+            imageSize: CGSize(width: 4000, height: 6000),
+            settings: PortraitCropSettings()
+        ))
+    }
+
+    func testCompositionGuideGeometryFollowsCropRect() throws {
+        let rect = CGRect(x: 30, y: 60, width: 300, height: 600)
+        let thirds = CompositionGuideGeometry.lines(for: .thirds, in: rect)
+        XCTAssertEqual(thirds.count, 4)
+        XCTAssertEqual(thirds[0].start.x, 130, accuracy: 0.001)
+        XCTAssertEqual(thirds[0].start.y, 60, accuracy: 0.001)
+        XCTAssertEqual(thirds[0].end.y, 660, accuracy: 0.001)
+        XCTAssertEqual(thirds[2].start.x, 230, accuracy: 0.001)
+
+        let safeFrame = try XCTUnwrap(CompositionGuideGeometry.frames(for: .safeArea, in: rect).first)
+        XCTAssertEqual(safeFrame, CGRect(x: 60, y: 120, width: 240, height: 480))
+        XCTAssertTrue(CompositionGuideGeometry.lines(for: .none, in: rect).isEmpty)
+    }
+
+    func testCropPresetStorePersistsUpdatesAndRemoves() throws {
+        let suite = "CaptureAppTests.CropPreset.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var firstSettings = PortraitCropSettings()
+        firstSettings.aspect = .square
+        firstSettings.headSize = 0.44
+        var presets = CropPresetStore.upsert(
+            name: "  Headshot  ",
+            settings: firstSettings,
+            guide: .goldenRatio,
+            defaults: defaults
+        )
+        XCTAssertEqual(presets.count, 1)
+        XCTAssertEqual(presets[0].name, "Headshot")
+        XCTAssertEqual(presets[0].settings, firstSettings)
+        XCTAssertEqual(presets[0].guide, .goldenRatio)
+
+        var updatedSettings = firstSettings
+        updatedSettings.aspect = .fourFive
+        presets = CropPresetStore.upsert(
+            name: "headshot",
+            settings: updatedSettings,
+            guide: .safeArea,
+            defaults: defaults
+        )
+        XCTAssertEqual(presets.count, 1, "samme navn skal oppdatere, ikke duplisere preset")
+        XCTAssertEqual(presets[0].settings.aspect, .fourFive)
+        XCTAssertEqual(presets[0].guide, .safeArea)
+
+        presets = CropPresetStore.remove(presets[0], defaults: defaults)
+        XCTAssertTrue(presets.isEmpty)
+        XCTAssertTrue(CropPresetStore.load(defaults: defaults).isEmpty)
     }
 }
 

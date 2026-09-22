@@ -438,12 +438,28 @@ final class ScreenshotHarness: XCTestCase {
         XCTAssertTrue(crop.waitForExistence(timeout: 4))
         crop.tap()
         XCTAssertTrue(app.navigationBars["Beskjær"].waitForExistence(timeout: 4))
+
+        // SmartCropSheet opens in face-aware mode when Vision has found a
+        // subject. Exercise the lossless manual fallback explicitly so the
+        // drag gesture remains covered after the crop workspace redesign.
+        let manualMode = app.buttons["Manuell"]
+        XCTAssertTrue(manualMode.waitForExistence(timeout: 4))
+        manualMode.tap()
+        let drawCrop = app.buttons["Tegn utsnitt"]
+        XCTAssertTrue(drawCrop.waitForExistence(timeout: 4))
+        drawCrop.tap()
+        XCTAssertTrue(app.navigationBars["Fri beskjæring"].waitForExistence(timeout: 4))
         let canvas = app.descendants(matching: .any)["redigering-crop-canvas"]
         XCTAssertTrue(canvas.waitForExistence(timeout: 4))
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.20))
         let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.82))
         start.press(forDuration: 0.1, thenDragTo: end)
-        let applyCrop = app.navigationBars["Beskjær"].buttons["Beskjær"]
+        let applyManualCrop = app.navigationBars["Fri beskjæring"].buttons["Bruk utsnitt"]
+        XCTAssertTrue(applyManualCrop.isEnabled)
+        applyManualCrop.tap()
+        XCTAssertTrue(app.navigationBars["Beskjær"].waitForExistence(timeout: 4))
+        let applyCrop = app.navigationBars["Beskjær"].buttons["Bruk"]
+        XCTAssertTrue(applyCrop.waitForExistence(timeout: 4))
         XCTAssertTrue(applyCrop.isEnabled)
         applyCrop.tap()
 
@@ -518,13 +534,11 @@ final class ScreenshotHarness: XCTestCase {
     /// snapshot runner picks it up. Waits briefly so any in-flight
     /// animation settles before the frame is taken.
     private func snap(_ app: XCUIApplication, name: String) {
-        let animationSettle = XCTWaiter().wait(for: [
-            XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "exists == true"),
-                object: app,
-            ),
-        ], timeout: 1.5)
-        _ = animationSettle
+        // `exists == true` is already satisfied and therefore never waited for
+        // the physical orientation animation. On device that occasionally
+        // captured the app window halfway through rotation with a large black
+        // band. Keep this intentionally short, but deterministic.
+        Thread.sleep(forTimeInterval: 1.0)
 
         let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)

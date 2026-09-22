@@ -10,6 +10,8 @@ struct SmartEditPanel: View {
     @State private var toneOpen = true
     @State private var portraitOpen = true
     @State private var retouchOpen = true
+    @State private var explanationOpen = false
+    @State private var historyOpen = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -89,6 +91,8 @@ struct SmartEditPanel: View {
                 .padding(10).background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
             }
 
+            sceneLockCard
+
             let learnedActive = model.learnedStyleAuto || model.learnedStyleIndex != nil
             if learnedActive {
                 HStack(spacing: 6) {
@@ -130,6 +134,7 @@ struct SmartEditPanel: View {
 
             DisclosureGroup(isExpanded: $portraitOpen) {
                 VStack(alignment: .leading, spacing: 13) {
+                    retouchLevelRow
                     subjectTypeRow
                     Text("Bevarer identitet og tekstur. Alle effekter er reversible og maskeres til ansikt/hud.")
                         .font(.caption2).foregroundStyle(CHTheme.textMuted)
@@ -142,19 +147,21 @@ struct SmartEditPanel: View {
                     .buttonStyle(.bordered).tint(CHTheme.accent)
                     .disabled(model.selectedAnalysis?.hasFaces != true)
                     .accessibilityHint("Bruker målt ansiktslys, høylys og hudfarge og kan angres")
-                    slider("Hudtone / fine linjer", systemImage: "aqi.medium", value: $model.recipe.skinLowFreq, range: -1...1, unit: .signedPercent)
-                    slider("Porer og huddetalj", systemImage: "camera.macro", value: $model.recipe.skinHighFreq, range: -1...1, unit: .signedPercent)
-                    slider("Små urenheter", systemImage: "bandage", value: $model.recipe.blemishCleanup, range: 0...1, unit: .percent)
-                    slider("Dodge & burn", systemImage: "circle.lefthalf.filled", value: $model.recipe.dodgeBurn, range: 0...1, unit: .percent)
-                    slider("Glans i hud", systemImage: "sun.max.trianglebadge.exclamationmark", value: $model.recipe.shineControl, range: 0...1, unit: .percent, inverted: true)
-                    slider("Under øyne", systemImage: "eye.trianglebadge.exclamationmark", value: $model.recipe.underEyeLift, range: 0...1, unit: .percent)
-                    slider("Naturlig hudfarge", systemImage: "shield.lefthalf.filled", value: $model.recipe.skinGuard, range: 0...1, unit: .percent)
-                    slider("Ansikt og hals/kropp", systemImage: "person.crop.rectangle", value: $model.recipe.skinUnify, range: 0...1, unit: .percent)
+                    toggleRow("Bevar fregner, føflekker og identitetsmerker", systemImage: "person.crop.circle.badge.checkmark", isOn: identityProtectionBinding)
+                    slider("Hudtone / fine linjer", systemImage: "aqi.medium", value: $model.recipe.skinLowFreq, range: -1...1, unit: .signedPercent, marksRetouchCustom: true)
+                    slider("Porer og huddetalj", systemImage: "camera.macro", value: $model.recipe.skinHighFreq, range: -1...1, unit: .signedPercent, marksRetouchCustom: true)
+                    slider("Små urenheter", systemImage: "bandage", value: $model.recipe.blemishCleanup, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Ujevn hudfarge", systemImage: "paintpalette.fill", value: $model.recipe.skinDiscoloration, range: 0...1, unit: .percent, inverted: true, marksRetouchCustom: true)
+                    slider("Dodge & burn", systemImage: "circle.lefthalf.filled", value: $model.recipe.dodgeBurn, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Glans i hud", systemImage: "sun.max.trianglebadge.exclamationmark", value: $model.recipe.shineControl, range: 0...1, unit: .percent, inverted: true, marksRetouchCustom: true)
+                    slider("Under øyne", systemImage: "eye.trianglebadge.exclamationmark", value: $model.recipe.underEyeLift, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Naturlig hudfarge", systemImage: "shield.lefthalf.filled", value: $model.recipe.skinGuard, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Ansikt og hals/kropp", systemImage: "person.crop.rectangle", value: $model.recipe.skinUnify, range: 0...1, unit: .percent, marksRetouchCustom: true)
                     slider("Motivseparasjon", systemImage: "person.crop.rectangle", value: $model.recipe.subjectSeparation, range: 0...1, unit: .percent)
-                    slider("Beskytt makeup", systemImage: "paintpalette", value: $model.recipe.makeupProtection, range: 0...1, unit: .percent)
-                    slider("Øyedetalj", systemImage: "eye", value: $model.recipe.eyeSharpen, range: 0...1, unit: .percent)
-                    slider("Lys i øyne", systemImage: "sparkle", value: $model.recipe.eyeCatchlight, range: 0...1, unit: .percent)
-                    slider("Tenner", systemImage: "mouth", value: $model.recipe.teethWhiten, range: 0...1, unit: .percent)
+                    slider("Beskytt makeup", systemImage: "paintpalette", value: $model.recipe.makeupProtection, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Øyedetalj", systemImage: "eye", value: $model.recipe.eyeSharpen, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Lys i øyne", systemImage: "sparkle", value: $model.recipe.eyeCatchlight, range: 0...1, unit: .percent, marksRetouchCustom: true)
+                    slider("Tenner", systemImage: "mouth", value: $model.recipe.teethWhiten, range: 0...1, unit: .percent, marksRetouchCustom: true)
                     slider("Hår, klær og struktur", systemImage: "textile", value: $model.recipe.texture, range: 0...1, unit: .percent)
                     HStack(spacing: 7) {
                         Image(systemName: "person.crop.circle.badge.checkmark")
@@ -201,11 +208,46 @@ struct SmartEditPanel: View {
             if let msg = model.statusMessage {
                 Text(msg).font(.caption2).foregroundStyle(CHTheme.textMuted)
             }
+            DisclosureGroup(isExpanded: $explanationOpen) {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(Array(model.editExplanations.enumerated()), id: \.offset) { _, line in
+                        Label(line, systemImage: "checkmark.circle")
+                            .font(.caption2).foregroundStyle(CHTheme.textSecondary)
+                    }
+                }.padding(.top, 8)
+            } label: {
+                sectionLabel("Hva CreatorHub gjør", systemImage: "info.circle")
+            }
+
+            DisclosureGroup(isExpanded: $historyOpen) {
+                VStack(alignment: .leading, spacing: 7) {
+                    if model.auditTrail.isEmpty {
+                        Text("Ingen manuelle handlinger registrert ennå.")
+                            .font(.caption2).foregroundStyle(CHTheme.textMuted)
+                    } else {
+                        ForEach(model.auditTrail.suffix(8).reversed()) { entry in
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(entry.summary).font(.caption2).foregroundStyle(CHTheme.textSecondary)
+                                Text(entry.date.formatted(date: .omitted, time: .shortened))
+                                    .font(.system(size: 9)).foregroundStyle(CHTheme.textMuted)
+                            }
+                        }
+                    }
+                }.padding(.top, 8)
+            } label: {
+                sectionLabel("Endringslogg", systemImage: "clock.arrow.circlepath")
+            }
             aiAction("Lagre ferdig versjon", subtitle: "Rendrer valgt bilde i full oppløsning med samme lokale justeringer som preview.",
                      systemImage: "checkmark.circle", prominent: true, busy: model.working,
                      disabled: model.selected == nil) { Task { await model.persistSelected() } }
             aiAction("Bruk på serie", subtitle: "Bruk disse justeringene på alle \(model.assets.count) bildene i økten",
                      systemImage: "rectangle.on.rectangle", prominent: false, busy: model.working) { model.applyToSeries() }
+            if model.resumableBatchCount > 0 {
+                aiAction("Fortsett batch", subtitle: "\(model.resumableBatchCount) bilder gjenstår. Fortsetter fra sist verifiserte lokale fil.",
+                         systemImage: "arrow.clockwise.icloud", prominent: false, busy: model.working) {
+                    model.resumePendingBatch()
+                }
+            }
             aiAction("Lagre som preset", subtitle: nil,
                      systemImage: "bookmark", prominent: false, busy: false) { showSavePreset = true }
 
@@ -230,6 +272,38 @@ struct SmartEditPanel: View {
         }
     }
 
+    private var sceneLockCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("Scene Lock", systemImage: "link.circle.fill")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(CHTheme.textPrimary)
+                Spacer()
+                if model.sceneLockReferenceId == model.selectedId {
+                    Text("REFERANSE").font(.caption2.weight(.bold)).foregroundStyle(CHTheme.accent)
+                }
+            }
+            Text("Matcher lys, kontrast, høylys og hudcast mot ett godkjent bilde. Beskjæring og lokale ansiktsvalg beholdes per bilde.")
+                .font(.caption2).foregroundStyle(CHTheme.textMuted)
+            HStack {
+                Button("Bruk valgt som referanse") { model.setSceneLockReferenceToSelected() }
+                    .buttonStyle(.bordered).controlSize(.small).tint(CHTheme.accent)
+                Button {
+                    Task { await model.applySceneLockToSeries() }
+                } label: {
+                    if model.sceneLockRunning { ProgressView().controlSize(.small) }
+                    else { Text("Match serien") }
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small).tint(CHTheme.accent)
+                .disabled(model.sceneLockReferenceId == nil || model.sceneLockRunning)
+            }
+            if let status = model.sceneLockStatus {
+                Text(status).font(.caption2).foregroundStyle(CHTheme.textSecondary)
+            }
+        }
+        .padding(10)
+        .background(CHTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
+    }
+
     /// Standardiserte verdi-enheter (fotografene forventer EV/prosent, ikke
     /// interne modell-tall). `.ev` = ±X.XX EV · `.signedPercent` = ±100 ·
     /// `.percent` = 0–100 %.
@@ -241,7 +315,8 @@ struct SmartEditPanel: View {
         value: Binding<Double>,
         range: ClosedRange<Double>,
         unit: SliderUnit,
-        inverted: Bool = false
+        inverted: Bool = false,
+        marksRetouchCustom: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -251,7 +326,12 @@ struct SmartEditPanel: View {
                     .font(.caption.monospacedDigit()).foregroundStyle(CHTheme.accentSoft)
             }
             Slider(value: value, in: range) { editing in
-                if editing { model.beginEdit() } else { model.recipeChanged() }
+                if editing {
+                    model.beginEdit()
+                } else {
+                    if marksRetouchCustom { model.recipe.portraitRetouchLevel = .custom }
+                    model.recipeChanged()
+                }
             }
             .tint(CHTheme.accent)
             .accessibilityIdentifier("redigering-slider-\(title.lowercased())")
@@ -289,6 +369,57 @@ struct SmartEditPanel: View {
                 Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(CHTheme.textMuted)
             }
         }
+    }
+
+    private var retouchLevelRow: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label("Retusjnivå", systemImage: "wand.and.sparkles")
+                    .font(.subheadline)
+                    .foregroundStyle(CHTheme.textPrimary)
+                Spacer()
+                if model.recipe.portraitRetouchLevel == .custom {
+                    Text("Tilpasset")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CHTheme.accentSoft)
+                }
+            }
+            HStack(spacing: 7) {
+                retouchLevelButton(.natural, title: "Naturlig")
+                retouchLevelButton(.clean, title: "Ren")
+                retouchLevelButton(.maximum, title: "Maksimal")
+            }
+        }
+    }
+
+    private func retouchLevelButton(_ level: MagicRecipe.PortraitRetouchLevel, title: String) -> some View {
+        let selected = model.recipe.portraitRetouchLevel == level
+        return Button {
+            model.beginEdit()
+            model.recipe.applyPortraitRetouchLevel(level)
+            model.recipeChanged()
+        } label: {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 3)
+        }
+        .buttonStyle(.bordered)
+        .tint(selected ? CHTheme.accent : CHTheme.textSecondary)
+        .accessibilityIdentifier("redigering-retouch-level-\(level.rawValue)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var identityProtectionBinding: Binding<Bool> {
+        Binding(
+            get: { model.recipe.preserveIdentityMarks },
+            set: { value in
+                model.beginEdit()
+                model.recipe.preserveIdentityMarks = value
+                model.recipe.portraitRetouchLevel = .custom
+                model.recipeChanged()
+            }
+        )
     }
 
     private var subjectTypeLabel: String {

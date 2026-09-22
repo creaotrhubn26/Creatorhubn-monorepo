@@ -115,6 +115,13 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         case none, male, female, child, elderly
     }
 
+    /// A photographer-facing starting point for the portrait controls. `custom`
+    /// is persisted as soon as an individual portrait slider is changed; the
+    /// three named levels remain reproducible across preview and RAW export.
+    enum PortraitRetouchLevel: String, Sendable, Codable, CaseIterable {
+        case custom, natural, clean, maximum
+    }
+
     /// **Phase 7F (Evoto parity)** — Skin-tone unify (face↔body).
     /// Samples mean skin tone in the face Vision rect + samples
     /// non-face skin pixels (neck/hands/arms), computes the colour
@@ -124,6 +131,12 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// yellow than face. Range 0…1: 0 = no correction, 1 = full
     /// shift toward face reference (industry: 0.30–0.50 typical).
     var skinUnify: Double = 0
+
+    /// Evens local red/yellow/magenta colour variation while preserving the
+    /// original luminance channel. This is intentionally separate from skin
+    /// smoothing: pores, freckles and facial modelling live primarily in
+    /// luminance and must not disappear merely because colour is corrected.
+    var skinDiscoloration: Double = 0
 
     /// Selective small-spot cleanup inside detected facial skin. Unlike the
     /// low-frequency skin control this only blends pixels that differ markedly
@@ -144,6 +157,16 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     /// Expands protection around eyes, brows and lips when smoothing or local
     /// tone work is active. Useful for preserving makeup colour and edges.
     var makeupProtection: Double = 0.75
+
+    /// Conservative by default. When enabled, automatic cleanup uses a stricter
+    /// anomaly threshold and a bounded repair mix so stable freckles, moles and
+    /// other identity marks are not silently erased. The photographer can turn
+    /// it off explicitly for a stronger cleanup and inspect the retouch map.
+    var preserveIdentityMarks: Bool = true
+
+    /// Records which reproducible portrait starting point was selected. Manual
+    /// changes move this to `.custom`; it does not alter rendering by itself.
+    var portraitRetouchLevel: PortraitRetouchLevel = .custom
 
     /// **Phase 7C** — Auto-straighten via `VNDetectHorizonRequest`.
     /// When true, detection runs on a 1024-px-downsample of the image
@@ -272,12 +295,13 @@ struct MagicRecipe: Sendable, Equatable, Codable {
     static let portrait = MagicRecipe(
         warmth: -0.18, skinHighFreq: 0.12, skinLowFreq: 0.20, shadowLift: 0.02,
         contrast: 0.27, saturation: 0,
-        highlightRecovery: 0.58, vibrance: 0.18, texture: 0.07, dehaze: 0.03,
+        highlightRecovery: 0.58, vibrance: 0.24, texture: 0.07, dehaze: 0.03,
         defringe: 0.85, greenControl: 0.48, subjectSeparation: 0.42,
         eyeSharpen: 0.20, eyeCatchlight: 0.11, autoEnhance: false, skinGuard: 0.82,
-        teethWhiten: 0.10, skinUnify: 0.18,
+        teethWhiten: 0.10, skinUnify: 0.18, skinDiscoloration: 0.15,
         blemishCleanup: 0.16, dodgeBurn: 0.12, shineControl: 0.10,
-        underEyeLift: 0.08, makeupProtection: 0.85
+        underEyeLift: 0.08, makeupProtection: 0.85,
+        preserveIdentityMarks: true, portraitRetouchLevel: .natural
     )
 
     /// **Bryllup / varmt lys** — KORRIGERENDE reportasje-grade for tungsten- og
@@ -409,6 +433,54 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         warmth: -0.05, shadowLift: 0.20, contrast: 0.10, saturation: -0.05,
         highlightRecovery: 0.25, vibrance: 0.10, texture: 0.10, dehaze: 0.05
     )
+
+    /// Applies only portrait-finishing controls. Global colour, exposure and
+    /// camera-profile choices are deliberately left untouched.
+    mutating func applyPortraitRetouchLevel(_ level: PortraitRetouchLevel) {
+        guard level != .custom else {
+            portraitRetouchLevel = .custom
+            return
+        }
+
+        portraitRetouchLevel = level
+        preserveIdentityMarks = true
+        switch level {
+        case .custom:
+            break
+        case .natural:
+            skinLowFreq = 0.20
+            skinHighFreq = 0.12
+            blemishCleanup = 0.18
+            skinDiscoloration = 0.15
+            dodgeBurn = 0.12
+            shineControl = 0.10
+            underEyeLift = 0.08
+            skinUnify = 0.18
+            makeupProtection = 0.85
+        case .clean:
+            skinLowFreq = 0.32
+            skinHighFreq = 0.14
+            blemishCleanup = 0.48
+            skinDiscoloration = 0.38
+            dodgeBurn = 0.22
+            shineControl = 0.28
+            underEyeLift = 0.20
+            skinUnify = 0.30
+            makeupProtection = 0.90
+        case .maximum:
+            // Strong, but still identity-safe until the photographer explicitly
+            // disables `preserveIdentityMarks` in the editor.
+            skinLowFreq = 0.48
+            skinHighFreq = 0.16
+            blemishCleanup = 0.92
+            skinDiscoloration = 0.70
+            dodgeBurn = 0.32
+            shineControl = 0.45
+            underEyeLift = 0.30
+            skinUnify = 0.48
+            makeupProtection = 0.92
+        }
+    }
 
     /// **Phase 7E** — Subject-type modifier deltas. Returned as a
     /// `MagicRecipe`-shaped overlay that callers add to a portrait
@@ -542,6 +614,9 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         if skinUnify >= 0.05 {
             chips.append("Skin Unify +\(Int((skinUnify * 100).rounded()))%")
         }
+        if skinDiscoloration >= 0.05 {
+            chips.append("Discoloration −\(Int((skinDiscoloration * 100).rounded()))%")
+        }
         if blemishCleanup >= 0.05 {
             chips.append("Blemishes −\(Int((blemishCleanup * 100).rounded()))%")
         }
@@ -574,6 +649,7 @@ struct MagicRecipe: Sendable, Equatable, Codable {
             && eyeSharpen == 0 && eyeCatchlight == 0
             && !autoStraighten && straightenAngle == 0
             && teethWhiten == 0 && subjectType == .none && skinUnify == 0
+            && skinDiscoloration == 0
             && blemishCleanup == 0 && dodgeBurn == 0 && shineControl == 0
             && underEyeLift == 0
             // skinGuard/filmGrain manglet → en recipe med KUN én av dem ble regnet
@@ -616,11 +692,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         teethWhiten = try c.decodeIfPresent(Double.self, forKey: .teethWhiten) ?? 0
         subjectType = try c.decodeIfPresent(SubjectType.self, forKey: .subjectType) ?? .none
         skinUnify = try c.decodeIfPresent(Double.self, forKey: .skinUnify) ?? 0
+        skinDiscoloration = try c.decodeIfPresent(Double.self, forKey: .skinDiscoloration) ?? 0
         blemishCleanup = try c.decodeIfPresent(Double.self, forKey: .blemishCleanup) ?? 0
         dodgeBurn = try c.decodeIfPresent(Double.self, forKey: .dodgeBurn) ?? 0
         shineControl = try c.decodeIfPresent(Double.self, forKey: .shineControl) ?? 0
         underEyeLift = try c.decodeIfPresent(Double.self, forKey: .underEyeLift) ?? 0
         makeupProtection = try c.decodeIfPresent(Double.self, forKey: .makeupProtection) ?? 0.75
+        preserveIdentityMarks = try c.decodeIfPresent(Bool.self, forKey: .preserveIdentityMarks) ?? true
+        portraitRetouchLevel = try c.decodeIfPresent(PortraitRetouchLevel.self, forKey: .portraitRetouchLevel) ?? .custom
     }
 
     /// Memberwise init — synthesized Codable would consume this slot, so
@@ -652,11 +731,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         teethWhiten: Double = 0,
         subjectType: SubjectType = .none,
         skinUnify: Double = 0,
+        skinDiscoloration: Double = 0,
         blemishCleanup: Double = 0,
         dodgeBurn: Double = 0,
         shineControl: Double = 0,
         underEyeLift: Double = 0,
-        makeupProtection: Double = 0.75
+        makeupProtection: Double = 0.75,
+        preserveIdentityMarks: Bool = true,
+        portraitRetouchLevel: PortraitRetouchLevel = .custom
     ) {
         self.warmth = warmth
         self.tint = tint
@@ -683,11 +765,14 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         self.teethWhiten = teethWhiten
         self.subjectType = subjectType
         self.skinUnify = skinUnify
+        self.skinDiscoloration = skinDiscoloration
         self.blemishCleanup = blemishCleanup
         self.dodgeBurn = dodgeBurn
         self.shineControl = shineControl
         self.underEyeLift = underEyeLift
         self.makeupProtection = makeupProtection
+        self.preserveIdentityMarks = preserveIdentityMarks
+        self.portraitRetouchLevel = portraitRetouchLevel
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -696,7 +781,8 @@ struct MagicRecipe: Sendable, Equatable, Codable {
         case defringe, greenControl, subjectSeparation
         case eyeSharpen, eyeCatchlight
         case autoStraighten, autoEnhance, skinGuard, filmGrain, straightenAngle
-        case teethWhiten, subjectType, skinUnify
+        case teethWhiten, subjectType, skinUnify, skinDiscoloration
         case blemishCleanup, dodgeBurn, shineControl, underEyeLift, makeupProtection
+        case preserveIdentityMarks, portraitRetouchLevel
     }
 }

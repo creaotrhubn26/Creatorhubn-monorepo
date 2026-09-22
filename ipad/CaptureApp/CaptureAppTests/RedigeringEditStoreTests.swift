@@ -19,7 +19,9 @@ final class RedigeringEditStoreTests: XCTestCase {
             crop: CGRect(x: 0.1, y: 0.2, width: 0.5, height: 0.5),
             faceEdits: [faceEdit],
             reflectionRemoval: true,
-            cameraColorProfileID: .creatorHubPortrait
+            cameraColorProfileID: .creatorHubPortrait,
+            protectedRegions: [CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2)],
+            auditTrail: [.init(source: "test", summary: "Testendring")]
         )
         RedigeringEditStore.save(id, state)
         defer { UserDefaults.standard.removeObject(forKey: "creatorhub.redigering.edit.\(id.uuidString)") }
@@ -32,7 +34,9 @@ final class RedigeringEditStoreTests: XCTestCase {
         XCTAssertEqual(loaded.faceEdits, [faceEdit])
         XCTAssertEqual(loaded.reflectionRemoval, true)
         XCTAssertEqual(loaded.cameraColorProfileID, .creatorHubPortrait)
-        XCTAssertEqual(loaded.version, 4)
+        XCTAssertEqual(loaded.protectedRegions?.count, 1)
+        XCTAssertEqual(loaded.auditTrail?.first?.summary, "Testendring")
+        XCTAssertEqual(loaded.version, 5)
     }
 
     func testV3EditStateWithoutCameraProfileStillDecodes() throws {
@@ -47,6 +51,8 @@ final class RedigeringEditStoreTests: XCTestCase {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
         object.removeValue(forKey: "cameraColorProfileID")
+        object.removeValue(forKey: "protectedRegions")
+        object.removeValue(forKey: "auditTrail")
         let legacyData = try JSONSerialization.data(withJSONObject: object)
         let decoded = try JSONDecoder().decode(
             RedigeringEditStore.EditState.self,
@@ -145,5 +151,29 @@ final class RedigeringEditStoreTests: XCTestCase {
         RedigeringEditStore.saveKept(session, [])
         defer { UserDefaults.standard.removeObject(forKey: "creatorhub.redigering.cull.\(session.uuidString)") }
         XCTAssertNil(RedigeringEditStore.loadKept(session))
+    }
+
+    func testSceneReferenceAndBatchCheckpointRoundTrip() throws {
+        let session = UUID()
+        let reference = UUID()
+        let pending = UUID()
+        RedigeringEditStore.saveSceneLockReference(reference, sessionId: session)
+        XCTAssertEqual(RedigeringEditStore.loadSceneLockReference(session), reference)
+
+        let checkpoint = RedigeringEditStore.BatchCheckpoint(
+            mode: .sceneLock,
+            pendingIds: [pending],
+            completedIds: [reference],
+            failedIds: [],
+            startedAt: .now,
+            updatedAt: .now
+        )
+        RedigeringEditStore.saveBatch(checkpoint, sessionId: session)
+        XCTAssertEqual(RedigeringEditStore.loadBatch(session), checkpoint)
+
+        RedigeringEditStore.removeBatch(session)
+        RedigeringEditStore.saveSceneLockReference(nil, sessionId: session)
+        XCTAssertNil(RedigeringEditStore.loadBatch(session))
+        XCTAssertNil(RedigeringEditStore.loadSceneLockReference(session))
     }
 }

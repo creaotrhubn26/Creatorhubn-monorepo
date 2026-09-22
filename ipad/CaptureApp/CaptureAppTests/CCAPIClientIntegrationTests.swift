@@ -97,14 +97,17 @@ final class CCAPIClientIntegrationTests: XCTestCase {
         XCTAssertTrue(capabilities.canAutoFocus)
 
         var settings = try await client.videoShootingSettings()
-        XCTAssertEqual(settings[.tv]?.value, "1/50")
-        XCTAssertEqual(settings[.av]?.value, "f2.8")
-        XCTAssertEqual(settings[.iso]?.ability, ["400", "800", "1600"])
+        XCTAssertEqual(settings[.tv]?.value, "1/250")
+        XCTAssertEqual(settings[.av]?.value, "f4.0")
+        XCTAssertEqual(settings[.iso]?.ability, ["400", "800", "1250", "1600", "2500", "3200"])
 
         let confirmed = try await client.updateVideoShootingSetting(.iso, value: "1600")
         XCTAssertEqual(confirmed.value, "1600")
+        let confirmedAperture = try await client.updateVideoShootingSetting(.av, value: "f7.1")
+        XCTAssertEqual(confirmedAperture.value, "f7.1")
         settings = try await client.videoShootingSettings()
         XCTAssertEqual(settings[.iso]?.value, "1600")
+        XCTAssertEqual(settings[.av]?.value, "f7.1")
 
         try await client.setMovieRecording(true)
         try await client.setMovieRecording(false)

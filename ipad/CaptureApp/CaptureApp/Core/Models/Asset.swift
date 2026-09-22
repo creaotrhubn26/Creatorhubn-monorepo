@@ -161,6 +161,11 @@ struct AssetSignals: Hashable, Sendable, Codable {
     /// nil = ikke analysert enda.
     var analysis: AssetAnalysis?
 
+    /// Persistent before/after registration + pixel-QC state. The record is
+    /// revision-bound to the exact source/result files, so changing a recipe
+    /// invalidates the previous result and schedules a fresh pass.
+    var editValidation: EditValidation?
+
     /// Personer (``LiveCaptureModel.PersonGroup``-id-er) som opptrer på dette
     /// bildet — driver «levering per-ansikt» (E8). Utledes on-device fra ansikts-
     /// feature-prints (``FacePrint`` + ``PersonClusterer``) når analysen lander.

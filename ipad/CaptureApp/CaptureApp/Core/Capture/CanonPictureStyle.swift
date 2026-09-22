@@ -421,12 +421,20 @@ extension MagicRecipe {
             // Picture-Style baseline shouldn't impose a subject type.
             subjectType: subjectType != .none ? subjectType : baseline.subjectType,
             skinUnify: clampUnit(skinUnify + baseline.skinUnify),
+            skinDiscoloration: clampUnit(skinDiscoloration + baseline.skinDiscoloration),
             blemishCleanup: clampUnit(blemishCleanup + baseline.blemishCleanup),
             dodgeBurn: clampUnit(dodgeBurn + baseline.dodgeBurn),
             shineControl: clampUnit(shineControl + baseline.shineControl),
             underEyeLift: clampUnit(underEyeLift + baseline.underEyeLift),
             // Protection is a policy strength, not an additive visual effect.
             makeupProtection: max(makeupProtection, baseline.makeupProtection),
+            // Policy is always the photographer's choice; a camera baseline
+            // must neither disable protection nor re-enable it after an
+            // explicit opt-out.
+            preserveIdentityMarks: preserveIdentityMarks,
+            portraitRetouchLevel: portraitRetouchLevel != .custom
+                ? portraitRetouchLevel
+                : baseline.portraitRetouchLevel,
         )
     }
 

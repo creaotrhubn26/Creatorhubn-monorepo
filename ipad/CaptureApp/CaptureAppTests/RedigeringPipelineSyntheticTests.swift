@@ -292,6 +292,25 @@ final class RedigeringPipelineSyntheticTests: XCTestCase {
         )
     }
 
+    func testProtectedRegionRestoresDetailBaselineOnlyInsideSelection() throws {
+        let edited = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 100)).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+        }
+        let baseline = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 100)).image { context in
+            UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+        }
+        let output = RedigeringPipeline.applyProtectedRegions(
+            [CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)],
+            to: edited,
+            baseline: baseline
+        )
+        let cg = try XCTUnwrap(output.cgImage)
+        let center = Self.pixel(cg, normalizedPoint: CGPoint(x: 0.5, y: 0.5))
+        let corner = Self.pixel(cg, normalizedPoint: CGPoint(x: 0.05, y: 0.05))
+        XCTAssertGreaterThan(center.b, center.r, "beskyttet område beholdt ikke detaljbasen")
+        XCTAssertGreaterThan(corner.r, corner.b, "retusj utenfor beskyttelsen ble feilaktig fjernet")
+    }
+
     func testFrequencyRetouchIsConfinedToFaceMask() throws {
         let base = makeTextureImage(256)
         let input = try XCTUnwrap(CIImage(image: base))

@@ -234,6 +234,36 @@ actor SessionStore {
         }
     }
 
+    /// Merge only the analysis fields into the latest signals blob. Analysis,
+    /// face grouping and edit validation run concurrently; replacing the whole
+    /// blob from an older in-memory snapshot would otherwise lose whichever
+    /// background result committed first.
+    func updateAssetAnalysis(
+        id: UUID,
+        analysis: AssetAnalysis,
+        eyesOpen: Bool?,
+        faceCount: Int
+    ) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.signals.analysis = analysis
+            if let eyesOpen { asset.signals.eyesOpen = eyesOpen }
+            asset.signals.faceCount = faceCount
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
+    /// Atomic field-level merge for the persistent edit-QC job state.
+    func updateEditValidation(id: UUID, validation: EditValidation) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.signals.editValidation = validation
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
     func attachStorageKey(
         id: UUID,
         kind: DownloadKind,

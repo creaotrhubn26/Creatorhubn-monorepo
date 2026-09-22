@@ -20,6 +20,7 @@ enum RedigeringPipeline {
         exposureEV: Double,
         crop: CGRect? = nil,
         maxDimension: CGFloat? = 1600,
+        protectedRegions: [CGRect] = []
     ) -> UIImage? {
         // #1 RAW-CACHE: den interaktive banen GJENBRUKER ett CIRAWFilter per asset
         // (cachet) i stedet for å lese 30–50 MB fra disk + re-parse RAW hvert
@@ -28,6 +29,15 @@ enum RedigeringPipeline {
         // påføres NATIVT på CIRAWFilter (pre-demosaic) i denne banen.
         if let rawPath, let entry = cachedRawFilter(rawPath: rawPath),
            var img = entry.render(recipe: recipe, exposureEV: exposureEV, maxDimension: maxDimension) {
+            img = applyProtectedRegions(
+                protectedRegions,
+                to: img,
+                baseline: protectedRegions.isEmpty ? nil : renderPreview(
+                    rawPath: rawPath, jpegPath: jpegPath,
+                    recipe: detailPreservingRecipe(recipe), exposureEV: exposureEV,
+                    crop: nil, maxDimension: maxDimension, protectedRegions: []
+                )
+            )
             if let crop { img = cropped(img, to: crop) }
             return img
         }
@@ -35,6 +45,15 @@ enum RedigeringPipeline {
         // uten sensor-headroom (henter ikke klippede høylys).
         guard let jpegPath, var img = MagicPipeline.renderPreview(source: jpegPath, recipe: recipe) else { return nil }
         if exposureEV != 0 { img = applyExposure(exposureEV, to: img) ?? img }
+        img = applyProtectedRegions(
+            protectedRegions,
+            to: img,
+            baseline: protectedRegions.isEmpty ? nil : renderPreview(
+                rawPath: rawPath, jpegPath: jpegPath,
+                recipe: detailPreservingRecipe(recipe), exposureEV: exposureEV,
+                crop: nil, maxDimension: maxDimension, protectedRegions: []
+            )
+        )
         if let crop { img = cropped(img, to: crop) }
         return img
     }
@@ -47,7 +66,8 @@ enum RedigeringPipeline {
         recipe: MagicRecipe,
         exposureEV: Double,
         crop: CGRect? = nil,
-        faceEdits: [FaceLocalAdjustFilter.Entry] = []
+        faceEdits: [FaceLocalAdjustFilter.Entry] = [],
+        protectedRegions: [CGRect] = []
     ) -> Data? {
         var out: UIImage?
         var evAppliedInRaw = false
@@ -69,21 +89,106 @@ enum RedigeringPipeline {
         guard var img = out else { return nil }
         // Kun JPEG-fallback trenger post-EV; RAW-banen har alt påført det nativt.
         if exposureEV != 0, !evAppliedInRaw { img = applyExposure(exposureEV, to: img) ?? img }
-        if let crop { img = cropped(img, to: crop) }
-        guard !faceEdits.isEmpty, let ci = CIImage(image: img) else {
-            return img.jpegData(compressionQuality: 0.92)
+        if !protectedRegions.isEmpty,
+           let baselineData = renderExport(
+                rawPath: rawPath, jpegPath: jpegPath,
+                recipe: detailPreservingRecipe(recipe), exposureEV: exposureEV,
+                crop: nil, faceEdits: [], protectedRegions: []
+           ),
+           let baseline = UIImage(data: baselineData) {
+            img = applyProtectedRegions(protectedRegions, to: img, baseline: baseline)
         }
-        let locallyAdjusted = FaceLocalAdjustFilter.apply(to: ci, entries: faceEdits)
-        guard let cg = ColorManagement.renderCGImage(
-            from: locallyAdjusted,
-            context: ColorManagement.makeContext(for: .webDelivery),
-            purpose: .webDelivery
-        ) else { return img.jpegData(compressionQuality: 0.92) }
-        return try? ColorManagement.encodeJPEG(
-            cgImage: cg,
-            purpose: .webDelivery,
-            quality: 0.92
-        )
+        if let crop { img = cropped(img, to: crop) }
+        if !faceEdits.isEmpty, let ci = CIImage(image: img) {
+            let locallyAdjusted = FaceLocalAdjustFilter.apply(to: ci, entries: faceEdits)
+            if let cg = ColorManagement.renderCGImage(
+                from: locallyAdjusted,
+                context: ColorManagement.makeContext(for: .webDelivery),
+                purpose: .webDelivery
+            ) {
+                img = UIImage(cgImage: cg)
+            }
+        }
+        guard let cg = img.cgImage else { return img.jpegData(compressionQuality: 0.92) }
+        return (try? ColorManagement.encodeJPEG(cgImage: cg, purpose: .webDelivery, quality: 0.92))
+            ?? img.jpegData(compressionQuality: 0.92)
+    }
+
+    /// Removes only portrait/identity manipulation. Global exposure, colour and
+    /// camera profile remain identical, so protected areas do not become visible
+    /// colour patches in the final image.
+    private static func detailPreservingRecipe(_ source: MagicRecipe) -> MagicRecipe {
+        var r = source
+        r.skinHighFreq = 0; r.skinLowFreq = 0; r.skinSmooth = 0
+        r.teethWhiten = 0; r.skinUnify = 0; r.skinDiscoloration = 0
+        r.blemishCleanup = 0; r.dodgeBurn = 0; r.shineControl = 0
+        r.underEyeLift = 0; r.eyeSharpen = 0; r.eyeCatchlight = 0
+        r.skinGuard = 0; r.subjectSeparation = 0
+        return r
+    }
+
+    /// Feathered compositor in displayed-image coordinates. Regions are
+    /// normalised top-left rectangles, matching the editor's marquee tool.
+    static func applyProtectedRegions(
+        _ regions: [CGRect],
+        to edited: UIImage,
+        baseline: UIImage?
+    ) -> UIImage {
+        guard !regions.isEmpty, let baseline,
+              let editedCI = CIImage(image: edited),
+              var baselineCI = CIImage(image: baseline)
+        else { return edited }
+        let size = edited.size
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = edited.scale
+        format.opaque = true
+        let maskImage = UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+            let context = renderer.cgContext
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            UIColor.white.setFill()
+            for normalised in regions {
+                let rect = CGRect(
+                    x: normalised.minX * size.width,
+                    y: normalised.minY * size.height,
+                    width: normalised.width * size.width,
+                    height: normalised.height * size.height
+                )
+                UIBezierPath(
+                    roundedRect: rect,
+                    cornerRadius: min(rect.width, rect.height) * 0.12
+                ).fill()
+            }
+        }
+        guard var maskCI = CIImage(image: maskImage) else { return edited }
+        if baselineCI.extent != editedCI.extent {
+            baselineCI = baselineCI.transformed(by: CGAffineTransform(
+                scaleX: editedCI.extent.width / max(1, baselineCI.extent.width),
+                y: editedCI.extent.height / max(1, baselineCI.extent.height)
+            ))
+        }
+        if maskCI.extent != editedCI.extent {
+            maskCI = maskCI.transformed(by: CGAffineTransform(
+                scaleX: editedCI.extent.width / max(1, maskCI.extent.width),
+                y: editedCI.extent.height / max(1, maskCI.extent.height)
+            ))
+        }
+        let blur = CIFilter.gaussianBlur()
+        blur.inputImage = maskCI.clampedToExtent()
+        blur.radius = Float(max(3, min(editedCI.extent.width, editedCI.extent.height) * 0.012))
+        let mask = (blur.outputImage ?? maskCI).cropped(to: editedCI.extent)
+        let blend = CIFilter.blendWithMask()
+        blend.inputImage = baselineCI.cropped(to: editedCI.extent)
+        blend.backgroundImage = editedCI
+        blend.maskImage = mask
+        guard let output = blend.outputImage?.cropped(to: editedCI.extent),
+              let cg = ColorManagement.renderCGImage(
+                from: output,
+                context: ColorManagement.makeContext(for: .appPreview),
+                purpose: .appPreview
+              )
+        else { return edited }
+        return UIImage(cgImage: cg, scale: edited.scale, orientation: .up)
     }
 
     /// PLAIN nøytral RAW-develop (bar CIRAWFilter, sRGB) — for «Min stil»-banen.

@@ -76,8 +76,54 @@ final class RedigeringRawPipelineTests: XCTestCase {
             colorPurpose: .appPreview
         )
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        try before.write(to: documents.appendingPathComponent("CreatorHub-R5-before.jpg"), options: .atomic)
-        try retouched.write(to: documents.appendingPathComponent("CreatorHub-R5-after.jpg"), options: .atomic)
+        let beforeURL = documents.appendingPathComponent("CreatorHub-R5-before.jpg")
+        let afterURL = documents.appendingPathComponent("CreatorHub-R5-after.jpg")
+        try before.write(to: beforeURL, options: .atomic)
+        try retouched.write(to: afterURL, options: .atomic)
+
+        // This real R5 frame is an intentionally difficult trust case: harsh
+        // backlight and a reflective bridal outfit. The edit may compress the
+        // shoulder, but it must never create additional clipping, and any
+        // remaining loss of subject detail must stay visible as a delivery
+        // blocker rather than being silently presented as "professionally
+        // recovered".
+        let beforeAnalysis = try XCTUnwrap(AssetAnalyzer.run(imageURL: beforeURL))
+        let afterAnalysis = try XCTUnwrap(AssetAnalyzer.run(imageURL: afterURL))
+        XCTAssertLessThanOrEqual(
+            afterAnalysis.highlightClip,
+            beforeAnalysis.highlightClip + 0.002,
+            "Portrettfinishen skapte flere utbrente høylys på den ekte R5-filen"
+        )
+
+        let sourceSubjectClip = try XCTUnwrap(
+            beforeAnalysis.subjectHighlightClip,
+            "Vision må finne personen slik at kjolen kan kvalitetssikres"
+        )
+        XCTAssertGreaterThan(
+            sourceSubjectClip,
+            QualityCheckService.subjectClipThreshold,
+            "Kameraoriginalen skal representere et ekte motiv-klipp-problem"
+        )
+        XCTAssertTrue(
+            QualityCheckService.evaluate(beforeAnalysis).contains(.subjectClipped),
+            "Kvalitetssjekken lot den utbrente brudekjolen i originalopptaket passere"
+        )
+        if let editedSubjectClip = afterAnalysis.subjectHighlightClip {
+            XCTAssertLessThanOrEqual(
+                editedSubjectClip,
+                sourceSubjectClip + 0.002,
+                "Portrettfinishen skapte mer klipping inne i motivmasken"
+            )
+        }
+
+        let beforeCG = try XCTUnwrap(UIImage(data: before)?.cgImage)
+        let afterCG = try XCTUnwrap(UIImage(data: retouched)?.cgImage)
+        let validation = try EditValidationEngine.measure(before: beforeCG, after: afterCG)
+        XCTAssertLessThanOrEqual(
+            validation.highlightClipDelta,
+            0.002,
+            "Før/etter-kontrollen målte ny klipping fra retusjen"
+        )
     }
 
     private func rawData() throws -> Data {

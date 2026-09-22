@@ -267,6 +267,23 @@ struct LiveCaptureView: View {
             // has assets to render. Used to capture screenshots without
             // driving the simulator through manual taps.
             #if DEBUG
+            // Fysisk QA av fokusassistenten mot den genererte familierammen som
+            // ligger i appens Documents-katalog. Samme fil brukes av enhetstesten.
+            let assistantDemo = ProcessInfo.processInfo.arguments.contains("--demo-technical-assistant")
+                || ProcessInfo.processInfo.arguments.contains("--demo-technical-assistant-no-hud")
+                || ProcessInfo.processInfo.arguments.contains("--demo-eye-focus")
+            if assistantDemo,
+               model.phase == .disconnected, !model.isConnecting {
+                if ProcessInfo.processInfo.arguments.contains("--demo-technical-assistant-no-hud")
+                    || ProcessInfo.processInfo.arguments.contains("--demo-eye-focus") {
+                    model.showHUD = false
+                }
+                await model.connect(to: LiveCaptureModel.demoBaseURL)
+                try? await Task.sleep(for: .milliseconds(1600))
+                await model.seedTechnicalAssistantDemo(
+                    eyeFocusOnly: ProcessInfo.processInfo.arguments.contains("--demo-eye-focus")
+                )
+            }
             // `--demo-persons` — koble til demo-modus (så capture-UI-en m/ filmstrip
             // vises) og seed EKTE bryllups-JPG-er → E8 person-gruppering kjører mot
             // virkelige ansikter og «Personer»-raden fylles (for skjermbilder).
@@ -475,6 +492,11 @@ struct LiveCaptureView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                             .allowsHitTesting(false)
                     }
+                    if let message = model.technicalOutcomeMessage {
+                        TechnicalOutcomeBanner(message: message)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .allowsHitTesting(false)
+                    }
                     if let err = model.errorMessage, model.phase == .connected {
                         ErrorToast(message: err) { model.errorMessage = nil }
                             .transition(.move(edge: .top).combined(with: .opacity))
@@ -525,6 +547,11 @@ struct LiveCaptureView: View {
                     recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
                     analysis: model.showHUD ? model.focusedAnalysis : nil,
                     faceAnalysis: model.showHUD ? model.focusedAssetAnalysis : nil,
+                    focusAssessments: focusAssessmentsForDisplay,
+                    eyeFocusAssessments: eyeFocusAssessmentsForDisplay,
+                    technicalAdvice: model.technicalAdvice,
+                    technicalAdviceStatus: model.technicalAdviceStatus,
+                    isApplyingTechnicalAdvice: model.isApplyingTechnicalAdvice,
                     aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
                     aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
                     showMagic: model.showMagic,
@@ -577,6 +604,11 @@ struct LiveCaptureView: View {
                         guard let id = model.focusedAsset?.id else { return }
                         model.dismissNotes(assetId: id)
                     },
+                    onAcceptTechnicalAdvice: { model.acceptTechnicalAdvice() },
+                    onApplyTechnicalAdvice: {
+                        Task { await model.applyTechnicalAdviceToCamera() }
+                    },
+                    onDismissTechnicalAdvice: { model.dismissTechnicalAdvice() },
                     onRetryCloudBackup: {
                         guard let id = model.focusedAsset?.id else { return }
                         Task { await model.retryPhotoBackup(assetId: id) }
@@ -592,6 +624,28 @@ struct LiveCaptureView: View {
             ShutterFlashOverlay(trigger: model.shutterFlashToken)
                 .allowsHitTesting(false)
         }
+    }
+
+    /// The full focus map follows the HUD preference, while a technical
+    /// assistant finding remains anchored to the affected subject even when
+    /// the photographer has hidden histogram/zebra overlays.
+    private var focusAssessmentsForDisplay: [FaceFocusAssessment] {
+        guard let analysis = model.focusedAssetAnalysis else { return [] }
+        if model.showHUD { return analysis.faceFocusAssessments }
+        guard let advice = model.technicalAdvice,
+              advice.assetId == model.focusedAssetId else { return [] }
+        if advice.issue == .eyeFocus { return [] }
+        return advice.focusTargets(in: analysis)
+    }
+
+    /// Eye focus is intentionally independent of the pro HUD. It is only
+    /// shown for a concrete eye-focus diagnosis, avoiding a sea of green eye
+    /// dots while keeping a missed critical eye impossible to overlook.
+    private var eyeFocusAssessmentsForDisplay: [EyeFocusAssessment] {
+        guard let analysis = model.focusedAssetAnalysis,
+              let advice = model.technicalAdvice,
+              advice.assetId == model.focusedAssetId else { return [] }
+        return advice.eyeTargets(in: analysis)
     }
 
     private var landscapeCaptureRail: some View {
@@ -1714,6 +1768,11 @@ private struct HeroStage: View {
     let recipeSource: LiveCaptureModel.RecipeSource
     let analysis: ImageAnalysis?
     let faceAnalysis: AssetAnalysis?
+    let focusAssessments: [FaceFocusAssessment]
+    let eyeFocusAssessments: [EyeFocusAssessment]
+    let technicalAdvice: CaptureTechnicalAdvice?
+    let technicalAdviceStatus: String?
+    let isApplyingTechnicalAdvice: Bool
     let aiAnalysis: BackendPhotoAnalysis?
     let aiNotesDismissed: Bool
     let showMagic: Bool
@@ -1733,13 +1792,21 @@ private struct HeroStage: View {
     let onTranscribeVoiceMemo: () -> Void
     let voiceMemoTranscript: String?
     let onDismissNotes: () -> Void
+    let onAcceptTechnicalAdvice: () -> Void
+    let onApplyTechnicalAdvice: () -> Void
+    let onDismissTechnicalAdvice: () -> Void
     let onRetryCloudBackup: () -> Void
 
     var body: some View {
         Group {
             if let asset {
                 VStack(spacing: 12) {
-                    HeroImage(asset: asset, preferMagic: showMagic)
+                    HeroImage(
+                        asset: asset,
+                        preferMagic: showMagic,
+                        faceFocus: focusAssessments,
+                        eyeFocus: eyeFocusAssessments
+                    )
                         .onTapGesture { onTap(asset) }
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
@@ -1758,6 +1825,19 @@ private struct HeroStage: View {
                                     .allowsHitTesting(false)
                             }
                         }
+
+                    if let technicalAdvice, technicalAdvice.assetId == asset.id {
+                        CreatorHubAssistantCard(
+                            advice: technicalAdvice,
+                            status: technicalAdviceStatus,
+                            isApplying: isApplyingTechnicalAdvice,
+                            onAccept: onAcceptTechnicalAdvice,
+                            onApply: onApplyTechnicalAdvice,
+                            onDismiss: onDismissTechnicalAdvice
+                        )
+                        .padding(.horizontal, 24)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
 
                     // Recipe chips — show exactly what Magic is doing so
                     // the photographer can tune deliberately rather than
@@ -1882,6 +1962,8 @@ private struct HeroStage: View {
 private struct HeroImage: View {
     let asset: Asset
     var preferMagic: Bool = true
+    var faceFocus: [FaceFocusAssessment] = []
+    var eyeFocus: [EyeFocusAssessment] = []
 
     @State private var loupePoint: CGPoint?
     /// **Phase 5.4** — When the server-AI-enhanced version has been
@@ -1992,6 +2074,18 @@ private struct HeroImage: View {
                 }
             }
             }
+            if !faceFocus.isEmpty,
+               let previewKey = asset.previewKey,
+               let preview = UIImage(contentsOfFile: previewKey) {
+                LiveFaceFocusOverlay(imageSize: preview.size, assessments: faceFocus)
+                    .allowsHitTesting(false)
+            }
+            if !eyeFocus.isEmpty,
+               let previewKey = asset.previewKey,
+               let preview = UIImage(contentsOfFile: previewKey) {
+                LiveEyeFocusOverlay(imageSize: preview.size, assessments: eyeFocus)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -2018,6 +2112,259 @@ private struct HeroImage: View {
         }
         .buttonStyle(.plain)
         .padding(8)
+    }
+}
+
+/// Live focus map uses the persisted, on-device face measurements. Assistant
+/// findings stay visible on the affected subject even with the optional HUD
+/// disabled; the HUD only controls the additional sharp-person annotations.
+private struct LiveFaceFocusOverlay: View {
+    let imageSize: CGSize
+    let assessments: [FaceFocusAssessment]
+
+    var body: some View {
+        GeometryReader { geo in
+            let imageRect = fittedRect(in: geo.size)
+            ForEach(assessments) { assessment in
+                let rect = focusRegion(assessment.rect, imageRect: imageRect)
+                OnSubjectFocusIndicator(assessment: assessment)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Fokus per person")
+    }
+
+    private func fittedRect(in container: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return CGRect(origin: .zero, size: container)
+        }
+        let scale = min(container.width / imageSize.width, container.height / imageSize.height)
+        let fitted = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: (container.width - fitted.width) / 2,
+            y: (container.height - fitted.height) / 2,
+            width: fitted.width,
+            height: fitted.height
+        )
+    }
+
+    private func displayRect(_ visionRect: CGRect, imageRect: CGRect) -> CGRect {
+        CGRect(
+            x: imageRect.minX + visionRect.minX * imageRect.width,
+            y: imageRect.minY + (1 - visionRect.maxY) * imageRect.height,
+            width: visionRect.width * imageRect.width,
+            height: visionRect.height * imageRect.height
+        )
+    }
+
+    private func focusRegion(_ visionRect: CGRect, imageRect: CGRect) -> CGRect {
+        let face = displayRect(visionRect, imageRect: imageRect)
+        let expanded = face.insetBy(dx: -face.width * 0.14, dy: -face.height * 0.18)
+        return expanded.intersection(imageRect)
+    }
+}
+
+/// A post-capture focus annotation drawn *on* the measured subject. The
+/// translucent wash identifies the evaluated pixels, corner brackets bind the
+/// result to the face, and the centre reticle shows the precise focus target.
+/// It is deliberately non-interactive so it cannot be mistaken for touch AF.
+private struct OnSubjectFocusIndicator: View {
+    let assessment: FaceFocusAssessment
+
+    private var color: Color {
+        switch assessment.state {
+        case .sharp: return Color.captureSuccess
+        case .soft: return CHTheme.danger
+        case .unmeasured: return Color.captureTextMuted
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(color.opacity(assessment.state == .soft ? 0.14 : 0.035))
+
+            FocusCornerShape()
+                .stroke(
+                    color,
+                    style: StrokeStyle(
+                        lineWidth: assessment.state == .soft ? 4 : 2.5,
+                        lineCap: .round,
+                        lineJoin: .round,
+                        dash: assessment.state == .unmeasured ? [6, 5] : []
+                    )
+                )
+
+            if assessment.state == .soft {
+                ZStack {
+                    Circle()
+                        .stroke(color.opacity(0.95), lineWidth: 2)
+                        .frame(width: 28, height: 28)
+                    Circle()
+                        .fill(color)
+                        .frame(width: 6, height: 6)
+                }
+                .shadow(color: .black.opacity(0.6), radius: 2)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            Label(
+                "Person \(assessment.personNumber) · \(assessment.state.label)",
+                systemImage: assessment.state == .soft
+                    ? "exclamationmark.triangle.fill"
+                    : "checkmark.circle.fill"
+            )
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.96), in: Capsule())
+            .fixedSize()
+            .padding(5)
+        }
+        .shadow(color: color.opacity(0.35), radius: assessment.state == .soft ? 5 : 2)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Person \(assessment.personNumber), \(assessment.state.label.lowercased())")
+    }
+}
+
+/// Four open corners preserve visibility of the actual subject better than a
+/// closed bounding box while still making the analysed region unambiguous.
+private struct FocusCornerShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let corner = min(rect.width, rect.height) * 0.24
+        var path = Path()
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + corner))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + corner, y: rect.minY))
+
+        path.move(to: CGPoint(x: rect.maxX - corner, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + corner))
+
+        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - corner))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX - corner, y: rect.maxY))
+
+        path.move(to: CGPoint(x: rect.minX + corner, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - corner))
+
+        return path
+    }
+}
+
+/// Eye-level annotation. Vision landmarks define the measured pixels, so the
+/// red reticle sits on the actual eye rather than on a generic face box.
+private struct LiveEyeFocusOverlay: View {
+    let imageSize: CGSize
+    let assessments: [EyeFocusAssessment]
+
+    private var firstTargetByPerson: [Int: String] {
+        Dictionary(grouping: assessments, by: \.personNumber)
+            .compactMapValues { $0.first?.id }
+    }
+
+    private var targetCountByPerson: [Int: Int] {
+        Dictionary(grouping: assessments, by: \.personNumber)
+            .mapValues(\.count)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let imageRect = fittedRect(in: geo.size)
+            let firstTargets = firstTargetByPerson
+            let targetCounts = targetCountByPerson
+            ForEach(assessments) { assessment in
+                if let visionRect = assessment.rect {
+                    let rect = focusRegion(visionRect, imageRect: imageRect)
+                    EyeFocusIndicator(
+                        assessment: assessment,
+                        showLabel: firstTargets[assessment.personNumber] == assessment.id,
+                        personTargetCount: targetCounts[assessment.personNumber] ?? 1
+                    )
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Kritisk øyefokus")
+    }
+
+    private func fittedRect(in container: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return CGRect(origin: .zero, size: container)
+        }
+        let scale = min(container.width / imageSize.width, container.height / imageSize.height)
+        let fitted = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: (container.width - fitted.width) / 2,
+            y: (container.height - fitted.height) / 2,
+            width: fitted.width,
+            height: fitted.height
+        )
+    }
+
+    private func focusRegion(_ visionRect: CGRect, imageRect: CGRect) -> CGRect {
+        let eye = CGRect(
+            x: imageRect.minX + visionRect.minX * imageRect.width,
+            y: imageRect.minY + (1 - visionRect.maxY) * imageRect.height,
+            width: visionRect.width * imageRect.width,
+            height: visionRect.height * imageRect.height
+        )
+        let width = max(34, eye.width * 1.45)
+        let height = max(28, eye.height * 1.8)
+        return CGRect(
+            x: eye.midX - width / 2,
+            y: eye.midY - height / 2,
+            width: width,
+            height: height
+        ).intersection(imageRect)
+    }
+}
+
+private struct EyeFocusIndicator: View {
+    let assessment: EyeFocusAssessment
+    let showLabel: Bool
+    let personTargetCount: Int
+
+    var body: some View {
+        ZStack {
+            Ellipse()
+                .fill(CHTheme.danger.opacity(0.16))
+            Ellipse()
+                .stroke(CHTheme.danger, lineWidth: 3)
+            Rectangle()
+                .fill(CHTheme.danger)
+                .frame(width: 8, height: 2)
+            Rectangle()
+                .fill(CHTheme.danger)
+                .frame(width: 2, height: 8)
+        }
+        .overlay(alignment: .top) {
+            if showLabel {
+                Label(
+                    "Person \(assessment.personNumber) · \(personTargetCount > 1 ? "øynene er myke" : "øyet er mykt")",
+                    systemImage: "eye.fill"
+                )
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(CHTheme.danger.opacity(0.97), in: Capsule())
+                    .fixedSize()
+                    .offset(y: -27)
+            }
+        }
+        .shadow(color: CHTheme.danger.opacity(0.45), radius: 4)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Person \(assessment.personNumber), øyet er ute av fokus")
     }
 }
 
@@ -3424,10 +3771,8 @@ private struct HUDOverlay: View {
     private var faceWarnings: [CaptureWarning] {
         guard let a = faceAnalysis else { return [] }
         var out: [CaptureWarning] = []
-        if let face = a.primaryFace {
-            if face.isSoft(globalSharpness: a.globalSharpness) { out.append(.faceSoft) }
-            if face.eyesOpen == false { out.append(.eyesClosed) }
-        }
+        if a.faceFocusAssessments.contains(where: { $0.state == .soft }) { out.append(.faceSoft) }
+        if a.faces.contains(where: { $0.eyesOpen == false }) { out.append(.eyesClosed) }
         if let sub = a.subjectHighlightClip, sub > 0.02 { out.append(.subjectClipped) }
         return out
     }
@@ -3471,6 +3816,131 @@ private struct CaptureWarningChip: View {
         .padding(.vertical, 5)
         .background(Color.orange.opacity(0.9), in: Capsule())
         .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 0.5))
+    }
+}
+
+/// Et lite, ikke-blokkerende teknisk råd under bildet. Det foreslår først den
+/// minst inngripende løsningen (plassering/fokus), og viser eksponeringstiltak
+/// separat slik at fotografen beholder den kreative kontrollen.
+private struct CreatorHubAssistantCard: View {
+    let advice: CaptureTechnicalAdvice
+    let status: String?
+    let isApplying: Bool
+    let onAccept: () -> Void
+    let onApply: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(Color.captureAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.captureAccent.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 7) {
+                        Text("CreatorHub Assistant")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.captureAccent)
+                        Text("\(Int((advice.confidence * 100).rounded())) % sikker")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(Color.captureTextMuted)
+                    }
+                    Text(advice.title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+                Spacer(minLength: 8)
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.captureTextSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Skjul teknisk råd")
+            }
+
+            Text(advice.primaryTip)
+                .font(.subheadline)
+                .foregroundStyle(Color.captureTextSecondary)
+
+            if let settings = advice.settingsTip {
+                Label(settings, systemImage: "camera.aperture")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.captureDeepBG.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            if let status {
+                Label(status, systemImage: status.lowercased().contains("kunne ikke")
+                      ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(status.lowercased().contains("kunne ikke") ? .orange : .green)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { actionButtons }
+                VStack(alignment: .leading, spacing: 8) { actionButtons }
+            }
+        }
+        .padding(14)
+        .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.captureAccent.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button(action: onAccept) {
+            Label("Jeg prøver tipset", systemImage: "camera.fill")
+                .font(.caption.weight(.semibold))
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Color.captureAccent)
+
+        if let aperture = advice.recommendedAperture {
+            Button(action: onApply) {
+                if isApplying {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label("Bruk ƒ/\(formatAperture(aperture))", systemImage: "dial.medium")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isApplying)
+            .help("Endrer bare blenderen etter at kameraet har bekreftet at verdien støttes")
+        }
+    }
+
+    private func formatAperture(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+}
+
+private struct TechnicalOutcomeBanner: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Color.captureSuccess)
+            Text(message)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color.captureSurface.opacity(0.96), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.captureSuccess.opacity(0.45), lineWidth: 1))
     }
 }
 
@@ -5997,17 +6467,37 @@ final class LiveCaptureModel {
             // da hoppes alle de tunge hookene (5× O(N) → 1× O(N)). Portene speiler
             // hver hooks NØYAKTIGE trigger (verifisert mot hook-koden), så oppførsel
             // er uendret — dette dropper kun arbeid som uansett ville funnet ingenting.
-            var previewGained = false, fullGained = false, rawGained = false, flagGained = false
+            var previewGained = false, fullGained = false, rawGained = false
+            var enhancedGained = false, flagGained = false
             let prev = Dictionary(uniqueKeysWithValues: oldValue.map {
                 ($0.id, (hasPreview: $0.previewKey != nil, hasFull: $0.fullKey != nil,
                          hasRaw: $0.rawKey != nil,
+                         enhancedRevision: Self.editValidationAfterPath(for: $0),
                          flagged: $0.flaggedForClient))
             })
             for a in assets {
-                guard let p = prev[a.id] else { previewGained = true; continue }  // ny id
+                guard let p = prev[a.id] else {
+                    if a.previewKey != nil { previewGained = true }
+                    if Self.editValidationAfterPath(for: a) != nil { enhancedGained = true }
+                    continue
+                }
                 if a.previewKey != nil, !p.hasPreview { previewGained = true }
                 if a.fullKey != nil, !p.hasFull { fullGained = true }
                 if a.rawKey != nil, !p.hasRaw { rawGained = true }
+                if Self.editValidationAfterPath(for: a) != p.enhancedRevision { enhancedGained = true }
+                // Magic/Redigering deliberately overwrites a stable per-asset
+                // output path. A path-only comparison therefore misses a new
+                // render. The persisted size/mtime revision makes every actual
+                // result eligible for a fresh registered pixel-QC pass.
+                if let beforePath = a.previewKey,
+                   let afterPath = Self.editValidationAfterPath(for: a),
+                   let revision = EditValidationRevision.make(
+                       beforePath: beforePath,
+                       afterPath: afterPath
+                   ),
+                   a.signals.editValidation?.sourceRevision != revision {
+                    enhancedGained = true
+                }
                 if a.flaggedForClient, !p.flagged { flagGained = true }
             }
             if previewGained {
@@ -6018,6 +6508,9 @@ final class LiveCaptureModel {
                 scheduleAIAnalyses(after: oldValue)
                 applyCaptureEditPolicyForNewPreviews(previous: oldValue)
                 scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
+            }
+            if previewGained || enhancedGained {
+                scheduleEditValidationForReadyAssets()
             }
             if flagGained {
                 // Phase 2C: hent RAW for NY-flaggede picks (togglePick + batch
@@ -6174,6 +6667,8 @@ final class LiveCaptureModel {
         else {
             focusedAnalysis = nil
             focusedAssetAnalysis = nil
+            technicalAdvice = nil
+            technicalAdviceStatus = nil
             return
         }
         let url = URL(fileURLWithPath: key)
@@ -6190,8 +6685,128 @@ final class LiveCaptureModel {
                 self?.focusedAnalysis = result
                 self?.focusedAssetAnalysis = assetResult
             }
-            if let assetResult { await self?.persistAnalysis(assetResult, for: asset.id) }
+            if let assetResult {
+                await self?.persistAnalysis(assetResult, for: asset.id)
+                await self?.refreshTechnicalAdvice(for: asset, analysis: assetResult)
+            }
         }
+    }
+
+    private func refreshTechnicalAdvice(for asset: Asset, analysis: AssetAnalysis) async {
+        guard focusedAssetId == asset.id,
+              !dismissedTechnicalAdviceAssets.contains(asset.id)
+        else {
+            if focusedAssetId == asset.id { technicalAdvice = nil }
+            return
+        }
+
+        let path = asset.previewKey
+        let exif = await Task.detached(priority: .utility) {
+            ExifInfo.read(fromPath: path)
+        }.value
+        let exposure = CaptureExposureSnapshot(exif: exif, telemetry: telemetry)
+        guard let baselineAdvice = technicalAdvisor.advice(
+            assetId: asset.id,
+            analysis: analysis,
+            exposure: exposure
+        ) else {
+            technicalAdvice = nil
+            technicalAdviceStatus = nil
+            return
+        }
+        let prior = await technicalLearningStore.learningPrior(
+            camera: exposure.camera,
+            lens: exposure.lens,
+            issue: baselineAdvice.issue
+        )
+        guard focusedAssetId == asset.id else { return }
+        technicalAdvice = technicalAdvisor.advice(
+            assetId: asset.id,
+            analysis: analysis,
+            exposure: exposure,
+            learning: prior
+        )
+        technicalAdviceStatus = nil
+        isApplyingTechnicalAdvice = false
+    }
+
+    func acceptTechnicalAdvice() {
+        guard let advice = technicalAdvice,
+              let asset = assets.first(where: { $0.id == advice.assetId }),
+              let analysis = asset.signals.analysis ?? focusedAssetAnalysis
+        else { return }
+        Task {
+            await technicalLearningStore.beginTrial(
+                advice: advice,
+                action: .retryingAdvice,
+                sourceCaptureTime: asset.captureTime,
+                analysis: analysis
+            )
+        }
+        technicalAdviceStatus = "Klart — neste bilde sammenlignes lokalt med dette."
+    }
+
+    func dismissTechnicalAdvice() {
+        guard let assetId = technicalAdvice?.assetId else { return }
+        dismissedTechnicalAdviceAssets.insert(assetId)
+        Task { await technicalLearningStore.cancelPendingTrial(sourceAssetId: assetId) }
+        technicalAdvice = nil
+        technicalAdviceStatus = nil
+    }
+
+    /// Bruker kun en verdi kameraet selv annonserer, og CCAPIClient leser den
+    /// tilbake etter PUT. Lukker/ISO endres aldri skjult; kortet viser i stedet
+    /// hva fotografen bør kontrollere for å bevare eksponering og bevegelsesfrys.
+    func applyTechnicalAdviceToCamera() async {
+        guard let advice = technicalAdvice,
+              let target = advice.recommendedAperture,
+              let client,
+              let asset = assets.first(where: { $0.id == advice.assetId }),
+              let analysis = asset.signals.analysis ?? focusedAssetAnalysis
+        else {
+            technicalAdviceStatus = "Kunne ikke bruke rådet: kameraet er ikke tilkoblet."
+            return
+        }
+
+        isApplyingTechnicalAdvice = true
+        technicalAdviceStatus = nil
+        defer { isApplyingTechnicalAdvice = false }
+        do {
+            let settings = try await client.videoShootingSettings()
+            guard let aperture = settings[.av],
+                  let supported = Self.closestAdvertisedAperture(to: target, choices: aperture.ability)
+            else {
+                technicalAdviceStatus = "Kunne ikke bruke rådet: blenderstyring er ikke tilgjengelig i denne kameramodusen."
+                return
+            }
+            let confirmed = try await client.updateVideoShootingSetting(.av, value: supported)
+            telemetry.apertureValue = confirmed.value
+            await technicalLearningStore.beginTrial(
+                advice: advice,
+                action: .appliedAperture,
+                sourceCaptureTime: asset.captureTime,
+                analysis: analysis
+            )
+            technicalAdviceStatus = "Blender \(confirmed.value) er bekreftet av kameraet. Neste bilde måler resultatet."
+        } catch {
+            technicalAdviceStatus = "Kunne ikke bruke rådet: \(error.localizedDescription)"
+        }
+    }
+
+    private static func closestAdvertisedAperture(to target: Double, choices: [String]) -> String? {
+        let parsed = choices.compactMap { raw -> (raw: String, value: Double)? in
+            let normalized = raw.lowercased()
+                .replacingOccurrences(of: "f/", with: "")
+                .replacingOccurrences(of: "f", with: "")
+                .replacingOccurrences(of: ",", with: ".")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let value = Double(normalized) else { return nil }
+            return (raw, value)
+        }
+        guard let nearest = parsed.min(by: { abs($0.value - target) < abs($1.value - target) }),
+              abs(nearest.value - target) <= 0.8
+        else { return nil }
+        return nearest.raw
     }
 
     /// Persister den samlede analysen inline på asset-radens signals (JSONB) —
@@ -6217,7 +6832,18 @@ final class LiveCaptureModel {
             let id = asset.id
             Task { [weak self] in
                 let url = URL(fileURLWithPath: key)
-                guard let measured = await analyzer.analyze(imageURL: url) else { return }
+                var measured: AssetAnalysis?
+                for attempt in 1...3 where !Task.isCancelled {
+                    measured = await analyzer.analyze(imageURL: url)
+                    if measured != nil { break }
+                    if attempt < 3 { try? await Task.sleep(for: .seconds(Double(attempt))) }
+                }
+                guard let measured else {
+                    // A transient decode/memory failure must remain eligible on
+                    // the next asset-stream emission or reconnect.
+                    self?.onDeviceAnalysisDispatched.remove(id)
+                    return
+                }
                 await self?.persistAnalysis(measured, for: id)
                 // E8: ansikts-gruppering — feature-print for de STØRSTE ansiktene
                 // (hopp over bittesmå bakgrunnsansikter; tak 5 for å holde kostnad
@@ -6233,8 +6859,132 @@ final class LiveCaptureModel {
         }
     }
 
+    private static func editValidationAfterPath(for asset: Asset) -> String? {
+        // Validate the version the photographer sees first. Local Magic is the
+        // immediate result; a later RAW retune overwrites the same enhancedKey
+        // and changes its revision, automatically scheduling a fresh pass.
+        asset.enhancedKey ?? asset.serverEnhancedKey ?? asset.autoCleanedKey
+    }
+
+    /// Resume or start persistent edit-QC for every source/result pair. The
+    /// task map prevents duplicate work during GRDB re-emissions; the revision
+    /// prevents stale metrics after a recipe re-render.
+    private func scheduleEditValidationForReadyAssets() {
+        guard !isTearingDown, store != nil else { return }
+        for asset in assets {
+            guard let beforePath = asset.previewKey,
+                  let afterPath = Self.editValidationAfterPath(for: asset),
+                  beforePath != afterPath,
+                  FileManager.default.fileExists(atPath: beforePath),
+                  FileManager.default.fileExists(atPath: afterPath),
+                  let revision = EditValidationRevision.make(
+                    beforePath: beforePath,
+                    afterPath: afterPath
+                  )
+            else { continue }
+            guard EditValidationPlanner.shouldSchedule(
+                existing: asset.signals.editValidation,
+                revision: revision,
+                taskRunning: editValidationTasks[asset.id] != nil
+            ) else { continue }
+            let startingAttempts = asset.signals.editValidation?.sourceRevision == revision
+                ? (asset.signals.editValidation?.attempts ?? 0)
+                : 0
+            let id = asset.id
+            editValidationTasks[id] = Task { [weak self] in
+                guard let self else { return }
+                await self.runEditValidation(
+                    assetId: id,
+                    beforePath: beforePath,
+                    afterPath: afterPath,
+                    revision: revision,
+                    startingAttempts: startingAttempts
+                )
+                self.editValidationTasks.removeValue(forKey: id)
+                // The renderer may have replaced the same output path while
+                // this pass was running. Re-evaluate after releasing the task
+                // slot so the newest file revision cannot be missed.
+                self.scheduleEditValidationForReadyAssets()
+            }
+        }
+    }
+
+    private func runEditValidation(
+        assetId: UUID,
+        beforePath: String,
+        afterPath: String,
+        revision: String,
+        startingAttempts: Int
+    ) async {
+        for localAttempt in 1...3 where !Task.isCancelled {
+            let attempt = startingAttempts + localAttempt
+            await persistEditValidation(
+                assetId: assetId,
+                validation: EditValidation(
+                    state: .running,
+                    attempts: attempt,
+                    sourceRevision: revision,
+                    metrics: nil,
+                    lastError: nil,
+                    updatedAt: .now
+                )
+            )
+            do {
+                let metrics = try await editValidationService.validate(
+                    beforeURL: URL(fileURLWithPath: beforePath),
+                    afterURL: URL(fileURLWithPath: afterPath)
+                )
+                guard !Task.isCancelled,
+                      EditValidationRevision.make(beforePath: beforePath, afterPath: afterPath) == revision
+                else { return }
+                await persistEditValidation(
+                    assetId: assetId,
+                    validation: EditValidation(
+                        state: .completed,
+                        attempts: attempt,
+                        sourceRevision: revision,
+                        metrics: metrics,
+                        lastError: nil,
+                        updatedAt: .now
+                    )
+                )
+                return
+            } catch {
+                let final = localAttempt == 3
+                await persistEditValidation(
+                    assetId: assetId,
+                    validation: EditValidation(
+                        state: final ? .failed : .pending,
+                        attempts: attempt,
+                        sourceRevision: revision,
+                        metrics: nil,
+                        lastError: error.localizedDescription,
+                        updatedAt: .now
+                    )
+                )
+                if !final {
+                    try? await Task.sleep(for: .seconds(pow(2, Double(localAttempt - 1))))
+                }
+            }
+        }
+    }
+
+    private func persistEditValidation(assetId: UUID, validation: EditValidation) async {
+        if let index = assets.firstIndex(where: { $0.id == assetId }) {
+            assets[index].signals.editValidation = validation
+        }
+        try? await store?.updateEditValidation(id: assetId, validation: validation)
+    }
+
     func persistAnalysis(_ analysis: AssetAnalysis, for id: UUID) async {
         guard let idx = assets.firstIndex(where: { $0.id == id }) else { return }
+        if let outcome = await technicalLearningStore.completeTrialIfNeeded(
+            resultAssetId: id,
+            captureTime: assets[idx].captureTime,
+            analysis: analysis
+        ) {
+            showTechnicalOutcome(outcome)
+        }
         var signals = assets[idx].signals
         guard signals.analysis != analysis else { return }
         signals.analysis = analysis
@@ -6244,7 +6994,12 @@ final class LiveCaptureModel {
         }
         signals.faceCount = analysis.faces.count
         assets[idx].signals = signals
-        try? await store?.updateAssetSignals(id: id, signals: signals)
+        try? await store?.updateAssetAnalysis(
+            id: id,
+            analysis: analysis,
+            eyesOpen: analysis.primaryFace?.eyesOpen,
+            faceCount: analysis.faces.count
+        )
 
         // Nesten-duplikat-deteksjon (E7 v2): sammenlign dHash med opptaket rett før
         // OG rett etter i tid (etterfølgeren backfilles hvis dens analyse landet
@@ -6253,6 +7008,26 @@ final class LiveCaptureModel {
         if let p = ordered.firstIndex(where: { $0.id == id }) {
             if p > 0 { await markDuplicateIfNeeded(curId: id, prevId: ordered[p - 1].id) }
             if p + 1 < ordered.count { await markDuplicateIfNeeded(curId: ordered[p + 1].id, prevId: id) }
+        }
+
+    }
+
+    private func showTechnicalOutcome(_ outcome: CaptureTechnicalOutcome) {
+        switch outcome.result {
+        case .improved:
+            technicalOutcomeMessage = "Nytt bilde er skarpere — det tekniske rådet fungerte."
+        case .unchanged:
+            technicalOutcomeMessage = "Nytt bilde er kontrollert — fokusresultatet er omtrent uendret."
+        case .worse:
+            technicalOutcomeMessage = "Nytt bilde ble ikke skarpere — prøv å samle gruppen i samme fokusplan."
+        case .incomparable:
+            return
+        }
+        technicalOutcomeMessageTask?.cancel()
+        technicalOutcomeMessageTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.technicalOutcomeMessage = nil
         }
     }
 
@@ -6319,6 +7094,73 @@ final class LiveCaptureModel {
     }
 
     #if DEBUG
+    /// Fysisk/screenshot-QA av Vision→rådgiver→kort-kjeden. På fysisk iPad går
+    /// bildefila gjennom den ekte produksjonsanalysen. Simulatorens Vision-
+    /// runtime finner kjent nok ikke ansiktene i samme fil, så kun simulator-
+    /// bygget får et fast måleresultat for visuell layout-QA av assistentkortet.
+    func seedTechnicalAssistantDemo(eyeFocusOnly: Bool = false) async {
+        let url = URL.documentsDirectory.appendingPathComponent("CreatorHubFamilyFocusQA-v2.png")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let now = Date()
+        let asset = Asset(
+            id: UUID(), sessionId: currentSessionId ?? UUID(),
+            originalFilename: url.lastPathComponent, captureTime: now,
+            previewKey: url.path, fullKey: nil, rawKey: nil, enhancedKey: nil,
+            voiceMemoKey: nil, serverEnhancedKey: nil, autoCleanedKey: nil,
+            autoCleanedDetectionCount: nil, pendingDetections: nil,
+            checksumSha256: nil, mime: "image/png", sizeBytes: nil,
+            state: .previewReady, signals: .empty, rating: 0, colorLabel: nil,
+            flaggedForClient: false, rejected: false,
+            createdAt: now, updatedAt: now
+        )
+        #if targetEnvironment(simulator)
+        // Hindre det kjente 0-ansikts-resultatet i simulatoren fra å overskrive
+        // layout-fixturen. Dette finnes ikke i device-/Release-binæret.
+        onDeviceAnalysisDispatched.insert(asset.id)
+        #endif
+        assets.append(asset)
+        #if targetEnvironment(simulator)
+        // `.onChange` starter samtidig den vanlige HUD-analysen. La dens kjente
+        // 0-ansiktsresultat lande før layout-fixturen legges på til slutt.
+        try? await Task.sleep(for: .milliseconds(900))
+        let qaFaces = [
+            FaceAnalysis(rect: CGRect(x: 0.09, y: 0.55, width: 0.13, height: 0.21),
+                         sizeFraction: 0.027, luma: 0.5, eyesOpen: true,
+                         captureQuality: 0.9, sharpness: 0.010, skinCast: .neutral),
+            FaceAnalysis(rect: CGRect(x: 0.25, y: 0.32, width: 0.13, height: 0.20),
+                         sizeFraction: 0.026, luma: 0.5, eyesOpen: true,
+                         captureQuality: 0.9, sharpness: 0.009, skinCast: .neutral),
+            FaceAnalysis(rect: CGRect(x: 0.40, y: 0.53, width: 0.13, height: 0.21),
+                         sizeFraction: 0.027, luma: 0.5, eyesOpen: true,
+                         captureQuality: 0.9, sharpness: 0.011, skinCast: .neutral,
+                         leftEyeRect: eyeFocusOnly
+                            ? CGRect(x: 0.405, y: 0.690, width: 0.030, height: 0.018) : nil,
+                         rightEyeRect: eyeFocusOnly
+                            ? CGRect(x: 0.450, y: 0.690, width: 0.030, height: 0.018) : nil,
+                         leftEyeSharpness: eyeFocusOnly ? 0.00025 : nil,
+                         rightEyeSharpness: eyeFocusOnly ? 0.00030 : nil),
+            FaceAnalysis(rect: CGRect(x: 0.62, y: 0.48, width: 0.13, height: 0.21),
+                         sizeFraction: 0.027, luma: 0.5, eyesOpen: true,
+                         captureQuality: 0.9, sharpness: 0.009, skinCast: .neutral),
+            FaceAnalysis(rect: CGRect(x: 0.84, y: 0.46, width: 0.11, height: 0.18),
+                         sizeFraction: 0.020, luma: 0.5, eyesOpen: true,
+                         captureQuality: 0.6,
+                         sharpness: eyeFocusOnly ? 0.008 : 0.0004,
+                         skinCast: .neutral),
+        ]
+        let qaAnalysis = AssetAnalysis(
+            version: AssetAnalysis.currentVersion,
+            medianLuma: 0.47, p5Luma: 0.08, p95Luma: 0.91,
+            highlightClip: 0, shadowClip: 0, subjectHighlightClip: 0,
+            globalSharpness: 0.002, subjectSharpness: 0.004,
+            skinCast: .neutral, faces: qaFaces, sceneFeature: []
+        )
+        await persistAnalysis(qaAnalysis, for: asset.id)
+        focusedAssetAnalysis = qaAnalysis
+        await refreshTechnicalAdvice(for: asset, analysis: qaAnalysis)
+        #endif
+    }
+
     /// DEBUG-only (`--demo-persons`): seed filmstripen med EKTE leverte bryllups-
     /// JPG-er fra appens `Documents/persondemo/` (kopiert inn av screenshot-
     /// harnessen), så on-device person-grupperingen (E8) kjøres mot VIRKELIGE
@@ -6397,11 +7239,16 @@ final class LiveCaptureModel {
     var photoDownloadProgress: [UUID: CameraSession.AssetTransferProgress] = [:]
     private var photoStorageUsageTask: Task<Void, Never>?
     private var photoTransferConfirmationTask: Task<Void, Never>?
+    private let editValidationService = EditValidationService()
+    private var editValidationTasks: [UUID: Task<Void, Never>] = [:]
     private let analyser = ImageAnalyser()
     /// Samlet per-bilde-analyse (ansikter/motiv-klipp/skarphet/scene) — kjøres
     /// sammen med histogram-HUD-en, persisteres på signals, deles av cull/QC.
     private let assetAnalyzer = AssetAnalyzer()
     private var analysisTask: Task<Void, Never>?
+    private let technicalAdvisor = CaptureTechnicalAdvisor()
+    private let technicalLearningStore = CaptureTechnicalLearningStore()
+    private var technicalOutcomeMessageTask: Task<Void, Never>?
     /// Sann mens ``teardown`` rydder — `assets.didSet`-kjeden (AI-/RAW-planlegging,
     /// fokus) skal ikke re-fyre mot alt-nilede avhengigheter ved `assets = []`.
     private var isTearingDown = false
@@ -6422,6 +7269,13 @@ final class LiveCaptureModel {
     /// Samlet per-bilde-analyse for fokusert asset (ansikts-varsler, motiv-klipp).
     /// Cleared ved fokusbytte; oppdateres i bakgrunn parallelt med `focusedAnalysis`.
     var focusedAssetAnalysis: AssetAnalysis?
+    /// Ett forklarbart råd for det fokuserte bildet. Rådet er rent teknisk og
+    /// beregnes lokalt fra per-ansikt-skarphet + EXIF/live-telemetri.
+    var technicalAdvice: CaptureTechnicalAdvice?
+    var technicalAdviceStatus: String?
+    var isApplyingTechnicalAdvice = false
+    var technicalOutcomeMessage: String?
+    private var dismissedTechnicalAdviceAssets: Set<UUID> = []
     var showHUD: Bool = true
     /// Slice 4 + 7 — auto-clean mode picker. `.off` does nothing.
     /// `.autoClean` (Slice 4) auto-removes every detected distraction
@@ -6537,12 +7391,15 @@ final class LiveCaptureModel {
         let joinedAt: Date
     }
     var presentPeers: [PresentPeer] = []
-    #if DEBUG
     /// Retained while Demo Mode is active so its MockURLProtocol handler
     /// stays installed. Cleared on teardown.
+    #if DEBUG
     private var demoFake: FakeCanonCamera?
-    private var magicPipeline: MagicPipeline?
     #endif
+    /// The local deterministic renderer is a production component. It gives
+    /// every preview a fast on-device result while RAW/cloud refinements can
+    /// replace it later; it must not disappear from Release builds.
+    private var magicPipeline: MagicPipeline?
 
     /// Controls whether the hero + filmstrip tile prefer the Magic
     /// preview when one is available. Off = always show original.
@@ -6575,9 +7432,7 @@ final class LiveCaptureModel {
     /// auto-detected baseline from the pipeline, else neutral.
     func recipe(for assetId: UUID) -> MagicRecipe {
         if let tuned = tunedRecipes[assetId] { return tuned }
-        #if DEBUG
         if let baseline = magicPipeline?.baselineRecipes[assetId] { return baseline }
-        #endif
         return .neutral
     }
 
@@ -6600,11 +7455,9 @@ final class LiveCaptureModel {
     func tune(assetId: UUID, recipe: MagicRecipe) {
         tunedRecipes[assetId] = recipe
         recipeSource[assetId] = .userTuned
-        #if DEBUG
         if let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey {
             magicPipeline?.retune(assetId: assetId, recipe: recipe, sourcePath: sourcePath)
         }
-        #endif
         triggerRAWPreviewRetune(assetId: assetId, recipe: recipe)
     }
 
@@ -6675,27 +7528,21 @@ final class LiveCaptureModel {
             let claude = magicRecipe(from: analysis.suggestedRecipe)
             tunedRecipes[assetId] = claude
             recipeSource[assetId] = .aiRefined
-            #if DEBUG
             if let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey {
                 magicPipeline?.retune(assetId: assetId, recipe: claude, sourcePath: sourcePath)
             }
-            #endif
             triggerRAWPreviewRetune(assetId: assetId, recipe: claude)
             return
         }
         let baselineRecipe: MagicRecipe = {
-            #if DEBUG
             if let baseline = magicPipeline?.baselineRecipes[assetId] { return baseline }
-            #endif
             return .neutral
         }()
         triggerRAWPreviewRetune(assetId: assetId, recipe: baselineRecipe)
-        #if DEBUG
         guard let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey,
               let baseline = magicPipeline?.baselineRecipes[assetId]
         else { return }
         magicPipeline?.retune(assetId: assetId, recipe: baseline, sourcePath: sourcePath)
-        #endif
     }
 
     func dismissNotes(assetId: UUID) {
@@ -6974,15 +7821,12 @@ final class LiveCaptureModel {
                 }
             }
 
-            #if DEBUG
-            // Run the demo enhancer for every DEBUG connection — lets us
-            // validate the Enhanced UX flow with real cameras too, before
-            // the backend-driven enhancer loop is wired up. Won't ship to
-            // release builds.
+            // Fast local renderer runs in both Debug and Release. It never
+            // overwrites the original; it attaches a separate enhanced JPEG
+            // which is later superseded by the RAW/cloud result when present.
             let enhancer = MagicPipeline(store: store, outputDirectory: sessionDir.appendingPathComponent("enhanced"))
             enhancer.start(sessionId: dbSession.id)
             self.magicPipeline = enhancer
-            #endif
 
             // Fetch static device info in parallel; tolerate failure
             // (device-info endpoint is always supported but good to be safe).
@@ -8456,17 +9300,24 @@ final class LiveCaptureModel {
                    allFlagged.contains(where: { $0.id == jpgSibling.id }) {
                     return nil
                 }
-                guard let previewKey = asset.previewKey,
+                let finishedEdit = asset.enhancedKey.flatMap { path in
+                    path.hasSuffix("-enhanced.jpg") && FileManager.default.fileExists(atPath: path)
+                        ? path : nil
+                }
+                guard let previewKey = finishedEdit ?? asset.previewKey,
                       FileManager.default.fileExists(atPath: previewKey)
                 else { return nil }
-                let rawSibling = Self.siblingRawAsset(for: asset, in: allAssets)
+                let rawSibling = finishedEdit == nil ? Self.siblingRawAsset(for: asset, in: allAssets) : nil
                 return DeliveryService.DeliverableAsset(
                     localId: asset.id,
                     originalFilename: asset.originalFilename,
                     captureTime: asset.captureTime,
                     mime: "image/jpeg",
                     previewPath: previewKey,
-                    renderRecipe: recipe(for: asset.id),
+                    // A full-res Redigering export already contains exposure,
+                    // crop, masks and local face work. Re-rendering RAW here
+                    // would silently discard those layers or double-grade it.
+                    renderRecipe: finishedEdit == nil ? recipe(for: asset.id) : nil,
                     colorPurpose: deliveryColorPurpose,
                     rawSourceAssetId: rawSibling?.id,
                 )
@@ -8704,17 +9555,21 @@ final class LiveCaptureModel {
                    allFlagged.contains(where: { $0.id == jpgSibling.id }) {
                     return nil
                 }
-                guard let previewKey = asset.previewKey,
+                let finishedEdit = asset.enhancedKey.flatMap { path in
+                    path.hasSuffix("-enhanced.jpg") && FileManager.default.fileExists(atPath: path)
+                        ? path : nil
+                }
+                guard let previewKey = finishedEdit ?? asset.previewKey,
                       FileManager.default.fileExists(atPath: previewKey)
                 else { return nil }
-                let rawSibling = Self.siblingRawAsset(for: asset, in: allAssets)
+                let rawSibling = finishedEdit == nil ? Self.siblingRawAsset(for: asset, in: allAssets) : nil
                 return DeliveryService.DeliverableAsset(
                     localId: asset.id,
                     originalFilename: asset.originalFilename,
                     captureTime: asset.captureTime,
                     mime: "image/jpeg",
                     previewPath: previewKey,
-                    renderRecipe: recipe(for: asset.id),
+                    renderRecipe: finishedEdit == nil ? recipe(for: asset.id) : nil,
                     colorPurpose: deliveryColorPurpose,
                     rawSourceAssetId: rawSibling?.id,
                 )
@@ -9013,21 +9868,35 @@ final class LiveCaptureModel {
             else { return }
             let mime = previewKey.lowercased().hasSuffix(".png") ? "image/png" : "image/jpeg"
             let base64 = data.base64EncodedString()
-            do {
-                let response = try await backend.analyzeImage(
-                    assetId: assetId,
-                    imageBase64: base64,
-                    mime: mime,
-                )
-                if Task.isCancelled { return }
-                await MainActor.run {
+            var lastError: Error?
+            for attempt in 1...3 where !Task.isCancelled {
+                do {
+                    let response = try await backend.analyzeImage(
+                        assetId: assetId,
+                        imageBase64: base64,
+                        mime: mime,
+                    )
+                    if Task.isCancelled { return }
                     self.applyAIAnalysis(assetId: assetId, response: response)
+                    self.aiAnalyseTasks.removeValue(forKey: assetId)
+                    return
+                } catch {
+                    lastError = error
+                    if attempt < 3 {
+                        try? await Task.sleep(for: .seconds(Double(attempt)))
+                    }
                 }
-            } catch {
-                // Silent fallback: the on-device recipe stays in effect.
-                // Keeping the dispatched flag set means we don't retry on
-                // every assets refresh — a single shot per asset is plenty,
-                // the user can tune by hand if Claude wasn't reachable.
+            }
+            guard !Task.isCancelled else { return }
+            // Keep the local result and make the network refinement eligible
+            // after reconnect/a later asset-stream emission. This is a retryable
+            // enhancement, never a reason to block capture.
+            self.aiAnalyseTasks.removeValue(forKey: assetId)
+            self.aiAnalyseDispatched.remove(assetId)
+            if let lastError {
+                AppLog.liveCapture.error(
+                    "[LiveCaptureModel] Cloud refinement failed after retries; local retouch kept: \(lastError.localizedDescription, privacy: .public)"
+                )
             }
         }
         aiAnalyseTasks[assetId] = task
@@ -9046,11 +9915,9 @@ final class LiveCaptureModel {
         let claude = magicRecipe(from: response.analysis.suggestedRecipe)
         tunedRecipes[assetId] = claude
         recipeSource[assetId] = .aiRefined
-        #if DEBUG
         if let sourcePath = assets.first(where: { $0.id == assetId })?.previewKey {
             magicPipeline?.retune(assetId: assetId, recipe: claude, sourcePath: sourcePath)
         }
-        #endif
         // Phase 4 follow-up: also kick a RAW preview retune so the
         // hero's WYSIWYG version reflects Claude's recipe (not just
         // the display-JPEG-Magic). Same debounced + cancellable
@@ -9093,6 +9960,8 @@ final class LiveCaptureModel {
         for task in aiAnalyseTasks.values { task.cancel() }
         aiAnalyseTasks.removeAll()
         aiAnalyseDispatched.removeAll()
+        for task in editValidationTasks.values { task.cancel() }
+        editValidationTasks.removeAll()
         for task in photoBackupTasks.values { task.cancel() }
         photoBackupTasks.removeAll()
         photoOriginalFetchRequested.removeAll()
@@ -9106,6 +9975,13 @@ final class LiveCaptureModel {
         // compute-tasken videre etter frakobling (lekkasje per økt).
         analysisTask?.cancel()
         analysisTask = nil
+        technicalOutcomeMessageTask?.cancel()
+        technicalOutcomeMessageTask = nil
+        technicalAdvice = nil
+        technicalAdviceStatus = nil
+        technicalOutcomeMessage = nil
+        isApplyingTechnicalAdvice = false
+        dismissedTechnicalAdviceAssets.removeAll()
         backendClient = nil
         deliveryService = nil
         lastDelivery = nil
@@ -9171,9 +10047,9 @@ final class LiveCaptureModel {
             }
         }
         presentPeers.removeAll()
-        #if DEBUG
         magicPipeline?.stop()
         magicPipeline = nil
+        #if DEBUG
         demoFake = nil
         MockURLProtocol.handler = nil
         #endif
