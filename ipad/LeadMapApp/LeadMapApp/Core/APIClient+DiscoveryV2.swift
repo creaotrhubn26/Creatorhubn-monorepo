@@ -27,6 +27,71 @@ struct DiscoveryV2DecisionResult: Decodable, Sendable {
     }
 }
 
+/// Varm start: forslaget systemet gir etter et søk — den best scorende
+/// kandidaten, hvorfor den er valgt, og hva første handling bør være.
+struct DiscoveryWarmStartStep: Decodable, Sendable {
+    let channel: String
+    let title: String
+
+    var symbol: String {
+        switch channel {
+        case "call": return "phone.fill"
+        case "email": return "envelope.fill"
+        default: return "magnifyingglass"
+        }
+    }
+}
+
+struct DiscoveryWarmStartSuggestion: Decodable, Sendable {
+    let candidateId: String
+    let name: String
+    let city: String?
+    let organizationNumber: String?
+    let phone: String?
+    let email: String?
+    let websiteUrl: String?
+    let fitScore: Double?
+    let reasons: [String]
+    let firstStep: DiscoveryWarmStartStep
+
+    enum CodingKeys: String, CodingKey {
+        case name, city, phone, email, reasons
+        case candidateId = "candidate_id"
+        case organizationNumber = "organization_number"
+        case websiteUrl = "website_url"
+        case fitScore = "fit_score"
+        case firstStep = "first_step"
+    }
+}
+
+struct DiscoveryWarmStartPreview: Decodable, Sendable {
+    let pendingCount: Int
+    let suggestion: DiscoveryWarmStartSuggestion?
+
+    enum CodingKeys: String, CodingKey {
+        case suggestion
+        case pendingCount = "pending_count"
+    }
+}
+
+struct DiscoveryWarmStartResult: Decodable, Sendable {
+    let leadId: String?
+    let candidateId: String
+    let taskId: String?
+    let taskCreated: Bool
+    let firstStep: DiscoveryWarmStartStep
+    let replayed: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case replayed
+        case leadId = "lead_id"
+        case candidateId = "candidate_id"
+        case taskId = "task_id"
+        case taskCreated = "task_created"
+        case firstStep = "first_step"
+    }
+}
+
 extension APIClient {
     private func discoveryBase(_ projectId: String) -> String {
         let encoded = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
@@ -172,6 +237,30 @@ extension APIClient {
             body: try discoveryEncode(request),
             headers: ["Idempotency-Key": idempotencyKey])
         return try discoveryDecode(DiscoveryV2DecisionResult.self, from: data)
+    }
+
+    func fetchDiscoveryWarmStart(
+        projectId: String,
+        runId: String
+    ) async throws -> DiscoveryWarmStartPreview {
+        let data = try await executeRaw(
+            method: "GET",
+            path: discoveryBase(projectId) + "/runs/\(runId)/warm-start",
+            body: nil)
+        return try discoveryDecode(DiscoveryWarmStartPreview.self, from: data)
+    }
+
+    func commitDiscoveryWarmStart(
+        projectId: String,
+        runId: String,
+        candidateId: String
+    ) async throws -> DiscoveryWarmStartResult {
+        struct Body: Encodable { let candidate_id: String }
+        let data = try await executeRaw(
+            method: "POST",
+            path: discoveryBase(projectId) + "/runs/\(runId)/warm-start",
+            body: try discoveryEncode(Body(candidate_id: candidateId)))
+        return try discoveryDecode(DiscoveryWarmStartResult.self, from: data)
     }
 
     func fetchDiscoveryMarketingIntelligence(
