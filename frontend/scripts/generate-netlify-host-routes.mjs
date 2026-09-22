@@ -134,7 +134,9 @@ export default async (request: Request, context: Context) => {
 
 export const config: Config = {
   path: "/*",
-  excludedPath: ["/geo/*", "/*.js", "/*.css", "/*.png", "/*.webp", "/*.svg", "/*.woff2"],
+  // Release metadata is identical across hosts and must bypass the edge
+  // router so Netlify can apply its dedicated no-store CDN contract directly.
+  excludedPath: ["/build-info.json", "/geo/*", "/*.js", "/*.css", "/*.png", "/*.webp", "/*.svg", "/*.woff2"],
 };
 `;
 

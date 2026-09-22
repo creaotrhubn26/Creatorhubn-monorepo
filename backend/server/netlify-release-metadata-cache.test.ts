@@ -6,6 +6,15 @@ const netlifyConfig = readFileSync(
   fileURLToPath(new URL("../../netlify.toml", import.meta.url)),
   "utf8",
 );
+const hostRoutesGenerator = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../frontend/scripts/generate-netlify-host-routes.mjs",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
 
 const headerBlockFor = (route: string): string =>
   netlifyConfig
@@ -22,6 +31,12 @@ describe("Netlify release metadata cache contract", () => {
     );
     expect(buildInfoHeaders).toMatch(
       /Netlify-CDN-Cache-Control\s*=\s*"[^"]*private[^"]*no-store[^"]*max-age=0/,
+    );
+  });
+
+  it("bypasses the host router for release metadata", () => {
+    expect(hostRoutesGenerator).toMatch(
+      /excludedPath:\s*\[[^\]]*"\/build-info\.json"/,
     );
   });
 });
