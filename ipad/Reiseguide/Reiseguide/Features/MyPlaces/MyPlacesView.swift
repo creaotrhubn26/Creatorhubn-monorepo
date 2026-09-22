@@ -96,6 +96,16 @@ struct MyPlacesView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint(Text("log.rowHint"))
+                        .accessibilityAction(named: Text("log.delete")) {
+                            env.visits.remove(entryId: entry.id)
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                env.visits.remove(entryId: entry.id)
+                            } label: {
+                                Label("log.delete", systemImage: "trash")
+                            }
+                        }
                         .listRowBackground(AppColor.bgSurface)
                         .listRowSeparatorTint(contrast.border)
                     }
@@ -114,6 +124,8 @@ struct MyPlacesView: View {
             .scrollContentBackground(.hidden)
             .background(AppColor.bgBase)
             .accessibilityLabel(Text("myPlaces.log"))
+            // Synlig slett-vei for dem som ikke sveiper (Switch Control, AssistiveTouch).
+            .toolbar { EditButton() }
         }
     }
 }

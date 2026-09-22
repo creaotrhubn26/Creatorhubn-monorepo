@@ -80,8 +80,7 @@ struct NearbyCard: View {
                         Text(poi.title)
                             .font(AppFont.cardTitle)
                             .foregroundStyle(AppColor.textPrimary)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
+                            .lineLimit(3)
                     }
                     if let distanceM {
                         Label(L10n.distance(meters: distanceM, locale: locale), systemImage: "mappin")
@@ -145,6 +144,10 @@ struct DestinationTile: View {
     let poi: GuidePOI
     let action: () -> Void
 
+    /// 104 pt ved standard tekststørrelse; vokser med Dynamic Type så
+    /// tittelen får plass uten å krympes.
+    @ScaledMetric(relativeTo: .headline) private var tileSize: CGFloat = 104
+
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
@@ -153,11 +156,10 @@ struct DestinationTile: View {
                 Text(poi.title)
                     .font(AppFont.cardTitle)
                     .foregroundStyle(AppColor.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(3)
                     .padding(AppSpacing.m)
             }
-            .frame(width: 104, height: 104)
+            .frame(width: tileSize, height: tileSize)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
         }
         .buttonStyle(PressableButtonStyle())
@@ -176,6 +178,8 @@ struct InfoIconRow: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.contrastColors) private var contrast
+    /// Sirkelen rundt ikonet: 48 pt ved standard tekststørrelse.
+    @ScaledMetric(relativeTo: .title3) private var iconCircle: CGFloat = 48
 
     private struct Item {
         let icon: String
@@ -222,9 +226,9 @@ struct InfoIconRow: View {
 
     private func icon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 22))
+            .font(.title3.weight(.medium))
             .foregroundStyle(AppColor.textPrimary)
-            .frame(width: 48, height: 48)
+            .frame(width: iconCircle, height: iconCircle)
             .overlay(Circle().strokeBorder(AppColor.borderStrong, lineWidth: 1))
     }
 
@@ -258,6 +262,7 @@ struct AudioDescriptionCard: View {
                 RemoteImage(url: imageUrl)
                     .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusText)
                         .font(.caption)
