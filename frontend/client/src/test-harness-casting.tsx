@@ -452,8 +452,8 @@ function buildProductionDesignerTrollSeedProject(): CastingProject {
       propsNeeded: ['Tors hammer'],
       vehicles: ['Snøscooter'],
       storyboardFrames: [{
-        id: 'troll-frame-1', title: 'Trollet mellom furutrærne',
-        imageUrl: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+        id: 'troll-frame-1', title: 'Dovrefjell · set-referanse før opptak',
+        imageUrl: '/assets/role-room/troll-production/dovrefjell-set-reference-v1.webp',
       }],
     })),
     crew: [{

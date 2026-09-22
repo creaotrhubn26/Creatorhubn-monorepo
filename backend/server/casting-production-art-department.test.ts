@@ -4,6 +4,11 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createCastingProductionRouter } from './casting-production-routes.js';
+import {
+  ArtDepartmentValidationError,
+  normalizeArtDepartmentOperations,
+  validateArtContinuityReferences,
+} from './casting-production-art-department.js';
 
 const SESSION_TOKEN = 'art-session';
 const PROJECT_ID = 'troll';
@@ -129,6 +134,91 @@ describe('Production Design / Art Department API', () => {
     }));
   });
 
+  it('returns a stale continuity write before loading canonical reference data', async () => {
+    const latest = { ...operations(), phase: 'build' };
+    const query = vi.fn(async (text: string) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('production_designer');
+      if (text.includes('FROM role_room_art_department_operations')) {
+        return { rows: [{ operations: latest, version: 3, updated_by: 'designer-2', updated_at: '2026-09-20T11:00:00Z' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const response = await request(appFor(query)).patch(PATH)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 2,
+        operations: {
+          ...operations(),
+          continuityItems: [{
+            id: 'continuity-hammer', department: 'props', title: 'Tors hammer', sceneId: 'scene-12',
+            productionDayId: 'day-1', status: 'planned', source: 'fabricated', condition: 'good',
+            beforeReferences: [], afterReferences: [],
+          }],
+        },
+      });
+
+    expect(response.status).toBe(409);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('FROM casting_production_days'))).toBe(false);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('FROM casting_production_continuity_media'))).toBe(false);
+  });
+
+  it('persists continuity only after every canonical project reference resolves', async () => {
+    let written: Record<string, unknown> | null = null;
+    const mediaId = '11111111-1111-4111-8111-111111111111';
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      const schema = schemaResult(text);
+      if (schema) return schema;
+      if (text.includes('AS member_role')) return accessResult('property_master');
+      if (text.includes('SELECT operations, version') && text.includes('FROM role_room_art_department_operations')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('SELECT id, scene_ids FROM casting_production_days')) {
+        return { rows: [{ id: 'day-1', scene_ids: ['scene-12'] }], rowCount: 1 };
+      }
+      if (text.includes('SELECT id FROM casting_scenes')) return { rows: [{ id: 'scene-12' }], rowCount: 1 };
+      if (text.includes('SELECT id FROM casting_roles')) return { rows: [{ id: 'role-tor' }], rowCount: 1 };
+      if (text.includes('SELECT id FROM casting_props')) return { rows: [{ id: 'prop-hammer' }], rowCount: 1 };
+      if (text.includes('FROM casting_production_continuity_media')) {
+        return { rows: [{ id: mediaId, production_day_id: 'day-1', scene_id: 'scene-12' }], rowCount: 1 };
+      }
+      if (text.includes('INSERT INTO role_room_art_department_operations')) {
+        written = JSON.parse(String(params?.[1]));
+        return {
+          rows: [{ operations: written, version: 1, updated_by: 'designer-1', updated_at: '2026-09-20T10:00:00Z' }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const response = await request(appFor(query)).patch(PATH)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 0,
+        operations: {
+          ...operations(),
+          continuityItems: [{
+            id: 'continuity-hammer', department: 'props', title: 'Tors hammer', sceneId: 'scene-12',
+            productionDayId: 'day-1', characterRoleId: 'role-tor', propId: 'prop-hammer',
+            status: 'ready', source: 'fabricated', condition: 'good',
+            beforeReferences: [{
+              id: 'before-hammer', kind: 'photo', storageProvider: 'aws_s3', storageFileId: mediaId,
+            }],
+            afterReferences: [],
+          }],
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.artDepartment.operations.continuityItems).toEqual([
+      expect.objectContaining({ id: 'continuity-hammer', propId: 'prop-hammer' }),
+    ]);
+    expect(written).toEqual(expect.objectContaining({
+      continuityItems: [expect.objectContaining({ characterRoleId: 'role-tor' })],
+    }));
+  });
+
   it('rejects invalid state before any write', async () => {
     const query = vi.fn(async (text: string) => {
       const schema = schemaResult(text);
@@ -167,5 +257,79 @@ describe('Production Design / Art Department API', () => {
     });
     const response = await request(appFor(query)).get(PATH).set('Authorization', `Bearer ${SESSION_TOKEN}`);
     expect(response.status).toBe(404);
+  });
+});
+
+describe('Art continuity contract', () => {
+  const continuityOperations = () => normalizeArtDepartmentOperations({
+    ...operations(),
+    continuityItems: [{
+      id: 'continuity-hammer',
+      department: 'props',
+      title: 'Tors hammer',
+      sceneId: 'scene-12',
+      productionDayId: 'day-1',
+      characterRoleId: 'role-tor',
+      propId: 'prop-hammer',
+      status: 'reset_required',
+      source: 'fabricated',
+      condition: 'attention',
+      presetNotes: 'Hammeren ligger på høyre side.',
+      resetNotes: 'Tilbake til startmerket.',
+      beforeReferences: [{
+        id: 'media-1', kind: 'photo', storageProvider: 'aws_s3',
+        storageFileId: '11111111-1111-4111-8111-111111111111', sizeBytes: 1024,
+      }],
+      afterReferences: [],
+    }],
+  });
+
+  it('normalizes the operational fields and excludes browser-owned audit data', () => {
+    const normalized = continuityOperations();
+    expect(normalized.continuityItems).toEqual([
+      expect.objectContaining({
+        department: 'props', status: 'reset_required', propId: 'prop-hammer',
+        beforeReferences: [expect.objectContaining({ storageProvider: 'aws_s3' })],
+      }),
+    ]);
+    expect(normalized).not.toHaveProperty('activity');
+  });
+
+  it('accepts only references that belong to the selected project scene and day', () => {
+    const normalized = continuityOperations();
+    expect(() => validateArtContinuityReferences(normalized, {
+      sceneIds: new Set(['scene-12']),
+      productionDayScenes: new Map([['day-1', new Set(['scene-12'])]]),
+      characterRoleIds: new Set(['role-tor']),
+      propIds: new Set(['prop-hammer']),
+      media: new Map([['11111111-1111-4111-8111-111111111111', { productionDayId: 'day-1', sceneId: 'scene-12' }]]),
+    })).not.toThrow();
+
+    expect(() => validateArtContinuityReferences(normalized, {
+      sceneIds: new Set(['scene-12']),
+      productionDayScenes: new Map([['day-1', new Set(['scene-12'])]]),
+      characterRoleIds: new Set(['role-tor']),
+      propIds: new Set(['prop-hammer']),
+      media: new Map([['11111111-1111-4111-8111-111111111111', { productionDayId: 'another-day', sceneId: 'scene-12' }]]),
+    })).toThrow(ArtDepartmentValidationError);
+  });
+
+  it('rejects unknown departments, unsafe media providers and missing canonical relations', () => {
+    expect(() => normalizeArtDepartmentOperations({
+      ...operations(),
+      continuityItems: [{
+        id: 'bad', department: 'camera', title: 'Feil', sceneId: 'scene-12',
+        status: 'ready', source: 'owned', condition: 'good', beforeReferences: [], afterReferences: [],
+      }],
+    })).toThrow(ArtDepartmentValidationError);
+
+    const normalized = continuityOperations();
+    expect(() => validateArtContinuityReferences(normalized, {
+      sceneIds: new Set(['scene-12']),
+      productionDayScenes: new Map([['day-1', new Set(['scene-12'])]]),
+      characterRoleIds: new Set(),
+      propIds: new Set(['prop-hammer']),
+      media: new Map(),
+    })).toThrow(/ukjent karakter/);
   });
 });

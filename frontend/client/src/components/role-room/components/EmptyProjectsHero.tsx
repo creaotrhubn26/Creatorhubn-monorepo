@@ -10,6 +10,7 @@ import {
   Add as AddIcon,
   AutoAwesome as SparkleIcon,
 } from '@mui/icons-material';
+import { RoleRoomWorkspaceVisual } from './production/RoleRoomWorkspaceVisual';
 
 interface EmptyProjectsHeroProps {
   workspaceName?: string;
@@ -39,28 +40,40 @@ export const EmptyProjectsHero = ({
     >
       <Box
         sx={{
-          maxWidth: 560,
+          width: '100%',
+          maxWidth: 720,
           textAlign: 'center',
-          p: { xs: 3, sm: 5 },
+          overflow: 'hidden',
           bgcolor: 'rgba(93, 118, 203,0.06)',
           border: '1px dashed rgba(93, 118, 203,0.32)',
           borderRadius: 3,
         }}
       >
+        <RoleRoomWorkspaceVisual
+          lens="full"
+          variant="hero"
+          loading="eager"
+          sx={{ width: '100%', height: { xs: 150, sm: 190 }, border: 0, borderBottom: '1px solid rgba(147,164,220,.18)' }}
+        />
+        <Box sx={{ p: { xs: 3, sm: 5 }, pt: { xs: 3, sm: 4 } }}>
         <Box
           sx={{
-            width: 72,
-            height: 72,
+            width: 56,
+            height: 56,
             borderRadius: '50%',
             bgcolor: 'rgba(93, 118, 203,0.18)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             mx: 'auto',
-            mb: 2.5,
+            mb: 2,
+            mt: -7,
+            position: 'relative',
+            border: '4px solid #111827',
+            boxShadow: '0 10px 26px rgba(0,0,0,.3)',
           }}
         >
-          <SparkleIcon sx={{ fontSize: 36, color: 'var(--role-accent, #5d76cb)' }} />
+          <SparkleIcon sx={{ fontSize: 28, color: 'var(--role-accent, #93a4dc)' }} />
         </Box>
 
         <Typography
@@ -83,9 +96,9 @@ export const EmptyProjectsHero = ({
             lineHeight: 1.5,
           }}
         >
-          Start med å opprette ditt første prosjekt. Du kan legge til roller,
-          kandidater og planlegge auditions etterpå — vi guider deg gjennom
-          stegene.
+          Start med å opprette ditt første prosjekt. Samle manus, roller, crew,
+          lokasjoner og produksjonsplan i samme arbeidsflyt — vi guider deg
+          gjennom de første stegene.
         </Typography>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center">
@@ -143,6 +156,7 @@ export const EmptyProjectsHero = ({
         >
           💡 Tips: Trykk Cmd+K (eller Ctrl+K) for hurtigsøk over alt.
         </Typography>
+        </Box>
       </Box>
     </Box>
   );

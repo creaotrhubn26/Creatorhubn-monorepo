@@ -212,6 +212,7 @@ import {
   FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
+  hasWorkspaceLensGrant,
   matchesLensProjectRole,
   isLensDecisionPending,
   resolveLensUrlState,
@@ -267,6 +268,7 @@ import {
 import { KlientStatusBadge } from './KlientStatusBadge';
 import { PanelSkeleton } from './PanelSkeleton';
 import { EmptyProjectsHero } from './EmptyProjectsHero';
+import { RoleRoomWorkspaceVisual } from './production/RoleRoomWorkspaceVisual';
 import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
 import { useAIRecommendation } from '../hooks/useAIRecommendation';
 import { usePlannerOnboardingTour } from '../hooks/usePlannerOnboardingTour';
@@ -3549,7 +3551,7 @@ type RoleRoomProjectWorkspaceState = {
       }
     : {};
   const canEditArtDepartmentWorkspace = artDepartmentPermissions.canManageArtDepartment === true
-    || currentUserRole?.serverGrants?.canManageArtDepartment === true
+    || hasWorkspaceLensGrant('art-department', currentUserRole?.serverGrants)
     || isRoleRoomAdminSession;
   const canUseArtDepartmentWorkspace = isAssignedArtDepartmentProjectRole
     || canEditArtDepartmentWorkspace
@@ -3561,7 +3563,7 @@ type RoleRoomProjectWorkspaceState = {
       }
     : {};
   const canEditProductionSoundWorkspace = productionSoundPermissions.canManageProductionSound === true
-    || currentUserRole?.serverGrants?.canManageProductionSound === true
+    || hasWorkspaceLensGrant('production-sound', currentUserRole?.serverGrants)
     || isRoleRoomAdminSession;
   const canUseProductionSoundWorkspace = isAssignedProductionSoundProjectRole
     || canEditProductionSoundWorkspace
@@ -4472,12 +4474,10 @@ type RoleRoomProjectWorkspaceState = {
       return workspaceProjects.filter((project) => !isContentProducerDemoProject(project));
     }
 
-    // Andre moduser (innholdsprodusent, dansestudio, utdanning): skjul TROLL
-    // helt fra prosjekt-listen. Bare content-producer-demo er relevant for
-    // dem (eller den modus-spesifikke demo-en).
-    return workspaceProjects.filter((project) =>
-      !isContentProducerDemoProject(project) && !isTrollProject(project),
-    );
+    // Innholdsprodusent og øvrige ikke-produksjonsmoduser skal aldri få TROLL,
+    // men Northwind/content-producer-demoen tilhører nettopp denne vertikalen
+    // og må derfor forbli synlig sammen med brukerens ordinære prosjekter.
+    return workspaceProjects.filter((project) => !isTrollProject(project));
   }, [
     isClientReviewerMode,
     isClientReviewerSession,
@@ -9719,6 +9719,19 @@ type RoleRoomProjectWorkspaceState = {
               }}
             >
               <RoleRoomBrandMark appearance="header" showLabel={false} sx={{ width: { xs: 88, sm: 108 }, flexShrink: 0 }} />
+              {headerActiveProject ? (
+                <RoleRoomWorkspaceVisual
+                  lens={effectiveWorkspaceLens}
+                  loading="eager"
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    borderRadius: 1.25,
+                    boxShadow: '0 5px 14px rgba(0,0,0,.24)',
+                  }}
+                />
+              ) : null}
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   sx={{
@@ -9800,7 +9813,9 @@ type RoleRoomProjectWorkspaceState = {
                     minWidth: 0,
                     maxWidth: { md: 520, lg: 600, xl: 680 },
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr)',
+                    gridTemplateColumns: headerActiveProject
+                      ? `${useDenseDesktopHeader ? 42 : 48}px minmax(0, 1fr)`
+                      : 'minmax(0, 1fr)',
                     gap: useDenseDesktopHeader ? 0.85 : 1.1,
                     alignItems: 'center',
                     px: useDenseDesktopHeader ? { md: 1, lg: 1.15 } : { md: 1.15, lg: 1.35 },
@@ -9825,6 +9840,19 @@ type RoleRoomProjectWorkspaceState = {
                     },
                   }}
                 >
+                  {headerActiveProject ? (
+                    <RoleRoomWorkspaceVisual
+                      lens={effectiveWorkspaceLens}
+                      loading="eager"
+                      sx={{
+                        width: useDenseDesktopHeader ? 42 : 48,
+                        height: useDenseDesktopHeader ? 42 : 48,
+                        alignSelf: 'center',
+                        borderRadius: 1.5,
+                        boxShadow: '0 7px 18px rgba(0,0,0,.26)',
+                      }}
+                    />
+                  ) : null}
                   <Box sx={{ minWidth: 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: useDenseDesktopHeader ? 0.65 : 0.9, minWidth: 0, flexWrap: 'wrap' }}>
                       <Box
@@ -10029,11 +10057,20 @@ type RoleRoomProjectWorkspaceState = {
                     onClick={() => { void handleSelectProjectFromSelector(project); }}
                     sx={{
                       display: 'grid',
-                      rowGap: 0.75,
+                      gridTemplateColumns: isActive ? '46px minmax(0,1fr)' : 'minmax(0,1fr)',
+                      gap: isActive ? 1 : 0,
+                      alignItems: 'center',
                       minWidth: 0,
                       cursor: 'pointer',
                     }}
                   >
+                    {isActive ? (
+                      <RoleRoomWorkspaceVisual
+                        lens={effectiveWorkspaceLens}
+                        sx={{ width: 46, height: 46, alignSelf: 'center', boxShadow: '0 6px 16px rgba(0,0,0,.24)' }}
+                      />
+                    ) : null}
+                    <Box sx={{ display: 'grid', rowGap: 0.75, minWidth: 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
                       <Box
                         sx={{
@@ -10110,6 +10147,7 @@ type RoleRoomProjectWorkspaceState = {
                           },
                         }}
                       />
+                    </Box>
                     </Box>
                   </Box>
 

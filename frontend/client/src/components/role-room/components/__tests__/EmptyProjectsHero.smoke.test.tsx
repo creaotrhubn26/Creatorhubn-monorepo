@@ -7,6 +7,7 @@ describe('Sprint 6.2 — EmptyProjectsHero', () => {
   it('renders welcome heading with workspace name', () => {
     render(<EmptyProjectsHero workspaceName="The Role Room" onCreateProject={() => {}} />);
     expect(screen.getByText(/Velkommen til The Role Room/)).toBeInTheDocument();
+    expect(screen.getByTestId('role-room-workspace-visual-development')).toBeInTheDocument();
   });
 
   it('renders primary CTA and triggers onCreateProject when clicked', () => {

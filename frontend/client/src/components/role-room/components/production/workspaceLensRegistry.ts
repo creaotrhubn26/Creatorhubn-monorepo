@@ -26,6 +26,23 @@ export type RoleWorkspaceLens = Exclude<RoleRoomWorkspaceLens, 'full'>;
  * - `planner`: the lens falls back to the shared planner surface.
  */
 export type LensSurfaceSource = 'own' | 'none' | 'planner';
+export type WorkspacePermissionKey =
+  | 'canEditCasting'
+  | 'canEditProduction'
+  | 'canManageProduction'
+  | 'canCoordinateProduction'
+  | 'canManageLocations'
+  | 'canManageContinuity'
+  | 'canCommentContinuity'
+  | 'canManageArtDepartment'
+  | 'canManageProductionSound'
+  | 'canPreparePostTurnover'
+  | 'canReviewPostTurnover';
+
+export interface WorkspacePermissionBundle {
+  /** Any one server-resolved grant permits operational use of this lens. */
+  readonly manageAnyOf: readonly WorkspacePermissionKey[];
+}
 
 export interface WorkspaceLensEntry {
   readonly lens: RoleWorkspaceLens;
@@ -41,6 +58,9 @@ export interface WorkspaceLensEntry {
    * Persisted aliases are included so historic rows keep resolving.
    */
   readonly projectRoles: readonly string[];
+  /** Canonical first surface when the lens owns its own surface state. */
+  readonly defaultSurface: string | null;
+  readonly permissionBundle: WorkspacePermissionBundle;
   readonly surfaceSource: LensSurfaceSource;
   /** Only the director lens deep-links a scene today. */
   readonly usesSceneParam: boolean;
@@ -56,6 +76,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'producer',
     workspaceKind: 'producer',
     projectRoles: ['executive_producer', 'producer', 'line_producer'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageProduction', 'canEditProduction'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -64,6 +86,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'director',
     workspaceKind: 'director',
     projectRoles: ['director'],
+    defaultSurface: 'today',
+    permissionBundle: { manageAnyOf: ['canEditProduction'] },
     surfaceSource: 'own',
     usesSceneParam: true,
   },
@@ -72,6 +96,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'casting',
     workspaceKind: 'casting',
     projectRoles: ['casting_director', 'local_casting_director', 'extras_casting_director'],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canEditCasting'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -80,6 +106,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'cinematography',
     workspaceKind: 'cinematography',
     projectRoles: ['cinematographer', 'director_of_photography', 'dop', 'dp'],
+    defaultSurface: 'today',
+    permissionBundle: { manageAnyOf: ['canEditProduction'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -99,6 +127,8 @@ export const WORKSPACE_LENS_REGISTRY = [
       'set_production_assistant',
       'set_pa',
     ],
+    defaultSurface: 'today',
+    permissionBundle: { manageAnyOf: ['canEditProduction'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -107,6 +137,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'productionManagement',
     workspaceKind: 'production_management',
     projectRoles: ['production_manager', 'production_accountant'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageProduction'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -121,6 +153,8 @@ export const WORKSPACE_LENS_REGISTRY = [
       'office_pa',
       'production_assistant',
     ],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canCoordinateProduction'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -129,6 +163,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'locationManagement',
     workspaceKind: 'location_management',
     projectRoles: ['location_manager', 'location_scout', 'location_security'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageLocations'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -141,6 +177,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'continuity',
     workspaceKind: 'continuity',
     projectRoles: ['script_supervisor'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageContinuity', 'canCommentContinuity'] },
     surfaceSource: 'planner',
     usesSceneParam: false,
   },
@@ -164,6 +202,8 @@ export const WORKSPACE_LENS_REGISTRY = [
       'key_makeup_artist',
       'construction_coordinator',
     ],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canManageArtDepartment'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -172,6 +212,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     componentKey: 'productionSound',
     workspaceKind: 'production_sound',
     projectRoles: ['production_sound_mixer', 'sound_mixer', 'audio_mixer', 'sound_engineer', 'boom_operator'],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canManageProductionSound'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -191,6 +233,8 @@ export const WORKSPACE_LENS_REGISTRY = [
       'editor',
       'assistant_editor',
     ],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canPreparePostTurnover', 'canReviewPostTurnover'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
@@ -202,6 +246,8 @@ export const WORKSPACE_LENS_REGISTRY = [
     lens: 'admin',
     componentKey: 'admin',
     projectRoles: [],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: [] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -241,6 +287,14 @@ export function matchesLensProjectRole(lens: RoleWorkspaceLens, projectRole: unk
   const normalised = projectRole.trim().toLowerCase();
   if (!normalised) return false;
   return getWorkspaceLensEntry(lens).projectRoles.includes(normalised);
+}
+
+export function hasWorkspaceLensGrant(
+  lens: RoleWorkspaceLens,
+  grants: Readonly<Record<string, boolean>> | null | undefined,
+): boolean {
+  if (!grants) return false;
+  return getWorkspaceLensEntry(lens).permissionBundle.manageAnyOf.some((grant) => grants[grant] === true);
 }
 
 export interface WorkspaceLensResolution {
