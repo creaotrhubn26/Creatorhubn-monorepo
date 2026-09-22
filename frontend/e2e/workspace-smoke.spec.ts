@@ -244,6 +244,46 @@ test('multi-project /workspace renders the picker without runtime errors', async
   expect(bodyText.trim().length).toBeGreaterThan(0);
 });
 
+test('empty /workspace can quick-create a project and open it', async ({ page }) => {
+  const errors = await collectRuntimeErrors(page);
+  await primeAuthAndApi(page, []);
+
+  let creationPayload: Record<string, unknown> | null = null;
+  await page.route(
+    (url) => url.pathname === '/api/projects',
+    async (route) => {
+      if (route.request().method() === 'POST') {
+        creationPayload = route.request().postDataJSON() as Record<string, unknown>;
+        return route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'quick-project', ...creationPayload }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ projects: [] }),
+      });
+    },
+  );
+
+  await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Lag ditt første prosjekt' }).click();
+  await page.getByRole('textbox', { name: 'Hva jobber du med' }).fill('  Troll reklamefilm  ');
+  await page.getByRole('button', { name: 'Film & video' }).click();
+  await page.getByRole('button', { name: 'Fortsett' }).click();
+
+  await page.waitForURL('**/workspace/quick-project', { timeout: 30_000 });
+  expect(creationPayload).toEqual({
+    name: 'Troll reklamefilm',
+    projectType: 'film',
+    profession: 'photographer',
+    status: 'draft',
+  });
+  expect(errors, `Runtime errors while quick-creating a project:\n${errors.join('\n')}`).toEqual([]);
+});
+
 test('legacy /dashboard redirect tolerates a cold WorkspaceHome chunk without React #426', async ({ page }) => {
   const errors = await collectRuntimeErrors(page);
   await primeAuthAndApi(page, [sampleProject('p1'), sampleProject('p2')]);
