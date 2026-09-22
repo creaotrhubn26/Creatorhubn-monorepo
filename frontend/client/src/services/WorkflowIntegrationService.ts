@@ -273,9 +273,17 @@ export class WorkflowIntegrationService {
    * Call this after project creation to set up everything
    */
   static async orchestrateCompleteWorkflow(project: unknown) {
-    console.log('🚀 Orchestrating complete workflow for:', project.title);
-
     try {
+      // Sto tidligere UTENFOR try-blokken. `project` er typet unknown, så
+      // et kall med noe annet enn et objekt kastet før catch-en under fikk
+      // tak i det — og da bobler feilen opp til prosjektopprettelsen, som
+      // viser «Failed to create project» for et prosjekt som faktisk ble
+      // opprettet. Samme klasse feil som kommentaren i catch-en beskriver.
+      console.log(
+        '🚀 Orchestrating complete workflow for:',
+        (project as { title?: string } | null)?.title ?? '(uten tittel)',
+      );
+
       // Step 1: Auto-create showcase
       const showcase = await this.autoCreateShowcase(project);
 
