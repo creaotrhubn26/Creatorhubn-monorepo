@@ -3,11 +3,41 @@ import { openCastingPlanner, selectFirstProject } from './helpers/role-room';
 
 const projectId = 'e2e-troll-production';
 
-const emptyOperations = () => ({
+const seededOperations = () => ({
   phase: 'concept',
   palette: [],
   scenePlans: [],
   decisions: [],
+  continuityItems: [
+    {
+      id: 'troll-continuity-hammer-demo', department: 'props', title: 'Tors hammer · hero',
+      sceneId: 'troll-scene-1', productionDayId: 'troll-production-day-1', propId: 'troll-prop-hammer',
+      status: 'reset_required', source: 'fabricated', condition: 'damaged', owner: 'Ada Design',
+      location: 'Hero rack · kasse P-01', presetNotes: 'Hammerhode mot kamera. Håndtaket følger den rosa tapemarkeringen.',
+      resetNotes: 'Rens jord, kontroller sprekk og legg håndtaket tilbake på markeringen.',
+      issue: 'Sprekk og våt jord på nedre kant etter stunt-take.',
+      beforeReferences: [{
+        id: 'troll-hammer-before-demo', kind: 'photo', label: 'Hammer · før take',
+        url: '/assets/role-room/troll-production/hammer-before-v1.webp', contentType: 'image/webp',
+      }],
+      afterReferences: [{
+        id: 'troll-hammer-after-demo', kind: 'photo', label: 'Hammer · etter take',
+        url: '/assets/role-room/troll-production/hammer-after-v1.webp', contentType: 'image/webp',
+      }],
+    },
+    {
+      id: 'troll-continuity-nora-costume-demo', department: 'costume', title: 'NORA · skogslook',
+      sceneId: 'troll-scene-1', productionDayId: 'troll-production-day-1', characterRoleId: 'troll-role-nora',
+      status: 'ready', source: 'owned', condition: 'good', owner: 'Kostyme', location: 'Rack C-04',
+      presetNotes: 'Kontrollert fukt ved skuldre og buksekanter. Burgunder skjerf over ytterjakken.',
+      resetNotes: 'Bevar samme fuktnivå og brett på høyre bukseben.', issue: '',
+      beforeReferences: [{
+        id: 'troll-nora-costume-before-demo', kind: 'photo', label: 'NORA · kostyme før scene',
+        url: '/assets/role-room/troll-production/nora-costume-before-v1.webp', contentType: 'image/webp',
+      }],
+      afterReferences: [],
+    },
+  ],
   handoffs: [
     'art', 'sets', 'props', 'costume', 'hair_makeup', 'construction', 'sfx', 'vfx',
   ].map((department) => ({
@@ -18,7 +48,7 @@ const emptyOperations = () => ({
 
 async function installAuthenticatedArtDepartmentApi(page: Page) {
   let storedProject: Record<string, any> | null = null;
-  let record = { projectId, operations: emptyOperations(), version: 0 };
+  let record = { projectId, operations: seededOperations(), version: 0 };
   const savedVersions: number[] = [];
   const authenticatedRequests: string[] = [];
   let rejectNextSaveWithConflict = false;
@@ -106,6 +136,22 @@ async function installAuthenticatedArtDepartmentApi(page: Page) {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ productionDays: storedProject?.productionDays ?? [] }) });
   });
+  await page.route(`**/api/role-room/projects/${projectId}/production-days/*/continuity/media`, async (route) => {
+    authenticatedRequests.push(route.request().headers().authorization ?? '');
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ reference: {
+        id: '11111111-1111-4111-8111-111111111111',
+        kind: 'photo',
+        storageFileId: '11111111-1111-4111-8111-111111111111',
+        storageProvider: 'aws_s3',
+        contentType: 'image/png',
+        sizeBytes: 68,
+        label: 'hammer-before.png',
+      } }),
+    });
+  });
   await page.route(`**/api/role-room/projects/${projectId}/my-tabs`, async (route) => {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tabAccess: null, source: 'default', role: 'production_designer', tabValues: null }) });
@@ -141,6 +187,9 @@ test.describe('Autentisert Troll-flyt · produksjonsdesigner', () => {
 
     const workspace = page.getByTestId('art-department-workspace');
     await expect(workspace).toBeVisible({ timeout: 20_000 });
+    const workspaceVisual = page.getByTestId('role-room-workspace-visual-production').first();
+    await expect(workspaceVisual).toBeVisible();
+    await expect.poll(() => workspaceVisual.locator('img').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await expect(page.getByRole('heading', { name: 'Troll', exact: true })).toBeVisible();
     await expect(page.getByText('1 scener mangler art-plan')).toBeVisible();
     await expect(page.getByText('1 rekvisitter mangler scenekobling')).toBeVisible();
@@ -158,12 +207,37 @@ test.describe('Autentisert Troll-flyt · produksjonsdesigner', () => {
     await page.getByTestId('art-department-save').click();
     await expect(page.getByText('Produksjonsdesigngrunnlaget er synkronisert.')).toBeVisible();
 
+    await page.getByRole('button', { name: 'Continuity' }).click();
+    await expect(page.getByAltText('Før-referanse for Tors hammer · hero')).toBeVisible();
+    await expect(page.getByAltText('Etter-referanse for Tors hammer · hero')).toBeVisible();
+    await page.getByRole('button', { name: 'Åpne før-referanse Hammer · før take' }).click();
+    await expect(page.getByRole('dialog', { name: 'Før · Hammer · før take' })).toBeVisible();
+    await page.getByRole('button', { name: 'Lukk bildevisning' }).click();
+
+    await page.getByLabel('Plagg, look, set eller rekvisitt').fill('Fakkel · stunt reserve');
+    await page.getByRole('button', { name: 'Legg til punkt' }).click();
+    const continuityItem = page.locator('[data-testid^="art-continuity-item-"]').filter({ hasText: 'Fakkel · stunt reserve' });
+    await expect(continuityItem).toBeVisible();
+    await expect(continuityItem.getByText('Ingen før-/etterreferanser ennå')).toBeVisible();
+    await continuityItem.getByLabel('Fakkel · stunt reserve status').click();
+    await page.getByRole('option', { name: 'Må resettes' }).click();
+    await continuityItem.getByLabel('Preset / før opptak').fill('Hammerhode mot kamera, håndtak ved høyre fot.');
+    await continuityItem.getByLabel('Reset / etter take').fill('Tilbake til markert startposisjon.');
+    await continuityItem.getByLabel('Avvik / skade / mangler').fill('Kontroller sprekk etter stunt-take.');
+    await continuityItem.locator('input[type="file"]').first().setInputFiles({
+      name: 'hammer-before.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB', 'base64'),
+    });
+    await expect(page.getByText(/Referansen er lastet privat/)).toBeVisible();
+    await page.getByTestId('art-department-save').click();
+    await expect(page.getByText('Produksjonsdesigngrunnlaget er synkronisert.')).toBeVisible();
     await page.getByRole('button', { name: 'Visuell retning' }).click();
     await page.getByLabel('Palett').fill('skifer, tåke, mose');
     await page.getByLabel('Designintensjon').fill('Skifer, tåke og fuktige naturmaterialer binder menneskeverdenen til trollet.');
     await page.getByTestId('art-department-save').click();
     await expect(page.getByText('Produksjonsdesigngrunnlaget er synkronisert.')).toBeVisible();
-    expect(api.savedVersions).toEqual([1, 2]);
+    expect(api.savedVersions).toEqual([1, 2, 3]);
 
     await page.reload();
     await expect(workspace).toBeVisible({ timeout: 20_000 });
@@ -173,6 +247,16 @@ test.describe('Autentisert Troll-flyt · produksjonsdesigner', () => {
     expect(api.record.operations.scenePlans).toEqual([
       expect.objectContaining({ sceneId: 'troll-scene-1', status: 'designing', setStrategy: 'hybrid', departments: ['art'] }),
     ]);
+    expect(api.record.operations.continuityItems).toHaveLength(3);
+    expect(api.record.operations.continuityItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Fakkel · stunt reserve',
+        sceneId: 'troll-scene-1',
+        productionDayId: 'troll-production-day-1',
+        status: 'reset_required',
+        beforeReferences: [expect.objectContaining({ storageProvider: 'aws_s3' })],
+      }),
+    ]));
     expect(api.authenticatedRequests.length).toBeGreaterThan(0);
     expect(api.authenticatedRequests.every((header) => header === 'Bearer dev-admin-local-session')).toBe(true);
     expect(runtimeErrors).toEqual([]);
@@ -189,10 +273,20 @@ test.describe('Autentisert Troll-flyt · produksjonsdesigner', () => {
 
     const workspace = page.getByTestId('art-department-workspace');
     await expect(workspace).toBeVisible({ timeout: 20_000 });
+    const workspaceVisual = page.getByTestId('role-room-workspace-visual-production').first();
+    await expect(workspaceVisual).toBeVisible();
+    await expect.poll(() => workspaceVisual.locator('img').evaluate(
+      (image: HTMLImageElement) => image.complete && image.naturalWidth > 0,
+    )).toBe(true);
     const sceneButton = page.getByRole('button', { name: 'Scener' });
     expect((await sceneButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     await sceneButton.tap();
     await expect(page.getByRole('heading', { name: 'EXT. TROLLSKOG - DAG' })).toBeVisible();
+    await expect.poll(() => workspace.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+
+    await page.getByRole('button', { name: 'Continuity' }).tap();
+    await expect(page.getByTestId('art-continuity-board')).toBeVisible();
+    await expect(page.getByAltText('Før-referanse for Tors hammer · hero')).toBeVisible();
     await expect.poll(() => workspace.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
 
     await page.setViewportSize({ width: 852, height: 393 });
@@ -211,6 +305,12 @@ test.describe('Autentisert Troll-flyt · produksjonsdesigner', () => {
     await expect(workspace).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Visuell retning' }).click();
     await page.getByLabel('Designintensjon').fill('Mitt lokale, ulagrede designutkast.');
+    await expect(page.getByText(/Lokalt utkast/)).toBeVisible();
+    await page.waitForTimeout(450);
+    await page.reload();
+    await expect(workspace).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Et ulagret lokalt utkast er gjenopprettet.')).toBeVisible();
+    await expect(page.getByLabel('Designintensjon')).toHaveValue('Mitt lokale, ulagrede designutkast.');
     api.conflictOnNextSave();
     await page.getByTestId('art-department-save').click();
 

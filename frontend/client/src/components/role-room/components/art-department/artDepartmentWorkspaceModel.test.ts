@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { ArtDepartmentOperations, CastingProject } from '../../models/casting';
 import {
   buildArtDepartmentWorkspaceBrief,
+  clearArtDepartmentDraft,
   createEmptyArtDepartmentOperations,
   isArtDepartmentSurface,
+  loadArtDepartmentDraft,
   mergeArtDepartmentOperations,
+  saveArtDepartmentDraft,
+  upsertContinuityItem,
   upsertDecision,
   upsertScenePlan,
 } from './artDepartmentWorkspaceModel';
@@ -74,5 +78,52 @@ describe('artDepartmentWorkspaceModel', () => {
     expect(operations.scenePlans[0].status).toBe('ready_for_review');
     expect(operations.decisions).toHaveLength(1);
     expect(operations.decisions[0].status).toBe('ready_for_review');
+  });
+
+  it('keeps one canonical continuity item and exposes reset and issue readiness', () => {
+    let operations = createEmptyArtDepartmentOperations();
+    operations = upsertContinuityItem(operations, {
+      id: 'continuity-1',
+      department: 'props',
+      title: 'Tors hammer',
+      sceneId: 'scene-1',
+      productionDayId: 'day-1',
+      propId: 'hammer',
+      status: 'ready',
+      source: 'fabricated',
+      condition: 'good',
+      beforeReferences: [],
+      afterReferences: [],
+    });
+    operations = upsertContinuityItem(operations, {
+      ...operations.continuityItems[0],
+      status: 'reset_required',
+      issue: 'Skal tilbake til startmerket før neste take.',
+    });
+
+    const brief = buildArtDepartmentWorkspaceBrief(project, operations);
+    expect(operations.continuityItems).toHaveLength(1);
+    expect(brief.stats).toEqual(expect.objectContaining({
+      continuityItemCount: 1,
+      continuityIssueCount: 1,
+      continuityResetCount: 1,
+      continuityAttentionCount: 1,
+    }));
+    expect(brief.nextActions).toContainEqual(expect.objectContaining({
+      id: 'continuity-attention',
+      surface: 'continuity',
+    }));
+  });
+
+  it('restores a local draft without changing its server base version', () => {
+    const operations = createEmptyArtDepartmentOperations();
+    operations.visualDirection = 'Lokalt utkast';
+    saveArtDepartmentDraft('troll', { baseVersion: 7, updatedAt: '2026-09-21T20:00:00.000Z', operations });
+    expect(loadArtDepartmentDraft('troll')).toEqual(expect.objectContaining({
+      baseVersion: 7,
+      operations: expect.objectContaining({ visualDirection: 'Lokalt utkast', continuityItems: [] }),
+    }));
+    clearArtDepartmentDraft('troll');
+    expect(loadArtDepartmentDraft('troll')).toBeNull();
   });
 });

@@ -1393,6 +1393,10 @@ export type ArtDepartmentId = 'art' | 'sets' | 'props' | 'costume' | 'hair_makeu
 export type ArtDecisionStatus = 'draft' | 'ready_for_review' | 'changes_requested';
 export type ArtDecisionImpact = 'creative' | 'schedule' | 'budget' | 'safety' | 'continuity';
 export type ArtHandoffStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+export type ArtContinuityDepartment = 'sets' | 'props' | 'costume' | 'hair_makeup';
+export type ArtContinuityStatus = 'planned' | 'in_progress' | 'ready' | 'on_set' | 'reset_required' | 'complete' | 'blocked';
+export type ArtContinuitySource = 'unknown' | 'owned' | 'rented' | 'purchased' | 'fabricated' | 'borrowed';
+export type ArtContinuityCondition = 'unknown' | 'good' | 'attention' | 'damaged' | 'missing';
 
 export interface ArtDepartmentScenePlan {
   sceneId: string;
@@ -1429,6 +1433,27 @@ export interface ArtDepartmentHandoff {
   updatedAt?: string;
 }
 
+export interface ArtContinuityItem {
+  id: string;
+  department: ArtContinuityDepartment;
+  title: string;
+  sceneId: string;
+  productionDayId?: string;
+  characterRoleId?: string;
+  propId?: string;
+  status: ArtContinuityStatus;
+  source: ArtContinuitySource;
+  condition: ArtContinuityCondition;
+  owner?: string;
+  location?: string;
+  presetNotes?: string;
+  resetNotes?: string;
+  issue?: string;
+  beforeReferences: ProductionContinuityReference[];
+  afterReferences: ProductionContinuityReference[];
+  updatedAt?: string;
+}
+
 export interface ArtDepartmentActivityEntry {
   id: string;
   type: 'workspace_saved';
@@ -1444,6 +1469,7 @@ export interface ArtDepartmentOperations {
   scenePlans: ArtDepartmentScenePlan[];
   decisions: ArtDepartmentDecision[];
   handoffs: ArtDepartmentHandoff[];
+  continuityItems: ArtContinuityItem[];
   activity?: ArtDepartmentActivityEntry[];
 }
 

@@ -63,6 +63,7 @@ import {
   normalizeArtDepartmentOperations,
   readArtDepartmentActivity,
   summarizeArtDepartmentChanges,
+  validateArtContinuityReferences,
 } from './casting-production-art-department.js';
 import {
   applyPostProductionCommand,
@@ -210,6 +211,18 @@ function receiveLocationScoutMedia(req: Request, res: Response, next: NextFuncti
     });
   });
 }
+
+const continuityMediaUploadLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthedRequest).userId || 'unauthenticated',
+  handler: (_req, res) => res.status(429).json({
+    error: 'rate_limited',
+    message: 'For mange continuity-opplastinger på kort tid. Vent litt og prøv igjen.',
+  }),
+});
 
 const locationScoutMediaUploadLimiter = rateLimit({
   windowMs: 10 * 60_000,
@@ -2359,6 +2372,38 @@ export function createCastingProductionRouter(
           mapArtDepartmentRow(projectId, currentRow),
         );
         return;
+      }
+      if (operations.continuityItems.length > 0) {
+        const [days, scenes, roles, props, media] = await Promise.all([
+          pool.query('SELECT id, scene_ids FROM casting_production_days WHERE project_id = $1', [projectId]),
+          pool.query('SELECT id FROM casting_scenes WHERE project_id = $1', [projectId]),
+          pool.query('SELECT id FROM casting_roles WHERE project_id = $1', [projectId]),
+          pool.query('SELECT id FROM casting_props WHERE project_id = $1', [projectId]),
+          pool.query(
+            `SELECT id::text, production_day_id, scene_id
+               FROM casting_production_continuity_media
+              WHERE project_id = $1 AND deleted_at IS NULL`,
+            [projectId],
+          ),
+        ]);
+        const productionDayScenes = new Map<string, ReadonlySet<string>>();
+        for (const row of days.rows) {
+          productionDayScenes.set(String(row.id), new Set(asArray(row.scene_ids).map(String)));
+        }
+        const sceneIds = new Set<string>(scenes.rows.map((row) => String(row.id)));
+        for (const daySceneIds of productionDayScenes.values()) {
+          for (const sceneId of daySceneIds) sceneIds.add(sceneId);
+        }
+        validateArtContinuityReferences(operations, {
+          sceneIds,
+          productionDayScenes,
+          characterRoleIds: new Set(roles.rows.map((row) => String(row.id))),
+          propIds: new Set(props.rows.map((row) => String(row.id))),
+          media: new Map(media.rows.map((row) => [String(row.id), {
+            productionDayId: String(row.production_day_id),
+            sceneId: String(row.scene_id),
+          }])),
+        });
       }
 
       const actorUserId = (req as AuthedRequest).userId;
@@ -4707,12 +4752,13 @@ export function createCastingProductionRouter(
     async (req, res, next) => {
       try {
         await schemaReady(pool);
-        if (!(await ensureContinuityAccess(req, res, req.params.projectId, 'manage'))) return;
+        if (!(await ensureAnyProjectGrant(req, res, req.params.projectId, ['canManageContinuity', 'canManageArtDepartment']))) return;
         next();
       } catch {
         res.status(500).json({ error: 'Kunne ikke kontrollere medietilgang', detail: 'internal_error' });
       }
     },
+    continuityMediaUploadLimiter,
     receiveContinuityMedia,
     async (req, res) => {
       const uploadRequest = req as ContinuityMediaRequest;
