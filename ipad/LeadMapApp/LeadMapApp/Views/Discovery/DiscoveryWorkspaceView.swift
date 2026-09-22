@@ -1295,6 +1295,19 @@ struct DiscoveryWorkspaceView: View {
                             .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                     }
                 }
+                if forslag.mapReady {
+                    Label("Havner som pin på kartet", systemImage: "mappin.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.success)
+                } else {
+                    // Kartlaget filtrerer bort leads uten koordinater. Uten
+                    // denne linja forsvinner bedriften fra kartet uten at noen
+                    // får vite hvorfor.
+                    Label("Mangler koordinater — havner i Leads, ikke på kartet",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                }
                 Label(forslag.firstStep.title, systemImage: forslag.firstStep.symbol)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)

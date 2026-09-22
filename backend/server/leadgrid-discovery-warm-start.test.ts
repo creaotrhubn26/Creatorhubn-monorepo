@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  candidateIsMapReady,
   nextWorkingMorning,
+  pickWarmestCandidate,
   warmStartFirstStep,
   warmStartSuggestionFrom,
 } from "./leadgrid-discovery-warm-start.js";
@@ -106,5 +108,95 @@ describe("nextWorkingMorning", () => {
   it("flytter aldri fristen bakover", () => {
     const now = new Date("2026-09-22T08:00:00+02:00");
     expect(nextWorkingMorning(now).getTime()).toBeGreaterThan(now.getTime());
+  });
+});
+
+function lagKandidat(
+  id: string,
+  fit: number,
+  extra: Partial<{
+    phone: string | null;
+    email: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }> = {},
+) {
+  return {
+    id,
+    name: id,
+    city: "Oslo",
+    organization_number: null,
+    phone: null,
+    email: null,
+    website_url: null,
+    latitude: 59.91,
+    longitude: 10.75,
+    fit_score: fit,
+    reasons: [],
+    ...extra,
+  } as never;
+}
+
+describe("pickWarmestCandidate", () => {
+  it("velger den best scorende når alle er like brukbare", () => {
+    const valgt = pickWarmestCandidate([
+      lagKandidat("a", 0.7, { phone: "1" }),
+      lagKandidat("b", 0.9, { phone: "1" }),
+    ]);
+    expect(valgt?.id).toBe("b");
+  });
+
+  it("velger den vi kan kontakte når scoren er jevn", () => {
+    // Den best scorende mangler både telefon og e-post. Førstehandlingen
+    // ville blitt «finn kontaktinfo selv».
+    const valgt = pickWarmestCandidate([
+      lagKandidat("stor-uten-kontakt", 0.92),
+      lagKandidat("litt-lavere-med-telefon", 0.88, { phone: "94 89 78 64" }),
+    ]);
+    expect(valgt?.id).toBe("litt-lavere-med-telefon");
+  });
+
+  it("velger den som kan plasseres på kartet framfor en uten koordinater", () => {
+    const valgt = pickWarmestCandidate([
+      lagKandidat("uten-kart", 0.9, { phone: "1", latitude: null, longitude: null }),
+      lagKandidat("med-kart", 0.85, { phone: "1" }),
+    ]);
+    expect(valgt?.id).toBe("med-kart");
+  });
+
+  it("lar treffsikkerheten vinne når forskjellen er stor", () => {
+    // 0,40 mot 0,95 er ikke «jevnt». Da er ikke et telefonnummer nok.
+    const valgt = pickWarmestCandidate([
+      lagKandidat("riktig-bransje", 0.95),
+      lagKandidat("feil-bransje-med-telefon", 0.4, { phone: "1" }),
+    ]);
+    expect(valgt?.id).toBe("riktig-bransje");
+  });
+
+  it("gir null på tom liste", () => {
+    expect(pickWarmestCandidate([])).toBeNull();
+  });
+
+  it("tåler at scoren mangler", () => {
+    const valgt = pickWarmestCandidate([
+      lagKandidat("uten-score", Number.NaN as unknown as number),
+      lagKandidat("med-score", 0.5, { phone: "1" }),
+    ]);
+    expect(valgt).not.toBeNull();
+  });
+});
+
+describe("candidateIsMapReady", () => {
+  it("regner 0,0 som ingen plassering", () => {
+    // Kartlaget filtrerer bort 0,0; en pin i Atlanterhavet er ingen pin.
+    expect(candidateIsMapReady({ latitude: 0, longitude: 0 })).toBe(false);
+  });
+
+  it("godtar ekte koordinater", () => {
+    expect(candidateIsMapReady({ latitude: 59.91, longitude: 10.75 })).toBe(true);
+  });
+
+  it("krever begge", () => {
+    expect(candidateIsMapReady({ latitude: 59.91, longitude: null })).toBe(false);
   });
 });

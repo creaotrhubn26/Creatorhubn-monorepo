@@ -21,6 +21,9 @@ import {
   type DiscoveryCandidateDto,
 } from "./leadgrid-discovery-service.js";
 
+/** Hvor mange toppkandidater vi vurderer før vi peker. */
+const WARM_START_CONSIDERED = 100;
+
 export interface WarmStartFirstStep {
   /** Kanalen første handling går i. Styrer ikonet i appen. */
   channel: "call" | "email" | "research";
@@ -40,6 +43,10 @@ export interface WarmStartSuggestion {
   /** Hvorfor akkurat denne — kommer fra scoringen, ikke fra en tekstmal. */
   reasons: string[];
   first_step: WarmStartFirstStep;
+  /** Har koordinater, og havner derfor som pin på kartet. */
+  map_ready: boolean;
+  /** Har telefon eller e-post — vi kan faktisk ta kontakt. */
+  contactable: boolean;
 }
 
 export interface WarmStartPreview {
@@ -111,7 +118,73 @@ export function warmStartSuggestionFrom(
     fit_score: candidate.fit_score,
     reasons: candidate.reasons.slice(0, 3),
     first_step: warmStartFirstStep(candidate),
+    map_ready: candidateIsMapReady(candidate),
+    contactable: candidateIsContactable(candidate),
   };
+}
+
+/**
+ * Rangering innen tåleavstanden: en lead som ikke kan plasseres, dukker aldri
+ * opp på kartet (kartlaget filtrerer bort koordinat 0,0), og en uten telefon
+ * eller e-post gir ingen vei videre. Begge deler er usynlig for brukeren før
+ * hen står fast.
+ */
+function actionabilityTier(candidate: DiscoveryCandidateDto): number {
+  const kart = candidateIsMapReady(candidate);
+  const kontakt = candidateIsContactable(candidate);
+  if (kart && kontakt) return 0;
+  if (kart) return 1;
+  if (kontakt) return 2;
+  return 3;
+}
+
+export function candidateIsMapReady(
+  candidate: Pick<DiscoveryCandidateDto, "latitude" | "longitude">,
+): boolean {
+  const lat = candidate.latitude;
+  const lon = candidate.longitude;
+  return (
+    lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
+    // Kartet filtrerer bort 0,0 — en pin i Atlanterhavet er ingen pin.
+    && !(lat === 0 && lon === 0)
+  );
+}
+
+export function candidateIsContactable(
+  candidate: Pick<DiscoveryCandidateDto, "phone" | "email">,
+): boolean {
+  return Boolean(candidate.phone?.trim() || candidate.email?.trim());
+}
+
+/**
+ * Velger kandidaten varm start peker på.
+ *
+ * Treffsikkerhet kommer først: bare kandidater innenfor `tolerance` av den
+ * beste scoren er med i betraktningen. Blant dem vinner den vi faktisk kan
+ * gjøre noe med — plassere på kartet og ta kontakt med. Uten dette foreslår
+ * systemet gjerne den største virksomheten i bransjen og etterlater brukeren
+ * med «finn kontaktinfo selv» som første handling. Målt i Enhetsregisteret
+ * 2026-09-22: i næringskode 87.104 hadde én av fem både telefon og e-post.
+ */
+export function pickWarmestCandidate(
+  candidates: DiscoveryCandidateDto[],
+  tolerance = 0.1,
+): DiscoveryCandidateDto | null {
+  if (candidates.length === 0) return null;
+  // En kandidat uten tall for score må telle som null, ikke som NaN: NaN
+  // forplanter seg gjennom Math.max og tømmer hele utvalget, slik at
+  // forslaget forsvinner fordi ÉN rad manglet score.
+  const score = (candidate: DiscoveryCandidateDto): number => {
+    const verdi = candidate.fit_score;
+    return typeof verdi === "number" && Number.isFinite(verdi) ? verdi : 0;
+  };
+  const best = Math.max(...candidates.map(score));
+  const innenfor = candidates.filter((c) => score(c) >= best - tolerance);
+  return [...innenfor].sort((venstre, høyre) => {
+    const tier = actionabilityTier(venstre) - actionabilityTier(høyre);
+    if (tier !== 0) return tier;
+    return score(høyre) - score(venstre);
+  })[0] ?? null;
 }
 
 async function warmestPending(
@@ -125,9 +198,9 @@ async function warmestPending(
     runId: input.runId,
     disposition: "pending",
     sort: "score_desc",
-    limit: 1,
+    limit: WARM_START_CONSIDERED,
   });
-  return items[0] ?? null;
+  return pickWarmestCandidate(items);
 }
 
 export async function previewWarmStart(
@@ -139,9 +212,9 @@ export async function previewWarmStart(
     runId: input.runId,
     disposition: "pending",
     sort: "score_desc",
-    limit: 100,
+    limit: WARM_START_CONSIDERED,
   });
-  const warmest = items[0] ?? null;
+  const warmest = pickWarmestCandidate(items);
   return {
     pending_count: items.length,
     suggestion: warmest ? warmStartSuggestionFrom(warmest) : null,

@@ -53,6 +53,10 @@ struct DiscoveryWarmStartSuggestion: Decodable, Sendable {
     let fitScore: Double?
     let reasons: [String]
     let firstStep: DiscoveryWarmStartStep
+    /// Har koordinater, og blir derfor en pin på kartet.
+    let mapReady: Bool
+    /// Har telefon eller e-post.
+    let contactable: Bool
 
     enum CodingKeys: String, CodingKey {
         case name, city, phone, email, reasons
@@ -61,6 +65,8 @@ struct DiscoveryWarmStartSuggestion: Decodable, Sendable {
         case websiteUrl = "website_url"
         case fitScore = "fit_score"
         case firstStep = "first_step"
+        case mapReady = "map_ready"
+        case contactable = "contactable"
     }
 }
 
