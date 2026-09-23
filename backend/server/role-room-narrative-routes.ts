@@ -913,6 +913,14 @@ export function createRoleRoomNarrativeRouter(
       throw err;
     }
   }));
+  // Scene-manifest for spillbygget (Fase 9): manus, replikker og gate-status som
+  // versjonert JSON. Ugatet, som JSON-/Markdown-eksport. Registrert før /scenes/:sceneId.
+  router.get('/projects/:projectId/scenes/export.json', ...guard, wrap(async (req, res) => {
+    const manifest = await svc.buildSceneManifest(pool, req.projectId);
+    res.setHeader('ETag', `"${manifest.contentHash}"`);
+    if (req.headers['if-none-match'] === `"${manifest.contentHash}"`) { res.status(304).end(); return; }
+    res.json(manifest);
+  }));
   // Manus-PDF av scenekortene (UX-28): et scenebasert studio har ofte ingen brett.
   router.get('/projects/:projectId/scenes/export.pdf', ...guard, wrap(async (req, res) => {
     await feature(req.projectId, 'export_pdf');

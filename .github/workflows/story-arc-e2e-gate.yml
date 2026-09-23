@@ -10,8 +10,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Kostnadsvakt: PR-er som ikke rører frontend/ (backend-, docs-, iPad-PR-er)
+  # hopper over denne 90-minutters jobben. Hoppet over via `if` rapporteres som
+  # «skipped», som GitHub godtar for påkrevde sjekker — i motsetning til et
+  # workflow-nivå `paths:`-filter, som ville latt en påkrevd sjekk henge.
+  # merge_group og workflow_dispatch kjører alltid.
+  changes:
+    name: Detect frontend changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.diff.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diff against base
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SELF: story-arc-e2e-gate.yml
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then echo "frontend=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" || true)
+          if [ -z "$files" ] || echo "$files" | grep -qE "^(frontend/|package(-lock)?\.json$|\.github/workflows/$SELF$)"; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+            echo "Ingen frontend-endringer — hopper over."
+          fi
+
   story-arc-hardened:
     name: Story Arc Hardened E2E
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

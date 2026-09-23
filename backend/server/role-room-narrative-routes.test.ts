@@ -571,6 +571,16 @@ describe('narrative routes — Fase 4d: plan-gating (prosjekteierens game_plan)'
     expect((ok.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
+  it('scenes/export.json: manifest med ETag; If-None-Match med samme hash → 304 (ugatet, også solo)', async () => {
+    const app = createApp(makePool([{ match: /SELECT name FROM casting_projects/, rows: [{ name: 'What Follows Us' }] }]), { plan: 'solo' });
+    const res = await auth(request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/export.json`));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ schema: 'story-graph.scene-manifest', version: 1, projectName: 'What Follows Us', scenes: [] });
+    expect(res.headers.etag).toBe(`"${res.body.contentHash}"`);
+    const again = await auth(request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/export.json`)).set('If-None-Match', res.headers.etag);
+    expect(again.status).toBe(304);
+  });
+
   it('solo: POST import format=twee → 402 import_twine_ink; format=arcweave gates ikke', async () => {
     const app = createApp(makePool(), { plan: 'solo' });
     const twee = await auth(request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)).send({ format: 'twee', source: ':: Start\nHei' });
