@@ -167,7 +167,13 @@ struct MapView: View {
             }
         case .loaded:
             if let item = highlighted, isWithinReach(item.distanceM) {
-                NearbyCard(poi: item.poi, distanceM: item.distanceM, isLocked: env.isLocked(item.poi), locale: locale) {
+                NearbyCard(
+                    poi: item.poi,
+                    distanceM: item.distanceM,
+                    isLocked: env.isLocked(item.poi),
+                    locale: locale,
+                    onShowDirections: { path.append(Route.veiviser(.poi(id: item.poi.id))) }
+                ) {
                     path.append(Route.poi(item.poi.id))
                 }
                 .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 8)

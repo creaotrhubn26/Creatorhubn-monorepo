@@ -41,6 +41,14 @@ final class AppEnvironment {
         self.visits = visits
         self.visitSync = VisitSync(settings: settings, visits: visits, transport: api)
         self.player = PlayerViewModel(settings: settings, visits: visits)
+
+        // Live Activity (pakke 2, item 6): kobler avspiller-manageren til de
+        // andre butikkene så den kan vise avstand til neste stopp.
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            PlayerActivityManager.shared.configure(location: self.location, store: self.store, visits: self.visits, settings: self.settings)
+        }
+        #endif
     }
 
     func open(poi: GuidePOI) {
@@ -83,4 +91,6 @@ final class AppEnvironment {
 enum Route: Hashable {
     case map
     case poi(String)
+    /// Veiviseren (pakke 2, item 5): kompassretning til et valgt sted eller «neste sted».
+    case veiviser(VeiviserTarget)
 }

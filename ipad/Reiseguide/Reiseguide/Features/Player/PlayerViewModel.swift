@@ -169,6 +169,7 @@ final class PlayerViewModel {
         currentVisitId = entryId
         visits.markCompleted(entryId: entryId)
         finishedVisit = FinishedVisit(entryId: entryId, poi: poi)
+        endLiveActivity()
     }
 
     func selectVariant(_ kind: VariantKind) {
@@ -190,12 +191,14 @@ final class PlayerViewModel {
         engine.play()
         isPlaying = true
         startTicker()
+        startOrUpdateLiveActivity(isPlaying: true)
     }
 
     func pause() {
         engine.pause()
         isPlaying = false
         stopTicker()
+        startOrUpdateLiveActivity(isPlaying: false)
     }
 
     func togglePlayPause() {
@@ -260,6 +263,7 @@ final class PlayerViewModel {
         finishedVisit = nil
         currentVisitId = nil
         isPresented = false
+        endLiveActivity()
     }
 
     // MARK: - Privat
@@ -280,6 +284,7 @@ final class PlayerViewModel {
         if announce, let title = chapter.title {
             pendingChapterAnnouncement = title
         }
+        startOrUpdateLiveActivity(isPlaying: isPlaying)
     }
 
     private func startTicker() {
@@ -301,6 +306,55 @@ final class PlayerViewModel {
     private func onTick() {
         let finished = engine.tick()
         positionS = min(engine.currentPositionS, durationS)
+        updateLiveActivityDistanceIfNeeded()
         if finished { nextChapter() }
+    }
+
+    // MARK: - Live Activity (pakke 2, item 6)
+    //
+    // Låseskjerm + Dynamic Island. Selve implementasjonen (start/oppdater/
+    // avslutt, avstand-throttling) ligger i PlayerActivityManager — her er
+    // det bare korte kall fra de fire livssyklus-punktene spesifikasjonen
+    // nevner: start, kapittelbytte, spill/pause, avslutt/stopp.
+
+    private func startOrUpdateLiveActivity(isPlaying: Bool) {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            guard let poi, let chapter else { return }
+            let chapterCount = variant?.chapters.count ?? 1
+            if PlayerActivityManager.shared.isRunning {
+                PlayerActivityManager.shared.updatePlayback(
+                    poi: poi, chapter: chapter, chapterCount: chapterCount,
+                    positionS: positionS, durationS: durationS, isPlaying: isPlaying
+                )
+            } else {
+                PlayerActivityManager.shared.start(
+                    poi: poi, chapter: chapter, chapterCount: chapterCount,
+                    positionS: positionS, durationS: durationS, isPlaying: isPlaying
+                )
+            }
+        }
+        #endif
+    }
+
+    private func updateLiveActivityDistanceIfNeeded() {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            guard let poi, let chapter else { return }
+            let chapterCount = variant?.chapters.count ?? 1
+            PlayerActivityManager.shared.updateDistanceIfNeeded(
+                currentPoiId: poi.id, poi: poi, chapter: chapter, chapterCount: chapterCount,
+                positionS: positionS, durationS: durationS, isPlaying: isPlaying
+            )
+        }
+        #endif
+    }
+
+    private func endLiveActivity() {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            PlayerActivityManager.shared.end()
+        }
+        #endif
     }
 }

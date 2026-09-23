@@ -15,6 +15,7 @@
 
 import Foundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -30,6 +31,7 @@ final class AppSettings {
         static let playbackRate = "reiseguide.playbackRate"
         static let deviceId = "reiseguide.deviceId"
         static let syncVisits = "reiseguide.syncVisitsToServer"
+        static let speakDirections = "reiseguide.speakDirectionsEnabled"
     }
 
     private let defaults: UserDefaults
@@ -59,6 +61,13 @@ final class AppSettings {
         didSet { defaults.set(syncVisitsToServer, forKey: Key.syncVisits) }
     }
 
+    /// «Les opp retningen» i veiviseren (pakke 2, item 5). Standard PÅ hvis
+    /// VoiceOver kjørte da appen startet første gang, ellers AV — deretter
+    /// et vanlig lagret valg som ikke endres av at VoiceOver skrus av/på.
+    var speakDirectionsEnabled: Bool {
+        didSet { defaults.set(speakDirectionsEnabled, forKey: Key.speakDirections) }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -73,6 +82,7 @@ final class AppSettings {
         let storedRate = defaults.double(forKey: Key.playbackRate)
         playbackRate = storedRate > 0 ? storedRate : 1
         syncVisitsToServer = defaults.bool(forKey: Key.syncVisits)
+        speakDirectionsEnabled = defaults.object(forKey: Key.speakDirections) as? Bool ?? UIAccessibility.isVoiceOverRunning
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {
