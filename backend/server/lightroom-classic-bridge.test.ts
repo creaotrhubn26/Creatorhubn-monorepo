@@ -11,7 +11,7 @@ const routeSource = readFileSync(
   'utf8',
 );
 const migrationSource = readFileSync(
-  fileURLToPath(new URL('../migrations/0665_lightroom_classic_creatorhub_bridge.sql', import.meta.url)),
+  fileURLToPath(new URL('../migrations/0664_lightroom_classic_creatorhub_bridge.sql', import.meta.url)),
   'utf8',
 );
 const pluginSource = readFileSync(
