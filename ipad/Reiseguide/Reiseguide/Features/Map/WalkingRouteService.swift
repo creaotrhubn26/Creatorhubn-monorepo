@@ -55,7 +55,9 @@ final class WalkingRouteService {
         route = result
     }
 
-    private static func calculate(from origin: Coordinate, to destination: Coordinate, poiId: String) async -> WalkingRoute? {
+    // nonisolated: MKDirections og svaret er ikke Sendable, så hele kallet
+    // holdes utenfor MainActor, og bare den Sendable WalkingRoute krysser over.
+    private nonisolated static func calculate(from origin: Coordinate, to destination: Coordinate, poiId: String) async -> WalkingRoute? {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin.clCoordinate))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination.clCoordinate))
@@ -76,7 +78,7 @@ final class WalkingRouteService {
         }
     }
 
-    private static func coordinates(of polyline: MKPolyline) -> [Coordinate] {
+    private nonisolated static func coordinates(of polyline: MKPolyline) -> [Coordinate] {
         let count = polyline.pointCount
         guard count > 0 else { return [] }
         var buffer = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: count)
