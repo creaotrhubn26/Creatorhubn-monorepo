@@ -92,18 +92,19 @@ export function HubSpotMigrationFlow({
     setStarter(true);
     setStartfeil(null);
     try {
-      const svar = await apiRequest<JobbStatus>("/api/leadgrid/import/hubspot/jobs", {
+      // apiRequest er utypet; vi kaster til svarformen ruta faktisk gir.
+      const svar = (await apiRequest("/api/leadgrid/import/hubspot/jobs", {
         method: "POST",
         body: { project_id: projectId, service_key: nøkkel.trim() },
-      });
+      })) as JobbStatus;
       // Nøkkelen er sendt. Den skal ikke ligge igjen i skjemaet etterpå.
       setNøkkel("");
       setJobb(svar);
       polling.current = window.setInterval(async () => {
         try {
-          const neste = await apiRequest<JobbStatus>(
+          const neste = (await apiRequest(
             `/api/leadgrid/import/hubspot/jobs/${svar.id}?project_id=${encodeURIComponent(projectId)}`,
-          );
+          )) as JobbStatus;
           setJobb(neste);
           if (["klar", "ferdig", "feilet"].includes(neste.fase)) stoppPolling();
         } catch {
@@ -121,10 +122,10 @@ export function HubSpotMigrationFlow({
     if (!jobb) return;
     setSkriver(true);
     try {
-      const svar = await apiRequest<JobbStatus>(
+      const svar = (await apiRequest(
         `/api/leadgrid/import/hubspot/jobs/${jobb.id}/commit`,
         { method: "POST", body: { project_id: projectId } },
-      );
+      )) as JobbStatus;
       setJobb(svar);
     } finally {
       setSkriver(false);
