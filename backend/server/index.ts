@@ -663,6 +663,7 @@ import { registerLeadgridMarketingRoutes } from "./leadgrid-marketing-routes.js"
 import { createLeadgridMarketingBridge } from "./leadgrid-marketing-bridge.js";
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
+import { registerLeadgridHubSpotImportRoutes } from "./leadgrid-hubspot-import-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
 import { registerLeadgridDiscoveryRoutes } from "./leadgrid-discovery-routes.js";
 import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
@@ -26002,6 +26003,7 @@ registerLeadgridMomentumRoutes({ app, pool, activeSessions });
 //   GET  /api/leadgrid/import/batches
 // Gated på leads.import_csv.
 registerLeadgridImportRoutes({ app, pool, activeSessions });
+registerLeadgridHubSpotImportRoutes({ app, pool, requireUserSession });
 // Legacy URL Research persisted raw Google Places payloads without a
 // customer-project boundary or Discovery V2 attestation. Keep one
 // authenticated tombstone for every method/subpath while a safe, project-bound
