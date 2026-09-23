@@ -12,6 +12,18 @@ async function open(page: Page, tab: string, extra = '') {
 }
 
 test.describe('Story Graph — historie, scenekort v2, karakterer, lokasjoner, plattform', () => {
+  test('Hjem: «Neste scene å bygge» peker på en uferdig scene og åpner scenekortet (Fase 9)', async ({ page }) => {
+    await open(page, 'home');
+    const card = page.getByTestId('narrative-home-next-scene');
+    await expect(card).toBeVisible();
+    const title = (await page.getByTestId('narrative-home-next-scene-title').innerText()).trim();
+    const code = title.split(' – ')[0];
+    expect(code).toMatch(/^[A-Z]{1,3}\d{1,4}[A-Z]?$/);
+    await page.getByTestId('narrative-home-next-scene-open').click();
+    await expect(page.getByTestId('narrative-scenes-panel')).toBeVisible();
+    await expect(page).toHaveURL(/scene=nsc_/);
+  });
+
   test('Historie: E01 vises med P01–P03, tidslinje, åpne spørsmål kan avgjøres, kilder med SHA-256', async ({ page }) => {
     await open(page, 'story');
     const e01 = page.getByTestId('narrative-episode-E01');

@@ -1067,6 +1067,13 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
         activity,
         unreadInbox: inbox.filter((n) => !n.readAt).length,
+        nextScene: (() => {
+          const gateOf = (sid: unknown, key: string) => gates.find((x) => x.sceneId === sid && x.gateKey === key)?.status ?? 'not_started';
+          const cand = [...scenes].filter((sc) => sc.status !== 'approved' && sc.status !== 'implemented' && gateOf(sc.id, 'greybox') !== 'passed')
+            .sort((a, b) => Number(gateOf(b.id, 'script_coverage') === 'passed') - Number(gateOf(a.id, 'script_coverage') === 'passed') || Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
+          const sc = cand[0];
+          return sc ? { id: sc.id, code: sc.code, title: sc.title, scriptCovered: gateOf(sc.id, 'script_coverage') === 'passed', openTasks: tasks.filter((t) => t.sceneId === sc.id && t.status !== 'done').length } : null;
+        })(),
         playtest: (() => { const ps = playtestSummary(null); return { sessions7d: ps.sessions, worstDropOff: ps.worstDropOff }; })(),
         guardian: { pending: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending').length, high: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending' && (x.payload as Rec).severity === 'high').length },
       }));

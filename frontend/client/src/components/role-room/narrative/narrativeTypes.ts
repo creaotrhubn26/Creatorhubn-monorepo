@@ -580,6 +580,8 @@ export interface NarrativeProjectOverview {
   episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;
   activity: NarrativeActivityItem[];
   unreadInbox: number;
+  /** Fase 9: neste scene å bygge (første uferdige scene uten bestått gråboks). */
+  nextScene?: { id: string; code: string; title: string; scriptCovered: boolean; openTasks: number } | null;
 }
 export interface NarrativeInboxItem {
   id: string;

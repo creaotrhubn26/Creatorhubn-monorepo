@@ -271,4 +271,87 @@ describe("Fase 6: scene-verktøy (game_studio)", () => {
     expect(out.scenes.byStatus.approved).toBe(1);
     expect(out.gates).toMatchObject({ passed: 1, total: 6 }); // kun startede scener (status ≠ idea) × 6 gater
   });
+  it("rr_project_overview → nextScene fra første uferdige scene uten bestått gråboks", async () => {
+    const pool = makePool([access,
+      { match: /AS script_covered/, rows: [{ id: "nsc_3", code: "P03", title: "Husken", script_covered: true, open_tasks: 2 }] },
+    ]);
+    const out = await findCapability("rr_project_overview")!.handler(pool, CTX, { projectId: "p1" }) as { nextScene: unknown };
+    expect(out.nextScene).toEqual({ id: "nsc_3", code: "P03", title: "Husken", scriptCovered: true, openTasks: 2 });
+    const empty = await findCapability("rr_project_overview")!.handler(makePool([access]), CTX, { projectId: "p1" }) as { nextScene: unknown };
+    expect(empty.nextScene).toBeNull();
+  });
+});
+
+describe("Fase 9: scene-manifest + skriveverktøy for spillrepoet", () => {
+  const access = { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] };
+  const WCTX: McpCallContext = { userId: "u1", scopes: ["projects.write"], apiKeyId: "k1" };
+  const sceneRow = { id: "nsc_1", project_id: "p1", code: "P03", working_id: "P03", title: "Husken", subtitle: "", location: "Husken", challenge: "", gameplay_mechanic: "", environment: "", status: "in_progress", era: "1797", assignee_user_id: null, due_at: null, hero_asset_id: null, sort_order: 0, before_state: "Før", action: "Handling", control: "", after_state: "", audio: "", change_note: "", bridge: "", time_note: "", knowledge: {}, source_refs: [], episode_id: "nep_1", start_at: null, created_by: "u1", created_at: new Date(), updated_at: new Date() };
+  const lineRow = { id: "nsl_1", scene_id: "nsc_1", project_id: "p1", cue_id: "W03.01", speaker_component_id: null, speaker_label: "ELISE", perspective: "", text_en: "Higher!", text_nb: "Høyere!", source_type: "E", recording_status: "none", note: "", sort_order: 0, created_by: "u1", created_at: new Date(), updated_at: new Date() };
+  const byRef = { match: /upper\(working_id\) = upper\(\$2\)/, rows: [sceneRow] };
+
+  it("game_studio-katalogen har manifest-verktøyet (les) og skriveverktøyene (kun med projects.write)", () => {
+    const read = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
+    expect(read).toContain("rr_export_scene_manifest");
+    expect(read).not.toContain("rr_set_scene_gate");
+    const write = listCapabilitiesFor(["projects.write"], "game_studio").map((c) => c.name);
+    expect(write).toEqual(expect.arrayContaining(["rr_update_scene_fields", "rr_set_scene_gate", "rr_complete_scene_task", "rr_add_open_question"]));
+    expect(listCapabilitiesFor(["projects.write"], "production").map((c) => c.name)).not.toContain("rr_set_scene_gate");
+  });
+
+  it("rr_export_scene_manifest → schema/versjon, replikker, alle seks gater og stabil contentHash", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_scenes WHERE project_id = \$1 ORDER BY/, rows: [sceneRow] },
+      { match: /FROM narrative_episodes/, rows: [{ id: "nep_1", project_id: "p1", code: "E01", title: "Skoleveien", summary: "", players_learn: "", source_note: "", status: "draft", sort_order: 0 }] },
+      { match: /FROM narrative_scene_lines WHERE project_id = \$1 ORDER BY scene_id/, rows: [lineRow] },
+      { match: /FROM narrative_scene_gates WHERE project_id = \$1$/, rows: [{ scene_id: "nsc_1", project_id: "p1", gate_key: "greybox", status: "passed", evidence: "12 bestått", evidence_refs: [], checked_by: "u1", checked_at: new Date(), updated_at: new Date() }] },
+      { match: /SELECT name FROM casting_projects/, rows: [{ name: "What Follows Us" }] },
+    ]);
+    const cap = findCapability("rr_export_scene_manifest")!;
+    const a = await cap.handler(pool, CTX, { projectId: "p1" }) as { schema: string; version: number; contentHash: string; episodes: Array<{ code: string }>; scenes: Array<{ code: string; episodeCode: string; fields: { before: string }; lines: Array<{ cueId: string; textNb: string }>; gates: Record<string, string> }> };
+    expect(a).toMatchObject({ schema: "story-graph.scene-manifest", version: 1 });
+    expect(a.episodes).toEqual([{ code: "E01", title: "Skoleveien" }]);
+    expect(a.scenes[0]).toMatchObject({ code: "P03", episodeCode: "E01", fields: { before: "Før" } });
+    expect(a.scenes[0].lines).toEqual([expect.objectContaining({ cueId: "W03.01", textNb: "Høyere!" })]);
+    expect(Object.keys(a.scenes[0].gates)).toHaveLength(6);
+    expect(a.scenes[0].gates).toMatchObject({ greybox: "passed", audio: "not_started" });
+    const b = await cap.handler(pool, CTX, { projectId: "p1" }) as { contentHash: string };
+    expect(b.contentHash).toBe(a.contentHash);
+    expect(a.contentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("rr_set_scene_gate: «passed» uten bevis avvises; med bevis skrives gaten på scenen funnet via arbeids-ID", async () => {
+    const pool = makePool([access, byRef,
+      { match: /FROM narrative_scenes WHERE id = \$1 AND project_id = \$2 LIMIT 1/, rows: [sceneRow] },
+      { match: /INSERT INTO narrative_scene_gates/, rows: [{ scene_id: "nsc_1", project_id: "p1", gate_key: "greybox", status: "passed", evidence: "12 bestått", evidence_refs: ["mcp:k1"], checked_by: "u1", checked_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const cap = findCapability("rr_set_scene_gate")!;
+    await expect(cap.handler(pool, WCTX, { projectId: "p1", scene: "P03", gate: "greybox", status: "passed" })).rejects.toThrow(/evidence/);
+    await expect(cap.handler(pool, WCTX, { projectId: "p1", scene: "P03", gate: "nope", status: "passed", evidence: "x" })).rejects.toThrow(/Ukjent gate/);
+    const ok = await cap.handler(pool, WCTX, { projectId: "p1", scene: "P03", gate: "greybox", status: "passed", evidence: "12 bestått" });
+    expect(ok).toMatchObject({ ok: true, scene: "P03", gate: "greybox", status: "passed" });
+  });
+
+  it("rr_update_scene_fields: ukjente felt og ugyldig status avvises; gyldige felt oppdateres", async () => {
+    const pool = makePool([access, byRef, { match: /UPDATE narrative_scenes SET/, rows: [{ ...sceneRow, action: "Ny handling", status: "implemented" }] }]);
+    const cap = findCapability("rr_update_scene_fields")!;
+    await expect(cap.handler(pool, WCTX, { projectId: "p1", scene: "P03", fields: { code: "X1" } })).rejects.toThrow(/Ukjente felt: code/);
+    await expect(cap.handler(pool, WCTX, { projectId: "p1", scene: "P03", fields: { status: "done" } })).rejects.toThrow(/Ugyldig status/);
+    const ok = await cap.handler(pool, WCTX, { projectId: "p1", scene: "P03", fields: { action: "Ny handling", status: "implemented" } });
+    expect(ok).toMatchObject({ ok: true, code: "P03", status: "implemented", updated: ["action", "status"] });
+  });
+
+  it("ukjent scene-referanse gir tydelig feil", async () => {
+    const pool = makePool([access]);
+    await expect(findCapability("rr_complete_scene_task")!.handler(pool, WCTX, { projectId: "p1", scene: "Z99", taskId: "nst_1" })).rejects.toThrow(/Fant ingen scene «Z99»/);
+  });
+
+  it("rr_add_open_question → neste ledige DEV-kode", async () => {
+    const pool = makePool([access,
+      { match: /FROM narrative_open_questions WHERE project_id = \$1 ORDER BY/, rows: [{ id: "noq_1", project_id: "p1", code: "DEV-01", kind: "question", question: "q", context: "", status: "open", decision: "", decided_by: null, decided_at: null, source_refs: [], sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+      { match: /INSERT INTO narrative_open_questions/, rows: [{ id: "noq_2", project_id: "p1", code: "DEV-02", kind: "question", question: "Hvem ser huska?", context: "P03", status: "open", decision: "", decided_by: null, decided_at: null, source_refs: [], sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const out = await findCapability("rr_add_open_question")!.handler(pool, WCTX, { projectId: "p1", question: "Hvem ser huska?", context: "P03" });
+    expect(out).toMatchObject({ ok: true, code: "DEV-02" });
+    expect((pool.query as any).mock.calls.find((c: unknown[]) => /INSERT INTO narrative_open_questions/.test(String(c[0])))[1]).toContain("DEV-02");
+  });
 });
