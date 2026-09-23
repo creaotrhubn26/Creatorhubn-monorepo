@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MAX_PLACEMENT_ATTEMPTS,
   classifyPlacement,
+  parseNorwegianAddress,
+  sammeSted,
+  utvidGateforkortelser,
   placeLeadAfterApproval,
   placeUnplacedLeads,
   placementKeyFor,
@@ -333,5 +336,129 @@ describe("placeLeadAfterApproval", () => {
       }),
     ).toBe("placed");
     expect(hent).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseNorwegianAddress", () => {
+  const tom = { id: "x", name: "x", address: null, postal_code: null, city: null };
+
+  it("deler opp adressen slik den faktisk er lagret i produksjon", () => {
+    // Alle uplasserte leads i basen 2026-09-22 så slik ut: hele adressen i
+    // ett felt, tomme kolonner. Kartverket gir null treff på hele strengen.
+    expect(
+      parseNorwegianAddress({
+        ...tom,
+        address: "Vaskerelven 14, 5014 Bergen, Norge",
+      }),
+    ).toEqual({ street: "Vaskerelven 14", postalCode: "5014", city: "Bergen" });
+  });
+
+  it("kaster stedsnavnet foran gata", () => {
+    // «Spikersuppa» er et sted, ikke en adresse. Kartverket kjenner det ikke.
+    expect(
+      parseNorwegianAddress({
+        ...tom,
+        address: "Spikersuppa, Karl Johans gt. 41, 0162 Oslo, Norge",
+      }),
+    ).toEqual({
+      // Forkortelsen skrives samtidig ut — Kartverket kjenner bare «gate».
+      street: "Karl Johans gate 41",
+      postalCode: "0162",
+      city: "Oslo",
+    });
+  });
+
+  it("lar kolonnene vinne når de er fylt ut", () => {
+    expect(
+      parseNorwegianAddress({
+        ...tom,
+        address: "Ole Steens gate 10",
+        postal_code: "3015",
+        city: "Drammen",
+      }),
+    ).toEqual({ street: "Ole Steens gate 10", postalCode: "3015", city: "Drammen" });
+  });
+
+  it("takler en ren gateadresse uten mer", () => {
+    expect(parseNorwegianAddress({ ...tom, address: "Storgata 1" })).toEqual({
+      street: "Storgata 1",
+      postalCode: null,
+      city: null,
+    });
+  });
+
+  it("takler poststed uten postnummer", () => {
+    expect(
+      parseNorwegianAddress({ ...tom, address: "Storgata 1, Oslo, Norge" }),
+    ).toEqual({ street: "Storgata 1", postalCode: null, city: "Oslo" });
+  });
+
+  it("gir null gate når adressen er tom", () => {
+    expect(parseNorwegianAddress(tom).street).toBeNull();
+  });
+
+  it("gjør de fire ekte adressene søkbare", () => {
+    const ekte = [
+      "Vaskerelven 14, 5014 Bergen, Norge",
+      "Kvernveien 27, 3043 Drammen, Norge",
+      "Spikersuppa, Karl Johans gt. 41, 0162 Oslo, Norge",
+      "Ekebergveien 101, 1178 Oslo, Norge",
+    ];
+    for (const address of ekte) {
+      const params = placementQueryFor({ ...tom, address });
+      expect(params, address).not.toBeNull();
+      expect(params?.get("adressetekst"), address).not.toContain(",");
+      expect(params?.get("postnummer"), address).toMatch(/^\d{4}$/);
+    }
+  });
+});
+
+describe("utvidGateforkortelser", () => {
+  it("skriver ut gt. som gate — uten punktum", () => {
+    // «Karl Johans gt. 41» gir null treff hos Kartverket, også i
+    // fritekstsøket. «Karl Johans gate 41» gir to.
+    expect(utvidGateforkortelser("Karl Johans gt. 41")).toBe("Karl Johans gate 41");
+    expect(utvidGateforkortelser("Karl Johans gt 41")).toBe("Karl Johans gate 41");
+  });
+
+  it("rører ikke gatenavn som allerede er skrevet ut", () => {
+    expect(utvidGateforkortelser("Ole Steens gate 10")).toBe("Ole Steens gate 10");
+    expect(utvidGateforkortelser("Ekebergveien 101")).toBe("Ekebergveien 101");
+  });
+
+  it("tar ikke gt inne i et ord", () => {
+    expect(utvidGateforkortelser("Bregtveien 4")).toBe("Bregtveien 4");
+  });
+});
+
+describe("sammeSted", () => {
+  it("regner 41A og 41B som samme sted", () => {
+    // Elleve meter fra hverandre. Å be brukeren velge mellom dem er å be om
+    // en avgjørelse uten innhold.
+    expect(
+      sammeSted(
+        { latitude: 59.91439, longitude: 10.73727 },
+        { latitude: 59.91449, longitude: 10.73727 },
+      ),
+    ).toBe(true);
+  });
+
+  it("skiller Oslo fra Trondheim", () => {
+    expect(
+      sammeSted(
+        { latitude: 59.91, longitude: 10.75 },
+        { latitude: 63.43, longitude: 10.39 },
+      ),
+    ).toBe(false);
+  });
+
+  it("skiller to adresser i samme by", () => {
+    // Drøyt to kilometer — ulike bygg, ulikt oppmøtested.
+    expect(
+      sammeSted(
+        { latitude: 59.91439, longitude: 10.73727 },
+        { latitude: 59.89164, longitude: 10.77832 },
+      ),
+    ).toBe(false);
   });
 });

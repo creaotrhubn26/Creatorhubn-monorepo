@@ -91,14 +91,89 @@ interface GeonorgeHit {
 }
 
 /**
+ * Kartverket kjenner bare det fulle gatenavnet. «Karl Johans gt. 41» gir null
+ * treff — også i fritekstsøket — mens «Karl Johans gate 41» gir to.
+ * Forkortelsene under er de som faktisk står i leads-dataene våre.
+ */
+const GATEFORKORTELSER: Array<[RegExp, string]> = [
+  // Punktumet må spises opp: «gate.» gir ikke treff i Kartverket.
+  [/\bgt\.?(?=\s|$)/gi, "gate"],
+  [/\bvn\.?(?=\s|$)/gi, "veien"],
+  [/\bv\.(?=\s|$)/gi, "veien"],
+  [/\bpl\.?(?=\s|$)/gi, "plass"],
+];
+
+export function utvidGateforkortelser(gate: string): string {
+  let ut = gate;
+  for (const [mønster, erstatning] of GATEFORKORTELSER) {
+    ut = ut.replace(mønster, erstatning);
+  }
+  return ut.replace(/\s+/g, " ").trim();
+}
+
+export interface ParsedAddress {
+  street: string | null;
+  postalCode: string | null;
+  city: string | null;
+}
+
+/**
+ * Adressen kommer sjelden pent oppdelt.
+ *
+ * Målt i produksjon 2026-09-22: alle leads uten plassering hadde hele
+ * adressen i ett felt — «Vaskerelven 14, 5014 Bergen, Norge» — med tomme
+ * kolonner for postnummer og poststed. Kartverket gir NULL treff på den
+ * strengen, mens «Vaskerelven 14» med postnummer 5014 gir ett presist treff.
+ * Uten denne oppdelingen ville plasseringen ikke reddet en eneste av dem.
+ *
+ * Kolonnene vinner når de er fylt ut; ellers brukes det som står i strengen.
+ */
+export function parseNorwegianAddress(lead: UnplacedLead): ParsedAddress {
+  const rå = lead.address?.trim() ?? "";
+  // Landet hører ikke hjemme i et norsk adressesøk.
+  const utenLand = rå.replace(/,\s*(norge|norway)\s*$/i, "").trim();
+  const deler = utenLand
+    .split(",")
+    .map((del) => del.trim())
+    .filter(Boolean);
+
+  let gate: string | null = utenLand || null;
+  let postnummer: string | null = null;
+  let poststed: string | null = null;
+
+  const postIndeks = deler.findIndex((del) => /^\d{4}(\s|$)/.test(del));
+  if (postIndeks >= 0) {
+    const treff = /^(\d{4})\s*(.*)$/.exec(deler[postIndeks]);
+    if (treff) {
+      postnummer = treff[1];
+      poststed = treff[2].trim() || null;
+    }
+    // Alt før postnummeret kan være «Spikersuppa, Karl Johans gt. 41».
+    // Gata er den siste delen før postnummeret; det foran er et stedsnavn
+    // Kartverket ikke kjenner igjen.
+    gate = postIndeks > 0 ? deler[postIndeks - 1] : null;
+  } else if (deler.length > 1) {
+    // Ingen postnummer i strengen: siste del er gjerne poststedet.
+    gate = deler[deler.length - 2];
+    poststed = deler[deler.length - 1];
+  }
+
+  return {
+    street: gate ? utvidGateforkortelser(gate) || null : null,
+    postalCode: lead.postal_code?.trim() || postnummer,
+    city: lead.city?.trim() || poststed,
+  };
+}
+
+/**
  * Nøkkelen vi husker svaret under. To leads på samme adresse i samme
  * organisasjon skal ikke spørres to ganger.
  */
 export function placementKeyFor(lead: UnplacedLead): string | null {
-  const adresse = lead.address?.trim().toLocaleLowerCase("nb-NO");
+  const { street, postalCode, city } = parseNorwegianAddress(lead);
+  const adresse = street?.toLocaleLowerCase("nb-NO");
   if (!adresse) return null;
-  const sted =
-    lead.postal_code?.trim() || lead.city?.trim().toLocaleLowerCase("nb-NO");
+  const sted = postalCode || city?.toLocaleLowerCase("nb-NO");
   if (!sted) return null;
   return `${adresse}|${sted}`.replace(/\s+/g, " ");
 }
@@ -113,11 +188,12 @@ export function placementQueryFor(
   lead: UnplacedLead,
   municipalityNumber?: string | null,
 ): URLSearchParams | null {
-  const adresse = lead.address?.trim();
+  const { street, postalCode, city } = parseNorwegianAddress(lead);
+  const adresse = street;
   if (!adresse) return null;
   const kommune = municipalityNumber?.trim();
-  const postnummer = lead.postal_code?.trim();
-  const poststed = lead.city?.trim();
+  const postnummer = postalCode;
+  const poststed = city;
   if (
     !(kommune && /^\d{4}$/.test(kommune)) &&
     !postnummer &&
@@ -164,7 +240,7 @@ export function classifyPlacement(
   hits: GeonorgeHit[],
   lead: UnplacedLead,
 ): PlacementOutcome {
-  const forventetPostnummer = lead.postal_code?.trim();
+  const forventetPostnummer = parseNorwegianAddress(lead).postalCode;
   const brukbare: PlacementOption[] = [];
   for (const hit of hits) {
     const punkt = pointOf(hit);
@@ -190,12 +266,15 @@ export function classifyPlacement(
     });
   }
   if (brukbare.length === 0) return { kind: "unresolved" };
-  const unike = new Map<string, PlacementOption>();
+  // «Karl Johans gate 41» finnes som 41A og 41B — to adresser, men elleve
+  // meter fra hverandre. På et kart er det samme sted, og å spørre brukeren
+  // om å velge mellom dem er å be om en avgjørelse uten innhold.
+  const alternativer: PlacementOption[] = [];
   for (const option of brukbare) {
-    const nøkkel = `${option.latitude.toFixed(5)},${option.longitude.toFixed(5)}`;
-    if (!unike.has(nøkkel)) unike.set(nøkkel, option);
+    if (!alternativer.some((valgt) => sammeSted(valgt, option))) {
+      alternativer.push(option);
+    }
   }
-  const alternativer = [...unike.values()];
   if (alternativer.length === 1) {
     const [eneste] = alternativer;
     return {
@@ -205,6 +284,17 @@ export function classifyPlacement(
     };
   }
   return { kind: "ambiguous", options: alternativer.slice(0, 5) };
+}
+
+/** To punkter regnes som samme sted når de ligger nærmere enn femti meter. */
+export function sammeSted(a: GeoPoint, b: GeoPoint): boolean {
+  const meterPerGradBredde = 111_320;
+  const dLat = (a.latitude - b.latitude) * meterPerGradBredde;
+  const dLon =
+    (a.longitude - b.longitude) *
+    meterPerGradBredde *
+    Math.cos(((a.latitude + b.latitude) / 2) * (Math.PI / 180));
+  return Math.hypot(dLat, dLon) < 50;
 }
 
 const UNPLACED_PREDICATE = `(latitude IS NULL OR longitude IS NULL
@@ -549,6 +639,24 @@ async function municipalityFromBrreg(
 }
 
 async function lookupAddress(
+  hentFra: typeof fetch,
+  params: URLSearchParams,
+  lead: UnplacedLead,
+): Promise<PlacementOutcome> {
+  const første = await spør(hentFra, params, lead);
+  if (første.kind !== "unresolved") return første;
+  // `adressetekst` krever eksakt treff. «Karl Johans gate 41» gir null fordi
+  // adressen heter 41A og 41B i registeret. Fritekstsøket finner dem, og
+  // filtrene på postnummer/kommune står fortsatt.
+  const fritekst = new URLSearchParams(params);
+  const tekst = fritekst.get("adressetekst");
+  if (!tekst) return første;
+  fritekst.delete("adressetekst");
+  fritekst.set("sok", tekst);
+  return spør(hentFra, fritekst, lead);
+}
+
+async function spør(
   hentFra: typeof fetch,
   params: URLSearchParams,
   lead: UnplacedLead,
