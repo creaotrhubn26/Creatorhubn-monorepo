@@ -126,6 +126,9 @@ struct DiscoveryWorkspaceView: View {
     @State private var rejectionReason: DiscoveryV2ReasonCode = .notRelevant
     @State private var placeDetailsCandidate: DiscoveryV2Candidate?
     @State private var selectedSection: DiscoveryWorkspaceSection = .candidates
+    /// Gruppa brukeren er i ferd med å godkjenne samlet. Avvisning bekreftes
+    /// ikke — den kan angres, det kan ikke godkjenning.
+    @State private var triageBekreftelse: DiscoveryTriageGroup?
     @State private var briefMode: DiscoveryBriefMode = .simple
     @State private var simpleStep: DiscoverySimpleStep = .customerType
     @State private var anbudProfile: DoffinProjectProfileDTO?
@@ -1170,6 +1173,7 @@ struct DiscoveryWorkspaceView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     warmStartCard
+                    triageCard
                     if coordinator.candidates.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: coordinator.isBusy ? "hourglass" : "arrow.clockwise.circle")
@@ -1249,6 +1253,59 @@ struct DiscoveryWorkspaceView: View {
                 }
                 .padding()
                 .background(.ultraThinMaterial)
+            }
+        }
+    }
+
+    /// Triage: varm start tar den første kandidaten, denne tar resten.
+    ///
+    /// Gruppene er ikke et filter — de er tre spørsmål i stedet for to hundre.
+    /// Avvisning skjer med ett trykk fordi den kan angres; godkjenning må
+    /// bekreftes fordi den oppretter ekte leads. Gruppa som krever skjønn har
+    /// ingen samlet handling i det hele tatt.
+    @ViewBuilder
+    private var triageCard: some View {
+        if let triage = coordinator.triage, !triage.groups.isEmpty,
+           triage.pendingCount > 1 {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("\(triage.pendingCount) venter på deg")
+                    .font(.headline)
+                ForEach(triage.groups) { gruppe in
+                    TriageGroupRow(
+                        gruppe: gruppe,
+                        busy: coordinator.triageBusy,
+                        onAction: {
+                            if gruppe.bulkAction == "approve" {
+                                triageBekreftelse = gruppe
+                            } else {
+                                Task { await coordinator.applyTriage(gruppe) }
+                            }
+                        })
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .discoverySurface()
+            .accessibilityIdentifier("discovery.triage.card")
+            .confirmationDialog(
+                triageBekreftelse.map { "Godkjenn \($0.count) kandidater?" } ?? "",
+                isPresented: Binding(
+                    get: { triageBekreftelse != nil },
+                    set: { if !$0 { triageBekreftelse = nil } }),
+                titleVisibility: .visible
+            ) {
+                if let gruppe = triageBekreftelse {
+                    Button("Godkjenn alle \(gruppe.count)") {
+                        triageBekreftelse = nil
+                        Task {
+                            let opprettet = await coordinator.applyTriage(gruppe)
+                            if opprettet > 0 { await appState.refreshLeads() }
+                        }
+                    }
+                    Button("Avbryt", role: .cancel) { triageBekreftelse = nil }
+                }
+            } message: {
+                Text(triageBekreftelse?.bulkConsequence ?? "")
             }
         }
     }
@@ -2155,5 +2212,71 @@ struct DiscoveryRunBanner: View {
         .accessibilityLabel(coordinator.bannerTitle + ". " + coordinator.bannerDetail)
         .accessibilityHint("Åpner Discovery")
         .accessibilityIdentifier("discovery.run.banner")
+    }
+}
+
+/// Én triage-gruppe. Egen type fordi SwiftUI-typesjekkeren ikke kommer i mål
+/// med hele kortet i ett uttrykk (samme grunn som ellers i dette prosjektet).
+private struct TriageGroupRow: View {
+    let gruppe: DiscoveryTriageGroup
+    let busy: Bool
+    let onAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(gruppe.title)
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                Text("\(gruppe.count)")
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+            }
+            Text(gruppe.why)
+                .font(.caption)
+                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            Text(gruppe.sample.map(\.name).joined(separator: " · "))
+                .font(.caption2)
+                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                .lineLimit(2)
+            handlingsknapp
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LeadgridDiscoveryTheme.accentSoft.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private var handlingsknapp: some View {
+        if let handling = gruppe.bulkAction {
+            let tittel = handling == "approve"
+                ? "Godkjenn alle \(gruppe.count)"
+                : "Avvis alle \(gruppe.count)"
+            if handling == "approve" {
+                Button(action: onAction) { knappetekst(tittel) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(busy)
+                    .accessibilityIdentifier("discovery.triage.\(gruppe.key)")
+            } else {
+                Button(action: onAction) { knappetekst(tittel) }
+                    .buttonStyle(.bordered)
+                    .disabled(busy)
+                    .accessibilityIdentifier("discovery.triage.\(gruppe.key)")
+            }
+            if let konsekvens = gruppe.bulkConsequence {
+                Text(konsekvens)
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+        }
+    }
+
+    private func knappetekst(_ tittel: String) -> some View {
+        Text(tittel)
+            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity)
     }
 }

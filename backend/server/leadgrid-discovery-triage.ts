@@ -34,6 +34,8 @@ export interface TriageGroup {
   /** Hva som skjer hvis brukeren gjør det samme med hele gruppa. */
   bulk_action: TriageBulkAction;
   bulk_consequence: string | null;
+  /** Alle id-ene i gruppa, slik at en samlet handling kan gjelde dem. */
+  candidate_ids: string[];
   /** Navn nok til at brukeren kjenner igjen gruppa uten å åpne den. */
   sample: Array<{ id: string; name: string; fit_score: number | null }>;
 }
@@ -93,6 +95,7 @@ export function triageCandidates(
       bulk_action: "reject",
       bulk_consequence:
         "Avviser alle. Ingenting sendes, og de kan hentes fram igjen senere.",
+      candidate_ids: discard.map((c) => c.id),
       sample: prøve(discard),
     });
   }
@@ -104,6 +107,7 @@ export function triageCandidates(
       count: ready.length,
       bulk_action: "approve",
       bulk_consequence: `Oppretter ${ready.length} leads med pin på kartet. Ingenting sendes til bedriftene.`,
+      candidate_ids: ready.map((c) => c.id),
       sample: prøve(ready),
     });
   }
@@ -121,6 +125,7 @@ export function triageCandidates(
       // ett trykk kan gjelde alle.
       bulk_action: null,
       bulk_consequence: null,
+      candidate_ids: review.map((c) => c.id),
       sample: prøve(review),
     });
   }

@@ -108,6 +108,16 @@ describe("triageCandidates", () => {
     expect(ut.groups[0].count).toBe(40);
   });
 
+  it("tar med alle id-ene, ikke bare prøven", () => {
+    // Prøven er fem navn for gjenkjennelse; handlingen må gjelde alle.
+    const ut = triageCandidates(
+      Array.from({ length: 40 }, (_, i) => kandidat(`k${i}`, 85, { phone: "1" })),
+      grense,
+    );
+    expect(ut.groups[0].candidate_ids).toHaveLength(40);
+    expect(ut.groups[0].sample).toHaveLength(5);
+  });
+
   it("melder ingen grupper når det ikke er noe å ta stilling til", () => {
     expect(triageCandidates([], grense).groups).toEqual([]);
   });
