@@ -51,6 +51,7 @@ import {
   WarmStartStaleError,
 } from "./leadgrid-discovery-warm-start.js";
 import { placeLeadAfterApproval } from "./leadgrid-lead-placement.js";
+import { triageRunCandidates } from "./leadgrid-discovery-triage.js";
 import {
   assertAutoDiscoveryProfileCapacity,
   DiscoveryGovernanceError,
@@ -958,6 +959,23 @@ export function registerLeadgridDiscoveryRoutes({
           project: context.project,
           runId: parseUuid(req.params.runId, "runId"),
           ...query,
+        }),
+      );
+    }),
+  );
+
+  // Triage: varm start tar den første kandidaten. Denne tar de 199 andre, ved
+  // å gruppere dem slik at brukeren tar stilling til grupper i stedet for rader.
+  app.get(
+    `${base}/runs/:runId/triage`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      res.json(
+        await triageRunCandidates(pool, {
+          project: context.project,
+          runId: parseUuid(req.params.runId, "runId"),
         }),
       );
     }),
