@@ -1,0 +1,65 @@
+{
+  "releases": [
+    {
+      "version": "0.1.12",
+      "publishedAt": "2026-09-23T20:00:00Z",
+      "title": "Oppdateringer du kan stole på",
+      "summary": "CreatorHub One Desk har fått et samlet oppdateringssenter med tydelig versjonsstatus, ekte release-notater og kontroller som respekterer arbeidsflyten din.",
+      "critical": false,
+      "sections": [
+        {
+          "kind": "new",
+          "title": "Nytt",
+          "items": [
+            "Et eget oppdateringssenter viser installert versjon, tilgjengelig versjon og tidspunktet for siste kontroll.",
+            "Hva er nytt vises strukturert i appen, med en varig historikk over tidligere Desk-versjoner.",
+            "Oppdateringer kan lastes ned i bakgrunnen og installeres først når du er klar."
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": "Forbedret",
+          "items": [
+            "Automatisk kontroll og automatisk nedlasting kan administreres separat.",
+            "Du kan bli minnet på en oppdatering senere eller hoppe over en bestemt versjon.",
+            "Release-manifestet og GitHub Release bruker nå samme versjonerte kilde til release-notater."
+          ]
+        },
+        {
+          "kind": "fixed",
+          "title": "Rettet",
+          "items": [
+            "Updater-dialogen viser ikke lenger en generisk melding når en detaljert endringslogg finnes.",
+            "Preferanser og siste kontrolltid beholdes mellom omstarter."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.1.11",
+      "publishedAt": "2026-09-23T15:30:00Z",
+      "title": "CreatorHub Plugins og sikker auto-oppdatering",
+      "summary": "Lightroom Classic og de øvrige CreatorHub-integrasjonene er samlet i én gjenkjennelig katalog, og Desk kan oppdatere seg gjennom signerte og notariserte utgivelser.",
+      "critical": false,
+      "sections": [
+        {
+          "kind": "new",
+          "title": "Nytt",
+          "items": [
+            "CreatorHub Plugins samler Lightroom Classic, Premiere Pro, DaVinci Resolve og Pro Tools.",
+            "Lightroom-integrasjonen arver innloggingen fra CreatorHub Desk og vises først etter innlogging.",
+            "Desk kontrollerer signerte oppdateringer ved oppstart, periodisk og ved manuell kontroll."
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": "Forbedret",
+          "items": [
+            "Plugin-katalogen bruker offisielle produktlogoer og fargene fra WorkspaceShell.",
+            "Apple Silicon- og Intel-utgaver bygges, signeres og notariseres i samme releaseflyt."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -562,6 +562,23 @@ fn save_default_dest_ids(dest_ids: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_updater_prefs(
+    auto_check: bool,
+    auto_download: bool,
+    skipped_version: Option<String>,
+    remind_after_ms: Option<u64>,
+    last_checked_at_ms: Option<u64>,
+) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.updater_auto_check = auto_check;
+    p.updater_auto_download = auto_download;
+    p.updater_skipped_version = skipped_version;
+    p.updater_remind_after_ms = remind_after_ms;
+    p.updater_last_checked_at_ms = last_checked_at_ms;
+    prefs::save(&p)
+}
+
+#[tauri::command]
 async fn start_copy_session(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<CopySessionState>>,
@@ -1066,6 +1083,7 @@ pub fn run() {
             list_detected_mounts,
             get_prefs,
             save_default_dest_ids,
+            save_updater_prefs,
             rescan_mounts,
             eject_volume,
             get_auto_eject_pref,

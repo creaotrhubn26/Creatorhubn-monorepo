@@ -14,7 +14,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::helper_client;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prefs {
     /// Om appen skal kjøre `diskutil eject` på SD/CFexpress-volumet
     /// etter at backup-sesjonen er fullført med state="completed".
@@ -27,6 +31,41 @@ pub struct Prefs {
     /// klikke gjennom hver gang.
     #[serde(default)]
     pub default_dest_ids: Vec<String>,
+
+    /// Kontroller automatisk for nye Desk-versjoner. Opt-out fordi
+    /// sikkerhets- og kompatibilitetsoppdateringer skal bli synlige.
+    #[serde(default = "default_true")]
+    pub updater_auto_check: bool,
+
+    /// Last ned oppdateringen i bakgrunnen, men installer aldri uten
+    /// en eksplisitt brukerhandling.
+    #[serde(default)]
+    pub updater_auto_download: bool,
+
+    #[serde(default)]
+    pub updater_skipped_version: Option<String>,
+
+    /// Unix epoch i millisekunder for neste automatiske påminnelse.
+    #[serde(default)]
+    pub updater_remind_after_ms: Option<u64>,
+
+    /// Siste fullførte kontroll, lagret for etterprøvbar status i UI.
+    #[serde(default)]
+    pub updater_last_checked_at_ms: Option<u64>,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Self {
+            auto_eject: false,
+            default_dest_ids: Vec::new(),
+            updater_auto_check: true,
+            updater_auto_download: false,
+            updater_skipped_version: None,
+            updater_remind_after_ms: None,
+            updater_last_checked_at_ms: None,
+        }
+    }
 }
 
 fn prefs_path() -> PathBuf {
@@ -88,6 +127,7 @@ mod tests {
         let p = load().expect("load");
         assert!(!p.auto_eject);
         assert!(p.default_dest_ids.is_empty());
+        assert!(p.updater_auto_check);
     }
 
     #[test]
@@ -96,11 +136,21 @@ mod tests {
         save(&Prefs {
             auto_eject: true,
             default_dest_ids: vec!["dest-a".into(), "dest-b".into()],
+            updater_auto_check: false,
+            updater_auto_download: true,
+            updater_skipped_version: Some("9.9.9".into()),
+            updater_remind_after_ms: Some(1_800_000_000_000),
+            updater_last_checked_at_ms: Some(1_700_000_000_000),
         })
         .expect("save");
         let loaded = load().expect("load");
         assert!(loaded.auto_eject);
         assert_eq!(loaded.default_dest_ids, vec!["dest-a", "dest-b"]);
+        assert!(!loaded.updater_auto_check);
+        assert!(loaded.updater_auto_download);
+        assert_eq!(loaded.updater_skipped_version.as_deref(), Some("9.9.9"));
+        assert_eq!(loaded.updater_remind_after_ms, Some(1_800_000_000_000));
+        assert_eq!(loaded.updater_last_checked_at_ms, Some(1_700_000_000_000));
     }
 
     #[test]
@@ -111,6 +161,7 @@ mod tests {
         let p = load().expect("load");
         assert!(!p.auto_eject);
         assert!(p.default_dest_ids.is_empty());
+        assert!(p.updater_auto_check);
     }
 
     #[test]
@@ -125,6 +176,7 @@ mod tests {
         let p = load().expect("load");
         assert!(p.auto_eject);
         assert_eq!(p.default_dest_ids, vec!["x"]);
+        assert!(p.updater_auto_check);
     }
 
     #[test]
@@ -138,6 +190,10 @@ mod tests {
         assert!(
             p.default_dest_ids.is_empty(),
             "default-feltet skal være tom"
+        );
+        assert!(
+            p.updater_auto_check,
+            "eldre prefs skal beholde automatisk kontroll"
         );
     }
 }

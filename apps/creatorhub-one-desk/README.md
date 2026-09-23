@@ -49,7 +49,14 @@ produserer det signerte bygget de faktisk installerer.
 
 ## Distribusjon + auto-updater (F7)
 
-Tag-trigget GitHub Actions: `creatorhub-one-desk-v*` → bygger `.app.tar.gz` for både aarch64 og x86_64, signerer med minisign, uploader til en GitHub Release med `latest.json`-manifest. Tauri-updater-plugin-en kontrollerer manifestet etter oppstart, hver sjette time og når appen får fokus etter minst én time. Brukeren kan også velge «Søk etter oppdateringer» fra den globale statuskontrollen. Kontrollen er tilgjengelig både før og etter innlogging.
+Tag-trigget GitHub Actions: `creatorhub-one-desk-v*` → bygger `.app.tar.gz` for både aarch64 og x86_64, signerer med minisign, uploader til en GitHub Release med arkitekturspesifikke manifest. Tauri-updater-plugin-en kontrollerer manifestet etter oppstart, hver sjette time og når appen får fokus etter minst én time. Brukeren kan åpne «Oppdateringer» både før og etter innlogging for å kontrollere manuelt, lese «Hva er nytt», se historikk og administrere automatisk kontroll/nedlasting, utsatt påminnelse og versjoner som skal hoppes over. Automatisk nedlasting installerer aldri uten eksplisitt bekreftelse.
+
+`release-notes.json` er eneste kilde for teksten som vises i Desk, updater-manifestet og GitHub Release. Legg til en ny, strukturert release der samtidig som appversjonen økes. Workflowen avviser en tag som ikke matcher appversjonen eller mangler gyldige release-notater. Test metadata lokalt med:
+
+```bash
+python3 scripts/test-release-metadata.py
+python3 scripts/release-metadata.py validate --version 0.1.12
+```
 
 ### Minisign-nøkler
 - **Lokalt:** `~/.tauri/one-desk` (privat) + `~/.tauri/one-desk.pub` (offentlig)
@@ -116,7 +123,7 @@ Workflowen lager en GitHub Release med:
 - `creatorhub-one-desk-darwin-x86_64.app.tar.gz` (+ `.sig`)
 - `creatorhub-one-desk-darwin-{arch}.json` (manifest auto-updater leser)
 
-Brukere som allerede har Desk installert vil få oppdaterings-prompt ved neste oppstart.
+Brukere som allerede har Desk installert vil få den strukturerte endringsloggen ved neste oppstart, med mindre de har utsatt eller hoppet over akkurat den versjonen.
 
 Beta-kanal: opt-in via egen distribusjonslenke (kommer senere — F7 dekker bare hoved-kanalen).
 
