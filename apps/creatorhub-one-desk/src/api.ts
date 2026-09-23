@@ -271,6 +271,31 @@ export async function desktopLogout(): Promise<void> {
   return invoke<void>("desktop_logout");
 }
 
+// ── Lightroom Classic integration ─────────────────────────────────
+export interface LightroomIntegrationStatus {
+  classic_installed: boolean;
+  classic_path: string | null;
+  plugin_installed: boolean;
+  plugin_path: string;
+  plugin_version: string | null;
+  plugin_account_email: string | null;
+  plugin_update_required: boolean;
+  connected_user_email: string | null;
+  restart_required: boolean;
+}
+
+export async function getLightroomIntegrationStatus(): Promise<LightroomIntegrationStatus> {
+  return invoke<LightroomIntegrationStatus>("lightroom_integration_status");
+}
+
+export async function installLightroomPlugin(): Promise<LightroomIntegrationStatus> {
+  return invoke<LightroomIntegrationStatus>("install_lightroom_plugin");
+}
+
+export async function uninstallLightroomPlugin(): Promise<LightroomIntegrationStatus> {
+  return invoke<LightroomIntegrationStatus>("uninstall_lightroom_plugin");
+}
+
 // ── Multi-project ─────────────────────────────────────────────────
 export interface ProjectEntry {
   project_id: string;

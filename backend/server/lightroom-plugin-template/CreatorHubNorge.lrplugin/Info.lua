@@ -7,7 +7,7 @@ return {
   LrPluginInfoUrl = 'https://creatorhubn.com',
   VERSION = {
     major = 1,
-    minor = 0,
+    minor = 3,
     revision = 0,
     build = 1,
   },

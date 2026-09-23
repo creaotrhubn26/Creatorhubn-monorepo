@@ -18,6 +18,8 @@ mod device_auth;
 mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
+mod lightroom_broker;
+mod lightroom_installer;
 mod local_endpoint;
 mod mount_watcher;
 mod ndi_preview;
@@ -290,10 +292,46 @@ async fn refresh_projects_from_api(
 }
 
 #[tauri::command]
-fn desktop_logout(store: tauri::State<Arc<projects::ProjectStore>>) -> Result<(), String> {
+async fn desktop_logout(
+    store: tauri::State<'_, Arc<projects::ProjectStore>>,
+) -> Result<(), String> {
+    let device = device_auth::load_device_token()?;
+    if let Some(device) = device.as_ref() {
+        if let Err(error) = device_auth::revoke_device_token(device).await {
+            // Local logout must still succeed offline. Any already issued
+            // Lightroom SSO credential expires after at most ten minutes.
+            eprintln!("Backend-revokering ved Desk-utlogging feilet: {error}");
+        }
+    }
     device_auth::clear_device_token()?;
     store.clear_all()?;
     Ok(())
+}
+
+// ── Lightroom Classic integration ─────────────────────────────────
+
+#[tauri::command]
+fn lightroom_integration_status() -> Result<lightroom_installer::LightroomIntegrationStatus, String>
+{
+    let connected_user_email = device_auth::load_device_token()?.map(|device| device.user_email);
+    lightroom_installer::status(connected_user_email)
+}
+
+#[tauri::command]
+async fn install_lightroom_plugin()
+-> Result<lightroom_installer::LightroomIntegrationStatus, String> {
+    let device = device_auth::load_device_token()?.ok_or_else(|| {
+        "Logg inn i CreatorHub Desk før du installerer Lightroom-pluginen.".to_string()
+    })?;
+    lightroom_installer::download_and_install(&device).await
+}
+
+#[tauri::command]
+fn uninstall_lightroom_plugin() -> Result<lightroom_installer::LightroomIntegrationStatus, String> {
+    let connected_user_email = device_auth::load_device_token()?.map(|device| device.user_email);
+    let mut status = lightroom_installer::uninstall()?;
+    status.connected_user_email = connected_user_email;
+    Ok(status)
 }
 
 // ── Multi-project commands ─────────────────────────────────────────
@@ -931,6 +969,9 @@ pub fn run() {
                 bridge_preview_state.fail(format!("Bridge preview kunne ikke starte: {err}"));
                 eprintln!("Bridge preview kunne ikke starte: {err}");
             }
+            if let Err(err) = lightroom_broker::start() {
+                eprintln!("Lightroom SSO broker kunne ikke starte: {err}");
+            }
 
             // Deep-link-handler: når macOS sender appen
             // creatorhub-one-desk://oauth-callback?token=...&email=... så
@@ -1010,6 +1051,9 @@ pub fn run() {
             poll_oauth_completion,
             refresh_projects_from_api,
             desktop_logout,
+            lightroom_integration_status,
+            install_lightroom_plugin,
+            uninstall_lightroom_plugin,
             list_projects,
             active_project_id,
             set_active_project,

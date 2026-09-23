@@ -17,7 +17,7 @@ describe('CreatorHub One Desk project picker', () => {
       const sql = String(statement);
       if (sql.includes('FROM desktop_device_tokens')) {
         return {
-          rows: [{ user_id: 'user-1', user_email: 'owner@example.test' }],
+          rows: [{ id: 'device-1', user_id: 'user-1', user_email: 'owner@example.test' }],
         };
       }
       if (sql.includes('FROM projects') && !sql.includes('legacy.projects')) {
@@ -66,7 +66,7 @@ describe('CreatorHub One Desk project picker', () => {
       const sql = String(statement);
       if (sql.includes('FROM desktop_device_tokens')) {
         return {
-          rows: [{ user_id: 'user-1', user_email: 'owner@example.test' }],
+          rows: [{ id: 'device-1', user_id: 'user-1', user_email: 'owner@example.test' }],
         };
       }
       if (sql.includes('FROM projects') && !sql.includes('legacy.projects')) {
@@ -111,5 +111,115 @@ describe('CreatorHub One Desk project picker', () => {
       { id: 'project-1', name: 'Nytt navn' },
       { id: 'project-old', name: 'Arkivimport' },
     ]);
+  });
+
+  it('rejects Lightroom package downloads without a verified Desk device token', async () => {
+    const query = vi.fn();
+
+    const response = await request(createApp(query)).get('/api/desktop/me/lightroom-plugin');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ success: false, error: 'Bearer-token påkrevd' });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('streams a user-bound Lightroom package after verified Desk login', async () => {
+    const query = vi.fn(async (statement: unknown, params?: unknown[]) => {
+      const sql = String(statement);
+      if (sql.includes('FROM desktop_device_tokens')) {
+        return {
+          rows: [{ id: 'device-1', user_id: 'user-1', user_email: 'owner@example.test' }],
+        };
+      }
+      if (sql.includes('FROM lightroom_integration')) {
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO lightroom_integration')) {
+        return {
+          rows: [{
+            id: 'integration-1',
+            user_id: 'user-1',
+            plugin_token_hash: params?.[2],
+            plugin_version: '1.1.0',
+            configuration: {},
+            sync_status: 'idle',
+          }],
+        };
+      }
+      if (sql.includes('FROM role_room_google_connections')) {
+        return { rows: [] };
+      }
+      if (sql.includes('SELECT id, title, name FROM projects')) {
+        return {
+          rows: [{ id: 'project-1', title: 'Bryllup', name: 'Bryllup' }],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const response = await request(createApp(query))
+      .get('/api/desktop/me/lightroom-plugin')
+      .set('Authorization', 'Bearer trr_desk_test')
+      .buffer(true)
+      .parse((responseStream, callback) => {
+        const chunks: Buffer[] = [];
+        responseStream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        responseStream.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('application/zip');
+    expect(response.headers['content-disposition']).toContain('CreatorHubNorge-Lightroom-Plugin.zip');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+    expect(response.body.length).toBeGreaterThan(500);
+    const projectQuery = query.mock.calls.find(([statement]) =>
+      String(statement).includes('SELECT id, title, name FROM projects'),
+    );
+    expect(projectQuery?.[1]).toEqual(['user-1']);
+  });
+
+  it('issues a short-lived Lightroom SSO session for the authenticated Desk device', async () => {
+    vi.stubEnv('LIGHTROOM_DESK_SSO_SECRET', 't'.repeat(64));
+    const query = vi.fn(async (statement: unknown, params?: unknown[]) => {
+      const sql = String(statement);
+      if (sql.includes('FROM desktop_device_tokens')) {
+        return {
+          rows: [{ id: 'device-1', user_id: 'user-1', user_email: 'owner@example.test' }],
+        };
+      }
+      if (sql.includes('FROM lightroom_integration')) {
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO lightroom_integration')) {
+        return {
+          rows: [{
+            id: 'integration-1',
+            user_id: params?.[1],
+            plugin_token_hash: null,
+            plugin_version: '1.3.0',
+            configuration: { authenticationMode: 'creatorhub_desk_sso' },
+            sync_status: 'idle',
+          }],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const response = await request(createApp(query))
+      .post('/api/desktop/me/lightroom-session')
+      .set('Authorization', 'Bearer trr_desk_test');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body).toEqual(expect.objectContaining({
+      success: true,
+      token: expect.stringMatching(/^lrs_/),
+      accountEmail: 'owner@example.test',
+      pluginVersion: '1.3.0',
+    }));
+    expect(new Date(response.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    vi.unstubAllEnvs();
   });
 });
