@@ -4,6 +4,11 @@
 // området (innhold), posisjon, besøksloggen (og speilingen av den til
 // serveren) og avspilleren. Opprettes én gang i ReiseguideApp. `pendingPoi` er «åpne dette stedet» fra deep link eller
 // «liknende i nærheten»; RootTabView utfører navigasjonen.
+//
+// `arrival` og `tourProgress` (SenseAid Explore pakke 1) er tynne
+// orkestratorer rundt ren logikk i Core/ProximityMonitor.swift og
+// Core/TourProgress.swift; RootTabView driver dem med små onChange-hooks når
+// posisjonen eller besøksloggen endrer seg.
 
 import Observation
 import SwiftUI
@@ -18,6 +23,8 @@ final class AppEnvironment {
     let visits: VisitLogStore
     let visitSync: VisitSync
     let player: PlayerViewModel
+    let arrival: ArrivalCoordinator
+    let tourProgress: TourProgressTracker
 
     /// Sted som skal åpnes i Utforsk-stacken: id eller slug (deep link).
     var pendingPoi: PendingPoi?
@@ -41,6 +48,18 @@ final class AppEnvironment {
         self.visits = visits
         self.visitSync = VisitSync(settings: settings, visits: visits, transport: api)
         self.player = PlayerViewModel(settings: settings, visits: visits)
+        self.arrival = ArrivalCoordinator(settings: settings, store: self.store, player: self.player)
+        self.tourProgress = TourProgressTracker()
+    }
+
+    /// Kalles når posisjonen oppdateres (RootTabView).
+    func evaluateArrival() {
+        arrival.handleLocationUpdate(authorization: location.authorization, fix: location.fix)
+    }
+
+    /// Kalles når besøksloggen eller stedene endrer seg (RootTabView).
+    func evaluateTourProgress() {
+        tourProgress.evaluate(area: store.area, pois: store.pois, completedPoiIds: visits.completedPoiIds)
     }
 
     func open(poi: GuidePOI) {

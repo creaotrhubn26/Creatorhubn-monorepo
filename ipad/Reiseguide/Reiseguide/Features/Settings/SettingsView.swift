@@ -30,6 +30,10 @@ struct SettingsView: View {
                     }
                 }
             }
+            Section("settings.interactivity") {
+                Toggle("settings.haptics", isOn: $settings.hapticsEnabled)
+                Toggle("settings.autoStartOnArrival", isOn: $settings.autoStartOnArrival)
+            }
             privacySection
             Section("settings.demo") {
                 if let area = env.store.area {

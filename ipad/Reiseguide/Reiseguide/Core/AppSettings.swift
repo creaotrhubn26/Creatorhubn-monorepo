@@ -12,6 +12,11 @@
 //     (ingen konto). Byttes ut når brukeren sletter dataene sine på serveren.
 //   - syncVisitsToServer: samtykke til å lagre besøksloggen på serveren,
 //     standard AV (GDPR: samtykke er et aktivt valg). Se Core/VisitSync.swift.
+//   - hapticsEnabled: «Vibrasjon», styrer alle .sensoryFeedback-kall i appen
+//     (Core/AppHaptics.swift), standard PÅ.
+//   - autoStartOnArrival: «Start automatisk når jeg er framme», starter
+//     avspilling uten trykk når brukeren ankommer et sted og ingenting
+//     spiller fra før (Core/ArrivalCoordinator.swift), standard AV.
 
 import Foundation
 import Observation
@@ -30,6 +35,8 @@ final class AppSettings {
         static let playbackRate = "reiseguide.playbackRate"
         static let deviceId = "reiseguide.deviceId"
         static let syncVisits = "reiseguide.syncVisitsToServer"
+        static let hapticsEnabled = "reiseguide.hapticsEnabled"
+        static let autoStartOnArrival = "reiseguide.autoStartOnArrival"
     }
 
     private let defaults: UserDefaults
@@ -59,6 +66,16 @@ final class AppSettings {
         didSet { defaults.set(syncVisitsToServer, forKey: Key.syncVisits) }
     }
 
+    /// «Vibrasjon»: styrer alle haptiske tilbakemeldinger (på som standard).
+    var hapticsEnabled: Bool {
+        didSet { defaults.set(hapticsEnabled, forKey: Key.hapticsEnabled) }
+    }
+
+    /// «Start automatisk når jeg er framme» (av som standard).
+    var autoStartOnArrival: Bool {
+        didSet { defaults.set(autoStartOnArrival, forKey: Key.autoStartOnArrival) }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -73,6 +90,8 @@ final class AppSettings {
         let storedRate = defaults.double(forKey: Key.playbackRate)
         playbackRate = storedRate > 0 ? storedRate : 1
         syncVisitsToServer = defaults.bool(forKey: Key.syncVisits)
+        hapticsEnabled = defaults.object(forKey: Key.hapticsEnabled) as? Bool ?? true
+        autoStartOnArrival = defaults.bool(forKey: Key.autoStartOnArrival)
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {

@@ -24,6 +24,11 @@ struct ExploreView: View {
 
     private var heroPoi: GuidePOI? { env.store.pois.first { $0.slug == "akershus-festning" } }
 
+    /// Turprogresjon (pakke 1, punkt 3): stedene i området og fullførte besøk i loggen.
+    private var tourProgress: TourProgress {
+        TourProgress.compute(pois: env.store.pois, completedPoiIds: env.visits.completedPoiIds)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
@@ -55,6 +60,11 @@ struct ExploreView: View {
                             .font(AppFont.body)
                             .foregroundStyle(contrast.textSecondary)
                             .padding(.top, AppSpacing.l)
+
+                        if tourProgress.total > 0 {
+                            TourProgressRing(progress: tourProgress, locale: env.settings.locale)
+                                .padding(.top, AppSpacing.m)
+                        }
 
                         SearchField(placeholder: "explore.searchPlaceholder", text: $searchText) {
                             path.append(Route.map)

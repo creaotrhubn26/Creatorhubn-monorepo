@@ -171,6 +171,91 @@
         }
       }
     },
+    "arrival.announcement": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du står ved %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're standing at %@"
+          }
+        }
+      }
+    },
+    "arrival.notNow": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke nå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not now"
+          }
+        }
+      }
+    },
+    "arrival.play": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        }
+      }
+    },
+    "arrival.switchTo": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bytt til %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to %@"
+          }
+        }
+      }
+    },
+    "arrival.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er framme"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've arrived"
+          }
+        }
+      }
+    },
     "audioDescription.less": {
       "extractionState": "manual",
       "localizations": {
@@ -830,6 +915,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Completed"
+          }
+        }
+      }
+    },
+    "log.delete": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett fra loggen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete from log"
           }
         }
       }
@@ -1769,6 +1871,57 @@
         }
       }
     },
+    "progress.count": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ av %2$@ steder"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@ places"
+          }
+        }
+      }
+    },
+    "progress.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turfremdrift"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tour progress"
+          }
+        }
+      }
+    },
+    "progress.spokenValue": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ av %2$@ steder besøkt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@ places visited"
+          }
+        }
+      }
+    },
     "quiz.again": {
       "extractionState": "manual",
       "localizations": {
@@ -2262,6 +2415,23 @@
         }
       }
     },
+    "settings.autoStartOnArrival": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start automatisk når jeg er framme"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start automatically when I arrive"
+          }
+        }
+      }
+    },
     "settings.demo": {
       "extractionState": "manual",
       "localizations": {
@@ -2275,6 +2445,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Demo"
+          }
+        }
+      }
+    },
+    "settings.haptics": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vibrasjon"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vibration"
+          }
+        }
+      }
+    },
+    "settings.interactivity": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interaktivitet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interactivity"
           }
         }
       }
@@ -2585,19 +2789,36 @@
         }
       }
     },
-    "log.delete": {
+    "tour.celebration.message": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Slett fra loggen"
+            "value": "Du har besøkt alle stedene i %@. Bra jobbet!"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Delete from log"
+            "value": "You've visited every place in %@. Well done!"
+          }
+        }
+      }
+    },
+    "tour.celebration.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har fullført touren!"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've completed the tour!"
           }
         }
       }

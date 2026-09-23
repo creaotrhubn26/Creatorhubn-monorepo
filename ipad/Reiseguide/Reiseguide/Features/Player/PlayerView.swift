@@ -44,6 +44,11 @@ struct PlayerView: View {
             AccessibilityNotification.Announcement(message).post()
             player.pendingChapterAnnouncement = nil
         }
+        // Kapittelbytte (pakke 1, punkt 2): egen haptikk utenom kapittel-
+        // annonseringen over, styrt av «Vibrasjon».
+        .sensoryFeedback(trigger: player.chapterIndex) { _, _ in
+            AppHaptics.feedback(.selection, enabled: env.settings.hapticsEnabled)
+        }
     }
 
     // MARK: - Deler
@@ -170,6 +175,8 @@ struct PlayerView: View {
                     .foregroundStyle(contrast.textTertiary)
                     .padding(.top, AppSpacing.xs)
             }
+            AudioLevelBars(isPlaying: player.isPlaying)
+                .padding(.top, AppSpacing.xs)
         }
     }
 
@@ -265,6 +272,8 @@ struct TransportControls: View {
     let onForward: () -> Void
     let onRate: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: AppSpacing.xxl) {
             Button(action: onBack) {
@@ -282,6 +291,8 @@ struct TransportControls: View {
                     .foregroundStyle(AppColor.onAccent)
                     .frame(width: 72, height: 72)
                     .background(AppColor.accent, in: Circle())
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : .default, value: isPlaying)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(Text(isPlaying ? "player.pause" : "player.play"))
@@ -322,6 +333,7 @@ struct TransportControls: View {
 struct MiniPlayerBar: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.contrastColors) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let player = env.player
@@ -343,6 +355,7 @@ struct MiniPlayerBar: View {
                             .foregroundStyle(contrast.textSecondary)
                             .lineLimit(2)
                     }
+                    AudioLevelBars(isPlaying: player.isPlaying, barCount: 3)
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
@@ -357,6 +370,8 @@ struct MiniPlayerBar: View {
                     .foregroundStyle(AppColor.onAccent)
                     .frame(width: 44, height: 44)
                     .background(AppColor.accent, in: Circle())
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : .default, value: player.isPlaying)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(Text(player.isPlaying ? "player.pause" : "player.play"))

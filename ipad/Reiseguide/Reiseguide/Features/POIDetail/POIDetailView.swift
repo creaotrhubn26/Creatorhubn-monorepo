@@ -78,6 +78,10 @@ struct POIDetailView: View {
                 }
             }
         }
+        // Favoritt av/på (pakke 1, punkt 2): begge knappene under styrer samme tilstand.
+        .sensoryFeedback(trigger: env.settings.isFavorite(poiId: poi.id)) { _, _ in
+            AppHaptics.feedback(.selection, enabled: env.settings.hapticsEnabled)
+        }
     }
 
     /// Heltebilde med scrim og knappene tilbake / favoritt / del.
