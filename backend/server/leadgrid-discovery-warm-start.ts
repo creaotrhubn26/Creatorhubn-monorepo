@@ -25,6 +25,17 @@ import {
 /** Hvor mange toppkandidater vi vurderer før vi peker. */
 const WARM_START_CONSIDERED = 100;
 
+/**
+ * Hvor mye lavere score en kandidat kan ha og fortsatt regnes som jevngod.
+ *
+ * `fit_score` er 0–100, samme skala som `minimum_fit_score` i briefen. Målt i
+ * produksjon 2026-09-23 lå de 60 kandidatene mellom 60 og 89, med snitt 81,5 —
+ * altså er fem poeng en reell, men liten forskjell. Sto tidligere på 0,1, som
+ * på denne skalaen betyr «praktisk talt uavgjort» og gjorde hele
+ * kart/kontakt-rangeringen virkningsløs.
+ */
+const WARM_START_SCORE_TOLERANCE = 5;
+
 export interface WarmStartFirstStep {
   /** Kanalen første handling går i. Styrer ikonet i appen. */
   channel: "call" | "email" | "research";
@@ -169,7 +180,7 @@ export function candidateIsContactable(
  */
 export function pickWarmestCandidate(
   candidates: DiscoveryCandidateDto[],
-  tolerance = 0.1,
+  tolerance = WARM_START_SCORE_TOLERANCE,
 ): DiscoveryCandidateDto | null {
   if (candidates.length === 0) return null;
   // En kandidat uten tall for score må telle som null, ikke som NaN: NaN

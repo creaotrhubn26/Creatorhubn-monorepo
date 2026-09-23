@@ -138,39 +138,51 @@ function lagKandidat(
 }
 
 describe("pickWarmestCandidate", () => {
+  // Scorene her er 0-100, samme skala som basen faktisk bruker. Testene sto
+  // tidligere på 0-1 og passerte mens produksjonsatferden var feil.
   it("velger den best scorende når alle er like brukbare", () => {
     const valgt = pickWarmestCandidate([
-      lagKandidat("a", 0.7, { phone: "1" }),
-      lagKandidat("b", 0.9, { phone: "1" }),
+      lagKandidat("a", 70, { phone: "1" }),
+      lagKandidat("b", 90, { phone: "1" }),
     ]);
     expect(valgt?.id).toBe("b");
   });
 
   it("velger den vi kan kontakte når scoren er jevn", () => {
     // Den best scorende mangler både telefon og e-post. Førstehandlingen
-    // ville blitt «finn kontaktinfo selv».
+    // ville blitt «finn kontaktinfo selv». 89 mot 86 er innenfor slingringen.
     const valgt = pickWarmestCandidate([
-      lagKandidat("stor-uten-kontakt", 0.92),
-      lagKandidat("litt-lavere-med-telefon", 0.88, { phone: "94 89 78 64" }),
+      lagKandidat("stor-uten-kontakt", 89),
+      lagKandidat("litt-lavere-med-telefon", 86, { phone: "94 89 78 64" }),
     ]);
     expect(valgt?.id).toBe("litt-lavere-med-telefon");
   });
 
   it("velger den som kan plasseres på kartet framfor en uten koordinater", () => {
     const valgt = pickWarmestCandidate([
-      lagKandidat("uten-kart", 0.9, { phone: "1", latitude: null, longitude: null }),
-      lagKandidat("med-kart", 0.85, { phone: "1" }),
+      lagKandidat("uten-kart", 88, { phone: "1", latitude: null, longitude: null }),
+      lagKandidat("med-kart", 85, { phone: "1" }),
     ]);
     expect(valgt?.id).toBe("med-kart");
   });
 
   it("lar treffsikkerheten vinne når forskjellen er stor", () => {
-    // 0,40 mot 0,95 er ikke «jevnt». Da er ikke et telefonnummer nok.
+    // 60 mot 89 er ikke «jevnt». Da er ikke et telefonnummer nok.
     const valgt = pickWarmestCandidate([
-      lagKandidat("riktig-bransje", 0.95),
-      lagKandidat("feil-bransje-med-telefon", 0.4, { phone: "1" }),
+      lagKandidat("riktig-bransje", 89),
+      lagKandidat("feil-bransje-med-telefon", 60, { phone: "1" }),
     ]);
     expect(valgt?.id).toBe("riktig-bransje");
+  });
+
+  it("bruker hele slingringsmonnet på ekte score-spenn", () => {
+    // Produksjon 2026-09-23: 60 kandidater mellom 60 og 89. Med den gamle
+    // toleransen på 0,1 var kontaktbarhet uten virkning her.
+    const valgt = pickWarmestCandidate([
+      lagKandidat("topp-uten-kontakt", 89),
+      lagKandidat("nest-med-kontakt", 84.5, { phone: "32 24 26 80" }),
+    ]);
+    expect(valgt?.id).toBe("nest-med-kontakt");
   });
 
   it("gir null på tom liste", () => {
@@ -180,7 +192,7 @@ describe("pickWarmestCandidate", () => {
   it("tåler at scoren mangler", () => {
     const valgt = pickWarmestCandidate([
       lagKandidat("uten-score", Number.NaN as unknown as number),
-      lagKandidat("med-score", 0.5, { phone: "1" }),
+      lagKandidat("med-score", 50, { phone: "1" }),
     ]);
     expect(valgt).not.toBeNull();
   });
