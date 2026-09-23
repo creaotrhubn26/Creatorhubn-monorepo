@@ -5,7 +5,7 @@
 // Om / Opplevelse / Praktisk (innholdet i POIDetailTabContent.swift), og fast
 // bunnfelt med «Start opplevelsen» og «Legg til i mine steder». Låst POI åpner
 // mock-paywall. Er stedet besøkt, vises dato og en knapp til etter-besøket
-// (quiz, vurdering, tips, deling).
+// (quiz, vurdering, tips, deling). «Spør guiden» (pakke 3) står over fanene.
 
 import SwiftUI
 
@@ -147,6 +147,7 @@ struct POIDetailView: View {
                 languageNotice(poi)
                     .padding(.top, AppSpacing.m)
             }
+            AskGuideButton(poi: poi, topPadding: AppSpacing.l)
             SegmentTabs(selection: $tab, reduceMotion: reduceMotion)
                 .padding(.top, AppSpacing.screenMargin)
             POIDetailTabContent(poi: poi, tab: tab)

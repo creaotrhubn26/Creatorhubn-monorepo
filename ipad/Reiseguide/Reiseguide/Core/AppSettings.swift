@@ -17,6 +17,7 @@
 //   - autoStartOnArrival: «Start automatisk når jeg er framme», starter
 //     avspilling uten trykk når brukeren ankommer et sted og ingenting
 //     spiller fra før (Core/ArrivalCoordinator.swift), standard AV.
+//   - inNarrationPromptsEnabled: «Spørsmål underveis», standard PÅ (pakke 3).
 
 import Foundation
 import Observation
@@ -39,6 +40,7 @@ final class AppSettings {
         static let hapticsEnabled = "reiseguide.hapticsEnabled"
         static let autoStartOnArrival = "reiseguide.autoStartOnArrival"
         static let speakDirections = "reiseguide.speakDirectionsEnabled"
+        static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
     }
 
     private let defaults: UserDefaults
@@ -85,6 +87,11 @@ final class AppSettings {
         didSet { defaults.set(speakDirectionsEnabled, forKey: Key.speakDirections) }
     }
 
+    /// «Spørsmål underveis» i fortellingen (Core/ChapterPrompts.swift).
+    var inNarrationPromptsEnabled: Bool {
+        didSet { defaults.set(inNarrationPromptsEnabled, forKey: Key.inNarrationPrompts) }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -102,6 +109,7 @@ final class AppSettings {
         hapticsEnabled = defaults.object(forKey: Key.hapticsEnabled) as? Bool ?? true
         autoStartOnArrival = defaults.bool(forKey: Key.autoStartOnArrival)
         speakDirectionsEnabled = defaults.object(forKey: Key.speakDirections) as? Bool ?? UIAccessibility.isVoiceOverRunning
+        inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {
