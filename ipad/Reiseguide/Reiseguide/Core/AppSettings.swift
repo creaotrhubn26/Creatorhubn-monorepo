@@ -18,6 +18,9 @@
 //     avspilling uten trykk når brukeren ankommer et sted og ingenting
 //     spiller fra før (Core/ArrivalCoordinator.swift), standard AV.
 //   - inNarrationPromptsEnabled: «Spørsmål underveis», standard PÅ (pakke 3).
+//   - mapShowsList: kart eller liste i kartvisningen (UU-krav 8.5). Nil til
+//     brukeren har valgt; da er listen standard når VoiceOver kjører
+//     (Features/Map/MapAccessibility.swift, MapViewMode).
 
 import Foundation
 import Observation
@@ -41,6 +44,7 @@ final class AppSettings {
         static let autoStartOnArrival = "reiseguide.autoStartOnArrival"
         static let speakDirections = "reiseguide.speakDirectionsEnabled"
         static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
+        static let mapShowsList = "reiseguide.mapShowsList"
     }
 
     private let defaults: UserDefaults
@@ -92,6 +96,17 @@ final class AppSettings {
         didSet { defaults.set(inNarrationPromptsEnabled, forKey: Key.inNarrationPrompts) }
     }
 
+    /// Kart (false) eller liste (true); nil = ikke valgt ennå.
+    var mapShowsList: Bool? {
+        didSet {
+            if let mapShowsList {
+                defaults.set(mapShowsList, forKey: Key.mapShowsList)
+            } else {
+                defaults.removeObject(forKey: Key.mapShowsList)
+            }
+        }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -110,6 +125,7 @@ final class AppSettings {
         autoStartOnArrival = defaults.bool(forKey: Key.autoStartOnArrival)
         speakDirectionsEnabled = defaults.object(forKey: Key.speakDirections) as? Bool ?? UIAccessibility.isVoiceOverRunning
         inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
+        mapShowsList = defaults.object(forKey: Key.mapShowsList) as? Bool
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {

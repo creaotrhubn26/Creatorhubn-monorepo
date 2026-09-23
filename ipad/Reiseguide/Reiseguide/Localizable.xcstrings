@@ -1633,6 +1633,40 @@
         }
       }
     },
+    "map.marker.nextStop": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "neste stopp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "next stop"
+          }
+        }
+      }
+    },
+    "map.marker.visited": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "besøkt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "visited"
+          }
+        }
+      }
+    },
     "map.markerHint": {
       "extractionState": "manual",
       "localizations": {
@@ -1680,6 +1714,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open Settings"
+          }
+        }
+      }
+    },
+    "map.rotor.places": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steder på kartet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Places on the map"
+          }
+        }
+      }
+    },
+    "map.route.straightLine": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ i luftlinje"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ in a straight line"
+          }
+        }
+      }
+    },
+    "map.route.walking": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ å gå · %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ walk · %2$@"
+          }
+        }
+      }
+    },
+    "map.route.walkingSpoken": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gangtid %1$@, %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walking time %1$@, %2$@"
           }
         }
       }
@@ -1782,6 +1884,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show my location"
+          }
+        }
+      }
+    },
+    "map.summary.many": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ steder innen %2$@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ places within %2$@."
+          }
+        }
+      }
+    },
+    "map.summary.nearest": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nærmeste: %1$@, %2$@ %3$@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nearest: %1$@, %2$@ %3$@."
+          }
+        }
+      }
+    },
+    "map.summary.noLocation": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steder på kartet: %@. Slå på posisjon for å høre avstander."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Places on the map: %@. Turn on location to hear distances."
+          }
+        }
+      }
+    },
+    "map.summary.none": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen steder innen %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No places within %@."
+          }
+        }
+      }
+    },
+    "map.summary.one": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 sted innen %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 place within %@."
           }
         }
       }
