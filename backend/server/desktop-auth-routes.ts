@@ -10,6 +10,10 @@ import type { Pool } from 'pg';
 import { google } from 'googleapis';
 import * as crypto from 'crypto';
 import { getGoogleWorkspaceOauthConfig, type GoogleWorkspaceOauthApp } from './google-workspace-oauth.js';
+import {
+  createLightroomDesktopSession,
+  streamLightroomPluginPackageForUser,
+} from './lightroom-routes.js';
 
 const CREATORHUB_GOOGLE_OAUTH_APP: GoogleWorkspaceOauthApp = 'creatorhub';
 const DESKTOP_URL_SCHEME = 'creatorhub-one-desk';
@@ -39,6 +43,12 @@ type DesktopProjectRow = {
   created_at: string | Date | null;
 };
 
+type DesktopDeviceIdentity = {
+  id: string;
+  user_id: string;
+  user_email: string;
+};
+
 const desktopOauthStateStore = new Map<string, DesktopOauthState>();
 
 function pruneExpiredState(): void {
@@ -52,6 +62,39 @@ function pruneExpiredState(): void {
 
 function hashToken(t: string): string {
   return crypto.createHash('sha256').update(t).digest('hex');
+}
+
+async function authenticateDesktopDevice(
+  pool: Pool,
+  req: Request,
+  res: Response,
+): Promise<DesktopDeviceIdentity | null> {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) {
+    res.status(401).json({ success: false, error: 'Bearer-token påkrevd' });
+    return null;
+  }
+  const token = auth.slice(7).trim();
+  if (!token || token.length > 200 || !token.startsWith('trr_desk_')) {
+    res.status(401).json({ success: false, error: 'Ugyldig token' });
+    return null;
+  }
+  const tokenHash = hashToken(token);
+  const tokenResult = await pool.query<DesktopDeviceIdentity>(
+    `SELECT id, user_id, user_email FROM desktop_device_tokens
+     WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+     LIMIT 1`,
+    [tokenHash],
+  );
+  const identity = tokenResult.rows[0];
+  if (!identity) {
+    res.status(401).json({ success: false, error: 'Token utløpt eller revokert' });
+    return null;
+  }
+  void pool
+    .query(`UPDATE desktop_device_tokens SET last_used_at = now() WHERE id = $1`, [identity.id])
+    .catch(() => undefined);
+  return identity;
 }
 
 function projectTimestamp(row: DesktopProjectRow): number {
@@ -291,31 +334,9 @@ export function createDesktopAuthRouter(pool: Pool): Router {
   // Returnerer alle prosjekter brukeren har tilgang til + en
   // per-prosjekt helper-token (auto-issued mot dit_helper_tokens).
   router.get('/me/projects', async (req: Request, res: Response) => {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, error: 'Bearer-token påkrevd' });
-    }
-    const token = auth.slice(7).trim();
-    if (!token || token.length > 200) {
-      return res.status(401).json({ success: false, error: 'Ugyldig token' });
-    }
-    const tokenHash = hashToken(token);
-
-    const tokenResult = await pool.query<{
-      user_id: string;
-      user_email: string;
-    }>(
-      `SELECT user_id, user_email FROM desktop_device_tokens
-       WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
-      [tokenHash],
-    );
-    if (tokenResult.rows.length === 0) {
-      return res.status(401).json({ success: false, error: 'Token utløpt eller revokert' });
-    }
-    const { user_id, user_email } = tokenResult.rows[0];
-
-    // Fire-and-forget last_used_at
-    pool.query(`UPDATE desktop_device_tokens SET last_used_at = now() WHERE token_hash = $1`, [tokenHash]).catch(() => {});
+    const identity = await authenticateDesktopDevice(pool, req, res);
+    if (!identity) return;
+    const { user_id, user_email } = identity;
 
     // Hent DIT/foto-prosjekter brukeren eier. Nye prosjekter skrives til
     // public.projects; eldre legacy-rader tas med best-effort uten at manglende
@@ -377,15 +398,62 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     });
   });
 
+  // GET /api/desktop/me/lightroom-plugin — requires a verified Desk login.
+  // The returned archive is prepared for the local Desk SSO broker. Neither
+  // the Desk bearer nor a permanent cloud token is embedded in the plug-in.
+  router.get('/me/lightroom-plugin', async (req: Request, res: Response) => {
+    const identity = await authenticateDesktopDevice(pool, req, res);
+    if (!identity) return;
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      await streamLightroomPluginPackageForUser(
+        pool,
+        req,
+        res,
+        identity.user_id,
+        identity.user_email,
+        { deskBrokerOnly: true },
+      );
+    } catch (error) {
+      if (res.headersSent) {
+        res.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Kunne ikke generere Lightroom-plugin.',
+      });
+    }
+  });
+
+  // POST /api/desktop/me/lightroom-session — short-lived CreatorHub SSO
+  // credential for the local Lightroom plug-in broker. The session is bound
+  // to this exact Desk device and every upload re-checks device revocation.
+  router.post('/me/lightroom-session', async (req: Request, res: Response) => {
+    const identity = await authenticateDesktopDevice(pool, req, res);
+    if (!identity) return;
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      const session = await createLightroomDesktopSession(pool, req, {
+        userId: identity.user_id,
+        userEmail: identity.user_email,
+        deviceId: identity.id,
+      });
+      res.json({ success: true, ...session });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Kunne ikke opprette Lightroom-sesjon.',
+      });
+    }
+  });
+
   // POST /api/desktop/me/logout — revoker device-token
   router.post('/me/logout', async (req: Request, res: Response) => {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, error: 'Bearer-token påkrevd' });
-    }
-    const token = auth.slice(7).trim();
-    const tokenHash = hashToken(token);
-    await pool.query(`UPDATE desktop_device_tokens SET revoked_at = now() WHERE token_hash = $1`, [tokenHash]).catch(() => {});
+    const identity = await authenticateDesktopDevice(pool, req, res);
+    if (!identity) return;
+    await pool.query(`UPDATE desktop_device_tokens SET revoked_at = now() WHERE id = $1`, [identity.id]).catch(() => {});
     return res.json({ success: true });
   });
 

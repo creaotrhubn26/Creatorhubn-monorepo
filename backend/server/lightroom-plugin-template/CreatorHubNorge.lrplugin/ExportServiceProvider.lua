@@ -11,7 +11,12 @@ local Defaults = require 'CreatorHubDefaults'
 
 local prefs = LrPrefs.prefsForPlugin()
 
-local BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+local function hasDeskBroker()
+  return Defaults.deskBrokerUrl
+    and Defaults.deskBrokerUrl ~= ''
+    and Defaults.deskBrokerSecret
+    and Defaults.deskBrokerSecret ~= ''
+end
 
 local function trim(value)
   if value == nil then
@@ -51,33 +56,6 @@ local function encodeStringArray(values)
   return '[' .. table.concat(encoded, ',') .. ']'
 end
 
-local function base64Encode(data)
-  return ((data:gsub('.', function(character)
-    local byte = string.byte(character)
-    local bits = ''
-    for bitIndex = 8, 1, -1 do
-      local power = 2 ^ (bitIndex - 1)
-      if byte % (power * 2) - byte % power > 0 then
-        bits = bits .. '1'
-      else
-        bits = bits .. '0'
-      end
-    end
-    return bits
-  end) .. '0000'):gsub('%d%d%d?%d?%d?%d?', function(chunk)
-    if #chunk < 6 then
-      return ''
-    end
-    local value = 0
-    for bitIndex = 1, 6 do
-      if string.sub(chunk, bitIndex, bitIndex) == '1' then
-        value = value + 2 ^ (6 - bitIndex)
-      end
-    end
-    return string.sub(BASE64_ALPHABET, value + 1, value + 1)
-  end) .. ({ '', '==', '=' })[#data % 3 + 1])
-end
-
 local function splitKeywords(value)
   local keywords = {}
   if not value or value == '' then
@@ -113,22 +91,18 @@ local function getMimeTypeFromPath(exportPath)
   return 'image/jpeg'
 end
 
-local function readFileBinary(exportPath)
-  local fileHandle = io.open(exportPath, 'rb')
-  if not fileHandle then
-    return nil, 'Kunne ikke lese eksportfilen fra Lightroom.'
-  end
-
-  local content = fileHandle:read('*all')
-  fileHandle:close()
-  return content, nil
-end
-
 local function rememberSettings(exportSettings)
-  prefs.apiBaseUrl = trim(exportSettings.creatorhubApiBaseUrl) or Defaults.apiBaseUrl
-  prefs.pluginToken = trim(exportSettings.creatorhubPluginToken) or Defaults.pluginToken
+  if hasDeskBroker() then
+    prefs.apiBaseUrl = nil
+    prefs.pluginToken = nil
+  else
+    prefs.apiBaseUrl = trim(exportSettings.creatorhubApiBaseUrl) or Defaults.apiBaseUrl
+    prefs.pluginToken = trim(exportSettings.creatorhubPluginToken) or Defaults.pluginToken
+  end
   prefs.collectionName = trim(exportSettings.creatorhubCollectionName) or ''
+  prefs.projectId = trim(exportSettings.creatorhubProjectId) or ''
   prefs.projectName = trim(exportSettings.creatorhubProjectName) or ''
+  prefs.mirrorToDrive = exportSettings.creatorhubMirrorToDrive == true
   prefs.customerName = trim(exportSettings.creatorhubCustomerName) or ''
   prefs.customerEmail = trim(exportSettings.creatorhubCustomerEmail) or ''
   prefs.companyName = trim(exportSettings.creatorhubCompanyName) or ''
@@ -136,21 +110,42 @@ local function rememberSettings(exportSettings)
 end
 
 local function initializeSettings(exportSettings)
-  exportSettings.creatorhubApiBaseUrl = trim(exportSettings.creatorhubApiBaseUrl) or trim(prefs.apiBaseUrl) or Defaults.apiBaseUrl
-  exportSettings.creatorhubPluginToken = trim(exportSettings.creatorhubPluginToken) or trim(prefs.pluginToken) or Defaults.pluginToken
+  if hasDeskBroker() then
+    exportSettings.creatorhubApiBaseUrl = Defaults.apiBaseUrl
+    exportSettings.creatorhubPluginToken = ''
+  else
+    exportSettings.creatorhubApiBaseUrl = trim(exportSettings.creatorhubApiBaseUrl) or trim(prefs.apiBaseUrl) or Defaults.apiBaseUrl
+    exportSettings.creatorhubPluginToken = trim(exportSettings.creatorhubPluginToken) or trim(prefs.pluginToken) or Defaults.pluginToken
+  end
   exportSettings.creatorhubCollectionName = trim(exportSettings.creatorhubCollectionName) or trim(prefs.collectionName) or ''
+  exportSettings.creatorhubProjectId = trim(exportSettings.creatorhubProjectId) or trim(prefs.projectId) or ''
+  if exportSettings.creatorhubProjectId == '' and Defaults.projects and Defaults.projects[1] then
+    exportSettings.creatorhubProjectId = Defaults.projects[1].value
+  end
   exportSettings.creatorhubProjectName = trim(exportSettings.creatorhubProjectName) or trim(prefs.projectName) or ''
+  if exportSettings.creatorhubMirrorToDrive == nil then
+    exportSettings.creatorhubMirrorToDrive = prefs.mirrorToDrive == true
+  end
   exportSettings.creatorhubCustomerName = trim(exportSettings.creatorhubCustomerName) or trim(prefs.customerName) or ''
   exportSettings.creatorhubCustomerEmail = trim(exportSettings.creatorhubCustomerEmail) or trim(prefs.customerEmail) or ''
   exportSettings.creatorhubCompanyName = trim(exportSettings.creatorhubCompanyName) or trim(prefs.companyName) or ''
   exportSettings.creatorhubCategory = trim(exportSettings.creatorhubCategory) or trim(prefs.category) or 'Lightroom Uploads'
 end
 
-local function buildRequestBody(photo, exportPath, fileData, exportSettings)
+local function buildRequestBody(photo, exportPath, exportSettings)
   local title = trim(photo:getFormattedMetadata('title')) or LrPathUtils.removeExtension(LrPathUtils.leafName(exportPath))
   local caption = trim(photo:getFormattedMetadata('caption')) or 'Eksportert fra CreatorHub Lightroom plugin'
   local collectionName = trim(exportSettings.creatorhubCollectionName)
+  local projectId = trim(exportSettings.creatorhubProjectId)
   local projectName = trim(exportSettings.creatorhubProjectName)
+  if not projectName and projectId and Defaults.projects then
+    for _, project in ipairs(Defaults.projects) do
+      if project.value == projectId then
+        projectName = project.title
+        break
+      end
+    end
+  end
   local customerName = trim(exportSettings.creatorhubCustomerName)
   local customerEmail = trim(exportSettings.creatorhubCustomerEmail)
   local companyName = trim(exportSettings.creatorhubCompanyName)
@@ -159,10 +154,14 @@ local function buildRequestBody(photo, exportPath, fileData, exportSettings)
   local keywords = splitKeywords(photo:getFormattedMetadata('keywordTags') or '')
   local captureDate = trim(photo:getFormattedMetadata('dateTimeOriginal')) or ''
   local originalFileName = trim(photo:getFormattedMetadata('fileName')) or LrPathUtils.leafName(exportPath)
+  local catalogPath = LrApplication.activeCatalog():getPath()
+  local catalogName = catalogPath
+    and LrPathUtils.removeExtension(LrPathUtils.leafName(catalogPath))
+    or ''
 
   local metadataFragments = {
     '"lightroomPluginVersion":' .. encodeJsonString(Defaults.pluginVersion),
-    '"lightroomCatalogName":' .. encodeJsonString(LrApplication.activeCatalog():getName() or ''),
+    '"lightroomCatalogName":' .. encodeJsonString(catalogName),
     '"originalFileName":' .. encodeJsonString(originalFileName),
   }
 
@@ -171,6 +170,7 @@ local function buildRequestBody(photo, exportPath, fileData, exportSettings)
     '"title":' .. encodeJsonString(title),
     '"caption":' .. encodeJsonString(caption),
     '"collectionName":' .. encodeJsonString(collectionName or ''),
+    '"projectId":' .. encodeJsonString(projectId or ''),
     '"projectName":' .. encodeJsonString(projectName or ''),
     '"customerName":' .. encodeJsonString(customerName or ''),
     '"customerEmail":' .. encodeJsonString(customerEmail or ''),
@@ -178,7 +178,7 @@ local function buildRequestBody(photo, exportPath, fileData, exportSettings)
     '"category":' .. encodeJsonString(category),
     '"profession":' .. encodeJsonString('photographer'),
     '"mimeType":' .. encodeJsonString(getMimeTypeFromPath(exportPath)),
-    '"fileDataBase64":' .. encodeJsonString(base64Encode(fileData)),
+    '"mirrorToDrive":' .. (exportSettings.creatorhubMirrorToDrive == true and 'true' or 'false'),
     '"keywords":' .. encodeStringArray(keywords),
     '"rating":' .. tostring(rating),
     '"captureDate":' .. encodeJsonString(captureDate),
@@ -197,36 +197,101 @@ local function extractJsonString(responseBody, fieldName)
   return string.match(responseBody, pattern)
 end
 
-local function uploadRenderedPhoto(photo, exportPath, exportSettings)
-  local fileData, readError = readFileBinary(exportPath)
-  if not fileData then
-    return false, readError or 'Kunne ikke lese den rendrerte filen.'
+local function describeHttpError(responseInfo)
+  if type(responseInfo) ~= 'table' or type(responseInfo.error) ~= 'table' then
+    return nil
   end
 
+  return trim(responseInfo.error.name)
+    or trim(responseInfo.error.errorCode)
+    or trim(responseInfo.error.nativeCode)
+end
+
+local function requestDeskSession()
+  local requestSucceeded, responseBody, responseInfo = LrTasks.pcall(function()
+    return LrHttp.postMultipart(Defaults.deskBrokerUrl .. '/v1/lightroom/session', {}, {
+      { field = 'Authorization', value = 'Bearer ' .. Defaults.deskBrokerSecret },
+    }, 20)
+  end)
+  if not requestSucceeded or not responseBody then
+    return nil, 'CreatorHub Desk kunne ikke nås. Åpne Desk og kontroller at du er logget inn. '
+      .. (describeHttpError(responseInfo) or '')
+  end
+  local token = extractJsonString(responseBody, 'token')
+  local apiBaseUrl = extractJsonString(responseBody, 'apiBaseUrl')
+  local accountEmail = extractJsonString(responseBody, 'accountEmail')
+  if not token or not apiBaseUrl then
+    local errorCode = extractJsonString(responseBody, 'error') or 'desk_login_required'
+    return nil, 'CreatorHub Desk er ikke innlogget (' .. errorCode .. ').'
+  end
+  return {
+    token = token,
+    apiBaseUrl = apiBaseUrl,
+    accountEmail = accountEmail or Defaults.accountEmail,
+  }, nil
+end
+
+local function uploadRenderedPhoto(photo, exportPath, exportSettings)
   local apiBaseUrl = trim(exportSettings.creatorhubApiBaseUrl) or Defaults.apiBaseUrl
   local pluginToken = trim(exportSettings.creatorhubPluginToken) or Defaults.pluginToken
+  if hasDeskBroker() then
+    local session, sessionError = requestDeskSession()
+    if not session then
+      return false, sessionError
+    end
+    apiBaseUrl = session.apiBaseUrl
+    pluginToken = session.token
+  end
   if not apiBaseUrl or not pluginToken then
     return false, 'CreatorHub API-base eller plugin-token mangler.'
   end
+  if not trim(exportSettings.creatorhubProjectId) then
+    return false, 'Velg eller lim inn CreatorHub prosjekt-ID før eksport.'
+  end
 
-  local requestBody = buildRequestBody(photo, exportPath, fileData, exportSettings)
+  local requestBody = buildRequestBody(photo, exportPath, exportSettings)
   local endpoint = apiBaseUrl .. '/plugin/export-photo'
-  local responseBody = LrHttp.post(endpoint, requestBody, {
-    { field = 'Content-Type', value = 'application/json' },
-    { field = 'X-Lightroom-Plugin-Token', value = pluginToken },
-  })
+  local requestSucceeded, responseBody, responseInfo = LrTasks.pcall(function()
+    return LrHttp.postMultipart(endpoint, {
+      {
+        name = 'metadataJson',
+        value = requestBody,
+        contentType = 'application/json',
+      },
+      {
+        name = 'file',
+        fileName = LrPathUtils.leafName(exportPath),
+        filePath = exportPath,
+        contentType = getMimeTypeFromPath(exportPath),
+      },
+    }, {
+      { field = 'X-Lightroom-Plugin-Token', value = pluginToken },
+    }, 900)
+  end)
 
-  if not responseBody or not string.find(responseBody, '"success"%s*:%s*true') then
-    return false, responseBody or 'CreatorHub svarte ikke med gyldig JSON.'
+  if not requestSucceeded then
+    return false, 'Nettverksfeil under opplasting. Den eksporterte filen er beholdt lokalt. ' .. tostring(responseBody)
   end
 
-  local showcaseItemId = extractJsonString(responseBody, 'showcaseItemId')
+  if not responseBody then
+    return false, 'Nettverksfeil under opplasting. Den eksporterte filen er beholdt lokalt. '
+      .. (describeHttpError(responseInfo) or 'CreatorHub kunne ikke nås.')
+  end
+
+  if not string.find(responseBody, '"success"%s*:%s*true') then
+    return false, responseBody
+  end
+
+  local assetId = extractJsonString(responseBody, 'assetId')
   local driveFileId = extractJsonString(responseBody, 'driveFileId')
-  if showcaseItemId and driveFileId then
-    return true, 'Showcase item ' .. showcaseItemId .. ' opprettet. Drive-fil ' .. driveFileId .. ' lagret.'
+  if assetId and driveFileId then
+    return true, 'Sikret i CreatorHub. Drive-speil ' .. driveFileId .. ' er opprettet.'
+  end
+  if assetId then
+    return true, 'Sikret og verifisert i CreatorHub.'
   end
 
-  return true, 'Eksport fullført til CreatorHub og Google Drive.'
+  return false, 'CreatorHub svarte uten verifisert asset-id.'
 end
 
 return {
@@ -236,6 +301,47 @@ return {
 
   sectionsForTopOfDialog = function(f, propertyTable)
     initializeSettings(propertyTable)
+    local projectControl
+    if Defaults.projects and #Defaults.projects > 0 then
+      projectControl = f:popup_menu {
+        value = bind 'creatorhubProjectId',
+        items = Defaults.projects,
+        width_in_chars = 35,
+      }
+    else
+      projectControl = f:edit_field {
+        value = bind 'creatorhubProjectId',
+        width_in_chars = 35,
+      }
+    end
+    local authenticationControl
+    if hasDeskBroker() then
+      authenticationControl = f:column {
+        spacing = f:control_spacing(),
+        f:static_text {
+          title = 'Tilkoblet via CreatorHub Desk som ' .. Defaults.accountEmail,
+          fill_horizontal = 1,
+        },
+        f:static_text {
+          title = 'Innlogging og utlogging styres i CreatorHub Desk. Ingen permanent sky-token lagres i pluginen.',
+          fill_horizontal = 1,
+        },
+      }
+    else
+      authenticationControl = f:column {
+        spacing = f:control_spacing(),
+        f:row {
+          spacing = f:label_spacing(),
+          f:static_text { title = 'API Base URL', width = 140, alignment = 'right' },
+          f:edit_field { value = bind 'creatorhubApiBaseUrl', width_in_chars = 45 },
+        },
+        f:row {
+          spacing = f:label_spacing(),
+          f:static_text { title = 'Plugin-token', width = 140, alignment = 'right' },
+          f:password_field { value = bind 'creatorhubPluginToken', width_in_chars = 45 },
+        },
+      }
+    end
 
     return {
       {
@@ -244,19 +350,14 @@ return {
         f:column {
           spacing = f:control_spacing(),
           f:static_text {
-            title = 'Eksporter rendrede bilder direkte til CreatorHub. Originalfilene lagres i Google Drive via din eksisterende Workspace-kobling.',
+            title = 'CreatorHub S3 er alltid hovedlager. Google Drive kan brukes som ekstra speil når kontoen er koblet.',
             fill_horizontal = 1,
           },
-          f:row {
-            spacing = f:label_spacing(),
-            f:static_text { title = 'API Base URL', width = 140, alignment = 'right' },
-            f:edit_field { value = bind 'creatorhubApiBaseUrl', width_in_chars = 45 },
+          f:static_text {
+            title = 'Verifisert CreatorHub-konto: ' .. Defaults.accountEmail,
+            fill_horizontal = 1,
           },
-          f:row {
-            spacing = f:label_spacing(),
-            f:static_text { title = 'Plugin-token', width = 140, alignment = 'right' },
-            f:password_field { value = bind 'creatorhubPluginToken', width_in_chars = 45 },
-          },
+          authenticationControl,
           f:row {
             spacing = f:label_spacing(),
             f:static_text { title = 'Collection / Galleri', width = 140, alignment = 'right' },
@@ -264,8 +365,24 @@ return {
           },
           f:row {
             spacing = f:label_spacing(),
+            f:static_text { title = 'CreatorHub-prosjekt', width = 140, alignment = 'right' },
+            projectControl,
+          },
+          f:row {
+            spacing = f:label_spacing(),
             f:static_text { title = 'Prosjekt', width = 140, alignment = 'right' },
             f:edit_field { value = bind 'creatorhubProjectName', width_in_chars = 35 },
+          },
+          f:row {
+            spacing = f:label_spacing(),
+            f:static_text { title = '', width = 140 },
+            f:checkbox {
+              title = Defaults.driveAvailable
+                and 'Lag privat speilkopi i Google Drive'
+                or 'Google Drive er ikke koblet i CreatorHub',
+              value = bind 'creatorhubMirrorToDrive',
+              enabled = Defaults.driveAvailable,
+            },
           },
           f:row {
             spacing = f:label_spacing(),
@@ -312,8 +429,15 @@ return {
 
       local success, renderedPathOrMessage = rendition:waitForRender()
       if success then
-        local uploadSuccess, uploadMessage = uploadRenderedPhoto(rendition.photo, renderedPathOrMessage, exportSettings)
-        if uploadSuccess then
+        local callSucceeded, uploadSuccess, uploadMessage = LrTasks.pcall(
+          uploadRenderedPhoto,
+          rendition.photo,
+          renderedPathOrMessage,
+          exportSettings
+        )
+        if not callSucceeded then
+          failedMessages[#failedMessages + 1] = 'Uventet pluginfeil. Den eksporterte filen er beholdt lokalt. ' .. tostring(uploadSuccess)
+        elseif uploadSuccess then
           uploadedCount = uploadedCount + 1
         else
           failedMessages[#failedMessages + 1] = uploadMessage or 'Ukjent opplastingsfeil.'
@@ -344,9 +468,10 @@ return {
     LrDialogs.message(
       'CreatorHub Norge',
       string.format(
-        'Eksport fullført. %d bilde%s lagret i Google Drive og publisert til CreatorHub.',
+        'Eksport fullført. %d bilde%s er verifisert i CreatorHub%s.',
         uploadedCount,
-        uploadedCount == 1 and '' or 'r'
+        uploadedCount == 1 and '' or 'r',
+        exportSettings.creatorhubMirrorToDrive == true and ' og speilet til Google Drive' or ''
       )
     )
   end,

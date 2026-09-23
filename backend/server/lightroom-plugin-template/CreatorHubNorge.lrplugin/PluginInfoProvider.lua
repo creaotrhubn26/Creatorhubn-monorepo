@@ -19,11 +19,19 @@ return {
     return {
       {
         title = 'CreatorHub Norge',
-        synopsis = 'Google Drive-lagring og showcase-publisering er aktivert.',
+        synopsis = 'CreatorHub S3 med valgfritt Google Drive-speil.',
         f:column {
           spacing = f:control_spacing(),
           f:static_text {
             title = 'Denne pluginpakken er generert direkte fra CreatorHub for din bruker.',
+          },
+          f:static_text {
+            title = 'Verifisert konto: ' .. Defaults.accountEmail,
+          },
+          f:static_text {
+            title = Defaults.deskBrokerUrl ~= ''
+              and 'Innlogging: CreatorHub Desk SSO (kortlivet sesjon)'
+              or 'Innlogging: separat Lightroom-token',
           },
           f:static_text {
             title = 'API-base: ' .. Defaults.apiBaseUrl,
@@ -32,7 +40,9 @@ return {
             title = 'Plugin-token: ' .. tokenPreview(Defaults.pluginToken),
           },
           f:static_text {
-            title = 'Eksporter via File > Export > CreatorHub Norge for å laste opp til Google Drive og publisere i showcase.',
+            title = Defaults.driveAvailable
+              and 'Eksporter til CreatorHub S3, med valgfri privat speilkopi i Google Drive.'
+              or 'Eksporter til CreatorHub S3. Koble Google Drive i CreatorHub for valgfri speiling.',
           },
         },
       },

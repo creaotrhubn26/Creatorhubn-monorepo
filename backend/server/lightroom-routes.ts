@@ -1,26 +1,62 @@
 import { Router } from 'express';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import type { Pool } from 'pg';
+import multer from 'multer';
 import crypto from 'crypto';
-import { existsSync, readFileSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
-import { Readable } from 'stream';
+import { createReadStream } from 'fs';
 import { createRequire } from 'module';
 import { google } from 'googleapis';
+import { Upload } from '@aws-sdk/lib-storage';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   ensureCustomerDriveWorkspace,
   ensureDriveFolder,
 } from './customer-drive-sync.js';
-import { getGoogleWorkspaceOauthConfig } from './google-workspace-oauth.js';
 import { resolveRoleRoomGoogleConnection } from './contract-google-signing.js';
+import {
+  deleteCreatorHubObject,
+  getCreatorHubObjectStorage,
+  headCreatorHubObject,
+  putCreatorHubObject,
+} from './creatorhub-object-storage.js';
+import { buildPhotoRoomCaptureKey } from './photo-room-storage-contract.js';
+import { loadPersistedAuthSession } from './auth-session-store.js';
+
+type LightroomSession = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  loginAt: string;
+  [key: string]: unknown;
+};
+
+type AuthedLightroomRequest = Request & {
+  lightroomSession: LightroomSession;
+};
+
+type LightroomPluginRequest = Request & {
+  lightroomIntegration?: LightroomIntegrationRow;
+};
+
+type LightroomDeskSsoPayload = {
+  v: 1;
+  aud: 'creatorhub-lightroom-plugin';
+  sub: string;
+  did: string;
+  iat: number;
+  exp: number;
+  jti: string;
+};
 
 type LightroomIntegrationRow = {
   id: string;
   user_id: string | null;
   plugin_token_hash: string | null;
-  plugin_token_plain: string | null;
   plugin_version: string | null;
   drive_root_folder_id: string | null;
   drive_root_folder_name: string | null;
@@ -62,24 +98,6 @@ type LightroomUserWorkspaceRecord = {
   connectionState: string | null;
 };
 
-type LightroomAuthSource =
-  | 'role_room_connection'
-  | 'env_refresh_token'
-  | 'authorized_user_file'
-  | 'service_account_file';
-
-type LightroomGoogleAuthClient =
-  | InstanceType<typeof google.auth.OAuth2>
-  | InstanceType<typeof google.auth.JWT>;
-
-type AuthorizedLightroomGoogleClient = {
-  authClient: LightroomGoogleAuthClient;
-  source: LightroomAuthSource;
-  googleEmail: string | null;
-  storedScopes: string[];
-  warning: string | null;
-};
-
 type LightroomExportPayload = {
   filename: string;
   title: string;
@@ -94,27 +112,37 @@ type LightroomExportPayload = {
   projectName: string | null;
   profession: string;
   mimeType: string;
-  fileBuffer: Buffer;
+  fileBuffer: Buffer | null;
+  temporaryFilePath: string | null;
+  sizeBytes: number;
   keywords: string[];
   rating: number | null;
   captureDate: string | null;
   metadata: Record<string, unknown>;
+  mirrorToDrive: boolean;
 };
 
 type LightroomExportResult = {
   success: true;
   exportId: string;
-  showcaseItemId: string;
-  driveFileId: string;
-  driveFolderId: string;
-  driveFolderName: string;
-  driveRootFolderId: string;
-  driveRootFolderName: string;
+  assetId: string;
+  objectKey: string;
+  checksumSha256: string;
+  sizeBytes: number;
+  storageProvider: 'creatorhub_s3';
+  driveMirrored: boolean;
+  driveMirrorError: string | null;
+  showcaseItemId: string | null;
+  driveFileId: string | null;
+  driveFolderId: string | null;
+  driveFolderName: string | null;
+  driveRootFolderId: string | null;
+  driveRootFolderName: string | null;
   driveRootFolderUrl: string | null;
   driveWebViewLink: string | null;
   driveWebContentLink: string | null;
-  imageUrl: string;
-  thumbnailUrl: string;
+  imageUrl: string | null;
+  thumbnailUrl: string | null;
   title: string;
   category: string;
 };
@@ -132,7 +160,8 @@ const archiverFactory = _require('archiver') as (
   options?: Record<string, unknown>,
 ) => ArchiverLike;
 
-const LIGHTROOM_PLUGIN_VERSION = '1.0.0';
+const LIGHTROOM_PLUGIN_VERSION = '1.3.0';
+const LIGHTROOM_DESK_SSO_TTL_SECONDS = 10 * 60;
 const LIGHTROOM_INTEGRATION_TABLE = 'lightroom_integration';
 const LIGHTROOM_SIMULATOR_TABLE = 'lightroom_simulator';
 const LIGHTROOM_PLUGIN_DIR = fileURLToPath(
@@ -145,14 +174,12 @@ const LIGHTROOM_TEMPLATE_FILES = [
   'CreatorHubDefaults.lua',
   'README.txt',
 ] as const;
-const LIGHTROOM_DRIVE_REQUIRED_SCOPES = [
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.file',
-] as const;
 const SMOKE_TEST_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9s7R6aQAAAAASUVORK5CYII=';
-
-let ensureLightroomSchemaPromise: Promise<void> | null = null;
+const lightroomMultipartUpload = multer({
+  dest: path.join(os.tmpdir(), 'creatorhub-lightroom-classic'),
+  limits: { files: 1, fileSize: 1024 * 1024 * 1024, fields: 64 },
+});
 
 function readString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -268,18 +295,6 @@ function normalizeKeywords(value: unknown): string[] {
   return readStringArray(value);
 }
 
-function normalizeGrantedScopes(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return [...new Set(value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0))];
-  }
-
-  if (typeof value === 'string') {
-    return [...new Set(value.split(/\s+/).map((entry) => entry.trim()).filter(Boolean))];
-  }
-
-  return [];
-}
-
 function buildTokenPreview(token: string | null | undefined): string | null {
   const parsed = readString(token);
   if (!parsed) {
@@ -301,39 +316,162 @@ function generatePluginToken(): string {
   return `lrp_${crypto.randomBytes(24).toString('hex')}`;
 }
 
-function resolveRequesterUserId(req: Request, body?: Record<string, unknown>): string | null {
-  return (
-    readString(req.headers['x-user-id']) ||
-    readString(body?.userId) ||
-    readString(body?.user_id) ||
-    readString(req.query.userId) ||
-    readString(req.query.user_id)
-  );
+function lightroomDeskSsoSecret(): string {
+  const secret = readString(process.env.LIGHTROOM_DESK_SSO_SECRET)
+    || readString(process.env.SESSION_SECRET)
+    || readString(process.env.JWT_SECRET)
+    || readString(process.env.AUTH_SECRET);
+  if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
+    throw new Error('LIGHTROOM_DESK_SSO_SECRET eller SESSION_SECRET må være minst 32 byte.');
+  }
+  return secret;
 }
 
-function resolveRequesterEmail(req: Request, body?: Record<string, unknown>): string | null {
-  return (
-    readString(req.headers['x-user-email']) ||
-    readString(body?.userEmail) ||
-    readString(body?.user_email) ||
-    readString(req.query.userEmail) ||
-    readString(req.query.user_email)
-  );
+export function issueLightroomDeskSsoToken(
+  userId: string,
+  deviceId: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): { token: string; expiresAt: string } {
+  const payload: LightroomDeskSsoPayload = {
+    v: 1,
+    aud: 'creatorhub-lightroom-plugin',
+    sub: userId,
+    did: deviceId,
+    iat: nowSeconds,
+    exp: nowSeconds + LIGHTROOM_DESK_SSO_TTL_SECONDS,
+    jti: crypto.randomUUID(),
+  };
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', lightroomDeskSsoSecret())
+    .update(encoded)
+    .digest('base64url');
+  return {
+    token: `lrs_${encoded}.${signature}`,
+    expiresAt: new Date(payload.exp * 1000).toISOString(),
+  };
+}
+
+export function verifyLightroomDeskSsoToken(
+  token: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): LightroomDeskSsoPayload | null {
+  if (!token.startsWith('lrs_') || token.length > 2_048) return null;
+  const parts = token.slice(4).split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const expected = crypto
+    .createHmac('sha256', lightroomDeskSsoSecret())
+    .update(parts[0])
+    .digest();
+  let supplied: Buffer;
+  try {
+    supplied = Buffer.from(parts[1], 'base64url');
+  } catch {
+    return null;
+  }
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8')) as Partial<LightroomDeskSsoPayload>;
+    if (
+      payload.v !== 1
+      || payload.aud !== 'creatorhub-lightroom-plugin'
+      || typeof payload.sub !== 'string'
+      || !payload.sub
+      || typeof payload.did !== 'string'
+      || !payload.did
+      || typeof payload.iat !== 'number'
+      || typeof payload.exp !== 'number'
+      || typeof payload.jti !== 'string'
+      || payload.iat > nowSeconds + 60
+      || payload.exp <= nowSeconds
+      || payload.exp - payload.iat > LIGHTROOM_DESK_SSO_TTL_SECONDS
+    ) {
+      return null;
+    }
+    return payload as LightroomDeskSsoPayload;
+  } catch {
+    return null;
+  }
+}
+
+function requireLightroomSession(
+  pool: Pool,
+  activeSessions?: ReadonlyMap<string, LightroomSession>,
+) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const bearer = readString(req.headers.authorization)?.replace(/^Bearer\s+/iu, '').trim();
+    if (!bearer || bearer.length > 512) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+    const session = activeSessions?.get(bearer)
+      ?? await loadPersistedAuthSession<LightroomSession>(pool, bearer);
+    if (!session?.userId || session.userId === 'guest') {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+    (req as AuthedLightroomRequest).lightroomSession = session;
+    next();
+  };
+}
+
+function authenticatedUserId(req: Request): string {
+  return (req as AuthedLightroomRequest).lightroomSession.userId;
+}
+
+function authenticatedUserEmail(req: Request): string | null {
+  return readString((req as AuthedLightroomRequest).lightroomSession.email);
 }
 
 function resolvePluginToken(req: Request, body?: Record<string, unknown>): string | null {
+  void body;
   const authHeader = readString(req.headers.authorization);
   if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
     return readString(authHeader.slice(7));
   }
 
-  return (
-    readString(req.headers['x-lightroom-plugin-token']) ||
-    readString(body?.pluginToken) ||
-    readString(body?.token) ||
-    readString(req.query.pluginToken) ||
-    readString(req.query.token)
-  );
+  return readString(req.headers['x-lightroom-plugin-token']);
+}
+
+function requireLightroomPluginToken(pool: Pool) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // This guard intentionally runs before multer writes the incoming file.
+    // Pre-upload auth accepts headers only; tokens in query/body are retained
+    // solely for the small legacy JSON endpoint handled after body parsing.
+    const authHeader = readString(req.headers.authorization);
+    const token = authHeader?.toLowerCase().startsWith('bearer ')
+      ? readString(authHeader.slice(7))
+      : readString(req.headers['x-lightroom-plugin-token']);
+    if (!token) {
+      res.status(401).json({ error: 'Lightroom-plugin-token mangler.' });
+      return;
+    }
+    let integration: LightroomIntegrationRow | null = null;
+    if (token.startsWith('lrs_')) {
+      const session = verifyLightroomDeskSsoToken(token);
+      if (session) {
+        const activeDevice = await pool.query(
+          `SELECT id FROM desktop_device_tokens
+           WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+           LIMIT 1`,
+          [session.did, session.sub],
+        );
+        if (activeDevice.rows[0]) {
+          integration = await getIntegrationByUserId(pool, session.sub);
+        }
+      }
+    } else {
+      integration = await getIntegrationByPluginToken(pool, token);
+    }
+    if (!integration) {
+      res.status(401).json({ error: 'Ugyldig Lightroom-plugin-token.' });
+      return;
+    }
+    (req as LightroomPluginRequest).lightroomIntegration = integration;
+    next();
+  };
 }
 
 function resolvePublicBaseUrl(req: Request): string {
@@ -379,6 +517,57 @@ function decodeBase64FilePayload(rawValue: unknown): Buffer | null {
   }
 }
 
+async function checksumLightroomPayload(payload: LightroomExportPayload): Promise<string> {
+  if (payload.fileBuffer) {
+    return crypto.createHash('sha256').update(payload.fileBuffer).digest('hex');
+  }
+  if (!payload.temporaryFilePath) {
+    throw new Error('Lightroom-eksporten mangler en lesbar fil.');
+  }
+  const hash = crypto.createHash('sha256');
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(payload.temporaryFilePath as string);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.once('error', reject);
+    stream.once('end', resolve);
+  });
+  return hash.digest('hex');
+}
+
+function lightroomPayloadBody(
+  payload: LightroomExportPayload,
+): Buffer | ReturnType<typeof createReadStream> {
+  if (payload.fileBuffer) return payload.fileBuffer;
+  if (payload.temporaryFilePath) return createReadStream(payload.temporaryFilePath);
+  throw new Error('Lightroom-eksporten mangler en lesbar fil.');
+}
+
+async function verifyCreatorHubLightroomObject(
+  key: string,
+  expectedSize: number,
+  expectedSha256: string,
+): Promise<number> {
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) throw new Error('CreatorHub S3 er ikke konfigurert.');
+  const head = await headCreatorHubObject(key);
+  if (!head || head.sizeBytes !== expectedSize) {
+    throw new Error('CreatorHub S3 kunne ikke verifisere filstørrelsen etter opplasting.');
+  }
+  const object = await storage.client.send(new GetObjectCommand({
+    Bucket: storage.bucket,
+    Key: key,
+  }));
+  if (!object.Body) throw new Error('CreatorHub S3 returnerte ingen fil ved checksum-kontroll.');
+  const hash = crypto.createHash('sha256');
+  for await (const chunk of object.Body as AsyncIterable<Uint8Array>) {
+    hash.update(chunk);
+  }
+  if (hash.digest('hex') !== expectedSha256) {
+    throw new Error('CreatorHub S3 checksum samsvarer ikke med Lightroom-filen.');
+  }
+  return head.sizeBytes;
+}
+
 function buildMimeType(value: unknown, filename: string): string {
   const explicit = readString(value);
   if (explicit) {
@@ -393,273 +582,10 @@ function buildMimeType(value: unknown, filename: string): string {
   return 'image/jpeg';
 }
 
-function buildDriveImageUrl(fileId: string): string {
-  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`;
-}
-
-function readGoogleCredentialsFile():
-  | {
-      source: 'authorized_user_file';
-      clientId: string;
-      clientSecret: string;
-      refreshToken: string;
-    }
-  | {
-      source: 'service_account_file';
-      clientEmail: string;
-      privateKey: string;
-      subject: string | null;
-    }
-  | null {
-  const credentialsPath = readString(
-    process.env.GOOGLE_APPLICATION_CREDENTIALS,
-  );
-  if (!credentialsPath || !existsSync(credentialsPath)) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(credentialsPath, 'utf8')) as Record<string, unknown>;
-
-    if (
-      parsed.type === 'authorized_user'
-      && readString(parsed.client_id)
-      && readString(parsed.client_secret)
-      && readString(parsed.refresh_token)
-    ) {
-      return {
-        source: 'authorized_user_file',
-        clientId: readString(parsed.client_id) as string,
-        clientSecret: readString(parsed.client_secret) as string,
-        refreshToken: readString(parsed.refresh_token) as string,
-      };
-    }
-
-    if (
-      parsed.type === 'service_account'
-      && readString(parsed.client_email)
-      && readString(parsed.private_key)
-    ) {
-      return {
-        source: 'service_account_file',
-        clientEmail: readString(parsed.client_email) as string,
-        privateKey: readString(parsed.private_key) as string,
-        subject: readString(process.env.GOOGLE_IMPERSONATE_USER ?? process.env.GOOGLE_ADMIN_EMAIL),
-      };
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-async function fetchGrantedScopes(accessToken: string): Promise<string[]> {
-  try {
-    const response = await fetch(
-      `https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${encodeURIComponent(accessToken)}`,
-    );
-    const payload = await response.json().catch(() => null) as { scope?: string } | null;
-    return normalizeGrantedScopes(payload?.scope);
-  } catch {
-    return [];
-  }
-}
-
-async function fetchGoogleAccountEmail(
-  authClient: LightroomGoogleAuthClient,
-): Promise<string | null> {
-  try {
-    const oauth2Api = google.oauth2({ version: 'v2', auth: authClient });
-    const response = await oauth2Api.userinfo.get();
-    return readString(response.data.email);
-  } catch {
-    return null;
-  }
-}
-
-async function resolveFallbackLightroomGoogleConnection(
-  roleRoomError?: Error | null,
-): Promise<AuthorizedLightroomGoogleClient> {
-  const oauthConfig = getGoogleWorkspaceOauthConfig('creatorhub');
-  const clientId = oauthConfig.clientId;
-  const clientSecret = oauthConfig.clientSecret;
-  const redirectUri = readString(oauthConfig.redirectUri);
-  const envRefreshToken = readString(process.env.GOOGLE_WORKSPACE_REFRESH_TOKEN);
-  const fallbackWarning = roleRoomError
-    ? 'Den brukerspesifikke Google Workspace-koblingen er utilgjengelig. CreatorHub bruker systemets Google Drive-kobling som fallback.'
-    : null;
-  const attemptedErrors: string[] = [];
-
-  const tryOAuthRefreshToken = async (
-    source: Extract<LightroomAuthSource, 'env_refresh_token' | 'authorized_user_file'>,
-    refreshToken: string,
-    candidateClientId: string,
-    candidateClientSecret: string,
-  ): Promise<AuthorizedLightroomGoogleClient> => {
-    const oauthClient = new google.auth.OAuth2(
-      candidateClientId,
-      candidateClientSecret,
-      redirectUri ?? undefined,
-    );
-
-    oauthClient.setCredentials({
-      refresh_token: refreshToken,
-    });
-
-    await oauthClient.getAccessToken();
-    const accessToken = readString(oauthClient.credentials.access_token);
-
-    return {
-      authClient: oauthClient,
-      source,
-      googleEmail: await fetchGoogleAccountEmail(oauthClient),
-      storedScopes: accessToken ? await fetchGrantedScopes(accessToken) : [],
-      warning: fallbackWarning,
-    };
-  };
-
-  if (clientId && clientSecret && envRefreshToken) {
-    try {
-      return await tryOAuthRefreshToken('env_refresh_token', envRefreshToken, clientId, clientSecret);
-    } catch (error) {
-      attemptedErrors.push(error instanceof Error ? error.message : 'Env refresh token feilet.');
-    }
-  }
-
-  const credentialsFile = readGoogleCredentialsFile();
-  if (credentialsFile?.source === 'authorized_user_file') {
-    try {
-      return await tryOAuthRefreshToken(
-        'authorized_user_file',
-        credentialsFile.refreshToken,
-        credentialsFile.clientId,
-        credentialsFile.clientSecret,
-      );
-    } catch (error) {
-      attemptedErrors.push(error instanceof Error ? error.message : 'Authorized user credentials feilet.');
-    }
-  }
-
-  if (credentialsFile?.source === 'service_account_file') {
-    try {
-      const authClient = new google.auth.JWT({
-        email: credentialsFile.clientEmail,
-        key: credentialsFile.privateKey,
-        scopes: [...LIGHTROOM_DRIVE_REQUIRED_SCOPES],
-        subject: credentialsFile.subject ?? undefined,
-      });
-      await authClient.authorize();
-      const accessToken = readString(authClient.credentials.access_token);
-
-      return {
-        authClient,
-        source: 'service_account_file',
-        googleEmail: credentialsFile.subject,
-        storedScopes: accessToken ? await fetchGrantedScopes(accessToken) : [...LIGHTROOM_DRIVE_REQUIRED_SCOPES],
-        warning: fallbackWarning,
-      };
-    } catch (error) {
-      attemptedErrors.push(error instanceof Error ? error.message : 'Service account credentials feilet.');
-    }
-  }
-
-  if (roleRoomError) {
-    throw new Error(
-      attemptedErrors.length > 0
-        ? `${roleRoomError.message} Fallback til systemets Drive-kobling feilet også: ${attemptedErrors.join(' | ')}`
-        : roleRoomError.message,
-    );
-  }
-
-  throw new Error(
-    attemptedErrors.length > 0
-      ? attemptedErrors.join(' | ')
-      : 'Fant ingen Google Drive-kobling for Lightroom.',
-  );
-}
-
-async function resolveLightroomGoogleConnection(
-  pool: Pool,
-  userId: string,
-): Promise<AuthorizedLightroomGoogleClient> {
-  try {
-    const connection = await resolveRoleRoomGoogleConnection(pool, userId);
-    return {
-      authClient: connection.oauthClient,
-      source: 'role_room_connection',
-      googleEmail: readString(connection.connection.googleEmail),
-      storedScopes: Array.isArray(connection.connection.storedScopes)
-        ? connection.connection.storedScopes.filter((entry): entry is string => typeof entry === 'string')
-        : [],
-      warning: null,
-    };
-  } catch (error) {
-    return resolveFallbackLightroomGoogleConnection(error instanceof Error ? error : new Error(String(error)));
-  }
-}
-
-function buildDriveThumbnailUrl(fileId: string): string {
-  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`;
-}
-
 async function ensureLightroomSchema(pool: Pool): Promise<void> {
-  if (!ensureLightroomSchemaPromise) {
-    ensureLightroomSchemaPromise = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS ${LIGHTROOM_INTEGRATION_TABLE} (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `);
-      await pool.query(`
-        ALTER TABLE ${LIGHTROOM_INTEGRATION_TABLE}
-          ADD COLUMN IF NOT EXISTS user_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS plugin_token_hash TEXT,
-          ADD COLUMN IF NOT EXISTS plugin_token_plain TEXT,
-          ADD COLUMN IF NOT EXISTS plugin_version VARCHAR(32) DEFAULT '${LIGHTROOM_PLUGIN_VERSION}',
-          ADD COLUMN IF NOT EXISTS drive_root_folder_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS drive_root_folder_name VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS drive_root_folder_url TEXT,
-          ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ,
-          ADD COLUMN IF NOT EXISTS last_showcase_item_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS last_drive_file_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS last_error TEXT,
-          ADD COLUMN IF NOT EXISTS sync_status VARCHAR(64) DEFAULT 'idle',
-          ADD COLUMN IF NOT EXISTS configuration JSONB NOT NULL DEFAULT '{}'::jsonb
-      `);
-      await pool.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_lightroom_integration_user_id
-          ON ${LIGHTROOM_INTEGRATION_TABLE}(user_id)
-      `);
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS ${LIGHTROOM_SIMULATOR_TABLE} (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `);
-      await pool.query(`
-        ALTER TABLE ${LIGHTROOM_SIMULATOR_TABLE}
-          ADD COLUMN IF NOT EXISTS user_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS export_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS status VARCHAR(64),
-          ADD COLUMN IF NOT EXISTS drive_file_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS showcase_item_id VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-      `);
-      await pool.query(`
-        CREATE INDEX IF NOT EXISTS idx_lightroom_simulator_user_created
-          ON ${LIGHTROOM_SIMULATOR_TABLE}(user_id, created_at DESC)
-      `);
-    })().catch((error) => {
-      ensureLightroomSchemaPromise = null;
-      throw error;
-    });
-  }
-
-  return ensureLightroomSchemaPromise;
+  // Schema is owned by migration 0665. Keep this awaitable boundary so the
+  // query helpers remain stable without mutating production schema at runtime.
+  void pool;
 }
 
 async function getIntegrationByUserId(pool: Pool, userId: string): Promise<LightroomIntegrationRow | null> {
@@ -693,7 +619,6 @@ async function upsertIntegrationRecord(
   params: {
     userId: string;
     pluginTokenHash?: string | null;
-    pluginTokenPlain?: string | null;
     driveRootFolderId?: string | null;
     driveRootFolderName?: string | null;
     driveRootFolderUrl?: string | null;
@@ -712,7 +637,6 @@ async function upsertIntegrationRecord(
        id,
        user_id,
        plugin_token_hash,
-       plugin_token_plain,
        plugin_version,
        drive_root_folder_id,
        drive_root_folder_name,
@@ -727,14 +651,13 @@ async function upsertIntegrationRecord(
        updated_at
      )
      VALUES (
-       $1, $2, $3, $4, $5,
-       $6, $7, $8, $9, $10,
-       $11, $12, $13, $14,
-       $15::timestamptz, $16::timestamptz
+       $1, $2, $3, $4,
+       $5, $6, $7, $8, $9,
+       $10, $11, $12, $13,
+       $14::timestamptz, $15::timestamptz
      )
      ON CONFLICT (user_id) DO UPDATE SET
        plugin_token_hash = COALESCE(EXCLUDED.plugin_token_hash, ${LIGHTROOM_INTEGRATION_TABLE}.plugin_token_hash),
-       plugin_token_plain = COALESCE(EXCLUDED.plugin_token_plain, ${LIGHTROOM_INTEGRATION_TABLE}.plugin_token_plain),
        plugin_version = EXCLUDED.plugin_version,
        drive_root_folder_id = COALESCE(EXCLUDED.drive_root_folder_id, ${LIGHTROOM_INTEGRATION_TABLE}.drive_root_folder_id),
        drive_root_folder_name = COALESCE(EXCLUDED.drive_root_folder_name, ${LIGHTROOM_INTEGRATION_TABLE}.drive_root_folder_name),
@@ -751,7 +674,6 @@ async function upsertIntegrationRecord(
       crypto.randomUUID(),
       params.userId,
       params.pluginTokenHash ?? null,
-      params.pluginTokenPlain ?? null,
       LIGHTROOM_PLUGIN_VERSION,
       params.driveRootFolderId ?? null,
       params.driveRootFolderName ?? null,
@@ -877,16 +799,16 @@ async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<Light
   }
 
   try {
-    const connection = await resolveLightroomGoogleConnection(pool, userId);
+    const connection = await resolveRoleRoomGoogleConnection(pool, userId);
     return {
       connected: true,
-      googleEmail: readString(connection.googleEmail),
-      storedScopes: Array.isArray(connection.storedScopes)
-        ? connection.storedScopes.filter((entry): entry is string => typeof entry === 'string')
+      googleEmail: readString(connection.connection.googleEmail),
+      storedScopes: Array.isArray(connection.connection.storedScopes)
+        ? connection.connection.storedScopes.filter((entry): entry is string => typeof entry === 'string')
         : [],
       error: null,
-      source: connection.source,
-      warning: connection.warning,
+      source: 'role_room_connection',
+      warning: null,
     };
   } catch (error) {
     return {
@@ -905,30 +827,26 @@ async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<Light
 async function ensurePluginToken(
   pool: Pool,
   userId: string,
-  rotate = false,
 ): Promise<{ integration: LightroomIntegrationRow; token: string }> {
   const existing = await getIntegrationByUserId(pool, userId);
-  const shouldRotate = rotate || !readString(existing?.plugin_token_plain);
-  const token = shouldRotate
-    ? generatePluginToken()
-    : (readString(existing?.plugin_token_plain) as string);
+  const token = generatePluginToken();
 
   const nextConfiguration = {
     ...readRecord(existing?.configuration),
     lastPackageGeneratedAt: new Date().toISOString(),
+    tokenPreview: buildTokenPreview(token),
   };
 
   const integration = await upsertIntegrationRecord(pool, {
     userId,
-    pluginTokenHash: shouldRotate ? hashPluginToken(token) : existing?.plugin_token_hash ?? null,
-    pluginTokenPlain: token,
+    pluginTokenHash: hashPluginToken(token),
     driveRootFolderId: existing?.drive_root_folder_id ?? null,
     driveRootFolderName: existing?.drive_root_folder_name ?? null,
     driveRootFolderUrl: existing?.drive_root_folder_url ?? null,
     lastSyncAt: existing?.last_sync_at ?? null,
     lastShowcaseItemId: existing?.last_showcase_item_id ?? null,
     lastDriveFileId: existing?.last_drive_file_id ?? null,
-    lastError: shouldRotate ? null : existing?.last_error ?? null,
+    lastError: null,
     syncStatus: existing?.sync_status ?? 'idle',
     configuration: nextConfiguration,
   });
@@ -957,17 +875,36 @@ function injectTemplateVariables(
   );
 }
 
+function escapeLuaString(value: string): string {
+  return value
+    .replace(/\\/gu, '\\\\')
+    .replace(/"/gu, '\\"')
+    .replace(/[\r\n]/gu, ' ');
+}
+
 async function streamPluginPackage(
   req: Request,
   res: Response,
   token: string,
+  driveAvailable: boolean,
+  projects: Array<{ id: string; title: string }>,
+  userEmail: string | null,
 ): Promise<void> {
   const templates = await loadPluginTemplateFiles();
   const variables = {
     CREATORHUB_API_BASE_URL: resolveLightroomApiBase(req),
     CREATORHUB_PLUGIN_TOKEN: token,
     CREATORHUB_PLUGIN_VERSION: LIGHTROOM_PLUGIN_VERSION,
+    CREATORHUB_ACCOUNT_EMAIL: escapeLuaString(userEmail || 'Tilkoblet CreatorHub-konto'),
+    CREATORHUB_DESK_BROKER_URL: '',
+    CREATORHUB_DESK_BROKER_SECRET: '',
     CREATORHUB_PLUGIN_DOWNLOAD_URL: `${resolveLightroomApiBase(req)}/download-plugin`,
+    CREATORHUB_DRIVE_AVAILABLE: driveAvailable ? 'true' : 'false',
+    CREATORHUB_PROJECTS_LUA: `{${projects.map((project) => {
+      const title = project.title.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"').replace(/[\r\n]/gu, ' ');
+      const id = project.id.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
+      return `{ title = "${title}", value = "${id}" }`;
+    }).join(',')}}`,
   };
 
   res.setHeader('Content-Type', 'application/zip');
@@ -994,6 +931,76 @@ async function streamPluginPackage(
   });
 
   await archive.finalize();
+}
+
+/**
+ * Streams a user-bound Lightroom Classic package. Browser sessions and trusted
+ * CreatorHub desktop clients share this implementation so token rotation,
+ * project ownership and Google Drive availability cannot drift between entry
+ * points.
+ */
+export async function streamLightroomPluginPackageForUser(
+  pool: Pool,
+  req: Request,
+  res: Response,
+  userId: string,
+  userEmail: string | null,
+  options: { deskBrokerOnly?: boolean } = {},
+): Promise<void> {
+  const token = options.deskBrokerOnly
+    ? ''
+    : (await ensurePluginToken(pool, userId)).token;
+  if (options.deskBrokerOnly && !(await getIntegrationByUserId(pool, userId))) {
+    await upsertIntegrationRecord(pool, {
+      userId,
+      syncStatus: 'idle',
+      configuration: { authenticationMode: 'creatorhub_desk_sso' },
+    });
+  }
+  const workspace = await resolveWorkspaceStatus(pool, userId);
+  const projects = await pool.query<{ id: string; title: string | null; name: string | null }>(
+    `SELECT id, title, name FROM projects WHERE user_id=$1 ORDER BY updated_at DESC NULLS LAST LIMIT 250`,
+    [userId],
+  );
+  await streamPluginPackage(
+    req,
+    res,
+    token,
+    workspace.connected,
+    projects.rows.map((project) => ({
+      id: project.id,
+      title: project.title || project.name || project.id,
+    })),
+    userEmail,
+  );
+}
+
+export async function createLightroomDesktopSession(
+  pool: Pool,
+  req: Request,
+  params: { userId: string; userEmail: string; deviceId: string },
+): Promise<{
+  token: string;
+  expiresAt: string;
+  apiBaseUrl: string;
+  accountEmail: string;
+  pluginVersion: string;
+}> {
+  const existing = await getIntegrationByUserId(pool, params.userId);
+  if (!existing) {
+    await upsertIntegrationRecord(pool, {
+      userId: params.userId,
+      syncStatus: 'idle',
+      configuration: { authenticationMode: 'creatorhub_desk_sso' },
+    });
+  }
+  const issued = issueLightroomDeskSsoToken(params.userId, params.deviceId);
+  return {
+    ...issued,
+    apiBaseUrl: resolveLightroomApiBase(req),
+    accountEmail: params.userEmail,
+    pluginVersion: LIGHTROOM_PLUGIN_VERSION,
+  };
 }
 
 async function ensureLightroomDriveDestination(
@@ -1044,114 +1051,6 @@ async function ensureLightroomDriveDestination(
   };
 }
 
-async function ensureDriveLinkAccess(
-  driveApi: ReturnType<typeof google.drive>,
-  fileId: string,
-): Promise<void> {
-  const permissions = await driveApi.permissions.list({
-    fileId,
-    supportsAllDrives: true,
-    fields: 'permissions(id,type,role,allowFileDiscovery)',
-  });
-  const existingPermissions = Array.isArray(permissions.data.permissions)
-    ? permissions.data.permissions
-    : [];
-  const hasPublicAccess = existingPermissions.some(
-    (permission) => readString(permission.type) === 'anyone',
-  );
-  if (hasPublicAccess) {
-    return;
-  }
-
-  await driveApi.permissions.create({
-    fileId,
-    supportsAllDrives: true,
-    requestBody: {
-      type: 'anyone',
-      role: 'reader',
-      allowFileDiscovery: false,
-    },
-  });
-}
-
-async function createShowcaseItem(
-  pool: Pool,
-  userId: string,
-  payload: LightroomExportPayload,
-  result: {
-    driveFileId: string;
-    driveWebViewLink: string | null;
-    driveWebContentLink: string | null;
-    driveRootFolderId: string;
-    driveRootFolderName: string;
-    driveRootFolderUrl: string | null;
-    driveFolderId: string;
-    driveFolderName: string;
-  },
-): Promise<string> {
-  const showcaseItemId = crypto.randomUUID();
-  const nowIso = new Date().toISOString();
-  const imageUrl = buildDriveImageUrl(result.driveFileId);
-  const thumbnailUrl = buildDriveThumbnailUrl(result.driveFileId);
-
-  await pool.query(
-    `INSERT INTO showcase_items (
-       id,
-       user_id,
-       profession,
-       category,
-       title,
-       description,
-       image_url,
-       thumbnail_url,
-       crop_data,
-       is_public,
-       is_active,
-       created_at,
-       updated_at
-     )
-     VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, true, true, $10::timestamptz, $11::timestamptz
-     )`,
-    [
-      showcaseItemId,
-      userId,
-      payload.profession,
-      payload.category,
-      payload.title,
-      payload.description,
-      imageUrl,
-      thumbnailUrl,
-      JSON.stringify({
-        source: 'lightroom-plugin',
-        clientName: payload.customerName,
-        projectId: payload.projectId,
-        projectName: payload.projectName,
-        customerId: payload.customerId,
-        customerEmail: payload.customerEmail,
-        companyName: payload.companyName,
-        collectionName: payload.collectionName,
-        driveFileId: result.driveFileId,
-        driveFolderId: result.driveFolderId,
-        driveFolderName: result.driveFolderName,
-        driveRootFolderId: result.driveRootFolderId,
-        driveRootFolderName: result.driveRootFolderName,
-        driveRootFolderUrl: result.driveRootFolderUrl,
-        driveWebViewLink: result.driveWebViewLink,
-        driveWebContentLink: result.driveWebContentLink,
-        keywords: payload.keywords,
-        rating: payload.rating,
-        captureDate: payload.captureDate,
-        metadata: payload.metadata,
-      }),
-      nowIso,
-      nowIso,
-    ],
-  );
-
-  return showcaseItemId;
-}
-
 async function performLightroomExport(
   pool: Pool,
   integration: LightroomIntegrationRow,
@@ -1162,114 +1061,344 @@ async function performLightroomExport(
     throw new Error('Lightroom-integrasjonen mangler bruker-id.');
   }
 
-  const googleConnection = await resolveLightroomGoogleConnection(pool, integrationUserId);
-  const driveApi = google.drive({ version: 'v3', auth: googleConnection.authClient });
-  const destination = await ensureLightroomDriveDestination(pool, driveApi, integrationUserId, payload);
-  const fileName = sanitizeFolderName(payload.filename) || `Lightroom Export ${Date.now()}.jpg`;
-
-  const created = await driveApi.files.create({
-    requestBody: {
-      name: fileName,
-      parents: [destination.destinationFolder.id],
-      description: [
-        'Uploaded from CreatorHub Lightroom plugin',
-        payload.collectionName,
-        payload.projectName,
-        payload.customerName,
-      ].filter(Boolean).join(' • '),
-      appProperties: Object.fromEntries(
-        Object.entries({
-          creatorhubSource: 'lightroom-plugin',
-          creatorhubUserId: integrationUserId,
-          creatorhubProjectId: payload.projectId,
-          creatorhubCustomerId: payload.customerId,
-          creatorhubCollectionName: payload.collectionName,
-        }).filter((entry): entry is [string, string] => Boolean(entry[1])),
-      ),
-    },
-    media: {
-      mimeType: payload.mimeType,
-      body: Readable.from(payload.fileBuffer),
-    },
-    supportsAllDrives: true,
-    fields: 'id,name,webViewLink,webContentLink,mimeType',
-  });
-
-  const driveFileId = readString(created.data.id);
-  if (!driveFileId) {
-    throw new Error('Google Drive returnerte ikke en fil-ID for Lightroom-eksporten.');
+  if (!payload.projectId) {
+    throw new Error('Velg et CreatorHub-prosjekt i Lightroom før eksport.');
   }
 
-  await ensureDriveLinkAccess(driveApi, driveFileId);
+  const ownedProject = await pool.query<{ id: string; title: string | null; name: string | null }>(
+    `SELECT id, title, name FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [payload.projectId, integrationUserId],
+  );
+  if (!ownedProject.rows[0]) {
+    throw new Error('Prosjektet finnes ikke, eller tilhører en annen CreatorHub-bruker.');
+  }
 
-  const driveWebViewLink = readString(created.data.webViewLink);
-  const driveWebContentLink = readString(created.data.webContentLink);
-  const showcaseItemId = await createShowcaseItem(pool, integrationUserId, payload, {
-    driveFileId,
-    driveWebViewLink,
-    driveWebContentLink,
-    driveRootFolderId: destination.rootFolder.id,
-    driveRootFolderName: destination.rootFolder.name,
-    driveRootFolderUrl: destination.rootFolder.webViewLink,
-    driveFolderId: destination.destinationFolder.id,
-    driveFolderName: destination.destinationFolder.name,
-  });
-  const exportId = crypto.randomUUID();
+  const checksumSha256 = await checksumLightroomPayload(payload);
+  const duplicate = await pool.query<{
+    id: string;
+    asset_id: string;
+    object_key: string;
+    size_bytes: string | number;
+    drive_file_id: string | null;
+    drive_folder_id: string | null;
+    drive_folder_name: string | null;
+    drive_web_view_link: string | null;
+    status: 'uploading' | 'verified' | 'error';
+  }>(
+    `SELECT id, asset_id, object_key, size_bytes, drive_file_id, drive_folder_id,
+            drive_folder_name, drive_web_view_link, status
+       FROM lightroom_classic_exports
+      WHERE user_id = $1 AND project_id = $2 AND checksum_sha256 = $3
+        AND filename = $4
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [integrationUserId, payload.projectId, checksumSha256, payload.filename],
+  );
+
+  let exportId = duplicate.rows[0]?.id ?? crypto.randomUUID();
+  let assetId = duplicate.rows[0]?.asset_id ?? crypto.randomUUID();
+  let objectKey = duplicate.rows[0]?.object_key ?? '';
+  let sizeBytes = Number(duplicate.rows[0]?.size_bytes ?? payload.sizeBytes);
+  if (duplicate.rows[0]?.status === 'uploading') {
+    throw new Error('Den samme Lightroom-filen lastes allerede opp. Prøv igjen om et øyeblikk.');
+  }
+  const shouldUpload = !duplicate.rows[0] || duplicate.rows[0].status === 'error';
+
+  if (!duplicate.rows[0]) {
+    const client = await pool.connect();
+    let sessionId = '';
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+        `lightroom:${integrationUserId}:${payload.projectId}`,
+      ]);
+      const existingSession = await client.query<{ id: string }>(
+        `SELECT id FROM capture_sessions
+          WHERE owner_user_id = $1 AND project_id = $2
+            AND name = 'Lightroom Classic Imports' AND status = 'active'
+          ORDER BY created_at DESC LIMIT 1`,
+        [integrationUserId, payload.projectId],
+      );
+      sessionId = existingSession.rows[0]?.id ?? crypto.randomUUID();
+      if (!existingSession.rows[0]) {
+        await client.query(
+          `INSERT INTO capture_sessions(id, owner_user_id, name, project_id, starts_at, status, created_at, updated_at)
+           VALUES ($1, $2, 'Lightroom Classic Imports', $3, NOW(), 'active', NOW(), NOW())`,
+          [sessionId, integrationUserId, payload.projectId],
+        );
+      }
+
+      objectKey = buildPhotoRoomCaptureKey({
+        userId: integrationUserId,
+        projectId: payload.projectId,
+        sessionId,
+        assetId,
+        kind: 'full',
+        fileName: payload.filename,
+      });
+      await client.query(
+        `INSERT INTO capture_assets(
+           id, session_id, original_filename, capture_time, mime, size_bytes,
+           checksum_sha256, state, rating, signals, created_at, updated_at
+         ) VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()), $5, $6, $7,
+                   'uploading', $8, $9::jsonb, NOW(), NOW())`,
+        [
+          assetId,
+          sessionId,
+          payload.filename,
+          payload.captureDate,
+          payload.mimeType,
+          payload.sizeBytes,
+          checksumSha256,
+          payload.rating ?? 0,
+          JSON.stringify({
+            lightroom: {
+              source: 'lightroom_classic',
+              title: payload.title,
+              collectionName: payload.collectionName,
+              keywords: payload.keywords,
+              metadata: payload.metadata,
+            },
+          }),
+        ],
+      );
+      await client.query(
+        `INSERT INTO lightroom_classic_exports(
+           id, user_id, project_id, capture_session_id, asset_id, filename,
+           mime_type, object_key, size_bytes, checksum_sha256, status,
+           mirror_to_drive, metadata, created_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'uploading',$11,$12::jsonb,NOW(),NOW())`,
+        [
+          exportId,
+          integrationUserId,
+          payload.projectId,
+          sessionId,
+          assetId,
+          payload.filename,
+          payload.mimeType,
+          objectKey,
+          payload.sizeBytes,
+          checksumSha256,
+          payload.mirrorToDrive,
+          JSON.stringify(payload.metadata),
+        ],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  if (duplicate.rows[0]?.status === 'error') {
+    await pool.query(
+      `UPDATE lightroom_classic_exports
+          SET status='uploading', mirror_to_drive=$2, last_error=NULL,
+              drive_last_error=NULL, updated_at=NOW()
+        WHERE id=$1`,
+      [exportId, payload.mirrorToDrive],
+    );
+    await pool.query(
+      `UPDATE capture_assets SET state='uploading', updated_at=NOW() WHERE id=$1`,
+      [assetId],
+    );
+  }
+
+  if (shouldUpload) {
+    try {
+      const objectMetadata = {
+        ownerUserId: integrationUserId,
+        projectId: payload.projectId,
+        assetId,
+        source: 'lightroom-classic',
+        sha256: checksumSha256,
+      };
+      let stored = false;
+      if (payload.fileBuffer) {
+        stored = await putCreatorHubObject(
+          objectKey,
+          payload.fileBuffer,
+          payload.mimeType,
+          objectMetadata,
+        );
+      } else {
+        const storage = getCreatorHubObjectStorage();
+        if (storage) {
+          await new Upload({
+            client: storage.client,
+            params: {
+              Bucket: storage.bucket,
+              Key: objectKey,
+              Body: lightroomPayloadBody(payload),
+              ContentType: payload.mimeType,
+              ContentLength: payload.sizeBytes,
+              Metadata: objectMetadata,
+            },
+            queueSize: 2,
+            partSize: 8 * 1024 * 1024,
+            leavePartsOnError: false,
+          }).done();
+          stored = true;
+        }
+      }
+      if (!stored) {
+        throw new Error('CreatorHub S3 er ikke konfigurert. Ingen fil ble lagret.');
+      }
+      sizeBytes = await verifyCreatorHubLightroomObject(
+        objectKey,
+        payload.sizeBytes,
+        checksumSha256,
+      );
+      await pool.query(
+        `UPDATE capture_assets
+            SET full_key=$2, size_bytes=$3, checksum_sha256=$4, state='uploaded', updated_at=NOW()
+          WHERE id=$1`,
+        [assetId, objectKey, sizeBytes, checksumSha256],
+      );
+      await pool.query(
+        `UPDATE lightroom_classic_exports
+            SET status='verified', verified_at=NOW(), size_bytes=$2, updated_at=NOW(), last_error=NULL
+          WHERE id=$1`,
+        [exportId, sizeBytes],
+      );
+    } catch (error) {
+      await pool.query(
+        `UPDATE lightroom_classic_exports SET status='error', last_error=$2, updated_at=NOW() WHERE id=$1`,
+        [exportId, error instanceof Error ? error.message : 'CreatorHub S3-opplasting feilet.'],
+      ).catch(() => undefined);
+      await pool.query(
+        `UPDATE capture_assets SET state='upload_failed', updated_at=NOW() WHERE id=$1`,
+        [assetId],
+      ).catch(() => undefined);
+      await deleteCreatorHubObject(objectKey).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  let driveFileId = duplicate.rows[0]?.drive_file_id ?? null;
+  let driveFolderId = duplicate.rows[0]?.drive_folder_id ?? null;
+  let driveFolderName = duplicate.rows[0]?.drive_folder_name ?? null;
+  let driveRootFolderId: string | null = null;
+  let driveRootFolderName: string | null = null;
+  let driveRootFolderUrl: string | null = null;
+  let driveWebViewLink = duplicate.rows[0]?.drive_web_view_link ?? null;
+  let driveWebContentLink: string | null = null;
+  let driveMirrorError: string | null = null;
+
+  if (payload.mirrorToDrive && !driveFileId) {
+    try {
+      const googleConnection = await resolveRoleRoomGoogleConnection(pool, integrationUserId);
+      const driveApi = google.drive({ version: 'v3', auth: googleConnection.oauthClient });
+      const destination = await ensureLightroomDriveDestination(pool, driveApi, integrationUserId, payload);
+      const created = await driveApi.files.create({
+        requestBody: {
+          name: sanitizeFolderName(payload.filename) || `Lightroom Export ${Date.now()}.jpg`,
+          parents: [destination.destinationFolder.id],
+          description: ['CreatorHub Lightroom Classic mirror', payload.projectName, payload.collectionName]
+            .filter(Boolean).join(' • '),
+          appProperties: {
+            creatorhubSource: 'lightroom-classic',
+            creatorhubAssetId: assetId,
+            creatorhubProjectId: payload.projectId,
+            creatorhubChecksumSha256: checksumSha256,
+          },
+        },
+        media: { mimeType: payload.mimeType, body: lightroomPayloadBody(payload) },
+        supportsAllDrives: true,
+        fields: 'id,name,webViewLink,webContentLink,mimeType',
+      });
+      driveFileId = readString(created.data.id);
+      if (!driveFileId) throw new Error('Google Drive returnerte ikke en fil-ID.');
+      driveFolderId = destination.destinationFolder.id;
+      driveFolderName = destination.destinationFolder.name;
+      driveRootFolderId = destination.rootFolder.id;
+      driveRootFolderName = destination.rootFolder.name;
+      driveRootFolderUrl = destination.rootFolder.webViewLink;
+      driveWebViewLink = readString(created.data.webViewLink);
+      driveWebContentLink = readString(created.data.webContentLink);
+      await pool.query(
+        `UPDATE lightroom_classic_exports
+            SET drive_file_id=$2, drive_folder_id=$3, drive_folder_name=$4,
+                drive_web_view_link=$5, drive_mirrored_at=NOW(), updated_at=NOW()
+          WHERE id=$1`,
+        [exportId, driveFileId, driveFolderId, driveFolderName, driveWebViewLink],
+      );
+    } catch (error) {
+      driveMirrorError = error instanceof Error ? error.message : 'Google Drive-speiling feilet.';
+      await pool.query(
+        `UPDATE lightroom_classic_exports SET drive_last_error=$2, updated_at=NOW() WHERE id=$1`,
+        [exportId, driveMirrorError],
+      ).catch(() => undefined);
+    }
+  }
+
   const lastSyncAt = new Date().toISOString();
-
   await upsertIntegrationRecord(pool, {
     userId: integrationUserId,
     pluginTokenHash: integration.plugin_token_hash,
-    pluginTokenPlain: integration.plugin_token_plain,
-    driveRootFolderId: destination.rootFolder.id,
-    driveRootFolderName: destination.rootFolder.name,
-    driveRootFolderUrl: destination.rootFolder.webViewLink,
+    driveRootFolderId,
+    driveRootFolderName,
+    driveRootFolderUrl,
     lastSyncAt,
-    lastShowcaseItemId: showcaseItemId,
+    lastShowcaseItemId: null,
     lastDriveFileId: driveFileId,
     lastError: null,
-    syncStatus: 'synced',
+    syncStatus: driveMirrorError ? 'synced_drive_warning' : 'synced',
     configuration: {
       ...readRecord(integration.configuration),
-      lastCollectionName: payload.collectionName,
+      lastAssetId: assetId,
+      lastObjectKey: objectKey,
+      lastChecksumSha256: checksumSha256,
       lastProjectId: payload.projectId,
       lastProjectName: payload.projectName,
-      lastCustomerId: payload.customerId,
-      lastDriveFolderId: destination.destinationFolder.id,
-      lastDriveFolderName: destination.destinationFolder.name,
+      lastCollectionName: payload.collectionName,
+      storageProvider: 'creatorhub_s3',
+      driveMirrorRequested: payload.mirrorToDrive,
     },
   });
-
   await logLightroomRun(pool, {
     userId: integrationUserId,
     exportId,
     status: 'success',
     driveFileId,
-    showcaseItemId,
+    showcaseItemId: null,
     metadata: {
-      authSource: googleConnection.source,
-      authWarning: googleConnection.warning,
       title: payload.title,
       category: payload.category,
       collectionName: payload.collectionName,
-      driveFolderName: destination.destinationFolder.name,
+      projectId: payload.projectId,
+      assetId,
+      objectKey,
+      checksumSha256,
+      storageProvider: 'creatorhub_s3',
+      driveMirrored: Boolean(driveFileId),
+      driveMirrorError,
     },
   });
 
   return {
     success: true,
     exportId,
-    showcaseItemId,
+    assetId,
+    objectKey,
+    checksumSha256,
+    sizeBytes,
+    storageProvider: 'creatorhub_s3',
+    driveMirrored: Boolean(driveFileId),
+    driveMirrorError,
+    showcaseItemId: null,
     driveFileId,
-    driveFolderId: destination.destinationFolder.id,
-    driveFolderName: destination.destinationFolder.name,
-    driveRootFolderId: destination.rootFolder.id,
-    driveRootFolderName: destination.rootFolder.name,
-    driveRootFolderUrl: destination.rootFolder.webViewLink,
+    driveFolderId,
+    driveFolderName,
+    driveRootFolderId,
+    driveRootFolderName,
+    driveRootFolderUrl,
     driveWebViewLink,
     driveWebContentLink,
-    imageUrl: buildDriveImageUrl(driveFileId),
-    thumbnailUrl: buildDriveThumbnailUrl(driveFileId),
+    imageUrl: null,
+    thumbnailUrl: null,
     title: payload.title,
     category: payload.category,
   };
@@ -1284,8 +1413,12 @@ function normalizeExportPayload(body: Record<string, unknown>): LightroomExportP
   const collectionName = readString(body.collectionName) || readString(body.collection);
   const category = readString(body.category) || collectionName || 'Lightroom Uploads';
   const profession = readString(body.profession) || 'photographer';
-  const fileBuffer = decodeBase64FilePayload(body.fileDataBase64 ?? body.fileData ?? body.base64Data);
-  if (!fileBuffer || fileBuffer.length === 0) {
+  const directBuffer = Buffer.isBuffer(body.fileBuffer) ? body.fileBuffer : null;
+  const fileBuffer = directBuffer
+    ?? decodeBase64FilePayload(body.fileDataBase64 ?? body.fileData ?? body.base64Data);
+  const temporaryFilePath = readString(body.temporaryFilePath);
+  const sizeBytes = fileBuffer?.length ?? readNumber(body.sizeBytes) ?? 0;
+  if ((!fileBuffer && !temporaryFilePath) || sizeBytes <= 0) {
     throw new Error('Lightroom-eksporten mangler gyldig bildebuffer.');
   }
 
@@ -1304,10 +1437,13 @@ function normalizeExportPayload(body: Record<string, unknown>): LightroomExportP
     profession,
     mimeType: buildMimeType(body.mimeType, filename),
     fileBuffer,
+    temporaryFilePath,
+    sizeBytes,
     keywords: normalizeKeywords(body.keywords),
     rating: readNumber(body.rating),
     captureDate: readString(body.captureDate) || readString(body.capturedAt),
     metadata: readRecord(body.metadata),
+    mirrorToDrive: readBoolean(body.mirrorToDrive ?? body.copyToGoogleDrive, false),
   };
 }
 
@@ -1316,17 +1452,33 @@ async function handlePluginExport(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const payload = req.body && typeof req.body === 'object'
+  let payload = req.body && typeof req.body === 'object'
     ? (req.body as Record<string, unknown>)
     : {};
+  const temporaryPath = req.file?.path ?? null;
+  if (temporaryPath) {
+    const metadataRaw = readString(payload.metadataJson ?? payload.metadata);
+    const metadataPayload = metadataRaw ? readRecord(metadataRaw) : {};
+    payload = {
+      ...payload,
+      ...metadataPayload,
+      filename: readString(payload.filename) || req.file?.originalname,
+      mimeType: readString(payload.mimeType) || req.file?.mimetype,
+      temporaryFilePath: temporaryPath,
+      sizeBytes: req.file?.size,
+    };
+  }
   const pluginToken = resolvePluginToken(req, payload);
   if (!pluginToken) {
+    if (temporaryPath) await fs.unlink(temporaryPath).catch(() => undefined);
     res.status(401).json({ error: 'Lightroom-plugin-token mangler.' });
     return;
   }
 
-  const integration = await getIntegrationByPluginToken(pool, pluginToken);
+  const integration = (req as LightroomPluginRequest).lightroomIntegration
+    ?? await getIntegrationByPluginToken(pool, pluginToken);
   if (!integration) {
+    if (temporaryPath) await fs.unlink(temporaryPath).catch(() => undefined);
     res.status(401).json({ error: 'Ugyldig Lightroom-plugin-token.' });
     return;
   }
@@ -1342,7 +1494,6 @@ async function handlePluginExport(
       await upsertIntegrationRecord(pool, {
         userId,
         pluginTokenHash: integration.plugin_token_hash,
-        pluginTokenPlain: integration.plugin_token_plain,
         driveRootFolderId: integration.drive_root_folder_id,
         driveRootFolderName: integration.drive_root_folder_name,
         driveRootFolderUrl: integration.drive_root_folder_url,
@@ -1369,41 +1520,22 @@ async function handlePluginExport(
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Lightroom-eksporten feilet.',
     });
+  } finally {
+    if (temporaryPath) await fs.unlink(temporaryPath).catch(() => undefined);
   }
 }
 
-export function createLightroomRouter(pool: Pool): Router {
+export function createLightroomRouter(
+  pool: Pool,
+  activeSessions?: ReadonlyMap<string, LightroomSession>,
+): Router {
   const router = Router();
+  const requireSession = requireLightroomSession(pool, activeSessions);
+  const requirePluginToken = requireLightroomPluginToken(pool);
 
-  router.get('/status', async (req, res) => {
+  router.get('/status', requireSession, async (req, res) => {
     try {
-      const userId = resolveRequesterUserId(req);
-      if (!userId || userId === 'guest') {
-        res.json({
-          connected: false,
-          pluginVersion: LIGHTROOM_PLUGIN_VERSION,
-          tokenPreview: null,
-          workspaceConnected: false,
-          googleEmail: null,
-          storedScopes: [],
-          workspaceError: 'Brukeridentitet mangler.',
-          workspaceSource: null,
-          workspaceWarning: 'Logg inn eller velg en bruker før Lightroom kobles til.',
-          driveRootFolderId: null,
-          driveRootFolderName: null,
-          driveRootFolderUrl: null,
-          lastSyncAt: null,
-          lastShowcaseItemId: null,
-          lastDriveFileId: null,
-          lastError: null,
-          syncStatus: 'idle',
-          configuration: {},
-          packageDownloadUrl: '/api/lightroom/download-plugin',
-          apiBaseUrl: resolveLightroomApiBase(req),
-          recentRuns: [],
-        });
-        return;
-      }
+      const userId = authenticatedUserId(req);
 
       const integration = await getIntegrationByUserId(pool, userId);
       const workspace = await resolveWorkspaceStatus(pool, userId);
@@ -1412,7 +1544,7 @@ export function createLightroomRouter(pool: Pool): Router {
       res.json({
         connected: Boolean(integration),
         pluginVersion: readString(integration?.plugin_version) || LIGHTROOM_PLUGIN_VERSION,
-        tokenPreview: buildTokenPreview(integration?.plugin_token_plain),
+        tokenPreview: readString(readRecord(integration?.configuration).tokenPreview),
         workspaceConnected: workspace.connected,
         googleEmail: workspace.googleEmail,
         storedScopes: workspace.storedScopes,
@@ -1447,19 +1579,10 @@ export function createLightroomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/token', async (req, res) => {
+  router.post('/token', requireSession, async (req, res) => {
     try {
-      const body = req.body && typeof req.body === 'object'
-        ? (req.body as Record<string, unknown>)
-        : {};
-      const userId = resolveRequesterUserId(req, body);
-      if (!userId) {
-        res.status(401).json({ error: 'Brukeridentitet mangler.' });
-        return;
-      }
-
-      const rotate = readBoolean(body.rotate, true);
-      const { integration, token } = await ensurePluginToken(pool, userId, rotate);
+      const userId = authenticatedUserId(req);
+      const { integration, token } = await ensurePluginToken(pool, userId);
       const workspace = await resolveWorkspaceStatus(pool, userId);
 
       res.status(201).json({
@@ -1479,17 +1602,16 @@ export function createLightroomRouter(pool: Pool): Router {
     }
   });
 
-  router.get('/download-plugin', async (req, res) => {
+  router.get('/download-plugin', requireSession, async (req, res) => {
     try {
-      const userId = resolveRequesterUserId(req);
-      if (!userId) {
-        res.status(401).json({ error: 'Brukeridentitet mangler.' });
-        return;
-      }
-
-      const rotate = readBoolean(req.query.rotate, false);
-      const { token } = await ensurePluginToken(pool, userId, rotate);
-      await streamPluginPackage(req, res, token);
+      const userId = authenticatedUserId(req);
+      await streamLightroomPluginPackageForUser(
+        pool,
+        req,
+        res,
+        userId,
+        authenticatedUserEmail(req),
+      );
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : 'Kunne ikke generere Lightroom-pluginpakken.',
@@ -1497,28 +1619,45 @@ export function createLightroomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/smoke-export', async (req, res) => {
+  router.post('/smoke-export', requireSession, async (req, res) => {
     const body = req.body && typeof req.body === 'object'
       ? (req.body as Record<string, unknown>)
       : {};
-    const userId = resolveRequesterUserId(req, body);
-    const userEmail = resolveRequesterEmail(req, body);
+    const userId = authenticatedUserId(req);
+    const userEmail = authenticatedUserEmail(req);
 
     try {
-      if (!userId) {
-        res.status(401).json({ error: 'Brukeridentitet mangler.' });
+      const integration = await getIntegrationByUserId(pool, userId)
+        ?? await upsertIntegrationRecord(pool, {
+          userId,
+          syncStatus: 'idle',
+          configuration: { storageProvider: 'creatorhub_s3' },
+        });
+      const requestedProjectId = readString(body.projectId);
+      const smokeProject = requestedProjectId
+        ? await pool.query<{ id: string; title: string | null; name: string | null }>(
+            `SELECT id, title, name FROM projects WHERE id=$1 AND user_id=$2 LIMIT 1`,
+            [requestedProjectId, userId],
+          )
+        : await pool.query<{ id: string; title: string | null; name: string | null }>(
+            `SELECT id, title, name FROM projects WHERE user_id=$1 ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
+            [userId],
+          );
+      if (!smokeProject.rows[0]) {
+        res.status(409).json({ error: 'Opprett et CreatorHub-prosjekt før Lightroom smoke-test kjøres.' });
         return;
       }
-
-      const { integration } = await ensurePluginToken(pool, userId, false);
       const smokePayload = normalizeExportPayload({
         filename: 'creatorhub-lightroom-smoke-test.png',
         title: 'CreatorHub Lightroom Smoke Test',
         caption: 'Ende-til-ende-test av Lightroom, Google Drive og showcase.',
         collectionName: 'CreatorHub Smoke Test',
         category: 'CreatorHub Smoke Test',
-        projectName: readString(body.projectName) || 'Lightroom Smoke Test',
-        projectId: readString(body.projectId),
+        projectName: readString(body.projectName)
+          || smokeProject.rows[0].title
+          || smokeProject.rows[0].name
+          || 'Lightroom Smoke Test',
+        projectId: smokeProject.rows[0].id,
         customerEmail: readString(body.customerEmail) || userEmail,
         customerName: readString(body.customerName) || 'CreatorHub Smoke Test',
         companyName: readString(body.companyName) || 'CreatorHub',
@@ -1529,6 +1668,7 @@ export function createLightroomRouter(pool: Pool): Router {
           source: 'lightroom-smoke-export',
           requestedFrom: 'browser',
         },
+        mirrorToDrive: readBoolean(body.mirrorToDrive, false),
       });
       const result = await performLightroomExport(pool, integration, smokePayload);
       res.status(201).json(result);
@@ -1538,7 +1678,6 @@ export function createLightroomRouter(pool: Pool): Router {
         await upsertIntegrationRecord(pool, {
           userId,
           pluginTokenHash: existing?.plugin_token_hash ?? null,
-          pluginTokenPlain: existing?.plugin_token_plain ?? null,
           driveRootFolderId: existing?.drive_root_folder_id ?? null,
           driveRootFolderName: existing?.drive_root_folder_name ?? null,
           driveRootFolderUrl: existing?.drive_root_folder_url ?? null,
@@ -1571,11 +1710,16 @@ export function createLightroomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/plugin/export-photo', async (req, res) => {
+  router.post(
+    '/plugin/export-photo',
+    requirePluginToken,
+    lightroomMultipartUpload.single('file'),
+    async (req, res) => {
     await handlePluginExport(pool, req, res);
-  });
+    },
+  );
 
-  router.post('/export-photo', async (req, res) => {
+  router.post('/export-photo', requirePluginToken, async (req, res) => {
     await handlePluginExport(pool, req, res);
   });
 
