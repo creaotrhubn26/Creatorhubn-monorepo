@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { hentHubSpotData, skrivMigrering } from "./leadgrid-hubspot-import.js";
+import {
+  hentHubSpotData,
+  sjekkHubSpotTilgang,
+  skrivMigrering,
+} from "./leadgrid-hubspot-import.js";
 
 /**
  * Svarer som HubSpot. Assosiasjons-stien må sjekkes FØRST: den inneholder
@@ -164,5 +168,77 @@ describe("skrivMigrering", () => {
     const kall = query.mock.calls.map(([s]) => String(s));
     expect(kall).toContain("BEGIN");
     expect(kall).toContain("COMMIT");
+  });
+});
+
+describe("sjekkHubSpotTilgang", () => {
+  const svar = (perType: Record<string, number>) =>
+    vi.fn(async (url: string | URL) => {
+      const sti = String(url);
+      for (const [type, status] of Object.entries(perType)) {
+        if (sti.includes(`/${type}?`)) {
+          return new Response(JSON.stringify({ results: [] }), { status });
+        }
+      }
+      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+    });
+
+  it("sier ja når alle tilganger er på plass", async () => {
+    const ut = await sjekkHubSpotTilgang("na", { fetchImpl: svar({}) as never });
+    expect(ut.ok).toBe(true);
+    expect(ut.manglerKritisk).toEqual([]);
+  });
+
+  it("navngir scopet som mangler i stedet for å si 403", async () => {
+    // Uten dette oppdager kunden først etter minutter at avtaler ikke kom med.
+    const ut = await sjekkHubSpotTilgang("na", {
+      fetchImpl: svar({ deals: 403 }) as never,
+    });
+    expect(ut.ok).toBe(false);
+    expect(ut.manglerKritisk).toEqual([
+      { navn: "avtaler", scope: "crm.objects.deals.read" },
+    ]);
+  });
+
+  it("lar katalogen mangle uten å stoppe migreringen", async () => {
+    // Evidensfilen: scopene propagerer ikke umiddelbart, og en kunde uten
+    // produktkatalog skal ikke blokkeres av en katalog de ikke har.
+    const ut = await sjekkHubSpotTilgang("na", {
+      fetchImpl: svar({ products: 403, line_items: 403 }) as never,
+    });
+    expect(ut.ok).toBe(true);
+    expect(ut.manglerValgfritt.map((m) => m.navn)).toEqual(["produkter", "ordrelinjer"]);
+  });
+
+  it("skiller ugyldig nøkkel fra manglende tilgang", async () => {
+    const ut = await sjekkHubSpotTilgang("na", {
+      fetchImpl: svar({ companies: 401 }) as never,
+    });
+    expect(ut.ugyldigNøkkel).toBe(true);
+    expect(ut.ok).toBe(false);
+  });
+});
+
+describe("framdrift under uttaket", () => {
+  it("melder hver datatype med antall", async () => {
+    const meldinger: Array<[string, number]> = [];
+    await hentHubSpotData("na", {
+      fetchImpl: vi.fn(async (url: string | URL) => {
+        const sti = String(url);
+        if (sti.includes("/associations/")) {
+          return new Response(JSON.stringify({ results: [] }), { status: 200 });
+        }
+        if (sti.includes("/companies")) {
+          return new Response(
+            JSON.stringify({ results: [objekt("c1", { name: "A" })] }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      }) as never,
+      onFramdrift: (navn, antall) => meldinger.push([navn, antall]),
+    });
+    expect(meldinger.map(([n]) => n)).toContain("bedrifter");
+    expect(meldinger.find(([n]) => n === "bedrifter")?.[1]).toBe(1);
   });
 });

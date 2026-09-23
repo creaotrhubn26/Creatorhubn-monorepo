@@ -21,6 +21,8 @@ import type { Pool, PoolClient } from "pg";
 
 import {
   createHubSpotClient,
+  HUBSPOT_API_BASE,
+  HUBSPOT_API_VERSION,
   type HubSpotClient,
 } from "./hubspot-client.js";
 import type {
@@ -55,6 +57,72 @@ const LINE_ITEM_PROPERTIES = [
   "recurringbillingfrequency", "hs_recurring_billing_start_date", "hs_product_id",
 ];
 
+/** Objekttypene migreringen leser, med scopet HubSpot krever for hver. */
+export const HUBSPOT_TILGANGER = [
+  { type: "companies", navn: "bedrifter", scope: "crm.objects.companies.read", kritisk: true },
+  { type: "contacts", navn: "kontakter", scope: "crm.objects.contacts.read", kritisk: true },
+  { type: "deals", navn: "avtaler", scope: "crm.objects.deals.read", kritisk: true },
+  { type: "products", navn: "produkter", scope: "crm.objects.products.read", kritisk: false },
+  { type: "line_items", navn: "ordrelinjer", scope: "crm.objects.line_items.read", kritisk: false },
+] as const;
+
+export interface TilgangsSjekk {
+  ok: boolean;
+  /** Scopes som mangler og som stopper migreringen. */
+  manglerKritisk: Array<{ navn: string; scope: string }>;
+  /** Scopes som mangler, men som bare gjør at noe utelates. */
+  manglerValgfritt: Array<{ navn: string; scope: string }>;
+  ugyldigNøkkel: boolean;
+}
+
+/**
+ * Spør etter én rad av hver type før vi starter uttaket.
+ *
+ * Uten dette oppdager kunden først etter flere minutter at nøkkelen manglet
+ * ett scope — og får «403 Forbidden», ikke «legg til crm.objects.deals.read».
+ * Fem raske kall er billig sammenlignet med det.
+ */
+export async function sjekkHubSpotTilgang(
+  accessToken: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<TilgangsSjekk> {
+  const hentFra = options.fetchImpl ?? fetch;
+  const manglerKritisk: Array<{ navn: string; scope: string }> = [];
+  const manglerValgfritt: Array<{ navn: string; scope: string }> = [];
+  let ugyldigNøkkel = false;
+
+  for (const tilgang of HUBSPOT_TILGANGER) {
+    try {
+      const svar = await hentFra(
+        `${HUBSPOT_API_BASE}/crm/objects/${HUBSPOT_API_VERSION}/${tilgang.type}?limit=1`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (svar.status === 401) {
+        ugyldigNøkkel = true;
+        break;
+      }
+      if (svar.status === 403) {
+        (tilgang.kritisk ? manglerKritisk : manglerValgfritt).push({
+          navn: tilgang.navn,
+          scope: tilgang.scope,
+        });
+      }
+    } catch {
+      // Nettverksfeil her er ikke et scope-problem; uttaket får prøve selv.
+    }
+  }
+
+  return {
+    ok: !ugyldigNøkkel && manglerKritisk.length === 0,
+    manglerKritisk,
+    manglerValgfritt,
+    ugyldigNøkkel,
+  };
+}
+
 export interface HubSpotFetchResult {
   input: MigrationInput;
   /** Hva uttaket kostet, så kunden ser at vi ikke hamret på kontoen deres. */
@@ -72,7 +140,12 @@ export interface HubSpotFetchResult {
  */
 export async function hentHubSpotData(
   accessToken: string,
-  options: { burstLimit?: number; fetchImpl?: typeof fetch } = {},
+  options: {
+    burstLimit?: number;
+    fetchImpl?: typeof fetch;
+    /** Kalles når en datatype er ferdig hentet, så kunden ser framdrift. */
+    onFramdrift?: (ferdig: string, antall: number) => void;
+  } = {},
 ): Promise<HubSpotFetchResult> {
   const client = createHubSpotClient({
     accessToken,
@@ -80,12 +153,18 @@ export async function hentHubSpotData(
     fetchImpl: options.fetchImpl,
   });
 
+  const meld = options.onFramdrift ?? (() => {});
+  const spor = async <T>(navn: string, løfte: Promise<T[]>): Promise<T[]> => {
+    const ut = await løfte;
+    meld(navn, ut.length);
+    return ut;
+  };
   const [companies, contacts, deals, owners, pipelines] = await Promise.all([
-    client.listAll("companies", COMPANY_PROPERTIES),
-    client.listAll("contacts", CONTACT_PROPERTIES),
-    client.listAll("deals", DEAL_PROPERTIES),
-    client.listOwners(),
-    client.listPipelines("deals"),
+    spor("bedrifter", client.listAll("companies", COMPANY_PROPERTIES)),
+    spor("kontakter", client.listAll("contacts", CONTACT_PROPERTIES)),
+    spor("avtaler", client.listAll("deals", DEAL_PROPERTIES)),
+    spor("eiere", client.listOwners()),
+    spor("pipelines", client.listPipelines("deals")),
   ]);
 
   const [contactToCompanyRaw, companyToDealsRaw] = await Promise.all([
@@ -95,6 +174,8 @@ export async function hentHubSpotData(
   const contactToCompany = somAssosiasjoner(contactToCompanyRaw);
 
   const { products, lineItems, dealToLineItems } = await hentKatalog(client, deals);
+  meld("produkter", products.length);
+  meld("koblinger", Object.keys(contactToCompany).length);
 
   return {
     input: {

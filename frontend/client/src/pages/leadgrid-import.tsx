@@ -15,6 +15,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, getStoredAuthToken } from "@/lib/queryClient";
 import { OnboardingTour } from "@/components/leadgrid/OnboardingTour";
+import { HubSpotMigrationFlow } from "@/components/leadgrid/HubSpotMigrationFlow";
 import {
   Box, Container, Stack, Typography, Card, CardContent, Button, Tabs, Tab,
   Stepper, Step, StepLabel, Alert, LinearProgress, CircularProgress,
@@ -24,6 +25,7 @@ import {
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import LanguageIcon from "@mui/icons-material/Language";
+import HubIcon from "@mui/icons-material/Hub";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
@@ -110,7 +112,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 // =====================================================================
 export default function LeadgridImportPage() {
   const isAuthenticated = typeof window !== "undefined" && Boolean(getStoredAuthToken());
-  const [tab, setTab] = useState<"csv" | "url">("csv");
+  const [tab, setTab] = useState<"csv" | "hubspot" | "url">("csv");
   const [projectId, setProjectId] = useState<string | null>(() =>
     typeof window === "undefined"
       ? null
@@ -218,6 +220,12 @@ export default function LeadgridImportPage() {
                 label="CSV / Excel"
               />
               <Tab
+                value="hubspot"
+                icon={<HubIcon />}
+                iconPosition="start"
+                label="HubSpot"
+              />
+              <Tab
                 value="url"
                 icon={<LanguageIcon />}
                 iconPosition="start"
@@ -231,6 +239,12 @@ export default function LeadgridImportPage() {
                 </Alert>
               ) : tab === "csv" ? (
                 <CsvImportFlow
+                  key={projectId}
+                  projectId={projectId}
+                  projectName={activeProject.name}
+                />
+              ) : tab === "hubspot" ? (
+                <HubSpotMigrationFlow
                   key={projectId}
                   projectId={projectId}
                   projectName={activeProject.name}
