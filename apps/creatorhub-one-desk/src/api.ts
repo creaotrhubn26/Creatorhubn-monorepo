@@ -415,6 +415,11 @@ export async function macosNotification(title: string, body: string): Promise<vo
 export interface Prefs {
   auto_eject: boolean;
   default_dest_ids: string[];
+  updater_auto_check: boolean;
+  updater_auto_download: boolean;
+  updater_skipped_version: string | null;
+  updater_remind_after_ms: number | null;
+  updater_last_checked_at_ms: number | null;
 }
 
 export async function getPrefs(): Promise<Prefs> {
@@ -423,6 +428,24 @@ export async function getPrefs(): Promise<Prefs> {
 
 export async function saveDefaultDestIds(destIds: string[]): Promise<void> {
   return invoke<void>("save_default_dest_ids", { destIds });
+}
+
+export interface UpdaterPrefs {
+  autoCheck: boolean;
+  autoDownload: boolean;
+  skippedVersion: string | null;
+  remindAfterMs: number | null;
+  lastCheckedAtMs: number | null;
+}
+
+export async function saveUpdaterPrefs(prefs: UpdaterPrefs): Promise<void> {
+  return invoke<void>("save_updater_prefs", {
+    autoCheck: prefs.autoCheck,
+    autoDownload: prefs.autoDownload,
+    skippedVersion: prefs.skippedVersion,
+    remindAfterMs: prefs.remindAfterMs,
+    lastCheckedAtMs: prefs.lastCheckedAtMs,
+  });
 }
 
 export interface BonjourStatusEvent {
