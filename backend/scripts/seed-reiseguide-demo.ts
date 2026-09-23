@@ -18,6 +18,10 @@
  * upsert per (sted, språk, kapittel, rekkefølge), og rader som ikke lenger
  * finnes i demo-dataene slettes.
  * Innholdet ligger i server/reiseguide-demo-data.ts.
+ *
+ * Heltebildet og krediteringen (hero_image_key, hero_image_credit …, 0663)
+ * røres ikke her; de skrives av scripts/reiseguide-commons-images.ts
+ * (npm run reiseguide:images). Seeden skriver bare alt-teksten per språk.
  */
 import pg from "pg";
 import {

@@ -20,6 +20,17 @@ migrasjon 0640 og 0641, start backend, og sett miljøvariabelen
 `REISEGUIDE_API_BASE_URL=http://localhost:5000` i schemet (kun DEBUG). Uten
 overstyring brukes produksjons-URL-en fra `project.yml`.
 
+Bilder: heltebildene er fritt lisensierte foto fra Wikimedia Commons (CC0, public
+domain, CC BY / CC BY-SA 2.0–4.0; aldri NC/ND). `npm run reiseguide:images` i
+`backend/` velger ett per sted ut fra `DEMO_HERO_IMAGES` i
+`backend/server/reiseguide-demo-data.ts` og skriver bilde-URL, fotograf og lisens
+(migrasjon 0663); `-- --dry-run` viser bare valget og trenger ingen database.
+Commons nås ikke fra skymiljøet, så i produksjon kjøres det av workflowen
+«SenseAid Explore seed demo-innhold» rett etter seeden. Vil du bytte bilde, sett
+`pinnedFile` for stedet og kjør workflowen på nytt. Detaljsiden viser
+«Foto: … · lisens» under bildet med lenke til filsiden (lisensen krever det);
+se `docs/evidence/2026-09-senseaid-commons-images.yaml`.
+
 ## Struktur
 
 ```

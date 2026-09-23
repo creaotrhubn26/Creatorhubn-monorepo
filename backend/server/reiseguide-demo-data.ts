@@ -8,8 +8,8 @@
  * sourceNote per sted, og gjennomlesingsdokumentet ligger i prosjektmappen
  * (reiseguide-manus-v1.md). Alt er fortsatt UTKAST (editorial_status = draft)
  * til en fagperson har godkjent. Punkter som må verifiseres er listet i
- * dokumentet. Ingen lydfiler eller bilder ennå (hero_image_key = null) fordi
- * rettigheter til foto ikke er avklart.
+ * dokumentet. Lydfiler lages separat (reiseguide:audio); bilder, se «Bilder»
+ * under.
  *
  * Koordinater er hentet fra åpne kart og avrundet til 4 desimaler (± 10 m).
  * De må verifiseres i felt eller mot Kartverket før felttesten, sammen med
@@ -29,6 +29,14 @@
  * ligger rett etter setningen som nevner det man skal se etter, guess rett før
  * setningen som gir svaret. atFraction er andel av manusteksten (tegn), som er
  * det den anslåtte tekstingen også fordeler tiden etter.
+ *
+ * Bilder (23.09.2026, 0663_reiseguide_hero_image_credit.sql): heltebildene
+ * hentes fra Wikimedia Commons med fri lisens (CC0, public domain, CC BY /
+ * CC BY-SA 2.0–4.0) av scripts/reiseguide-commons-images.ts, ut fra
+ * DEMO_HERO_IMAGES nederst. Alt-teksten (heroImageAlt) er med vilje kort og
+ * nøktern («Foto av …»): ingen har sett bildet som velges, så den skal ikke
+ * påstå detaljer. Seeden skriver alt-teksten; bildet og krediteringen skrives
+ * bare av Commons-scriptet.
  */
 
 export type DemoLang = "nb" | "en";
@@ -112,7 +120,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Håkon den femte begynte på borgen rundt år 1300. Den har tålt ni beleiringer uten å bli inntatt, ble Christian den fjerdes renessanseslott, så fengsel, og i dag er området åpent for alle.",
         locationLabel: "Oslo, Norge",
-        heroImageAlt: null,
+        heroImageAlt: "Foto av Akershus festning",
         practicalInfo: [
           { label: "Festningsområdet", value: "Åpent daglig 06–21, gratis" },
           { label: "Akershus slott", value: "Mai–august man–lør 10–16, søn 12–16; september–april lør–søn 12–17" },
@@ -127,7 +135,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "King Haakon the Fifth began the castle around 1300. It has withstood nine sieges without being taken, became Christian the Fourth's renaissance palace, then a prison, and today the grounds are open to everyone.",
         locationLabel: "Oslo, Norway",
-        heroImageAlt: null,
+        heroImageAlt: "Photo of Akershus Fortress",
         practicalInfo: [
           { label: "Fortress grounds", value: "Open daily 06:00–21:00, free" },
           { label: "Akershus Castle", value: "May–Aug Mon–Sat 10–16, Sun 12–16; Sept–Apr Sat–Sun 12–17" },
@@ -253,7 +261,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Da Oslo brant i 1624, flyttet Christian den fjerde byen hit, i ly av festningen, og ga den sitt eget navn. Torget var den nye byens første, og hansken i bronse minner om kongens ord.",
         locationLabel: "Oslo, Norge",
-        heroImageAlt: null,
+        heroImageAlt: "Foto av Christiania torv",
         practicalInfo: [
           { label: "Adkomst", value: "Åpent torg, tilgjengelig hele døgnet" },
           { label: "Trinnfri tilgang", value: "Ja, men steinsatt dekke" },
@@ -266,7 +274,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "When Oslo burned in 1624, Christian the Fourth moved the city here, under the guns of the fortress, and gave it his own name. This was the new city's first square, and the bronze glove recalls the king's words.",
         locationLabel: "Oslo, Norway",
-        heroImageAlt: null,
+        heroImageAlt: "Photo of Christiania Square",
         practicalInfo: [
           { label: "Getting there", value: "Open square, accessible around the clock" },
           { label: "Step-free access", value: "Yes, but stone paving" },
@@ -374,7 +382,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Huset fra 1641 var Christianias rådhus i nesten hundre år. Siden har det vært kirke, fengsel, Høyesterett og teatermuseum, og i dag serveres det lutefisk i de gamle cellene.",
         locationLabel: "Oslo, Norge",
-        heroImageAlt: null,
+        heroImageAlt: "Foto av Gamle rådhus",
         practicalInfo: [
           { label: "Adresse", value: "Nedre Slottsgate 1, hjørnet av Christiania torv" },
           { label: "Restaurant og scene", value: "Gamle Raadhus, sjekk åpningstider på gamleraadhus.no" },
@@ -387,7 +395,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "The house from 1641 was Christiania's town hall for almost a hundred years. Since then it has been a church, a prison, the Supreme Court and a theatre museum, and today lutefisk is served in the old cells.",
         locationLabel: "Oslo, Norway",
-        heroImageAlt: null,
+        heroImageAlt: "Photo of the Old Town Hall",
         practicalInfo: [
           { label: "Address", value: "Nedre Slottsgate 1, on the corner of Christiania torv" },
           { label: "Restaurant and stage", value: "Gamle Raadhus; check opening hours at gamleraadhus.no" },
@@ -495,7 +503,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Christian Heinrich Grosch tegnet børsbygningen i streng empirestil i 1826–1828. Børsen selv er eldre: første handelsdag var 15. april 1819, den gang med varer, ikke aksjer.",
         locationLabel: "Oslo, Norge",
-        heroImageAlt: null,
+        heroImageAlt: "Foto av Oslo Børs",
         practicalInfo: [
           { label: "Adkomst", value: "Børshagen er åpen park; selve bygningen er kontorer og ikke åpen for publikum" },
           { label: "Trinnfri tilgang", value: "Parken har grusganger uten trinn" },
@@ -507,7 +515,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Christian Heinrich Grosch designed the exchange building in strict Empire style in 1826–1828. The exchange itself is older: the first trading day was 15 April 1819, in goods rather than shares.",
         locationLabel: "Oslo, Norway",
-        heroImageAlt: null,
+        heroImageAlt: "Photo of the Oslo Stock Exchange",
         practicalInfo: [
           { label: "Getting there", value: "Børshagen is a public park; the building itself is offices and not open to visitors" },
           { label: "Step-free access", value: "The park has gravel paths without steps" },
@@ -614,7 +622,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Norges Bank har hatt tre hus rundt denne plassen: Grosch-bygget fra 1828, jugendpalasset fra 1906 og dagens hovedsete fra 1986. I hjørnet ligger Engebret Café, byens eldste restaurant.",
         locationLabel: "Oslo, Norge",
-        heroImageAlt: null,
+        heroImageAlt: "Foto av Bankplassen",
         practicalInfo: [
           { label: "Adkomst", value: "Åpen plass, tilgjengelig hele døgnet" },
           { label: "Trinnfri tilgang", value: "Plassen er flat, men brosteinslagt" },
@@ -627,7 +635,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Norges Bank has had three buildings around this square: the Grosch building from 1828, the Art Nouveau palace from 1906 and today's headquarters from 1986. On the corner is Engebret Café, the city's oldest restaurant.",
         locationLabel: "Oslo, Norway",
-        heroImageAlt: null,
+        heroImageAlt: "Photo of Bankplassen",
         practicalInfo: [
           { label: "Getting there", value: "Open square, accessible around the clock" },
           { label: "Step-free access", value: "The square is flat but cobbled" },
@@ -735,7 +743,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Snøhettas operahus åpnet 12. april 2008. Taket av hvit marmor reiser seg rett opp av fjorden og er åpent for alle, døgnet rundt og uten billett.",
         locationLabel: "Oslo, Norge",
-        heroImageAlt: null,
+        heroImageAlt: "Foto av Operaen",
         practicalInfo: [
           { label: "Taket", value: "Åpent hele døgnet, gratis, ingen billett" },
           { label: "Foajé og toaletter", value: "Sjekk dagens åpningstider på operaen.no" },
@@ -749,7 +757,7 @@ export const DEMO_POIS: DemoPoi[] = [
         summary:
           "Snøhetta's opera house opened on 12 April 2008. The white marble roof rises straight out of the fjord and is open to everyone, around the clock and without a ticket.",
         locationLabel: "Oslo, Norway",
-        heroImageAlt: null,
+        heroImageAlt: "Photo of the Oslo Opera House",
         practicalInfo: [
           { label: "The roof", value: "Open around the clock, free, no ticket needed" },
           { label: "Foyer and toilets", value: "Check today's opening hours at operaen.no" },
@@ -1098,5 +1106,53 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         revealText: "The tide. Monica Bonvicini's sculpture is in steel and glass and twelve metres tall.",
       },
     ],
+  },
+};
+
+/**
+ * Hvor Commons-scriptet leter etter heltebilde per sted (id). Rekkefølge:
+ * pinnedFile vinner når den er satt og lisensen er godkjent; ellers kategoriene
+ * (presise), og bare hvis de ikke gir noe, søkene i File-navnerommet. Innenfor
+ * hvert trinn velges høyest oppløsning, deretter tittel. Søk bruker
+ * CirrusSearch-syntaks (intitle:) for å unngå treff på andre bygninger.
+ * Kategorinavn uten «Category:»-prefiks.
+ */
+export interface DemoHeroImageSource {
+  /** Filnavn på Commons, f.eks. «File:Akershus festning 2019.jpg»; null = velg automatisk. */
+  pinnedFile: string | null;
+  categories: string[];
+  searchTerms: string[];
+}
+
+export const DEMO_HERO_IMAGES: Record<string, DemoHeroImageSource> = {
+  poi_akershus_festning: {
+    pinnedFile: null,
+    categories: ["Akershus Fortress", "Akershus Castle"],
+    searchTerms: ['intitle:"Akershus festning"', 'intitle:"Akershus Fortress"'],
+  },
+  poi_christiania_torv: {
+    pinnedFile: null,
+    categories: ["Christiania torv"],
+    searchTerms: ['intitle:"Christiania torv"'],
+  },
+  poi_gamle_radhus: {
+    pinnedFile: null,
+    categories: ["Gamle rådhus (Oslo)", "Old Town Hall (Oslo)"],
+    searchTerms: ['intitle:"Gamle rådhus" Oslo'],
+  },
+  poi_oslo_bors: {
+    pinnedFile: null,
+    categories: ["Oslo Børs building", "Oslo Stock Exchange"],
+    searchTerms: ['intitle:"Oslo Børs"', 'intitle:"Oslo Stock Exchange"'],
+  },
+  poi_bankplassen: {
+    pinnedFile: null,
+    categories: ["Bankplassen"],
+    searchTerms: ['intitle:Bankplassen Oslo'],
+  },
+  poi_operaen: {
+    pinnedFile: null,
+    categories: ["Oslo Opera House"],
+    searchTerms: ['intitle:"Oslo Opera House"', 'intitle:Operahuset Oslo'],
   },
 };

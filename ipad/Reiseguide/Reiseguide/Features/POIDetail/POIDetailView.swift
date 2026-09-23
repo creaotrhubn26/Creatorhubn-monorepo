@@ -1,7 +1,8 @@
 // POIDetailView.swift
 //
 // Detaljside (UI-spesifikasjon 6.3): hero-bilde med scrim og ikonknapper,
-// innholdspanel med tittel, sted, stjernevurdering fra backend, segmentfaner
+// kreditering av bildet (HeroImageCreditLine, 0663), innholdspanel med
+// tittel, sted, stjernevurdering fra backend, segmentfaner
 // Om / Opplevelse / Praktisk (innholdet i POIDetailTabContent.swift), og fast
 // bunnfelt med «Start opplevelsen» og «Legg til i mine steder». Låst POI åpner
 // mock-paywall. Er stedet besøkt, vises dato og en knapp til etter-besøket
@@ -122,9 +123,14 @@ struct POIDetailView: View {
         }
     }
 
-    /// Kortet med tittel, sted, vurdering, språkvarsel og fanene.
+    /// Kortet med bildekreditering, tittel, sted, vurdering, språkvarsel og fanene.
     private func detailCard(_ poi: GuidePOI) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Kreditering rett under heltebildet (Commons-lisensen krever den).
+            if poi.heroImageUrl != nil, let credit = poi.heroImageCredit {
+                HeroImageCreditLine(credit: credit, uiLanguage: env.settings.uiLanguage)
+                    .padding(.bottom, AppSpacing.s)
+            }
             Text(poi.title)
                 .font(AppFont.screenTitle)
                 .foregroundStyle(AppColor.textPrimary)

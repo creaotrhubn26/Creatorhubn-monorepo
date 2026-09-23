@@ -987,6 +987,74 @@
         }
       }
     },
+    "detail.photoCredit": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto: %1$@ · %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photo: %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "detail.photoCredit.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner kilden til bildet i nettleseren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the image source in your browser"
+          }
+        }
+      }
+    },
+    "detail.photoCredit.noLicense": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photo: %@"
+          }
+        }
+      }
+    },
+    "detail.photoCredit.spoken": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto: %1$@. Lisens: %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photo: %1$@. Licence: %2$@"
+          }
+        }
+      }
+    },
     "detail.showDirections": {
       "extractionState": "manual",
       "localizations": {

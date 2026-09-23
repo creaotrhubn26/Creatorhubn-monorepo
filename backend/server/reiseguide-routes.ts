@@ -124,6 +124,19 @@ export interface PoiRow {
   free_preview: boolean;
   hero_image_key: string | null;
   status: string;
+  /** Kreditering av heltebildet (0663); mangler i rader fra før migrasjonen. */
+  hero_image_credit?: string | null;
+  hero_image_license?: string | null;
+  hero_image_license_url?: string | null;
+  hero_image_source_url?: string | null;
+}
+
+/** Kreditering av heltebildet (Commons-lisensen krever at den vises). */
+export interface HeroImageCredit {
+  author: string;
+  license: string | null;
+  licenseUrl: string | null;
+  sourceUrl: string | null;
 }
 
 export interface TranslationRow {
@@ -202,6 +215,8 @@ export interface PoiView {
   freePreview: boolean;
   heroImageUrl: string | null;
   heroImageAlt: string | null;
+  /** Fotograf og lisens for heltebildet; null uten bilde eller uten opphav. */
+  heroImageCredit: HeroImageCredit | null;
   title: string;
   subtitle: string | null;
   summary: string | null;
@@ -356,6 +371,27 @@ function buildVariant(
   };
 }
 
+/** Bare http(s)-lenker slipper gjennom til appen (Link i SwiftUI). */
+function httpUrlOrNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Kreditering for heltebildet. Null når stedet ikke har bilde eller opphavet
+ * mangler, så appen aldri viser «Foto: » uten navn.
+ */
+export function heroImageCredit(poi: PoiRow, heroImageUrl: string | null): HeroImageCredit | null {
+  const author = poi.hero_image_credit?.trim();
+  if (!heroImageUrl || !author) return null;
+  return {
+    author,
+    license: poi.hero_image_license?.trim() || null,
+    licenseUrl: httpUrlOrNull(poi.hero_image_license_url),
+    sourceUrl: httpUrlOrNull(poi.hero_image_source_url),
+  };
+}
+
 /**
  * Flater ut én severdighet for valgt språk. Ren funksjon, brukes av begge
  * detalj-rutene og av testene.
@@ -398,6 +434,8 @@ export function buildPoiView(args: {
   const quizLang =
     scriptLang && quizLangs.includes(scriptLang) ? scriptLang : resolveLang(quizLangs, requestedLang, defaultLang);
 
+  const heroImageUrl = mediaUrl(poi.hero_image_key, mediaBase, publicApiBase);
+
   return {
     id: poi.id,
     slug: poi.slug,
@@ -409,8 +447,10 @@ export function buildPoiView(args: {
     priority: poi.priority,
     sortOrder: poi.sort_order,
     freePreview: poi.free_preview,
-    heroImageUrl: mediaUrl(poi.hero_image_key, mediaBase, publicApiBase),
-    heroImageAlt: translation?.hero_image_alt ?? null,
+    heroImageUrl,
+    // Alt-teksten beskriver bildet; uten bilde har den ingenting å beskrive.
+    heroImageAlt: heroImageUrl ? translation?.hero_image_alt ?? null : null,
+    heroImageCredit: heroImageCredit(poi, heroImageUrl),
     title: translation?.title ?? poi.slug,
     subtitle: translation?.subtitle ?? null,
     summary: translation?.summary ?? null,
@@ -479,9 +519,17 @@ const AREA_SELECT = `
            WHERE p.area_id = a.id AND p.status = 'published') AS poi_count
     FROM guide_areas a`;
 
+// Krediteringskolonnene (0663) leses via to_jsonb(rad) ->> 'kolonne', som gir
+// null i stedet for feil hvis API-et kommer ut før migrasjonen er kjørt.
+const HERO_CREDIT_COLUMNS = (row: string) => `
+         to_jsonb(${row}) ->> 'hero_image_credit' AS hero_image_credit,
+         to_jsonb(${row}) ->> 'hero_image_license' AS hero_image_license,
+         to_jsonb(${row}) ->> 'hero_image_license_url' AS hero_image_license_url,
+         to_jsonb(${row}) ->> 'hero_image_source_url' AS hero_image_source_url`;
+
 const POI_SELECT = `
   SELECT id, area_id, slug, category_id, lat, lng, trigger_radius_m, priority,
-         sort_order, free_preview, hero_image_key, status
+         sort_order, free_preview, hero_image_key, status,${HERO_CREDIT_COLUMNS("guide_pois")}
     FROM guide_pois`;
 
 const TRANSLATION_SELECT = `
@@ -523,7 +571,7 @@ const RATING_AGGREGATE_SELECT = `
 
 const POI_LOOKUP_SELECT = `
   SELECT p.id, p.area_id, p.slug, p.category_id, p.lat, p.lng, p.trigger_radius_m,
-         p.priority, p.sort_order, p.free_preview, p.hero_image_key, p.status,
+         p.priority, p.sort_order, p.free_preview, p.hero_image_key, p.status,${HERO_CREDIT_COLUMNS("p")},
          a.default_lang
     FROM guide_pois p
     JOIN guide_areas a ON a.id = p.area_id
@@ -770,6 +818,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
           locationLabel: view.locationLabel,
           imageUrl: view.heroImageUrl,
           imageAlt: view.heroImageAlt,
+          imageCredit: view.heroImageCredit,
           lang: pageLang,
           shareUrl: shareUrlFor(view.slug, pageLang, base),
           appUrl: appDeepLink(view.slug, pageLang),
