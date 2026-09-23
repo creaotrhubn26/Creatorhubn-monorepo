@@ -34,6 +34,12 @@ struct SettingsView: View {
                 Toggle("settings.haptics", isOn: $settings.hapticsEnabled)
                 Toggle("settings.autoStartOnArrival", isOn: $settings.autoStartOnArrival)
             }
+            Section {
+                Toggle("veiviser.speakToggle", isOn: $settings.speakDirectionsEnabled)
+            } footer: {
+                Text("veiviser.speakToggleFooter")
+                    .foregroundStyle(contrast.textSecondary)
+            }
             privacySection
             Section("settings.demo") {
                 if let area = env.store.area {

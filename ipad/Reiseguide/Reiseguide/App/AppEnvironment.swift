@@ -50,6 +50,14 @@ final class AppEnvironment {
         self.player = PlayerViewModel(settings: settings, visits: visits)
         self.arrival = ArrivalCoordinator(settings: settings, store: self.store, player: self.player)
         self.tourProgress = TourProgressTracker()
+
+        // Live Activity (pakke 2, item 6): kobler avspiller-manageren til de
+        // andre butikkene så den kan vise avstand til neste stopp.
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            PlayerActivityManager.shared.configure(location: self.location, store: self.store, visits: self.visits, settings: self.settings)
+        }
+        #endif
     }
 
     /// Kalles når posisjonen oppdateres (RootTabView).
@@ -102,4 +110,6 @@ final class AppEnvironment {
 enum Route: Hashable {
     case map
     case poi(String)
+    /// Veiviseren (pakke 2, item 5): kompassretning til et valgt sted eller «neste sted».
+    case veiviser(VeiviserTarget)
 }

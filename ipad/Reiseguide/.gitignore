@@ -1,6 +1,7 @@
 # Generert av `xcodegen generate`; kildesannheten er project.yml.
 Reiseguide.xcodeproj/
 Reiseguide/Generated/
+ReiseguideWidgets/Generated/
 DerivedData/
 *.xcuserstate
 xcuserdata/

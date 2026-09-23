@@ -64,6 +64,8 @@ struct RootTabView: View {
                             MapView(path: $explorePath)
                         case let .poi(id):
                             POIDetailView(poiId: id, path: $explorePath)
+                        case let .veiviser(target):
+                            VeiviserView(target: target, path: $explorePath)
                         }
                     }
             }

@@ -105,6 +105,10 @@ struct POIDetailView: View {
                 ) {
                     env.settings.toggleFavorite(poiId: poi.id)
                 }
+                // Veiviseren (pakke 2, item 5): kompassretning til dette stedet.
+                IconCircleButton(systemImage: "location.north.fill", label: "detail.showDirections") {
+                    path.append(Route.veiviser(.poi(id: poi.id)))
+                }
                 ShareLinkButton(url: poi.shareURL, fallbackText: shareText(poi), subject: poi.title, message: shareText(poi)) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 20, weight: .semibold))
