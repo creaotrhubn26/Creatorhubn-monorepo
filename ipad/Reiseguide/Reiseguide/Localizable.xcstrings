@@ -2601,6 +2601,635 @@
           }
         }
       }
+    },
+    "askGuide.button": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør guiden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask the guide"
+          }
+        }
+      }
+    },
+    "askGuide.buttonHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still et spørsmål om stedet. Svaret bygger bare på guideteksten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask a question about this place. The answer is based only on the guide text."
+          }
+        }
+      }
+    },
+    "askGuide.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør guiden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask the guide"
+          }
+        }
+      }
+    },
+    "askGuide.intro": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør om %@. Guiden svarer bare ut fra teksten i guiden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask about %@. The guide answers only from the guide text."
+          }
+        }
+      }
+    },
+    "askGuide.fieldLabel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ditt spørsmål"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your question"
+          }
+        }
+      }
+    },
+    "askGuide.fieldHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv, eller trykk på mikrofonen på tastaturet for å diktere."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type, or tap the microphone on the keyboard to dictate."
+          }
+        }
+      }
+    },
+    "askGuide.placeholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For eksempel: Hvor gammelt er dette?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For example: How old is this?"
+          }
+        }
+      }
+    },
+    "askGuide.ask": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask"
+          }
+        }
+      }
+    },
+    "askGuide.suggestions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forslag"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggestions"
+          }
+        }
+      }
+    },
+    "askGuide.suggestionHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stiller spørsmålet med en gang."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asks the question right away."
+          }
+        }
+      }
+    },
+    "askGuide.suggestion.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hva er det viktigste å vite om stedet?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What is the most important thing to know about this place?"
+          }
+        }
+      }
+    },
+    "askGuide.suggestion.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvem bygde det, og når?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Who built it, and when?"
+          }
+        }
+      }
+    },
+    "askGuide.suggestion.3": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Er det trinnfri tilgang her?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Is there step-free access here?"
+          }
+        }
+      }
+    },
+    "askGuide.thinking": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guiden tenker …"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The guide is thinking …"
+          }
+        }
+      }
+    },
+    "askGuide.youAsked": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du spurte: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You asked: %@"
+          }
+        }
+      }
+    },
+    "askGuide.answerHeading": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar fra guiden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The guide's answer"
+          }
+        }
+      }
+    },
+    "askGuide.answerAnnouncement": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar fra guiden: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The guide's answer: %@"
+          }
+        }
+      }
+    },
+    "askGuide.error.generation": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guiden klarte ikke å svare akkurat nå. Prøv igjen, eller spør på en annen måte."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The guide couldn't answer right now. Try again, or ask in a different way."
+          }
+        }
+      }
+    },
+    "askGuide.error.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv et spørsmål først."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type a question first."
+          }
+        }
+      }
+    },
+    "askGuide.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svarene lages på telefonen med Apple Intelligence og bygger bare på guideteksten. De kan inneholde feil."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Answers are made on your phone with Apple Intelligence and are based only on the guide text. They may contain mistakes."
+          }
+        }
+      }
+    },
+    "askGuide.status.available": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilgjengelig. Svarene lages på telefonen med Apple Intelligence, ut fra guideteksten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available. Answers are made on your phone with Apple Intelligence, from the guide text."
+          }
+        }
+      }
+    },
+    "askGuide.unavailable.os": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig: krever iOS 26 eller nyere med Apple Intelligence."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not available: requires iOS 26 or later with Apple Intelligence."
+          }
+        }
+      }
+    },
+    "askGuide.unavailable.device": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig: denne telefonen støtter ikke Apple Intelligence."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not available: this phone does not support Apple Intelligence."
+          }
+        }
+      }
+    },
+    "askGuide.unavailable.disabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig: slå på Apple Intelligence i Innstillinger-appen for å bruke Spør guiden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not available: turn on Apple Intelligence in the Settings app to use Ask the guide."
+          }
+        }
+      }
+    },
+    "askGuide.unavailable.notReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig ennå: Apple Intelligence gjør seg klar. Spør guiden dukker opp når den er klar."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not available yet: Apple Intelligence is getting ready. Ask the guide appears when it is ready."
+          }
+        }
+      }
+    },
+    "askGuide.unavailable.language": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig på språket du har valgt ennå."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not available in the language you have chosen yet."
+          }
+        }
+      }
+    },
+    "settings.interactive": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interaktivt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interactive"
+          }
+        }
+      }
+    },
+    "prompts.setting": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørsmål underveis"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questions along the way"
+          }
+        }
+      }
+    },
+    "prompts.settingHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Korte kort og gjettespørsmål midt i fortellingen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Short cards and guessing questions during the narration."
+          }
+        }
+      }
+    },
+    "prompts.settingFooter": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Se opp»-kort og gjettespørsmål midt i fortellingen. Ved gjettespørsmål står fortellingen på pause til du svarer eller hopper over."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“Look up” cards and guessing questions during the narration. For guessing questions the narration pauses until you answer or skip."
+          }
+        }
+      }
+    },
+    "prompt.look.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se opp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Look up"
+          }
+        }
+      }
+    },
+    "prompt.guess.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjett"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guess"
+          }
+        }
+      }
+    },
+    "prompt.guess.paused": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortellingen venter til du har svart."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The narration waits until you answer."
+          }
+        }
+      }
+    },
+    "prompt.guess.skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hopp over og fortsett"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip and continue"
+          }
+        }
+      }
+    },
+    "prompt.guess.announcement": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjett. Fortellingen står på pause. %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guess. The narration is paused. %@"
+          }
+        }
+      }
+    },
+    "prompt.continue": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsett"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue"
+          }
+        }
+      }
+    },
+    "prompt.dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lukk kortet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close card"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -13,6 +13,9 @@
 // VisitLogStore; når siste kapittel er ferdig, eller brukeren trykker
 // «Avslutt besøket», merkes det fullført og `finishedVisit` settes så
 // avspilleren kan vise quiz, vurdering, tips og deling.
+//
+// Spørsmål underveis (pakke 3): `prompts` følger kapittel og posisjon; et
+// gjettespørsmål pauser avspillingen (logikken i Core/ChapterPrompts.swift).
 
 import Foundation
 import Observation
@@ -89,6 +92,8 @@ final class PlayerViewModel {
     var finishedVisit: FinishedVisit?
     /// Loggoppføringen for det som spilles nå.
     private(set) var currentVisitId: String?
+    /// Spørsmål underveis for kapittelet som spilles.
+    let prompts = ChapterPromptController()
 
     struct FinishedVisit: Identifiable, Equatable {
         let entryId: String
@@ -157,6 +162,7 @@ final class PlayerViewModel {
         finishedVisit = nil
         currentVisitId = visits.recordStart(poi: poi).id
         isPresented = true
+        prompts.resetSession()
         loadChapter(announce: false)
         play()
     }
@@ -210,6 +216,7 @@ final class PlayerViewModel {
         let clamped = min(max(0, seconds), durationS)
         engine.seek(to: clamped)
         positionS = clamped
+        prompts.seek(to: clamped)
     }
 
     func cycleRate() {
@@ -270,6 +277,7 @@ final class PlayerViewModel {
         let timeline = CaptionTimeline.build(chapter: chapter)
         captionSegments = timeline.segments
         captionsAreEstimated = timeline.isEstimated
+        prompts.load(chapter: chapter)
         let url = chapter.audio.flatMap { URL(string: $0.url) }
         engine.load(
             url: url,
@@ -301,6 +309,10 @@ final class PlayerViewModel {
     private func onTick() {
         let finished = engine.tick()
         positionS = min(engine.currentPositionS, durationS)
+        if prompts.advance(to: positionS, enabled: settings.inNarrationPromptsEnabled) {
+            pause()
+            return
+        }
         if finished { nextChapter() }
     }
 }

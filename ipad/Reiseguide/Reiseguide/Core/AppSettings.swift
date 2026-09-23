@@ -12,6 +12,7 @@
 //     (ingen konto). Byttes ut når brukeren sletter dataene sine på serveren.
 //   - syncVisitsToServer: samtykke til å lagre besøksloggen på serveren,
 //     standard AV (GDPR: samtykke er et aktivt valg). Se Core/VisitSync.swift.
+//   - inNarrationPromptsEnabled: «Spørsmål underveis», standard PÅ (pakke 3).
 
 import Foundation
 import Observation
@@ -30,6 +31,7 @@ final class AppSettings {
         static let playbackRate = "reiseguide.playbackRate"
         static let deviceId = "reiseguide.deviceId"
         static let syncVisits = "reiseguide.syncVisitsToServer"
+        static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
     }
 
     private let defaults: UserDefaults
@@ -59,6 +61,11 @@ final class AppSettings {
         didSet { defaults.set(syncVisitsToServer, forKey: Key.syncVisits) }
     }
 
+    /// «Spørsmål underveis» i fortellingen (Core/ChapterPrompts.swift).
+    var inNarrationPromptsEnabled: Bool {
+        didSet { defaults.set(inNarrationPromptsEnabled, forKey: Key.inNarrationPrompts) }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -73,6 +80,7 @@ final class AppSettings {
         let storedRate = defaults.double(forKey: Key.playbackRate)
         playbackRate = storedRate > 0 ? storedRate : 1
         syncVisitsToServer = defaults.bool(forKey: Key.syncVisits)
+        inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {

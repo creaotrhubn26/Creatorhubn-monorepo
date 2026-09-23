@@ -1,6 +1,6 @@
 // SettingsView.swift
 //
-// Innstillinger: språk, teksting, hastighet, personvern (besøksloggen på
+// Innstillinger: språk, teksting, hastighet, interaktivt (pakke 3), personvern (besøksloggen på
 // serveren: samtykke, status og «slett mine data»), mock-kjøp (nullstill) og
 // informasjon om demo-modus og API.
 
@@ -30,6 +30,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            InteractivitySettingsSection()
             privacySection
             Section("settings.demo") {
                 if let area = env.store.area {

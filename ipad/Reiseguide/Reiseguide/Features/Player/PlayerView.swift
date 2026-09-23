@@ -4,6 +4,7 @@
 // scrim, toppfelt (lukk, teksting av/på, del), tittel og kapittel, tid og
 // fremdriftslinje (5.13), transportkontroller (5.14), tekstingsvisning (5.16)
 // og synstolkingskort (5.15). VoiceOver-rekkefølge og -oppførsel etter 8.4.
+// Pakke 3: spørsmål underveis under tekstingen og «Spør guiden».
 
 import SwiftUI
 
@@ -126,11 +127,13 @@ struct PlayerView: View {
                     }
                 }
             }
+            ChapterPromptSlot()
             variantPicker
             SecondaryButton(title: "player.finish", systemImage: "checkmark.circle") {
                 player.finishVisit()
             }
             .accessibilityHint(Text("player.finishHint"))
+            AskGuideButton(poi: player.poi, pausesPlayer: true)
             if let text = player.audioDescriptionText {
                 AudioDescriptionCard(
                     statusText: "audioDescription.now",

@@ -3,6 +3,8 @@
 // Dekoder et ekte svar fra GET /api/guide/areas/:slug?lang=nb (fixture tatt
 // 18.09.2026 fra backend/server/reiseguide-routes.ts mot demo-seed med manus
 // v1 og quiz, migrasjon 0640 + 0641) og sjekker at modellene matcher kontrakten.
+// `prompts` på kapitlene (0662, spørsmål underveis) ble lagt inn 23.09.2026 med
+// backendens buildChapterPrompts over demo-dataene; se ChapterPromptTests.
 
 import XCTest
 @testable import Reiseguide
