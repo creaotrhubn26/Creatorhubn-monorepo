@@ -11,15 +11,19 @@ struct StarRatingControl: View {
     let locale: Locale
     let onSelect: (Int) -> Void
 
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.contrastColors) private var contrast
     /// 30 pt ved standard tekststørrelse; følger Dynamic Type opp til 48 pt.
     @ScaledMetric(relativeTo: .title) private var starSize: CGFloat = 30
+    /// Trigger for haptikk (pakke 1, punkt 2): telles opp ved hvert valg, uavhengig av om verdien er den samme som før.
+    @State private var selectionTick = 0
 
     var body: some View {
         HStack(spacing: AppSpacing.s) {
             ForEach(1 ... 5, id: \.self) { value in
                 Button {
                     onSelect(value)
+                    selectionTick += 1
                 } label: {
                     Image(systemName: value <= stars ? "star.fill" : "star")
                         .font(.system(size: min(starSize, 48)))
@@ -41,6 +45,10 @@ struct StarRatingControl: View {
             case .decrement: onSelect(max(1, stars - 1))
             @unknown default: break
             }
+            selectionTick += 1
+        }
+        .sensoryFeedback(trigger: selectionTick) { _, _ in
+            AppHaptics.feedback(.selection, enabled: env.settings.hapticsEnabled)
         }
     }
 

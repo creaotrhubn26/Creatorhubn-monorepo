@@ -43,6 +43,11 @@ struct QuizCardView: View {
                 questionView(question)
             }
         }
+        // Riktig/feil svar (pakke 1, punkt 2): fyres når svaret settes, ikke ved hvert trykk på et låst alternativ.
+        .sensoryFeedback(trigger: quiz.currentAnswer) { _, newValue in
+            guard let newValue, let question = quiz.current else { return nil }
+            return AppHaptics.feedback(newValue == question.correctIndex ? .success : .error, enabled: env.settings.hapticsEnabled)
+        }
     }
 
     private func questionView(_ question: QuizQuestion) -> some View {

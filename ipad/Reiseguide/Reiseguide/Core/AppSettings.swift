@@ -12,9 +12,16 @@
 //     (ingen konto). Byttes ut når brukeren sletter dataene sine på serveren.
 //   - syncVisitsToServer: samtykke til å lagre besøksloggen på serveren,
 //     standard AV (GDPR: samtykke er et aktivt valg). Se Core/VisitSync.swift.
+//   - hapticsEnabled: «Vibrasjon», styrer alle .sensoryFeedback-kall i appen
+//     (Core/AppHaptics.swift), standard PÅ.
+//   - autoStartOnArrival: «Start automatisk når jeg er framme», starter
+//     avspilling uten trykk når brukeren ankommer et sted og ingenting
+//     spiller fra før (Core/ArrivalCoordinator.swift), standard AV.
+//   - inNarrationPromptsEnabled: «Spørsmål underveis», standard PÅ (pakke 3).
 
 import Foundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -30,6 +37,10 @@ final class AppSettings {
         static let playbackRate = "reiseguide.playbackRate"
         static let deviceId = "reiseguide.deviceId"
         static let syncVisits = "reiseguide.syncVisitsToServer"
+        static let hapticsEnabled = "reiseguide.hapticsEnabled"
+        static let autoStartOnArrival = "reiseguide.autoStartOnArrival"
+        static let speakDirections = "reiseguide.speakDirectionsEnabled"
+        static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
     }
 
     private let defaults: UserDefaults
@@ -59,6 +70,28 @@ final class AppSettings {
         didSet { defaults.set(syncVisitsToServer, forKey: Key.syncVisits) }
     }
 
+    /// «Vibrasjon»: styrer alle haptiske tilbakemeldinger (på som standard).
+    var hapticsEnabled: Bool {
+        didSet { defaults.set(hapticsEnabled, forKey: Key.hapticsEnabled) }
+    }
+
+    /// «Start automatisk når jeg er framme» (av som standard).
+    var autoStartOnArrival: Bool {
+        didSet { defaults.set(autoStartOnArrival, forKey: Key.autoStartOnArrival) }
+    }
+
+    /// «Les opp retningen» i veiviseren (pakke 2, item 5). Standard PÅ hvis
+    /// VoiceOver kjørte da appen startet første gang, ellers AV — deretter
+    /// et vanlig lagret valg som ikke endres av at VoiceOver skrus av/på.
+    var speakDirectionsEnabled: Bool {
+        didSet { defaults.set(speakDirectionsEnabled, forKey: Key.speakDirections) }
+    }
+
+    /// «Spørsmål underveis» i fortellingen (Core/ChapterPrompts.swift).
+    var inNarrationPromptsEnabled: Bool {
+        didSet { defaults.set(inNarrationPromptsEnabled, forKey: Key.inNarrationPrompts) }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -73,6 +106,10 @@ final class AppSettings {
         let storedRate = defaults.double(forKey: Key.playbackRate)
         playbackRate = storedRate > 0 ? storedRate : 1
         syncVisitsToServer = defaults.bool(forKey: Key.syncVisits)
+        hapticsEnabled = defaults.object(forKey: Key.hapticsEnabled) as? Bool ?? true
+        autoStartOnArrival = defaults.bool(forKey: Key.autoStartOnArrival)
+        speakDirectionsEnabled = defaults.object(forKey: Key.speakDirections) as? Bool ?? UIAccessibility.isVoiceOverRunning
+        inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {

@@ -98,6 +98,52 @@ struct DiscoveryWarmStartResult: Decodable, Sendable {
     }
 }
 
+/// Triage: kandidatene gruppert etter det som skiller dem, slik at brukeren
+/// tar stilling til grupper i stedet for to hundre rader.
+struct DiscoveryTriageSample: Decodable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let fitScore: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case fitScore = "fit_score"
+    }
+}
+
+struct DiscoveryTriageGroup: Decodable, Sendable, Identifiable {
+    let key: String
+    let title: String
+    let why: String
+    let count: Int
+    /// "reject", "approve" eller nil. Nil betyr at gruppa må ses på rad for rad.
+    let bulkAction: String?
+    let bulkConsequence: String?
+    let candidateIds: [String]
+    let sample: [DiscoveryTriageSample]
+
+    var id: String { key }
+
+    enum CodingKeys: String, CodingKey {
+        case key, title, why, count, sample
+        case bulkAction = "bulk_action"
+        case bulkConsequence = "bulk_consequence"
+        case candidateIds = "candidate_ids"
+    }
+}
+
+struct DiscoveryTriage: Decodable, Sendable {
+    let pendingCount: Int
+    let minimumFitScore: Int
+    let groups: [DiscoveryTriageGroup]
+
+    enum CodingKeys: String, CodingKey {
+        case groups
+        case pendingCount = "pending_count"
+        case minimumFitScore = "minimum_fit_score"
+    }
+}
+
 extension APIClient {
     private func discoveryBase(_ projectId: String) -> String {
         let encoded = projectId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? projectId
@@ -243,6 +289,17 @@ extension APIClient {
             body: try discoveryEncode(request),
             headers: ["Idempotency-Key": idempotencyKey])
         return try discoveryDecode(DiscoveryV2DecisionResult.self, from: data)
+    }
+
+    func fetchDiscoveryTriage(
+        projectId: String,
+        runId: String
+    ) async throws -> DiscoveryTriage {
+        let data = try await executeRaw(
+            method: "GET",
+            path: discoveryBase(projectId) + "/runs/\(runId)/triage",
+            body: nil)
+        return try discoveryDecode(DiscoveryTriage.self, from: data)
     }
 
     func fetchDiscoveryWarmStart(

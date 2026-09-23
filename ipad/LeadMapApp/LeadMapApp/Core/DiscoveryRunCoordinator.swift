@@ -48,6 +48,9 @@ final class DiscoveryRunCoordinator {
     private(set) var warmStartPendingCount = 0
     private(set) var warmStartBusy = false
     private(set) var warmStartResult: DiscoveryWarmStartResult?
+    /// Triage-gruppene for kjøringen. Tom betyr ingenting å ta stilling til.
+    private(set) var triage: DiscoveryTriage?
+    private(set) var triageBusy = false
     private(set) var isCampaignBusy = false
     private(set) var isShowingCampaignOverview = false
     private(set) var selectedProfile: DiscoveryV2Profile?
@@ -718,7 +721,10 @@ final class DiscoveryRunCoordinator {
                 selectedCandidateIds.formIntersection(actionableCandidateIds)
             }
             nextCursor = page.nextCursor
-            if replace { await loadWarmStart(binding: binding) }
+            if replace {
+                await loadWarmStart(binding: binding)
+                await loadTriage(binding: binding)
+            }
             await persist()
             guard isCurrent(binding),
                   isCurrentRunSelection(selectionGeneration, expectedRunId: expectedRunId) else { return }
@@ -738,6 +744,36 @@ final class DiscoveryRunCoordinator {
         guard isCurrent(binding) else { return }
         warmStartPendingCount = preview.pendingCount
         warmStart = preview.suggestion
+    }
+
+    private func loadTriage(binding: ConfigurationBinding) async {
+        guard let api, let projectId, let run else { return }
+        // Grupperingen er hjelp, ikke innhold: feiler kallet står lista som før.
+        guard let ut = try? await api.fetchDiscoveryTriage(
+            projectId: projectId, runId: run.id) else { return }
+        guard isCurrent(binding) else { return }
+        triage = ut
+    }
+
+    /// Utfører gruppas samlede handling. Returnerer antall leads som ble
+    /// opprettet — null ved avvisning, siden ingenting da opprettes.
+    @discardableResult
+    func applyTriage(_ group: DiscoveryTriageGroup) async -> Int {
+        guard let binding = currentBinding(), !triageBusy,
+              let handling = group.bulkAction else { return 0 }
+        triageBusy = true
+        defer { if isCurrent(binding) { triageBusy = false } }
+        // Gjenbruker den vanlige beslutningsveien: samme tillatelseskontroll,
+        // samme idempotens, samme feilhåndtering per kandidat.
+        let forrigeValg = selectedCandidateIds
+        selectedCandidateIds = Set(group.candidateIds)
+        let opprettet = await decideSelected(
+            handling == "approve" ? .approve : .reject,
+            reason: handling == "approve" ? .goodFit : .notRelevant)
+        guard isCurrent(binding) else { return opprettet }
+        selectedCandidateIds = forrigeValg.subtracting(group.candidateIds)
+        await loadCandidates(replace: true, binding: binding)
+        return opprettet
     }
 
     /// Godkjenner den foreslåtte kandidaten og lager oppfølgingsoppgaven.

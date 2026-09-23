@@ -5,16 +5,18 @@
 #   * fastlane ios release     — archive + upload til App Store Review (ikke submit)
 #   * fastlane ios bump_build  — sett CFBundleVersion til UTC-tidsstempel
 #
-# Engangs-steg mot Apple: bundle-ID-en registreres automatisk (ensure_bundle_id,
-# ASC API POST /v1/bundleIds) og App Store-profilen lages av sigh. App-recordet i
-# App Store Connect kan IKKE lages via API-et (Apples dokumentasjon for
-# /v1/apps: «Don't use this API to create new apps», hentet 2026-09-18), så
-# ensure_app_record stopper tidlig med beskjed til den som må klikke i ASC.
-# Testere legges til i ASC, se ../TESTFLIGHT.md.
+# Engangs-steg mot Apple: bundle-ID-ene registreres automatisk (ensure_bundle_ids,
+# ASC API POST /v1/bundleIds) og App Store-profilene lages av sigh — én for
+# hovedappen, én for ReiseguideWidgets-extension-en (pakke 2, item 6: Live
+# Activity på låseskjerm/Dynamic Island). App-recordet i App Store Connect kan
+# IKKE lages via API-et (Apples dokumentasjon for /v1/apps: «Don't use this
+# API to create new apps», hentet 2026-09-18), så ensure_app_record stopper
+# tidlig med beskjed til den som må klikke i ASC — extension-en trenger IKKE
+# noe eget app-record. Testere legges til i ASC, se ../TESTFLIGHT.md.
 #
 # Samme mønster som ipad/LeadMapApp (manuell signering med importert
-# «Apple Distribution»-cert + App Store-profil hentet av sigh), fordi Xcodes
-# cloud signing feiler for teamet («Cloud signing permission error»).
+# «Apple Distribution»-cert + App Store-profil(er) hentet av sigh), fordi
+# Xcodes cloud signing feiler for teamet («Cloud signing permission error»).
 #
 # Auth (env vars, ALDRI committed):
 #   APP_STORE_CONNECT_API_KEY_ID
@@ -32,6 +34,14 @@ PROFILE_NAME   = "SenseAid Explore App Store"
 SCHEME         = "Reiseguide"
 PROJECT        = "Reiseguide.xcodeproj"
 IPA_NAME       = "SenseAidExplore.ipa"
+
+# Alle iOS-bundles i prosjektet (hovedapp + widget-extension). Brukt av
+# ensure_bundle_ids og download_app_store_profiles — samme liste-mønster som
+# ipad/LeadMapApp/fastlane/Fastfile.
+BUNDLES = [
+  { bundle: APP_IDENTIFIER, name: APP_NAME, profile: PROFILE_NAME },
+  { bundle: "com.creatorhubn.reiseguide.widgets", name: "SenseAid Explore Widgets", profile: "SenseAid Explore Widgets App Store" },
+].freeze
 
 platform :ios do
   before_all do
@@ -51,8 +61,8 @@ platform :ios do
   desc "Archive + upload til TestFlight"
   lane :beta do
     setup_api_key
-    ensure_bundle_id
-    download_app_store_profile
+    ensure_bundle_ids
+    download_app_store_profiles
     ensure_app_record
     bump_build
 
@@ -85,8 +95,8 @@ platform :ios do
   desc "Archive + upload til App Store Review (submit er et manuelt steg)"
   lane :release do
     setup_api_key
-    ensure_bundle_id
-    download_app_store_profile
+    ensure_bundle_ids
+    download_app_store_profiles
     ensure_app_record
     bump_build
 
@@ -142,27 +152,29 @@ platform :ios do
     UI.success("ASC API-nøkkel skrevet til #{pkey_path}")
   end
 
-  # Registrerer bundle-ID-en i Developer Portal hvis den mangler (ASC API
-  # POST /v1/bundleIds; LeadMap-watch-bundlen ble laget på samme måte).
-  # Krever at ASC-nøkkelen har App Manager- eller Admin-rolle. Uten nøkkel
-  # (lokal dev) lar vi Xcode ordne det.
-  private_lane :ensure_bundle_id do
+  # Registrerer alle bundle-ID-ene (hovedapp + widget-extension) i Developer
+  # Portal hvis de mangler (ASC API POST /v1/bundleIds; LeadMap-watch-bundlen
+  # ble laget på samme måte). Krever at ASC-nøkkelen har App Manager- eller
+  # Admin-rolle. Uten nøkkel (lokal dev) lar vi Xcode ordne det.
+  private_lane :ensure_bundle_ids do
     unless lane_context[SharedValues::APP_STORE_CONNECT_API_KEY]
       UI.important("Ingen ASC-nøkkel; hopper over bundle-ID-sjekk (Xcode ordner det lokalt)")
       next
     end
 
-    existing = Spaceship::ConnectAPI::BundleId.find(APP_IDENTIFIER)
-    if existing
-      UI.message("Bundle-ID #{APP_IDENTIFIER} er registrert hos Apple (#{existing.id})")
-    else
-      UI.message("Registrerer bundle-ID #{APP_IDENTIFIER} («#{APP_NAME}») i Developer Portal")
-      created = Spaceship::ConnectAPI::BundleId.create(
-        name: APP_NAME,
-        identifier: APP_IDENTIFIER,
-        platform: "IOS",
-      )
-      UI.success("Bundle-ID registrert (#{created.id})")
+    BUNDLES.each do |cfg|
+      existing = Spaceship::ConnectAPI::BundleId.find(cfg[:bundle])
+      if existing
+        UI.message("Bundle-ID #{cfg[:bundle]} er registrert hos Apple (#{existing.id})")
+      else
+        UI.message("Registrerer bundle-ID #{cfg[:bundle]} («#{cfg[:name]}») i Developer Portal")
+        created = Spaceship::ConnectAPI::BundleId.create(
+          name: cfg[:name],
+          identifier: cfg[:bundle],
+          platform: "IOS",
+        )
+        UI.success("Bundle-ID registrert (#{created.id})")
+      end
     end
   end
 
@@ -188,16 +200,19 @@ platform :ios do
     MSG
   end
 
-  # Henter (eller oppretter) den manuelle App Store-profilen for bundle-ID-en
-  # så manual signing i ExportOptions.plist finner den. force: true
-  # regenererer mot cert-en som er importert i keychainen.
-  private_lane :download_app_store_profile do
-    sigh(
-      app_identifier: APP_IDENTIFIER,
-      provisioning_name: PROFILE_NAME,
-      force: true,
-      platform: "ios",
-    )
+  # Henter (eller oppretter) de manuelle App Store-profilene for hver
+  # bundle-ID så manual signing i ExportOptions.plist finner dem. force: true
+  # regenererer mot cert-en som er importert i keychainen (samme mønster som
+  # ipad/LeadMapApp/fastlane/Fastfile#download_app_store_profiles).
+  private_lane :download_app_store_profiles do
+    BUNDLES.each do |cfg|
+      sigh(
+        app_identifier: cfg[:bundle],
+        provisioning_name: cfg[:profile],
+        force: true,
+        platform: "ios",
+      )
+    end
   end
 
   private_lane :xcodebuild_auth_xcargs do

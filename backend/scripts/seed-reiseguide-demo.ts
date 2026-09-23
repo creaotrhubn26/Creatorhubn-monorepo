@@ -13,11 +13,20 @@
  * oppdaterer tekst og geodata uten å lage duplikater. Lydfiler og teksting
  * røres ikke (de hører til steg 2 og genereres fra godkjente manus), og
  * vurderinger fra brukere (guide_poi_ratings) røres aldri. Quiz-spørsmålene
- * (0641_reiseguide_after_visit.sql) skrives på nytt per sted og språk.
+ * (0641_reiseguide_after_visit.sql) skrives på nytt per sted og språk, og det
+ * samme gjør spørsmålene underveis (0662_reiseguide_chapter_prompts.sql):
+ * upsert per (sted, språk, kapittel, rekkefølge), og rader som ikke lenger
+ * finnes i demo-dataene slettes.
  * Innholdet ligger i server/reiseguide-demo-data.ts.
  */
 import pg from "pg";
-import { DEMO_AREA, DEMO_CATEGORIES, DEMO_POIS, type DemoLang } from "../server/reiseguide-demo-data.ts";
+import {
+  DEMO_AREA,
+  DEMO_CATEGORIES,
+  DEMO_CHAPTER_PROMPTS,
+  DEMO_POIS,
+  type DemoLang,
+} from "../server/reiseguide-demo-data.ts";
 
 const LANGS: DemoLang[] = ["nb", "en"];
 
@@ -31,6 +40,7 @@ async function main(): Promise<void> {
   let translations = 0;
   let scripts = 0;
   let quizQuestions = 0;
+  let chapterPrompts = 0;
   try {
     await client.query("BEGIN");
 
@@ -140,13 +150,45 @@ async function main(): Promise<void> {
           `DELETE FROM guide_poi_quiz_questions WHERE poi_id = $1 AND lang = $2 AND sort_order > $3`,
           [poi.id, lang, questions.length],
         );
+
+        // Spørsmål underveis: rekkefølge nummereres per kapittel.
+        const prompts = DEMO_CHAPTER_PROMPTS[poi.id]?.[lang] ?? [];
+        const perChapter = new Map<number, number>();
+        const keptKeys: string[] = [];
+        for (const prompt of prompts) {
+          const sortOrder = (perChapter.get(prompt.chapterNo) ?? 0) + 1;
+          perChapter.set(prompt.chapterNo, sortOrder);
+          keptKeys.push(`${prompt.chapterNo}:${sortOrder}`);
+          await client.query(
+            `INSERT INTO guide_poi_chapter_prompts (id, poi_id, lang, chapter_no, kind, at_fraction, prompt_text,
+                                                    options, answer_index, reveal_text, sort_order, editorial_status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, 'draft')
+             ON CONFLICT (poi_id, lang, chapter_no, sort_order) DO UPDATE SET
+               kind = EXCLUDED.kind, at_fraction = EXCLUDED.at_fraction, prompt_text = EXCLUDED.prompt_text,
+               options = EXCLUDED.options, answer_index = EXCLUDED.answer_index,
+               reveal_text = EXCLUDED.reveal_text, updated_at = now()`,
+            [
+              `${poi.id}_${lang}_prompt_${prompt.chapterNo}_${sortOrder}`, poi.id, lang, prompt.chapterNo,
+              prompt.kind, prompt.atFraction, prompt.text,
+              prompt.options ? JSON.stringify(prompt.options) : null, prompt.answerIndex ?? null,
+              prompt.revealText, sortOrder,
+            ],
+          );
+          chapterPrompts += 1;
+        }
+        await client.query(
+          `DELETE FROM guide_poi_chapter_prompts
+            WHERE poi_id = $1 AND lang = $2
+              AND NOT ((chapter_no::text || ':' || sort_order::text) = ANY($3::text[]))`,
+          [poi.id, lang, keptKeys],
+        );
       }
     }
 
     await client.query("COMMIT");
     console.log(
       `Seed «${DEMO_AREA.name}»: ${DEMO_CATEGORIES.length} kategorier, ${DEMO_POIS.length} severdigheter, ` +
-        `${translations} oversettelser, ${scripts} manus, ${quizQuestions} quiz-spørsmål (alle som utkast).`,
+        `${translations} oversettelser, ${scripts} manus, ${quizQuestions} quiz-spørsmål, ${chapterPrompts} spørsmål underveis (alle som utkast).`,
     );
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);

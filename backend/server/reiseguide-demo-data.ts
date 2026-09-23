@@ -21,6 +21,14 @@
  * Quiz (18.09.2026, «etter besøket»): tre spørsmål per sted og språk, alle
  * med svar som står i fortellingen, så quizen aldri spør om noe man ikke har
  * hørt. Samme utkast-status som manusene.
+ *
+ * Spørsmål underveis (pakke 3, 23.09.2026, 0662_reiseguide_chapter_prompts.sql):
+ * ett «Se opp»-kort (look) og ett gjettespørsmål (guess) per sted og språk i
+ * DEMO_CHAPTER_PROMPTS. Alt bygger bare på fortellingen i samme kapittel (ingen
+ * nye fakta); feil svaralternativer er åpenbart feil, ikke påstander. look
+ * ligger rett etter setningen som nevner det man skal se etter, guess rett før
+ * setningen som gir svaret. atFraction er andel av manusteksten (tegn), som er
+ * det den anslåtte tekstingen også fordeler tiden etter.
  */
 
 export type DemoLang = "nb" | "en";
@@ -848,3 +856,247 @@ export const DEMO_POIS: DemoPoi[] = [
     },
   },
 ];
+
+export interface DemoChapterPrompt {
+  chapterNo: number;
+  kind: "look" | "guess";
+  /** Posisjon i kapittelet, 0 ≤ x < 1. */
+  atFraction: number;
+  text: string;
+  /** Kun guess: 2–4 alternativer og fasit. */
+  options?: string[];
+  answerIndex?: number;
+  revealText: string | null;
+}
+
+/** Spørsmål underveis per sted (id) og språk; se kommentaren øverst. */
+export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPrompt[]>> = {
+  poi_akershus_festning: {
+    nb: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.26,
+        text: "Hva gjorde slottsherren Christen Munk i 1567 for at svenskene ikke skulle finne mat og ly?",
+        options: ["Han stengte alle byportene", "Han brant hele byen ned", "Han senket skipene i havna"],
+        answerIndex: 1,
+        revealText: "Han brant hele byen ned. Etter 39 dager ga svenskene opp.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.81,
+        text: "Se opp: De to trappetårnene på slottet heter Blåtårnet og Romerikstårnet. De kom da Christian den fjerde bygde om borgen tidlig på 1600-tallet.",
+        revealText: null,
+      },
+    ],
+    en: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.29,
+        text: "What did the castellan Christen Munk do in 1567 so the Swedes would find neither food nor shelter?",
+        options: ["He shut all the city gates", "He burned the whole city down", "He sank the ships in the harbour"],
+        answerIndex: 1,
+        revealText: "He burned the whole city down. After 39 days the Swedes gave up.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.82,
+        text: "Look up: The castle's two staircase towers are the Blue Tower and the Romerike Tower. They came when Christian the Fourth rebuilt the castle in the early 1600s.",
+        revealText: null,
+      },
+    ],
+  },
+  poi_christiania_torv: {
+    nb: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.62,
+        text: "Hva måtte alle som bygde innenfor bymuren, bygge i?",
+        options: ["Leire og torv", "Mur eller stein", "Bare tre"],
+        answerIndex: 1,
+        revealText: "Mur eller stein. Kongen innførte murtvang, og de som ikke hadde råd, fikk nøye seg med bindingsverk fylt med murstein.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.93,
+        text: "Se opp: Rådmannsgården står på hjørnet. Ankerjernene i muren viser årstallet 1626.",
+        revealText: null,
+      },
+    ],
+    en: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.6,
+        text: "What did everyone building inside the city wall have to build in?",
+        options: ["Clay and turf", "Brick or stone", "Wood only"],
+        answerIndex: 1,
+        revealText: "Brick or stone. The king made masonry compulsory, and those who could not afford it had to make do with timber framing filled with brick.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.92,
+        text: "Look up: The councillor's house is on the corner. Its wall anchors show the year 1626.",
+        revealText: null,
+      },
+    ],
+  },
+  poi_gamle_radhus: {
+    nb: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.63,
+        text: "Se opp: De høye renessansegavlene du ser i dag, ble gjenskapt på 1900-tallet.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.71,
+        text: "Hva er de gamle fengselscellene i kjelleren blitt til?",
+        options: ["Et bibliotek", "Vinkjeller og selskapsrom", "Et bakeri"],
+        answerIndex: 1,
+        revealText: "Vinkjeller og selskapsrom. Huset er i dag mest kjent for lutefisken sin.",
+      },
+    ],
+    en: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.64,
+        text: "Look up: The tall renaissance gables you see today were recreated in the 20th century.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.72,
+        text: "What have the old prison cells in the cellar become?",
+        options: ["A library", "A wine cellar and a private dining room", "A bakery"],
+        answerIndex: 1,
+        revealText: "A wine cellar and a private dining room. Today the house is best known for its lutefisk.",
+      },
+    ],
+  },
+  poi_oslo_bors: {
+    nb: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.33,
+        text: "Hvor stort var det opprinnelige børshuset, sammenlignet med det du ser i dag?",
+        options: ["Omtrent en tredel", "Omtrent halvparten", "Like stort"],
+        answerIndex: 0,
+        revealText: "Omtrent en tredel: bare én etasje på en høy kjeller. Sidefløyene og sørfløyen kom i 1909 og 1910.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.84,
+        text: "Se opp: Foran inngangen står Merkur, handelens gud, i bronse på en fontene med fire løvehoder.",
+        revealText: null,
+      },
+    ],
+    en: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.33,
+        text: "How big was the original exchange building, compared with what you see today?",
+        options: ["About a third", "About half", "The same size"],
+        answerIndex: 0,
+        revealText: "About a third: only one storey on a high basement. The side wings and the south wing were added in 1909 and 1910.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.83,
+        text: "Look up: In front of the entrance stands Mercury, the god of commerce, in bronze on a fountain with four lion heads.",
+        revealText: null,
+      },
+    ],
+  },
+  poi_bankplassen: {
+    nb: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.35,
+        text: "Se opp: Norges Banks hovedsete fra 1906 er et palass i hugget norsk granitt og marmor, rikt dekorert i jugendstil.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.93,
+        text: "Hvem hadde sine egne kaffekopper på Engebret Café?",
+        options: ["Ibsen", "Grieg", "Munch"],
+        answerIndex: 1,
+        revealText: "Grieg. Og Munchs bord er fortsatt det mest ettertraktede.",
+      },
+    ],
+    en: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.36,
+        text: "Look up: Norges Bank's headquarters from 1906 is a palace in hewn Norwegian granite and marble, richly decorated in Art Nouveau.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.94,
+        text: "Who had his own coffee cups at Engebret Café?",
+        options: ["Ibsen", "Grieg", "Munch"],
+        answerIndex: 1,
+        revealText: "Grieg. And Munch's table is still the most sought after.",
+      },
+    ],
+  },
+  poi_operaen: {
+    nb: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.71,
+        text: "Se opp: Scenetårnet er kledd i aluminiumsplater med et mønster av tekstilkunstnerne Astrid Løvaas og Kirsten Wagle, inspirert av gamle vevmønstre.",
+        revealText: null,
+      },
+      {
+        chapterNo: 2,
+        kind: "guess",
+        atFraction: 0.17,
+        text: "Skulpturen «She Lies» ute i vannet dreier sakte. Hva får den til å dreie?",
+        options: ["Vinden", "Tidevannet", "En motor"],
+        answerIndex: 1,
+        revealText: "Tidevannet. Skulpturen av Monica Bonvicini er i stål og glass og tolv meter høy.",
+      },
+    ],
+    en: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.7,
+        text: "Look up: The stage tower is clad in aluminium panels with a pattern by the textile artists Astrid Løvaas and Kirsten Wagle, inspired by old weaving patterns.",
+        revealText: null,
+      },
+      {
+        chapterNo: 2,
+        kind: "guess",
+        atFraction: 0.17,
+        text: "The sculpture 'She Lies' out in the water turns slowly. What makes it turn?",
+        options: ["The wind", "The tide", "A motor"],
+        answerIndex: 1,
+        revealText: "The tide. Monica Bonvicini's sculpture is in steel and glass and twelve metres tall.",
+      },
+    ],
+  },
+};

@@ -31,6 +31,24 @@ import {
   getSceneDetail as getNarrativeSceneDetail,
   getProjectOverview as getNarrativeProjectOverview,
   createElement as createNarrativeElement,
+  buildSceneManifest,
+  findSceneByRef,
+  patchScene as patchNarrativeScene,
+  setSceneGate,
+  patchSceneTask,
+  createOpenQuestion,
+  listOpenQuestions,
+  GateEvidenceRequiredError,
+  SceneRefAmbiguousError,
+  DuplicateCodeError,
+  NARRATIVE_GATE_KEYS,
+  NARRATIVE_SCENE_STATUSES,
+  NARRATIVE_SCENE_TASK_STATUSES,
+  type NarrativeGateKey,
+  type NarrativeGateStatus,
+  type NarrativeSceneStatus,
+  type NarrativeSceneTaskStatus,
+  type ScenePatch,
 } from "./role-room-narrative-service.js";
 import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
 import { loadGuardianSnapshot, runGuardianRules } from "./ai-script-guardian-agent.js";
@@ -87,6 +105,28 @@ async function requireProject(pool: Pool, ctx: McpCallContext, args: Record<stri
   }
   return projectId;
 }
+
+/** Fase 9: scene-referanse = id (nsc_…), kode (S12) eller arbeids-ID (P01/G03A). */
+async function requireSceneRef(pool: Pool, projectId: string, args: Record<string, unknown>) {
+  const ref = typeof args.scene === "string" ? args.scene.trim() : "";
+  if (!ref) throw new McpToolError(-32602, "scene er påkrevd (id, kode eller arbeids-ID).");
+  let scene;
+  try {
+    scene = await findSceneByRef(pool, projectId, ref);
+  } catch (err) {
+    if (err instanceof SceneRefAmbiguousError) throw new McpToolError(-32602, err.message);
+    throw err;
+  }
+  if (!scene) throw new McpToolError(-32602, `Fant ingen scene «${ref}» i prosjektet.`);
+  return scene;
+}
+
+/** Manusfelt MCP kan skrive. Kode, ansvarlig og datoer holdes utenfor (UI-beslutninger). */
+const SCENE_TEXT_FIELDS = [
+  "title", "subtitle", "location", "challenge", "gameplayMechanic", "environment",
+  "beforeState", "action", "control", "afterState", "audio", "changeNote", "bridge", "timeNote",
+] as const;
+const GATE_STATUSES: readonly NarrativeGateStatus[] = ["not_started", "in_progress", "passed", "failed"];
 
 // ── Register ────────────────────────────────────────────────────────────────
 export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
@@ -710,7 +750,7 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
   },
   {
     name: "rr_project_overview",
-    description: "Prosjektoversikt for Story Graph (Hjem, Fase 7): scener per status/epoke, gater bestått/feilet, oppgaver åpne/forfalt, åpne review-runder, replikker, åpne spørsmål, plattformkrav verifisert, episoder med fremdrift, milepæler og siste aktivitet. Read-only.",
+    description: "Prosjektoversikt for Story Graph (Hjem, Fase 7): neste scene å bygge (Fase 9), scener per status/epoke, gater bestått/feilet, oppgaver åpne/forfalt, åpne review-runder, replikker, åpne spørsmål, plattformkrav verifisert, episoder med fremdrift, milepæler og siste aktivitet. Read-only.",
     scope: "projects.read", modes: GAME_MODES, projectScoped: true,
     inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
     handler: async (pool, ctx, args) => {
@@ -721,6 +761,7 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
         episodes: o.episodes,
         milestones: o.milestones.map((m) => ({ id: m.id, title: m.title, lane: m.lane, status: m.status, startAt: m.startAt, dueAt: m.dueAt, sceneIds: m.sceneIds })),
         activity: o.activity,
+        nextScene: o.nextScene,
       };
     },
   },
@@ -739,6 +780,138 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
         issues: issues.map((i) => ({ issueType: i.issueType, severity: i.severity, title: i.title, description: i.description, sceneCodes: i.sceneCodes, evidence: i.evidence, suggestedQuestion: i.suggestedQuestion })),
         summary: { total: issues.length, high: issues.filter((i) => i.severity === "high").length, medium: issues.filter((i) => i.severity === "medium").length, low: issues.filter((i) => i.severity === "low").length },
       };
+    },
+  },
+
+  {
+    name: "rr_export_scene_manifest",
+    description: "Scene-manifest for spillbygget (Story Graph, Fase 9): alle scener med manusfelt, gameplay, replikker (cue-ID, taler, EN/NB, opptaksstatus) og gate-status, stabilt sortert, med schema/version og contentHash. Samme innhold som GET …/scenes/export.json. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      return buildSceneManifest(pool, projectId);
+    },
+  },
+
+  // ── Fase 9: skriveverktøy for solo-flyten (Claude i spillrepoet oppdaterer
+  // Story Graph direkte). Samme regler som UI-et: gate «passed» krever bevis. ──
+  {
+    name: "rr_update_scene_fields",
+    description: "Oppdater manusfelt og status på én scene i Story Graph. `scene` = id, kode eller arbeids-ID (P01). `fields` kan inneholde title, subtitle, location, challenge, gameplayMechanic, environment, beforeState, action, control, afterState, audio, changeNote, bridge, timeNote (tekst) og status (idea|in_progress|in_review|changes_requested|approved|implemented). Endrer ikke kode, ansvarlig eller datoer. Krever projects.write.",
+    scope: "projects.write", modes: GAME_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      scene: STR("Scene-id, kode eller arbeids-ID (f.eks. P03)"),
+      fields: { type: "object", description: "Felt som skal settes (se beskrivelsen)", additionalProperties: true },
+    }, ["projectId", "scene", "fields"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const scene = await requireSceneRef(pool, projectId, args);
+      const fields = (args.fields && typeof args.fields === "object" ? args.fields : {}) as Record<string, unknown>;
+      const patch: ScenePatch = {};
+      const unknown: string[] = [];
+      for (const [key, value] of Object.entries(fields)) {
+        if (key === "status") {
+          if (typeof value !== "string" || !NARRATIVE_SCENE_STATUSES.includes(value as NarrativeSceneStatus)) {
+            throw new McpToolError(-32602, `Ugyldig status «${String(value)}».`);
+          }
+          patch.status = value as NarrativeSceneStatus;
+        } else if ((SCENE_TEXT_FIELDS as readonly string[]).includes(key)) {
+          if (typeof value !== "string") throw new McpToolError(-32602, `Feltet ${key} må være tekst.`);
+          (patch as Record<string, unknown>)[key] = value.slice(0, 20_000);
+        } else {
+          unknown.push(key);
+        }
+      }
+      if (unknown.length) throw new McpToolError(-32602, `Ukjente felt: ${unknown.join(", ")}.`);
+      if (!Object.keys(patch).length) throw new McpToolError(-32602, "fields er tomt.");
+      const updated = await patchNarrativeScene(pool, projectId, scene.id, patch);
+      if (!updated) throw new McpToolError(-32602, "Scenen finnes ikke lenger.");
+      return { ok: true, id: updated.id, code: updated.code, status: updated.status, updated: Object.keys(patch) };
+    },
+  },
+  {
+    name: "rr_set_scene_gate",
+    description: "Sett én leveransegate på en scene (script_coverage|greybox|characters_animation|playthrough|picture|audio) til not_started|in_progress|passed|failed. «passed» krever evidence (f.eks. «P03GreyboxTests: 12 bestått, commit abc123»), som i UI-et. Krever projects.write.",
+    scope: "projects.write", modes: GAME_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      scene: STR("Scene-id, kode eller arbeids-ID"),
+      gate: STR("script_coverage | greybox | characters_animation | playthrough | picture | audio"),
+      status: STR("not_started | in_progress | passed | failed"),
+      evidence: STR("Bevis i klartekst (påkrevd for passed)"),
+    }, ["projectId", "scene", "gate", "status"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const scene = await requireSceneRef(pool, projectId, args);
+      const gate = typeof args.gate === "string" ? args.gate.trim() : "";
+      const status = typeof args.status === "string" ? args.status.trim() : "";
+      if (!NARRATIVE_GATE_KEYS.includes(gate as NarrativeGateKey)) throw new McpToolError(-32602, `Ukjent gate «${gate}».`);
+      if (!GATE_STATUSES.includes(status as NarrativeGateStatus)) throw new McpToolError(-32602, `Ugyldig status «${status}».`);
+      const evidence = typeof args.evidence === "string" ? args.evidence.slice(0, 4000) : "";
+      try {
+        const g = await setSceneGate(pool, projectId, scene.id, gate as NarrativeGateKey, ctx.userId, { status: status as NarrativeGateStatus, evidence, evidenceRefs: [`mcp:${ctx.apiKeyId}`] });
+        if (!g) throw new McpToolError(-32602, "Scenen finnes ikke lenger.");
+        return { ok: true, scene: scene.code, gate: g.gateKey, status: g.status, evidence: g.evidence };
+      } catch (err) {
+        if (err instanceof GateEvidenceRequiredError) throw new McpToolError(-32602, "«passed» krever evidence.");
+        throw err;
+      }
+    },
+  },
+  {
+    name: "rr_complete_scene_task",
+    description: "Sett status på en oppgave i et scenekort (todo|doing|done; standard done). Oppgave-id finnes i rr_get_scene_card. Krever projects.write.",
+    scope: "projects.write", modes: GAME_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      scene: STR("Scene-id, kode eller arbeids-ID"),
+      taskId: STR("Oppgave-id (nst_…)"),
+      status: STR("todo | doing | done (standard done)"),
+    }, ["projectId", "scene", "taskId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const scene = await requireSceneRef(pool, projectId, args);
+      const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "";
+      if (!taskId) throw new McpToolError(-32602, "taskId er påkrevd.");
+      const status = typeof args.status === "string" && args.status.trim() ? args.status.trim() : "done";
+      if (!NARRATIVE_SCENE_TASK_STATUSES.includes(status as NarrativeSceneTaskStatus)) throw new McpToolError(-32602, `Ugyldig status «${status}».`);
+      const task = await patchSceneTask(pool, projectId, scene.id, taskId, { status: status as NarrativeSceneTaskStatus });
+      if (!task) throw new McpToolError(-32602, "Fant ikke oppgaven på denne scenen.");
+      return { ok: true, id: task.id, title: task.title, status: task.status };
+    },
+  },
+  {
+    name: "rr_add_open_question",
+    description: "Legg et åpent spørsmål til neste manusgjennomgang (Historie → Åpne spørsmål), f.eks. når implementasjonen avdekker en motsigelse i manus. Koden settes automatisk (DEV-01, DEV-02 …). Krever projects.write.",
+    scope: "projects.write", modes: GAME_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      question: STR("Spørsmålet"),
+      context: STR("Hvorfor det dukket opp (scene, fil, observasjon)"),
+    }, ["projectId", "question"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const question = typeof args.question === "string" ? args.question.trim() : "";
+      if (!question) throw new McpToolError(-32602, "question er påkrevd.");
+      const context = typeof args.context === "string" ? args.context.trim().slice(0, 4000) : "";
+      // Neste ledige DEV-nn. To samtidige kall kan velge samme kode; den unike
+      // (project_id, code)-indeksen avviser da den ene, som prøver neste nummer.
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const existing = await listOpenQuestions(pool, projectId);
+        const used = new Set(existing.map((q) => q.code));
+        let n = existing.filter((q) => q.code.startsWith("DEV-")).length + 1 + attempt;
+        while (used.has(`DEV-${String(n).padStart(2, "0")}`)) n += 1;
+        const code = `DEV-${String(n).padStart(2, "0")}`;
+        try {
+          const q = await createOpenQuestion(pool, projectId, ctx.userId, { code, kind: "question", question: question.slice(0, 2000), context });
+          return { ok: true, id: q.id, code: q.code, status: q.status };
+        } catch (err) {
+          if (!(err instanceof DuplicateCodeError)) throw err;
+        }
+      }
+      throw new McpToolError(-32603, "Fant ingen ledig DEV-kode etter fem forsøk — prøv igjen.");
     },
   },
 

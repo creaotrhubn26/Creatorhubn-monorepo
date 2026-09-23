@@ -62,6 +62,15 @@ fastlane/         TestFlight (lane `ios beta`, manuell signering), se TESTFLIGHT
   Serveren sletter loggen automatisk etter `SENSEAID_VISIT_RETENTION_DAYS` (365);
   teksten i appen sier «ett år», så endres verdien må `privacy.footer` oppdateres.
   Migrasjon `0642_reiseguide_visits.sql`, logikk i `backend/server/reiseguide-visits.ts`.
+- Spør guiden (pakke 3): knapp på detaljsiden og i avspilleren åpner et ark med
+  tekstfelt (tastaturets diktering), tre forslag og svaret. Apple Intelligence på
+  telefonen (iOS 26+) svarer bare ut fra guideteksten, på brukerens språk.
+  Uten Apple Intelligence er knappen skjult, og Innstillinger → Interaktivt sier
+  hvorfor. Logikken i `Core/AskGuide/`.
+- Spørsmål underveis (pakke 3): «Se opp»-kort og gjettespørsmål midt i fortellingen
+  (`prompts` på hvert kapittel, migrasjon `0662_reiseguide_chapter_prompts.sql`).
+  Gjettespørsmål pauser fortellingen til man svarer eller hopper over. Kan slås av
+  under Innstillinger → Interaktivt. Logikken i `Core/ChapterPrompts.swift`.
 - Lydfiler finnes ikke ennå (steg 2: manus, TTS, Soniox). Avspilleren viser
   «Lyden er ikke klar ennå» og kjører en simulert tidslinje med anslått teksting
   fra manuset. Når backend leverer `audio.url` og `captions.cues`, brukes de

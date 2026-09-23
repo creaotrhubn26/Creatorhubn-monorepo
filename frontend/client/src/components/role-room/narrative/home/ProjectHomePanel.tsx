@@ -175,6 +175,19 @@ export function ProjectHomePanel({ projectId, projectTitle, refreshKey = 0, onNa
 
         {/* Høyre: neste opp, milepæler, aktivitet */}
         <Stack spacing={2}>
+          {overview.nextScene ? (
+            <Card sx={{ bgcolor: 'rgba(34,197,94,0.06)', border: `1px solid ${narrativeColors.accent}55`, color: narrativeColors.text }} data-testid="narrative-home-next-scene">
+              <CardContent>
+                <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: narrativeColors.accent, mb: 0.5 }}>Neste scene å bygge</Typography>
+                <Typography sx={{ fontSize: 16, fontWeight: 800 }} data-testid="narrative-home-next-scene-title">{overview.nextScene.code} – {overview.nextScene.title || 'Uten tittel'}</Typography>
+                <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mt: 0.5 }}>
+                  {overview.nextScene.scriptCovered ? 'Manus er dekket — gråboks gjenstår.' : 'Manusdekning er ikke bestått ennå — start der.'}
+                  {overview.nextScene.openTasks ? ` ${overview.nextScene.openTasks} åpne oppgaver.` : ''}
+                </Typography>
+                <Button size="small" variant="contained" onClick={() => onNavigate('scenes', { sceneId: overview.nextScene!.id })} sx={{ mt: 1.5, bgcolor: narrativeColors.accent, color: '#03150a', fontWeight: 700, '&:hover': { bgcolor: narrativeColors.accentDark } }} data-testid="narrative-home-next-scene-open">Åpne scenekortet</Button>
+              </CardContent>
+            </Card>
+          ) : null}
           <Card sx={{ bgcolor: narrativeColors.bgPanel, border: `1px solid ${narrativeColors.borderStrong}`, color: narrativeColors.text }} data-testid="narrative-home-next-up">
             <CardContent>
               <Typography sx={{ fontWeight: 700, fontSize: 13, mb: 1 }}>Neste opp</Typography>

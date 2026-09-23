@@ -18,6 +18,9 @@
     <dict>
         <key>com.creatorhubn.reiseguide</key>
         <string>SenseAid Explore App Store</string>
+        <!-- Live Activity-extension (pakke 2, item 6): låseskjerm + Dynamic Island. -->
+        <key>com.creatorhubn.reiseguide.widgets</key>
+        <string>SenseAid Explore Widgets App Store</string>
     </dict>
     <key>uploadBitcode</key>
     <false/>

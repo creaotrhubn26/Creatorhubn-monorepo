@@ -1,0 +1,45 @@
+claim: >
+  «Spør guiden» i SenseAid Explore kan bygges på iOS 26-flaten av FoundationModels
+  (SystemLanguageModel.default.availability + supportedLanguages, LanguageModelSession
+  (instructions:), respond(to:options:), GenerationOptions(maximumResponseTokens:)),
+  on-device, uten server og uten nye tillatelser, og kompilerer i dagens CI (Xcode 26).
+source_type: api_reference
+source: "docs/evidence/2026-09-ios27-ga-foundationmodels-ci.yaml (Tier 1: Apple-docs-JSON introducedAt, runner-images) og symbolene slik de allerede kompilerer i ipad/CaptureApp/CaptureApp/Core/Notes/OnDeviceNoteAnalyzer.swift og ipad/LeadMapApp/LeadMapApp/Core/Intelligence/OnDeviceTranscriptAnalyzer.swift. Ikke hentet på nytt i denne økten."
+authority_tier: 1
+vendor: Apple
+product: FoundationModels (iOS 26-flaten)
+version_scope: "iOS 26.0+ bak #if canImport(FoundationModels) + @available(iOS 26, *); deployment target iOS 17; CI macos-15 / Xcode 26.x per 2026-09-23"
+publication_date: "2026-09-23"
+valid_from: "2026-09"
+valid_to: "når Reiseguide-CI flyttes til en runner med Xcode 27 (da kan iOS 27-protokollene vurderes), eller når backend-fallback for enheter uten Apple Intelligence bygges"
+evidence_summary: >
+  Alle symbolene som brukes finnes i iOS 26-SDK-en og er i bruk i to andre apper i
+  repoet som bygger i samme CI. iOS 27-symbolene (LanguageModel, LanguageModelExecutor,
+  PrivateCloudComputeLanguageModel) er ikke i Xcode 26-SDK-en og er bevisst ikke brukt.
+  Tilgjengelighet sjekkes ved kjøring (enhet, Apple Intelligence av/på, modell klar,
+  språk i supportedLanguages), så iOS 17–25 og enheter uten Apple Intelligence får
+  ingen knapp, bare en forklarende linje i Innstillinger.
+interpretation: >
+  On-device-only er riktig for POC-en: ingen personopplysninger forlater telefonen,
+  ingen API-nøkkel, og ingen ny GDPR-flate. Prisen er at eldre telefoner ikke får
+  funksjonen. Svarene grunnes i guideteksten (tittel, ingress, praktisk info,
+  fortelling, synstolking) i instruksjonene til en ny økt per spørsmål; teksten
+  kappes til 7 000 tegn fordi kontekstvinduet er lite (CaptureApp traff 4096 tokens).
+project_impact: >
+  ipad/Reiseguide/Reiseguide/Core/AskGuide/ (AskGuideGrounding, AskGuideIntelligence,
+  OnDeviceGuideAnswerer), Features/AskGuide/AskGuideSheet.swift,
+  Features/Settings/InteractivitySettingsSection.swift. Ingen backend-endring for
+  «Spør guiden».
+confidence: probable
+decision: >
+  Pakke 3 (godkjent av Daniel): «Spør guiden» først, på iOS 26-flaten, on-device-only.
+  Ingen mikrofon- eller taletillatelse; tastaturets diktering gir tale inn. Ingen
+  backend-fallback i POC-en. Status «probable» til CI har kompilert og funksjonen er
+  prøvd på en enhet med Apple Intelligence (norsk og engelsk).
+affected:
+  - ipad/Reiseguide (SenseAid Explore)
+  - .github/workflows/ipad-capture-ci.yml (må bli på Xcode 26-kompatibel flate til flytting)
+lesson: >
+  Når en Apple-flate allerede kompilerer i en søster-app i samme CI, er det
+  billigste valideringsgrunnlaget å speile den koden symbol for symbol, ikke å
+  lese docs på nytt.
