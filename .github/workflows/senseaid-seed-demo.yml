@@ -7,12 +7,24 @@ name: SenseAid Explore seed demo-innhold
 # backend/server/reiseguide-demo-data.ts. Rører aldri lydfiler, teksting eller
 # brukernes vurderinger og besøkslogg.
 #
+# Etter seeden henter `npm run reiseguide:images` heltebilder fra Wikimedia
+# Commons (bare fri lisens: CC0, public domain, CC BY / CC BY-SA 2.0–4.0) og
+# skriver bilde-URL, fotograf og lisens på stedene. Runneren har åpent nett;
+# utviklings-skymiljøet når ikke Commons. Steder uten godkjent bilde gir
+# en advarsel, ikke feil. Velg «images_dry_run» for å se valget uten å skrive.
+#
 # Manuell trigger, og jobben ligger i Production-miljøet slik at den bruker
 # samme PRODUCTION_MIGRATION_DATABASE_URL som auto-migrate-on-push.yml.
-# Migrasjonene 0640–0642 må være kjørt først (deploy-porten gjør det ved merge).
+# Migrasjonene 0640–0642, 0662 og 0663 må være kjørt først (deploy-porten gjør
+# det ved merge); 0663 gir kolonnene for bildekreditering.
 
 on:
   workflow_dispatch:
+    inputs:
+      images_dry_run:
+        description: "Commons-bilder: bare vis valget (skriv ingen bilder)"
+        type: boolean
+        default: false
 
 concurrency:
   group: senseaid-seed-demo
@@ -78,6 +90,21 @@ jobs:
           MIGRATION_OWNER_ROLE: creatorhub_schema_owner
         run: npm run seed:reiseguide --prefix backend
 
+      # Heltebilder fra Wikimedia Commons (0663). Tabellen i loggen viser sted,
+      # fil, fotograf og lisens; feiler ikke når et sted mangler bilde.
+      - name: Hent heltebilder fra Wikimedia Commons
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          MIGRATION_OWNER_ROLE: creatorhub_schema_owner
+          IMAGES_DRY_RUN: ${{ inputs.images_dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$IMAGES_DRY_RUN" = "true" ]; then
+            npm run reiseguide:images --prefix backend -- --dry-run
+          else
+            npm run reiseguide:images --prefix backend
+          fi
+
       - name: Verify public API serves the demo area
         env:
           BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
@@ -97,4 +124,10 @@ jobs:
           if [ "$poi_count" -lt 6 ]; then
             echo "::error::Ventet minst 6 steder i $slug, fikk $poi_count"
             exit 1
+          fi
+          image_count=$(jq -r '[.pois[] | select(.heroImageUrl != null)] | length' <<<"$area")
+          credit_count=$(jq -r '[.pois[] | select(.heroImageCredit != null)] | length' <<<"$area")
+          echo "Steder med heltebilde: $image_count av $poi_count (med kreditering: $credit_count)"
+          if [ "$image_count" -lt "$poi_count" ]; then
+            echo "::warning::$((poi_count - image_count)) av $poi_count steder mangler heltebilde; se tabellen i Commons-steget"
           fi

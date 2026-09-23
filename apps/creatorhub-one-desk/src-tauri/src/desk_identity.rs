@@ -36,6 +36,10 @@ fn bridge_secret_path() -> PathBuf {
     helper_client::config_dir().join("bridge-access-token")
 }
 
+fn lightroom_broker_secret_path() -> PathBuf {
+    helper_client::config_dir().join("lightroom-broker-token")
+}
+
 fn default_name() -> String {
     std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("COMPUTERNAME"))
@@ -83,6 +87,36 @@ pub fn load_or_create_bridge_secret() -> Result<String, String> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("Beskytt {}: {error}", path.display()))?;
+    }
+    Ok(token)
+}
+
+/// Local-only capability shared with the installed Lightroom plug-in. This is
+/// not a cloud credential: it only authorizes calls to Desk on 127.0.0.1.
+pub fn load_or_create_lightroom_broker_secret() -> Result<String, String> {
+    load_or_create_hex_secret(&lightroom_broker_secret_path())
+}
+
+fn load_or_create_hex_secret(path: &std::path::Path) -> Result<String, String> {
+    if let Ok(raw) = std::fs::read_to_string(path) {
+        let value = raw.trim();
+        if value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit()) {
+            return Ok(value.to_string());
+        }
+    }
+
+    let mut bytes = [0_u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let token = hex::encode(bytes);
+    let dir = helper_client::config_dir();
+    std::fs::create_dir_all(&dir).map_err(|error| format!("Opprett config-mappe: {error}"))?;
+    std::fs::write(path, format!("{token}\n"))
+        .map_err(|error| format!("Skriv {}: {error}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
             .map_err(|error| format!("Beskytt {}: {error}", path.display()))?;
     }
     Ok(token)

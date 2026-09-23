@@ -56,6 +56,19 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building version: $VERSION"
 
+      - name: Validate version and release notes
+        shell: bash
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          PACKAGE_VERSION=$(python3 -c "import json; print(json.load(open('apps/creatorhub-one-desk/package.json'))['version'])")
+          TAURI_VERSION=$(python3 -c "import json; print(json.load(open('apps/creatorhub-one-desk/src-tauri/tauri.conf.json'))['version'])")
+          CARGO_VERSION=$(awk -F'"' '/^version = "/ { print $2; exit }' apps/creatorhub-one-desk/src-tauri/Cargo.toml)
+          if [ "$VERSION" != "$PACKAGE_VERSION" ] || [ "$VERSION" != "$TAURI_VERSION" ] || [ "$VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag $VERSION, package $PACKAGE_VERSION, Tauri $TAURI_VERSION og Cargo $CARGO_VERSION må være like"
+            exit 1
+          fi
+          python3 apps/creatorhub-one-desk/scripts/release-metadata.py validate --version "$VERSION"
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -268,21 +281,14 @@ jobs:
       - name: Generate updater manifest
         shell: bash
         run: |
-          SIG_CONTENT=$(cat "${{ steps.artifacts.outputs.sig }}")
+          VERSION="${{ steps.ver.outputs.version }}"
           PUB_URL="https://github.com/${{ github.repository }}/releases/download/creatorhub-one-desk-v${{ steps.ver.outputs.version }}/creatorhub-one-desk-${{ matrix.arch_label }}.app.tar.gz"
-          cat > "staging/creatorhub-one-desk-${{ matrix.arch_label }}.json" <<EOF
-          {
-            "version": "${{ steps.ver.outputs.version }}",
-            "notes": "Ny versjon av Creatorhub One Desk er klar — oppdater for siste forbedringer.",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "${{ matrix.arch_label == 'darwin-aarch64' && 'darwin-aarch64' || 'darwin-x86_64' }}": {
-                "signature": "$SIG_CONTENT",
-                "url": "$PUB_URL"
-              }
-            }
-          }
-          EOF
+          python3 apps/creatorhub-one-desk/scripts/release-metadata.py manifest \
+            --version "$VERSION" \
+            --signature-file "${{ steps.artifacts.outputs.sig }}" \
+            --url "$PUB_URL" \
+            --platform "${{ matrix.arch_label == 'darwin-aarch64' && 'darwin-aarch64' || 'darwin-x86_64' }}" \
+            --output "staging/creatorhub-one-desk-${{ matrix.arch_label }}.json"
           cat "staging/creatorhub-one-desk-${{ matrix.arch_label }}.json"
 
       - uses: actions/upload-artifact@v4
@@ -314,11 +320,20 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Generate release notes
+        shell: bash
+        run: |
+          VERSION="${{ steps.tag.outputs.tag }}"
+          VERSION="${VERSION#creatorhub-one-desk-v}"
+          python3 apps/creatorhub-one-desk/scripts/release-metadata.py markdown \
+            --version "$VERSION" \
+            --output release-body.md
+
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
-          generate_release_notes: true
+          body_path: release-body.md
           files: dist/*
           fail_on_unmatched_files: true

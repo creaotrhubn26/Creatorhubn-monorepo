@@ -171,6 +171,8 @@ export interface SharePageInput {
   locationLabel: string | null;
   imageUrl: string | null;
   imageAlt: string | null;
+  /** Kreditering av bildet (Commons-lisensen krever den der bildet vises). */
+  imageCredit?: { author: string; license: string | null; sourceUrl: string | null } | null;
   lang: string;
   shareUrl: string;
   appUrl: string;
@@ -199,6 +201,7 @@ export function renderSharePage(input: SharePageInput): string {
   const heroImage = input.imageUrl
     ? `<img class="hero" src="${escapeHtml(input.imageUrl)}" alt="${escapeHtml(input.imageAlt ?? input.title)}">`
     : "";
+  const credit = input.imageUrl && input.imageCredit ? renderImageCredit(input.imageCredit, isNb) : "";
   const location = input.locationLabel ? `<p class="meta">${escapeHtml(input.locationLabel)}</p>` : "";
   const subtitle = input.subtitle ? `<p class="subtitle">${escapeHtml(input.subtitle)}</p>` : "";
   return `<!doctype html>
@@ -219,6 +222,8 @@ export function renderSharePage(input: SharePageInput): string {
       body { margin: 0; background: #0B1016; color: #F5F3EE; font-family: -apple-system, system-ui, "Segoe UI", sans-serif; }
       main { max-width: 640px; margin: 0 auto; padding: 24px 20px 48px; }
       .hero { width: 100%; border-radius: 20px; display: block; margin-bottom: 20px; }
+      .credit { color: #A9B0BA; font-size: 0.85rem; margin: -12px 0 20px; }
+      .credit a { color: inherit; }
       h1 { font-size: 2rem; margin: 0 0 4px; }
       .subtitle { color: #A9B0BA; margin: 0 0 12px; font-size: 1.1rem; }
       .meta { color: #7C8591; margin: 0 0 16px; }
@@ -232,6 +237,7 @@ export function renderSharePage(input: SharePageInput): string {
   <body>
     <main>
       ${heroImage}
+      ${credit}
       <h1>${title}</h1>
       ${subtitle}
       ${location}
@@ -243,4 +249,16 @@ export function renderSharePage(input: SharePageInput): string {
   </body>
 </html>
 `;
+}
+
+/** «Foto: Navn · CC BY-SA 4.0», lenket til filsiden på Commons når den finnes. */
+function renderImageCredit(
+  credit: NonNullable<SharePageInput["imageCredit"]>,
+  isNb: boolean,
+): string {
+  const text = escapeHtml(
+    `${isNb ? "Foto" : "Photo"}: ${credit.author}${credit.license ? ` · ${credit.license}` : ""}`,
+  );
+  const body = credit.sourceUrl ? `<a href="${escapeHtml(credit.sourceUrl)}">${text}</a>` : text;
+  return `<p class="credit">${body}</p>`;
 }

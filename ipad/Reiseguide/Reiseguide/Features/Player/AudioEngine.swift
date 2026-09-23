@@ -5,9 +5,12 @@
 //     .playback UTEN mixWithOthers, så appen eier lydstrømmen og VoiceOver
 //     dukker automatisk (UI-spesifikasjon 8.4, punkt 3). Spiller videre med
 //     skjermen låst (UIBackgroundModes: audio).
-//   - Simulert tidslinje (ingen lydfil ennå, steg 2 leverer TTS): en klokke
-//     som går i valgt hastighet over kapittelets anslåtte varighet, så
-//     teksting, fremdrift og kapittelbytte kan prøves før lyden finnes.
+//   - Opplest av telefonen (ingen lydfil ennå, men manus): SpeechNarrator
+//     leser manuset med AVSpeechSynthesizer i samme .playback-sesjon, til
+//     Soniox-lyden finnes. Posisjonen følger ordet som leses.
+//   - Simulert tidslinje (verken lydfil eller manus): en klokke som går i
+//     valgt hastighet over kapittelets anslåtte varighet, så teksting,
+//     fremdrift og kapittelbytte kan prøves før lyden finnes.
 // Låseskjerm og Kontrollsenter får de samme kontrollene via
 // MPRemoteCommandCenter / MPNowPlayingInfoCenter (8.4, punkt 8).
 
@@ -24,6 +27,9 @@ final class AudioEngine {
     }
 
     private var player: AVPlayer?
+    /// Lages først når et kapittel uten lydfil lastes.
+    private var narrator: SpeechNarrator?
+    private var usesSpeech = false
     private var simulatedPositionS: Double = 0
     private var lastTickAt: Date?
     private(set) var rate: Double = 1
@@ -46,13 +52,19 @@ final class AudioEngine {
             let seconds = player.currentTime().seconds
             return seconds.isFinite ? seconds : 0
         }
+        if usesSpeech, let narrator { return narrator.positionS }
         return simulatedPositionS
     }
 
-    var isSimulated: Bool { player == nil }
+    /// Stille tidslinje: verken lydfil eller opplesning.
+    var isSimulated: Bool { player == nil && !usesSpeech }
 
-    /// Laster et kapittel. `url` nil = simulert tidslinje.
-    func load(url: URL?, durationS: Double, nowPlaying: NowPlaying) {
+    /// Kapittelet leses opp av telefonen (ingen lydfil ennå).
+    var isReadByPhone: Bool { usesSpeech }
+
+    /// Laster et kapittel. `url` nil = opplesning av `speech` hvis gitt,
+    /// ellers simulert tidslinje.
+    func load(url: URL?, durationS: Double, nowPlaying: NowPlaying, speech: SpeechScript? = nil) {
         stopInternal()
         self.durationS = max(1, durationS)
         simulatedPositionS = 0
@@ -61,6 +73,11 @@ final class AudioEngine {
             let player = AVPlayer(playerItem: item)
             player.automaticallyWaitsToMinimizeStalling = true
             self.player = player
+        } else if let speech {
+            let narrator = narrator ?? SpeechNarrator()
+            self.narrator = narrator
+            narrator.load(speech, rate: rate)
+            usesSpeech = true
         }
         updateNowPlaying(nowPlaying)
     }
@@ -70,6 +87,8 @@ final class AudioEngine {
         isPlaying = true
         if let player {
             player.rate = Float(rate)
+        } else if usesSpeech {
+            narrator?.play()
         } else {
             lastTickAt = Date()
         }
@@ -79,6 +98,7 @@ final class AudioEngine {
     func pause() {
         isPlaying = false
         player?.pause()
+        if usesSpeech { narrator?.pause() }
         lastTickAt = nil
         updatePlaybackState()
     }
@@ -86,6 +106,7 @@ final class AudioEngine {
     func setRate(_ newRate: Double) {
         rate = newRate
         if isPlaying, let player { player.rate = Float(newRate) }
+        if usesSpeech { narrator?.setRate(newRate) }
         updatePlaybackState()
     }
 
@@ -93,6 +114,8 @@ final class AudioEngine {
         let clamped = min(max(0, seconds), durationS)
         if let player {
             player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600))
+        } else if usesSpeech, let narrator {
+            narrator.seek(to: clamped)
         } else {
             simulatedPositionS = clamped
             lastTickAt = isPlaying ? Date() : nil
@@ -103,6 +126,7 @@ final class AudioEngine {
     /// Kalles fra en MainActor-ticker; returnerer true når kapittelet er ferdig.
     func tick() -> Bool {
         guard isPlaying else { return false }
+        if usesSpeech, let narrator { return narrator.isFinished }
         if player == nil, let last = lastTickAt {
             let now = Date()
             simulatedPositionS += now.timeIntervalSince(last) * rate
@@ -126,6 +150,8 @@ final class AudioEngine {
         isPlaying = false
         player?.pause()
         player = nil
+        narrator?.stop()
+        usesSpeech = false
         lastTickAt = nil
         simulatedPositionS = 0
     }

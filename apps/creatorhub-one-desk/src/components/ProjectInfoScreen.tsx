@@ -37,6 +37,7 @@ import ResumeBanner from "./ResumeBanner";
 import IPadPairingSection from "./IPadPairingSection";
 import CaptureMirrorSection from "./CaptureMirrorSection";
 import BridgeSection from "./BridgeSection";
+import PluginsCatalog from "./PluginsCatalog";
 
 interface Props {
   config: StoredConfig;
@@ -187,6 +188,8 @@ export default function ProjectInfoScreen({ config, onLoggedOut, onSwitchProject
         {/* Resume-banner — vises kun hvis det finnes interrupted backup-økter
             etter app-crash eller forced quit. Skjult når listen er tom. */}
         <ResumeBanner />
+
+        <PluginsCatalog />
 
         {error && (
           <Alert

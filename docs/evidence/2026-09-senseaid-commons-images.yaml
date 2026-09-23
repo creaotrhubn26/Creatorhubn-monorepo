@@ -1,0 +1,59 @@
+claim: >
+  Heltebildene i SenseAid Explore kan hentes fra Wikimedia Commons og vises i appen
+  og på delingssiden, forutsatt fri lisens (CC0, public domain, CC BY eller CC BY-SA
+  2.0–4.0) og at opphav og lisens vises ved bildet. MediaWiki-API-et gir det som
+  trengs i ett kall: prop=imageinfo med iiprop=url|size|mime|extmetadata og
+  iiurlwidth=1600 (miniatyr-URL, størrelse, MIME, Artist, LicenseShortName, LicenseUrl),
+  over generator=categorymembers eller generator=search i File-navnerommet (ns 6).
+source_type: api_reference
+source: "https://www.mediawiki.org/wiki/API:Imageinfo, https://www.mediawiki.org/wiki/Extension:CommonsMetadata (extmetadata-feltene), https://commons.wikimedia.org/wiki/Commons:Licensing, https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia, https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy. Ikke hentet på nytt i denne økten: skymiljøet blokkerer Commons, så API-formen verifiseres først ved første kjøring i workflowen (tørrkjøring anbefalt)."
+authority_tier: 1
+vendor: Wikimedia Foundation
+product: Wikimedia Commons / MediaWiki Action API
+version_scope: "Action API med formatversion=2 og CommonsMetadata-extmetadata, per 2026-09-23"
+publication_date: "2026-09-23"
+valid_from: "2026-09"
+valid_to: "når bildene byttes til egne foto eller lisensierte bilder med annen avtale, eller når Commons endrer extmetadata-feltene / miniatyrpolitikken (f.eks. faste miniatyrbredder)"
+evidence_summary: >
+  Commons godtar bare frie lisenser, men blander CC BY/BY-SA, public domain, GFDL,
+  FAL og porterte CC-varianter; NC/ND finnes ikke som gyldig Commons-lisens, men
+  filtreres likevel eksplisitt i tilfelle metadata er feil. CC BY og CC BY-SA krever
+  navngivelse av opphav, lisensnavn og lenke; Artist-feltet er HTML og må vaskes.
+  Wikimedia krever en beskrivende User-Agent med kontaktinfo for API-kall.
+interpretation: >
+  Valget gjøres av et script (backend/scripts/reiseguide-commons-images.ts) som kjøres
+  i GitHub-workflowen senseaid-seed-demo.yml, siden bare runneren når Commons.
+  Utvalget er deterministisk (fastspikret fil, ellers kategorier, ellers søk; flest
+  piksler, deretter tittel) og filtrerer bort ikke-JPEG, under 1600 px, stående,
+  panorama over 2:1, titler som tyder på kart/plan/logo/tegning/frimerke/trykk/maleri,
+  ukjent opphav og alt utenfor lisenslisten. Alt-teksten er bevisst nøktern
+  («Foto av Akershus festning») fordi ingen har sett bildet som velges.
+project_impact: >
+  backend/migrations/0663_reiseguide_hero_image_credit.sql (hero_image_credit,
+  hero_image_license, hero_image_license_url, hero_image_source_url på guide_pois),
+  backend/server/reiseguide-commons-images.ts (regler + klient),
+  backend/server/reiseguide-demo-data.ts (DEMO_HERO_IMAGES og alt-tekster),
+  backend/server/reiseguide-routes.ts (heroImageCredit i POI- og område-svaret),
+  backend/server/reiseguide-after-visit.ts (kreditering på delingssiden),
+  ipad/Reiseguide/Reiseguide/Features/POIDetail/HeroImageCreditLine.swift
+  (krediteringslinje under heltebildet på detaljsiden).
+confidence: probable
+decision: >
+  Daniel 23.09.2026 («får du lagt til noen bilder?»): bruk fritt lisensierte foto fra
+  Wikimedia Commons. Lisensliste: CC0, public domain, CC BY 2.0/2.5/3.0/4.0 og
+  CC BY-SA 2.0/2.5/3.0/4.0 (porterte varianter som «CC BY-SA 3.0 de» godtas); aldri
+  NC, ND, GFDL-alene, FAL eller ukjent. Kreditering er påkrevd og vises som
+  «Foto: {opphav} · {lisens}» på detaljsiden i appen (lenke til filsiden på Commons,
+  eget VoiceOver-element) og på delingssiden. Uten opphav sender API-et ingen
+  kreditering, og slike filer velges ikke. Bildene lenkes direkte fra
+  upload.wikimedia.org (1600 px-miniatyr); ingen kopi i egen lagring i POC-en.
+  Status «probable» til første workflow-kjøring har vist valget i tabellen og
+  Daniel har sett bildene i appen.
+affected:
+  - ipad/Reiseguide (SenseAid Explore) — detaljsiden, kort, kart, spiller
+  - backend /api/guide/areas/:slug, /api/guide/pois/:slug, /api/guide/share/:slug
+  - .github/workflows/senseaid-seed-demo.yml
+lesson: >
+  Når et bilde velges maskinelt, skal alt-teksten bare si det vi vet (hva stedet
+  er), ikke hva bildet antas å vise. Og krediteringen må følge bildet overalt der
+  det vises, også på delingssider, ikke bare der det var planlagt.

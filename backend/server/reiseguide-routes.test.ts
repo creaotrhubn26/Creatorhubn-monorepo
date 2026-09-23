@@ -7,7 +7,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 
-import { buildPoiView, mediaUrl, parseLang, registerReiseguideRoutes, requestApiBase, resolveLang, type PoiRow, type ScriptRow, type TranslationRow } from "./reiseguide-routes.js";
+import { buildPoiView, heroImageCredit, mediaUrl, parseLang, registerReiseguideRoutes, requestApiBase, resolveLang, type PoiRow, type ScriptRow, type TranslationRow } from "./reiseguide-routes.js";
 
 type Handler = { match: RegExp; rows: unknown[] | ((params: unknown[]) => unknown[]) };
 
@@ -68,6 +68,10 @@ const poiRows: PoiRow[] = [
     free_preview: true,
     hero_image_key: "reiseguide/akershus/hero.jpg",
     status: "published",
+    hero_image_credit: "Ola Nordmann",
+    hero_image_license: "CC BY-SA 4.0",
+    hero_image_license_url: "https://creativecommons.org/licenses/by-sa/4.0",
+    hero_image_source_url: "https://commons.wikimedia.org/wiki/File:Akershus_festning.jpg",
   },
   {
     id: "poi_opera",
@@ -262,6 +266,12 @@ describe("buildPoiView", () => {
     expect(view.title).toBe("Akershus festning");
     expect(view.heroImageUrl).toBe(`${MEDIA}/reiseguide/akershus/hero.jpg`);
     expect(view.heroImageAlt).toBe("Akershus festning sett fra sør i dagslys");
+    expect(view.heroImageCredit).toEqual({
+      author: "Ola Nordmann",
+      license: "CC BY-SA 4.0",
+      licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      sourceUrl: "https://commons.wikimedia.org/wiki/File:Akershus_festning.jpg",
+    });
     expect(view.practicalInfo).toEqual([{ label: "Adkomst", value: "Trinnfri fra Rådhusplassen" }]);
     expect(view.lang).toEqual({
       requested: "nb",
@@ -326,6 +336,7 @@ describe("buildPoiView", () => {
     });
     expect(view.title).toBe("Operaen");
     expect(view.heroImageUrl).toBeNull();
+    expect(view.heroImageCredit).toBeNull();
     expect(view.practicalInfo).toEqual([]);
     expect(view.variants).toEqual({ narration: null, audioDescription: null });
   });
@@ -533,6 +544,83 @@ describe("etter besøket: quiz, vurdering og deling", () => {
     expect(res.text).toContain('href="senseaidexplore://poi/akershus-festning?lang=en"');
     expect(res.text).toContain('content="https://api.test/api/guide/share/akershus-festning?lang=en"');
     expect((await request(app).get("/api/guide/share/ukjent")).status).toBe(404);
+  });
+});
+
+describe("heltebilde med kreditering (0663)", () => {
+  const view = (poi: PoiRow, translations: TranslationRow[] = translationRows) =>
+    buildPoiView({ poi, translations, scripts: [], requestedLang: "nb", defaultLang: "nb", mediaBase: MEDIA });
+
+  it("sender Commons-URL uendret og krediteringen ved siden av", () => {
+    const commons = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Akershus.jpg/1600px-Akershus.jpg";
+    const v = view({ ...poiRows[0], hero_image_key: commons });
+    expect(v.heroImageUrl).toBe(commons);
+    expect(v.heroImageCredit?.author).toBe("Ola Nordmann");
+  });
+
+  it("gir null uten bilde eller uten opphav, og trimmer tomme felt til null", () => {
+    expect(heroImageCredit({ ...poiRows[0], hero_image_credit: "  " }, "https://x.test/a.jpg")).toBeNull();
+    expect(heroImageCredit({ ...poiRows[0], hero_image_credit: undefined }, "https://x.test/a.jpg")).toBeNull();
+    expect(heroImageCredit(poiRows[0], null)).toBeNull();
+    expect(
+      heroImageCredit(
+        { ...poiRows[0], hero_image_license: " ", hero_image_license_url: null, hero_image_source_url: "javascript:alert(1)" },
+        "https://x.test/a.jpg",
+      ),
+    ).toEqual({ author: "Ola Nordmann", license: null, licenseUrl: null, sourceUrl: null });
+  });
+
+  it("gir ikke alt-tekst når stedet mangler bilde", () => {
+    const withAlt = translationRows.map((t) => (t.poi_id === "poi_opera" ? { ...t, hero_image_alt: "Foto av Operaen" } : t));
+    const v = view(poiRows[1], withAlt);
+    expect(v.heroImageUrl).toBeNull();
+    expect(v.heroImageAlt).toBeNull();
+    expect(v.heroImageCredit).toBeNull();
+  });
+
+  const handlers: Handler[] = [
+    {
+      match: /FROM guide_areas a WHERE \(a\.id = \$1 OR a\.slug = \$1\)/,
+      rows: (p) => (p[0] === "area_oslo" ? [areaRow] : []),
+    },
+    { match: /FROM guide_pois WHERE area_id = \$1/, rows: poiRows },
+    {
+      match: /FROM guide_pois p\s+JOIN guide_areas a/,
+      rows: (p) => (p[0] === "akershus-festning" ? [{ ...poiRows[0], default_lang: "nb" }] : []),
+    },
+    { match: /FROM guide_poi_translations/, rows: translationRows },
+  ];
+
+  it("GET område og severdighet gir heroImageCredit, og SQL-en tåler at 0663 ikke er kjørt", async () => {
+    const pool = makePool(handlers);
+    const area = await request(makeApp(pool)).get("/api/guide/areas/area_oslo?lang=nb");
+    expect(area.status).toBe(200);
+    expect(area.body.pois[0].heroImageCredit).toEqual({
+      author: "Ola Nordmann",
+      license: "CC BY-SA 4.0",
+      licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      sourceUrl: "https://commons.wikimedia.org/wiki/File:Akershus_festning.jpg",
+    });
+    expect(area.body.pois[1].heroImageCredit).toBeNull();
+
+    const poi = await request(makeApp(pool)).get("/api/guide/pois/akershus-festning?lang=nb");
+    expect(poi.body.poi.heroImageCredit.author).toBe("Ola Nordmann");
+
+    // Kolonnene leses via to_jsonb, så et API som kommer før migrasjonen får null, ikke 500.
+    const poiSql = pool.query.mock.calls.map(([sql]) => sql).filter((sql) => /FROM guide_pois( WHERE|\s+p\s+JOIN)/.test(sql));
+    expect(poiSql).toHaveLength(2);
+    for (const sql of poiSql) {
+      expect(sql).toMatch(/to_jsonb\((guide_pois|p)\) ->> 'hero_image_credit' AS hero_image_credit/);
+      expect(sql).toMatch(/->> 'hero_image_source_url' AS hero_image_source_url/);
+    }
+  });
+
+  it("delingssiden krediterer bildet med lenke til kilden", async () => {
+    const res = await request(makeApp(makePool(handlers))).get("/api/guide/share/akershus-festning?lang=nb");
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(
+      '<p class="credit"><a href="https://commons.wikimedia.org/wiki/File:Akershus_festning.jpg">Foto: Ola Nordmann · CC BY-SA 4.0</a></p>',
+    );
   });
 });
 

@@ -14,6 +14,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { deviceTokenStatus, refreshProjectsFromApi } from "../api";
 import AuthSurface from "./AuthSurface";
 import DeskIcon from "./DeskIcon";
+import PluginsCatalog from "./PluginsCatalog";
 
 interface Props {
   onRefresh: () => void;
@@ -127,6 +128,8 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
           >
             Logg ut
           </Button>
+
+          <PluginsCatalog compact />
         </Stack>
 
         <Box sx={{ pt: 2 }}>

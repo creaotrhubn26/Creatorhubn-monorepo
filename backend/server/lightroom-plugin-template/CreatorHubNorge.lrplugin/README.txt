@@ -4,6 +4,8 @@ CreatorHub Norge Lightroom Plugin
 Versjon: __CREATORHUB_PLUGIN_VERSION__
 
 Denne pakken er generert direkte fra CreatorHub og er klar til bruk for din konto.
+Når pakken installeres av CreatorHub Desk, styres innlogging og utlogging automatisk
+av Desk med kortlivede, maskinbundne Lightroom-sesjoner.
 
 Installering
 ------------
@@ -16,12 +18,14 @@ Installering
 Hva pluginen gjør
 -----------------
 - laster opp rendrede bildefiler fra Lightroom
-- lagrer originalfilene i Google Drive
-- oppretter showcase-elementer i CreatorHub
-- holder Drive- og showcase-spor samlet i samme arbeidsflyt
+- lagrer og verifiserer rendrede filer i privat CreatorHub S3
+- binder filene til valgt CreatorHub-prosjekt og Photo Room
+- kan lage en ekstra privat Google Drive-speilkopi dersom Drive er koblet
+- beholder CreatorHub S3 som autoritativ original selv om Drive-speiling feiler
 
-Denne pakken er bundet til:
+Denne pakken er konfigurert med:
 - API Base URL: __CREATORHUB_API_BASE_URL__
-- Plugin-token: __CREATORHUB_PLUGIN_TOKEN__
+- CreatorHub-konto: __CREATORHUB_ACCOUNT_EMAIL__
 
-Hvis du trenger et nytt token eller en ny pakke, last ned en ny installasjonspakke fra CreatorHub.
+Desk-installasjoner inneholder ikke et permanent skytoken. Åpne CreatorHub Desk og
+logg inn før eksport. Separate nettleserpakker kan fortsatt bruke et avgrenset plugin-token.

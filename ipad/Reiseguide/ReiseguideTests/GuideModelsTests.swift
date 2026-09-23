@@ -5,6 +5,8 @@
 // v1 og quiz, migrasjon 0640 + 0641) og sjekker at modellene matcher kontrakten.
 // `prompts` på kapitlene (0662, spørsmål underveis) ble lagt inn 23.09.2026 med
 // backendens buildChapterPrompts over demo-dataene; se ChapterPromptTests.
+// `heroImageCredit` (0663, Commons-kreditering) ble lagt inn som null
+// 23.09.2026; fixturen har fortsatt ingen bilder.
 
 import XCTest
 @testable import Reiseguide
@@ -54,6 +56,7 @@ final class GuideModelsTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(question.options.count, 2)
             }
             XCTAssertNil(poi.rating, "ingen vurderinger i demo-seeden")
+            XCTAssertNil(poi.heroImageCredit, "ingen bilder i fixturen")
             XCTAssertEqual(poi.shareURL?.path(), "/api/guide/share/\(poi.slug)")
             XCTAssertEqual(poi.lang.resolved, "nb")
             XCTAssertFalse(poi.lang.fallbackUsed)
@@ -75,6 +78,38 @@ final class GuideModelsTests: XCTestCase {
         XCTAssertTrue(poi.quizQuestions.isEmpty)
         XCTAssertNil(poi.rating)
         XCTAssertNil(poi.shareURL)
+        XCTAssertNil(poi.heroImageCredit, "svar fra før 0663 har ikke feltet")
+    }
+
+    func testDecodesHeroImageCreditFromCommons() throws {
+        let json = """
+        {"id":"p","slug":"s","areaId":"a","categoryId":null,"lat":59.9,"lng":10.7,"triggerRadiusM":40,"priority":0,
+         "sortOrder":0,"freePreview":true,
+         "heroImageUrl":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Akershus.jpg/1600px-Akershus.jpg",
+         "heroImageAlt":"Foto av Akershus festning",
+         "heroImageCredit":{"author":"Ola Nordmann","license":"CC BY-SA 4.0",
+           "licenseUrl":"https://creativecommons.org/licenses/by-sa/4.0",
+           "sourceUrl":"https://commons.wikimedia.org/wiki/File:Akershus.jpg"},
+         "title":"T","subtitle":null,"summary":null,"locationLabel":null,"practicalInfo":[],
+         "lang":{"requested":"nb","resolved":"nb","fallbackUsed":false,"autoTranslated":false,"editorialStatus":"draft","available":["nb"]},
+         "variants":{"narration":null,"audioDescription":null}}
+        """
+        let poi = try JSONDecoder().decode(GuidePOI.self, from: Data(json.utf8))
+        let credit = try XCTUnwrap(poi.heroImageCredit)
+        XCTAssertEqual(credit.author, "Ola Nordmann")
+        XCTAssertEqual(credit.license, "CC BY-SA 4.0")
+        XCTAssertEqual(credit.sourceURL?.host(), "commons.wikimedia.org")
+        XCTAssertEqual(poi.heroImageAlt, "Foto av Akershus festning")
+
+        let minimal = try JSONDecoder().decode(
+            HeroImageCredit.self,
+            from: Data(#"{"author":"Kari","license":null,"licenseUrl":null,"sourceUrl":null}"#.utf8)
+        )
+        XCTAssertNil(minimal.license)
+        XCTAssertNil(minimal.sourceURL)
+
+        let data = try JSONEncoder().encode(poi)
+        XCTAssertEqual(try JSONDecoder().decode(GuidePOI.self, from: data), poi)
     }
 
     func testRoundTripsThroughCacheEncoding() throws {

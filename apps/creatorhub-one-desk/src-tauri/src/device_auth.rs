@@ -6,7 +6,8 @@
 //!   2. Bruker logger inn med Google → backend redirecter til
 //!      creatorhub-one-desk://oauth-callback?token=...&email=...
 //!   3. tauri-plugin-deep-link plukker opp URLen, vi parser ut tokenet
-//!      og lagrer i ~/.creatorhub-one-desk/device-token.json (0600)
+//!      og lagrer hemmeligheten i OS-nøkkelringen. JSON-filen inneholder
+//!      bare ikke-sensitiv kontoidentitet.
 //!   4. fetch_projects_with_device_token() henter alle prosjekter
 //!      brukeren har tilgang til + per-prosjekt helper-tokens og
 //!      populerer ProjectStore via replace_all().
@@ -24,6 +25,8 @@ use crate::projects::ProjectEntry;
 // redirects — apex-URL her gjorde at Bearer-tokenet ble borte før /me/
 // projects nådde backend ("Bearer-token påkrevd" selv med gyldig token).
 const DEFAULT_API_BASE: &str = "https://www.creatorhubn.com";
+const KEYRING_SERVICE: &str = "com.creatorhub.one-desk";
+const DEVICE_TOKEN_ACCOUNT: &str = "desktop-device-token";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceToken {
@@ -34,8 +37,64 @@ pub struct DeviceToken {
     pub api_base: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredDeviceIdentity {
+    /// Migration-only: builds before 0.1.11 stored the bearer token in this
+    /// 0600 JSON file. New writes always omit it after moving it to Keychain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
+    user_email: String,
+    #[serde(default)]
+    user_name: String,
+    api_base: String,
+}
+
 fn device_token_path() -> PathBuf {
     helper_client::config_dir().join("device-token.json")
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYRING_SERVICE, DEVICE_TOKEN_ACCOUNT)
+        .map_err(|error| format!("Åpne OS-nøkkelring: {}", error))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn keyring_get() -> Result<Option<String>, String> {
+    match keyring_entry()?.get_password() {
+        Ok(secret) if !secret.trim().is_empty() => Ok(Some(secret)),
+        Ok(_) | Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(format!("Les OS-nøkkelring: {}", error)),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn keyring_set(secret: &str) -> Result<(), String> {
+    keyring_entry()?
+        .set_password(secret)
+        .map_err(|error| format!("Lagre i OS-nøkkelring: {}", error))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn keyring_delete() -> Result<(), String> {
+    match keyring_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!("Fjern fra OS-nøkkelring: {}", error)),
+    }
+}
+
+fn write_device_identity(identity: &StoredDeviceIdentity) -> Result<(), String> {
+    helper_client::ensure_config_dir()?;
+    let path = device_token_path();
+    let json = serde_json::to_vec_pretty(identity).map_err(|e| format!("Serialize: {}", e))?;
+    fs::write(&path, &json).map_err(|e| format!("Skriv device-identitet: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = fs::Permissions::from_mode(0o600);
+        let _ = fs::set_permissions(&path, perms);
+    }
+    Ok(())
 }
 
 pub fn load_device_token() -> Result<Option<DeviceToken>, String> {
@@ -47,32 +106,144 @@ pub fn load_device_token() -> Result<Option<DeviceToken>, String> {
     if bytes.is_empty() {
         return Ok(None);
     }
-    serde_json::from_slice::<DeviceToken>(&bytes)
-        .map(Some)
-        .map_err(|e| format!("Parse device-token: {}", e))
+    let mut identity = serde_json::from_slice::<StoredDeviceIdentity>(&bytes)
+        .map_err(|e| format!("Parse device-identitet: {}", e))?;
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let token = match keyring_get()? {
+        Some(secret) => secret,
+        None => {
+            let legacy = identity
+                .token
+                .take()
+                .filter(|secret| !secret.trim().is_empty());
+            let Some(secret) = legacy else {
+                return Ok(None);
+            };
+            keyring_set(&secret)?;
+            write_device_identity(&identity)?;
+            secret
+        }
+    };
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let token = match identity.token.take() {
+        Some(secret) if !secret.trim().is_empty() => secret,
+        _ => return Ok(None),
+    };
+
+    Ok(Some(DeviceToken {
+        token,
+        user_email: identity.user_email,
+        user_name: identity.user_name,
+        api_base: identity.api_base,
+    }))
 }
 
 pub fn save_device_token(token: &DeviceToken) -> Result<(), String> {
-    helper_client::ensure_config_dir()?;
-    let path = device_token_path();
-    let json = serde_json::to_vec_pretty(token).map_err(|e| format!("Serialize: {}", e))?;
-    fs::write(&path, &json).map_err(|e| format!("Skriv device-token: {}", e))?;
-    // 0600 — kun eier kan lese
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = fs::Permissions::from_mode(0o600);
-        let _ = fs::set_permissions(&path, perms);
-    }
-    Ok(())
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    keyring_set(&token.token)?;
+
+    write_device_identity(&StoredDeviceIdentity {
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        token: Some(token.token.clone()),
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        token: None,
+        user_email: token.user_email.clone(),
+        user_name: token.user_name.clone(),
+        api_base: token.api_base.clone(),
+    })
 }
 
 pub fn clear_device_token() -> Result<(), String> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    keyring_delete()?;
+
     let path = device_token_path();
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("Slett device-token: {}", e))?;
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LightroomDeskSession {
+    pub token: String,
+    pub expires_at: String,
+    pub api_base_url: String,
+    pub account_email: String,
+    pub plugin_version: String,
+}
+
+pub async fn fetch_lightroom_session(device: &DeviceToken) -> Result<LightroomDeskSession, String> {
+    let url = format!(
+        "{}/api/desktop/me/lightroom-session",
+        device.api_base.trim_end_matches('/')
+    );
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|error| format!("Opprett CreatorHub-klient: {error}"))?
+        .post(url)
+        .header("Authorization", format!("Bearer {}", device.token))
+        .send()
+        .await
+        .map_err(|error| format!("CreatorHub Desk SSO: {error}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("Les CreatorHub Desk SSO-svar: {error}"))?;
+    if !status.is_success() {
+        return Err(format!("CreatorHub Desk SSO avvist ({}).", status.as_u16()));
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Response {
+        success: bool,
+        token: String,
+        expires_at: String,
+        api_base_url: String,
+        account_email: String,
+        plugin_version: String,
+    }
+    let parsed: Response = serde_json::from_str(&body)
+        .map_err(|error| format!("Ugyldig CreatorHub Desk SSO-svar: {error}"))?;
+    if !parsed.success || !parsed.token.starts_with("lrs_") {
+        return Err("CreatorHub returnerte ikke en gyldig Lightroom-sesjon.".to_string());
+    }
+    Ok(LightroomDeskSession {
+        token: parsed.token,
+        expires_at: parsed.expires_at,
+        api_base_url: parsed.api_base_url,
+        account_email: parsed.account_email,
+        plugin_version: parsed.plugin_version,
+    })
+}
+
+pub async fn revoke_device_token(device: &DeviceToken) -> Result<(), String> {
+    let url = format!(
+        "{}/api/desktop/me/logout",
+        device.api_base.trim_end_matches('/')
+    );
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|error| format!("Opprett utloggingsklient: {error}"))?
+        .post(url)
+        .header("Authorization", format!("Bearer {}", device.token))
+        .send()
+        .await
+        .map_err(|error| format!("Revoker Desk-innlogging: {error}"))?;
+    if response.status().is_success() || response.status().as_u16() == 401 {
+        Ok(())
+    } else {
+        Err(format!(
+            "CreatorHub avviste utlogging ({})",
+            response.status().as_u16()
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -324,5 +495,18 @@ mod tests {
         assert!(
             parse_oauth_callback_url("creatorhub-one-desk://oauth-callback?email=a@b.c").is_none()
         );
+    }
+
+    #[test]
+    fn persisted_identity_omits_device_bearer_token() {
+        let identity = StoredDeviceIdentity {
+            token: None,
+            user_email: "owner@example.test".into(),
+            user_name: "Owner".into(),
+            api_base: "https://www.creatorhubn.com".into(),
+        };
+        let serialized = serde_json::to_string(&identity).expect("serialize identity");
+        assert!(!serialized.contains("trr_desk_"));
+        assert!(!serialized.contains("\"token\""));
     }
 }

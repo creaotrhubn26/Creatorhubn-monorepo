@@ -177,6 +177,19 @@ struct DeviceDeletionResponse: Codable, Sendable, Equatable {
     let deleted: Counts
 }
 
+/// Kreditering av heltebildet (migrasjon 0663): Commons-lisensene krever at
+/// fotograf og lisens vises der bildet vises. Null fra backend når stedet ikke
+/// har bilde eller opphavet mangler.
+struct HeroImageCredit: Codable, Sendable, Equatable {
+    let author: String
+    let license: String?
+    let licenseUrl: String?
+    let sourceUrl: String?
+
+    /// Filsiden på Commons som URL; nil hvis backend ikke ga noen.
+    var sourceURL: URL? { sourceUrl.flatMap { URL(string: $0) } }
+}
+
 struct GuidePOI: Codable, Sendable, Identifiable, Equatable {
     let id: String
     let slug: String
@@ -190,6 +203,8 @@ struct GuidePOI: Codable, Sendable, Identifiable, Equatable {
     let freePreview: Bool
     let heroImageUrl: String?
     let heroImageAlt: String?
+    /// Valgfri så eldre svar i hurtigbufferen og testdata uten feltet fortsatt dekodes.
+    var heroImageCredit: HeroImageCredit?
     let title: String
     let subtitle: String?
     let summary: String?
