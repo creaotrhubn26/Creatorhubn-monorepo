@@ -21,12 +21,12 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertIn("## Forbedret", markdown)
         self.assertIn("## Rettet", markdown)
 
-    def test_manifest_notes_are_machine_readable_release_json(self):
+    def test_manifest_notes_are_backward_compatible_markdown(self):
         release = MODULE.load_release("0.1.12")
-        encoded = json.dumps(release, ensure_ascii=False, separators=(",", ":"))
-        decoded = json.loads(encoded)
-        self.assertEqual(decoded["version"], "0.1.12")
-        self.assertIs(decoded["critical"], False)
+        notes = MODULE.render_markdown(release)
+        self.assertTrue(notes.startswith("# Oppdateringer du kan stole på\n"))
+        self.assertIn("## Forbedret\n", notes)
+        self.assertNotIn('"sections"', notes)
 
     def test_unknown_version_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "nøyaktig én release"):
